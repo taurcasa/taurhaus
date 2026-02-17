@@ -171,9 +171,9 @@ code → Shiki highlighter
 
 **Themes**: `github-light` (light mode), `github-dark-dimmed` (dark mode).
 
-**Loaded grammars** (15): javascript, typescript, rust, python, bash, shell, json, yaml, toml, html, css, svelte, markdown, sql, diff.
+**Languages**: Full Shiki bundle (~200 languages), loaded on demand. This is a desktop app — grammars load from disk, so bundle size is irrelevant. No manual language list to maintain.
 
-**Fallback**: Files with languages not in this list render as plaintext with line numbers. This is intentional — we load grammars for the languages we expect in dev tool projects, not every language Shiki supports.
+**Fallback**: If a language identifier isn't recognized by Shiki (extremely rare), it falls back to plaintext. The markdown-it plugin uses `defaultLanguage: 'text'` for the same graceful degradation.
 
 ---
 
@@ -185,7 +185,7 @@ code → Shiki highlighter
 - Max file size: 5 MB
 - Security: rejects path traversal (`..`), absolute paths, symlink escapes (canonicalization)
 - Binary detection: `read_to_string` returns `InvalidData` for non-UTF8 files → error
-- Language detection: maps ~17 extensions to language identifiers
+- Language detection: maps known aliases (e.g., `.rs` → "rust", `.py` → "python") and passes unknown extensions as-is to the frontend. Shiki loads grammars on demand — no need to maintain a complete list.
 
 ### `read_project_asset` (`src-tauri/src/commands/files.rs`)
 
@@ -201,7 +201,7 @@ code → Shiki highlighter
 | Feature | How to add |
 |---------|------------|
 | New image format | Add extension to image classifier (frontend) + MIME type to `mime_from_extension` (Rust) |
-| New syntax language | Add `import('shiki/langs/X.mjs')` to highlighter setup + extension mapping in `detect_language` |
+| New syntax language | Usually automatic — Shiki loads grammars on demand. Only add to `detect_language` if the extension differs from Shiki's language ID (e.g., `.rs` → "rust"). |
 | PDF viewer | New component, new file category in classifier, potentially new IPC command for page rendering |
 | File content caching | Add `assetCache.get/set` calls around `readFile` in the loading function |
 | File watcher invalidation | Call `assetCache.invalidate()` from the event listener (Phase 5C) |
