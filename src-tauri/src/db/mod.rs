@@ -1,5 +1,6 @@
 pub mod migrations;
 pub mod queries;
+pub mod session_queries;
 
 use std::path::Path;
 
