@@ -67,6 +67,7 @@ fn build_node(project_root: &Path, path: &Path) -> Result<FileTreeNode, AppError
         let mut kids = Vec::new();
         let walker = WalkBuilder::new(path)
             .hidden(false)
+            .follow_links(false) // Security: don't follow symlinks outside project
             .git_ignore(true)
             .git_global(false)
             .git_exclude(true)

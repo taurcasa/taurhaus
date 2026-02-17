@@ -3,11 +3,22 @@ use std::path::Path;
 use crate::errors::AppError;
 use crate::models::FileContent;
 
+/// Maximum file size we'll read (5 MB). Larger files get a friendly error.
+const MAX_FILE_SIZE: u64 = 5 * 1024 * 1024;
+
 /// Read a file from a project directory. Returns raw text content.
 ///
-/// Security: rejects paths containing ".." to prevent path traversal.
+/// Security: rejects path traversal (..), absolute paths, and symlink escapes
+/// via canonicalization check.
 pub fn read_file(project_root: &Path, relative_path: &str) -> Result<FileContent, AppError> {
-    // Path traversal protection
+    // Reject absolute paths
+    if Path::new(relative_path).is_absolute() {
+        return Err(AppError::InvalidPath(
+            "Absolute paths not allowed".to_string(),
+        ));
+    }
+
+    // Reject ".." path components
     if relative_path.contains("..") {
         return Err(AppError::InvalidPath(
             "Path traversal not allowed".to_string(),
@@ -20,10 +31,33 @@ pub fn read_file(project_root: &Path, relative_path: &str) -> Result<FileContent
             "File not found: {relative_path}"
         )));
     }
+
+    // Canonicalize both paths and verify the file is inside the project root.
+    // This catches symlink escapes and other resolution tricks.
+    let canonical = full_path.canonicalize().map_err(|_| {
+        AppError::NotFound(format!("Cannot resolve path: {relative_path}"))
+    })?;
+    let canonical_root = project_root.canonicalize().map_err(|_| {
+        AppError::InvalidPath("Cannot resolve project root".to_string())
+    })?;
+    if !canonical.starts_with(&canonical_root) {
+        return Err(AppError::InvalidPath(
+            "Path resolves outside project directory".to_string(),
+        ));
+    }
+
     if !full_path.is_file() {
         return Err(AppError::InvalidPath(format!(
             "Not a file: {relative_path}"
         )));
+    }
+
+    // Check file size before reading
+    let metadata = std::fs::metadata(&full_path)?;
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(AppError::InvalidPath(
+            "File too large to display (>5 MB)".to_string(),
+        ));
     }
 
     let content = std::fs::read_to_string(&full_path).map_err(|e| {
@@ -146,5 +180,35 @@ mod tests {
     fn detect_language_no_extension() {
         // "Makefile" → ext = "Makefile" which doesn't match
         assert_eq!(detect_language("Makefile"), None);
+    }
+
+    #[test]
+    fn rejects_absolute_path() {
+        let dir = setup();
+        let result = read_file(dir.path(), "/etc/passwd");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::InvalidPath(msg) => assert!(msg.contains("Absolute")),
+            e => panic!("Expected InvalidPath, got: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_file_outside_project_via_canonicalization() {
+        let dir = setup();
+        // Even if someone constructs a path that doesn't contain ".."
+        // but resolves outside, canonicalization catches it.
+        // This test creates a symlink to /tmp and verifies it's rejected.
+        #[cfg(unix)]
+        {
+            let link_path = dir.path().join("escape");
+            std::os::unix::fs::symlink("/tmp", &link_path).unwrap();
+            // Try to read a file through the symlink
+            // The symlink itself resolves outside project root
+            let result = read_file(dir.path(), "escape");
+            // This should either fail with InvalidPath (symlink resolves outside)
+            // or NotFound. Either way, it should NOT succeed.
+            assert!(result.is_err());
+        }
     }
 }

@@ -17,7 +17,7 @@ pub fn get_recent_commits(
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
 
     let repo_path = std::path::Path::new(&project.path);
-    commits::get_recent_commits(repo_path, limit.unwrap_or(10)).map_err(|e| e.to_string())
+    commits::get_recent_commits(repo_path, limit.unwrap_or(10).min(500)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -33,7 +33,7 @@ pub fn get_all_commits(
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
 
     let repo_path = std::path::Path::new(&project.path);
-    commits::get_all_commits(repo_path, limit.unwrap_or(50), offset.unwrap_or(0))
+    commits::get_all_commits(repo_path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
         .map_err(|e| e.to_string())
 }
 

@@ -39,7 +39,7 @@
   const panelBorder    = $derived(dark ? 'border border-zinc-800' : '')
   const treeBg         = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
   const treeHover      = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100')
-  const treeSelected   = $derived(dark ? 'bg-brand-950 text-brand-400' : 'bg-brand-50 text-brand-700')
+  const treeSelected   = $derived(dark ? 'bg-brand-900/40 text-brand-300' : 'bg-brand-100/80 text-brand-700')
   const treeIcon       = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
   const lineNumColor   = $derived(dark ? 'text-zinc-700' : 'text-zinc-300')
 
