@@ -2,6 +2,26 @@ node_modules/
 dist/
 .playwright-mcp/
 
+# Rust build artifacts
+src-tauri/target/
+
+# SQLite database files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Tantivy search index
+search-index/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
 # Development screenshots (Playwright captures)
 proposal-*.png
 shell-*.png
