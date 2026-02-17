@@ -653,7 +653,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
         std::fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
         // Create a binary file (should be skipped)
-        std::fs::write(dir.path().join("image.png"), &[0u8; 100]).unwrap();
+        std::fs::write(dir.path().join("image.png"), [0u8; 100]).unwrap();
 
         let mut index = SearchIndex::open_in_memory().unwrap();
         let count = index_project_files(&mut index, "p1", dir.path()).unwrap();
@@ -821,7 +821,7 @@ mod tests {
     fn update_file_skips_non_indexable() {
         let dir = tempfile::TempDir::new().unwrap();
         let file_path = dir.path().join("image.png");
-        std::fs::write(&file_path, &[0u8; 100]).unwrap();
+        std::fs::write(&file_path, [0u8; 100]).unwrap();
 
         let mut index = SearchIndex::open_in_memory().unwrap();
         let modified = update_file(&mut index, "p1", dir.path(), &file_path).unwrap();

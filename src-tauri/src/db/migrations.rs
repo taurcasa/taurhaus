@@ -13,6 +13,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "session_file_path_unique",
         include_str!("migrations/002_session_file_path_unique.sql"),
     ),
+    (
+        3,
+        "relationships_unique",
+        include_str!("migrations/003_relationships_unique.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations
