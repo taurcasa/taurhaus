@@ -1,10 +1,12 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
+  import Settings from './lib/Settings.svelte'
 
   let dark = $state(false)
   let preview = $state(false)
   let searchOpen = $state(false)
+  let settingsOpen = $state(false)
 
   /*
    * Layout dimensions
@@ -421,17 +423,21 @@
 
       <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
       <div class="flex items-center px-4 h-[36px] {mainBg} rounded-t-lg ml-1.5">
-        <button
-          class="px-3 py-1 text-[13px] transition-colors border-b-2
-            {activeTab === 'overview' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
-          onclick={() => switchTab('overview')}
-        >Overview</button>
-        <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
-        <button
-          class="px-3 py-1 text-[13px] transition-colors border-b-2
-            {activeTab === 'files' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
-          onclick={() => switchTab('files')}
-        >Files</button>
+        {#if settingsOpen}
+          <span class="px-3 py-1 text-[13px] font-medium {textPrimary}">Settings</span>
+        {:else}
+          <button
+            class="px-3 py-1 text-[13px] transition-colors border-b-2
+              {activeTab === 'overview' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+            onclick={() => switchTab('overview')}
+          >Overview</button>
+          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
+          <button
+            class="px-3 py-1 text-[13px] transition-colors border-b-2
+              {activeTab === 'files' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+            onclick={() => switchTab('files')}
+          >Files</button>
+        {/if}
       </div>
 
       <!-- Right scoop: inverse radius where tab pill meets dark frame -->
@@ -539,7 +545,12 @@
         <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Add project">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
         </button>
-        <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Settings">
+        <button
+          class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {settingsOpen ? 'text-white/60 bg-white/[0.08]' : 'text-white/20 hover:text-white/40 hover:bg-white/[0.06]'}"
+          aria-label="Settings"
+          onclick={() => settingsOpen = !settingsOpen}
+          data-testid="settings-toggle"
+        >
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>
         </button>
       </div>
@@ -547,7 +558,9 @@
 
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {mainBg} {textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
-      {#if !selectedProject}
+      {#if settingsOpen}
+        <Settings {dark} onClose={() => settingsOpen = false} />
+      {:else if !selectedProject}
         <!-- No project selected -->
         <div class="flex-1 flex items-center justify-center">
           <p class="text-[13px] {textTertiary}">Select a project</p>
