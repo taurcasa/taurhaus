@@ -94,6 +94,9 @@ pub fn run() {
 
             app.manage(DbState(Mutex::new(conn)));
 
+            // Extract daemon addr before moving into managed state
+            let daemon_addr = daemon_provider.as_ref().map(|d| d.addr().to_string());
+
             app.manage(ProviderState {
                 local: provider::local::LocalProvider,
                 daemon: daemon_provider,
@@ -108,9 +111,26 @@ pub fn run() {
                 });
             }
 
-            // Start file watcher
+            // Start file watcher — events from both local and daemon watchers
+            // are funneled through the same channel and processor.
             let (watcher, rx) = fs::watcher::ProjectWatcher::new();
+            let event_tx = watcher.event_sender();
             app.manage(WatcherState(Mutex::new(watcher)));
+
+            // If daemon is connected, start an event listener for WSL projects.
+            // This opens a second TCP connection dedicated to receiving watch events.
+            if let Some(daemon_addr) = daemon_addr {
+                let distro = wsl_distro.clone();
+                let event_tx_clone = event_tx.clone();
+                let db_projects = db::queries::list_projects(
+                    &app.state::<commands::projects::DbState>().0.lock().unwrap(),
+                )
+                .unwrap_or_default();
+
+                std::thread::spawn(move || {
+                    start_daemon_watches(daemon_addr, event_tx_clone, distro, db_projects);
+                });
+            }
 
             // Spawn background thread to process watcher events
             let handle = app.handle().clone();
@@ -494,6 +514,67 @@ fn startup_session_scan(app: &tauri::AppHandle) {
                 );
             }
         }
+    }
+}
+
+/// Start daemon event listener for WSL projects.
+///
+/// Opens a dedicated TCP connection to the daemon, sends `watch` commands for
+/// each WSL project, then runs the event loop. Events are forwarded to the
+/// shared watcher channel, where `process_watch_events` handles them identically
+/// to local watcher events.
+fn start_daemon_watches(
+    daemon_addr: String,
+    event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
+    wsl_distro: Option<String>,
+    projects: Vec<models::Project>,
+) {
+    let mut listener = match daemon::event_listener::DaemonEventListener::connect(
+        &daemon_addr,
+        event_tx,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to connect daemon event listener");
+            return;
+        }
+    };
+
+    // Register watches for all WSL projects
+    let mut count = 0;
+    for project in &projects {
+        if !provider::path::is_wsl_path(&project.path) {
+            continue;
+        }
+
+        // Convert UNC path to Linux path for the daemon
+        let linux_path = match provider::path::wsl_unc_to_linux(&project.path) {
+            Some(p) => p,
+            None => {
+                tracing::warn!(path = %project.path, "Cannot convert WSL path to Linux");
+                continue;
+            }
+        };
+
+        if let Err(e) = listener.watch(&project.id, &linux_path) {
+            tracing::warn!(
+                project = project.name,
+                error = %e,
+                "Failed to register daemon watch"
+            );
+        } else {
+            count += 1;
+        }
+    }
+
+    if count > 0 {
+        tracing::info!(
+            count,
+            distro = ?wsl_distro,
+            "Daemon watching WSL projects"
+        );
+        // Run blocks until daemon disconnects
+        listener.run();
     }
 }
 

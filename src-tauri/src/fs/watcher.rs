@@ -155,6 +155,14 @@ impl ProjectWatcher {
     pub fn watched_projects(&self) -> Vec<String> {
         self.watchers.keys().cloned().collect()
     }
+
+    /// Get a clone of the event sender.
+    ///
+    /// Used to share the channel with daemon event listeners so both local
+    /// and daemon-forwarded events go through the same pipeline.
+    pub fn event_sender(&self) -> mpsc::Sender<WatchEvent> {
+        self.event_tx.clone()
+    }
 }
 
 /// Process a single notify event and emit classified WatchEvents.
