@@ -4,7 +4,8 @@ use rusqlite::Connection;
 use serde::Deserialize;
 use tauri::{Emitter, State};
 
-use crate::models::{ActivityThresholds, ProjectDetail, ProjectSummary};
+use crate::db::settings_queries;
+use crate::models::{ProjectDetail, ProjectSummary};
 use crate::services::project;
 
 /// Expand `~` or `~/` at the start of a path to the user's home directory.
@@ -41,8 +42,8 @@ pub struct DiscoveredProject {
 #[tauri::command]
 pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let thresholds = ActivityThresholds::default();
-    project::list_projects(&conn, &thresholds).map_err(|e| e.to_string())
+    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+    project::list_projects(&conn, &settings.thresholds).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -51,8 +52,8 @@ pub fn get_project(
     project_id: String,
 ) -> Result<ProjectDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let thresholds = ActivityThresholds::default();
-    project::get_project(&conn, &project_id, &thresholds).map_err(|e| e.to_string())
+    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+    project::get_project(&conn, &project_id, &settings.thresholds).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -63,7 +64,8 @@ pub fn register_project(
 ) -> Result<ProjectDetail, String> {
     let expanded = expand_tilde(&path);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    project::register_project(&conn, &expanded, name.as_deref()).map_err(|e| e.to_string())
+    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+    project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -73,7 +75,8 @@ pub fn update_project(
     fields: UpdateProjectFields,
 ) -> Result<ProjectDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let thresholds = ActivityThresholds::default();
+    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+    let thresholds = settings.thresholds;
 
     project::update_project(
         &conn,
@@ -121,12 +124,13 @@ pub fn register_projects_batch(
     paths: Vec<String>,
 ) -> Result<Vec<BatchRegistrationResult>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
     let total = paths.len();
     let mut results = Vec::with_capacity(total);
 
     for (index, path) in paths.iter().enumerate() {
         let expanded = expand_tilde(path);
-        let result = match project::register_project(&conn, &expanded, None) {
+        let result = match project::register_project(&conn, &expanded, None, &settings.thresholds) {
             Ok(detail) => {
                 let _ = app.emit(
                     "batch-registration-progress",
@@ -174,6 +178,7 @@ pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
 mod tests {
     use super::*;
     use crate::db::init_db;
+    use crate::models::ActivityThresholds;
     use tempfile::{NamedTempFile, TempDir};
 
     fn test_db_state() -> (DbState, NamedTempFile) {
@@ -228,7 +233,7 @@ mod tests {
         let conn = db_state.0.lock().unwrap();
         let thresholds = ActivityThresholds::default();
 
-        let detail = project::register_project(&conn, &path, Some("test")).unwrap();
+        let detail = project::register_project(&conn, &path, Some("test"), &thresholds).unwrap();
         assert_eq!(detail.name, "test");
 
         let list = project::list_projects(&conn, &thresholds).unwrap();
@@ -252,7 +257,8 @@ mod tests {
         let dir = temp_project_dir();
         let conn = _db_state.0.lock().unwrap();
 
-        project::register_project(&conn, dir.path().to_str().unwrap(), Some("test")).unwrap();
+        let thresholds = ActivityThresholds::default();
+        project::register_project(&conn, dir.path().to_str().unwrap(), Some("test"), &thresholds).unwrap();
         let count = crate::db::queries::project_count(&conn).unwrap();
         assert!(count > 0);
     }
@@ -265,8 +271,9 @@ mod tests {
         let dir2 = temp_project_dir();
         let conn = _db_state.0.lock().unwrap();
 
-        let d1 = project::register_project(&conn, dir1.path().to_str().unwrap(), None).unwrap();
-        let d2 = project::register_project(&conn, dir2.path().to_str().unwrap(), None).unwrap();
+        let thresholds = ActivityThresholds::default();
+        let d1 = project::register_project(&conn, dir1.path().to_str().unwrap(), None, &thresholds).unwrap();
+        let d2 = project::register_project(&conn, dir2.path().to_str().unwrap(), None, &thresholds).unwrap();
 
         assert!(!d1.id.is_empty());
         assert!(!d2.id.is_empty());
@@ -280,7 +287,8 @@ mod tests {
         let (_db_state, _tmp) = test_db_state();
         let conn = _db_state.0.lock().unwrap();
 
-        let result = project::register_project(&conn, "/nonexistent/path", None);
+        let thresholds = ActivityThresholds::default();
+        let result = project::register_project(&conn, "/nonexistent/path", None, &thresholds);
         assert!(result.is_err());
 
         // DB should still be empty
