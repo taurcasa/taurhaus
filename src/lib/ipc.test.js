@@ -423,4 +423,82 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Relationship IPC
+  // -----------------------------------------------------------------------
+
+  describe('getRelationships()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockRels = [{ id: 'r1', source_project_id: 'p1', target_project_id: 'p2' }]
+      tauriCore.invoke.mockResolvedValue(mockRels)
+
+      const result = await ipc.getRelationships('p1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_relationships', { projectId: 'p1' })
+      expect(result).toEqual(mockRels)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getRelationships('p1')
+
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      expect(result[0]).toHaveProperty('relationship_type')
+    })
+  })
+
+  describe('dismissRelationship()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.dismissRelationship('r1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('dismiss_relationship', { relationshipId: 'r1' })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('createRelationship()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockRel = { id: 'r-new', source_project_id: 'p1', target_project_id: 'p2' }
+      tauriCore.invoke.mockResolvedValue(mockRel)
+
+      const result = await ipc.createRelationship('p1', 'p2', 'depends_on')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('create_relationship', {
+        sourceId: 'p1',
+        targetId: 'p2',
+        relationshipType: 'depends_on',
+      })
+      expect(result).toEqual(mockRel)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.createRelationship('p1', 'p2', 'depends_on')
+
+      expect(result).toHaveProperty('id')
+      expect(result.detection_source).toBe('manual')
+      expect(result.relationship_type).toBe('depends_on')
+    })
+  })
+
+  describe('removeRelationship()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.removeRelationship('r1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('remove_relationship', { relationshipId: 'r1' })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
 })

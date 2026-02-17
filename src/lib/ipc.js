@@ -231,3 +231,41 @@ export function getIndexStatus() {
 export function rebuildIndex() {
   return invokeOrMock('rebuild_index', undefined, () => 42)
 }
+
+// ---------------------------------------------------------------------------
+// Relationship IPC functions
+// ---------------------------------------------------------------------------
+
+const MOCK_RELATIONSHIPS = [
+  { id: 'rel-1', source_project_id: 'mock-1', target_project_id: 'mock-3', relationship_type: 'references', detection_source: 'claude_md', dismissed: false, first_detected_at: '2026-01-15T00:00:00Z', last_seen_at: '2026-02-17T00:00:00Z' },
+  { id: 'rel-2', source_project_id: 'mock-1', target_project_id: 'mock-4', relationship_type: 'references', detection_source: 'claude_md', dismissed: false, first_detected_at: '2026-01-15T00:00:00Z', last_seen_at: '2026-02-17T00:00:00Z' },
+]
+
+/** Get relationships for a project (non-dismissed). */
+export function getRelationships(projectId) {
+  return invokeOrMock('get_relationships', { projectId }, () => MOCK_RELATIONSHIPS)
+}
+
+/** Dismiss a relationship (soft delete). */
+export function dismissRelationship(relationshipId) {
+  return invokeOrMock('dismiss_relationship', { relationshipId }, () => undefined)
+}
+
+/** Create a manual relationship. */
+export function createRelationship(sourceId, targetId, relationshipType) {
+  return invokeOrMock('create_relationship', { sourceId, targetId, relationshipType }, () => ({
+    id: 'rel-new',
+    source_project_id: sourceId,
+    target_project_id: targetId,
+    relationship_type: relationshipType,
+    detection_source: 'manual',
+    dismissed: false,
+    first_detected_at: new Date().toISOString(),
+    last_seen_at: new Date().toISOString(),
+  }))
+}
+
+/** Remove a relationship permanently. */
+export function removeRelationship(relationshipId) {
+  return invokeOrMock('remove_relationship', { relationshipId }, () => undefined)
+}
