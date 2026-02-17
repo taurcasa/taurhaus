@@ -2,39 +2,21 @@ import { describe, it, expect, vi } from 'vitest'
 import { renderMarkdown, highlightCode } from './markdown.js'
 
 // Mock shiki since it requires WASM (not available in jsdom)
-vi.mock('shiki/core', () => ({
-  createHighlighterCore: vi.fn(() => Promise.resolve({
+vi.mock('shiki', () => ({
+  createHighlighter: vi.fn(() => Promise.resolve({
     getLoadedLanguages: () => ['javascript', 'rust'],
+    loadLanguage: vi.fn((lang) => {
+      // Simulate: some languages load, some don't
+      if (lang === 'brainfuck') return Promise.reject(new Error('not found'))
+      return Promise.resolve()
+    }),
     codeToHtml: (code, opts) => `<pre class="shiki"><code>${code}</code></pre>`,
   })),
-}))
-
-vi.mock('shiki/engine/oniguruma', () => ({
-  createOnigurumaEngine: vi.fn(() => ({})),
 }))
 
 vi.mock('@shikijs/markdown-it/core', () => ({
   fromHighlighter: vi.fn(() => () => {}),
 }))
-
-vi.mock('shiki/wasm', () => ({}))
-vi.mock('shiki/themes/github-light.mjs', () => ({ default: {} }))
-vi.mock('shiki/themes/github-dark-dimmed.mjs', () => ({ default: {} }))
-vi.mock('shiki/langs/javascript.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/typescript.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/rust.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/python.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/bash.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/shell.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/json.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/yaml.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/toml.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/html.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/css.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/svelte.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/markdown.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/sql.mjs', () => ({ default: [] }))
-vi.mock('shiki/langs/diff.mjs', () => ({ default: [] }))
 
 describe('renderMarkdown', () => {
   it('returns empty string for empty input', async () => {

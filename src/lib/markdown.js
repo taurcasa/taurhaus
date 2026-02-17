@@ -1,7 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import { fromHighlighter } from '@shikijs/markdown-it/core'
-import { createHighlighterCore } from 'shiki/core'
-import { createOnigurumaEngine } from 'shiki/engine/oniguruma'
+import { createHighlighter } from 'shiki'
 import DOMPurify from 'dompurify'
 
 let highlighterPromise = null
@@ -9,33 +8,16 @@ let mdInstances = { light: null, dark: null }
 
 /**
  * Lazily create and cache a Shiki highlighter.
- * The highlighter loads TextMate grammars on demand.
+ *
+ * Uses the full Shiki bundle (~200 languages). This is a desktop app —
+ * grammars load from disk once, so bundle size is irrelevant. We never
+ * have to manually add languages when viewing new project types.
  */
 function getHighlighter() {
   if (!highlighterPromise) {
-    highlighterPromise = createHighlighterCore({
-      themes: [
-        import('shiki/themes/github-light.mjs'),
-        import('shiki/themes/github-dark-dimmed.mjs'),
-      ],
-      langs: [
-        import('shiki/langs/javascript.mjs'),
-        import('shiki/langs/typescript.mjs'),
-        import('shiki/langs/rust.mjs'),
-        import('shiki/langs/python.mjs'),
-        import('shiki/langs/bash.mjs'),
-        import('shiki/langs/shell.mjs'),
-        import('shiki/langs/json.mjs'),
-        import('shiki/langs/yaml.mjs'),
-        import('shiki/langs/toml.mjs'),
-        import('shiki/langs/html.mjs'),
-        import('shiki/langs/css.mjs'),
-        import('shiki/langs/svelte.mjs'),
-        import('shiki/langs/markdown.mjs'),
-        import('shiki/langs/sql.mjs'),
-        import('shiki/langs/diff.mjs'),
-      ],
-      engine: createOnigurumaEngine(import('shiki/wasm')),
+    highlighterPromise = createHighlighter({
+      themes: ['github-light', 'github-dark-dimmed'],
+      langs: [],  // start empty — loaded on demand by the full bundle
     })
   }
   return highlighterPromise
@@ -59,6 +41,7 @@ async function getMdInstance(theme) {
 
   md.use(fromHighlighter(highlighter, {
     theme: theme === 'dark' ? 'github-dark-dimmed' : 'github-light',
+    defaultLanguage: 'text',
   }))
 
   mdInstances[key] = md
@@ -94,6 +77,8 @@ export async function renderMarkdown(source, isDark = false) {
 
 /**
  * Highlight a single code string (for the Files tab code viewer).
+ * Falls back to plaintext for unknown languages.
+ *
  * @param {string} code — source code
  * @param {string} lang — language identifier
  * @param {boolean} isDark — use dark theme
@@ -105,10 +90,18 @@ export async function highlightCode(code, lang, isDark = false) {
   const highlighter = await getHighlighter()
   const theme = isDark ? 'github-dark-dimmed' : 'github-light'
 
-  // Check if language is loaded, fall back to plaintext
+  // Load the language on demand if not already loaded
   const loadedLangs = highlighter.getLoadedLanguages()
-  const effectiveLang = loadedLangs.includes(lang) ? lang : 'text'
+  if (lang && !loadedLangs.includes(lang)) {
+    try {
+      await highlighter.loadLanguage(lang)
+    } catch {
+      // Language not available in Shiki — fall back to plaintext
+      lang = 'text'
+    }
+  }
 
+  const effectiveLang = lang || 'text'
   const html = highlighter.codeToHtml(code, { lang: effectiveLang, theme })
   return DOMPurify.sanitize(html, {
     ADD_TAGS: ['span'],
