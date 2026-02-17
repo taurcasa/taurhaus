@@ -51,6 +51,24 @@ const MOCK_FILE_TREE = [
   { name: 'README.md', path: 'README.md', is_dir: false, children: [] },
 ]
 
+const MOCK_SESSION = {
+  id: 'mock-session-1',
+  project_id: 'mock-1',
+  date: new Date(Date.now() - 2 * 86400000).toISOString(),
+  summary: 'Completed Phase 5B implementation — git module, file reader, Overview and Files tabs.',
+  next_steps: ['Implement file watcher', 'Add session import pipeline', 'Build session display in Overview tab'],
+  open_questions: ['Virtual scrolling for large commit lists'],
+  metadata: { branch: 'main', commit_range: 'abc123..def456' },
+  file_path: 'docs/sessions/session-2026-02-15T14-30-45.md',
+  created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+}
+
+const MOCK_SESSIONS = [
+  { id: 'mock-session-1', project_id: 'mock-1', date: new Date(Date.now() - 2 * 86400000).toISOString(), summary: 'Completed Phase 5B — git module, file reader, Overview and Files tabs.' },
+  { id: 'mock-session-2', project_id: 'mock-1', date: new Date(Date.now() - 5 * 86400000).toISOString(), summary: 'Completed Phase 5A — scaffold, SQLite, project CRUD.' },
+  { id: 'mock-session-3', project_id: 'mock-1', date: new Date(Date.now() - 10 * 86400000).toISOString(), summary: 'Architecture decisions — 22 ADRs across 6 topics.' },
+]
+
 const MOCK_DETAIL = {
   id: 'mock-1',
   name: 'taurhaus',
@@ -159,4 +177,23 @@ export function getReadme(projectId) {
     content: '# Mock Project\n\nThis is a mock README.',
     language: 'markdown',
   }))
+}
+
+// ---------------------------------------------------------------------------
+// Session IPC functions
+// ---------------------------------------------------------------------------
+
+/** Get the latest session for a project. */
+export function getLatestSession(projectId) {
+  return invokeOrMock('get_latest_session', { projectId }, () => MOCK_SESSION)
+}
+
+/** List sessions for a project with pagination. */
+export function listSessions(projectId, limit = 20, offset = 0) {
+  return invokeOrMock('list_sessions', { projectId, limit, offset }, () => MOCK_SESSIONS)
+}
+
+/** Get full session detail by ID. */
+export function getSession(sessionId) {
+  return invokeOrMock('get_session', { sessionId }, () => MOCK_SESSION)
 }

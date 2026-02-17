@@ -281,4 +281,76 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('content')
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Session IPC functions
+  // -----------------------------------------------------------------------
+
+  describe('getLatestSession()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockSession = { id: 's1', project_id: 'p1', date: '2026-02-17', summary: 'Test' }
+      tauriCore.invoke.mockResolvedValue(mockSession)
+
+      const result = await ipc.getLatestSession('p1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_latest_session', { projectId: 'p1' })
+      expect(result).toEqual(mockSession)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getLatestSession('p1')
+
+      expect(result).toHaveProperty('id')
+      expect(result).toHaveProperty('summary')
+      expect(result).toHaveProperty('next_steps')
+    })
+  })
+
+  describe('listSessions()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockSessions = [{ id: 's1', project_id: 'p1', date: '2026-02-17', summary: 'Test' }]
+      tauriCore.invoke.mockResolvedValue(mockSessions)
+
+      const result = await ipc.listSessions('p1', 10, 5)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('list_sessions', { projectId: 'p1', limit: 10, offset: 5 })
+      expect(result).toEqual(mockSessions)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.listSessions('p1')
+
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      expect(result[0]).toHaveProperty('summary')
+    })
+  })
+
+  describe('getSession()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockSession = { id: 's1', project_id: 'p1', date: '2026-02-17', summary: 'Test' }
+      tauriCore.invoke.mockResolvedValue(mockSession)
+
+      const result = await ipc.getSession('s1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_session', { sessionId: 's1' })
+      expect(result).toEqual(mockSession)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getSession('s1')
+
+      expect(result).toHaveProperty('id')
+      expect(result).toHaveProperty('summary')
+    })
+  })
 })

@@ -19,8 +19,11 @@ pub mod session;
 use std::sync::Mutex;
 
 use commands::projects::DbState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
+
+/// Managed state: holds the file watcher so it lives for the app lifetime.
+pub struct WatcherState(pub Mutex<fs::watcher::ProjectWatcher>);
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -41,6 +44,19 @@ pub fn run() {
             let conn = db::init_db(&db_path).expect("failed to initialize database");
             app.manage(DbState(Mutex::new(conn)));
 
+            // Start file watcher
+            let (watcher, rx) = fs::watcher::ProjectWatcher::new();
+            app.manage(WatcherState(Mutex::new(watcher)));
+
+            // Spawn background thread to process watcher events
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                process_watch_events(rx, handle);
+            });
+
+            // Import any unimported sessions for registered projects
+            startup_session_scan(app);
+
             tracing::info!(?db_path, "database initialized");
             Ok(())
         })
@@ -57,7 +73,131 @@ pub fn run() {
             commands::files::get_file_tree,
             commands::files::read_file,
             commands::files::get_readme,
+            commands::sessions::get_latest_session,
+            commands::sessions::list_sessions,
+            commands::sessions::get_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
+}
+
+/// Process file watcher events on a background thread.
+/// Emits Tauri events to the frontend and triggers session imports.
+fn process_watch_events(
+    rx: std::sync::mpsc::Receiver<fs::watcher::WatchEvent>,
+    app: tauri::AppHandle,
+) {
+    use fs::watcher::WatchEvent;
+
+    for event in rx {
+        match event {
+            WatchEvent::GitChanged { project_id } => {
+                // Re-read git status and emit to frontend
+                let db_state = app.state::<DbState>();
+                let conn = match db_state.0.lock() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let project = match db::queries::get_project(&conn, &project_id) {
+                    Ok(Some(p)) => p,
+                    _ => continue,
+                };
+                drop(conn);
+
+                let status = git::status::get_status(std::path::Path::new(&project.path));
+                if let Ok(status) = status {
+                    let _ = app.emit(
+                        "project-git-changed",
+                        serde_json::json!({
+                            "project_id": project_id,
+                            "branch": status.branch,
+                            "is_dirty": status.is_dirty,
+                        }),
+                    );
+                }
+            }
+            WatchEvent::SessionFileCreated { project_id, path } => {
+                let db_state = app.state::<DbState>();
+                let conn = match db_state.0.lock() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                match services::session_import::import_handoff(&conn, &project_id, &path) {
+                    Ok(Some(session_id)) => {
+                        let _ = app.emit(
+                            "session-imported",
+                            serde_json::json!({
+                                "project_id": project_id,
+                                "session_id": session_id,
+                            }),
+                        );
+                    }
+                    Ok(None) => {} // already imported
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to import session from watcher event"
+                        );
+                    }
+                }
+            }
+            WatchEvent::FileChanged { project_id, paths } => {
+                let path_strs: Vec<String> =
+                    paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                let _ = app.emit(
+                    "project-files-changed",
+                    serde_json::json!({
+                        "project_id": project_id,
+                        "paths": path_strs,
+                    }),
+                );
+            }
+            WatchEvent::GitignoreChanged { project_id } => {
+                tracing::info!(project_id, "gitignore changed — watch rebuild not yet implemented");
+            }
+        }
+    }
+}
+
+/// On startup, scan all registered projects for unimported session handoffs.
+fn startup_session_scan(app: &tauri::App) {
+    let db_state = app.state::<DbState>();
+    let conn = match db_state.0.lock() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to lock DB for startup session scan: {e}");
+            return;
+        }
+    };
+
+    let projects = match db::queries::list_projects(&conn) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to list projects for startup scan: {e}");
+            return;
+        }
+    };
+
+    for project in &projects {
+        let project_root = std::path::Path::new(&project.path);
+        match services::session_import::scan_and_import_sessions(&conn, &project.id, project_root) {
+            Ok(imported) if !imported.is_empty() => {
+                tracing::info!(
+                    project = project.name,
+                    count = imported.len(),
+                    "Imported sessions on startup"
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    project = project.name,
+                    error = %e,
+                    "Failed to scan sessions on startup"
+                );
+            }
+        }
+    }
 }

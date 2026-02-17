@@ -11,6 +11,9 @@ vi.mock('./ipc.js', () => ({
   getRecentCommits: vi.fn(),
   getAllCommits: vi.fn(),
   getReadme: vi.fn(),
+  getLatestSession: vi.fn(),
+  listSessions: vi.fn(),
+  getSession: vi.fn(),
   isTauri: vi.fn(() => false),
 }))
 

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::errors::AppError;
 
@@ -18,7 +18,7 @@ pub struct ParsedSession {
 }
 
 /// Parsed result from a companion .meta.json sidecar file.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMeta {
     pub session_id: Option<String>,
     pub started_at: Option<String>,
