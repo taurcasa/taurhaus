@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme } from './lib/ipc.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -37,6 +37,11 @@
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
   const dots           = $derived(dark ? dotColorDark : dotColor)
   const panelBorder    = $derived(dark ? 'border border-zinc-800' : '')
+  const treeBg         = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
+  const treeHover      = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100')
+  const treeSelected   = $derived(dark ? 'bg-brand-950 text-brand-400' : 'bg-brand-50 text-brand-700')
+  const treeIcon       = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const lineNumColor   = $derived(dark ? 'text-zinc-700' : 'text-zinc-300')
 
   // Activity state groups for sidebar ordering
   const groups = [
@@ -53,10 +58,21 @@
   let sidebarError = $state(null)
   let detailLoading = $state(false)
 
+  // Tab state
+  let activeTab = $state('overview')
+
   // Overview: commits
   let recentCommits = $state([])
   let commitsLoading = $state(false)
   let showAllCommits = $state(false)
+
+  // Files tab state
+  let fileTree = $state([])
+  let fileTreeLoading = $state(false)
+  let selectedFile = $state(null)
+  let fileContent = $state(null)
+  let fileContentLoading = $state(false)
+  let expandedDirs = $state(new Set())
 
   // Load projects on mount
   $effect(() => {
@@ -82,6 +98,11 @@
   async function selectProject(project) {
     detailLoading = true
     showAllCommits = false
+    // Reset file tree for new project
+    fileTree = []
+    selectedFile = null
+    fileContent = null
+    expandedDirs = new Set()
     try {
       selectedProject = await getProject(project.id)
     } catch {
@@ -92,6 +113,10 @@
     }
     // Load commits in parallel with detail
     loadCommits(project.id, 10)
+    // If on files tab, load file tree for new project
+    if (activeTab === 'files') {
+      loadFileTree(project.id)
+    }
   }
 
   async function loadCommits(projectId, limit) {
@@ -111,6 +136,63 @@
     if (!selectedProject) return
     showAllCommits = true
     await loadCommits(selectedProject.id, 50)
+  }
+
+  function switchTab(tab) {
+    activeTab = tab
+    if (tab === 'files' && selectedProject && fileTree.length === 0) {
+      loadFileTree(selectedProject.id)
+    }
+  }
+
+  async function loadFileTree(projectId) {
+    fileTreeLoading = true
+    try {
+      fileTree = await getFileTree(projectId)
+      // Auto-select README if no file selected
+      if (!selectedFile) {
+        const readme = findReadmeInTree(fileTree)
+        if (readme) await openFile(readme.path)
+      }
+    } catch {
+      fileTree = []
+    } finally {
+      fileTreeLoading = false
+    }
+  }
+
+  function findReadmeInTree(nodes) {
+    for (const node of nodes) {
+      if (!node.is_dir && /^readme/i.test(node.name)) return node
+      if (node.is_dir && node.children) {
+        const found = findReadmeInTree(node.children)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  function toggleDir(path) {
+    const next = new Set(expandedDirs)
+    if (next.has(path)) {
+      next.delete(path)
+    } else {
+      next.add(path)
+    }
+    expandedDirs = next
+  }
+
+  async function openFile(relativePath) {
+    if (!selectedProject) return
+    selectedFile = relativePath
+    fileContentLoading = true
+    try {
+      fileContent = await readFile(selectedProject.id, relativePath)
+    } catch {
+      fileContent = { path: relativePath, content: 'Error loading file.', language: null }
+    } finally {
+      fileContentLoading = false
+    }
   }
 
   // Dev-only: fullscreen preview simulates Tauri desktop experience
@@ -153,9 +235,17 @@
 
       <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
       <div class="flex items-center px-4 h-[36px] {mainBg} rounded-t-lg ml-1.5">
-        <button class="px-3 py-1 text-[13px] font-medium {textPrimary} border-b-2 border-brand-500">Overview</button>
+        <button
+          class="px-3 py-1 text-[13px] transition-colors border-b-2
+            {activeTab === 'overview' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+          onclick={() => switchTab('overview')}
+        >Overview</button>
         <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
-        <button class="px-3 py-1 text-[13px] {textTertiary} hover:text-zinc-500 transition-colors border-b-2 border-transparent">Files</button>
+        <button
+          class="px-3 py-1 text-[13px] transition-colors border-b-2
+            {activeTab === 'files' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+          onclick={() => switchTab('files')}
+        >Files</button>
       </div>
 
       <!-- Right scoop: inverse radius where tab pill meets dark frame -->
@@ -276,7 +366,8 @@
         <div class="flex-1 flex items-center justify-center">
           <p class="text-[13px] {textTertiary}">Select a project</p>
         </div>
-      {:else}
+      {:else if activeTab === 'overview'}
+        <!-- ═══ OVERVIEW TAB ═══ -->
         <!-- Project header -->
         <div class="px-7 pt-5 pb-4 shrink-0">
           <div class="flex items-baseline gap-3">
@@ -376,6 +467,98 @@
               </div>
             </section>
 
+          </div>
+        </div>
+      {:else}
+        <!-- ═══ FILES TAB ═══ -->
+        <div class="flex-1 flex min-h-0">
+
+          <!-- File tree (200px fixed) -->
+          <div class="w-[200px] shrink-0 {treeBg} border-r {keyline} flex flex-col overflow-hidden" role="tree">
+            <div class="flex-1 overflow-y-auto pt-2">
+              {#if fileTreeLoading}
+                <div class="px-3 space-y-1" data-testid="filetree-loading">
+                  {#each Array(6) as _}
+                    <div class="flex items-center h-[32px] gap-2 px-2">
+                      <div class="w-3 h-3 rounded bg-zinc-300/30 animate-pulse"></div>
+                      <div class="h-2.5 flex-1 rounded bg-zinc-300/20 animate-pulse"></div>
+                    </div>
+                  {/each}
+                </div>
+              {:else if fileTree.length === 0}
+                <div class="px-4 pt-6 text-center">
+                  <p class="text-[12px] {textMuted}">No viewable files</p>
+                  <p class="text-[11px] {textTertiary} mt-1">Check ignore patterns in Settings</p>
+                </div>
+              {:else}
+                {#snippet treeNodes(nodes, depth)}
+                  {#each nodes as node}
+                    {#if node.is_dir}
+                      <button
+                        class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {textSecondary} {treeHover} rounded transition-colors"
+                        style="padding-left: {8 + depth * 16}px"
+                        onclick={() => toggleDir(node.path)}
+                        role="treeitem"
+                        aria-selected={false}
+                        aria-expanded={expandedDirs.has(node.path)}
+                      >
+                        <svg class="w-3 h-3 {treeIcon} shrink-0 transition-transform {expandedDirs.has(node.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+                        <svg class="w-3.5 h-3.5 shrink-0 {dark ? 'text-zinc-500' : 'text-zinc-400'}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+                        <span class="truncate">{node.name}</span>
+                      </button>
+                      {#if expandedDirs.has(node.path) && node.children}
+                        {@render treeNodes(node.children, depth + 1)}
+                      {/if}
+                    {:else}
+                      {@const isSelected = selectedFile === node.path}
+                      <button
+                        class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] rounded transition-colors
+                          {isSelected ? treeSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${treeHover}`}"
+                        style="padding-left: {22 + depth * 16}px"
+                        onclick={() => openFile(node.path)}
+                        role="treeitem"
+                        aria-selected={isSelected}
+                      >
+                        <svg class="w-3.5 h-3.5 shrink-0 {isSelected ? '' : treeIcon}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                        <span class="truncate">{node.name}</span>
+                      </button>
+                    {/if}
+                  {/each}
+                {/snippet}
+                {@render treeNodes(fileTree, 0)}
+              {/if}
+            </div>
+          </div>
+
+          <!-- File content viewer -->
+          <div class="flex-1 flex flex-col min-w-0">
+            {#if !selectedFile}
+              <div class="flex-1 flex items-center justify-center">
+                <p class="text-[13px] {textMuted}">Select a file from the tree</p>
+              </div>
+            {:else}
+              <!-- File header -->
+              <div class="h-[44px] flex items-center px-6 border-b {keyline} shrink-0">
+                <span class="text-[14px] font-medium {textPrimary} truncate">{selectedFile}</span>
+                {#if fileContent?.language}
+                  <span class="ml-3 text-[11px] {textTertiary}">{fileContent.language}</span>
+                {/if}
+              </div>
+
+              <!-- File content -->
+              <div class="flex-1 overflow-auto">
+                {#if fileContentLoading}
+                  <div class="p-6 space-y-2" data-testid="filecontent-loading">
+                    {#each Array(8) as _}
+                      <div class="h-3 rounded bg-zinc-200/50 animate-pulse" style="width: {40 + Math.random() * 50}%"></div>
+                    {/each}
+                  </div>
+                {:else if fileContent}
+                  <pre class="p-6 text-[13px] font-mono leading-[1.6] {textBody} whitespace-pre-wrap break-words max-w-[720px]"><code>{#each fileContent.content.split('\n') as line, i}<span class="inline-block w-[3em] text-right mr-4 select-none {lineNumColor}">{i + 1}</span>{line}
+{/each}</code></pre>
+                {/if}
+              </div>
+            {/if}
           </div>
         </div>
       {/if}

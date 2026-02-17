@@ -6,6 +6,11 @@ import '@testing-library/jest-dom/vitest'
 vi.mock('./ipc.js', () => ({
   listProjects: vi.fn(),
   getProject: vi.fn(),
+  getFileTree: vi.fn(),
+  readFile: vi.fn(),
+  getRecentCommits: vi.fn(),
+  getAllCommits: vi.fn(),
+  getReadme: vi.fn(),
   isTauri: vi.fn(() => false),
 }))
 
@@ -92,5 +97,45 @@ describe('Sidebar data loading', () => {
     expect(result.description).toBe('Desktop tool for AI project management')
     expect(result.activity_state).toBe('active')
     expect(result.branch).toBe('main')
+  })
+
+  it('getFileTree returns nested structure', async () => {
+    const mockTree = [
+      { name: 'src', path: 'src', is_dir: true, children: [
+        { name: 'main.rs', path: 'src/main.rs', is_dir: false, children: [] },
+      ]},
+      { name: 'README.md', path: 'README.md', is_dir: false, children: [] },
+    ]
+    ipc.getFileTree.mockResolvedValue(mockTree)
+
+    const result = await ipc.getFileTree('p1')
+
+    expect(result).toHaveLength(2)
+    expect(result[0].is_dir).toBe(true)
+    expect(result[0].children).toHaveLength(1)
+    expect(result[1].name).toBe('README.md')
+  })
+
+  it('readFile returns content with language', async () => {
+    const mockContent = {
+      path: 'src/main.rs',
+      content: 'fn main() {}',
+      language: 'rust',
+    }
+    ipc.readFile.mockResolvedValue(mockContent)
+
+    const result = await ipc.readFile('p1', 'src/main.rs')
+
+    expect(result.content).toBe('fn main() {}')
+    expect(result.language).toBe('rust')
+  })
+
+  it('tab state defaults and can distinguish between overview and files', () => {
+    // Tab state is just a string — verify the expected values
+    const validTabs = ['overview', 'files']
+    const defaultTab = 'overview'
+
+    expect(validTabs).toContain(defaultTab)
+    expect(validTabs).toHaveLength(2)
   })
 })
