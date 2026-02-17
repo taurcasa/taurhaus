@@ -366,6 +366,140 @@ pub fn rebuild_all(
     Ok(total)
 }
 
+// ---------------------------------------------------------------------------
+// Incremental index updates (called from file watcher)
+// ---------------------------------------------------------------------------
+
+/// Update the search index for a single file change.
+///
+/// If the file exists and is indexable, upserts its content.
+/// If the file doesn't exist (deleted), removes it from the index.
+/// Returns true if the index was modified.
+pub fn update_file(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    absolute_path: &Path,
+) -> Result<bool, AppError> {
+    let relative = match absolute_path.strip_prefix(project_root) {
+        Ok(r) => r.to_string_lossy().to_string(),
+        Err(_) => return Ok(false),
+    };
+
+    // If file was deleted or isn't indexable, remove from index
+    if !absolute_path.is_file() || !is_indexable_file(absolute_path) {
+        index.remove_by_file_path(&relative);
+        index.commit()?;
+        return Ok(true);
+    }
+
+    // Skip oversized files
+    if let Ok(meta) = std::fs::metadata(absolute_path) {
+        if meta.len() > MAX_INDEX_FILE_SIZE {
+            index.remove_by_file_path(&relative);
+            index.commit()?;
+            return Ok(true);
+        }
+    }
+
+    // Read and index the file
+    let content = match std::fs::read_to_string(absolute_path) {
+        Ok(c) => c,
+        Err(_) => return Ok(false), // binary or unreadable
+    };
+
+    let title = absolute_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Remove old entry and add updated one
+    index.remove_by_file_path(&relative);
+    index.add_document(project_id, "document", &relative, &title, &content)?;
+    index.commit()?;
+
+    Ok(true)
+}
+
+/// Index a single session by ID (called after session import).
+pub fn index_session(
+    index: &mut SearchIndex,
+    project_id: &str,
+    session_id: &str,
+    conn: &rusqlite::Connection,
+) -> Result<bool, AppError> {
+    use crate::db::session_queries;
+
+    let detail = match session_queries::get_session(conn, session_id)? {
+        Some(d) => d,
+        None => return Ok(false),
+    };
+
+    let mut content = detail.summary.clone();
+    for step in &detail.next_steps {
+        content.push_str("\n- ");
+        content.push_str(step);
+    }
+    for q in &detail.open_questions {
+        content.push_str("\n? ");
+        content.push_str(q);
+    }
+
+    let file_path = format!("session:{}", detail.id);
+    let title = if detail.summary.len() > 60 {
+        &detail.summary[..60]
+    } else {
+        &detail.summary
+    };
+
+    // Remove any existing entry for this session, then add fresh
+    index.remove_by_file_path(&file_path);
+    index.add_document(project_id, "session", &file_path, title, &content)?;
+    index.commit()?;
+
+    Ok(true)
+}
+
+/// Re-index recent commits for a project (called on git changes).
+pub fn reindex_commits(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    limit: usize,
+) -> Result<usize, AppError> {
+    use crate::git::commits::get_recent_commits;
+
+    // Remove all existing commit entries for this project
+    // We use a convention: commit file_paths start with "commit:"
+    // Since we can't query tantivy for "starts with", remove by project and re-add all.
+    // But that would also remove files/sessions. Instead, get all existing commit hashes
+    // and remove them individually. Actually, just re-index the commits — the old ones
+    // will naturally be replaced since we're deleting by file_path.
+    let commits = match get_recent_commits(project_root, limit) {
+        Ok(c) => c,
+        Err(_) => return Ok(0),
+    };
+
+    // Remove and re-add each commit
+    for commit in &commits {
+        let file_path = format!("commit:{}", commit.hash);
+        index.remove_by_file_path(&file_path);
+        index.add_document(
+            project_id,
+            "commit",
+            &file_path,
+            &commit.message,
+            &format!("{} — {} ({})", commit.message, commit.author, commit.date),
+        )?;
+    }
+
+    if !commits.is_empty() {
+        index.commit()?;
+    }
+
+    Ok(commits.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -611,5 +745,153 @@ mod tests {
         // rebuild should have replaced, not appended
         assert_eq!(count2, 2);
         assert!(count2 >= count1); // at least as many (replaces old, adds new)
+    }
+
+    // --- Incremental update tests ---
+
+    #[test]
+    fn update_file_indexes_new_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("hello.md");
+        std::fs::write(&file_path, "Hello incremental world").unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let modified = update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+
+        assert!(modified);
+        assert_eq!(index.doc_count().unwrap(), 1);
+
+        let results = index.search("incremental", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_path, "hello.md");
+    }
+
+    #[test]
+    fn update_file_upserts_existing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("notes.md");
+
+        // Initial content
+        std::fs::write(&file_path, "Original text").unwrap();
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+        assert_eq!(index.doc_count().unwrap(), 1);
+
+        // Update content
+        std::fs::write(&file_path, "Updated text with new keywords").unwrap();
+        update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+
+        // Should still be 1 doc (upserted, not appended)
+        assert_eq!(index.doc_count().unwrap(), 1);
+
+        // New content should be searchable
+        let results = index.search("keywords", 10).unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn update_file_removes_deleted() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("temp.md");
+
+        // Index the file
+        std::fs::write(&file_path, "Temporary content").unwrap();
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+        assert_eq!(index.doc_count().unwrap(), 1);
+
+        // Delete the file and update
+        std::fs::remove_file(&file_path).unwrap();
+        let modified = update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+
+        assert!(modified);
+        assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn update_file_skips_non_indexable() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("image.png");
+        std::fs::write(&file_path, &[0u8; 100]).unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let modified = update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+
+        // Should return true (removed from index if it was there) but doc count stays 0
+        assert!(modified);
+        assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn update_file_skips_outside_project() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        let file_path = outside.path().join("rogue.md");
+        std::fs::write(&file_path, "Outside content").unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let modified = update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+
+        assert!(!modified);
+        assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn index_session_by_id() {
+        use crate::db;
+        use crate::models::SessionDetail;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let conn = db::init_db(tmp.path()).unwrap();
+
+        conn.execute(
+            "INSERT INTO projects (id, name, path, created_at, updated_at) VALUES ('p1', 'test', '/test', '2026-01-01', '2026-01-01')",
+            [],
+        ).unwrap();
+
+        let session = SessionDetail {
+            id: "s-incr-1".into(),
+            project_id: "p1".into(),
+            date: "2026-02-17".into(),
+            summary: "Incremental session indexing test".into(),
+            next_steps: vec!["Verify it works".into()],
+            open_questions: vec![],
+            metadata: serde_json::json!({}),
+            file_path: "/test/sessions/s-incr-1.md".into(),
+            created_at: "2026-02-17T00:00:00Z".into(),
+        };
+        db::session_queries::insert_session(&conn, &session).unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let indexed = index_session(&mut index, "p1", "s-incr-1", &conn).unwrap();
+
+        assert!(indexed);
+        assert_eq!(index.doc_count().unwrap(), 1);
+
+        let results = index.search("incremental session", 10).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].entity_type, "session");
+    }
+
+    #[test]
+    fn index_session_nonexistent_returns_false() {
+        use crate::db;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let conn = db::init_db(tmp.path()).unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let indexed = index_session(&mut index, "p1", "nonexistent", &conn).unwrap();
+
+        assert!(!indexed);
+        assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn reindex_commits_returns_zero_for_non_git() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let count = reindex_commits(&mut index, "p1", dir.path(), 50).unwrap();
+        assert_eq!(count, 0);
     }
 }

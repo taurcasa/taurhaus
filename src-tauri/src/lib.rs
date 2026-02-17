@@ -97,8 +97,16 @@ pub fn run() {
         .expect("error while running taurhaus");
 }
 
+/// Look up a project's path from the database, returning None on any error.
+fn get_project_path(app: &tauri::AppHandle, project_id: &str) -> Option<String> {
+    let db_state = app.state::<DbState>();
+    let conn = db_state.0.lock().ok()?;
+    let project = db::queries::get_project(&conn, project_id).ok()??;
+    Some(project.path)
+}
+
 /// Process file watcher events on a background thread.
-/// Emits Tauri events to the frontend and triggers session imports.
+/// Emits Tauri events to the frontend and triggers session imports + search index updates.
 fn process_watch_events(
     rx: std::sync::mpsc::Receiver<fs::watcher::WatchEvent>,
     app: tauri::AppHandle,
@@ -108,20 +116,13 @@ fn process_watch_events(
     for event in rx {
         match event {
             WatchEvent::GitChanged { project_id } => {
-                // Re-read git status and emit to frontend
-                let db_state = app.state::<DbState>();
-                let conn = match db_state.0.lock() {
-                    Ok(c) => c,
-                    Err(_) => continue,
+                let Some(project_path) = get_project_path(&app, &project_id) else {
+                    continue;
                 };
-                let project = match db::queries::get_project(&conn, &project_id) {
-                    Ok(Some(p)) => p,
-                    _ => continue,
-                };
-                drop(conn);
+                let path = std::path::Path::new(&project_path);
 
-                let status = git::status::get_status(std::path::Path::new(&project.path));
-                if let Ok(status) = status {
+                // Re-read git status and emit to frontend
+                if let Ok(status) = git::status::get_status(path) {
                     let _ = app.emit(
                         "project-git-changed",
                         serde_json::json!({
@@ -130,6 +131,26 @@ fn process_watch_events(
                             "is_dirty": status.is_dirty,
                         }),
                     );
+                }
+
+                // Re-index recent commits
+                let search_state = app.state::<SearchState>();
+                let mut index = match search_state.0.lock() {
+                    Ok(i) => i,
+                    Err(_) => continue,
+                };
+                match search::indexer::reindex_commits(&mut index, &project_id, path, 50) {
+                    Ok(count) if count > 0 => {
+                        let _ = app.emit("search-index-updated", serde_json::json!({
+                            "project_id": project_id,
+                            "reason": "git_changed",
+                            "docs_updated": count,
+                        }));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to reindex commits on git change");
+                    }
+                    _ => {}
                 }
             }
             WatchEvent::SessionFileCreated { project_id, path } => {
@@ -148,6 +169,26 @@ fn process_watch_events(
                                 "session_id": session_id,
                             }),
                         );
+
+                        // Index the newly imported session
+                        let search_state = app.state::<SearchState>();
+                        let mut index = match search_state.0.lock() {
+                            Ok(i) => i,
+                            Err(_) => continue,
+                        };
+                        match search::indexer::index_session(&mut index, &project_id, &session_id, &conn) {
+                            Ok(true) => {
+                                let _ = app.emit("search-index-updated", serde_json::json!({
+                                    "project_id": project_id,
+                                    "reason": "session_imported",
+                                    "docs_updated": 1,
+                                }));
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "Failed to index imported session");
+                            }
+                            _ => {}
+                        }
                     }
                     Ok(None) => {} // already imported
                     Err(e) => {
@@ -169,6 +210,40 @@ fn process_watch_events(
                         "paths": path_strs,
                     }),
                 );
+
+                // Incrementally update search index for changed files
+                let Some(project_path) = get_project_path(&app, &project_id) else {
+                    continue;
+                };
+                let project_root = std::path::Path::new(&project_path);
+
+                let search_state = app.state::<SearchState>();
+                let mut index = match search_state.0.lock() {
+                    Ok(i) => i,
+                    Err(_) => continue,
+                };
+                let mut updated = 0;
+                for path in &paths {
+                    match search::indexer::update_file(&mut index, &project_id, project_root, path) {
+                        Ok(true) => updated += 1,
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "Failed to update search index for file"
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                drop(index);
+                if updated > 0 {
+                    let _ = app.emit("search-index-updated", serde_json::json!({
+                        "project_id": project_id,
+                        "reason": "file_changed",
+                        "docs_updated": updated,
+                    }));
+                }
             }
             WatchEvent::GitignoreChanged { project_id } => {
                 tracing::info!(project_id, "gitignore changed — watch rebuild not yet implemented");
