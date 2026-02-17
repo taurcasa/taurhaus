@@ -67,6 +67,35 @@ Full architecture: [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md
 
 All hardcoded data lives in `prototype/src/data/mock.js`. Every export in that file **must be replaced** with real data from Tauri IPC commands before shipping. The data shapes are approximate — the real schema is defined in Phase 4 (Architecture). Do not build abstractions around the current mock shapes.
 
+## Development Workflow (Phase 5)
+
+Full workflow: [`docs/phase-5-workflow.md`](docs/phase-5-workflow.md)
+
+### TDD
+- **Test-first for logic** (red → green → refactor), **visual review for layout**
+- Rust: `#[test]` + `pretty_assertions` + `tempfile`. Frontend: Vitest + JSDOM + `@testing-library/svelte`. E2E: WebdriverIO + `tauri-driver`
+- AC-driven coverage — every acceptance criterion gets a test, no numeric targets
+- Test data generated on the fly in tempdirs, never checked-in fixtures
+
+### Quality Gates
+- `just check` runs full gate: clippy + svelte-check + all tests
+- Full test suite on every task. E2E at milestones.
+- Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
+- Visual dual review: self-review + Gemini Pro 3 cross-review. Lower score wins, Claude is final arbiter with justified override.
+
+### Tasks
+- Claude Code native task format (subject, description, status, blocks/blockedBy, metadata)
+- Half-day units. Categories: backend, frontend, integration, e2e, infrastructure
+- Iteration: fix immediately, max 7 attempts before flagging user
+
+### AI Autonomy
+- **Autonomous**: implementation approach, Rust patterns, minor spec deviations, crate selection, small emergent features, minor arch adjustments within ADR spirit
+- **Ask user**: skipping planned features, major ADR contradictions, significant module boundary changes, quality gate failure after 7 attempts
+- Spec deviations documented in deviation log, reviewed at milestones
+
+### Security
+- `/security-audit` on integration tasks + at every phase boundary (5A–5G)
+
 ## Phase Status
 
 Phases 1-4 complete. Phase 5 (Implementation) is next. See `BOOTSTRAP.md` for details.
