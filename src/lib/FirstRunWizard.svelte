@@ -1,7 +1,7 @@
 <script>
   import { scanDirectory, registerProjectsBatch, isFirstRun } from './ipc.js'
 
-  let { dark = false, onComplete = () => {} } = $props()
+  let { dark = false, onComplete = () => {}, skipWelcome = false } = $props()
 
   // Color tokens
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
@@ -17,7 +17,7 @@
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-zinc-50 border-zinc-300 text-zinc-900')
 
   // Wizard state
-  let step = $state(1)  // 1=welcome, 2=selection, 3=progress, 4=complete
+  let step = $state(skipWelcome ? 2 : 1)  // 1=welcome, 2=selection, 3=progress, 4=complete
   let scanning = $state(false)
   let discovered = $state([])
   let selected = $state(new Set())
@@ -92,6 +92,13 @@
       registering = false
     }
   }
+
+  // When opened via "Add project" button (skipWelcome), auto-scan immediately
+  $effect(() => {
+    if (skipWelcome && step === 2 && !scanning && discovered.length === 0) {
+      handleScan()
+    }
+  })
 
   async function handleManualAdd() {
     if (!manualPath.trim()) return
@@ -182,7 +189,11 @@
     {:else if step === 2}
       <!-- ═══ STEP 2: PROJECT SELECTION ═══ -->
       <div data-testid="wizard-step-2">
-        {#if discovered.length === 0}
+        {#if scanning}
+          <div class="text-center py-8">
+            <p class="text-[14px] {textSecondary}">Scanning ~/projects/...</p>
+          </div>
+        {:else if discovered.length === 0}
           <!-- Empty scan results -->
           <div class="text-center" data-testid="empty-scan">
             <h2 class="text-[18px] font-semibold {textPrimary} mb-2">No projects found</h2>
