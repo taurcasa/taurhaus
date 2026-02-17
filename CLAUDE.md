@@ -69,7 +69,13 @@ All hardcoded data lives in `prototype/src/data/mock.js`. Every export in that f
 
 ## Development Workflow (Phase 5)
 
-Full workflow: [`docs/phase-5-workflow.md`](docs/phase-5-workflow.md)
+Full workflow: [`docs/phase-5-workflow.md`](docs/phase-5-workflow.md) | Infographic: [`docs/workflow-infographic.jpg`](docs/workflow-infographic.jpg)
+
+### Autonomous Execution Loop
+- **Project loop**: Work through ALL phases (5A→5B→...→5G) autonomously. No pause between phases.
+- **Per phase**: Create ALL tasks upfront → Execute entire backlog → Milestone review → Next phase.
+- **Stop conditions**: project complete, user returns, blocked after 7 attempts, major architecture question.
+- **Engine**: Ralph Loop manages session continuity across context boundaries.
 
 ### TDD
 - **Test-first for logic** (red → green → refactor), **visual review for layout**
@@ -85,6 +91,7 @@ Full workflow: [`docs/phase-5-workflow.md`](docs/phase-5-workflow.md)
 
 ### Tasks
 - Claude Code native task format (subject, description, status, blocks/blockedBy, metadata)
+- All tasks for a phase created upfront before execution begins
 - Half-day units. Categories: backend, frontend, integration, e2e, infrastructure
 - Iteration: fix immediately, max 7 attempts before flagging user
 
