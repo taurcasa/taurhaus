@@ -66,6 +66,11 @@ async function getMdInstance(theme) {
 export async function renderMarkdown(source, isDark = false) {
   if (!source) return ''
 
+  // Pre-load languages referenced in fenced code blocks so the
+  // markdown-it plugin doesn't throw on unknown languages.
+  // Languages that Shiki doesn't support get replaced with 'text'.
+  source = await preloadFencedLanguages(source)
+
   const md = await getMdInstance(isDark ? 'dark' : 'light')
   const raw = md.render(source)
 
@@ -73,6 +78,41 @@ export async function renderMarkdown(source, isDark = false) {
     ADD_TAGS: ['span'],
     ADD_ATTR: ['class', 'style'],
   })
+}
+
+/**
+ * Scan markdown source for fenced code block language hints (```lang),
+ * load each one into Shiki on demand, and replace any that don't exist
+ * with 'text' so the markdown-it plugin doesn't throw.
+ */
+async function preloadFencedLanguages(source) {
+  const highlighter = await getHighlighter()
+  const loaded = new Set(highlighter.getLoadedLanguages())
+
+  // Collect all unique language hints from fenced code blocks
+  const langRegex = /^```(\w[\w+-]*)/gm
+  const seen = new Set()
+  const unknown = new Set()
+  let match
+  while ((match = langRegex.exec(source)) !== null) {
+    const lang = match[1]
+    if (seen.has(lang)) continue
+    seen.add(lang)
+
+    if (!loaded.has(lang.toLowerCase())) {
+      try {
+        await highlighter.loadLanguage(lang.toLowerCase())
+      } catch {
+        unknown.add(lang)
+      }
+    }
+  }
+
+  // Replace unknown language hints with 'text'
+  for (const lang of unknown) {
+    source = source.replaceAll('```' + lang, '```text')
+  }
+  return source
 }
 
 /**

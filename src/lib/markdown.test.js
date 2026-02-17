@@ -2,12 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import { renderMarkdown, highlightCode } from './markdown.js'
 
 // Mock shiki since it requires WASM (not available in jsdom)
+const loadedLangs = new Set(['javascript', 'rust'])
 vi.mock('shiki', () => ({
   createHighlighter: vi.fn(() => Promise.resolve({
-    getLoadedLanguages: () => ['javascript', 'rust'],
+    getLoadedLanguages: () => [...loadedLangs],
     loadLanguage: vi.fn((lang) => {
       // Simulate: some languages load, some don't
       if (lang === 'brainfuck') return Promise.reject(new Error('not found'))
+      loadedLangs.add(lang)
       return Promise.resolve()
     }),
     codeToHtml: (code, opts) => `<pre class="shiki"><code>${code}</code></pre>`,
@@ -111,6 +113,22 @@ describe('renderMarkdown', () => {
     const dark = await renderMarkdown('hello', true)
     expect(light).toContain('hello')
     expect(dark).toContain('hello')
+  })
+
+  it('preloads fenced code block languages before rendering', async () => {
+    // powershell is not in the initial loaded set — should be loaded on demand
+    const source = '```powershell\nGet-Process\n```'
+    const html = await renderMarkdown(source)
+    // Should render without throwing (language was preloaded)
+    expect(html).toContain('Get-Process')
+  })
+
+  it('replaces unknown fenced languages with text', async () => {
+    // brainfuck always fails to load in our mock
+    const source = '```brainfuck\n+++\n```'
+    const html = await renderMarkdown(source)
+    // Should still render the code content (as plaintext), not throw
+    expect(html).toContain('+++')
   })
 })
 
