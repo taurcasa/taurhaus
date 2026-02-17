@@ -31,9 +31,11 @@ ignore = "0.4"
 
 serde_yaml = "0.9"
 
+notify = "7"
+notify-debouncer-full = "0.4"
+
 # Added incrementally as modules are implemented:
 # tantivy = "0.22"
-# notify = "7"
 
 [dev-dependencies]
 pretty_assertions = "1"
