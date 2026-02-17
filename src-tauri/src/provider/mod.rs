@@ -1,3 +1,4 @@
+pub mod daemon_client;
 pub mod local;
 pub mod path;
 
