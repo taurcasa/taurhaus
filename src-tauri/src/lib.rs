@@ -7,9 +7,10 @@ pub mod services;
 
 pub mod git;
 
+pub mod fs;
+
 // Modules added incrementally as implemented:
 // mod claude_code;
-// mod fs;
 // mod scanner;
 // mod search;
 // mod session;
