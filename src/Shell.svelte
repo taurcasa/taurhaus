@@ -426,17 +426,17 @@
 </script>
 
 {#if showWizard}
-  <div class="h-full bg-brand-950 font-sans antialiased">
+  <div class="h-full bg-brand-950 font-sans antialiased" data-tauri-drag-region>
     <FirstRunWizard {dark} onComplete={handleWizardComplete} />
   </div>
 {:else}
 <div class="h-full bg-brand-950 flex flex-col font-sans antialiased">
 
   <!-- ═══ TITLEBAR ═══ -->
-  <div class="h-[46px] flex items-end shrink-0 pl-1.5">
+  <div class="h-[46px] flex items-end shrink-0 pl-1.5" data-tauri-drag-region>
 
     <!-- Logo area (width matches sidebar panel below) -->
-    <div class="w-[252px] flex items-center px-4 pb-2 shrink-0">
+    <div class="w-[252px] flex items-center px-4 pb-2 shrink-0" data-tauri-drag-region>
       <div class="flex items-center gap-2.5">
         <div class="w-[22px] h-[22px] rounded-[5px] bg-brand-500 flex items-center justify-center">
           <span class="text-[10px] font-bold text-white leading-none">t</span>
@@ -446,7 +446,7 @@
     </div>
 
     <!-- Tab pill + drag space + controls -->
-    <div class="flex-1 flex items-end min-w-0">
+    <div class="flex-1 flex items-end min-w-0" data-tauri-drag-region>
 
       <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
       <div class="flex items-center px-4 h-[36px] {mainBg} rounded-t-lg ml-1.5">

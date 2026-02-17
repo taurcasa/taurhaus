@@ -119,7 +119,7 @@
   }
 </script>
 
-<div class="h-full {mainBg} flex items-center justify-center" data-testid="first-run-wizard">
+<div class="h-full {mainBg} flex items-center justify-center" data-testid="first-run-wizard" data-tauri-drag-region>
   <div class="max-w-[480px] w-full px-6">
 
     {#if step === 1}
@@ -224,7 +224,7 @@
                 class="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 {keyline} {hoverRow} transition-colors"
                 onclick={() => toggleProject(project.path)}
               >
-                <div class="w-4 h-4 rounded border {checkBg} flex items-center justify-center shrink-0 {selected.has(project.path) ? 'bg-brand-600 border-brand-600' : ''}">
+                <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {selected.has(project.path) ? 'bg-brand-600 border-brand-600' : checkBg}">
                   {#if selected.has(project.path)}
                     <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
                   {/if}

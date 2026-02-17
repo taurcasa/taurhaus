@@ -7,6 +7,16 @@ use tauri::{Emitter, State};
 use crate::models::{ActivityThresholds, ProjectDetail, ProjectSummary};
 use crate::services::project;
 
+/// Expand `~` or `~/` at the start of a path to the user's home directory.
+fn expand_tilde(path: &str) -> String {
+    if path == "~" || path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return path.replacen("~", &home.to_string_lossy(), 1);
+        }
+    }
+    path.to_string()
+}
+
 /// Managed state: a mutex-wrapped SQLite connection.
 pub struct DbState(pub Mutex<Connection>);
 
@@ -51,8 +61,9 @@ pub fn register_project(
     path: String,
     name: Option<String>,
 ) -> Result<ProjectDetail, String> {
+    let expanded = expand_tilde(&path);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    project::register_project(&conn, &path, name.as_deref()).map_err(|e| e.to_string())
+    project::register_project(&conn, &expanded, name.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -114,7 +125,8 @@ pub fn register_projects_batch(
     let mut results = Vec::with_capacity(total);
 
     for (index, path) in paths.iter().enumerate() {
-        let result = match project::register_project(&conn, path, None) {
+        let expanded = expand_tilde(path);
+        let result = match project::register_project(&conn, &expanded, None) {
             Ok(detail) => {
                 let _ = app.emit(
                     "batch-registration-progress",
@@ -146,7 +158,8 @@ pub fn register_projects_batch(
 
 #[tauri::command]
 pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
-    let results = crate::services::scanner::scan_directory(std::path::Path::new(&path), 2)?;
+    let expanded = expand_tilde(&path);
+    let results = crate::services::scanner::scan_directory(std::path::Path::new(&expanded), 2)?;
     Ok(results
         .into_iter()
         .map(|d| DiscoveredProject {
