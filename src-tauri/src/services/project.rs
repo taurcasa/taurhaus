@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::db::queries;
 use crate::errors::AppError;
-use crate::git::status as git_status;
+use crate::git::{commits as git_commits, status as git_status};
 use crate::models::{
     ActivityState, ActivityThresholds, Project, ProjectDetail, ProjectSummary,
 };
@@ -33,12 +33,19 @@ pub fn register_project(
         .or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()))
         .unwrap_or_else(|| "unnamed".to_string());
 
+    // Seed last_activity_at from latest git commit, not registration time.
+    // This ensures a project registered today but last committed to months ago
+    // shows the correct activity state immediately.
+    let last_activity = git_commits::get_latest_commit_time(dir)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| now.clone());
+
     let project = Project {
         id: Uuid::new_v4().to_string(),
         name: project_name,
         path: path.to_string(),
         description: None,
-        last_activity_at: Some(now.clone()),
+        last_activity_at: Some(last_activity),
         hero_preference: None,
         created_at: now.clone(),
         updated_at: now,

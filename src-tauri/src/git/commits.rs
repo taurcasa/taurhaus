@@ -134,6 +134,14 @@ fn format_relative_time(timestamp: i64, now: DateTime<Utc>) -> String {
     format!("{years}y")
 }
 
+/// Get the timestamp of the most recent commit, or `None` if the repo has no commits.
+pub fn get_latest_commit_time(repo_path: &Path) -> Option<DateTime<Utc>> {
+    let repo = Repository::open(repo_path).ok()?;
+    let head = repo.head().ok()?;
+    let commit = head.peel_to_commit().ok()?;
+    DateTime::from_timestamp(commit.time().seconds(), 0)
+}
+
 fn git_err(e: git2::Error) -> AppError {
     AppError::Git(e)
 }

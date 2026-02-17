@@ -15,6 +15,7 @@ pub mod search;
 
 pub mod claude_code;
 
+use std::path::Path;
 use std::sync::Mutex;
 
 use commands::projects::DbState;
@@ -61,6 +62,9 @@ pub fn run() {
             let search_index = search::indexer::SearchIndex::open(&index_dir)
                 .expect("failed to initialize search index");
             app.manage(SearchState(Mutex::new(search_index)));
+
+            // Re-seed activity timestamps from git (fixes stale registration-time values)
+            startup_reseed_activity(app);
 
             // Import any unimported sessions for registered projects
             startup_session_scan(app);
@@ -270,6 +274,52 @@ fn process_watch_events(
                 tracing::info!(project_id, "gitignore changed — watch rebuild not yet implemented");
             }
         }
+    }
+}
+
+/// On startup, re-seed last_activity_at from each project's latest git commit.
+/// This corrects projects whose activity timestamp was incorrectly set to
+/// registration time instead of actual last-commit time.
+fn startup_reseed_activity(app: &tauri::App) {
+    let db_state = app.state::<DbState>();
+    let conn = match db_state.0.lock() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to lock DB for activity reseed: {e}");
+            return;
+        }
+    };
+
+    let projects = match db::queries::list_projects(&conn) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to list projects for activity reseed: {e}");
+            return;
+        }
+    };
+
+    let mut updated = 0;
+    for project in &projects {
+        if let Some(commit_time) = git::commits::get_latest_commit_time(Path::new(&project.path)) {
+            let commit_ts = commit_time.to_rfc3339();
+            // Only update if the current value differs from the git-derived one
+            if project.last_activity_at.as_deref() != Some(&commit_ts) {
+                let _ = db::queries::update_project(
+                    &conn,
+                    &project.id,
+                    None,
+                    None,
+                    None,
+                    Some(Some(&commit_ts)),
+                    None,
+                );
+                updated += 1;
+            }
+        }
+    }
+
+    if updated > 0 {
+        tracing::info!(updated, "Re-seeded activity timestamps from git");
     }
 }
 
