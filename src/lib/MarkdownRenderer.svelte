@@ -96,9 +96,9 @@
     line-height: 1.3;
     letter-spacing: -0.01em;
     color: var(--color-zinc-900, #18181b);
-    margin-top: 1.75rem;
-    margin-bottom: 0.625rem;
-    padding-bottom: 0.375rem;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--color-zinc-200, #e4e4e7);
   }
 
@@ -112,9 +112,9 @@
     font-weight: 600;
     line-height: 1.4;
     color: var(--color-zinc-900, #18181b);
-    margin-top: 1.5rem;
-    margin-bottom: 0.375rem;
-    padding-bottom: 0.25rem;
+    margin-top: 1.75rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.375rem;
     border-bottom: 1px solid var(--color-zinc-200, #e4e4e7);
   }
 
@@ -128,8 +128,8 @@
     font-weight: 600;
     line-height: 1.4;
     color: var(--color-zinc-800, #27272a);
-    margin-top: 1.25rem;
-    margin-bottom: 0.25rem;
+    margin-top: 1.5rem;
+    margin-bottom: 0.375rem;
   }
 
   .th-prose-dark :global(h3) {
@@ -141,8 +141,8 @@
     font-weight: 600;
     line-height: 1.4;
     color: var(--color-zinc-800, #27272a);
-    margin-top: 1rem;
-    margin-bottom: 0.25rem;
+    margin-top: 1.25rem;
+    margin-bottom: 0.375rem;
   }
 
   .th-prose-dark :global(h4) {
@@ -158,7 +158,7 @@
 
   .th-prose :global(p) {
     margin-top: 0;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.875rem;
   }
 
   /* ─── Links ─── */
@@ -203,18 +203,18 @@
     list-style-type: disc;
     padding-left: 1.5rem;
     margin-top: 0;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
   }
 
   .th-prose :global(ol) {
     list-style-type: decimal;
     padding-left: 1.5rem;
     margin-top: 0;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
   }
 
   .th-prose :global(li) {
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.375rem;
   }
 
   .th-prose :global(li > ul),
@@ -232,7 +232,7 @@
     color: var(--color-zinc-600, #52525b);
     border-left: 3px solid var(--color-brand-500, #14b8a6);
     padding: 0.5rem 0 0.5rem 1rem;
-    margin: 0.75rem 0;
+    margin: 1rem 0;
   }
 
   .th-prose-dark :global(blockquote) {
@@ -276,7 +276,7 @@
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.5;
-    margin: 0.75rem 0;
+    margin: 1rem 0;
     padding: 1rem;
     border-radius: 8px;
     overflow-x: auto;
@@ -316,7 +316,7 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
-    margin: 0.75rem 0;
+    margin: 1rem 0;
   }
 
   .th-prose :global(th) {
@@ -351,7 +351,7 @@
     max-width: 100%;
     height: auto;
     border-radius: 6px;
-    margin: 0.75rem 0;
+    margin: 1rem 0;
   }
 
   /* ─── Task Lists (GitHub-style checkboxes) ─── */
