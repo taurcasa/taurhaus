@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, isTauri } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
 
   let dark = $state(false)
@@ -82,6 +82,10 @@
   let sessionLoading = $state(false)
   let readmeContent = $state(null)
   let heroMode = $state('auto') // 'auto' | 'session' | 'readme'
+
+  // Relationship state
+  let relationships = $state([])
+  let relationshipsLoading = $state(false)
 
   // Computed hero display — session if fresh (<7 days), README otherwise
   const showSession = $derived(
@@ -185,6 +189,7 @@
     latestSession = null
     sessionHistory = []
     readmeContent = null
+    relationships = []
     try {
       selectedProject = await getProject(project.id)
     } catch {
@@ -193,10 +198,11 @@
     } finally {
       detailLoading = false
     }
-    // Load commits, sessions, and README in parallel
+    // Load commits, sessions, README, and relationships in parallel
     loadCommits(project.id, 10)
     loadSessions(project.id)
     loadReadmeForOverview(project.id)
+    loadRelationships(project.id)
     // If on files tab, load file tree for new project
     if (activeTab === 'files') {
       loadFileTree(project.id)
@@ -226,6 +232,55 @@
     } catch {
       readmeContent = null
     }
+  }
+
+  async function loadRelationships(projectId) {
+    relationshipsLoading = true
+    try {
+      relationships = await getRelationships(projectId)
+    } catch {
+      relationships = []
+    } finally {
+      relationshipsLoading = false
+    }
+  }
+
+  async function handleDismissRelationship(relId) {
+    try {
+      await dismissRelationship(relId)
+      relationships = relationships.filter(r => r.id !== relId)
+    } catch {
+      // Silent fail — relationship may still show
+    }
+  }
+
+  function getRelatedProjectName(rel) {
+    const otherId = rel.source_project_id === selectedProject?.id
+      ? rel.target_project_id
+      : rel.source_project_id
+    const p = projects.find(p => p.id === otherId)
+    return p?.name || otherId
+  }
+
+  function getRelationshipDirection(rel) {
+    return rel.source_project_id === selectedProject?.id ? 'outgoing' : 'incoming'
+  }
+
+  const DETECTION_SOURCE_LABELS = {
+    cargo_toml: 'via Cargo.toml',
+    package_json: 'via package.json',
+    claude_md: 'via CLAUDE.md',
+    session_mention: 'via session',
+    gitmodules: 'via .gitmodules',
+    manual: 'manual',
+  }
+
+  const RELATIONSHIP_TYPE_LABELS = {
+    depends_on: 'depends on',
+    references: 'references',
+    mentioned_in_session: 'mentioned in',
+    includes: 'includes',
+    workspace_sibling: 'sibling of',
   }
 
   async function loadCommits(projectId, limit) {
@@ -631,10 +686,70 @@
               {/if}
             </section>
 
-            <!-- Relationships (placeholder — Phase 5E) -->
+            <!-- Relationships -->
             <section class="py-6 border-b {keyline}">
-              <span class="text-[11px] {textTertiary}">Relationships</span>
-              <p class="mt-2 text-[13px] {textMuted}">Auto-detected relationships will appear here.</p>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] {textTertiary}">Relationships</span>
+                {#if relationships.length > 0}
+                  <span class="text-[11px] {textTertiary}">{relationships.length} connection{relationships.length !== 1 ? 's' : ''}</span>
+                {/if}
+              </div>
+              {#if relationshipsLoading}
+                <div class="space-y-1" data-testid="relationships-loading">
+                  {#each Array(2) as _}
+                    <div class="flex items-center h-[30px]">
+                      <div class="h-2.5 w-4 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
+                      <div class="h-2.5 w-24 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
+                      <div class="h-2.5 w-16 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
+                    </div>
+                  {/each}
+                </div>
+              {:else if relationships.length === 0}
+                <p class="text-[13px] {textMuted}">No connections detected yet.</p>
+              {:else}
+                <div>
+                  {#each relationships as rel}
+                    {@const direction = getRelationshipDirection(rel)}
+                    {@const projectName = getRelatedProjectName(rel)}
+                    {@const typeLabel = RELATIONSHIP_TYPE_LABELS[rel.relationship_type] || rel.relationship_type}
+                    {@const sourceLabel = DETECTION_SOURCE_LABELS[rel.detection_source] || rel.detection_source}
+                    <div class="flex items-center h-[30px] text-[13px] {hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
+                      <!-- Direction arrow -->
+                      <span class="w-5 text-center shrink-0 {textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
+
+                      <!-- Project name (clickable) -->
+                      <button
+                        class="text-[13px] {linkColor} truncate transition-colors"
+                        onclick={() => {
+                          const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
+                          const p = projects.find(pr => pr.id === otherId)
+                          if (p) selectProject(p)
+                        }}
+                      >{projectName}</button>
+
+                      <!-- Type badge -->
+                      <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded {tagBg} shrink-0">{typeLabel}</span>
+
+                      <!-- Detection source -->
+                      <span class="ml-2 text-[10px] {textTertiary} shrink-0">{sourceLabel}</span>
+
+                      <!-- Dismiss button (only for auto-detected) -->
+                      {#if rel.detection_source !== 'manual'}
+                        <button
+                          class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {textMuted} hover:{textSecondary} transition-all shrink-0"
+                          onclick={() => handleDismissRelationship(rel.id)}
+                          aria-label="Dismiss relationship"
+                          data-testid="dismiss-relationship"
+                        >
+                          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             </section>
 
             <!-- Session History -->
