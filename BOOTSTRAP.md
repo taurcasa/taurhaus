@@ -21,7 +21,14 @@ A bootstrap brief for starting taurhaus development. Follows the project lifecyc
 | ↳ **3F** Visual System | Complete | [`docs/phase-3f-visual.md`](docs/phase-3f-visual.md) |
 | ↳ **3G** Specification | Complete | [`docs/phase-3g-specification.md`](docs/phase-3g-specification.md) |
 | **Phase 4** — Architecture | Complete | [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) |
-| **Phase 5** — Implementation | Next | — |
+| **Phase 5** — Implementation | In Progress | See sub-phases below |
+| ↳ **5A** Scaffold + SQLite + Project CRUD | Complete | 7 tasks, 42 Rust + 16 JS tests |
+| ↳ **5B** Git module + file reader | Next | — |
+| ↳ **5C** File watcher + session import | Pending | — |
+| ↳ **5D** Search (tantivy) | Pending | — |
+| ↳ **5E** Scanner + relationships | Pending | — |
+| ↳ **5F** Claude Code integration | Pending | — |
+| ↳ **5G** Polish + Settings + First-Run | Pending | — |
 
 > **Naming convention**: Top-level phases use numbers (1-5). Sub-phases use letters (3A-3G). If a sub-phase needs further breakdown, use numbers again (3E.1, 3E.2). This avoids confusion with TaurUI's internal phase numbering (Phase 0-5), which maps to our 3B-3G.
 
