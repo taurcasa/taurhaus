@@ -25,8 +25,8 @@ A bootstrap brief for starting taurhaus development. Follows the project lifecyc
 | ↳ **5A** Scaffold + SQLite + Project CRUD | Complete | 7 tasks, 42 Rust + 16 JS tests |
 | ↳ **5B** Git module + file reader | Complete | 6 tasks, 83 Rust + 30 JS tests |
 | ↳ **5C** File watcher + session import | Complete | 6 tasks, 130 Rust + 55 JS tests |
-| ↳ **5D** Search (tantivy) | Next | — |
-| ↳ **5E** Scanner + relationships | Pending | — |
+| ↳ **5D** Search (tantivy) | Complete | 7 tasks, 165 Rust + 74 JS tests |
+| ↳ **5E** Scanner + relationships | Next | — |
 | ↳ **5F** Claude Code integration | Pending | — |
 | ↳ **5G** Polish + Settings + First-Run | Pending | — |
 

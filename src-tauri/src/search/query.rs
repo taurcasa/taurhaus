@@ -64,7 +64,8 @@ impl SearchIndex {
             let title = field_text(&doc, self.fields.title);
 
             let snippet_obj = snippet_generator.snippet_from_doc(&doc);
-            let snippet = snippet_obj.to_html();
+            // Use fragment() for plain text (no HTML tags) — safe for direct rendering
+            let snippet = snippet_obj.fragment().to_string();
             // If no snippet generated, use title as fallback
             let snippet = if snippet.trim().is_empty() {
                 title.clone()

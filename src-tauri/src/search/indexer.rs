@@ -170,6 +170,19 @@ impl SearchIndex {
     }
 }
 
+/// Truncate a string at the nearest char boundary at or before `max_bytes`.
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // Walk backwards from max_bytes to find a valid char boundary
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 // ---------------------------------------------------------------------------
 // Bulk index builder
 // ---------------------------------------------------------------------------
@@ -271,11 +284,7 @@ pub fn index_project_sessions(
             }
 
             let file_path = format!("session:{}", detail.id);
-            let title_prefix = if detail.summary.len() > 60 {
-                &detail.summary[..60]
-            } else {
-                &detail.summary
-            };
+            let title_prefix = truncate_at_char_boundary(&detail.summary, 60);
 
             index.add_document(project_id, "session", &file_path, title_prefix, &content)?;
             count += 1;
