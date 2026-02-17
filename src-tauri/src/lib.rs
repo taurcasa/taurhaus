@@ -11,10 +11,11 @@ pub mod fs;
 
 pub mod session;
 
+pub mod search;
+
 // Modules added incrementally as implemented:
 // mod claude_code;
 // mod scanner;
-// mod search;
 
 use std::sync::Mutex;
 

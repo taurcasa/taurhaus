@@ -23,6 +23,9 @@ pub enum AppError {
 
     #[error("Parse error: {0}")]
     ParseError(String),
+
+    #[error("Search error: {0}")]
+    SearchError(String),
 }
 
 /// Serializable form for IPC responses.
