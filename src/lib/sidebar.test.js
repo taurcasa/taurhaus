@@ -15,6 +15,9 @@ vi.mock('./ipc.js', () => ({
   listSessions: vi.fn(),
   getSession: vi.fn(),
   isTauri: vi.fn(() => false),
+  search: vi.fn(),
+  getIndexStatus: vi.fn(),
+  rebuildIndex: vi.fn(),
 }))
 
 describe('Sidebar data loading', () => {

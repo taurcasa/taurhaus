@@ -26,6 +26,9 @@ use tracing_subscriber::EnvFilter;
 /// Managed state: holds the file watcher so it lives for the app lifetime.
 pub struct WatcherState(pub Mutex<fs::watcher::ProjectWatcher>);
 
+/// Managed state: holds the tantivy search index.
+pub struct SearchState(pub Mutex<search::indexer::SearchIndex>);
+
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -55,8 +58,17 @@ pub fn run() {
                 process_watch_events(rx, handle);
             });
 
+            // Initialize search index
+            let index_dir = data_dir.join("search_index");
+            let search_index = search::indexer::SearchIndex::open(&index_dir)
+                .expect("failed to initialize search index");
+            app.manage(SearchState(Mutex::new(search_index)));
+
             // Import any unimported sessions for registered projects
             startup_session_scan(app);
+
+            // Build search index if empty
+            startup_search_index(app);
 
             tracing::info!(?db_path, "database initialized");
             Ok(())
@@ -77,6 +89,9 @@ pub fn run() {
             commands::sessions::get_latest_session,
             commands::sessions::list_sessions,
             commands::sessions::get_session,
+            commands::search::search,
+            commands::search::get_index_status,
+            commands::search::rebuild_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
@@ -158,6 +173,42 @@ fn process_watch_events(
             WatchEvent::GitignoreChanged { project_id } => {
                 tracing::info!(project_id, "gitignore changed — watch rebuild not yet implemented");
             }
+        }
+    }
+}
+
+/// On startup, build the search index if it's empty.
+fn startup_search_index(app: &tauri::App) {
+    let search_state = app.state::<SearchState>();
+    let mut index = match search_state.0.lock() {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::error!("Failed to lock search index for startup build: {e}");
+            return;
+        }
+    };
+
+    let doc_count = index.doc_count().unwrap_or(0);
+    if doc_count > 0 {
+        tracing::info!(doc_count, "Search index already populated, skipping rebuild");
+        return;
+    }
+
+    let db_state = app.state::<DbState>();
+    let conn = match db_state.0.lock() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to lock DB for startup index build: {e}");
+            return;
+        }
+    };
+
+    match search::indexer::rebuild_all(&mut index, &conn) {
+        Ok(total) => {
+            tracing::info!(total, "Built initial search index");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to build initial search index");
         }
     }
 }

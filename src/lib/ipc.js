@@ -197,3 +197,37 @@ export function listSessions(projectId, limit = 20, offset = 0) {
 export function getSession(sessionId) {
   return invokeOrMock('get_session', { sessionId }, () => MOCK_SESSION)
 }
+
+// ---------------------------------------------------------------------------
+// Search IPC functions
+// ---------------------------------------------------------------------------
+
+const MOCK_SEARCH_RESULTS = [
+  { project_id: 'mock-1', entity_type: 'document', file_path: 'README.md', title: 'README', snippet: 'Desktop tool for AI project management', relevance_score: 1.5 },
+  { project_id: 'mock-1', entity_type: 'session', file_path: 'session:s1', title: 'Phase 5B Complete', snippet: 'Completed git module and file reader', relevance_score: 1.2 },
+  { project_id: 'mock-1', entity_type: 'commit', file_path: 'commit:abc123', title: 'Add tantivy search', snippet: 'Implement full-text search with BM25', relevance_score: 0.8 },
+]
+
+/** Search across all indexed content. */
+export function search(query, limit = 20) {
+  return invokeOrMock('search', { query, limit }, () => {
+    if (!query || !query.trim()) return []
+    return MOCK_SEARCH_RESULTS.filter(r =>
+      r.title.toLowerCase().includes(query.toLowerCase()) ||
+      r.snippet.toLowerCase().includes(query.toLowerCase())
+    )
+  })
+}
+
+/** Get search index status. */
+export function getIndexStatus() {
+  return invokeOrMock('get_index_status', undefined, () => ({
+    doc_count: 42,
+    is_empty: false,
+  }))
+}
+
+/** Rebuild the search index from scratch. */
+export function rebuildIndex() {
+  return invokeOrMock('rebuild_index', undefined, () => 42)
+}

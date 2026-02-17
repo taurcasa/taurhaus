@@ -353,4 +353,74 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('summary')
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Search IPC functions
+  // -----------------------------------------------------------------------
+
+  describe('search()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockResults = [{ project_id: 'p1', entity_type: 'document', file_path: 'README.md', title: 'README', snippet: 'test', relevance_score: 1.0 }]
+      tauriCore.invoke.mockResolvedValue(mockResults)
+
+      const result = await ipc.search('test query', 10)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('search', { query: 'test query', limit: 10 })
+      expect(result).toEqual(mockResults)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.search('README')
+
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      expect(result[0]).toHaveProperty('entity_type')
+      expect(result[0]).toHaveProperty('snippet')
+    })
+
+    it('returns empty for empty query in mock mode', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.search('')
+
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('getIndexStatus()', () => {
+    it('calls invoke with correct command', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockStatus = { doc_count: 100, is_empty: false }
+      tauriCore.invoke.mockResolvedValue(mockStatus)
+
+      const result = await ipc.getIndexStatus()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_index_status')
+      expect(result).toEqual(mockStatus)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getIndexStatus()
+
+      expect(result).toHaveProperty('doc_count')
+      expect(result).toHaveProperty('is_empty')
+    })
+  })
+
+  describe('rebuildIndex()', () => {
+    it('calls invoke with correct command', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(42)
+
+      const result = await ipc.rebuildIndex()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('rebuild_index')
+      expect(result).toBe(42)
+      delete window.__TAURI_INTERNALS__
+    })
+  })
 })
