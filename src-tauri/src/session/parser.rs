@@ -343,4 +343,93 @@ summary: [invalid yaml
         assert!(meta.started_at.is_none());
         assert!(meta.files_modified.is_empty());
     }
+
+    // Verify hook script output format is parseable
+    #[test]
+    fn parse_hook_output_format() {
+        let content = r#"---
+date: 2026-02-17T14:30:45Z
+project: taurhaus
+session_id: test-hook-session-001
+summary: >
+  Completed Phase 5E implementation including relationship detection, scanner module, and frontend UI. All 202 Rust tests and 80 frontend tests pass.
+next_steps:
+  - Implement Phase 5F Claude Code integration
+  - Create SessionEnd hook configuration
+  - Build claude_code module stub
+open_questions:
+  - Claude Code hash algorithm for project path resolution
+metadata:
+  exit_reason: prompt_input_exit
+---
+
+## Session Notes
+
+This session focused on completing Phase 5E of taurhaus implementation.
+"#;
+        let parsed = parse_handoff(content).unwrap();
+        assert_eq!(parsed.date, "2026-02-17T14:30:45Z");
+        assert_eq!(parsed.project, Some("taurhaus".to_string()));
+        assert_eq!(parsed.session_id, Some("test-hook-session-001".to_string()));
+        assert!(parsed.summary.contains("Phase 5E"));
+        assert_eq!(parsed.next_steps.len(), 3);
+        assert_eq!(parsed.open_questions.len(), 1);
+        assert!(parsed.metadata.is_object());
+        let meta = parsed.metadata.as_object().unwrap();
+        assert_eq!(meta["exit_reason"], "prompt_input_exit");
+        assert!(parsed.body.contains("Session Notes"));
+    }
+
+    // Verify hook sidecar output format is parseable
+    #[test]
+    fn parse_hook_sidecar_format() {
+        let dir = TempDir::new().unwrap();
+        let meta_path = dir.path().join("session-2026-02-17T14-30-45.meta.json");
+        std::fs::write(
+            &meta_path,
+            r#"{
+  "session_id": "test-hook-session-001",
+  "ended_at": "2026-02-17T14:30:45Z",
+  "exit_reason": "prompt_input_exit",
+  "model": "unknown",
+  "tools_used": {},
+  "files_modified": [],
+  "tokens": {}
+}"#,
+        )
+        .unwrap();
+
+        let meta = parse_meta_sidecar(&meta_path).unwrap();
+        assert_eq!(meta.session_id, Some("test-hook-session-001".to_string()));
+        assert_eq!(meta.ended_at, Some("2026-02-17T14:30:45Z".to_string()));
+        assert_eq!(meta.exit_reason, Some("prompt_input_exit".to_string()));
+        assert_eq!(meta.model, Some("unknown".to_string()));
+        assert!(meta.files_modified.is_empty());
+    }
+
+    // Verify hook empty-transcript fallback format is parseable
+    #[test]
+    fn parse_hook_empty_transcript_format() {
+        let content = r#"---
+date: 2026-02-17T14:30:45Z
+project: taurhaus
+session_id: empty-session-001
+summary: >
+  Session ended without transcript data available.
+next_steps: []
+open_questions: []
+metadata:
+  exit_reason: other
+---
+
+## Session Notes
+
+No transcript was available for this session.
+"#;
+        let parsed = parse_handoff(content).unwrap();
+        assert_eq!(parsed.session_id, Some("empty-session-001".to_string()));
+        assert!(parsed.summary.contains("without transcript"));
+        assert!(parsed.next_steps.is_empty());
+        assert!(parsed.open_questions.is_empty());
+    }
 }
