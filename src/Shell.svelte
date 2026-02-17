@@ -1,12 +1,15 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
+  import FirstRunWizard from './lib/FirstRunWizard.svelte'
 
   let dark = $state(false)
   let preview = $state(false)
   let searchOpen = $state(false)
   let settingsOpen = $state(false)
+  let showWizard = $state(false)
+  let wizardChecked = $state(false)
 
   /*
    * Layout dimensions
@@ -97,10 +100,29 @@
   const showReadme = $derived(!showSession)
   const hasToggle = $derived(latestSession && readmeContent)
 
-  // Load projects on mount
+  // Check first-run + load projects on mount
   $effect(() => {
-    loadProjects()
+    checkFirstRun()
   })
+
+  async function checkFirstRun() {
+    try {
+      const first = await isFirstRun()
+      showWizard = first
+    } catch (e) {
+      showWizard = false
+    } finally {
+      wizardChecked = true
+    }
+    if (!showWizard) {
+      loadProjects()
+    }
+  }
+
+  function handleWizardComplete() {
+    showWizard = false
+    loadProjects()
+  }
 
   // Tauri real-time event listeners (ADR-022)
   $effect(() => {
@@ -403,6 +425,11 @@
   }
 </script>
 
+{#if showWizard}
+  <div class="h-full bg-brand-950 font-sans antialiased">
+    <FirstRunWizard {dark} onComplete={handleWizardComplete} />
+  </div>
+{:else}
 <div class="h-full bg-brand-950 flex flex-col font-sans antialiased">
 
   <!-- ═══ TITLEBAR ═══ -->
@@ -917,3 +944,4 @@
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />
 </div>
+{/if}
