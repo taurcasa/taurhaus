@@ -78,25 +78,36 @@ pub fn read_file(project_root: &Path, relative_path: &str) -> Result<FileContent
 }
 
 /// Detect programming language from file extension.
+///
+/// Maps file extensions to Shiki-compatible language identifiers. For extensions
+/// where the Shiki ID differs from the extension (e.g., .rs → "rust"), we map
+/// explicitly. For everything else, we pass the raw extension — Shiki's full
+/// bundle will load the grammar on demand if it exists, or the frontend falls
+/// back to plaintext.
 fn detect_language(path: &str) -> Option<String> {
-    let ext = path.rsplit('.').next()?;
-    let lang = match ext.to_lowercase().as_str() {
+    let lower = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_lowercase();
+
+    // Map extensions where the Shiki language ID differs from the extension
+    let lang = match lower.as_str() {
         "rs" => "rust",
         "js" | "mjs" | "cjs" => "javascript",
         "ts" | "mts" | "cts" => "typescript",
-        "svelte" => "svelte",
-        "html" | "htm" => "html",
-        "css" => "css",
-        "json" => "json",
-        "toml" => "toml",
-        "yaml" | "yml" => "yaml",
-        "md" | "markdown" => "markdown",
-        "py" => "python",
-        "sh" | "bash" | "zsh" => "shell",
-        "sql" => "sql",
-        "xml" => "xml",
-        "txt" => "plaintext",
-        _ => return None,
+        "jsx" => "jsx",
+        "tsx" => "tsx",
+        "htm" => "html",
+        "yml" => "yaml",
+        "md" => "markdown",
+        "mdx" => "mdx",
+        "py" | "pyw" => "python",
+        "sh" | "bash" | "zsh" | "fish" => "shellscript",
+        "patch" => "diff",
+        "jsonc" | "json5" => "jsonc",
+        "txt" | "text" | "log" => "plaintext",
+        // For everything else, pass the extension as-is — Shiki knows its own catalog
+        _ => return Some(lower),
     };
     Some(lang.to_string())
 }
@@ -172,8 +183,12 @@ mod tests {
     }
 
     #[test]
-    fn detect_language_unknown() {
-        assert_eq!(detect_language("file.xyz"), None);
+    fn detect_language_passes_unknown_extension_through() {
+        // Unknown extensions are passed as-is — Shiki will try to load them
+        assert_eq!(detect_language("file.xyz"), Some("xyz".to_string()));
+        assert_eq!(detect_language("scene.ron"), Some("ron".to_string()));
+        assert_eq!(detect_language("shader.wgsl"), Some("wgsl".to_string()));
+        assert_eq!(detect_language("shader.glsl"), Some("glsl".to_string()));
     }
 
     #[test]
