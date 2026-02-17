@@ -170,6 +170,11 @@ export function readFile(projectId, relativePath) {
   }))
 }
 
+/** Read a binary asset from a project directory as a base64 data URI. */
+export function readProjectAsset(projectId, relativePath) {
+  return invokeOrMock('read_project_asset', { projectId, relativePath }, () => null)
+}
+
 /** Get the README for a project. */
 export function getReadme(projectId) {
   return invokeOrMock('get_readme', { projectId }, () => ({

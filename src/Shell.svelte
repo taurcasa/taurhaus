@@ -3,6 +3,8 @@
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
+  import MarkdownRenderer from './lib/MarkdownRenderer.svelte'
+  import CodeViewer from './lib/CodeViewer.svelte'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -677,9 +679,7 @@
                 </div>
               {:else if showReadme && readmeContent}
                 <!-- README display -->
-                <div class="prose prose-sm max-w-none {dark ? 'prose-invert' : ''}">
-                  <pre class="text-[13px] {textBody} whitespace-pre-wrap break-words leading-relaxed">{readmeContent.content}</pre>
-                </div>
+                <MarkdownRenderer source={readmeContent.content} {dark} projectId={selectedProject?.id} />
               {:else}
                 <!-- Empty state -->
                 <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
@@ -931,8 +931,13 @@
                     {/each}
                   </div>
                 {:else if fileContent}
-                  <pre class="p-6 text-[13px] font-mono leading-[1.6] {textBody} whitespace-pre-wrap break-words max-w-[720px]"><code>{#each fileContent.content.split('\n') as line, i}<span class="inline-block w-[3em] text-right mr-4 select-none {lineNumColor}">{i + 1}</span>{line}
-{/each}</code></pre>
+                  {#if selectedFile?.endsWith('.md')}
+                    <div class="p-6 overflow-auto">
+                      <MarkdownRenderer source={fileContent.content} {dark} projectId={selectedProject?.id} />
+                    </div>
+                  {:else}
+                    <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} />
+                  {/if}
                 {/if}
               </div>
             {/if}
