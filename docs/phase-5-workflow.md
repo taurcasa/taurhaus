@@ -261,7 +261,45 @@ No cross-model code review — the visual review already uses Gemini for the sub
 
 ## Workflow Flow
 
-This section describes the complete end-to-end flow — how all the decisions above connect into an actual working process. Three levels: the **phase cycle** (macro), the **task cycle** (core loop), and the **TDD cycle** (inner loop).
+This section describes the complete end-to-end flow — how all the decisions above connect into an actual working process. Four levels: the **project loop** (outermost), the **phase cycle** (macro), the **task cycle** (core loop), and the **TDD cycle** (inner loop).
+
+### Project Loop (Outermost)
+
+The AI works through the entire Phase 5 implementation autonomously — from 5A through 5G — only stopping when the project is complete or the user returns.
+
+```
+Phase 5 Start
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│                                                     │
+│   ┌─────┐   ┌─────┐   ┌─────┐   ┌─────┐           │
+│   │ 5A  │──→│ 5B  │──→│ 5C  │──→│ 5D  │──→ ...    │
+│   │Scaff│   │ Git │   │Watch│   │Srch │           │
+│   │+DB  │   │+File│   │+Sess│   │     │           │
+│   └─────┘   └─────┘   └─────┘   └─────┘           │
+│       │         │         │         │               │
+│       ▼         ▼         ▼         ▼               │
+│   [Create]  [Create]  [Create]  [Create]            │
+│   [Execute] [Execute] [Execute] [Execute]           │
+│   [Review]  [Review]  [Review]  [Review]            │
+│                                                     │
+│   ... ──→ ┌─────┐   ┌─────┐   ┌─────┐             │
+│           │ 5E  │──→│ 5F  │──→│ 5G  │──→ DONE     │
+│           │Scan │   │CC   │   │Polsh│             │
+│           │+Rels│   │Hook │   │     │             │
+│           └─────┘   └─────┘   └─────┘             │
+│                                                     │
+│   STOP CONDITIONS:                                  │
+│   • Project complete (all phases done)              │
+│   • User returns and takes over                     │
+│   • Blocked: quality gate failed after 7 attempts   │
+│   • Blocked: major architecture question            │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+**The AI does not wait for permission between phases.** After completing 5A's milestone review, it immediately starts 5B task creation. This continues until all phases are done or a stop condition is hit.
 
 ### Phase Cycle (Macro)
 
@@ -270,13 +308,18 @@ Each implementation phase (5A through 5G) follows this arc:
 ```
 Phase Start
     │
-    ├─→ Task Creation
-    │     Define tasks for this phase. Each task has subject, description
-    │     (with ACs and test expectations), dependencies. Half-day units.
+    ├─→ Task Creation (ALL tasks for the phase, upfront)
+    │     1. Analyze the phase scope against architecture + spec
+    │     2. Break into half-day tasks with full descriptions, ACs, test expectations
+    │     3. Map ALL dependencies between tasks (blocks/blockedBy)
+    │     4. Review the task set as a whole — does it form a cohesive picture?
+    │     5. No task execution until the full task set is defined
     │
-    ├─→ Task Execution Loop
-    │     Pick → Execute → Gate → Commit → Next
+    ├─→ Task Execution Loop (autonomous)
+    │     Pick lowest ID unblocked → Execute → Gate → Commit → Next
     │     (see Task Cycle below — this is where most time is spent)
+    │     AI works through the entire backlog without stopping.
+    │     No need to ask "what's next" — it's already defined.
     │
     ├─→ Phase Milestone Review
     │     ├── Run E2E test suite (not run per-task)
@@ -285,10 +328,15 @@ Phase Start
     │     ├── Full-app screenshot review (holistic, not per-component)
     │     └── Update BOOTSTRAP.md phase status
     │
-    └─→ Phase Complete → Next Phase
+    └─→ Phase Complete → immediately start next phase
 ```
 
-**Between phases**: The milestone review is the checkpoint. E2E tests verify end-to-end journeys work. Security audit catches patterns across the phase's changes. The deviation log gets reviewed — if adjustments accumulated that change the product direction, flag the user.
+**Task creation is a distinct step, not interleaved with execution.** Creating all tasks upfront ensures:
+- Dependencies are mapped correctly across the full phase
+- The work forms a coherent whole (no gaps, no overlaps)
+- The AI can execute the entire backlog autonomously
+
+**Between phases**: The milestone review is the checkpoint. E2E tests verify end-to-end journeys work. Security audit catches patterns across the phase's changes. The deviation log gets reviewed — if adjustments accumulated that change the product direction, flag the user. Then immediately proceed to the next phase.
 
 ### Task Cycle (Core Loop)
 
