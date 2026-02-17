@@ -75,12 +75,25 @@ pub fn run() {
 
             let db_path = data_dir.join("taurhaus.db");
             let conn = db::init_db(&db_path).expect("failed to initialize database");
+
+            // Check for WSL projects and try daemon connection before managing state.
+            // This happens synchronously (max ~3s) while we still have direct conn access.
+            let daemon_provider = {
+                let projects = db::queries::list_projects(&conn).unwrap_or_default();
+                let wsl_distro = projects
+                    .iter()
+                    .find_map(|p| provider::path::wsl_distro_from_path(&p.path));
+                daemon::launcher::try_connect_daemon(
+                    wsl_distro.as_deref(),
+                    daemon::server::DEFAULT_PORT,
+                )
+            };
+
             app.manage(DbState(Mutex::new(conn)));
 
-            // Initialize provider (daemon connection attempted in Task #63)
             app.manage(ProviderState {
                 local: provider::local::LocalProvider,
-                daemon: None,
+                daemon: daemon_provider,
             });
 
             // Start file watcher
