@@ -9,11 +9,12 @@ pub mod git;
 
 pub mod fs;
 
+pub mod session;
+
 // Modules added incrementally as implemented:
 // mod claude_code;
 // mod scanner;
 // mod search;
-// mod session;
 
 use std::sync::Mutex;
 
