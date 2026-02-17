@@ -136,6 +136,15 @@ pub fn delete_project(conn: &Connection, id: &str) -> Result<bool, rusqlite::Err
     Ok(changed > 0)
 }
 
+/// Check if a project is registered at the given path.
+pub fn project_exists_at_path(conn: &Connection, path: &str) -> Result<bool, rusqlite::Error> {
+    let count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM projects WHERE path = ?1", [path], |row| {
+            row.get(0)
+        })?;
+    Ok(count > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,6 +316,20 @@ mod tests {
         insert_project(&conn, &make_project("p1", "a", "/a")).unwrap();
         insert_project(&conn, &make_project("p2", "b", "/b")).unwrap();
         assert_eq!(project_count(&conn).unwrap(), 2);
+    }
+
+    #[test]
+    fn project_exists_at_path_true() {
+        let (conn, _tmp) = test_db();
+        let project = make_project("p1", "test", "/home/user/test");
+        insert_project(&conn, &project).unwrap();
+        assert!(project_exists_at_path(&conn, "/home/user/test").unwrap());
+    }
+
+    #[test]
+    fn project_exists_at_path_false() {
+        let (conn, _tmp) = test_db();
+        assert!(!project_exists_at_path(&conn, "/no/such/path").unwrap());
     }
 
     // AC-9: path uniqueness enforced

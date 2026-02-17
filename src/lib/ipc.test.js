@@ -148,6 +148,52 @@ describe('ipc module', () => {
     })
   })
 
+  describe('listDirectory()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockEntries = [{ name: 'src', path: '/p/src', isExpandable: true }]
+      tauriCore.invoke.mockResolvedValue(mockEntries)
+
+      const result = await ipc.listDirectory('/p')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('list_directory', { path: '/p' })
+      expect(result).toEqual(mockEntries)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.listDirectory('~/projects')
+
+      expect(Array.isArray(result)).toBe(true)
+      expect(result[0]).toHaveProperty('name')
+      expect(result[0]).toHaveProperty('isExpandable')
+    })
+  })
+
+  describe('validateProjectPath()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockValidation = { exists: true, isGitRepo: true, isRegistered: false }
+      tauriCore.invoke.mockResolvedValue(mockValidation)
+
+      const result = await ipc.validateProjectPath('/some/path')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('validate_project_path', { path: '/some/path' })
+      expect(result).toEqual(mockValidation)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.validateProjectPath('/some/path')
+
+      expect(result).toHaveProperty('exists')
+      expect(result).toHaveProperty('isGitRepo')
+      expect(result).toHaveProperty('isRegistered')
+    })
+  })
+
   // -----------------------------------------------------------------------
   // Git IPC functions
   // -----------------------------------------------------------------------

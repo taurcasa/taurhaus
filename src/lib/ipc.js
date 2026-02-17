@@ -128,6 +128,23 @@ export function scanDirectory(path) {
   return invokeOrMock('scan_directory', { path }, () => [])
 }
 
+/** List subdirectories at a path (for directory tree browser). */
+export function listDirectory(path) {
+  return invokeOrMock('list_directory', { path }, () => [
+    { name: 'project-a', path: `${path}/project-a`, isExpandable: true },
+    { name: 'project-b', path: `${path}/project-b`, isExpandable: false },
+  ])
+}
+
+/** Validate a path: exists, is git repo, is already registered. */
+export function validateProjectPath(path) {
+  return invokeOrMock('validate_project_path', { path }, () => ({
+    exists: true,
+    isGitRepo: true,
+    isRegistered: false,
+  }))
+}
+
 // ---------------------------------------------------------------------------
 // Git IPC functions
 // ---------------------------------------------------------------------------

@@ -4,9 +4,10 @@ use rusqlite::Connection;
 use serde::Deserialize;
 use tauri::{Emitter, State};
 
-use crate::db::settings_queries;
+use crate::db::{queries, settings_queries};
 use crate::models::{ProjectDetail, ProjectSummary};
 use crate::services::project;
+use crate::SearchState;
 
 /// Expand `~` or `~/` at the start of a path to the user's home directory.
 fn expand_tilde(path: &str) -> String {
@@ -94,10 +95,18 @@ pub fn update_project(
 #[tauri::command]
 pub fn remove_project(
     db: State<'_, DbState>,
+    search: State<'_, SearchState>,
     project_id: String,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    project::remove_project(&conn, &project_id).map_err(|e| e.to_string())
+    project::remove_project(&conn, &project_id).map_err(|e| e.to_string())?;
+
+    // Clean up search index entries for this project
+    if let Ok(mut index) = search.0.lock() {
+        index.remove_by_project(&project_id);
+        let _ = index.commit();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -172,6 +181,116 @@ pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
             has_git: d.has_git,
         })
         .collect())
+}
+
+/// A directory entry returned by list_directory.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    pub name: String,
+    pub path: String,
+    pub is_expandable: bool,
+}
+
+/// List subdirectories at a given path (directories only, no files).
+/// Used by the directory tree browser for manual path selection.
+#[tauri::command]
+pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
+    let expanded = expand_tilde(&path);
+    let dir = std::path::Path::new(&expanded);
+
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let read_dir = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let mut entries: Vec<DirectoryEntry> = Vec::new();
+
+    for entry in read_dir {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        // Skip hidden directories
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let full_path = entry.path().to_string_lossy().to_string();
+
+        // Check if this directory has subdirectories (for expand chevron)
+        let is_expandable = std::fs::read_dir(entry.path())
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .any(|e| {
+                        e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                            && !e.file_name().to_string_lossy().starts_with('.')
+                    })
+            })
+            .unwrap_or(false);
+
+        entries.push(DirectoryEntry {
+            name,
+            path: full_path,
+            is_expandable,
+        });
+    }
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(entries)
+}
+
+/// Result of validating a project path.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathValidation {
+    pub exists: bool,
+    pub is_git_repo: bool,
+    pub is_registered: bool,
+}
+
+/// Validate whether a path is a valid project directory.
+/// Checks: exists, is a git repo, already registered.
+#[tauri::command]
+pub fn validate_project_path(
+    db: State<'_, DbState>,
+    path: String,
+) -> Result<PathValidation, String> {
+    let expanded = expand_tilde(&path);
+    let dir = std::path::Path::new(&expanded);
+
+    let exists = dir.is_dir();
+    if !exists {
+        return Ok(PathValidation {
+            exists: false,
+            is_git_repo: false,
+            is_registered: false,
+        });
+    }
+
+    let is_git_repo = git2::Repository::open(dir).is_ok();
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let is_registered =
+        queries::project_exists_at_path(&conn, &expanded).map_err(|e| e.to_string())?;
+
+    Ok(PathValidation {
+        exists,
+        is_git_repo,
+        is_registered,
+    })
 }
 
 #[cfg(test)]
@@ -279,6 +398,116 @@ mod tests {
         assert!(!d2.id.is_empty());
         let count = crate::db::queries::project_count(&conn).unwrap();
         assert_eq!(count, 2);
+    }
+
+    // list_directory returns only directories, sorted alphabetically
+    #[test]
+    fn list_directory_returns_dirs_only() {
+        let parent = TempDir::new().unwrap();
+
+        // Create directories
+        std::fs::create_dir(parent.path().join("alpha")).unwrap();
+        std::fs::create_dir(parent.path().join("beta")).unwrap();
+        // Create a file — should NOT appear
+        std::fs::write(parent.path().join("readme.txt"), "hello").unwrap();
+        // Create hidden dir — should NOT appear
+        std::fs::create_dir(parent.path().join(".hidden")).unwrap();
+
+        let results = list_directory(parent.path().to_str().unwrap().to_string()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].name, "alpha");
+        assert_eq!(results[1].name, "beta");
+    }
+
+    // list_directory returns empty vec for nonexistent path
+    #[test]
+    fn list_directory_nonexistent_returns_empty() {
+        let results = list_directory("/nonexistent/path/abc".to_string()).unwrap();
+        assert!(results.is_empty());
+    }
+
+    // list_directory detects expandable (has subdirectories)
+    #[test]
+    fn list_directory_detects_expandable() {
+        let parent = TempDir::new().unwrap();
+        let child = parent.path().join("has-children");
+        std::fs::create_dir(&child).unwrap();
+        std::fs::create_dir(child.join("grandchild")).unwrap();
+
+        let empty_child = parent.path().join("empty");
+        std::fs::create_dir(&empty_child).unwrap();
+
+        let results = list_directory(parent.path().to_str().unwrap().to_string()).unwrap();
+        assert_eq!(results.len(), 2);
+
+        let expandable = results.iter().find(|e| e.name == "has-children").unwrap();
+        assert!(expandable.is_expandable);
+
+        let empty = results.iter().find(|e| e.name == "empty").unwrap();
+        assert!(!empty.is_expandable);
+    }
+
+    // validate_project_path: nonexistent path
+    #[test]
+    fn validate_nonexistent_path() {
+        let (db_state, _tmp) = test_db_state();
+        let conn = db_state.0.lock().unwrap();
+
+        let dir = std::path::Path::new("/nonexistent/validate/path");
+        let result = PathValidation {
+            exists: dir.is_dir(),
+            is_git_repo: false,
+            is_registered: false,
+        };
+
+        assert!(!result.exists);
+        assert!(!result.is_git_repo);
+        assert!(!result.is_registered);
+    }
+
+    // validate_project_path: existing dir, not a git repo
+    #[test]
+    fn validate_non_git_dir() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path();
+
+        let exists = path.is_dir();
+        let is_git_repo = git2::Repository::open(path).is_ok();
+
+        assert!(exists);
+        assert!(!is_git_repo);
+    }
+
+    // validate_project_path: existing git repo, not registered
+    #[test]
+    fn validate_git_repo_not_registered() {
+        let (db_state, _tmp) = test_db_state();
+        let dir = temp_project_dir();
+        let path_str = dir.path().to_str().unwrap();
+
+        let exists = dir.path().is_dir();
+        let is_git_repo = dir.path().join(".git").is_dir();
+        let conn = db_state.0.lock().unwrap();
+        let is_registered = crate::db::queries::project_exists_at_path(&conn, path_str).unwrap();
+
+        assert!(exists);
+        assert!(is_git_repo);
+        assert!(!is_registered);
+    }
+
+    // validate_project_path: registered project
+    #[test]
+    fn validate_registered_project() {
+        let (db_state, _tmp) = test_db_state();
+        let dir = temp_project_dir();
+        let path_str = dir.path().to_str().unwrap();
+
+        let conn = db_state.0.lock().unwrap();
+        let thresholds = ActivityThresholds::default();
+        project::register_project(&conn, path_str, None, &thresholds).unwrap();
+
+        let is_registered = crate::db::queries::project_exists_at_path(&conn, path_str).unwrap();
+        assert!(is_registered);
     }
 
     // AC4: batch registration skips invalid paths gracefully
