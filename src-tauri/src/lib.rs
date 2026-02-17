@@ -86,6 +86,7 @@ pub fn run() {
             commands::files::get_file_tree,
             commands::files::read_file,
             commands::files::get_readme,
+            commands::files::read_project_asset,
             commands::sessions::get_latest_session,
             commands::sessions::list_sessions,
             commands::sessions::get_session,
