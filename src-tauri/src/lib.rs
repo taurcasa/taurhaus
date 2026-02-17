@@ -29,19 +29,21 @@ use tracing_subscriber::EnvFilter;
 pub struct ProviderState {
     pub local: provider::local::LocalProvider,
     pub daemon: Option<provider::daemon_client::DaemonProvider>,
+    /// WSL distro name (extracted from first WSL project). Used for daemon restarts.
+    pub wsl_distro: Option<String>,
 }
 
 impl ProviderState {
     /// Resolve the appropriate provider for a project path.
-    /// WSL paths route through the daemon (when available), everything else uses local.
+    /// WSL paths route through the daemon (when connected), everything else uses local.
     pub fn resolve(&self, project_path: &str) -> &dyn provider::ProjectProvider {
-        provider::provider_for(
-            project_path,
-            &self.local,
-            self.daemon
-                .as_ref()
-                .map(|d| d as &dyn provider::ProjectProvider),
-        )
+        // Only pass daemon to the router if it's actually connected
+        let active_daemon = self
+            .daemon
+            .as_ref()
+            .filter(|d| d.is_connected())
+            .map(|d| d as &dyn provider::ProjectProvider);
+        provider::provider_for(project_path, &self.local, active_daemon)
     }
 }
 
@@ -78,15 +80,16 @@ pub fn run() {
 
             // Check for WSL projects and try daemon connection before managing state.
             // This happens synchronously (max ~3s) while we still have direct conn access.
-            let daemon_provider = {
+            let (daemon_provider, wsl_distro) = {
                 let projects = db::queries::list_projects(&conn).unwrap_or_default();
-                let wsl_distro = projects
+                let distro = projects
                     .iter()
                     .find_map(|p| provider::path::wsl_distro_from_path(&p.path));
-                daemon::launcher::try_connect_daemon(
-                    wsl_distro.as_deref(),
+                let daemon = daemon::launcher::try_connect_daemon(
+                    distro.as_deref(),
                     daemon::server::DEFAULT_PORT,
-                )
+                );
+                (daemon, distro)
             };
 
             app.manage(DbState(Mutex::new(conn)));
@@ -94,7 +97,16 @@ pub fn run() {
             app.manage(ProviderState {
                 local: provider::local::LocalProvider,
                 daemon: daemon_provider,
+                wsl_distro: wsl_distro.clone(),
             });
+
+            // Start daemon health check if daemon is configured
+            if wsl_distro.is_some() {
+                let health_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    daemon_health_check(health_handle);
+                });
+            }
 
             // Start file watcher
             let (watcher, rx) = fs::watcher::ProjectWatcher::new();
@@ -481,6 +493,113 @@ fn startup_session_scan(app: &tauri::AppHandle) {
                     "Failed to scan sessions on startup"
                 );
             }
+        }
+    }
+}
+
+/// Background thread that monitors daemon health via periodic pings.
+///
+/// On disconnect: attempts restart and reconnection (max 3 attempts per session).
+/// Emits `daemon-status` events to the frontend for UI indicators.
+fn daemon_health_check(app: tauri::AppHandle) {
+    use std::time::Duration;
+
+    const CHECK_INTERVAL: Duration = Duration::from_secs(30);
+    const MAX_RESTART_ATTEMPTS: u32 = 3;
+
+    let mut consecutive_failures: u32 = 0;
+    let mut restart_attempts: u32 = 0;
+
+    // Initial delay — let the app finish starting
+    std::thread::sleep(Duration::from_secs(5));
+
+    loop {
+        std::thread::sleep(CHECK_INTERVAL);
+
+        let provider_state = app.state::<ProviderState>();
+        let Some(ref daemon) = provider_state.daemon else {
+            return;
+        };
+
+        if daemon.is_connected() {
+            match daemon.ping() {
+                Ok(()) => {
+                    if consecutive_failures > 0 {
+                        tracing::debug!("Daemon health check recovered");
+                    }
+                    consecutive_failures = 0;
+                }
+                Err(e) => {
+                    consecutive_failures += 1;
+                    tracing::warn!(
+                        failures = consecutive_failures,
+                        error = %e,
+                        "Daemon health check failed"
+                    );
+                    if consecutive_failures >= 3 {
+                        let _ = app.emit(
+                            "daemon-status",
+                            serde_json::json!({ "status": "disconnected" }),
+                        );
+                    }
+                }
+            }
+        } else {
+            // Daemon is disconnected — try to reconnect
+            if restart_attempts >= MAX_RESTART_ATTEMPTS {
+                tracing::warn!(
+                    "Max daemon restart attempts reached ({MAX_RESTART_ATTEMPTS}), giving up"
+                );
+                let _ = app.emit(
+                    "daemon-status",
+                    serde_json::json!({ "status": "failed" }),
+                );
+                return;
+            }
+
+            let _ = app.emit(
+                "daemon-status",
+                serde_json::json!({ "status": "reconnecting" }),
+            );
+
+            // Try reconnecting to existing daemon first
+            if daemon.reconnect().is_ok() {
+                tracing::info!("Reconnected to daemon");
+                consecutive_failures = 0;
+                let _ = app.emit(
+                    "daemon-status",
+                    serde_json::json!({ "status": "connected" }),
+                );
+                continue;
+            }
+
+            // Try restarting daemon process
+            restart_attempts += 1;
+            tracing::info!(
+                attempt = restart_attempts,
+                max = MAX_RESTART_ATTEMPTS,
+                "Attempting daemon restart"
+            );
+
+            let distro = provider_state.wsl_distro.as_deref();
+            let port = daemon::server::DEFAULT_PORT;
+
+            if let Some(d) = distro {
+                if daemon::launcher::try_restart_daemon(d, port).is_ok() {
+                    std::thread::sleep(Duration::from_secs(2));
+                    if daemon.reconnect().is_ok() {
+                        tracing::info!("Reconnected after daemon restart");
+                        consecutive_failures = 0;
+                        let _ = app.emit(
+                            "daemon-status",
+                            serde_json::json!({ "status": "connected" }),
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            tracing::warn!(attempt = restart_attempts, "Daemon restart attempt failed");
         }
     }
 }

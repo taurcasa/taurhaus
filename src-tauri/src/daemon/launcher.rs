@@ -60,6 +60,14 @@ pub fn try_connect_daemon(
     None
 }
 
+/// Try to restart the daemon process (used by health check on disconnect).
+///
+/// Just starts the process — caller is responsible for reconnecting.
+pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
+    tracing::info!(distro, port, "Restarting daemon process");
+    start_daemon(distro, port)
+}
+
 /// Attempt a single TCP connection to the daemon.
 fn try_connect(port: u16) -> Option<DaemonProvider> {
     let addr = format!("127.0.0.1:{port}");

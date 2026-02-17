@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -19,16 +19,20 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Timeout for file read operations.
 const FILE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Timeout for health check pings.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// A ProjectProvider that forwards all operations to the WSL daemon via TCP.
 ///
 /// Automatically translates Windows UNC paths to Linux-native paths before
-/// sending requests.
+/// sending requests. Tracks connection state so the provider router can
+/// fall back to LocalProvider when the daemon is down.
 pub struct DaemonProvider {
     stream: Mutex<Option<TcpStream>>,
     reader: Mutex<Option<BufReader<TcpStream>>>,
-    #[allow(dead_code)] // Used for reconnection (Task #64)
     addr: String,
     next_id: AtomicU64,
+    connected: AtomicBool,
 }
 
 impl DaemonProvider {
@@ -47,7 +51,68 @@ impl DaemonProvider {
             reader: Mutex::new(Some(reader)),
             addr: addr.to_string(),
             next_id: AtomicU64::new(1),
+            connected: AtomicBool::new(true),
         })
+    }
+
+    /// Whether the daemon connection is alive.
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
+    }
+
+    /// The address this provider connects to.
+    pub fn addr(&self) -> &str {
+        &self.addr
+    }
+
+    /// Send a ping to the daemon and return Ok if it responds.
+    pub fn ping(&self) -> Result<(), AppError> {
+        let id = self.next_id();
+        let request = DaemonRequest::ping(&id);
+        let response = self.send_request(&request, PING_TIMEOUT)?;
+        if response.is_ok() {
+            Ok(())
+        } else {
+            Err(AppError::InvalidPath("Daemon ping failed".to_string()))
+        }
+    }
+
+    /// Reconnect to the daemon at the stored address.
+    ///
+    /// Replaces the TCP stream and reader. On success, marks the provider
+    /// as connected.
+    pub fn reconnect(&self) -> Result<(), AppError> {
+        let stream = TcpStream::connect(&self.addr).map_err(|e| {
+            AppError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to reconnect to daemon at {}: {e}", self.addr),
+            ))
+        })?;
+        let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
+
+        // Replace the stream and reader under locks
+        if let Ok(mut guard) = self.stream.lock() {
+            *guard = Some(stream);
+        }
+        if let Ok(mut guard) = self.reader.lock() {
+            *guard = Some(reader);
+        }
+
+        self.connected.store(true, Ordering::Relaxed);
+        tracing::debug!(addr = %self.addr, "Daemon reconnected");
+        Ok(())
+    }
+
+    /// Mark the provider as disconnected (clears the TCP stream).
+    fn mark_disconnected(&self) {
+        self.connected.store(false, Ordering::Relaxed);
+        // Clear the stream/reader so future calls fail fast
+        if let Ok(mut guard) = self.stream.lock() {
+            *guard = None;
+        }
+        if let Ok(mut guard) = self.reader.lock() {
+            *guard = None;
+        }
     }
 
     /// Generate a unique request ID.
@@ -63,7 +128,21 @@ impl DaemonProvider {
     }
 
     /// Send a request and receive the response.
+    /// On I/O error, marks the provider as disconnected.
     fn send_request(
+        &self,
+        request: &DaemonRequest,
+        timeout: Duration,
+    ) -> Result<DaemonResponse, AppError> {
+        let result = self.send_request_inner(request, timeout);
+        if let Err(AppError::Io(_)) = &result {
+            tracing::warn!("Daemon I/O error, marking disconnected");
+            self.mark_disconnected();
+        }
+        result
+    }
+
+    fn send_request_inner(
         &self,
         request: &DaemonRequest,
         timeout: Duration,
@@ -433,5 +512,73 @@ mod tests {
     fn connect_to_nonexistent_daemon_fails() {
         let result = DaemonProvider::connect("127.0.0.1:1");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn is_connected_true_initially() {
+        let (port, shutdown) = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        assert!(provider.is_connected());
+        shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn marks_disconnected_on_daemon_crash() {
+        let (port, shutdown) = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+
+        // Verify connection works
+        assert!(provider.ping().is_ok());
+        assert!(provider.is_connected());
+
+        // Kill the daemon — handler has 1s read timeout before noticing shutdown
+        shutdown.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(1500));
+
+        // The first ping after shutdown may still succeed (handler processes it
+        // before exiting). Send up to two pings to ensure disconnection.
+        let _ = provider.ping();
+        if provider.is_connected() {
+            std::thread::sleep(Duration::from_millis(1500));
+            let _ = provider.ping();
+        }
+        assert!(!provider.is_connected());
+    }
+
+    #[test]
+    fn reconnect_after_daemon_restart() {
+        let (port, shutdown) = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        assert!(provider.ping().is_ok());
+
+        // Kill daemon — wait for handler to exit
+        shutdown.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(1500));
+        let _ = provider.ping();
+        if provider.is_connected() {
+            std::thread::sleep(Duration::from_millis(1500));
+            let _ = provider.ping();
+        }
+        assert!(!provider.is_connected());
+
+        // Start a new daemon on the same port
+        let shutdown2 = Arc::new(AtomicBool::new(false));
+        let config = DaemonConfig {
+            port,
+            bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
+        };
+        let shutdown2_clone = shutdown2.clone();
+        std::thread::spawn(move || {
+            let _ = crate::daemon::server::run(&config, shutdown2_clone);
+        });
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Reconnect should succeed
+        assert!(provider.reconnect().is_ok());
+        assert!(provider.is_connected());
+        assert!(provider.ping().is_ok());
+
+        shutdown2.store(true, Ordering::Relaxed);
     }
 }
