@@ -104,6 +104,12 @@
   const showReadme = $derived(!showSession)
   const hasToggle = $derived(latestSession && readmeContent)
 
+  // Strip the first H1 from README for Overview — our header already shows the title
+  const readmeForOverview = $derived.by(() => {
+    if (!readmeContent?.content) return ''
+    return readmeContent.content.replace(/^#\s+[^\n]*\n?/, '')
+  })
+
   // Check first-run + load projects on mount
   $effect(() => {
     checkFirstRun()
@@ -719,8 +725,8 @@
                   {/if}
                 </div>
               {:else if showReadme && readmeContent}
-                <!-- README display -->
-                <MarkdownRenderer source={readmeContent.content} {dark} projectId={selectedProject?.id} />
+                <!-- README display (first H1 stripped — title is in the header above) -->
+                <MarkdownRenderer source={readmeForOverview} {dark} projectId={selectedProject?.id} />
               {:else}
                 <!-- Empty state -->
                 <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
