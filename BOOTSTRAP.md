@@ -20,8 +20,8 @@ A bootstrap brief for starting taurhaus development. Follows the project lifecyc
 | ↳ **3E** View Design | Complete | [`docs/phase-3e-views.md`](docs/phase-3e-views.md) |
 | ↳ **3F** Visual System | Complete | [`docs/phase-3f-visual.md`](docs/phase-3f-visual.md) |
 | ↳ **3G** Specification | Complete | [`docs/phase-3g-specification.md`](docs/phase-3g-specification.md) |
-| **Phase 4** — Architecture | Next | — |
-| **Phase 5** — Implementation | Pending | — |
+| **Phase 4** — Architecture | Complete | [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) |
+| **Phase 5** — Implementation | Next | — |
 
 > **Naming convention**: Top-level phases use numbers (1-5). Sub-phases use letters (3A-3G). If a sub-phase needs further breakdown, use numbers again (3E.1, 3E.2). This avoids confusion with TaurUI's internal phase numbering (Phase 0-5), which maps to our 3B-3G.
 
@@ -88,9 +88,9 @@ Before architecture, run the TaurUI design procedure (3A through 3G).
 
 1. ~~**Phase 2** — Requirements~~ Done
 2. ~~**Phase 3** — UI Design~~ Done (3A–3G complete)
-3. **Phase 4** — Architecture: Rust backend modules, data models, Tauri command surface based on what the UI needs
-4. **Scaffold**: Initialize repo, scaffold Tauri 2 + Svelte 5 project — structure follows from architecture
-5. **Phase 5** — Implementation: View by view, using `/lookbook` for mid-build design questions
+3. ~~**Phase 4** — Architecture~~ Done (22 ADRs across 6 topics)
+4. **Scaffold**: Initialize Tauri 2 + Svelte 5 project — structure follows from architecture
+5. **Phase 5** — Implementation: TDD approach, view by view, using `/lookbook` for mid-build design questions
 
 ---
 

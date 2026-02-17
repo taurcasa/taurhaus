@@ -36,6 +36,20 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 | Frame padding | 6px | `p-1.5` around panels inside frame |
 | Tab pill | 36px tall | `rounded-t-lg`, connects to main panel |
 
+## Architecture Summary
+
+- **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
+- **Data location**: Tauri `app_data_dir()` — platform-appropriate
+- **IPC**: Fine-grained commands (~25). One per operation. Frontend calls in parallel.
+- **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
+- **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
+- **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
+- **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
+- **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
+- **Platform**: Windows first (release builds), Linux/WSL2 for development.
+
+Full architecture: [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) (22 ADRs)
+
 ## Key Files
 
 | File | Purpose |
@@ -45,12 +59,14 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 | `prototype/src/app.css` | Design tokens + global styles |
 | `prototype/src/data/mock.js` | Mock data (replaced by Tauri IPC in production) |
 | `docs/design-brief.md` | Full requirements (Phase 2) |
+| `docs/phase-4-architecture.md` | Technical architecture (22 ADRs) |
+| `docs/system-architecture.jpg` | System architecture infographic |
 | `BOOTSTRAP.md` | Project lifecycle and phase status |
 
 ## Mock Data
 
-All hardcoded data lives in `prototype/src/data/mock.js`. Every export in that file **must be replaced** with real data from Tauri IPC commands before shipping. The current data shapes are approximate — the real schema gets defined in Phase 4 (Architecture). Do not build abstractions around the current mock shapes.
+All hardcoded data lives in `prototype/src/data/mock.js`. Every export in that file **must be replaced** with real data from Tauri IPC commands before shipping. The data shapes are approximate — the real schema is defined in Phase 4 (Architecture). Do not build abstractions around the current mock shapes.
 
 ## Phase Status
 
-Phases 1-3 complete. Phase 4 (Architecture) is next. See `BOOTSTRAP.md` for details.
+Phases 1-4 complete. Phase 5 (Implementation) is next. See `BOOTSTRAP.md` for details.
