@@ -1,11 +1,12 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import MarkdownRenderer from './lib/MarkdownRenderer.svelte'
   import CodeViewer from './lib/CodeViewer.svelte'
+  import ContextMenu from './lib/ContextMenu.svelte'
   import { classifyFile } from './lib/fileClassifier.js'
   import * as assetCache from './lib/assetCache.js'
 
@@ -16,6 +17,11 @@
   let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
+
+  // Context menu state
+  let ctxMenu = $state(null) // { x, y, project }
+  let ctxConfirmRemove = $state(false)
+  let ctxConfirmTimeout = $state(null)
 
   /*
    * Layout dimensions
@@ -191,6 +197,56 @@
       sidebarLoading = false
     }
   }
+
+  // --- Context menu ---
+  function openContextMenu(e, project) {
+    e.preventDefault()
+    ctxConfirmRemove = false
+    if (ctxConfirmTimeout) { clearTimeout(ctxConfirmTimeout); ctxConfirmTimeout = null }
+    ctxMenu = { x: e.clientX, y: e.clientY, project }
+  }
+
+  function closeContextMenu() {
+    ctxMenu = null
+    ctxConfirmRemove = false
+    if (ctxConfirmTimeout) { clearTimeout(ctxConfirmTimeout); ctxConfirmTimeout = null }
+  }
+
+  function ctxCopyPath() {
+    if (ctxMenu?.project?.path) {
+      navigator.clipboard.writeText(ctxMenu.project.path).catch(() => {})
+    }
+  }
+
+  function ctxRemoveProject() {
+    if (!ctxConfirmRemove) {
+      // First click — show confirmation (menu stays open via keepOpen flag)
+      ctxConfirmRemove = true
+      ctxConfirmTimeout = setTimeout(() => {
+        ctxConfirmRemove = false
+        ctxConfirmTimeout = null
+      }, 3000)
+      return
+    }
+    // Second click — actually remove
+    const project = ctxMenu.project
+    closeContextMenu()
+    removeProject(project.id).then(() => {
+      projects = projects.filter(p => p.id !== project.id)
+      if (selectedProject?.id === project.id) {
+        selectedProject = projects.length > 0 ? projects[0] : null
+        if (selectedProject) selectProject(selectedProject)
+      }
+    }).catch(e => {
+      console.error('Failed to remove project:', e)
+    })
+  }
+
+  const ctxMenuItems = $derived(ctxMenu ? [
+    { label: 'Copy path', action: ctxCopyPath, icon: '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/></svg>' },
+    { separator: true },
+    { label: ctxConfirmRemove ? 'Confirm remove?' : 'Remove from taurhaus', action: ctxRemoveProject, danger: true, keepOpen: !ctxConfirmRemove, icon: '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>' },
+  ] : [])
 
   function isSessionFresh(dateStr) {
     if (!dateStr) return false
@@ -599,8 +655,9 @@
                 {@const selected = selectedProject && project.id === selectedProject.id}
                 <button
                   class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
-                    {selected ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}"
+                    {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}"
                   onclick={() => selectProject(project)}
+                  oncontextmenu={(e) => openContextMenu(e, project)}
                 >
                   {#if selected}
                     <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
@@ -620,7 +677,7 @@
 
       <!-- Footer -->
       <div class="h-[44px] flex items-center justify-between px-4 border-t border-white/[0.06]">
-        <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Add project" onclick={() => showAddProject = true}>
+        <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Manage projects" onclick={() => showAddProject = true}>
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
         </button>
         <button
@@ -1021,7 +1078,11 @@
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />
 
   {#if showAddProject}
-    <AddProjectModal {dark} onClose={() => showAddProject = false} onProjectsAdded={loadProjects} />
+    <AddProjectModal {dark} onClose={() => showAddProject = false} onProjectsChanged={loadProjects} />
+  {/if}
+
+  {#if ctxMenu}
+    <ContextMenu items={ctxMenuItems} x={ctxMenu.x} y={ctxMenu.y} dark={true} onClose={closeContextMenu} />
   {/if}
 </div>
 {/if}
