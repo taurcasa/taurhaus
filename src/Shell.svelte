@@ -1,5 +1,5 @@
 <script>
-  import { projects, selectedProject, latestSession, commits, relationships, sessionHistory, groups } from './data/mock.js'
+  import { listProjects, getProject } from './lib/ipc.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -37,6 +37,54 @@
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
   const dots           = $derived(dark ? dotColorDark : dotColor)
   const panelBorder    = $derived(dark ? 'border border-zinc-800' : '')
+
+  // Activity state groups for sidebar ordering
+  const groups = [
+    { key: 'active', label: 'ACTIVE' },
+    { key: 'recent', label: 'RECENT' },
+    { key: 'stale', label: 'STALE' },
+    { key: 'dormant', label: 'DORMANT' },
+  ]
+
+  // --- Data state ---
+  let projects = $state([])
+  let selectedProject = $state(null)
+  let sidebarLoading = $state(true)
+  let sidebarError = $state(null)
+  let detailLoading = $state(false)
+
+  // Load projects on mount
+  $effect(() => {
+    loadProjects()
+  })
+
+  async function loadProjects() {
+    sidebarLoading = true
+    sidebarError = null
+    try {
+      projects = await listProjects()
+      // Auto-select first project if none selected
+      if (!selectedProject && projects.length > 0) {
+        await selectProject(projects[0])
+      }
+    } catch (e) {
+      sidebarError = e.message || 'Failed to load projects'
+    } finally {
+      sidebarLoading = false
+    }
+  }
+
+  async function selectProject(project) {
+    detailLoading = true
+    try {
+      selectedProject = await getProject(project.id)
+    } catch {
+      // On error, use the summary data we already have
+      selectedProject = project
+    } finally {
+      detailLoading = false
+    }
+  }
 
   // Dev-only: fullscreen preview simulates Tauri desktop experience
   function togglePreview() {
@@ -89,7 +137,7 @@
       </div>
 
       <!-- Drag region (data-tauri-drag-region in production) -->
-      <div class="flex-1 h-full"></div>
+      <div class="flex-1 h-full" data-tauri-drag-region></div>
 
       <!-- Titlebar controls -->
       <div class="flex items-center gap-0.5 pb-2 pr-3 shrink-0">
@@ -127,29 +175,60 @@
 
       <!-- Project list -->
       <div class="flex-1 overflow-y-auto px-1.5 pt-1">
-        {#each groups as group}
-          {@const items = projects.filter(p => p.status === group.key)}
-          {#if items.length > 0}
-            <div class="px-3.5 pt-3 pb-1">
-              <span class="text-[10px] font-medium uppercase tracking-[0.06em] text-white/20">{group.label}</span>
-            </div>
-            {#each items as project}
-              {@const selected = project.name === selectedProject.name}
-              <button class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
-                {selected ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}">
-                {#if selected}
-                  <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
-                {/if}
-                <span class="w-[7px] h-[7px] rounded-full shrink-0 {dots[project.status]} shadow-[0_0_4px_rgba(255,255,255,0.15)]"></span>
-                <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
-                <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch}</span>
-                {#if project.dirty}
-                  <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
-                {/if}
-              </button>
+        {#if sidebarLoading}
+          <!-- Loading skeleton -->
+          <div class="px-3 pt-3 space-y-1" data-testid="sidebar-skeleton">
+            {#each Array(5) as _}
+              <div class="flex items-center gap-2 h-[34px] px-3">
+                <div class="w-[7px] h-[7px] rounded-full bg-white/[0.06] animate-pulse"></div>
+                <div class="h-3 rounded bg-white/[0.06] animate-pulse flex-1"></div>
+              </div>
             {/each}
-          {/if}
-        {/each}
+          </div>
+        {:else if sidebarError}
+          <!-- Error state -->
+          <div class="px-4 pt-6 text-center" data-testid="sidebar-error">
+            <p class="text-[12px] text-white/40">{sidebarError}</p>
+            <button
+              class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors"
+              onclick={loadProjects}
+            >Retry</button>
+          </div>
+        {:else if projects.length === 0}
+          <!-- Empty state -->
+          <div class="px-4 pt-8 text-center" data-testid="sidebar-empty">
+            <svg class="w-10 h-10 text-white/10 mx-auto" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+            <p class="mt-2 text-[12px] text-white/40">No projects yet</p>
+            <button class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors">Scan for projects</button>
+          </div>
+        {:else}
+          {#each groups as group}
+            {@const items = projects.filter(p => p.activity_state === group.key)}
+            {#if items.length > 0}
+              <div class="px-3.5 pt-3 pb-1">
+                <span class="text-[10px] font-medium uppercase tracking-[0.06em] text-white/20">{group.label}</span>
+              </div>
+              {#each items as project}
+                {@const selected = selectedProject && project.id === selectedProject.id}
+                <button
+                  class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
+                    {selected ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}"
+                  onclick={() => selectProject(project)}
+                >
+                  {#if selected}
+                    <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
+                  {/if}
+                  <span class="w-[7px] h-[7px] rounded-full shrink-0 {dots[project.activity_state]} shadow-[0_0_4px_rgba(255,255,255,0.15)]"></span>
+                  <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
+                  <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch || ''}</span>
+                  {#if project.is_dirty}
+                    <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
+                  {/if}
+                </button>
+              {/each}
+            {/if}
+          {/each}
+        {/if}
       </div>
 
       <!-- Footer -->
@@ -165,131 +244,59 @@
 
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {mainBg} {textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
-
-      <!-- Project header -->
-      <div class="px-7 pt-5 pb-4 shrink-0">
-        <div class="flex items-baseline gap-3">
-          <h1 class="text-[18px] font-semibold {textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
-          <span class="text-[11px] font-mono {textTertiary}">{selectedProject.branch}</span>
-          <span class="text-[11px] {statusColor} font-medium">Active</span>
+      {#if !selectedProject}
+        <!-- No project selected -->
+        <div class="flex-1 flex items-center justify-center">
+          <p class="text-[13px] {textTertiary}">Select a project</p>
         </div>
-        <p class="mt-0.5 text-[13px] {textTertiary}">{selectedProject.description}</p>
-      </div>
+      {:else}
+        <!-- Project header -->
+        <div class="px-7 pt-5 pb-4 shrink-0">
+          <div class="flex items-baseline gap-3">
+            <h1 class="text-[18px] font-semibold {textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
+            <span class="text-[11px] font-mono {textTertiary}">{selectedProject.branch || ''}</span>
+            {#if selectedProject.activity_state}
+              <span class="text-[11px] {statusColor} font-medium capitalize">{selectedProject.activity_state}</span>
+            {/if}
+          </div>
+          {#if selectedProject.description}
+            <p class="mt-0.5 text-[13px] {textTertiary}">{selectedProject.description}</p>
+          {/if}
+        </div>
 
-      <!-- Scrollable content -->
-      <div class="flex-1 overflow-y-auto">
-        <div class="max-w-[700px] px-7 pb-8">
+        <!-- Scrollable content -->
+        <div class="flex-1 overflow-y-auto">
+          <div class="max-w-[700px] px-7 pb-8">
 
-          <!-- Latest Session -->
-          <section class="pb-6 border-b {keyline}">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-[11px] {textTertiary}">Latest session</span>
-              <span class="text-[11px] {textTertiary}">{latestSession.date}</span>
-            </div>
-            <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-              <p class="text-[13px] {textSecondary} leading-[1.65]">{latestSession.summary}</p>
-              <div class="mt-4">
-                <span class="text-[12px] font-semibold {textPrimary}">Next steps</span>
-                <ul class="mt-1.5 space-y-1">
-                  {#each latestSession.nextSteps as step}
-                    <li class="text-[13px] {textSecondary} pl-4 relative before:content-['–'] before:absolute before:left-0 before:text-zinc-400/50">{step}</li>
-                  {/each}
-                </ul>
-              </div>
-              <div class="mt-4">
-                <span class="text-[12px] font-semibold {textPrimary}">Open questions</span>
-                <ul class="mt-1.5 space-y-1">
-                  {#each latestSession.openQuestions as q}
-                    <li class="text-[13px] {textMuted} pl-4 relative before:content-['?'] before:absolute before:left-0 before:text-warning-500 before:font-medium">{q}</li>
-                  {/each}
-                </ul>
-              </div>
-              <div class="mt-4 flex items-center gap-4">
-                <button class="text-[12px] {textTertiary}">Add notes</button>
-                <button class="text-[12px] {linkColor} font-medium">View full session</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- Recent Activity -->
-          <section class="py-6 border-b {keyline}">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-[11px] {textTertiary}">Recent activity</span>
-              <span class="text-[11px] {linkColor} font-medium">3 new since session</span>
-            </div>
-            <div>
-              {#each commits as commit, i}
-                <div class="flex items-center h-[30px] text-[13px]
-                  {i < 3 ? '' : 'opacity-50'}">
-                  <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
-                  <span class="{textBody} truncate flex-1">{commit.message}</span>
-                  <span class="text-[11px] {timeColor} shrink-0 ml-3">{commit.time}</span>
+            <!-- Project Info -->
+            <section class="py-6 border-b {keyline}">
+              <span class="text-[11px] {textTertiary}">Project info</span>
+              <div class="mt-2 space-y-1 text-[13px]">
+                <div class="flex items-center gap-3">
+                  <span class="{textTertiary} w-8">Path</span>
+                  <span class="font-mono text-[12px] {textMuted}">{selectedProject.path}</span>
                 </div>
-                {#if i === 2}
-                  <div class="flex items-center h-[18px] my-0.5">
-                    <div class="flex-1 border-t border-dashed {dashBorder}"></div>
-                    <span class="px-2 text-[9px] {textTertiary} uppercase tracking-widest">session</span>
-                    <div class="flex-1 border-t border-dashed {dashBorder}"></div>
+                {#if selectedProject.created_at}
+                  <div class="flex items-center gap-3">
+                    <span class="{textTertiary} w-14">Created</span>
+                    <span class="text-[12px] {textMuted}">{new Date(selectedProject.created_at).toLocaleDateString()}</span>
                   </div>
                 {/if}
-              {/each}
-            </div>
-            <button class="mt-1 text-[11px] {textTertiary}">View all &rarr;</button>
-          </section>
-
-          <!-- Relationships -->
-          <section class="py-6 border-b {keyline}">
-            <span class="text-[11px] {textTertiary}">Relationships</span>
-            <div class="mt-2">
-              {#each relationships as rel}
-                <div class="flex items-center h-[30px] text-[13px]">
-                  <span class="{textTertiary} w-5 text-center">{rel.direction === 'outgoing' ? '→' : '←'}</span>
-                  <span class="{linkColor} cursor-pointer">{rel.target}</span>
-                  <span class="{textTertiary} text-[12px] ml-2">{rel.type}</span>
-                </div>
-              {/each}
-            </div>
-            <button class="mt-1 text-[11px] {textTertiary}">+ Add</button>
-          </section>
-
-          <!-- Session History -->
-          <section class="py-6 border-b {keyline}">
-            <span class="text-[11px] {textTertiary}">Session history</span>
-            <div class="mt-2">
-              {#each sessionHistory as s}
-                <div class="flex items-center py-1.5 text-[13px] {hoverRow} -mx-2 px-2 rounded cursor-pointer transition-colors">
-                  <span class="text-[11px] {textTertiary} w-[76px] shrink-0">{s.date}</span>
-                  <span class="{textMuted} truncate">{s.summary}</span>
-                </div>
-              {/each}
-            </div>
-          </section>
-
-          <!-- Project Info -->
-          <section class="py-6 pb-10">
-            <span class="text-[11px] {textTertiary}">Project info</span>
-            <div class="mt-2 space-y-1 text-[13px]">
-              <div class="flex items-center gap-3">
-                <span class="{textTertiary} w-8">Path</span>
-                <span class="font-mono text-[12px] {textMuted}">{selectedProject.path}</span>
               </div>
-              <div class="flex items-center gap-3">
-                <span class="{textTertiary} w-8">Tags</span>
-                <div class="flex gap-1.5">
-                  {#each selectedProject.tags as tag}
-                    <span class="px-1.5 py-0.5 {tagBg} text-[11px] rounded">{tag}</span>
-                  {/each}
-                </div>
+              <div class="mt-3 flex gap-3">
+                <button class="text-[11px] {textTertiary}">Edit</button>
+                <button class="text-[11px] {dangerColor}">Remove</button>
               </div>
-            </div>
-            <div class="mt-3 flex gap-3">
-              <button class="text-[11px] {textTertiary}">Edit</button>
-              <button class="text-[11px] {dangerColor}">Remove</button>
-            </div>
-          </section>
+            </section>
 
+            <!-- Placeholder for sections built in later phases -->
+            <section class="py-6">
+              <span class="text-[11px] {textTertiary}">Sessions, commits, and relationships will appear here once those modules are implemented (Phases 5B-5F).</span>
+            </section>
+
+          </div>
         </div>
-      </div>
+      {/if}
     </main>
   </div>
 </div>
