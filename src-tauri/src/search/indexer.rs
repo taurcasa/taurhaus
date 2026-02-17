@@ -33,7 +33,7 @@ fn build_schema() -> (Schema, SearchFields) {
     let entity_type = builder.add_text_field("entity_type", STRING | STORED);
     let file_path = builder.add_text_field("file_path", STRING | STORED);
     let title = builder.add_text_field("title", TEXT | STORED);
-    let content = builder.add_text_field("content", TEXT);
+    let content = builder.add_text_field("content", TEXT | STORED);
 
     let schema = builder.build();
     let fields = SearchFields {
