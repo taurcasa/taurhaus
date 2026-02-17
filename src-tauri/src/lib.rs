@@ -78,6 +78,8 @@ pub fn run() {
             commands::projects::update_project,
             commands::projects::remove_project,
             commands::projects::scan_directory,
+            commands::projects::is_first_run,
+            commands::projects::register_projects_batch,
             commands::git::get_recent_commits,
             commands::git::get_all_commits,
             commands::git::get_git_status,

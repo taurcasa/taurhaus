@@ -552,22 +552,56 @@ describe('ipc module', () => {
   })
 
   describe('isFirstRun()', () => {
-    it('returns true when no projects exist in Tauri', async () => {
+    it('calls is_first_run command in Tauri', async () => {
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue([])
+      tauriCore.invoke.mockResolvedValue(true)
 
       const result = await ipc.isFirstRun()
 
+      expect(tauriCore.invoke).toHaveBeenCalledWith('is_first_run')
       expect(result).toBe(true)
       delete window.__TAURI_INTERNALS__
     })
 
-    it('returns false when projects exist', async () => {
+    it('returns false in mock mode (mock projects exist)', async () => {
       delete window.__TAURI_INTERNALS__
       const result = await ipc.isFirstRun()
 
-      // Mock data has 10 projects
+      // MOCK_PROJECTS has 10 items, so isFirstRun returns false
       expect(result).toBe(false)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Batch Registration IPC functions
+  // -----------------------------------------------------------------------
+
+  describe('registerProjectsBatch()', () => {
+    it('calls invoke with paths in Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockResults = [
+        { path: '/a', success: true, project: { id: 'p1', name: 'a' }, error: null },
+        { path: '/b', success: true, project: { id: 'p2', name: 'b' }, error: null },
+      ]
+      tauriCore.invoke.mockResolvedValue(mockResults)
+
+      const result = await ipc.registerProjectsBatch(['/a', '/b'])
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('register_projects_batch', { paths: ['/a', '/b'] })
+      expect(result).toEqual(mockResults)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns mock results when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.registerProjectsBatch(['/a', '/b', '/c'])
+
+      expect(result).toHaveLength(3)
+      expect(result[0].success).toBe(true)
+      expect(result[0].path).toBe('/a')
+      expect(result[0].project).toHaveProperty('id')
+      expect(result[1].path).toBe('/b')
+      expect(result[2].path).toBe('/c')
     })
   })
 })

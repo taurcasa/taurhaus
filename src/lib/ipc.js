@@ -295,6 +295,26 @@ export function updateSettings(settings) {
 
 /** Check if this is the first run (no projects registered). */
 export function isFirstRun() {
-  return invokeOrMock('list_projects', undefined, () => MOCK_PROJECTS)
-    .then(projects => projects.length === 0)
+  return invokeOrMock('is_first_run', undefined, () => MOCK_PROJECTS.length === 0)
+}
+
+// ---------------------------------------------------------------------------
+// Batch Registration IPC functions
+// ---------------------------------------------------------------------------
+
+/** Register multiple projects at once. Returns array of results with success/error per path. */
+export function registerProjectsBatch(paths) {
+  return invokeOrMock('register_projects_batch', { paths }, () =>
+    paths.map((path, index) => ({
+      path,
+      success: true,
+      project: {
+        ...MOCK_DETAIL,
+        id: `mock-batch-${index}`,
+        path,
+        name: path.split('/').pop(),
+      },
+      error: null,
+    }))
+  )
 }

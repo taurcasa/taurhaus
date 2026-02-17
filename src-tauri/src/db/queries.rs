@@ -44,6 +44,11 @@ pub fn get_project(conn: &Connection, id: &str) -> Result<Option<Project>, rusql
     .optional()
 }
 
+/// Count total registered projects.
+pub fn project_count(conn: &Connection) -> Result<i64, rusqlite::Error> {
+    conn.query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+}
+
 /// List all projects, most recently active first.
 pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, rusqlite::Error> {
     let mut stmt = conn.prepare(
@@ -252,6 +257,20 @@ mod tests {
         let (conn, _tmp) = test_db();
         let deleted = delete_project(&conn, "no-such").unwrap();
         assert!(!deleted);
+    }
+
+    #[test]
+    fn project_count_empty_db() {
+        let (conn, _tmp) = test_db();
+        assert_eq!(project_count(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn project_count_with_projects() {
+        let (conn, _tmp) = test_db();
+        insert_project(&conn, &make_project("p1", "a", "/a")).unwrap();
+        insert_project(&conn, &make_project("p2", "b", "/b")).unwrap();
+        assert_eq!(project_count(&conn).unwrap(), 2);
     }
 
     // AC-9: path uniqueness enforced
