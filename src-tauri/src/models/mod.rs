@@ -72,6 +72,10 @@ pub struct Project {
     pub hero_preference: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Cached git branch name (populated by watcher/startup, may be None).
+    pub cached_branch: Option<String>,
+    /// Cached dirty status (populated by watcher/startup, may be None).
+    pub cached_is_dirty: Option<bool>,
 }
 
 /// Lightweight project summary sent to the frontend for the sidebar list.
@@ -88,7 +92,7 @@ pub struct ProjectSummary {
 
 impl ProjectSummary {
     /// Build a `ProjectSummary` from a database `Project` row.
-    /// Git fields (`branch`, `is_dirty`) are filled in separately.
+    /// Git fields come from cached columns (may be None if not yet scanned).
     pub fn from_project(project: &Project, thresholds: &ActivityThresholds, now: DateTime<Utc>) -> Self {
         Self {
             id: project.id.clone(),
@@ -96,8 +100,8 @@ impl ProjectSummary {
             path: project.path.clone(),
             activity_state: ActivityState::compute(project.last_activity_at.as_deref(), thresholds, now),
             last_activity_at: project.last_activity_at.clone(),
-            branch: None,
-            is_dirty: None,
+            branch: project.cached_branch.clone(),
+            is_dirty: project.cached_is_dirty,
         }
     }
 }
@@ -335,6 +339,8 @@ mod tests {
             hero_preference: Some("session".into()),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-06-12T10:00:00Z".into(),
+            cached_branch: Some("main".into()),
+            cached_is_dirty: Some(false),
         };
 
         let json = serde_json::to_string(&project).unwrap();
@@ -381,6 +387,8 @@ mod tests {
             hero_preference: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
+            cached_branch: None,
+            cached_is_dirty: None,
         };
 
         let summary = ProjectSummary::from_project(&project, &default_thresholds(), fixed_now());
@@ -388,6 +396,27 @@ mod tests {
         assert_eq!(summary.name, "taurhaus");
         assert_eq!(summary.activity_state, ActivityState::Active);
         assert!(summary.branch.is_none());
+    }
+
+    // Cached git status populates ProjectSummary
+    #[test]
+    fn project_summary_uses_cached_git_data() {
+        let project = Project {
+            id: "p1".into(),
+            name: "test".into(),
+            path: "/path".into(),
+            description: None,
+            last_activity_at: Some("2025-06-12T00:00:00Z".into()),
+            hero_preference: None,
+            created_at: "2025-01-01T00:00:00Z".into(),
+            updated_at: "2025-01-01T00:00:00Z".into(),
+            cached_branch: Some("develop".into()),
+            cached_is_dirty: Some(true),
+        };
+
+        let summary = ProjectSummary::from_project(&project, &default_thresholds(), fixed_now());
+        assert_eq!(summary.branch, Some("develop".into()));
+        assert_eq!(summary.is_dirty, Some(true));
     }
 
     // AC-7: Default thresholds are 7/30/90

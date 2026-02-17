@@ -18,6 +18,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "relationships_unique",
         include_str!("migrations/003_relationships_unique.sql"),
     ),
+    (
+        4,
+        "cached_git_status",
+        include_str!("migrations/004_cached_git_status.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

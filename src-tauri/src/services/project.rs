@@ -48,6 +48,8 @@ pub fn register_project(
         hero_preference: None,
         created_at: now.clone(),
         updated_at: now,
+        cached_branch: None,
+        cached_is_dirty: None,
     };
 
     queries::insert_project(conn, &project).map_err(|e| {

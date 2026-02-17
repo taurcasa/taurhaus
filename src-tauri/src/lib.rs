@@ -15,6 +15,7 @@ pub mod search;
 
 pub mod claude_code;
 
+pub mod daemon;
 pub mod provider;
 
 use std::sync::Mutex;
@@ -188,6 +189,17 @@ fn process_watch_events(
                 let provider_state = app.state::<ProviderState>();
                 let provider = provider_state.resolve(&project_path);
                 if let Ok(status) = provider.git_status(&project_path) {
+                    // Update cached git status in SQLite
+                    let db_state = app.state::<DbState>();
+                    if let Ok(conn) = db_state.0.lock() {
+                        let _ = db::queries::update_cached_git_status(
+                            &conn,
+                            &project_id,
+                            status.branch.as_deref(),
+                            status.is_dirty,
+                        );
+                    }
+
                     let _ = app.emit(
                         "project-git-changed",
                         serde_json::json!({
@@ -343,9 +355,20 @@ fn startup_reseed_activity(app: &tauri::AppHandle) {
     let mut updated = 0;
     for project in &projects {
         let provider = provider_state.resolve(&project.path);
+
+        // Refresh cached git status
+        if let Ok(status) = provider.git_status(&project.path) {
+            let _ = db::queries::update_cached_git_status(
+                &conn,
+                &project.id,
+                status.branch.as_deref(),
+                status.is_dirty,
+            );
+        }
+
+        // Refresh activity timestamp from latest commit
         if let Ok(Some(commit_time)) = provider.latest_commit_time(&project.path) {
             let commit_ts = commit_time.to_rfc3339();
-            // Only update if the current value differs from the git-derived one
             if project.last_activity_at.as_deref() != Some(&commit_ts) {
                 let _ = db::queries::update_project(
                     &conn,

@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, getGitStatus } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
@@ -191,10 +191,8 @@
       if (!selectedProject && projects.length > 0) {
         await selectProject(projects[0])
       }
-      // Lazy-load git status for each project in parallel (non-blocking).
-      // list_projects no longer calls git_status inline because it's too
-      // slow over cross-filesystem paths (WSL UNC, network drives).
-      loadGitStatusForAll()
+      // Git status now comes from cached columns in list_projects (no extra IPC calls).
+      // The cache is refreshed by the file watcher and startup reseed.
     } catch (e) {
       sidebarError = e.message || 'Failed to load projects'
     } finally {
@@ -202,23 +200,6 @@
     }
   }
 
-  /** Fetch git status for all projects in parallel and merge into sidebar. */
-  function loadGitStatusForAll() {
-    for (const project of projects) {
-      getGitStatus(project.id).then(status => {
-        const idx = projects.findIndex(p => p.id === project.id)
-        if (idx !== -1) {
-          projects[idx] = { ...projects[idx], branch: status.branch, is_dirty: status.is_dirty }
-        }
-        // Also update selected project if it matches
-        if (selectedProject?.id === project.id) {
-          selectedProject = { ...selectedProject, branch: status.branch, is_dirty: status.is_dirty }
-        }
-      }).catch(() => {
-        // Git status unavailable — leave branch/is_dirty as null
-      })
-    }
-  }
 
   // --- Context menu ---
   function openContextMenu(e, project) {

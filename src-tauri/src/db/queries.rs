@@ -25,10 +25,12 @@ pub fn insert_project(conn: &Connection, project: &Project) -> Result<(), rusqli
 /// Retrieve a project by its UUID.  Returns `None` if not found.
 pub fn get_project(conn: &Connection, id: &str) -> Result<Option<Project>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at
+        "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at,
+                cached_branch, cached_is_dirty
          FROM projects WHERE id = ?1",
         [id],
         |row| {
+            let dirty_int: Option<i32> = row.get(9)?;
             Ok(Project {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -38,6 +40,8 @@ pub fn get_project(conn: &Connection, id: &str) -> Result<Option<Project>, rusql
                 hero_preference: row.get(5)?,
                 created_at: row.get(6)?,
                 updated_at: row.get(7)?,
+                cached_branch: row.get(8)?,
+                cached_is_dirty: dirty_int.map(|v| v != 0),
             })
         },
     )
@@ -52,12 +56,14 @@ pub fn project_count(conn: &Connection) -> Result<i64, rusqlite::Error> {
 /// List all projects, most recently active first.
 pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at
+        "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at,
+                cached_branch, cached_is_dirty
          FROM projects
          ORDER BY last_activity_at DESC NULLS LAST",
     )?;
 
     let rows = stmt.query_map([], |row| {
+        let dirty_int: Option<i32> = row.get(9)?;
         Ok(Project {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -67,6 +73,8 @@ pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, rusqlite::Error>
             hero_preference: row.get(5)?,
             created_at: row.get(6)?,
             updated_at: row.get(7)?,
+            cached_branch: row.get(8)?,
+            cached_is_dirty: dirty_int.map(|v| v != 0),
         })
     })?;
 
@@ -136,6 +144,20 @@ pub fn delete_project(conn: &Connection, id: &str) -> Result<bool, rusqlite::Err
     Ok(changed > 0)
 }
 
+/// Update the cached git status columns for a project.
+pub fn update_cached_git_status(
+    conn: &Connection,
+    id: &str,
+    branch: Option<&str>,
+    is_dirty: bool,
+) -> Result<bool, rusqlite::Error> {
+    let changed = conn.execute(
+        "UPDATE projects SET cached_branch = ?1, cached_is_dirty = ?2 WHERE id = ?3",
+        params![branch, is_dirty as i32, id],
+    )?;
+    Ok(changed > 0)
+}
+
 /// Check if a project is registered at the given path.
 pub fn project_exists_at_path(conn: &Connection, path: &str) -> Result<bool, rusqlite::Error> {
     let count: i64 =
@@ -168,6 +190,8 @@ mod tests {
             hero_preference: None,
             created_at: "2025-01-01T00:00:00Z".to_string(),
             updated_at: "2025-01-01T00:00:00Z".to_string(),
+            cached_branch: None,
+            cached_is_dirty: None,
         }
     }
 
@@ -198,6 +222,8 @@ mod tests {
             hero_preference: Some("session".into()),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-03-15T08:00:00Z".into(),
+            cached_branch: None,
+            cached_is_dirty: None,
         };
 
         insert_project(&conn, &project).unwrap();
@@ -342,5 +368,51 @@ mod tests {
         insert_project(&conn, &p1).unwrap();
         let result = insert_project(&conn, &p2);
         assert!(result.is_err(), "Should fail with unique constraint on path");
+    }
+
+    #[test]
+    fn update_cached_git_status_writes_and_reads() {
+        let (conn, _tmp) = test_db();
+        let project = make_project("p1", "test", "/path");
+        insert_project(&conn, &project).unwrap();
+
+        // Initially NULL
+        let fetched = get_project(&conn, "p1").unwrap().unwrap();
+        assert!(fetched.cached_branch.is_none());
+        assert!(fetched.cached_is_dirty.is_none());
+
+        // Update cache
+        let ok = update_cached_git_status(&conn, "p1", Some("main"), false).unwrap();
+        assert!(ok);
+
+        let fetched = get_project(&conn, "p1").unwrap().unwrap();
+        assert_eq!(fetched.cached_branch, Some("main".to_string()));
+        assert_eq!(fetched.cached_is_dirty, Some(false));
+
+        // Update again (dirty)
+        update_cached_git_status(&conn, "p1", Some("feature"), true).unwrap();
+        let fetched = get_project(&conn, "p1").unwrap().unwrap();
+        assert_eq!(fetched.cached_branch, Some("feature".to_string()));
+        assert_eq!(fetched.cached_is_dirty, Some(true));
+    }
+
+    #[test]
+    fn update_cached_git_status_nonexistent_returns_false() {
+        let (conn, _tmp) = test_db();
+        let ok = update_cached_git_status(&conn, "no-such", Some("main"), false).unwrap();
+        assert!(!ok);
+    }
+
+    #[test]
+    fn cached_git_data_appears_in_list_projects() {
+        let (conn, _tmp) = test_db();
+        let project = make_project("p1", "test", "/path");
+        insert_project(&conn, &project).unwrap();
+        update_cached_git_status(&conn, "p1", Some("develop"), true).unwrap();
+
+        let projects = list_projects(&conn).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].cached_branch, Some("develop".to_string()));
+        assert_eq!(projects[0].cached_is_dirty, Some(true));
     }
 }
