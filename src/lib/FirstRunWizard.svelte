@@ -26,6 +26,7 @@
   let progressTotal = $state(0)
   let progressName = $state('')
   let registeredCount = $state(0)
+  let failedPaths = $state([])
   let manualMode = $state(false)
   let manualPath = $state('')
   let scanError = $state(null)
@@ -77,11 +78,14 @@
     try {
       const results = await registerProjectsBatch(paths)
       registeredCount = results.filter(r => r.success).length
+      failedPaths = results.filter(r => !r.success).map(r => ({ path: r.path, error: r.error }))
       step = 4
-      // Auto-transition after 2 seconds
-      setTimeout(() => {
-        onComplete()
-      }, 2000)
+      // Auto-transition after 2 seconds (only if no failures)
+      if (failedPaths.length === 0) {
+        setTimeout(() => {
+          onComplete()
+        }, 2000)
+      }
     } catch (e) {
       console.error('Registration failed:', e)
     } finally {
@@ -100,10 +104,13 @@
     try {
       const results = await registerProjectsBatch([manualPath.trim()])
       registeredCount = results.filter(r => r.success).length
+      failedPaths = results.filter(r => !r.success).map(r => ({ path: r.path, error: r.error }))
       step = 4
-      setTimeout(() => {
-        onComplete()
-      }, 2000)
+      if (failedPaths.length === 0) {
+        setTimeout(() => {
+          onComplete()
+        }, 2000)
+      }
     } catch (e) {
       console.error('Registration failed:', e)
     } finally {
@@ -175,57 +182,73 @@
     {:else if step === 2}
       <!-- ═══ STEP 2: PROJECT SELECTION ═══ -->
       <div data-testid="wizard-step-2">
-        <h2 class="text-[18px] font-semibold {textPrimary} mb-1">
-          Found {discovered.length} repositor{discovered.length === 1 ? 'y' : 'ies'}
-        </h2>
-        <p class="text-[13px] {textSecondary} mb-4">in ~/projects/</p>
-
-        <!-- Select all / Deselect all -->
-        <div class="flex items-center gap-3 mb-3">
-          <button
-            class="text-[12px] {linkColor} transition-colors"
-            onclick={selectAll}
-          >Select all</button>
-          <span class="text-[12px] {textTertiary}">|</span>
-          <button
-            class="text-[12px] {linkColor} transition-colors"
-            onclick={deselectAll}
-          >Deselect all</button>
-          <span class="flex-1"></span>
-          <span class="text-[12px] {textTertiary}">{selectedCount} selected</span>
-        </div>
-
-        <!-- Project list -->
-        <div class="border {keyline} rounded-lg overflow-hidden mb-4 max-h-[320px] overflow-y-auto">
-          {#each discovered as project}
+        {#if discovered.length === 0}
+          <!-- Empty scan results -->
+          <div class="text-center" data-testid="empty-scan">
+            <h2 class="text-[18px] font-semibold {textPrimary} mb-2">No projects found</h2>
+            <p class="text-[13px] {textSecondary} mb-6">No git repositories were found in ~/projects/. You can add a project manually or try scanning a different directory.</p>
             <button
-              class="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 {keyline} {hoverRow} transition-colors"
-              onclick={() => toggleProject(project.path)}
-            >
-              <div class="w-4 h-4 rounded border {checkBg} flex items-center justify-center shrink-0 {selected.has(project.path) ? 'bg-brand-600 border-brand-600' : ''}">
-                {#if selected.has(project.path)}
-                  <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-                {/if}
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="text-[13px] font-medium {textPrimary} truncate">{project.name}</div>
-                <div class="text-[12px] {textTertiary} truncate font-mono">{project.path}</div>
-              </div>
-              {#if project.has_git}
-                <span class="text-[11px] px-1.5 py-0.5 rounded {dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500'}">git</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
+              class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors mb-3"
+              onclick={() => { manualMode = true; step = 1 }}
+            >Add a project manually</button>
+            <button
+              class="text-[13px] {linkColor} transition-colors"
+              onclick={() => step = 1}
+            >Back</button>
+          </div>
+        {:else}
+          <h2 class="text-[18px] font-semibold {textPrimary} mb-1">
+            Found {discovered.length} repositor{discovered.length === 1 ? 'y' : 'ies'}
+          </h2>
+          <p class="text-[13px] {textSecondary} mb-4">in ~/projects/</p>
 
-        <button
-          class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
-          onclick={handleRegister}
-          disabled={selectedCount === 0}
-          data-testid="register-button"
-        >
-          Register {selectedCount} project{selectedCount !== 1 ? 's' : ''}
-        </button>
+          <!-- Select all / Deselect all -->
+          <div class="flex items-center gap-3 mb-3">
+            <button
+              class="text-[12px] {linkColor} transition-colors"
+              onclick={selectAll}
+            >Select all</button>
+            <span class="text-[12px] {textTertiary}">|</span>
+            <button
+              class="text-[12px] {linkColor} transition-colors"
+              onclick={deselectAll}
+            >Deselect all</button>
+            <span class="flex-1"></span>
+            <span class="text-[12px] {textTertiary}">{selectedCount} selected</span>
+          </div>
+
+          <!-- Project list -->
+          <div class="border {keyline} rounded-lg overflow-hidden mb-4 max-h-[320px] overflow-y-auto">
+            {#each discovered as project}
+              <button
+                class="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 {keyline} {hoverRow} transition-colors"
+                onclick={() => toggleProject(project.path)}
+              >
+                <div class="w-4 h-4 rounded border {checkBg} flex items-center justify-center shrink-0 {selected.has(project.path) ? 'bg-brand-600 border-brand-600' : ''}">
+                  {#if selected.has(project.path)}
+                    <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+                  {/if}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="text-[13px] font-medium {textPrimary} truncate">{project.name}</div>
+                  <div class="text-[12px] {textTertiary} truncate font-mono">{project.path}</div>
+                </div>
+                {#if project.has_git}
+                  <span class="text-[11px] px-1.5 py-0.5 rounded {dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500'}">git</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+
+          <button
+            class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
+            onclick={handleRegister}
+            disabled={selectedCount === 0}
+            data-testid="register-button"
+          >
+            Register {selectedCount} project{selectedCount !== 1 ? 's' : ''}
+          </button>
+        {/if}
       </div>
 
     {:else if step === 3}
@@ -260,7 +283,16 @@
         <h2 class="text-[18px] font-semibold {textPrimary} mb-2">
           {registeredCount} project{registeredCount !== 1 ? 's' : ''} registered
         </h2>
-        <p class="text-[13px] {textSecondary} mb-6">You're all set.</p>
+        {#if failedPaths.length > 0}
+          <p class="text-[13px] {textSecondary} mb-2">{failedPaths.length} project{failedPaths.length !== 1 ? 's' : ''} could not be registered.</p>
+          <div class="text-left mb-4 max-h-[120px] overflow-y-auto">
+            {#each failedPaths as failed}
+              <div class="text-[12px] text-danger-500 py-0.5 font-mono truncate" title={failed.error}>{failed.path}</div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-[13px] {textSecondary} mb-6">You're all set.</p>
+        {/if}
 
         <button
           class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors"

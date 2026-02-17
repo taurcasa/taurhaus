@@ -20,10 +20,12 @@
   let settings = $state(null)
   let loading = $state(true)
   let saving = $state(false)
+  let loadError = $state(null)
 
   // Index state
   let indexStatus = $state(null)
   let rebuilding = $state(false)
+  let rebuildError = $state(null)
 
   // Edit modes
   let editingScanDirs = $state(false)
@@ -39,10 +41,17 @@
 
   async function loadSettings() {
     loading = true
+    loadError = null
     try {
       settings = await getSettings()
     } catch (e) {
-      console.error('Failed to load settings:', e)
+      loadError = e?.message || 'Failed to load settings'
+      // Provide defaults so the UI is still usable
+      settings = {
+        scan_directories: ['~/projects'],
+        thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
+        ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
+      }
     } finally {
       loading = false
     }
@@ -105,15 +114,33 @@
 
   async function handleRebuildIndex() {
     rebuilding = true
+    rebuildError = null
     try {
       await rebuildIndex()
       await loadIndexStatus()
     } catch (e) {
-      console.error('Failed to rebuild index:', e)
+      rebuildError = e?.message || 'Failed to rebuild index'
     } finally {
       rebuilding = false
     }
   }
+
+  // Keyboard: Escape closes settings
+  $effect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        if (editingScanDirs) {
+          editingScanDirs = false
+        } else if (editingIgnore) {
+          editingIgnore = false
+        } else {
+          onClose()
+        }
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  })
 </script>
 
 <div class="flex-1 overflow-y-auto" data-testid="settings-view">
@@ -142,6 +169,11 @@
       </div>
     {:else if settings}
       <div class="space-y-4">
+        {#if loadError}
+          <div class="px-3 py-2 rounded-md text-[13px] {dark ? 'bg-warning-500/10 text-warning-400 border border-warning-500/20' : 'bg-warning-50 text-warning-700 border border-warning-200'}" data-testid="settings-load-error">
+            Could not load saved settings — showing defaults. {loadError}
+          </div>
+        {/if}
 
         <!-- ═══ PROJECT SCANNING ═══ -->
         <section class="{cardBg} rounded-lg border {keyline} p-4" data-testid="settings-scanning">
@@ -314,6 +346,11 @@
           >
             {rebuilding ? 'Rebuilding...' : 'Rebuild index'}
           </button>
+          {#if rebuildError}
+            <p class="mt-2 text-[12px] text-danger-500" data-testid="rebuild-error">{rebuildError}
+              <button class="ml-1 underline" onclick={handleRebuildIndex}>Retry</button>
+            </p>
+          {/if}
         </section>
 
       </div>
