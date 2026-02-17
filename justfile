@@ -53,6 +53,20 @@ db-migrate:
 build-linux:
     npm run tauri build
 
+# Build the WSL daemon binary (Linux target)
+build-daemon:
+    cd src-tauri && cargo build --release --bin taurhaus-daemon
+
+# Install daemon to ~/.local/bin/ (WSL)
+install-daemon: build-daemon
+    mkdir -p ~/.local/bin
+    cp src-tauri/target/release/taurhaus-daemon ~/.local/bin/
+    @echo "Installed taurhaus-daemon to ~/.local/bin/"
+
+# Run the daemon in foreground (for development)
+run-daemon:
+    cd src-tauri && cargo run --bin taurhaus-daemon -- --verbose
+
 # ── Windows Build (via WSL2 interop) ─────────────────────────────────────────
 
 # Sync source to Windows build directory

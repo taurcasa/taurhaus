@@ -28,15 +28,20 @@ use tracing_subscriber::EnvFilter;
 /// Routes operations to LocalProvider or DaemonProvider based on project path.
 pub struct ProviderState {
     pub local: provider::local::LocalProvider,
-    // Future: pub daemon: Option<provider::daemon_client::DaemonProvider>,
+    pub daemon: Option<provider::daemon_client::DaemonProvider>,
 }
 
 impl ProviderState {
     /// Resolve the appropriate provider for a project path.
     /// WSL paths route through the daemon (when available), everything else uses local.
     pub fn resolve(&self, project_path: &str) -> &dyn provider::ProjectProvider {
-        // Future: check is_wsl_path and return daemon if connected
-        provider::provider_for(project_path, &self.local, None)
+        provider::provider_for(
+            project_path,
+            &self.local,
+            self.daemon
+                .as_ref()
+                .map(|d| d as &dyn provider::ProjectProvider),
+        )
     }
 }
 
@@ -72,9 +77,10 @@ pub fn run() {
             let conn = db::init_db(&db_path).expect("failed to initialize database");
             app.manage(DbState(Mutex::new(conn)));
 
-            // Initialize provider (local only for now; daemon added later)
+            // Initialize provider (daemon connection attempted in Task #63)
             app.manage(ProviderState {
                 local: provider::local::LocalProvider,
+                daemon: None,
             });
 
             // Start file watcher

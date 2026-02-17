@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -15,6 +15,9 @@ pub const DEFAULT_PORT: u16 = 17233;
 pub struct DaemonConfig {
     pub port: u16,
     pub bind_addr: String,
+    /// Auto-shutdown after this many seconds with no client activity.
+    /// `None` disables idle timeout.
+    pub idle_timeout_secs: Option<u64>,
 }
 
 impl Default for DaemonConfig {
@@ -22,16 +25,26 @@ impl Default for DaemonConfig {
         Self {
             port: DEFAULT_PORT,
             bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
         }
     }
 }
 
-/// Run the daemon server. Blocks until `shutdown` is set to true.
+/// Current epoch seconds (for idle timeout tracking).
+fn epoch_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Run the daemon server. Blocks until `shutdown` is set to true or idle timeout elapses.
 pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
     let listener = TcpListener::bind(format!("{}:{}", config.bind_addr, config.port))?;
     listener.set_nonblocking(true)?;
 
     let start_time = Instant::now();
+    let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
 
     tracing::info!(port = config.port, "daemon listening");
 
@@ -39,16 +52,25 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
         match listener.accept() {
             Ok((stream, addr)) => {
                 tracing::info!(%addr, "client connected");
+                last_activity.store(epoch_secs(), Ordering::Relaxed);
                 let shutdown_clone = shutdown.clone();
                 let start = start_time;
+                let activity = last_activity.clone();
                 std::thread::spawn(move || {
-                    if let Err(e) = handle_connection(stream, start, &shutdown_clone) {
+                    if let Err(e) = handle_connection(stream, start, &shutdown_clone, &activity) {
                         tracing::warn!(error = %e, "connection handler error");
                     }
                 });
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // No pending connection — sleep briefly and retry
+                // Check idle timeout
+                if let Some(timeout) = config.idle_timeout_secs {
+                    let last = last_activity.load(Ordering::Relaxed);
+                    if epoch_secs().saturating_sub(last) > timeout {
+                        tracing::info!(timeout, "Idle timeout reached, shutting down");
+                        break;
+                    }
+                }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             Err(e) => {
@@ -66,6 +88,7 @@ fn handle_connection(
     stream: TcpStream,
     start_time: Instant,
     shutdown: &AtomicBool,
+    last_activity: &AtomicU64,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
@@ -104,6 +127,7 @@ fn handle_connection(
 
         let response = dispatch(&request, &provider, start_time);
         write_response(&mut writer, &response)?;
+        last_activity.store(epoch_secs(), Ordering::Relaxed);
 
         // Handle shutdown method
         if request.method == protocol::method::SHUTDOWN {
@@ -118,7 +142,7 @@ fn handle_connection(
 /// Write a single NDJSON response line.
 fn write_response(writer: &mut TcpStream, response: &DaemonResponse) -> std::io::Result<()> {
     let json = serde_json::to_string(response).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::Other, e)
+        std::io::Error::other(e)
     })?;
     writer.write_all(json.as_bytes())?;
     writer.write_all(b"\n")?;
@@ -322,6 +346,7 @@ mod tests {
         let config = DaemonConfig {
             port,
             bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
         };
         let shutdown_clone = shutdown.clone();
         std::thread::spawn(move || {
@@ -524,5 +549,37 @@ mod tests {
         // The shutdown flag should be set
         std::thread::sleep(std::time::Duration::from_millis(100));
         assert!(shutdown.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn server_idle_timeout_shuts_down() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let config = DaemonConfig {
+            port,
+            bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: Some(1), // 1 second timeout
+        };
+        let shutdown_clone = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            run(&config, shutdown_clone)
+        });
+
+        // Wait for the server to start, then let it idle for >1s
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Verify server is running (can connect)
+        let _stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        drop(_stream);
+
+        // Wait for idle timeout to trigger
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        // Server thread should have exited
+        let result = handle.join().unwrap();
+        assert!(result.is_ok());
     }
 }

@@ -523,7 +523,7 @@ mod tests {
     #[test]
     fn validate_nonexistent_path() {
         let (db_state, _tmp) = test_db_state();
-        let conn = db_state.0.lock().unwrap();
+        let _conn = db_state.0.lock().unwrap();
 
         let dir = std::path::Path::new("/nonexistent/validate/path");
         let result = PathValidation {

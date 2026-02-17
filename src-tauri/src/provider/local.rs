@@ -78,7 +78,7 @@ impl ProjectProvider for LocalProvider {
         }
 
         std::fs::read(&canonical_file)
-            .map_err(|e| AppError::Io(e))
+            .map_err(AppError::Io)
     }
 
     fn scan_session_files(&self, project_path: &str) -> Result<Vec<PathBuf>, AppError> {

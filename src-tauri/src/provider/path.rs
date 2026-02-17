@@ -1,11 +1,11 @@
-/// WSL path detection and translation utilities.
-///
-/// Windows accesses WSL filesystems via UNC paths:
-/// - `\\wsl$\<distro>\...`
-/// - `\\wsl.localhost\<distro>\...`
-///
-/// The daemon expects native Linux paths (`/home/user/...`), so we need to
-/// translate between the two forms.
+//! WSL path detection and translation utilities.
+//!
+//! Windows accesses WSL filesystems via UNC paths:
+//! - `\\wsl$\<distro>\...`
+//! - `\\wsl.localhost\<distro>\...`
+//!
+//! The daemon expects native Linux paths (`/home/user/...`), so we need to
+//! translate between the two forms.
 
 /// Check whether a path is a WSL UNC path.
 pub fn is_wsl_path(path: &str) -> bool {

@@ -31,6 +31,8 @@ fn seed_project(conn: &rusqlite::Connection, id: &str, path: &str) {
         description: None,
         last_activity_at: Some("2026-02-17T00:00:00Z".to_string()),
         hero_preference: None,
+        cached_branch: None,
+        cached_is_dirty: None,
         created_at: "2026-01-01T00:00:00Z".to_string(),
         updated_at: "2026-02-17T00:00:00Z".to_string(),
     };

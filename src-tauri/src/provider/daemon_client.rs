@@ -26,6 +26,7 @@ const FILE_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct DaemonProvider {
     stream: Mutex<Option<TcpStream>>,
     reader: Mutex<Option<BufReader<TcpStream>>>,
+    #[allow(dead_code)] // Used for reconnection (Task #64)
     addr: String,
     next_id: AtomicU64,
 }
@@ -270,6 +271,7 @@ mod tests {
         let config = DaemonConfig {
             port,
             bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
         };
         let shutdown_clone = shutdown.clone();
         std::thread::spawn(move || {
