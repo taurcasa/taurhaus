@@ -120,6 +120,16 @@ pub fn update_project(
     Ok(changed > 0)
 }
 
+/// Bump a project's `last_activity_at` to now. Returns `true` if the project exists.
+pub fn touch_project_activity(conn: &Connection, id: &str) -> Result<bool, rusqlite::Error> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let changed = conn.execute(
+        "UPDATE projects SET last_activity_at = ?1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, id],
+    )?;
+    Ok(changed > 0)
+}
+
 /// Delete a project by UUID.  Returns `true` if a row was actually deleted.
 pub fn delete_project(conn: &Connection, id: &str) -> Result<bool, rusqlite::Error> {
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", [id])?;
@@ -257,6 +267,32 @@ mod tests {
         let (conn, _tmp) = test_db();
         let deleted = delete_project(&conn, "no-such").unwrap();
         assert!(!deleted);
+    }
+
+    // touch_project_activity bumps last_activity_at
+    #[test]
+    fn touch_activity_bumps_timestamp() {
+        let (conn, _tmp) = test_db();
+        let mut project = make_project("p1", "test", "/path");
+        project.last_activity_at = Some("2020-01-01T00:00:00+00:00".to_string());
+        insert_project(&conn, &project).unwrap();
+
+        let before = get_project(&conn, "p1").unwrap().unwrap();
+        assert_eq!(before.last_activity_at, Some("2020-01-01T00:00:00+00:00".into()));
+
+        let touched = touch_project_activity(&conn, "p1").unwrap();
+        assert!(touched);
+
+        let after = get_project(&conn, "p1").unwrap().unwrap();
+        assert_ne!(after.last_activity_at, before.last_activity_at);
+        assert_ne!(after.updated_at, before.updated_at);
+    }
+
+    #[test]
+    fn touch_activity_nonexistent_returns_false() {
+        let (conn, _tmp) = test_db();
+        let touched = touch_project_activity(&conn, "no-such").unwrap();
+        assert!(!touched);
     }
 
     #[test]

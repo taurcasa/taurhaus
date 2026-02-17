@@ -121,6 +121,20 @@ fn process_watch_events(
     use fs::watcher::WatchEvent;
 
     for event in rx {
+        // Bump last_activity_at for any file/git/session activity
+        let activity_project_id = match &event {
+            WatchEvent::GitChanged { project_id }
+            | WatchEvent::FileChanged { project_id, .. }
+            | WatchEvent::SessionFileCreated { project_id, .. } => Some(project_id.clone()),
+            _ => None,
+        };
+        if let Some(pid) = activity_project_id {
+            let db_state = app.state::<DbState>();
+            if let Ok(conn) = db_state.0.lock() {
+                let _ = services::project::touch_activity(&conn, &pid);
+            };
+        }
+
         match event {
             WatchEvent::GitChanged { project_id } => {
                 let Some(project_path) = get_project_path(&app, &project_id) else {
