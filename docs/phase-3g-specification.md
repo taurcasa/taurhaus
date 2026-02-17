@@ -2,32 +2,44 @@
 
 > Implementation-ready view specifications. Every element has concrete token values from the [Visual System](phase-3f-visual.md). A developer reading this makes zero design decisions.
 
+> **Alignment Note (Phase 5):** This spec was written before the Proposal D "Hybrid" prototype was built. The prototype (`prototype/src/Shell.svelte` + `prototype/src/app.css`) is the **source of truth** for all visual decisions. Where this spec and the prototype conflict, the prototype wins. See the [Prototype–Spec Alignment Table](#prototype-spec-alignment) at the bottom of this document for all resolved discrepancies.
+
 ---
 
 ## Application Shell
 
 The shell is the persistent frame that contains all views.
 
+### Design: Floating Panel Layout
+
+The entire window has a dark teal frame (`bg-brand-950`). Sidebar and main content are separate panels "floating" inside this frame, separated by a visible gap. The titlebar is part of the frame (custom, no OS decorations).
+
 ### Grid
 
 ```
-┌─[240px fixed]─┬─[1fr fluid, min 760px]─────────────┐
-│                │                                     │
-│   V-01         │   Main Area (V-02/V-03/V-05/V-06)  │
-│   Sidebar      │                                     │
-│                │                                     │
-└────────────────┴─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ bg-brand-950 frame (p-1.5 = 6px)                       │
+│ ┌──[46px titlebar]─────────────────────────────────────┐│
+│ │ [Logo 252px]  [Tab pill 36px]  [drag region] [ctrls]││
+│ └──────────────────────────────────────────────────────┘│
+│ ┌─[252px]──┐ 6px gap ┌─[1fr fluid]───────────────────┐│
+│ │ Sidebar  │         │ Main Panel                     ││
+│ │ brand-950│         │ (rounded-b-lg rounded-tr-lg)   ││
+│ └──────────┘         └────────────────────────────────┘│
+└─────────────────────────────────────────────────────────┘
 ```
 
-- **Sidebar**: 240px fixed at ≤1920px viewport. 280px at >1920px.
-- **Main area**: `1fr`, min-width 760px.
-- **Divider**: 1px `border-default` (`neutral-200`) between sidebar and main area.
-- **No gap** — panels are flush with divider between.
-- **At 2560px**: Sidebar 280px, main area 2279px. V-02 content uses `max-width: 960px` centered, or two-column layout (see V-02 spec).
+- **Frame**: `bg-brand-950`, `p-1.5` (6px) padding around all panels.
+- **Titlebar**: 46px tall. Logo area 252px wide (matches sidebar). Tab pill + drag region + controls.
+- **Sidebar**: 252px fixed. `bg-brand-950` with `border border-white/[0.06]`.
+- **Main panel**: `1fr`, `bg-white` (light) / `bg-zinc-950` (dark). Rounded corners.
+- **Gap**: 6px (`gap-1.5`) between sidebar and main panel.
+- **Tab pill**: 36px tall, `rounded-t-lg`, shares bg with main panel (Manila Folder pattern).
+- **Inverse scoop**: concave corner where tab pill meets dark frame on the right side.
 
 ### Responsive Rule
 
-taurhaus is a desktop Tauri app. Minimum viewport: 1280×1440. No tablet/mobile breakpoints. At window widths below 1040px, the sidebar collapses to icon-only mode (48px, activity dots + first letter of project name). Main area fills remaining space.
+taurhaus is a desktop Tauri app. Minimum window: 1280×800. No tablet/mobile breakpoints.
 
 ---
 
@@ -42,23 +54,23 @@ This view lets the user browse all registered projects and select one for focus 
 ```
 ┌─────────────────────────────────┐
 │ Filter Input          (fixed)   │ h: 36px, p: space-2 space-3
-│                                 │ bg: neutral-0, border: border-default
+│                                 │ bg: white/[0.05], text: white/80
 ├─────────────────────────────────┤
 │ Sort: Activity ▾      (fixed)   │ h: 28px, p: space-1 space-3
-│                                 │ text-caption, neutral-500
+│                                 │ text-caption, white/50
 ├─────────────────────────────────┤ gap: space-1
-│ ── ACTIVE ──────────  (scrolls) │ C-03 Group Header
+│ ACTIVE              (scrolls)   │ Uppercase label, 10px, white/40
 │ ┌─────────────────────────────┐ │
-│ │ ● taurhaus        main     │ │ C-02 Sidebar Item, h: 40px
-│ │ ◐ MIR           feat/auth  │ │ dirty indicator: warning-500
+│ │ ● taurhaus        main     │ │ C-02 Sidebar Item, h: 34px
+│ │ ◐ MIR           feat/auth  │ │ dirty indicator: warning-300
 │ │ ● taurui          main     │ │
 │ └─────────────────────────────┘ │
-│ ── RECENT ────────────────────  │
+│ RECENT                          │
 │ ┌─────────────────────────────┐ │
 │ │ ○ taursec         main     │ │
 │ │ ○ taursult        main     │ │
 │ └─────────────────────────────┘ │
-│ ── STALE ─────────────────────  │
+│ STALE                           │
 │ ...                             │
 ├─────────────────────────────────┤
 │ [+] [⚙]              (fixed)   │ h: 44px, p: space-2 space-3
@@ -66,35 +78,36 @@ This view lets the user browse all registered projects and select one for focus 
 └─────────────────────────────────┘
 ```
 
-**Width**: 240px (≤1920px) / 280px (>1920px).
-**Background**: `neutral-50`.
-**Scroll**: Project list scrolls independently. Filter, sort, footer fixed.
+**Width**: 252px fixed.
+**Background**: `bg-brand-950` (same as frame — dark teal in both modes).
+**Border**: `border border-white/[0.06]`, `rounded-lg`.
+**Scroll**: Project list scrolls independently. Filter, footer fixed.
 
 ### Component Instances
 
 | Element | Component | Tokens |
 |---------|-----------|--------|
-| Filter input | C-13 Input/search | h: 36px, border: `neutral-200`, bg: `neutral-0`, text: `text-body`, placeholder: `neutral-400`, focus: `border-focus` |
-| Sort control | C-01 Button/ghost/small | text: `text-caption`, color: `neutral-500`, hover: `neutral-600` |
-| Group header | C-03 Group Header | text: `text-label`, color: `neutral-500`, h: 24px, border-bottom: `neutral-200` 1px, chevron: `neutral-400` |
-| Project item | C-02 Sidebar Item | h: 40px, p: `space-2` vert / `space-3` horiz |
-| → name | — | `text-body-medium`, `neutral-700` (default) / `neutral-900` (selected) |
-| → activity dot | C-12 Badge (dot variant) | 8px circle: `success-500` (active), `info-500` (recent), `warning-500` (stale), `neutral-400` (dormant) |
-| → branch | — | `text-mono-small`, `neutral-500`, right-aligned, truncated |
-| → dirty indicator | — | Half-filled dot or "M" text: `warning-500`. Replaces activity dot fill. |
-| Add button | C-01 Button/icon-only | icon: "+", 24×24px, `neutral-500`, hover: `neutral-700` |
-| Settings button | C-01 Button/icon-only | icon: "⚙", 24×24px, `neutral-500`, hover: `neutral-700` |
+| Filter input | C-13 Input/search | h: 36px, bg: `white/[0.05]`, text: `white/80`, placeholder: `white/40`, focus: `ring-white/20` |
+| Sort control | C-01 Button/ghost/small | text: `text-caption`, color: `white/50`, hover: `white/70` |
+| Group header | Uppercase label | text: 10px uppercase tracking-wider, color: `white/40`, no chevron |
+| Project item | C-02 Sidebar Item | h: 34px, p: `py-1.5 px-3` |
+| → name | — | `text-[13px]`, `white/80` (default) / `white` (selected) |
+| → activity dot | C-12 Badge (dot variant) | 8px circle: `success-300` (active), `info-300` (recent), `warning-300` (stale), `white/30` (dormant) |
+| → branch | — | `text-mono-small`, `white/50`, right-aligned, truncated |
+| → dirty indicator | — | Half-filled dot: `warning-300`. Replaces activity dot fill. |
+| Add button | C-01 Button/icon-only | icon: "+", 24×24px, `white/50`, hover: `white/70` |
+| Settings button | C-01 Button/icon-only | icon: "⚙", 24×24px, `white/50`, hover: `white/70` |
 
 ### Interaction Feedback (Tokenized)
 
 | # | Action | Trigger | Feedback |
 |---|--------|---------|----------|
-| 1 | Select project | Click / Enter | bg → `brand-50` (`motion-instant`). Left border 3px `brand-600`. Detail panel crossfades (`motion-normal`). |
-| 2 | Hover project | Mouse enter | bg → `neutral-100` (`motion-fast`). Cursor: pointer. |
-| 3 | Filter projects | Type in input | List filters instantly. Non-matching hidden. Count: `text-caption` `neutral-500` "12 of 47". |
+| 1 | Select project | Click / Enter | bg → `white/[0.08]` (`motion-instant`). Left border 3px `brand-400`. Detail panel crossfades (`motion-normal`). |
+| 2 | Hover project | Mouse enter | bg → `white/[0.04]` (`motion-fast`). Cursor: pointer. |
+| 3 | Filter projects | Type in input | List filters instantly. Non-matching hidden. Count: `text-caption` `white/40` "12 of 47". |
 | 4 | Sort change | Click sort | List reorders. Sort label updates. |
-| 5 | Collapse group | Click header | Chevron rotates 90° (`motion-normal`). Items slide up (`motion-normal`). |
-| 6 | Keyboard navigate | Arrow Up/Down | Focus ring `border-focus` on item. Wraps bottom→top. |
+| 5 | Collapse group | Click header | Deferred to Phase 5G. Groups always expanded initially. |
+| 6 | Keyboard navigate | Arrow Up/Down | Focus ring `ring-white/20` on item. Wraps bottom→top. |
 
 ### State Specifications
 
@@ -638,6 +651,31 @@ All shared components use identical tokens across every view they appear in. No 
 | `/` or `Cmd+F` | Focus sidebar filter | V-01 focused | C-13 |
 | `Right Arrow` | Expand directory / descend | V-03 tree | C-06 |
 | `Left Arrow` | Collapse directory / ascend | V-03 tree | C-06 |
+
+---
+
+## Prototype–Spec Alignment Table {#prototype-spec-alignment}
+
+The prototype (`prototype/src/Shell.svelte` + `prototype/src/app.css`) was built after this spec and reflects Proposal D "Hybrid" decisions. The table below documents every discrepancy and resolution.
+
+| # | Element | Original Spec | Prototype (Source of Truth) | Resolution |
+|---|---------|---------------|----------------------------|------------|
+| 1 | **Sidebar width** | 240px (collapsed 56px) / 280px (expanded) | 252px fixed, no collapse | Use 252px fixed. Collapse is Phase 5G scope. |
+| 2 | **Sidebar background** | `neutral-50` (light), `neutral-900` (dark) | `bg-brand-950` always (dark teal) | Use `bg-brand-950` in both modes. Sidebar is always dark. |
+| 3 | **Panel layout** | Flush layout with 1px `neutral-200` divider | Floating panels in `bg-brand-950` frame, 6px gap (`gap-1.5`) | Use floating panel layout with `p-1.5` frame padding. |
+| 4 | **Sidebar item height** | 40px | 34px (`py-1.5 px-3`) | Use 34px. Denser sidebar fits more projects. |
+| 5 | **Tab bar** | 40px tall, inside main content area | 36px tab pill in titlebar (Manila Folder pattern) | Tab pill in titlebar, shares bg with main panel. |
+| 6 | **Titlebar** | Not specified (assumed OS decorations) | 46px custom titlebar with logo, tab pill, controls | Use custom titlebar. All non-interactive space is draggable. |
+| 7 | **Activity dot colors** | 500-level (`success-500`, `warning-500`, etc.) | 300-level (`success-300`, `warning-300`, etc.) | Use 300-level for visibility on dark `bg-brand-950` sidebar. |
+| 8 | **Session card style** | `shadow-md` card with `rounded-xl` | Flat left-border treatment, keyline separators, no shadows | Use flat treatment. No cards, no shadows — keyline separators only. |
+| 9 | **Content max-width** | 720px | 700px (`max-w-[700px]`) | Use 700px. |
+| 10 | **Sidebar filter input** | `neutral-0` background | `bg-white/[0.05]` translucent on dark | Use translucent `bg-white/[0.05]` (appropriate for dark sidebar). |
+| 11 | **Sidebar group headers** | 24px tall with chevron toggle | 10px uppercase text labels, no toggle | Use simple uppercase labels. Group toggling deferred to 5G. |
+| 12 | **Color token system** | Semantic tokens (`neutral-200`, `text-body`) | Concrete Tailwind utilities (`bg-zinc-200`, `text-[13px]`) | Map spec semantic tokens to Tailwind `@theme` values from `app.css`. |
+| 13 | **Frame element** | Not present (no frame concept) | `bg-brand-950` frame wraps all panels with `p-1.5` | Adopted. Core Proposal D visual identity. |
+| 14 | **Inverse scoop** | Not present | CSS concave corner where tab pill meets frame | Adopted. Key visual detail for tab-to-panel transition. |
+
+All discrepancies are resolved in favor of the prototype. The spec sections above (Application Shell, V-01) have been updated to match. Remaining view sections (V-02 through V-08) should be interpreted through these same adjustments during implementation.
 
 ---
 
