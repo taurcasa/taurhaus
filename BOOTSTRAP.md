@@ -23,8 +23,8 @@ A bootstrap brief for starting taurhaus development. Follows the project lifecyc
 | **Phase 4** — Architecture | Complete | [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) |
 | **Phase 5** — Implementation | In Progress | See sub-phases below |
 | ↳ **5A** Scaffold + SQLite + Project CRUD | Complete | 7 tasks, 42 Rust + 16 JS tests |
-| ↳ **5B** Git module + file reader | Next | — |
-| ↳ **5C** File watcher + session import | Pending | — |
+| ↳ **5B** Git module + file reader | Complete | 6 tasks, 83 Rust + 30 JS tests |
+| ↳ **5C** File watcher + session import | Next | — |
 | ↳ **5D** Search (tantivy) | Pending | — |
 | ↳ **5E** Scanner + relationships | Pending | — |
 | ↳ **5F** Claude Code integration | Pending | — |
