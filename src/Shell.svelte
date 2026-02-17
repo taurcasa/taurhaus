@@ -1,10 +1,12 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import MarkdownRenderer from './lib/MarkdownRenderer.svelte'
   import CodeViewer from './lib/CodeViewer.svelte'
+  import { classifyFile } from './lib/fileClassifier.js'
+  import * as assetCache from './lib/assetCache.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -210,6 +212,9 @@
     fileTree = []
     selectedFile = null
     fileContent = null
+    fileError = null
+    fileType = null
+    imageDataUri = null
     expandedDirs = new Set()
     // Reset session state
     latestSession = null
@@ -372,14 +377,50 @@
     expandedDirs = next
   }
 
+  let fileError = $state(null)
+  let fileType = $state(null)
+  let imageDataUri = $state(null)
+
   async function openFile(relativePath) {
     if (!selectedProject) return
     selectedFile = relativePath
     fileContentLoading = true
+    fileContent = null
+    fileError = null
+    imageDataUri = null
+    fileType = classifyFile(relativePath)
+
     try {
-      fileContent = await readFile(selectedProject.id, relativePath)
-    } catch {
-      fileContent = { path: relativePath, content: 'Error loading file.', language: null }
+      if (fileType === 'image') {
+        // Check asset cache first, then IPC
+        const cached = assetCache.get(selectedProject.id, relativePath)
+        if (cached) {
+          imageDataUri = cached
+        } else {
+          const dataUri = await readProjectAsset(selectedProject.id, relativePath)
+          if (dataUri) {
+            assetCache.set(selectedProject.id, relativePath, dataUri)
+            imageDataUri = dataUri
+          } else {
+            fileError = 'error'
+          }
+        }
+      } else if (fileType === 'binary' || fileType === 'pdf') {
+        // Known binary — no IPC call
+        fileError = fileType
+      } else {
+        // text or markdown — read as text
+        fileContent = await readFile(selectedProject.id, relativePath)
+      }
+    } catch (e) {
+      const msg = String(e?.message || e || '')
+      if (msg.includes('Binary file') || msg.includes('cannot be read as text')) {
+        fileError = 'binary'
+      } else if (msg.includes('too large')) {
+        fileError = 'too-large'
+      } else {
+        fileError = 'error'
+      }
     } finally {
       fileContentLoading = false
     }
@@ -917,7 +958,9 @@
               <!-- File header -->
               <div class="h-[44px] flex items-center px-6 border-b {keyline} shrink-0">
                 <span class="text-[14px] font-medium {textPrimary} truncate">{selectedFile}</span>
-                {#if fileContent?.language}
+                {#if fileType === 'image'}
+                  <span class="ml-3 text-[11px] {textTertiary}">image</span>
+                {:else if fileContent?.language}
                   <span class="ml-3 text-[11px] {textTertiary}">{fileContent.language}</span>
                 {/if}
               </div>
@@ -930,8 +973,28 @@
                       <div class="h-3 rounded bg-zinc-200/50 animate-pulse" style="width: {40 + Math.random() * 50}%"></div>
                     {/each}
                   </div>
+                {:else if fileError}
+                  <div class="flex flex-col items-center justify-center h-full gap-2 {textTertiary}">
+                    {#if fileError === 'binary'}
+                      <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                      <span class="text-[13px]">Binary file — cannot display as text</span>
+                    {:else if fileError === 'pdf'}
+                      <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                      <span class="text-[13px]">PDF viewer coming soon</span>
+                    {:else if fileError === 'too-large'}
+                      <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                      <span class="text-[13px]">File too large to display (&gt;5 MB)</span>
+                    {:else}
+                      <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                      <span class="text-[13px]">Error loading file</span>
+                    {/if}
+                  </div>
+                {:else if imageDataUri}
+                  <div class="flex items-center justify-center p-6 h-full">
+                    <img src={imageDataUri} alt={selectedFile} class="max-w-full max-h-full object-contain rounded-lg" />
+                  </div>
                 {:else if fileContent}
-                  {#if selectedFile?.endsWith('.md')}
+                  {#if fileType === 'markdown'}
                     <div class="p-6 overflow-auto">
                       <MarkdownRenderer source={fileContent.content} {dark} projectId={selectedProject?.id} />
                     </div>
