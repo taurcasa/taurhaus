@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits } from './lib/ipc.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -53,6 +53,11 @@
   let sidebarError = $state(null)
   let detailLoading = $state(false)
 
+  // Overview: commits
+  let recentCommits = $state([])
+  let commitsLoading = $state(false)
+  let showAllCommits = $state(false)
+
   // Load projects on mount
   $effect(() => {
     loadProjects()
@@ -76,6 +81,7 @@
 
   async function selectProject(project) {
     detailLoading = true
+    showAllCommits = false
     try {
       selectedProject = await getProject(project.id)
     } catch {
@@ -84,6 +90,27 @@
     } finally {
       detailLoading = false
     }
+    // Load commits in parallel with detail
+    loadCommits(project.id, 10)
+  }
+
+  async function loadCommits(projectId, limit) {
+    commitsLoading = true
+    try {
+      recentCommits = await (showAllCommits
+        ? getAllCommits(projectId, 50)
+        : getRecentCommits(projectId, limit))
+    } catch {
+      recentCommits = []
+    } finally {
+      commitsLoading = false
+    }
+  }
+
+  async function viewAllCommits() {
+    if (!selectedProject) return
+    showAllCommits = true
+    await loadCommits(selectedProject.id, 50)
   }
 
   // Dev-only: fullscreen preview simulates Tauri desktop experience
@@ -268,12 +295,72 @@
         <div class="flex-1 overflow-y-auto">
           <div class="max-w-[700px] px-7 pb-8">
 
-            <!-- Project Info -->
+            <!-- Latest Session (placeholder — Phase 5C) -->
+            <section class="pb-6 border-b {keyline}">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] {textTertiary}">Latest session</span>
+              </div>
+              <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+                <p class="text-[13px] {textMuted} italic">No sessions imported yet. Sessions will appear here once the session module is implemented.</p>
+              </div>
+            </section>
+
+            <!-- Recent Activity (commits) -->
             <section class="py-6 border-b {keyline}">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] {textTertiary}">Recent activity</span>
+                {#if recentCommits.length > 0}
+                  <span class="text-[11px] {textTertiary}">{recentCommits.length} commit{recentCommits.length !== 1 ? 's' : ''}</span>
+                {/if}
+              </div>
+              {#if commitsLoading}
+                <div class="space-y-1" data-testid="commits-loading">
+                  {#each Array(3) as _}
+                    <div class="flex items-center h-[30px]">
+                      <div class="h-2.5 w-12 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse"></div>
+                      <div class="h-2.5 flex-1 rounded bg-zinc-100 dark:bg-zinc-800/50 animate-pulse ml-3"></div>
+                    </div>
+                  {/each}
+                </div>
+              {:else if recentCommits.length === 0}
+                <p class="text-[13px] {textMuted}">No commits found.</p>
+              {:else}
+                <div>
+                  {#each recentCommits as commit}
+                    <div class="flex items-center h-[30px] text-[13px] {hoverRow} -mx-2 px-2 rounded">
+                      <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
+                      <span class="{textBody} truncate flex-1">{commit.message}</span>
+                      <span class="text-[11px] {timeColor} shrink-0 ml-3">{commit.date}</span>
+                    </div>
+                  {/each}
+                </div>
+                {#if !showAllCommits}
+                  <button
+                    class="mt-1 text-[11px] {textTertiary} hover:underline"
+                    onclick={viewAllCommits}
+                  >View all &rarr;</button>
+                {/if}
+              {/if}
+            </section>
+
+            <!-- Relationships (placeholder — Phase 5E) -->
+            <section class="py-6 border-b {keyline}">
+              <span class="text-[11px] {textTertiary}">Relationships</span>
+              <p class="mt-2 text-[13px] {textMuted}">Auto-detected relationships will appear here.</p>
+            </section>
+
+            <!-- Session History (placeholder — Phase 5C) -->
+            <section class="py-6 border-b {keyline}">
+              <span class="text-[11px] {textTertiary}">Session history</span>
+              <p class="mt-2 text-[13px] {textMuted}">Session history will appear here once imported.</p>
+            </section>
+
+            <!-- Project Info -->
+            <section class="py-6 pb-10">
               <span class="text-[11px] {textTertiary}">Project info</span>
               <div class="mt-2 space-y-1 text-[13px]">
                 <div class="flex items-center gap-3">
-                  <span class="{textTertiary} w-8">Path</span>
+                  <span class="{textTertiary} w-14">Path</span>
                   <span class="font-mono text-[12px] {textMuted}">{selectedProject.path}</span>
                 </div>
                 {#if selectedProject.created_at}
@@ -287,11 +374,6 @@
                 <button class="text-[11px] {textTertiary}">Edit</button>
                 <button class="text-[11px] {dangerColor}">Remove</button>
               </div>
-            </section>
-
-            <!-- Placeholder for sections built in later phases -->
-            <section class="py-6">
-              <span class="text-[11px] {textTertiary}">Sessions, commits, and relationships will appear here once those modules are implemented (Phases 5B-5F).</span>
             </section>
 
           </div>
