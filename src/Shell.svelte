@@ -2,6 +2,7 @@
   import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
+  import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import MarkdownRenderer from './lib/MarkdownRenderer.svelte'
   import CodeViewer from './lib/CodeViewer.svelte'
@@ -12,6 +13,7 @@
   let preview = $state(false)
   let searchOpen = $state(false)
   let settingsOpen = $state(false)
+  let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
 
@@ -618,7 +620,7 @@
 
       <!-- Footer -->
       <div class="h-[44px] flex items-center justify-between px-4 border-t border-white/[0.06]">
-        <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Add project">
+        <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Add project" onclick={() => showAddProject = true}>
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
         </button>
         <button
@@ -1017,5 +1019,9 @@
   </div>
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />
+
+  {#if showAddProject}
+    <AddProjectModal {dark} onClose={() => showAddProject = false} onProjectsAdded={loadProjects} />
+  {/if}
 </div>
 {/if}
