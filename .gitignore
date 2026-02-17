@@ -22,6 +22,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Development screenshots (Playwright captures)
-proposal-*.png
-shell-*.png
+# Development screenshots (Playwright captures, visual reviews)
+*.png
+!docs/*.png
