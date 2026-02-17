@@ -3994,6 +3994,7 @@ name = "taurhaus"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dirs",
  "git2",
  "ignore",
  "notify",

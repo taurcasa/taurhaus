@@ -13,9 +13,7 @@ pub mod session;
 
 pub mod search;
 
-// Modules added incrementally as implemented:
-// mod claude_code;
-// mod scanner;
+pub mod claude_code;
 
 use std::sync::Mutex;
 
