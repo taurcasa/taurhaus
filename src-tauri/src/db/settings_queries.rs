@@ -5,7 +5,7 @@
 
 use rusqlite::Connection;
 
-use crate::models::{ActivityThresholds, Settings};
+use crate::models::{ActivityThresholds, DaemonSettings, Settings};
 
 /// Get a single setting value by key.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusqlite::Error> {
@@ -39,6 +39,9 @@ const KEY_ACTIVE_DAYS: &str = "thresholds.active_days";
 const KEY_RECENT_DAYS: &str = "thresholds.recent_days";
 const KEY_STALE_DAYS: &str = "thresholds.stale_days";
 const KEY_IGNORE_PATTERNS: &str = "ignore_patterns";
+const KEY_DAEMON_PORT: &str = "daemon.port";
+const KEY_DAEMON_PATH: &str = "daemon.path";
+const KEY_DAEMON_AUTO_START: &str = "daemon.auto_start";
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -64,6 +67,17 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         .and_then(|v| serde_json::from_str(&v).ok())
         .unwrap_or(defaults.ignore_patterns);
 
+    let daemon_port = get_setting(conn, KEY_DAEMON_PORT)?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(defaults.daemon.port);
+
+    let daemon_path = get_setting(conn, KEY_DAEMON_PATH)?
+        .unwrap_or(defaults.daemon.path);
+
+    let daemon_auto_start = get_setting(conn, KEY_DAEMON_AUTO_START)?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(defaults.daemon.auto_start);
+
     Ok(Settings {
         scan_directories,
         thresholds: ActivityThresholds {
@@ -72,6 +86,11 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             stale_days,
         },
         ignore_patterns,
+        daemon: DaemonSettings {
+            port: daemon_port,
+            path: daemon_path,
+            auto_start: daemon_auto_start,
+        },
     })
 }
 
@@ -100,6 +119,14 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
     let ignore_json =
         serde_json::to_string(&settings.ignore_patterns).unwrap_or_else(|_| "[]".to_string());
     set_setting(conn, KEY_IGNORE_PATTERNS, &ignore_json)?;
+
+    set_setting(conn, KEY_DAEMON_PORT, &settings.daemon.port.to_string())?;
+    set_setting(conn, KEY_DAEMON_PATH, &settings.daemon.path)?;
+    set_setting(
+        conn,
+        KEY_DAEMON_AUTO_START,
+        &settings.daemon.auto_start.to_string(),
+    )?;
 
     Ok(())
 }
@@ -181,6 +208,11 @@ mod tests {
                 stale_days: 60,
             },
             ignore_patterns: vec!["node_modules".to_string(), ".git".to_string()],
+            daemon: DaemonSettings {
+                port: 18000,
+                path: "/custom/daemon".to_string(),
+                auto_start: false,
+            },
         };
 
         save_settings(&conn, &settings).unwrap();
@@ -191,6 +223,9 @@ mod tests {
         assert_eq!(loaded.thresholds.recent_days, 14);
         assert_eq!(loaded.thresholds.stale_days, 60);
         assert_eq!(loaded.ignore_patterns, settings.ignore_patterns);
+        assert_eq!(loaded.daemon.port, 18000);
+        assert_eq!(loaded.daemon.path, "/custom/daemon");
+        assert!(!loaded.daemon.auto_start);
     }
 
     #[test]
@@ -219,6 +254,7 @@ mod tests {
                 stale_days: 90,
             },
             ignore_patterns: vec![],
+            daemon: DaemonSettings::default(),
         };
         save_settings(&conn, &settings1).unwrap();
 
@@ -230,6 +266,7 @@ mod tests {
                 stale_days: 60,
             },
             ignore_patterns: vec!["target".to_string()],
+            daemon: DaemonSettings::default(),
         };
         save_settings(&conn, &settings2).unwrap();
 
@@ -252,5 +289,23 @@ mod tests {
         // Should fall back to defaults
         assert!(loaded.scan_directories.is_empty());
         assert_eq!(loaded.thresholds.active_days, 7);
+    }
+
+    #[test]
+    fn daemon_settings_default_when_empty() {
+        let (conn, _tmp) = test_db();
+        let loaded = get_all_settings(&conn).unwrap();
+        let defaults = DaemonSettings::default();
+        assert_eq!(loaded.daemon.port, defaults.port);
+        assert_eq!(loaded.daemon.path, defaults.path);
+        assert_eq!(loaded.daemon.auto_start, defaults.auto_start);
+    }
+
+    #[test]
+    fn daemon_settings_invalid_port_falls_back_to_default() {
+        let (conn, _tmp) = test_db();
+        set_setting(&conn, "daemon.port", "not-a-number").unwrap();
+        let loaded = get_all_settings(&conn).unwrap();
+        assert_eq!(loaded.daemon.port, DaemonSettings::default().port);
     }
 }

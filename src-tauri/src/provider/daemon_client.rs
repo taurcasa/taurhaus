@@ -77,6 +77,17 @@ impl DaemonProvider {
         }
     }
 
+    /// Send a request for status/admin purposes (e.g., ping from IPC commands).
+    ///
+    /// Unlike the trait methods, this returns the raw DaemonResponse so callers
+    /// can inspect version/uptime without deserializing a specific type.
+    pub fn send_status_request(
+        &self,
+        request: &DaemonRequest,
+    ) -> Result<DaemonResponse, AppError> {
+        self.send_request(request, PING_TIMEOUT)
+    }
+
     /// Reconnect to the daemon at the stored address.
     ///
     /// Replaces the TCP stream and reader. On success, marks the provider

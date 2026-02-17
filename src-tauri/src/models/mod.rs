@@ -174,6 +174,38 @@ pub struct Settings {
     pub scan_directories: Vec<String>,
     pub thresholds: ActivityThresholds,
     pub ignore_patterns: Vec<String>,
+    pub daemon: DaemonSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DaemonSettings {
+    pub port: u16,
+    pub path: String,
+    pub auto_start: bool,
+}
+
+impl Default for DaemonSettings {
+    fn default() -> Self {
+        Self {
+            port: 17233,
+            path: "~/.local/bin/taurhaus-daemon".to_string(),
+            auto_start: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Daemon status (for IPC query)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DaemonStatus {
+    /// "connected", "disconnected", "not_configured", "reconnecting"
+    pub status: String,
+    pub version: Option<String>,
+    pub uptime_secs: Option<u64>,
+    pub port: u16,
+    pub wsl_distro: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
