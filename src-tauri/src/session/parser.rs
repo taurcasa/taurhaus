@@ -72,14 +72,38 @@ pub fn parse_handoff(content: &str) -> Result<ParsedSession, AppError> {
     })
 }
 
+/// Max file size for session handoff files (5 MB).
+const MAX_SESSION_FILE_SIZE: u64 = 5 * 1024 * 1024;
+
 /// Parse a session handoff file from disk.
+///
+/// **Trust assumption**: `path` must come from a trusted source (project root
+/// scan or OS file watcher), not from untrusted frontend input.
 pub fn parse_handoff_file(path: &Path) -> Result<ParsedSession, AppError> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.len() > MAX_SESSION_FILE_SIZE {
+        return Err(AppError::ParseError(format!(
+            "Session file too large ({} bytes, max {})",
+            metadata.len(),
+            MAX_SESSION_FILE_SIZE,
+        )));
+    }
     let content = std::fs::read_to_string(path)?;
     parse_handoff(&content)
 }
 
 /// Parse a companion .meta.json sidecar file.
+///
+/// **Trust assumption**: `path` must come from a trusted source.
 pub fn parse_meta_sidecar(path: &Path) -> Result<SessionMeta, AppError> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.len() > MAX_SESSION_FILE_SIZE {
+        return Err(AppError::ParseError(format!(
+            "Session meta file too large ({} bytes, max {})",
+            metadata.len(),
+            MAX_SESSION_FILE_SIZE,
+        )));
+    }
     let content = std::fs::read_to_string(path)?;
     let meta: SessionMeta = serde_json::from_str(&content).map_err(|e| {
         AppError::ParseError(format!("Invalid session meta JSON: {e}"))

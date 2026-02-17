@@ -2,11 +2,18 @@ use rusqlite::Connection;
 
 /// Embedded SQL migration files.  Each entry is `(version, name, sql)`.
 /// New migrations are appended — never modify existing ones.
-const MIGRATIONS: &[(i64, &str, &str)] = &[(
-    1,
-    "initial",
-    include_str!("migrations/001_initial.sql"),
-)];
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (
+        1,
+        "initial",
+        include_str!("migrations/001_initial.sql"),
+    ),
+    (
+        2,
+        "session_file_path_unique",
+        include_str!("migrations/002_session_file_path_unique.sql"),
+    ),
+];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations
 /// that haven't been run yet.  Safe to call on every app start.
