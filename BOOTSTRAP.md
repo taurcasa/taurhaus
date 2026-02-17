@@ -29,6 +29,7 @@ A bootstrap brief for starting taurhaus development. Follows the project lifecyc
 | ↳ **5E** Scanner + relationships | Complete | 6 tasks, 202 Rust + 80 JS tests |
 | ↳ **5F** Claude Code integration | Complete | 6 tasks, 230 Rust + 80 JS tests |
 | ↳ **5G** Polish + Settings + First-Run | Complete | 6 tasks, 246 Rust + 108 JS tests |
+| ↳ **ADR-023** Dual-path architecture | Complete | 15 tasks, 356 Rust tests |
 
 > **Naming convention**: Top-level phases use numbers (1-5). Sub-phases use letters (3A-3G). If a sub-phase needs further breakdown, use numbers again (3E.1, 3E.2). This avoids confusion with TaurUI's internal phase numbering (Phase 0-5), which maps to our 3B-3G.
 
