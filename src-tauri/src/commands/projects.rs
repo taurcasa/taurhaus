@@ -88,39 +88,15 @@ pub fn remove_project(
 
 #[tauri::command]
 pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
-    let dir = std::path::Path::new(&path);
-    if !dir.is_dir() {
-        return Err(format!("Not a directory: {path}"));
-    }
-
-    let mut discovered = Vec::new();
-
-    let entries = std::fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {e}"))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let entry_path = entry.path();
-        if entry_path.is_dir() {
-            let has_git = entry_path.join(".git").is_dir();
-            let name = entry_path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            // Skip hidden directories
-            if name.starts_with('.') {
-                continue;
-            }
-
-            discovered.push(DiscoveredProject {
-                path: entry_path.to_string_lossy().to_string(),
-                name,
-                has_git,
-            });
-        }
-    }
-
-    discovered.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(discovered)
+    let results = crate::services::scanner::scan_directory(std::path::Path::new(&path), 2)?;
+    Ok(results
+        .into_iter()
+        .map(|d| DiscoveredProject {
+            path: d.path,
+            name: d.name,
+            has_git: d.has_git,
+        })
+        .collect())
 }
 
 #[cfg(test)]
