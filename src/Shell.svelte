@@ -635,7 +635,7 @@
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {mainBg} {textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
       {#if settingsOpen}
-        <Settings {dark} onClose={() => settingsOpen = false} />
+        <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} />
       {:else if !selectedProject}
         <!-- No project selected -->
         <div class="flex-1 flex items-center justify-center">

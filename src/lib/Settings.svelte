@@ -1,7 +1,7 @@
 <script>
   import { getSettings, updateSettings, getIndexStatus, rebuildIndex } from './ipc.js'
 
-  let { dark = false, onClose = () => {} } = $props()
+  let { dark = false, onClose = () => {}, onSettingsChanged = () => {} } = $props()
 
   // Color tokens — $derived based on dark prop
   const mainBg        = $derived(dark ? 'bg-zinc-950' : 'bg-white')
@@ -70,6 +70,7 @@
     saving = true
     try {
       settings = await updateSettings(settings)
+      onSettingsChanged()
     } catch (e) {
       console.error('Failed to save settings:', e)
     } finally {
