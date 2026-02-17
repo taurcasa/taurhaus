@@ -43,6 +43,7 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 - **IPC**: Fine-grained commands (~25). One per operation. Frontend calls in parallel.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
+- **File rendering**: Classification → IPC → cache → render. See [`docs/file-rendering-pipeline.md`](docs/file-rendering-pipeline.md).
 - **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
@@ -61,6 +62,8 @@ Full architecture: [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md
 | `docs/design-brief.md` | Full requirements (Phase 2) |
 | `docs/phase-4-architecture.md` | Technical architecture (22 ADRs) |
 | `docs/system-architecture.jpg` | System architecture infographic |
+| `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
+| `docs/file-rendering-pipeline.jpg` | File rendering pipeline infographic |
 | `BOOTSTRAP.md` | Project lifecycle and phase status |
 
 ## Mock Data

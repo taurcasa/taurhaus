@@ -556,6 +556,8 @@ The `/handoff` skill (manual fallback) follows the same path — it writes files
 - Shiki loaded once at app startup (~100KB WASM), grammars loaded on demand
 - Large file performance: set a threshold (e.g., >5000 lines) where we show a warning or truncate with "show full file" button
 
+**Implementation**: See [`docs/file-rendering-pipeline.md`](file-rendering-pipeline.md) for the full file classification, rendering, and caching pipeline.
+
 ---
 
 ## Topic 4: Rust Backend Modules
