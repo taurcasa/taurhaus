@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::db::queries;
 use crate::errors::AppError;
-use crate::git::{commits as git_commits, status as git_status};
+
 use crate::models::{
     ActivityState, ActivityThresholds, Project, ProjectDetail, ProjectSummary,
 };
@@ -33,12 +33,11 @@ pub fn register_project(
         .or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()))
         .unwrap_or_else(|| "unnamed".to_string());
 
-    // Seed last_activity_at from latest git commit, not registration time.
-    // This ensures a project registered today but last committed to months ago
-    // shows the correct activity state immediately.
-    let last_activity = git_commits::get_latest_commit_time(dir)
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| now.clone());
+    // Use registration time for now — the startup reseed routine will
+    // correct this from git history on next launch.  Calling
+    // get_latest_commit_time() here is too slow for batch registration
+    // over cross-filesystem paths (e.g. WSL UNC from Windows).
+    let last_activity = now.clone();
 
     let project = Project {
         id: Uuid::new_v4().to_string(),
@@ -66,6 +65,12 @@ pub fn register_project(
 }
 
 /// List all registered projects with computed activity states.
+///
+/// Git fields (`branch`, `is_dirty`) are NOT populated here — calling
+/// git_status for every project is too slow on cross-filesystem paths
+/// (e.g. WSL UNC from Windows, where each libgit2 status scan takes
+/// seconds over the 9P protocol).  The frontend should call
+/// `get_git_status` per-project lazily after the list renders.
 pub fn list_projects(
     conn: &Connection,
     thresholds: &ActivityThresholds,
@@ -75,14 +80,7 @@ pub fn list_projects(
 
     Ok(projects
         .iter()
-        .map(|p| {
-            let mut summary = ProjectSummary::from_project(p, thresholds, now);
-            if let Ok(status) = git_status::get_status(Path::new(&p.path)) {
-                summary.branch = status.branch;
-                summary.is_dirty = Some(status.is_dirty);
-            }
-            summary
-        })
+        .map(|p| ProjectSummary::from_project(p, thresholds, now))
         .collect())
 }
 
@@ -129,11 +127,12 @@ pub fn remove_project(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Build a `ProjectDetail` from a database `Project` row.
+/// Git fields (`branch`, `is_dirty`) are NOT populated here — the sidebar's
+/// `list_projects` already provides fresh git status, so the frontend should
+/// use that data.  This keeps `get_project` a pure DB operation (instant).
 fn to_project_detail(project: &Project, thresholds: &ActivityThresholds) -> ProjectDetail {
     let now = Utc::now();
-    let (branch, is_dirty) = git_status::get_status(Path::new(&project.path))
-        .map(|s| (s.branch, Some(s.is_dirty)))
-        .unwrap_or((None, None));
 
     ProjectDetail {
         id: project.id.clone(),
@@ -149,8 +148,8 @@ fn to_project_detail(project: &Project, thresholds: &ActivityThresholds) -> Proj
         hero_preference: project.hero_preference.clone(),
         created_at: project.created_at.clone(),
         updated_at: project.updated_at.clone(),
-        branch,
-        is_dirty,
+        branch: None,
+        is_dirty: None,
     }
 }
 

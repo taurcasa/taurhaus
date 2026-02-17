@@ -33,6 +33,13 @@ pub fn run() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
+    // Disable libgit2 ownership validation so repos on WSL filesystems
+    // (accessed via \\wsl$\ UNC paths) don't get rejected as "unsafe".
+    // Safe for a desktop app where the user explicitly registers projects.
+    unsafe {
+        let _ = git2::opts::set_verify_owner_validation(false);
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             tracing::info!("taurhaus starting");
@@ -63,14 +70,20 @@ pub fn run() {
                 .expect("failed to initialize search index");
             app.manage(SearchState(Mutex::new(search_index)));
 
-            // Re-seed activity timestamps from git (fixes stale registration-time values)
-            startup_reseed_activity(app);
+            // Run slow startup tasks on a background thread so the window
+            // appears immediately.  These involve git operations that can take
+            // seconds per project over cross-filesystem paths (WSL UNC).
+            let bg_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                // Re-seed activity timestamps from git
+                startup_reseed_activity(&bg_handle);
 
-            // Import any unimported sessions for registered projects
-            startup_session_scan(app);
+                // Import any unimported sessions
+                startup_session_scan(&bg_handle);
 
-            // Build search index if empty
-            startup_search_index(app);
+                // Build search index if empty
+                startup_search_index(&bg_handle);
+            });
 
             tracing::info!(?db_path, "database initialized");
             Ok(())
@@ -86,6 +99,7 @@ pub fn run() {
             commands::projects::validate_project_path,
             commands::projects::is_first_run,
             commands::projects::register_projects_batch,
+            commands::projects::get_system_roots,
             commands::git::get_recent_commits,
             commands::git::get_all_commits,
             commands::git::get_git_status,
@@ -282,7 +296,7 @@ fn process_watch_events(
 /// On startup, re-seed last_activity_at from each project's latest git commit.
 /// This corrects projects whose activity timestamp was incorrectly set to
 /// registration time instead of actual last-commit time.
-fn startup_reseed_activity(app: &tauri::App) {
+fn startup_reseed_activity(app: &tauri::AppHandle) {
     let db_state = app.state::<DbState>();
     let conn = match db_state.0.lock() {
         Ok(c) => c,
@@ -326,7 +340,7 @@ fn startup_reseed_activity(app: &tauri::App) {
 }
 
 /// On startup, build the search index if it's empty.
-fn startup_search_index(app: &tauri::App) {
+fn startup_search_index(app: &tauri::AppHandle) {
     let search_state = app.state::<SearchState>();
     let mut index = match search_state.0.lock() {
         Ok(i) => i,
@@ -362,7 +376,7 @@ fn startup_search_index(app: &tauri::App) {
 }
 
 /// On startup, scan all registered projects for unimported session handoffs.
-fn startup_session_scan(app: &tauri::App) {
+fn startup_session_scan(app: &tauri::AppHandle) {
     let db_state = app.state::<DbState>();
     let conn = match db_state.0.lock() {
         Ok(c) => c,

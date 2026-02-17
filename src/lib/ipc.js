@@ -136,6 +136,13 @@ export function listDirectory(path) {
   ])
 }
 
+/** Get filesystem roots (drive letters on Windows, ["/"] on Linux). */
+export function getSystemRoots() {
+  return invokeOrMock('get_system_roots', undefined, () => [
+    { name: '/', path: '/', isExpandable: true },
+  ])
+}
+
 /** Validate a path: exists, is git repo, is already registered. */
 export function validateProjectPath(path) {
   return invokeOrMock('validate_project_path', { path }, () => ({

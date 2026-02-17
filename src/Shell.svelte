@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, getGitStatus } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
@@ -191,10 +191,32 @@
       if (!selectedProject && projects.length > 0) {
         await selectProject(projects[0])
       }
+      // Lazy-load git status for each project in parallel (non-blocking).
+      // list_projects no longer calls git_status inline because it's too
+      // slow over cross-filesystem paths (WSL UNC, network drives).
+      loadGitStatusForAll()
     } catch (e) {
       sidebarError = e.message || 'Failed to load projects'
     } finally {
       sidebarLoading = false
+    }
+  }
+
+  /** Fetch git status for all projects in parallel and merge into sidebar. */
+  function loadGitStatusForAll() {
+    for (const project of projects) {
+      getGitStatus(project.id).then(status => {
+        const idx = projects.findIndex(p => p.id === project.id)
+        if (idx !== -1) {
+          projects[idx] = { ...projects[idx], branch: status.branch, is_dirty: status.is_dirty }
+        }
+        // Also update selected project if it matches
+        if (selectedProject?.id === project.id) {
+          selectedProject = { ...selectedProject, branch: status.branch, is_dirty: status.is_dirty }
+        }
+      }).catch(() => {
+        // Git status unavailable — leave branch/is_dirty as null
+      })
     }
   }
 
@@ -269,7 +291,9 @@
   }
 
   async function selectProject(project) {
-    detailLoading = true
+    // Show immediately using sidebar data (branch/is_dirty already present)
+    selectedProject = project
+    detailLoading = false
     showAllCommits = false
     heroMode = 'auto'
     // Reset file tree for new project
@@ -285,22 +309,21 @@
     sessionHistory = []
     readmeContent = null
     relationships = []
-    try {
-      selectedProject = await getProject(project.id)
-    } catch {
-      // On error, use the summary data we already have
-      selectedProject = project
-    } finally {
-      detailLoading = false
-    }
-    // Load commits, sessions, README, and relationships in parallel
-    loadCommits(project.id, 10)
-    loadSessions(project.id)
-    loadReadmeForOverview(project.id)
-    loadRelationships(project.id)
+    // Load detail (pure DB, fast) and content in parallel
+    const projectId = project.id
+    getProject(projectId).then(detail => {
+      // Only merge if still viewing this project
+      if (selectedProject?.id === projectId) {
+        selectedProject = { ...selectedProject, ...detail }
+      }
+    }).catch(() => {})
+    loadCommits(projectId, 10)
+    loadSessions(projectId)
+    loadReadmeForOverview(projectId)
+    loadRelationships(projectId)
     // If on files tab, load file tree for new project
     if (activeTab === 'files') {
-      loadFileTree(project.id)
+      loadFileTree(projectId)
     }
   }
 

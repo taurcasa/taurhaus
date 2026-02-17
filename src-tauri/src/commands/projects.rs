@@ -252,6 +252,78 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
     Ok(entries)
 }
 
+/// Return filesystem root entries for the directory tree browser.
+/// On Windows: available drive letters (C:\, D:\, etc.) + WSL distributions
+/// On Linux/macOS: just ["/"]
+#[tauri::command]
+pub fn get_system_roots() -> Vec<DirectoryEntry> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut roots = Vec::new();
+
+        // Check drives A-Z for existence
+        for letter in b'A'..=b'Z' {
+            let drive = format!("{}:\\", letter as char);
+            let path = std::path::Path::new(&drive);
+            if path.exists() {
+                let is_expandable = std::fs::read_dir(path)
+                    .map(|rd| {
+                        rd.filter_map(|e| e.ok())
+                            .any(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+                    })
+                    .unwrap_or(false);
+                roots.push(DirectoryEntry {
+                    name: drive.clone(),
+                    path: drive,
+                    is_expandable,
+                });
+            }
+        }
+
+        // Discover WSL distributions via `wsl --list --quiet`.
+        // The \\wsl$\ UNC root can't be listed with read_dir, but individual
+        // distro paths like \\wsl$\Ubuntu\ work fine.
+        if let Ok(output) = std::process::Command::new("wsl")
+            .args(["--list", "--quiet"])
+            .output()
+        {
+            // wsl.exe outputs UTF-16LE; decode and parse distro names
+            let text = String::from_utf16_lossy(
+                &output
+                    .stdout
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .collect::<Vec<_>>(),
+            );
+            for line in text.lines() {
+                let distro = line.trim();
+                if distro.is_empty() {
+                    continue;
+                }
+                let wsl_path = format!("\\\\wsl$\\{}", distro);
+                if std::path::Path::new(&wsl_path).is_dir() {
+                    roots.push(DirectoryEntry {
+                        name: format!("WSL: {}", distro),
+                        path: wsl_path,
+                        is_expandable: true,
+                    });
+                }
+            }
+        }
+
+        roots
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec![DirectoryEntry {
+            name: "/".to_string(),
+            path: "/".to_string(),
+            is_expandable: true,
+        }]
+    }
+}
+
 /// Result of validating a project path.
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
