@@ -1,7 +1,9 @@
 mod commands;
 mod config;
 pub mod db;
+pub mod errors;
 pub mod models;
+pub mod services;
 
 // Modules added incrementally as implemented:
 // mod claude_code;
