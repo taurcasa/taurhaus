@@ -15,12 +15,29 @@ pub mod search;
 
 pub mod claude_code;
 
-use std::path::Path;
+pub mod provider;
+
 use std::sync::Mutex;
 
 use commands::projects::DbState;
 use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
+
+/// Managed state: holds the project provider for filesystem/git operations.
+/// Routes operations to LocalProvider or DaemonProvider based on project path.
+pub struct ProviderState {
+    pub local: provider::local::LocalProvider,
+    // Future: pub daemon: Option<provider::daemon_client::DaemonProvider>,
+}
+
+impl ProviderState {
+    /// Resolve the appropriate provider for a project path.
+    /// WSL paths route through the daemon (when available), everything else uses local.
+    pub fn resolve(&self, project_path: &str) -> &dyn provider::ProjectProvider {
+        // Future: check is_wsl_path and return daemon if connected
+        provider::provider_for(project_path, &self.local, None)
+    }
+}
 
 /// Managed state: holds the file watcher so it lives for the app lifetime.
 pub struct WatcherState(pub Mutex<fs::watcher::ProjectWatcher>);
@@ -53,6 +70,11 @@ pub fn run() {
             let db_path = data_dir.join("taurhaus.db");
             let conn = db::init_db(&db_path).expect("failed to initialize database");
             app.manage(DbState(Mutex::new(conn)));
+
+            // Initialize provider (local only for now; daemon added later)
+            app.manage(ProviderState {
+                local: provider::local::LocalProvider,
+            });
 
             // Start file watcher
             let (watcher, rx) = fs::watcher::ProjectWatcher::new();
@@ -162,8 +184,10 @@ fn process_watch_events(
                 };
                 let path = std::path::Path::new(&project_path);
 
-                // Re-read git status and emit to frontend
-                if let Ok(status) = git::status::get_status(path) {
+                // Re-read git status via provider and emit to frontend
+                let provider_state = app.state::<ProviderState>();
+                let provider = provider_state.resolve(&project_path);
+                if let Ok(status) = provider.git_status(&project_path) {
                     let _ = app.emit(
                         "project-git-changed",
                         serde_json::json!({
@@ -314,9 +338,12 @@ fn startup_reseed_activity(app: &tauri::AppHandle) {
         }
     };
 
+    let provider_state = app.state::<ProviderState>();
+
     let mut updated = 0;
     for project in &projects {
-        if let Some(commit_time) = git::commits::get_latest_commit_time(Path::new(&project.path)) {
+        let provider = provider_state.resolve(&project.path);
+        if let Ok(Some(commit_time)) = provider.latest_commit_time(&project.path) {
             let commit_ts = commit_time.to_rfc3339();
             // Only update if the current value differs from the git-derived one
             if project.last_activity_at.as_deref() != Some(&commit_ts) {

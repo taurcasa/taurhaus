@@ -2,8 +2,8 @@ use tauri::State;
 
 use crate::commands::projects::DbState;
 use crate::db::queries;
-use crate::git::{commits, status};
 use crate::models::{Commit, GitStatus};
+use crate::ProviderState;
 
 /// Look up a project's path from the DB, releasing the lock immediately.
 fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
@@ -18,33 +18,39 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
 #[tauri::command]
 pub fn get_recent_commits(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
     project_id: String,
     limit: Option<usize>,
 ) -> Result<Vec<Commit>, String> {
     let path = resolve_project_path(&db, &project_id)?;
-    let repo_path = std::path::Path::new(&path);
-    commits::get_recent_commits(repo_path, limit.unwrap_or(10).min(500)).map_err(|e| e.to_string())
+    let provider = providers.resolve(&path);
+    provider
+        .recent_commits(&path, limit.unwrap_or(10).min(500))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_all_commits(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
     project_id: String,
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Vec<Commit>, String> {
     let path = resolve_project_path(&db, &project_id)?;
-    let repo_path = std::path::Path::new(&path);
-    commits::get_all_commits(repo_path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
+    let provider = providers.resolve(&path);
+    provider
+        .all_commits(&path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_git_status(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
     project_id: String,
 ) -> Result<GitStatus, String> {
     let path = resolve_project_path(&db, &project_id)?;
-    let repo_path = std::path::Path::new(&path);
-    status::get_status(repo_path).map_err(|e| e.to_string())
+    let provider = providers.resolve(&path);
+    provider.git_status(&path).map_err(|e| e.to_string())
 }
