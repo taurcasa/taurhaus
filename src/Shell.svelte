@@ -1,8 +1,10 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, isTauri } from './lib/ipc.js'
+  import SearchOverlay from './lib/SearchOverlay.svelte'
 
   let dark = $state(false)
   let preview = $state(false)
+  let searchOpen = $state(false)
 
   /*
    * Layout dimensions
@@ -320,6 +322,28 @@
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
   })
+
+  // Cmd+K / Ctrl+K global search shortcut
+  $effect(() => {
+    const handler = (e) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        searchOpen = !searchOpen
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  })
+
+  function handleSearchNavigate(action) {
+    if (action.tab === 'files' && action.filePath) {
+      switchTab('files')
+      openFile(action.filePath)
+    } else if (action.tab === 'overview') {
+      switchTab('overview')
+      // Scroll to section if specified (commits section)
+    }
+  }
 </script>
 
 <div class="h-full bg-brand-950 flex flex-col font-sans antialiased">
@@ -762,4 +786,6 @@
       {/if}
     </main>
   </div>
+
+  <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />
 </div>
