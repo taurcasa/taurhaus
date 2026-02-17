@@ -50,6 +50,12 @@ pub fn run() {
             commands::projects::update_project,
             commands::projects::remove_project,
             commands::projects::scan_directory,
+            commands::git::get_recent_commits,
+            commands::git::get_all_commits,
+            commands::git::get_git_status,
+            commands::files::get_file_tree,
+            commands::files::read_file,
+            commands::files::get_readme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");

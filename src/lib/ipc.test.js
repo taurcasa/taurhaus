@@ -147,4 +147,138 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Git IPC functions
+  // -----------------------------------------------------------------------
+
+  describe('getRecentCommits()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockCommits = [{ hash: 'abc', message: 'test', author: 'dev', date: '2h' }]
+      tauriCore.invoke.mockResolvedValue(mockCommits)
+
+      const result = await ipc.getRecentCommits('p1', 5)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_recent_commits', { projectId: 'p1', limit: 5 })
+      expect(result).toEqual(mockCommits)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getRecentCommits('p1')
+
+      expect(tauriCore.invoke).not.toHaveBeenCalled()
+      expect(Array.isArray(result)).toBe(true)
+      expect(result[0]).toHaveProperty('hash')
+      expect(result[0]).toHaveProperty('message')
+    })
+  })
+
+  describe('getAllCommits()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue([])
+
+      await ipc.getAllCommits('p1', 20, 10)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_all_commits', { projectId: 'p1', limit: 20, offset: 10 })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('getGitStatus()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockStatus = { branch: 'main', is_dirty: false, ahead: 0, behind: 0 }
+      tauriCore.invoke.mockResolvedValue(mockStatus)
+
+      const result = await ipc.getGitStatus('p1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_git_status', { projectId: 'p1' })
+      expect(result).toEqual(mockStatus)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getGitStatus('p1')
+
+      expect(result).toHaveProperty('branch')
+      expect(result).toHaveProperty('is_dirty')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // File IPC functions
+  // -----------------------------------------------------------------------
+
+  describe('getFileTree()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockTree = [{ name: 'src', path: 'src', is_dir: true, children: [] }]
+      tauriCore.invoke.mockResolvedValue(mockTree)
+
+      const result = await ipc.getFileTree('p1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_file_tree', { projectId: 'p1' })
+      expect(result).toEqual(mockTree)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getFileTree('p1')
+
+      expect(Array.isArray(result)).toBe(true)
+      expect(result[0]).toHaveProperty('name')
+      expect(result[0]).toHaveProperty('is_dir')
+    })
+  })
+
+  describe('readFile()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockContent = { path: 'src/main.rs', content: 'fn main() {}', language: 'rust' }
+      tauriCore.invoke.mockResolvedValue(mockContent)
+
+      const result = await ipc.readFile('p1', 'src/main.rs')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('read_file', { projectId: 'p1', relativePath: 'src/main.rs' })
+      expect(result).toEqual(mockContent)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.readFile('p1', 'src/main.rs')
+
+      expect(result).toHaveProperty('path')
+      expect(result).toHaveProperty('content')
+      expect(result).toHaveProperty('language')
+    })
+  })
+
+  describe('getReadme()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockReadme = { path: 'README.md', content: '# Hello', language: 'markdown' }
+      tauriCore.invoke.mockResolvedValue(mockReadme)
+
+      const result = await ipc.getReadme('p1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_readme', { projectId: 'p1' })
+      expect(result).toEqual(mockReadme)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getReadme('p1')
+
+      expect(result).toHaveProperty('path')
+      expect(result).toHaveProperty('content')
+    })
+  })
 })

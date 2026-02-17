@@ -36,6 +36,21 @@ const MOCK_PROJECTS = [
   { id: 'mock-10', name: 'taurox', path: '~/projects/taurox', activity_state: 'dormant', last_activity_at: null, branch: 'main', is_dirty: false },
 ]
 
+const MOCK_COMMITS = [
+  { hash: 'abc12345', message: 'Add new feature', author: 'Developer', date: '2h' },
+  { hash: 'def67890', message: 'Fix bug in parser', author: 'Developer', date: '5h' },
+  { hash: 'ghi11111', message: 'Update dependencies', author: 'Developer', date: '1d' },
+]
+
+const MOCK_FILE_TREE = [
+  { name: 'src', path: 'src', is_dir: true, children: [
+    { name: 'main.rs', path: 'src/main.rs', is_dir: false, children: [] },
+    { name: 'lib.rs', path: 'src/lib.rs', is_dir: false, children: [] },
+  ]},
+  { name: 'Cargo.toml', path: 'Cargo.toml', is_dir: false, children: [] },
+  { name: 'README.md', path: 'README.md', is_dir: false, children: [] },
+]
+
 const MOCK_DETAIL = {
   id: 'mock-1',
   name: 'taurhaus',
@@ -93,4 +108,55 @@ export function removeProject(projectId) {
 /** Scan a directory for potential projects. */
 export function scanDirectory(path) {
   return invokeOrMock('scan_directory', { path }, () => [])
+}
+
+// ---------------------------------------------------------------------------
+// Git IPC functions
+// ---------------------------------------------------------------------------
+
+/** Get recent commits for a project. */
+export function getRecentCommits(projectId, limit = 10) {
+  return invokeOrMock('get_recent_commits', { projectId, limit }, () => MOCK_COMMITS)
+}
+
+/** Get all commits with pagination. */
+export function getAllCommits(projectId, limit = 50, offset = 0) {
+  return invokeOrMock('get_all_commits', { projectId, limit, offset }, () => MOCK_COMMITS)
+}
+
+/** Get git status for a project. */
+export function getGitStatus(projectId) {
+  return invokeOrMock('get_git_status', { projectId }, () => ({
+    branch: 'main',
+    is_dirty: false,
+    ahead: 0,
+    behind: 0,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// File IPC functions
+// ---------------------------------------------------------------------------
+
+/** Get file tree for a project. */
+export function getFileTree(projectId) {
+  return invokeOrMock('get_file_tree', { projectId }, () => MOCK_FILE_TREE)
+}
+
+/** Read a file's content. */
+export function readFile(projectId, relativePath) {
+  return invokeOrMock('read_file', { projectId, relativePath }, () => ({
+    path: relativePath,
+    content: '// Mock file content',
+    language: 'javascript',
+  }))
+}
+
+/** Get the README for a project. */
+export function getReadme(projectId) {
+  return invokeOrMock('get_readme', { projectId }, () => ({
+    path: 'README.md',
+    content: '# Mock Project\n\nThis is a mock README.',
+    language: 'markdown',
+  }))
 }

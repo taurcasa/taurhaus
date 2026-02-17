@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::db::queries;
 use crate::errors::AppError;
+use crate::git::status as git_status;
 use crate::models::{
     ActivityState, ActivityThresholds, Project, ProjectDetail, ProjectSummary,
 };
@@ -67,7 +68,14 @@ pub fn list_projects(
 
     Ok(projects
         .iter()
-        .map(|p| ProjectSummary::from_project(p, thresholds, now))
+        .map(|p| {
+            let mut summary = ProjectSummary::from_project(p, thresholds, now);
+            if let Ok(status) = git_status::get_status(Path::new(&p.path)) {
+                summary.branch = status.branch;
+                summary.is_dirty = Some(status.is_dirty);
+            }
+            summary
+        })
         .collect())
 }
 
@@ -109,6 +117,10 @@ pub fn remove_project(conn: &Connection, id: &str) -> Result<(), AppError> {
 
 fn to_project_detail(project: &Project, thresholds: &ActivityThresholds) -> ProjectDetail {
     let now = Utc::now();
+    let (branch, is_dirty) = git_status::get_status(Path::new(&project.path))
+        .map(|s| (s.branch, Some(s.is_dirty)))
+        .unwrap_or((None, None));
+
     ProjectDetail {
         id: project.id.clone(),
         name: project.name.clone(),
@@ -123,8 +135,8 @@ fn to_project_detail(project: &Project, thresholds: &ActivityThresholds) -> Proj
         hero_preference: project.hero_preference.clone(),
         created_at: project.created_at.clone(),
         updated_at: project.updated_at.clone(),
-        branch: None,
-        is_dirty: None,
+        branch,
+        is_dirty,
     }
 }
 
