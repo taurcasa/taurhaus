@@ -386,32 +386,48 @@ fn process_watch_events(
 /// On startup, re-seed last_activity_at from each project's latest git commit.
 /// This corrects projects whose activity timestamp was incorrectly set to
 /// registration time instead of actual last-commit time.
+///
+/// IMPORTANT: The DB lock is released between projects so frontend IPC commands
+/// are not blocked during slow git operations (especially over the daemon).
 fn startup_reseed_activity(app: &tauri::AppHandle) {
-    let db_state = app.state::<DbState>();
-    let conn = match db_state.0.lock() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to lock DB for activity reseed: {e}");
-            return;
+    // Snapshot the project list, then release the DB lock immediately.
+    let projects = {
+        let db_state = app.state::<DbState>();
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to lock DB for activity reseed: {e}");
+                return;
+            }
+        };
+        match db::queries::list_projects(&conn) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to list projects for activity reseed: {e}");
+                return;
+            }
         }
-    };
-
-    let projects = match db::queries::list_projects(&conn) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::error!("Failed to list projects for activity reseed: {e}");
-            return;
-        }
+        // conn lock dropped here
     };
 
     let provider_state = app.state::<ProviderState>();
+    let db_state = app.state::<DbState>();
 
     let mut updated = 0;
     for project in &projects {
         let provider = provider_state.resolve(&project.path);
 
-        // Refresh cached git status
-        if let Ok(status) = provider.git_status(&project.path) {
+        // Do git I/O WITHOUT holding the DB lock
+        let git_status = provider.git_status(&project.path).ok();
+        let commit_time = provider.latest_commit_time(&project.path).ok().flatten();
+
+        // Brief DB lock per project to write results
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        if let Some(status) = git_status {
             let _ = db::queries::update_cached_git_status(
                 &conn,
                 &project.id,
@@ -420,8 +436,7 @@ fn startup_reseed_activity(app: &tauri::AppHandle) {
             );
         }
 
-        // Refresh activity timestamp from latest commit
-        if let Ok(Some(commit_time)) = provider.latest_commit_time(&project.path) {
+        if let Some(commit_time) = commit_time {
             let commit_ts = commit_time.to_rfc3339();
             if project.last_activity_at.as_deref() != Some(&commit_ts) {
                 let _ = db::queries::update_project(
@@ -436,6 +451,7 @@ fn startup_reseed_activity(app: &tauri::AppHandle) {
                 updated += 1;
             }
         }
+        // conn lock dropped here — frontend can interleave
     }
 
     if updated > 0 {
@@ -444,21 +460,40 @@ fn startup_reseed_activity(app: &tauri::AppHandle) {
 }
 
 /// On startup, build the search index if it's empty.
+///
+/// Only holds locks briefly: checks doc count with search lock, then acquires
+/// both locks for the rebuild if needed. The rebuild is a one-time operation
+/// (subsequent startups skip it), so the longer hold is acceptable.
 fn startup_search_index(app: &tauri::AppHandle) {
+    // Check if index is already populated — brief lock
+    {
+        let search_state = app.state::<SearchState>();
+        let index = match search_state.0.lock() {
+            Ok(i) => i,
+            Err(e) => {
+                tracing::error!("Failed to lock search index for startup build: {e}");
+                return;
+            }
+        };
+
+        let doc_count = index.doc_count().unwrap_or(0);
+        if doc_count > 0 {
+            tracing::info!(doc_count, "Search index already populated, skipping rebuild");
+            return;
+        }
+        // search lock dropped here
+    }
+
+    // Index is empty — need to rebuild. This holds both locks but only happens
+    // on first run (or after index wipe), so the brief block is acceptable.
     let search_state = app.state::<SearchState>();
     let mut index = match search_state.0.lock() {
         Ok(i) => i,
         Err(e) => {
-            tracing::error!("Failed to lock search index for startup build: {e}");
+            tracing::error!("Failed to lock search index for rebuild: {e}");
             return;
         }
     };
-
-    let doc_count = index.doc_count().unwrap_or(0);
-    if doc_count > 0 {
-        tracing::info!(doc_count, "Search index already populated, skipping rebuild");
-        return;
-    }
 
     let db_state = app.state::<DbState>();
     let conn = match db_state.0.lock() {
@@ -480,26 +515,40 @@ fn startup_search_index(app: &tauri::AppHandle) {
 }
 
 /// On startup, scan all registered projects for unimported session handoffs.
+///
+/// IMPORTANT: DB lock released between projects to avoid blocking frontend IPC.
 fn startup_session_scan(app: &tauri::AppHandle) {
-    let db_state = app.state::<DbState>();
-    let conn = match db_state.0.lock() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to lock DB for startup session scan: {e}");
-            return;
+    // Snapshot project list, release lock immediately.
+    let projects = {
+        let db_state = app.state::<DbState>();
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to lock DB for startup session scan: {e}");
+                return;
+            }
+        };
+        match db::queries::list_projects(&conn) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to list projects for startup scan: {e}");
+                return;
+            }
         }
+        // conn lock dropped here
     };
 
-    let projects = match db::queries::list_projects(&conn) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::error!("Failed to list projects for startup scan: {e}");
-            return;
-        }
-    };
+    let db_state = app.state::<DbState>();
 
     for project in &projects {
         let project_root = std::path::Path::new(&project.path);
+
+        // Brief lock per project for the import operation
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
         match services::session_import::scan_and_import_sessions(&conn, &project.id, project_root) {
             Ok(imported) if !imported.is_empty() => {
                 tracing::info!(
@@ -517,6 +566,7 @@ fn startup_session_scan(app: &tauri::AppHandle) {
                 );
             }
         }
+        // conn lock dropped here — frontend can interleave
     }
 }
 
