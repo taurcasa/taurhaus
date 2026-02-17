@@ -501,4 +501,73 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Settings IPC functions
+  // -----------------------------------------------------------------------
+
+  describe('getSettings()', () => {
+    it('calls invoke with correct command in Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockSettings = { scan_directories: ['~/projects'], thresholds: { active_days: 7, recent_days: 30, stale_days: 90 }, ignore_patterns: [] }
+      tauriCore.invoke.mockResolvedValue(mockSettings)
+
+      const result = await ipc.getSettings()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_settings')
+      expect(result).toEqual(mockSettings)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns mock settings when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getSettings()
+
+      expect(result).toHaveProperty('scan_directories')
+      expect(result).toHaveProperty('thresholds')
+      expect(result.thresholds).toHaveProperty('active_days')
+    })
+  })
+
+  describe('updateSettings()', () => {
+    it('calls invoke with settings in Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const newSettings = { scan_directories: ['~/work'], thresholds: { active_days: 5, recent_days: 14, stale_days: 60 }, ignore_patterns: [] }
+      tauriCore.invoke.mockResolvedValue(newSettings)
+
+      const result = await ipc.updateSettings(newSettings)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('update_settings', { settings: newSettings })
+      expect(result).toEqual(newSettings)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns merged mock settings when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.updateSettings({ scan_directories: ['~/work'] })
+
+      expect(result.scan_directories).toEqual(['~/work'])
+      expect(result).toHaveProperty('thresholds')
+    })
+  })
+
+  describe('isFirstRun()', () => {
+    it('returns true when no projects exist in Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue([])
+
+      const result = await ipc.isFirstRun()
+
+      expect(result).toBe(true)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns false when projects exist', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.isFirstRun()
+
+      // Mock data has 10 projects
+      expect(result).toBe(false)
+    })
+  })
 })

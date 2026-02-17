@@ -269,3 +269,32 @@ export function createRelationship(sourceId, targetId, relationshipType) {
 export function removeRelationship(relationshipId) {
   return invokeOrMock('remove_relationship', { relationshipId }, () => undefined)
 }
+
+// ---------------------------------------------------------------------------
+// Settings IPC functions
+// ---------------------------------------------------------------------------
+
+const MOCK_SETTINGS = {
+  scan_directories: ['~/projects'],
+  thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
+  ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
+}
+
+/** Get current application settings. */
+export function getSettings() {
+  return invokeOrMock('get_settings', undefined, () => MOCK_SETTINGS)
+}
+
+/** Update settings (full replacement). */
+export function updateSettings(settings) {
+  return invokeOrMock('update_settings', { settings }, () => ({
+    ...MOCK_SETTINGS,
+    ...settings,
+  }))
+}
+
+/** Check if this is the first run (no projects registered). */
+export function isFirstRun() {
+  return invokeOrMock('list_projects', undefined, () => MOCK_PROJECTS)
+    .then(projects => projects.length === 0)
+}

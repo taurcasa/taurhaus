@@ -2,6 +2,7 @@ pub mod migrations;
 pub mod queries;
 pub mod relationship_queries;
 pub mod session_queries;
+pub mod settings_queries;
 
 use std::path::Path;
 

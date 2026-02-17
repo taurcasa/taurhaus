@@ -94,6 +94,8 @@ pub fn run() {
             commands::relationships::dismiss_relationship,
             commands::relationships::create_relationship,
             commands::relationships::remove_relationship,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
