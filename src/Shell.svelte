@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, getReadme, getLatestSession, listSessions, isTauri } from './lib/ipc.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -74,9 +74,64 @@
   let fileContentLoading = $state(false)
   let expandedDirs = $state(new Set())
 
+  // Session state
+  let latestSession = $state(null)
+  let sessionHistory = $state([])
+  let sessionLoading = $state(false)
+  let readmeContent = $state(null)
+  let heroMode = $state('auto') // 'auto' | 'session' | 'readme'
+
+  // Computed hero display — session if fresh (<7 days), README otherwise
+  const showSession = $derived(
+    heroMode === 'session' ||
+    (heroMode === 'auto' && latestSession && isSessionFresh(latestSession.date))
+  )
+  const showReadme = $derived(!showSession)
+  const hasToggle = $derived(latestSession && readmeContent)
+
   // Load projects on mount
   $effect(() => {
     loadProjects()
+  })
+
+  // Tauri real-time event listeners (ADR-022)
+  $effect(() => {
+    if (!isTauri()) return
+    let cleanups = []
+
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      // Git status changed — refresh sidebar project status
+      listen('project-git-changed', (event) => {
+        const { project_id } = event.payload
+        const idx = projects.findIndex(p => p.id === project_id)
+        if (idx !== -1 && event.payload.branch !== undefined) {
+          projects[idx] = { ...projects[idx], branch: event.payload.branch, is_dirty: event.payload.is_dirty }
+        }
+        if (selectedProject?.id === project_id) {
+          selectedProject = { ...selectedProject, branch: event.payload.branch ?? selectedProject.branch, is_dirty: event.payload.is_dirty ?? selectedProject.is_dirty }
+        }
+      }).then(u => cleanups.push(u))
+
+      // Session imported — refresh session display
+      listen('session-imported', (event) => {
+        const { project_id } = event.payload
+        if (selectedProject?.id === project_id) {
+          loadSessions(project_id)
+        }
+      }).then(u => cleanups.push(u))
+
+      // Files changed — refresh file tree if on Files tab
+      listen('project-files-changed', (event) => {
+        const { project_id } = event.payload
+        if (selectedProject?.id === project_id && activeTab === 'files') {
+          loadFileTree(project_id)
+        }
+      }).then(u => cleanups.push(u))
+    })
+
+    return () => {
+      cleanups.forEach(u => u())
+    }
   })
 
   async function loadProjects() {
@@ -95,14 +150,39 @@
     }
   }
 
+  function isSessionFresh(dateStr) {
+    if (!dateStr) return false
+    const sessionDate = new Date(dateStr)
+    const now = new Date()
+    const diffDays = (now - sessionDate) / (1000 * 60 * 60 * 24)
+    return diffDays < 7
+  }
+
+  function formatSessionDate(dateStr) {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now - d
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    return d.toLocaleDateString()
+  }
+
   async function selectProject(project) {
     detailLoading = true
     showAllCommits = false
+    heroMode = 'auto'
     // Reset file tree for new project
     fileTree = []
     selectedFile = null
     fileContent = null
     expandedDirs = new Set()
+    // Reset session state
+    latestSession = null
+    sessionHistory = []
+    readmeContent = null
     try {
       selectedProject = await getProject(project.id)
     } catch {
@@ -111,11 +191,38 @@
     } finally {
       detailLoading = false
     }
-    // Load commits in parallel with detail
+    // Load commits, sessions, and README in parallel
     loadCommits(project.id, 10)
+    loadSessions(project.id)
+    loadReadmeForOverview(project.id)
     // If on files tab, load file tree for new project
     if (activeTab === 'files') {
       loadFileTree(project.id)
+    }
+  }
+
+  async function loadSessions(projectId) {
+    sessionLoading = true
+    try {
+      const [latest, history] = await Promise.all([
+        getLatestSession(projectId),
+        listSessions(projectId, 10),
+      ])
+      latestSession = latest
+      sessionHistory = history || []
+    } catch {
+      latestSession = null
+      sessionHistory = []
+    } finally {
+      sessionLoading = false
+    }
+  }
+
+  async function loadReadmeForOverview(projectId) {
+    try {
+      readmeContent = await getReadme(projectId)
+    } catch {
+      readmeContent = null
     }
   }
 
@@ -386,14 +493,80 @@
         <div class="flex-1 overflow-y-auto">
           <div class="max-w-[700px] px-7 pb-8">
 
-            <!-- Latest Session (placeholder — Phase 5C) -->
+            <!-- Hero area: Session / README toggle (ADR-006) -->
             <section class="pb-6 border-b {keyline}">
               <div class="flex items-center justify-between mb-3">
-                <span class="text-[11px] {textTertiary}">Latest session</span>
+                {#if hasToggle}
+                  <!-- Segmented control -->
+                  <div class="flex items-center gap-0.5 rounded-md p-0.5 {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'}">
+                    <button
+                      class="px-2.5 py-0.5 text-[11px] rounded transition-colors
+                        {showSession ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${textTertiary} hover:${textSecondary}`}"
+                      onclick={() => heroMode = 'session'}
+                    >Session</button>
+                    <button
+                      class="px-2.5 py-0.5 text-[11px] rounded transition-colors
+                        {showReadme ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${textTertiary} hover:${textSecondary}`}"
+                      onclick={() => heroMode = 'readme'}
+                    >README</button>
+                  </div>
+                {:else}
+                  <span class="text-[11px] {textTertiary}">{latestSession ? 'Latest session' : readmeContent ? 'README' : 'Latest session'}</span>
+                {/if}
+                {#if latestSession}
+                  <span class="text-[11px] {textTertiary}">{formatSessionDate(latestSession.date)}</span>
+                {/if}
               </div>
-              <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-                <p class="text-[13px] {textMuted} italic">No sessions imported yet. Sessions will appear here once the session module is implemented.</p>
-              </div>
+
+              {#if sessionLoading}
+                <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+                  <div class="space-y-2 animate-pulse">
+                    <div class="h-3 w-3/4 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
+                    <div class="h-3 w-1/2 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
+                  </div>
+                </div>
+              {:else if showSession && latestSession}
+                <!-- Session card -->
+                <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+                  <p class="text-[13px] {textBody}">{latestSession.summary}</p>
+                  {#if latestSession.next_steps && latestSession.next_steps.length > 0}
+                    <div class="mt-3">
+                      <span class="text-[11px] {textTertiary}">Next steps</span>
+                      <ul class="mt-1 space-y-0.5">
+                        {#each latestSession.next_steps as step}
+                          <li class="text-[13px] {textBody} flex items-start gap-2">
+                            <span class="text-[10px] {textTertiary} mt-1 shrink-0">▸</span>
+                            <span>{step}</span>
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                  {#if latestSession.open_questions && latestSession.open_questions.length > 0}
+                    <div class="mt-3">
+                      <span class="text-[11px] {textTertiary}">Open questions</span>
+                      <ul class="mt-1 space-y-0.5">
+                        {#each latestSession.open_questions as question}
+                          <li class="text-[13px] {textBody} flex items-start gap-2">
+                            <span class="text-[10px] text-amber-500 mt-1 shrink-0">?</span>
+                            <span>{question}</span>
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                </div>
+              {:else if showReadme && readmeContent}
+                <!-- README display -->
+                <div class="prose prose-sm max-w-none {dark ? 'prose-invert' : ''}">
+                  <pre class="text-[13px] {textBody} whitespace-pre-wrap break-words leading-relaxed">{readmeContent.content}</pre>
+                </div>
+              {:else}
+                <!-- Empty state -->
+                <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
+                  <p class="text-[13px] {textMuted}">No sessions or README found for this project.</p>
+                </div>
+              {/if}
             </section>
 
             <!-- Recent Activity (commits) -->
@@ -440,10 +613,35 @@
               <p class="mt-2 text-[13px] {textMuted}">Auto-detected relationships will appear here.</p>
             </section>
 
-            <!-- Session History (placeholder — Phase 5C) -->
+            <!-- Session History -->
             <section class="py-6 border-b {keyline}">
-              <span class="text-[11px] {textTertiary}">Session history</span>
-              <p class="mt-2 text-[13px] {textMuted}">Session history will appear here once imported.</p>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] {textTertiary}">Session history</span>
+                {#if sessionHistory.length > 0}
+                  <span class="text-[11px] {textTertiary}">{sessionHistory.length} session{sessionHistory.length !== 1 ? 's' : ''}</span>
+                {/if}
+              </div>
+              {#if sessionLoading}
+                <div class="space-y-1" data-testid="sessions-loading">
+                  {#each Array(3) as _}
+                    <div class="flex items-center h-[30px]">
+                      <div class="h-2.5 w-16 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
+                      <div class="h-2.5 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
+                    </div>
+                  {/each}
+                </div>
+              {:else if sessionHistory.length === 0}
+                <p class="text-[13px] {textMuted}">No sessions imported yet.</p>
+              {:else}
+                <div>
+                  {#each sessionHistory as session}
+                    <div class="flex items-start gap-3 py-1.5 {hoverRow} -mx-2 px-2 rounded">
+                      <span class="text-[11px] {textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
+                      <span class="text-[13px] {textBody} flex-1">{session.summary}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             </section>
 
             <!-- Project Info -->
