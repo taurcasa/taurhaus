@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::AppError;
 
+/// Max file size for team config files (1 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 1024 * 1024;
+
 /// A team member from a Claude Code team configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamMember {
@@ -58,6 +61,14 @@ pub fn list_teams(teams_dir: &Path) -> Result<Vec<TeamConfig>, AppError> {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
+
+        // Skip files larger than limit
+        if let Ok(meta) = std::fs::metadata(&config_path) {
+            if meta.len() > MAX_CONFIG_FILE_SIZE {
+                tracing::warn!(path = %config_path.display(), "Team config too large, skipping");
+                continue;
+            }
+        }
 
         match std::fs::read_to_string(&config_path) {
             Ok(content) => {

@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 
 use crate::errors::AppError;
 
+/// Max file size for memory files (5 MB).
+const MAX_MEMORY_FILE_SIZE: u64 = 5 * 1024 * 1024;
+
 /// A single Claude Code memory file.
 #[derive(Debug, Clone)]
 pub struct MemoryFile {
@@ -36,6 +39,14 @@ pub fn read_memory_files(memory_dir: &Path) -> Result<Vec<MemoryFile>, AppError>
         // Only process .md files
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
+        }
+
+        // Skip files larger than limit
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if meta.len() > MAX_MEMORY_FILE_SIZE {
+                tracing::warn!(path = %path.display(), "Memory file too large, skipping");
+                continue;
+            }
         }
 
         let content = std::fs::read_to_string(&path)?;

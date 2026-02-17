@@ -22,6 +22,11 @@ REASON=$(echo "$INPUT" | jq -r '.reason // "other"')
 # Derive project name from working directory
 PROJECT_NAME=$(basename "$CWD")
 
+# Sanitize values for safe YAML embedding (strip newlines, colons at line start)
+sanitize_yaml_value() {
+    echo "$1" | tr '\n' ' ' | sed 's/[[:cntrl:]]//g'
+}
+
 # Generate timestamp for filenames
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%S")
 ISO_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -35,17 +40,20 @@ META_FILE="$SESSIONS_DIR/session-${TIMESTAMP}.meta.json"
 
 # If no transcript or file doesn't exist, write minimal handoff
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
+    SAFE_SID=$(sanitize_yaml_value "$SESSION_ID")
+    SAFE_PROJECT=$(sanitize_yaml_value "$PROJECT_NAME")
+    SAFE_REASON=$(sanitize_yaml_value "$REASON")
     cat > "$HANDOFF_FILE" << ENDOFHANDOFF
 ---
 date: ${ISO_DATE}
-project: ${PROJECT_NAME}
-session_id: ${SESSION_ID}
+project: ${SAFE_PROJECT}
+session_id: ${SAFE_SID}
 summary: >
   Session ended without transcript data available.
 next_steps: []
 open_questions: []
 metadata:
-  exit_reason: ${REASON}
+  exit_reason: ${SAFE_REASON}
 ---
 
 ## Session Notes
@@ -53,13 +61,12 @@ metadata:
 No transcript was available for this session.
 ENDOFHANDOFF
 
-    cat > "$META_FILE" << ENDOFMETA
-{
-  "session_id": "${SESSION_ID}",
-  "ended_at": "${ISO_DATE}",
-  "exit_reason": "${REASON}"
-}
-ENDOFMETA
+    jq -n \
+        --arg sid "$SESSION_ID" \
+        --arg date "$ISO_DATE" \
+        --arg reason "$REASON" \
+        '{session_id: $sid, ended_at: $date, exit_reason: $reason}' \
+        > "$META_FILE"
     exit 0
 fi
 
@@ -125,20 +132,26 @@ fi
 [ -z "$NEXT_STEPS_YAML" ] && NEXT_STEPS_YAML="  - Review session transcript"
 [ -z "$NOTES" ] && NOTES="No additional notes."
 
+# Sanitize values for YAML embedding
+SAFE_SID=$(sanitize_yaml_value "$SESSION_ID")
+SAFE_PROJECT=$(sanitize_yaml_value "$PROJECT_NAME")
+SAFE_REASON=$(sanitize_yaml_value "$REASON")
+SAFE_SUMMARY=$(sanitize_yaml_value "$SUMMARY")
+
 # Write the handoff markdown
 cat > "$HANDOFF_FILE" << ENDOFHANDOFF
 ---
 date: ${ISO_DATE}
-project: ${PROJECT_NAME}
-session_id: ${SESSION_ID}
+project: ${SAFE_PROJECT}
+session_id: ${SAFE_SID}
 summary: >
-  ${SUMMARY}
+  ${SAFE_SUMMARY}
 next_steps:
 ${NEXT_STEPS_YAML}
 open_questions:
 ${OPEN_QUESTIONS_YAML}
 metadata:
-  exit_reason: ${REASON}
+  exit_reason: ${SAFE_REASON}
 ---
 
 ## Session Notes
@@ -146,17 +159,12 @@ metadata:
 ${NOTES}
 ENDOFHANDOFF
 
-# Write the metadata sidecar
-cat > "$META_FILE" << ENDOFMETA
-{
-  "session_id": "${SESSION_ID}",
-  "ended_at": "${ISO_DATE}",
-  "exit_reason": "${REASON}",
-  "model": "unknown",
-  "tools_used": {},
-  "files_modified": [],
-  "tokens": {}
-}
-ENDOFMETA
+# Write the metadata sidecar (use jq for safe JSON construction)
+jq -n \
+    --arg sid "$SESSION_ID" \
+    --arg date "$ISO_DATE" \
+    --arg reason "$REASON" \
+    '{session_id: $sid, ended_at: $date, exit_reason: $reason, model: "unknown", tools_used: {}, files_modified: [], tokens: {}}' \
+    > "$META_FILE"
 
 exit 0
