@@ -5,10 +5,11 @@ pub mod errors;
 pub mod models;
 pub mod services;
 
+pub mod git;
+
 // Modules added incrementally as implemented:
 // mod claude_code;
 // mod fs;
-// mod git;
 // mod scanner;
 // mod search;
 // mod session;

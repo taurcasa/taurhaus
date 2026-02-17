@@ -14,6 +14,12 @@ pub enum AppError {
 
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
+
+    #[error("Git error: {0}")]
+    Git(#[from] git2::Error),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 /// Serializable form for IPC responses.
