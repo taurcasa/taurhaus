@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.playwright-mcp/
+
+# Development screenshots (Playwright captures)
+proposal-*.png
+shell-*.png
