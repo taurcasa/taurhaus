@@ -68,12 +68,26 @@ impl DaemonEventListener {
         self.stream.write_all(b"\n").map_err(AppError::Io)?;
         self.stream.flush().map_err(AppError::Io)?;
 
-        // Read the response (synchronous — before event loop starts)
+        // Read lines until we get the watch response. The daemon may push events
+        // on this connection before the response arrives (e.g. if a previously
+        // watched project fires an event between our request and its response).
         let mut line = String::new();
-        self.reader.read_line(&mut line).map_err(AppError::Io)?;
-        let response: DaemonResponse = serde_json::from_str(&line).map_err(|e| {
-            AppError::InvalidPath(format!("Parse watch response failed: {e}"))
-        })?;
+        let response: DaemonResponse = loop {
+            line.clear();
+            self.reader.read_line(&mut line).map_err(AppError::Io)?;
+            match serde_json::from_str::<DaemonMessage>(line.trim()) {
+                Ok(DaemonMessage::Response(r)) => break r,
+                Ok(DaemonMessage::Event(event)) => {
+                    // Forward the event — it's from a previously registered watch
+                    self.handle_event(event);
+                }
+                Err(e) => {
+                    return Err(AppError::InvalidPath(format!(
+                        "Parse watch response failed: {e}"
+                    )));
+                }
+            }
+        };
 
         if !response.is_ok() {
             return Err(AppError::InvalidPath(format!(

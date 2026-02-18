@@ -3,15 +3,7 @@
 //! On app startup, if WSL projects exist in the database, we try to connect
 //! to the daemon. If it's not running, we attempt to start it and retry.
 
-use std::time::{Duration, Instant};
-
 use crate::provider::daemon_client::DaemonProvider;
-
-/// Maximum time to wait for the daemon to start and become connectable.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
-
-/// Interval between connection retries after starting the daemon.
-const RETRY_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Try to connect to an existing daemon, or start one if needed.
 ///
@@ -33,39 +25,23 @@ pub fn try_connect_daemon(
 
     tracing::info!(port, distro, "Checking for WSL daemon");
 
-    // Try connecting to existing daemon
+    // Try connecting to an already-running daemon.
+    // We don't auto-start — the daemon should be launched separately
+    // (e.g. `just run-daemon` or installed via `just install-daemon`).
     if let Some(provider) = try_connect(port) {
         tracing::info!(port, "Connected to existing daemon");
         return Some(provider);
     }
 
-    // Try starting daemon
-    tracing::info!(port, distro, "No daemon running, attempting to start");
-    if let Err(e) = start_daemon(distro, port) {
-        tracing::warn!(error = %e, "Failed to start daemon");
-        return None;
-    }
-
-    // Retry connection with backoff
-    let deadline = Instant::now() + CONNECT_TIMEOUT;
-    while Instant::now() < deadline {
-        std::thread::sleep(RETRY_INTERVAL);
-        if let Some(provider) = try_connect(port) {
-            tracing::info!(port, "Connected to newly-started daemon");
-            return Some(provider);
-        }
-    }
-
-    tracing::warn!(port, "Daemon started but connection failed within timeout");
+    tracing::warn!(port, distro, "Daemon not reachable — WSL projects will use local provider fallback. Start the daemon with: just run-daemon");
     None
 }
 
-/// Try to restart the daemon process (used by health check on disconnect).
-///
-/// Just starts the process — caller is responsible for reconnecting.
-pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
-    tracing::info!(distro, port, "Restarting daemon process");
-    start_daemon(distro, port)
+/// Daemon restart is disabled — auto-start via wsl.exe is not used during development.
+/// The health check calls this on disconnect; we just log and report failure.
+pub fn try_restart_daemon(_distro: &str, port: u16) -> Result<(), std::io::Error> {
+    tracing::warn!(port, "Daemon disconnected. Restart it manually: just run-daemon");
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "auto-start disabled"))
 }
 
 /// Attempt a single TCP connection to the daemon.
@@ -80,16 +56,21 @@ fn try_connect(port: u16) -> Option<DaemonProvider> {
 /// On Linux (dev): launches the daemon binary directly.
 #[cfg(target_os = "windows")]
 fn start_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
+    use std::os::windows::process::CommandExt;
+
     let daemon_cmd = format!(
         "$HOME/.local/bin/taurhaus-daemon --port {port}"
     );
     tracing::debug!(distro, cmd = %daemon_cmd, "Launching daemon via wsl.exe");
 
+    // CREATE_NO_WINDOW (0x08000000) prevents wsl.exe from opening a visible
+    // console window on the user's desktop.
     std::process::Command::new("wsl.exe")
         .args(["-d", distro, "--", "sh", "-c", &daemon_cmd])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
+        .creation_flags(0x08000000)
         .spawn()
         .map(|_| ())
 }
@@ -113,6 +94,7 @@ mod tests {
     use crate::daemon::server::DEFAULT_PORT;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn no_distro_returns_none_immediately() {

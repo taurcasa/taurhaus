@@ -215,9 +215,10 @@ impl DaemonProvider {
             )));
         }
 
-        let result = response.result.ok_or_else(|| {
-            AppError::InvalidPath("Daemon returned empty result".to_string())
-        })?;
+        // Use Value::Null for missing results — allows Option<T> return types to
+        // deserialize correctly (e.g. read_readme returning None for no README).
+        // Non-nullable types will still produce a deserialization error.
+        let result = response.result.unwrap_or(serde_json::Value::Null);
 
         serde_json::from_value(result).map_err(|e| {
             AppError::InvalidPath(format!("Failed to deserialize daemon result: {e}"))
