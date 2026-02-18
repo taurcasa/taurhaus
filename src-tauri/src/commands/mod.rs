@@ -1,5 +1,6 @@
 pub mod daemon;
 pub mod files;
+pub mod logging;
 pub mod git;
 pub mod projects;
 pub mod relationships;

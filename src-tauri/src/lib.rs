@@ -75,6 +75,20 @@ pub fn run() {
                 .expect("failed to resolve app_data_dir");
             std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
 
+            // Open append-only log file for frontend + backend logs.
+            // Truncate on each launch so the file stays manageable.
+            let log_path = data_dir.join("taurhaus.log");
+            let log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&log_path)
+                .expect("failed to open log file");
+            tracing::info!(?log_path, "Log file ready");
+            app.manage(commands::logging::LogFileState(
+                std::sync::Mutex::new(log_file),
+            ));
+
             let db_path = data_dir.join("taurhaus.db");
             let conn = db::init_db(&db_path).expect("failed to initialize database");
 
@@ -196,6 +210,7 @@ pub fn run() {
             commands::daemon::get_daemon_status,
             commands::daemon::start_daemon,
             commands::daemon::stop_daemon,
+            commands::logging::frontend_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
