@@ -4,6 +4,7 @@ dist/
 
 # Rust build artifacts
 src-tauri/target/
+target/
 
 # SQLite database files
 *.db
