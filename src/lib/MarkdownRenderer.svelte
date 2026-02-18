@@ -17,6 +17,12 @@
     renderMarkdown(src, isDark).then(result => {
       html = result
       loading = false
+      console.log(`[markdown] rendered ${src.length} chars → ${result.length} chars HTML`)
+    }).catch((err) => {
+      // Shiki/markdown-it failed — render raw source as plaintext fallback
+      html = `<pre style="white-space:pre-wrap;word-break:break-word">${src.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`
+      loading = false
+      console.error(`[markdown] render failed: ${err}`)
     })
   })
 

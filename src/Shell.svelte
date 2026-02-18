@@ -168,11 +168,13 @@
         }
       }).then(u => cleanups.push(u))
 
-      // Files changed — refresh file tree if on Files tab
+      // Files changed — refresh file tree if on Files tab (debounced)
+      let fileTreeRefreshTimer = null
       listen('project-files-changed', (event) => {
         const { project_id } = event.payload
         if (selectedProject?.id === project_id && activeTab === 'files') {
-          loadFileTree(project_id)
+          clearTimeout(fileTreeRefreshTimer)
+          fileTreeRefreshTimer = setTimeout(() => loadFileTree(project_id), 2000)
         }
       }).then(u => cleanups.push(u))
     })
@@ -409,15 +411,19 @@
   }
 
   async function loadFileTree(projectId) {
-    fileTreeLoading = true
+    // Only show skeleton on initial load — refreshes update silently
+    const isInitialLoad = fileTree.length === 0
+    if (isInitialLoad) fileTreeLoading = true
     try {
       fileTree = await getFileTree(projectId)
       // Auto-select README if no file selected
       if (!selectedFile) {
         const readme = findReadmeInTree(fileTree)
-        if (readme) await openFile(readme.path)
+        if (readme) {
+          await openFile(readme.path)
+        }
       }
-    } catch {
+    } catch (e) {
       fileTree = []
     } finally {
       fileTreeLoading = false
@@ -457,6 +463,7 @@
     fileError = null
     imageDataUri = null
     fileType = classifyFile(relativePath)
+    console.log(`[file] open: "${relativePath}" → classified as "${fileType}"`)
 
     try {
       if (fileType === 'image') {
@@ -482,6 +489,7 @@
       }
     } catch (e) {
       const msg = String(e?.message || e || '')
+      console.error(`[file] error loading "${relativePath}": ${msg}`)
       if (msg.includes('Binary file') || msg.includes('cannot be read as text')) {
         fileError = 'binary'
       } else if (msg.includes('too large')) {

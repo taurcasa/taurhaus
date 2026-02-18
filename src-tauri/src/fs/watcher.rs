@@ -72,6 +72,16 @@ pub fn classify_event(project_root: &Path, event_path: &Path) -> Option<EventCla
         return Some(EventClass::GitignoreChange);
     }
 
+    // Ignore tool/build directories that write frequently but don't represent user changes
+    for component in relative.components() {
+        let name = component.as_os_str().to_string_lossy();
+        match name.as_ref() {
+            "node_modules" | "target" | "dist" | ".cache" | "__pycache__"
+            | ".playwright-mcp" | ".next" | ".nuxt" | ".svelte-kit" => return None,
+            _ => {}
+        }
+    }
+
     Some(EventClass::RegularFile)
 }
 
@@ -456,5 +466,26 @@ mod tests {
         handle_notify_event(&tx, "p1", &root, &debounce, event);
 
         assert!(rx.try_recv().is_err(), "Access events should be ignored");
+    }
+
+    #[test]
+    fn tool_directories_are_ignored() {
+        let root = root();
+        let tool_dirs = [
+            "node_modules/package/index.js",
+            "target/debug/build.rs",
+            "dist/bundle.js",
+            ".playwright-mcp/console.log",
+            ".cache/data.json",
+            "__pycache__/module.pyc",
+            ".next/static/chunk.js",
+            ".svelte-kit/output/index.html",
+        ];
+        for path in tool_dirs {
+            assert!(
+                classify_event(&root, &root.join(path)).is_none(),
+                "Should ignore tool directory path: {path}"
+            );
+        }
     }
 }
