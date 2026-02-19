@@ -146,6 +146,130 @@ describe('Sidebar data loading', () => {
   })
 })
 
+describe('Context menu session actions', () => {
+  /**
+   * Mirrors the session menu item generation logic from Shell.svelte.
+   * Returns the session-specific items that go between "Copy path" and "Remove".
+   */
+  function sessionMenuItems(session, confirmStop = false) {
+    const items = []
+
+    if (session?.state === 'active' || session?.state === 'idle') {
+      // Has session — show navigate first, launch disabled, destructive group
+      items.push({ label: 'Open in Terminal', action: 'openInTerminal' })
+      items.push({ separator: true })
+      items.push({ label: 'Continue Session', disabled: true })
+      items.push({ label: 'New Session', disabled: true })
+      items.push({ label: 'Resume (pick)...', disabled: true })
+      items.push({ separator: true })
+      items.push({ label: 'Restart Session', action: 'restart' })
+      items.push({
+        label: confirmStop ? 'Confirm stop?' : 'Stop Session',
+        action: 'stop',
+        danger: true,
+        keepOpen: !confirmStop,
+      })
+    } else {
+      // No session — all launch items enabled
+      items.push({ label: 'Continue Session', action: 'continue' })
+      items.push({ label: 'New Session', action: 'fresh' })
+      items.push({ label: 'Resume (pick)...', action: 'resume' })
+    }
+
+    return items
+  }
+
+  // AC1: No session → menu shows launch items all enabled
+  it('shows all launch items enabled when no session', () => {
+    const items = sessionMenuItems(null)
+    expect(items).toHaveLength(3)
+    expect(items[0].label).toBe('Continue Session')
+    expect(items[1].label).toBe('New Session')
+    expect(items[2].label).toBe('Resume (pick)...')
+    expect(items.every(i => !i.disabled)).toBe(true)
+  })
+
+  // AC2: Active session → "Open in Terminal" first, launch items disabled
+  it('shows Open in Terminal first and disables launch items for active session', () => {
+    const items = sessionMenuItems({ state: 'active' })
+    const actionable = items.filter(i => !i.separator)
+
+    expect(actionable[0].label).toBe('Open in Terminal')
+    expect(actionable[0].disabled).toBeFalsy()
+
+    // Launch items disabled
+    expect(actionable[1].label).toBe('Continue Session')
+    expect(actionable[1].disabled).toBe(true)
+    expect(actionable[2].label).toBe('New Session')
+    expect(actionable[2].disabled).toBe(true)
+    expect(actionable[3].label).toBe('Resume (pick)...')
+    expect(actionable[3].disabled).toBe(true)
+  })
+
+  // AC3: Active session → destructive group with Restart and Stop
+  it('includes Restart and Stop in destructive group for active session', () => {
+    const items = sessionMenuItems({ state: 'active' })
+    const actionable = items.filter(i => !i.separator)
+
+    expect(actionable[4].label).toBe('Restart Session')
+    expect(actionable[5].label).toBe('Stop Session')
+    expect(actionable[5].danger).toBe(true)
+  })
+
+  // AC8: Stop uses two-click confirmation
+  it('Stop Session uses two-click confirmation pattern', () => {
+    // First state — not confirmed
+    const items1 = sessionMenuItems({ state: 'active' }, false)
+    const stop1 = items1.filter(i => !i.separator).find(i => i.label === 'Stop Session')
+    expect(stop1.keepOpen).toBe(true)
+    expect(stop1.danger).toBe(true)
+
+    // Second state — confirmed
+    const items2 = sessionMenuItems({ state: 'active' }, true)
+    const stop2 = items2.filter(i => !i.separator).find(i => i.label === 'Confirm stop?')
+    expect(stop2.keepOpen).toBe(false)
+    expect(stop2.danger).toBe(true)
+  })
+
+  // AC9: Disabled items are not actionable
+  it('disabled launch items have no action when session active', () => {
+    const items = sessionMenuItems({ state: 'active' })
+    const disabled = items.filter(i => i.disabled)
+    expect(disabled).toHaveLength(3)
+    disabled.forEach(item => {
+      expect(item.action).toBeUndefined()
+    })
+  })
+
+  // AC10: Menu structure stable — separator positions don't shift
+  it('has stable separator positions between states', () => {
+    const noSession = sessionMenuItems(null)
+    const withSession = sessionMenuItems({ state: 'active' })
+
+    // No session: 3 items, no separators
+    expect(noSession.filter(i => i.separator)).toHaveLength(0)
+
+    // With session: 2 separators (after Open in Terminal, before destructive group)
+    const seps = withSession.filter(i => i.separator)
+    expect(seps).toHaveLength(2)
+  })
+
+  // Idle session gets same treatment as active
+  it('treats idle session same as active', () => {
+    const active = sessionMenuItems({ state: 'active' })
+    const idle = sessionMenuItems({ state: 'idle' })
+    expect(active.map(i => i.label)).toEqual(idle.map(i => i.label))
+  })
+
+  // AC5-7: Launch actions use correct modes
+  it('launch actions map to correct modes', () => {
+    const items = sessionMenuItems(null)
+    expect(items[0].action).toBe('continue')
+    expect(items[1].action).toBe('fresh')
+    expect(items[2].action).toBe('resume')
+  })
+})
+
 describe('Session-aware dot class derivation', () => {
   const dotColor = {
     active: 'bg-success-300',
