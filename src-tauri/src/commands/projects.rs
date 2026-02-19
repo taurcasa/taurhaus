@@ -7,7 +7,7 @@ use tauri::{Emitter, State};
 use crate::db::{queries, settings_queries};
 use crate::models::{ProjectDetail, ProjectSummary};
 use crate::services::project;
-use crate::SearchState;
+use crate::{ProviderState, SearchState};
 
 /// Expand `~` or `~/` at the start of a path to the user's home directory.
 fn expand_tilde(path: &str) -> String {
@@ -60,13 +60,20 @@ pub fn get_project(
 #[tauri::command]
 pub fn register_project(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
     path: String,
     name: Option<String>,
 ) -> Result<ProjectDetail, String> {
     let expanded = expand_tilde(&path);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
-    project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds).map_err(|e| e.to_string())
+    let detail = project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds)
+        .map_err(|e| e.to_string())?;
+
+    // Correct last_activity_at from git in the background (registration uses "now")
+    reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+
+    Ok(detail)
 }
 
 #[tauri::command]
@@ -129,6 +136,7 @@ pub struct BatchRegistrationResult {
 #[tauri::command]
 pub fn register_projects_batch(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<BatchRegistrationResult>, String> {
@@ -166,7 +174,39 @@ pub fn register_projects_batch(
         results.push(result);
     }
 
+    // Correct last_activity_at from git in the background for all new projects
+    for r in &results {
+        if let Some(ref detail) = r.project {
+            reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+        }
+    }
+
     Ok(results)
+}
+
+/// Reseed a single project's last_activity_at from its latest git commit.
+/// Runs synchronously but is fast for local projects; WSL projects go through the daemon.
+fn reseed_activity_for_project(
+    db: &State<'_, DbState>,
+    providers: &State<'_, ProviderState>,
+    project_id: &str,
+    project_path: &str,
+) {
+    let provider = providers.resolve(project_path);
+    if let Ok(Some(commit_time)) = provider.latest_commit_time(project_path) {
+        let commit_ts = commit_time.to_rfc3339();
+        if let Ok(conn) = db.0.lock() {
+            let _ = queries::update_project(
+                &conn,
+                project_id,
+                None,
+                None,
+                None,
+                Some(Some(&commit_ts)),
+                None,
+            );
+        }
+    }
 }
 
 #[tauri::command]
