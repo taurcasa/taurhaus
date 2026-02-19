@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession } from './lib/ipc.js'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
@@ -56,6 +56,30 @@
   const sessionBorder  = $derived(dark ? 'border-brand-400' : 'border-brand-500')
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
   const dots           = $derived(dark ? dotColorDark : dotColor)
+
+  /** Compute dot CSS class for a project, overriding with session state if present. */
+  function dotClassFor(project) {
+    const session = getSessionForProject(project.path)
+    if (session?.state === 'active') return 'bg-success-300 session-active-dot'
+    if (session?.state === 'idle') return 'bg-warning-300'
+    return dots[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
+  }
+
+  /** Whether a project has an active or idle session (shows jump icon). */
+  function hasSession(project) {
+    const session = getSessionForProject(project.path)
+    return session?.state === 'active' || session?.state === 'idle'
+  }
+
+  /** Navigate to a project's Claude Code session in tmux. */
+  function jumpToSession(e, project) {
+    e.stopPropagation()
+    const session = getSessionForProject(project.path)
+    if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
+      navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
+    }
+  }
+
   const panelBorder    = $derived(dark ? 'border border-zinc-800' : '')
   const treeBg         = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
   const treeHover      = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100')
@@ -752,9 +776,19 @@
                   {#if selected}
                     <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
                   {/if}
-                  <span class="w-[7px] h-[7px] rounded-full shrink-0 {dots[project.activity_state]} shadow-[0_0_4px_rgba(255,255,255,0.15)]"></span>
+                  <span class="w-[7px] h-[7px] rounded-full shrink-0 {dotClassFor(project)}"></span>
                   <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
                   <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch || ''}</span>
+                  <span
+                    class="w-3 h-3 shrink-0 transition-opacity duration-150 {hasSession(project) ? 'opacity-100' : 'opacity-0 pointer-events-none'} text-white/30 hover:text-white/60"
+                    role="button"
+                    tabindex={hasSession(project) ? 0 : -1}
+                    aria-label="Jump to session"
+                    onclick={(e) => jumpToSession(e, project)}
+                    onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, project) }}
+                  >
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                  </span>
                   {#if project.is_dirty}
                     <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
                   {/if}

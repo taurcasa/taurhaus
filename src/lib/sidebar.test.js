@@ -145,3 +145,66 @@ describe('Sidebar data loading', () => {
     expect(validTabs).toHaveLength(2)
   })
 })
+
+describe('Session-aware dot class derivation', () => {
+  const dotColor = {
+    active: 'bg-success-300',
+    recent: 'bg-info-300',
+    stale: 'bg-warning-300',
+    dormant: 'bg-zinc-400',
+  }
+
+  // Mirrors the dotClassFor() function from Shell.svelte
+  function dotClassFor(project, sessionMap) {
+    const session = sessionMap.get(project.path) ?? null
+    if (session?.state === 'active') return 'bg-success-300 session-active-dot'
+    if (session?.state === 'idle') return 'bg-warning-300'
+    return dotColor[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
+  }
+
+  it('returns pulse class for active session', () => {
+    const project = { path: '/proj', activity_state: 'dormant' }
+    const sessions = new Map([['/proj', { state: 'active' }]])
+    const cls = dotClassFor(project, sessions)
+    expect(cls).toContain('bg-success-300')
+    expect(cls).toContain('session-active-dot')
+  })
+
+  it('returns amber for idle session', () => {
+    const project = { path: '/proj', activity_state: 'active' }
+    const sessions = new Map([['/proj', { state: 'idle' }]])
+    const cls = dotClassFor(project, sessions)
+    expect(cls).toBe('bg-warning-300')
+    expect(cls).not.toContain('session-active-dot')
+  })
+
+  it('returns activity dot when no session', () => {
+    const project = { path: '/proj', activity_state: 'recent' }
+    const sessions = new Map()
+    const cls = dotClassFor(project, sessions)
+    expect(cls).toContain('bg-info-300')
+    expect(cls).toContain('shadow-')
+  })
+
+  it('overrides dormant activity with active session', () => {
+    const project = { path: '/proj', activity_state: 'dormant' }
+    const sessions = new Map([['/proj', { state: 'active' }]])
+    const cls = dotClassFor(project, sessions)
+    // Should be green pulse, not grey dormant
+    expect(cls).toContain('bg-success-300')
+    expect(cls).not.toContain('bg-zinc-400')
+  })
+
+  it('reverts to activity dot when session ends', () => {
+    const project = { path: '/proj', activity_state: 'stale' }
+    // First: session active
+    const withSession = new Map([['/proj', { state: 'active' }]])
+    expect(dotClassFor(project, withSession)).toContain('session-active-dot')
+
+    // Then: session gone
+    const without = new Map()
+    const cls = dotClassFor(project, without)
+    expect(cls).toContain('bg-warning-300')
+    expect(cls).not.toContain('session-active-dot')
+  })
+})

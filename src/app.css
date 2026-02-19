@@ -55,3 +55,20 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Command Center — session pulse animation */
+@keyframes pulse-session {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(134, 239, 172, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(134, 239, 172, 0); }
+}
+
+.session-active-dot {
+  animation: pulse-session 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-active-dot {
+    animation: none;
+    box-shadow: 0 0 4px rgba(134, 239, 172, 0.4);
+  }
+}

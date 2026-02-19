@@ -362,7 +362,7 @@ export function registerProjectsBatch(paths) {
 const MOCK_CLAUDE_SESSIONS = [
   {
     pid: 12345,
-    project_path: '/home/user/projects/taurhaus',
+    project_path: '~/projects/taurhaus',
     tty: '/dev/pts/2',
     args: 'claude --dangerously-skip-permissions --continue',
     tmux_session: '0',
@@ -372,6 +372,19 @@ const MOCK_CLAUDE_SESSIONS = [
     state: 'active',
     session_id: 'abc-123-def',
     jsonl_path: '/home/user/.claude/projects/-home-user-projects-taurhaus/abc-123-def.jsonl',
+  },
+  {
+    pid: 12346,
+    project_path: '~/projects/mir',
+    tty: '/dev/pts/4',
+    args: 'claude --dangerously-skip-permissions',
+    tmux_session: '0',
+    tmux_window: '3',
+    tmux_pane: '%7',
+    tmux_window_name: 'mir',
+    state: 'idle',
+    session_id: 'def-456-ghi',
+    jsonl_path: '/home/user/.claude/projects/-home-user-projects-mir/def-456-ghi.jsonl',
   },
 ]
 
