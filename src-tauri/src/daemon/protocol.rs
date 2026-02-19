@@ -69,6 +69,12 @@ pub mod method {
     pub const WATCH: &str = "watch";
     pub const UNWATCH: &str = "unwatch";
     pub const SHUTDOWN: &str = "shutdown";
+
+    // Command Center — session management
+    pub const LIST_CLAUDE_SESSIONS: &str = "list_claude_sessions";
+    pub const LAUNCH_SESSION: &str = "launch_session";
+    pub const STOP_SESSION: &str = "stop_session";
+    pub const NAVIGATE_TO_SESSION: &str = "navigate_to_session";
 }
 
 pub mod event {
@@ -137,6 +143,50 @@ pub struct WatchResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LatestCommitTimeResult {
     pub timestamp: Option<String>, // RFC 3339 or null
+}
+
+// ---------------------------------------------------------------------------
+// Command Center — session management types
+// ---------------------------------------------------------------------------
+
+/// Launch mode for a new Claude Code session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LaunchMode {
+    /// `claude --dangerously-skip-permissions --continue`
+    Continue,
+    /// `claude --dangerously-skip-permissions`
+    Fresh,
+    /// `claude --dangerously-skip-permissions --resume`
+    Resume,
+}
+
+/// `launch_session` params
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LaunchSessionParams {
+    pub project_path: String,
+    pub mode: LaunchMode,
+}
+
+/// `launch_session` result
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LaunchSessionResult {
+    pub tmux_window: String,
+    pub tmux_pane: String,
+}
+
+/// `stop_session` params
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StopSessionParams {
+    pub tmux_pane: String,
+}
+
+/// `navigate_to_session` params
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NavigateToSessionParams {
+    pub tmux_session: String,
+    pub tmux_window: String,
+    pub tmux_pane: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -432,5 +482,47 @@ mod tests {
         let json = serde_json::to_string(&r).unwrap();
         let back: WatchResult = serde_json::from_str(&json).unwrap();
         assert_eq!(r, back);
+    }
+
+    #[test]
+    fn launch_session_params_roundtrip() {
+        let p = LaunchSessionParams {
+            project_path: "/home/user/proj".to_string(),
+            mode: LaunchMode::Continue,
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: LaunchSessionParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
+    }
+
+    #[test]
+    fn launch_session_result_roundtrip() {
+        let r = LaunchSessionResult {
+            tmux_window: "proj".to_string(),
+            tmux_pane: "%5".to_string(),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: LaunchSessionResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(r, back);
+    }
+
+    #[test]
+    fn stop_session_params_roundtrip() {
+        let p = StopSessionParams { tmux_pane: "%3".to_string() };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: StopSessionParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
+    }
+
+    #[test]
+    fn navigate_to_session_params_roundtrip() {
+        let p = NavigateToSessionParams {
+            tmux_session: "main".to_string(),
+            tmux_window: "1".to_string(),
+            tmux_pane: "%3".to_string(),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: NavigateToSessionParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
     }
 }

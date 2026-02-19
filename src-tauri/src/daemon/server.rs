@@ -222,6 +222,18 @@ fn dispatch(
         protocol::method::SCAN_SESSIONS => {
             handle_scan_sessions(&request.id, &request.params, provider)
         }
+        protocol::method::LIST_CLAUDE_SESSIONS => {
+            handle_list_claude_sessions(&request.id)
+        }
+        protocol::method::LAUNCH_SESSION => {
+            handle_launch_session(&request.id, &request.params)
+        }
+        protocol::method::STOP_SESSION => {
+            handle_stop_session(&request.id, &request.params)
+        }
+        protocol::method::NAVIGATE_TO_SESSION => {
+            handle_navigate_to_session(&request.id, &request.params)
+        }
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
@@ -380,6 +392,58 @@ fn handle_scan_sessions(
             },
         ),
         Err(e) => DaemonResponse::err(id, "FS_ERROR", e.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Command Center — session management handlers
+// ---------------------------------------------------------------------------
+
+fn handle_list_claude_sessions(id: &str) -> DaemonResponse {
+    let sessions = crate::session_scanner::scan_sessions();
+    DaemonResponse::ok(id, sessions)
+}
+
+fn handle_launch_session(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::LaunchSessionParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+    match crate::session_scanner::control::launch_in_tmux(&params.project_path, params.mode) {
+        Ok((window, pane)) => DaemonResponse::ok(
+            id,
+            protocol::LaunchSessionResult {
+                tmux_window: window,
+                tmux_pane: pane,
+            },
+        ),
+        Err(e) => DaemonResponse::err(id, "LAUNCH_ERROR", e),
+    }
+}
+
+fn handle_stop_session(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::StopSessionParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+    match crate::session_scanner::control::stop_session(&params.tmux_pane) {
+        Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
+        Err(e) => DaemonResponse::err(id, "STOP_ERROR", e),
+    }
+}
+
+fn handle_navigate_to_session(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::NavigateToSessionParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+    match crate::session_scanner::control::navigate_to_pane(
+        &params.tmux_session,
+        &params.tmux_window,
+        &params.tmux_pane,
+    ) {
+        Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
+        Err(e) => DaemonResponse::err(id, "NAVIGATE_ERROR", e),
     }
 }
 

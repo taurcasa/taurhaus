@@ -5,6 +5,7 @@
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
 //! 3. Idle detection — check JSONL transcript mtime to determine active vs idle
 
+pub mod control;
 pub mod idle;
 pub mod process;
 pub mod tmux;
