@@ -199,18 +199,27 @@ fn reseed_activity_for_project(
     project_path: &str,
 ) {
     let provider = providers.resolve(project_path);
-    if let Ok(Some(commit_time)) = provider.latest_commit_time(project_path) {
-        let commit_ts = commit_time.to_rfc3339();
-        if let Ok(conn) = db.0.lock() {
-            let _ = queries::update_project(
-                &conn,
-                project_id,
-                None,
-                None,
-                None,
-                Some(Some(&commit_ts)),
-                None,
-            );
+    match provider.latest_commit_time(project_path) {
+        Ok(Some(commit_time)) => {
+            let commit_ts = commit_time.to_rfc3339();
+            tracing::info!(project_id, %commit_ts, "reseed: updating last_activity_at from git");
+            if let Ok(conn) = db.0.lock() {
+                let _ = queries::update_project(
+                    &conn,
+                    project_id,
+                    None,
+                    None,
+                    None,
+                    Some(Some(&commit_ts)),
+                    None,
+                );
+            }
+        }
+        Ok(None) => {
+            tracing::warn!(project_id, project_path, "reseed: no commits found, keeping registration time");
+        }
+        Err(e) => {
+            tracing::warn!(project_id, project_path, error = %e, "reseed: git query failed, keeping registration time");
         }
     }
 }
