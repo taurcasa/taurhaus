@@ -9,6 +9,7 @@
   import ContextMenu from './lib/ContextMenu.svelte'
   import { classifyFile } from './lib/fileClassifier.js'
   import * as assetCache from './lib/assetCache.js'
+  import { startPolling as startSessionPolling, stopPolling as stopSessionPolling, getSessionForProject } from './lib/sessionStore.svelte.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -141,6 +142,26 @@
     showWizard = false
     loadProjects()
   }
+
+  // Command Center — poll for Claude Code sessions
+  $effect(() => {
+    startSessionPolling()
+
+    // Pause polling when document is hidden
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopSessionPolling()
+      } else {
+        startSessionPolling()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      stopSessionPolling()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  })
 
   // Tauri real-time event listeners (ADR-022)
   $effect(() => {
