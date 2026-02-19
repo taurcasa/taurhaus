@@ -65,12 +65,14 @@ pub fn register_project(
     name: Option<String>,
 ) -> Result<ProjectDetail, String> {
     let expanded = expand_tilde(&path);
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
-    let detail = project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds)
-        .map_err(|e| e.to_string())?;
+    let detail = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+        project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds)
+            .map_err(|e| e.to_string())?
+    }; // conn dropped here — lock released
 
-    // Correct last_activity_at from git in the background (registration uses "now")
+    // Correct last_activity_at from git (needs its own lock)
     reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
     Ok(detail)
@@ -140,41 +142,45 @@ pub fn register_projects_batch(
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<BatchRegistrationResult>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
-    let total = paths.len();
-    let mut results = Vec::with_capacity(total);
+    let results = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+        let total = paths.len();
+        let mut results = Vec::with_capacity(total);
 
-    for (index, path) in paths.iter().enumerate() {
-        let expanded = expand_tilde(path);
-        let result = match project::register_project(&conn, &expanded, None, &settings.thresholds) {
-            Ok(detail) => {
-                let _ = app.emit(
-                    "batch-registration-progress",
-                    serde_json::json!({
-                        "project_name": detail.name,
-                        "index": index,
-                        "total": total,
-                    }),
-                );
-                BatchRegistrationResult {
-                    path: path.clone(),
-                    success: true,
-                    project: Some(detail),
-                    error: None,
-                }
-            }
-            Err(e) => BatchRegistrationResult {
-                path: path.clone(),
-                success: false,
-                project: None,
-                error: Some(e.to_string()),
-            },
-        };
-        results.push(result);
-    }
+        for (index, path) in paths.iter().enumerate() {
+            let expanded = expand_tilde(path);
+            let result =
+                match project::register_project(&conn, &expanded, None, &settings.thresholds) {
+                    Ok(detail) => {
+                        let _ = app.emit(
+                            "batch-registration-progress",
+                            serde_json::json!({
+                                "project_name": detail.name,
+                                "index": index,
+                                "total": total,
+                            }),
+                        );
+                        BatchRegistrationResult {
+                            path: path.clone(),
+                            success: true,
+                            project: Some(detail),
+                            error: None,
+                        }
+                    }
+                    Err(e) => BatchRegistrationResult {
+                        path: path.clone(),
+                        success: false,
+                        project: None,
+                        error: Some(e.to_string()),
+                    },
+                };
+            results.push(result);
+        }
+        results
+    }; // conn dropped here — lock released
 
-    // Correct last_activity_at from git in the background for all new projects
+    // Correct last_activity_at from git for all new projects (needs its own lock)
     for r in &results {
         if let Some(ref detail) = r.project {
             reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
