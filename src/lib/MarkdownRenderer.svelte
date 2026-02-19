@@ -1,9 +1,9 @@
 <script>
   import { renderMarkdown } from './markdown.js'
-  import { readProjectAsset } from './ipc.js'
+  import { readProjectAsset, openExternalUrl } from './ipc.js'
   import * as assetCache from './assetCache.js'
 
-  let { source = '', dark = false, projectId = null } = $props()
+  let { source = '', dark = false, projectId = null, onNavigate = null } = $props()
 
   let html = $state('')
   let loading = $state(true)
@@ -52,6 +52,35 @@
       })
     }
   })
+
+  // Intercept link clicks inside rendered markdown
+  function handleClick(e) {
+    const anchor = e.target.closest('a')
+    if (!anchor) return
+
+    const href = anchor.getAttribute('href')
+    if (!href) return
+
+    // Anchor links — let browser handle scroll
+    if (href.startsWith('#')) return
+
+    e.preventDefault()
+
+    // External URL — open in system browser
+    if (/^https?:\/\//.test(href) || href.startsWith('mailto:')) {
+      openExternalUrl(href).catch((err) => {
+        console.error(`[markdown] failed to open URL: ${href}`, err)
+      })
+      return
+    }
+
+    // Relative path — navigate to file in the viewer
+    if (onNavigate) {
+      // Strip any anchor fragment from the path
+      const path = href.replace(/#.*$/, '')
+      if (path) onNavigate(path)
+    }
+  }
 </script>
 
 {#if loading && !html}
@@ -64,10 +93,13 @@
     </div>
   </div>
 {:else}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     bind:this={container}
     class="th-prose {dark ? 'th-prose-dark' : ''}"
     data-testid="markdown-content"
+    onclick={handleClick}
   >
     {@html html}
   </div>

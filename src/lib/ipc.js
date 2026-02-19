@@ -322,6 +322,13 @@ export function updateSettings(settings) {
   }))
 }
 
+/** Open a URL in the system default browser via the opener plugin. */
+export function openExternalUrl(url) {
+  return invokeOrMock('plugin:opener|open_url', { url }, () => {
+    window.open(url, '_blank')
+  })
+}
+
 /** Check if this is the first run (no projects registered). */
 export function isFirstRun() {
   return invokeOrMock('is_first_run', undefined, () => MOCK_PROJECTS.length === 0)

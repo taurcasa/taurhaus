@@ -13,11 +13,18 @@ let mdInstances = { light: null, dark: null }
  * grammars load from disk once, so bundle size is irrelevant. We never
  * have to manually add languages when viewing new project types.
  */
+// Languages that appear frequently in READMEs and project files.
+// Pre-loaded at init so the first render doesn't hit lazy-load failures.
+const COMMON_LANGS = [
+  'bash', 'shell', 'javascript', 'typescript', 'json', 'python',
+  'rust', 'html', 'css', 'yaml', 'toml', 'markdown', 'sql', 'diff',
+]
+
 function getHighlighter() {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
       themes: ['github-light', 'github-dark-dimmed'],
-      langs: [],  // start empty — loaded on demand by the full bundle
+      langs: COMMON_LANGS,
     })
   }
   return highlighterPromise
@@ -38,6 +45,11 @@ async function getMdInstance(theme) {
     linkify: true,
     typographer: false,
   })
+
+  // Disable schema-less auto-linking (e.g. bare "CLAUDE.md" → "http://claude.md/").
+  // Full URLs like "https://example.com" in text still auto-link.
+  // Proper markdown links [text](url) are unaffected.
+  md.linkify.set({ fuzzyLink: false })
 
   md.use(fromHighlighter(highlighter, {
     theme: theme === 'dark' ? 'github-dark-dimmed' : 'github-light',
@@ -72,11 +84,19 @@ export async function renderMarkdown(source, isDark = false) {
   source = await preloadFencedLanguages(source)
 
   const md = await getMdInstance(isDark ? 'dark' : 'light')
-  const raw = md.render(source)
+  let raw
+  try {
+    raw = md.render(source)
+  } catch {
+    // A language Shiki can't handle slipped through — strip all language
+    // hints and retry so the rest of the markdown still renders.
+    const safeSource = source.replace(/^```\w[\w+-]*/gm, '```text')
+    raw = md.render(safeSource)
+  }
 
   return DOMPurify.sanitize(raw, {
     ADD_TAGS: ['span'],
-    ADD_ATTR: ['class', 'style'],
+    ADD_ATTR: ['class', 'style', 'target', 'rel'],
   })
 }
 

@@ -273,40 +273,58 @@
     return d.toLocaleDateString()
   }
 
+  let _selectGeneration = 0
   async function selectProject(project) {
-    // Show immediately using sidebar data (branch/is_dirty already present)
-    selectedProject = project
+    const projectId = project.id
+    const wantFiles = activeTab === 'files'
+    const generation = ++_selectGeneration
+
+    // Fire all IPC calls in parallel — don't touch state yet
+    const [detail, commits, sessions, readme, rels, tree] = await Promise.all([
+      getProject(projectId).catch(() => null),
+      getRecentCommits(projectId, 10).catch(() => []),
+      Promise.all([
+        getLatestSession(projectId).catch(() => null),
+        listSessions(projectId, 10).catch(() => []),
+      ]),
+      getReadme(projectId).catch(() => null),
+      getRelationships(projectId).catch(() => []),
+      wantFiles ? getFileTree(projectId).catch(() => []) : Promise.resolve(null),
+    ])
+
+    // Stale check — user clicked a different project while we were loading
+    if (generation !== _selectGeneration) return
+
+    // Commit everything in one synchronous block → single DOM repaint
+    selectedProject = detail ? { ...project, ...detail } : project
     detailLoading = false
     showAllCommits = false
     heroMode = 'auto'
-    // Reset file tree for new project
-    fileTree = []
+    recentCommits = commits
+    commitsLoading = false
+    latestSession = sessions[0]
+    sessionHistory = sessions[1] || []
+    sessionLoading = false
+    readmeContent = readme
+    relationships = rels
+    relationshipsLoading = false
+    // Reset file viewer state
     selectedFile = null
     fileContent = null
     fileError = null
     fileType = null
     imageDataUri = null
     expandedDirs = new Set()
-    // Reset session state
-    latestSession = null
-    sessionHistory = []
-    readmeContent = null
-    relationships = []
-    // Load detail (pure DB, fast) and content in parallel
-    const projectId = project.id
-    getProject(projectId).then(detail => {
-      // Only merge if still viewing this project
-      if (selectedProject?.id === projectId) {
-        selectedProject = { ...selectedProject, ...detail }
+    if (tree !== null) {
+      fileTree = tree
+      fileTreeLoading = false
+      // Auto-select README if on files tab
+      if (!selectedFile) {
+        const readmeNode = findReadmeInTree(fileTree)
+        if (readmeNode) openFile(readmeNode.path)
       }
-    }).catch(() => {})
-    loadCommits(projectId, 10)
-    loadSessions(projectId)
-    loadReadmeForOverview(projectId)
-    loadRelationships(projectId)
-    // If on files tab, load file tree for new project
-    if (activeTab === 'files') {
-      loadFileTree(projectId)
+    } else {
+      fileTree = []
     }
   }
 
@@ -533,6 +551,45 @@
     return () => document.removeEventListener('keydown', handler)
   })
 
+  function handleMarkdownNavigate(relativePath) {
+    if (!selectedProject) return
+
+    // Resolve relative path against the currently viewed file's directory.
+    // If viewing a file like "docs/design-brief.md" and clicking "./foo.md",
+    // resolve to "docs/foo.md".
+    let resolved = relativePath
+
+    // Strip leading ./ for normalization
+    resolved = resolved.replace(/^\.\//, '')
+
+    // If we have a current file context, resolve relative to its directory
+    const contextFile = selectedFile || (readmeContent?.path)
+    if (contextFile && !resolved.startsWith('/')) {
+      const dir = contextFile.includes('/') ? contextFile.replace(/\/[^/]+$/, '') : ''
+      if (dir) {
+        resolved = dir + '/' + resolved
+      }
+    }
+
+    // Normalize ../ segments
+    const parts = resolved.split('/')
+    const normalized = []
+    for (const part of parts) {
+      if (part === '..') {
+        normalized.pop()
+      } else if (part !== '.' && part !== '') {
+        normalized.push(part)
+      }
+    }
+    resolved = normalized.join('/')
+
+    console.log(`[markdown] navigate: "${relativePath}" → "${resolved}"`)
+
+    // Switch to files tab and open the file
+    switchTab('files')
+    openFile(resolved)
+  }
+
   function handleSearchNavigate(action) {
     if (action.tab === 'files' && action.filePath) {
       switchTab('files')
@@ -712,10 +769,13 @@
         <div class="flex-1 flex items-center justify-center">
           <p class="text-[13px] {textTertiary}">Select a project</p>
         </div>
-      {:else if activeTab === 'overview'}
+      {:else}
+      {#key selectedProject.id}
+      <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+      {#if activeTab === 'overview'}
         <!-- ═══ OVERVIEW TAB ═══ -->
         <!-- Project header -->
-        <div class="px-7 pt-5 pb-4 shrink-0">
+        <div class="px-7 pt-5 pb-4 shrink-0 content-enter">
           <div class="flex items-baseline gap-3">
             <h1 class="text-[18px] font-semibold {textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
             <span class="text-[11px] font-mono {textTertiary}">{selectedProject.branch || ''}</span>
@@ -729,7 +789,7 @@
         </div>
 
         <!-- Scrollable content -->
-        <div class="flex-1 overflow-y-auto">
+        <div class="flex-1 overflow-y-auto content-enter">
           <div class="max-w-[700px] px-7 pb-8">
 
             <!-- Hero area: Session / README toggle (ADR-006) -->
@@ -797,7 +857,7 @@
                 </div>
               {:else if showReadme && readmeContent}
                 <!-- README display (first H1 stripped — title is in the header above) -->
-                <MarkdownRenderer source={readmeForOverview} {dark} projectId={selectedProject?.id} />
+                <MarkdownRenderer source={readmeForOverview} {dark} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
               {:else}
                 <!-- Empty state -->
                 <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
@@ -1026,7 +1086,7 @@
           </div>
 
           <!-- File content viewer -->
-          <div class="flex-1 flex flex-col min-w-0">
+          <div class="flex-1 flex flex-col min-w-0 content-enter">
             {#if !selectedFile}
               <div class="flex-1 flex items-center justify-center">
                 <p class="text-[13px] {textMuted}">Select a file from the tree</p>
@@ -1073,7 +1133,7 @@
                 {:else if fileContent}
                   {#if fileType === 'markdown'}
                     <div class="p-6 overflow-auto">
-                      <MarkdownRenderer source={fileContent.content} {dark} projectId={selectedProject?.id} />
+                      <MarkdownRenderer source={fileContent.content} {dark} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
                     </div>
                   {:else}
                     <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} />
@@ -1083,6 +1143,9 @@
             {/if}
           </div>
         </div>
+      {/if}
+      </div>
+      {/key}
       {/if}
     </main>
   </div>
@@ -1098,3 +1161,16 @@
   {/if}
 </div>
 {/if}
+
+<style>
+  /* Subtle fade-up on project switch — signals "new content" without
+     feeling like a loading transition. Triggered by {#key} recreating
+     the wrapper div. */
+  .content-enter {
+    animation: content-enter 120ms ease-out;
+  }
+  @keyframes content-enter {
+    from { opacity: 0.6; transform: translateY(4px); }
+    to   { opacity: 1;   transform: translateY(0); }
+  }
+</style>
