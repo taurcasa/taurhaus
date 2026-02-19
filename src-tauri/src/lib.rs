@@ -18,6 +18,8 @@ pub mod claude_code;
 pub mod daemon;
 pub mod provider;
 
+pub mod session_scanner;
+
 use std::sync::Mutex;
 
 use commands::projects::DbState;
