@@ -1,7 +1,8 @@
-//! Daemon auto-start and connection logic.
+//! Daemon connection logic.
 //!
 //! On app startup, if WSL projects exist in the database, we try to connect
-//! to the daemon. If it's not running, we attempt to start it and retry.
+//! to an already-running daemon. The daemon must be started separately
+//! (e.g. `just run-daemon`).
 
 use crate::provider::daemon_client::DaemonProvider;
 
@@ -48,44 +49,6 @@ pub fn try_restart_daemon(_distro: &str, port: u16) -> Result<(), std::io::Error
 fn try_connect(port: u16) -> Option<DaemonProvider> {
     let addr = format!("127.0.0.1:{port}");
     DaemonProvider::connect(&addr).ok()
-}
-
-/// Start the daemon process.
-///
-/// On Windows: launches `wsl.exe -d <distro>` to run the daemon inside WSL.
-/// On Linux (dev): launches the daemon binary directly.
-#[cfg(target_os = "windows")]
-fn start_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
-    use std::os::windows::process::CommandExt;
-
-    let daemon_cmd = format!(
-        "$HOME/.local/bin/taurhaus-daemon --port {port}"
-    );
-    tracing::debug!(distro, cmd = %daemon_cmd, "Launching daemon via wsl.exe");
-
-    // CREATE_NO_WINDOW (0x08000000) prevents wsl.exe from opening a visible
-    // console window on the user's desktop.
-    std::process::Command::new("wsl.exe")
-        .args(["-d", distro, "--", "sh", "-c", &daemon_cmd])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .creation_flags(0x08000000)
-        .spawn()
-        .map(|_| ())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn start_daemon(_distro: &str, port: u16) -> Result<(), std::io::Error> {
-    tracing::debug!(port, "Launching daemon directly (Linux dev mode)");
-
-    std::process::Command::new("taurhaus-daemon")
-        .args(["--port", &port.to_string()])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
 }
 
 #[cfg(test)]
