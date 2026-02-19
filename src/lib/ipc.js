@@ -354,3 +354,46 @@ export function registerProjectsBatch(paths) {
     }))
   )
 }
+
+// ---------------------------------------------------------------------------
+// Command Center — Claude Code session management
+// ---------------------------------------------------------------------------
+
+const MOCK_CLAUDE_SESSIONS = [
+  {
+    pid: 12345,
+    project_path: '/home/user/projects/taurhaus',
+    tty: '/dev/pts/2',
+    args: 'claude --dangerously-skip-permissions --continue',
+    tmux_session: '0',
+    tmux_window: '1',
+    tmux_pane: '%3',
+    tmux_window_name: 'taurhaus',
+    state: 'active',
+    session_id: 'abc-123-def',
+    jsonl_path: '/home/user/.claude/projects/-home-user-projects-taurhaus/abc-123-def.jsonl',
+  },
+]
+
+/** List all running Claude Code sessions. */
+export function listClaudeSessions() {
+  return invokeOrMock('list_claude_sessions', undefined, () => MOCK_CLAUDE_SESSIONS)
+}
+
+/** Launch a new Claude Code session for a project. Mode: "continue" | "fresh" | "resume". */
+export function launchClaudeSession(projectId, mode) {
+  return invokeOrMock('launch_claude_session', { projectId, mode }, () => ({
+    tmux_window: 'project',
+    tmux_pane: '%99',
+  }))
+}
+
+/** Stop a running Claude Code session by tmux pane ID. */
+export function stopClaudeSession(tmuxPane) {
+  return invokeOrMock('stop_claude_session', { tmuxPane }, () => undefined)
+}
+
+/** Navigate to a Claude Code session's tmux pane and focus the terminal. */
+export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane) {
+  return invokeOrMock('navigate_to_session', { tmuxSession, tmuxWindow, tmuxPane }, () => undefined)
+}

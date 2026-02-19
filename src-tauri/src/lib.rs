@@ -20,6 +20,8 @@ pub mod provider;
 
 pub mod session_scanner;
 
+pub mod terminal;
+
 use std::sync::Mutex;
 
 use commands::projects::DbState;
@@ -214,6 +216,10 @@ pub fn run() {
             commands::daemon::start_daemon,
             commands::daemon::stop_daemon,
             commands::logging::frontend_log,
+            commands::command_center::list_claude_sessions,
+            commands::command_center::launch_claude_session,
+            commands::command_center::stop_claude_session,
+            commands::command_center::navigate_to_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");

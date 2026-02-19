@@ -1,3 +1,4 @@
+pub mod command_center;
 pub mod daemon;
 pub mod files;
 pub mod logging;

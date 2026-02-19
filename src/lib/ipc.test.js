@@ -650,4 +650,86 @@ describe('ipc module', () => {
       expect(result[2].path).toBe('/c')
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Command Center — Claude Code session management
+  // -----------------------------------------------------------------------
+
+  describe('listClaudeSessions()', () => {
+    it('calls invoke with correct command in Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockSessions = [{ pid: 123, project_path: '/test', state: 'active' }]
+      tauriCore.invoke.mockResolvedValue(mockSessions)
+
+      const result = await ipc.listClaudeSessions()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('list_claude_sessions')
+      expect(result).toEqual(mockSessions)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns mock sessions when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.listClaudeSessions()
+
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      expect(result[0]).toHaveProperty('pid')
+      expect(result[0]).toHaveProperty('state')
+      expect(result[0]).toHaveProperty('project_path')
+    })
+  })
+
+  describe('launchClaudeSession()', () => {
+    it('calls invoke with project ID and mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockResult = { tmux_window: 'proj', tmux_pane: '%5' }
+      tauriCore.invoke.mockResolvedValue(mockResult)
+
+      const result = await ipc.launchClaudeSession('p1', 'continue')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('launch_claude_session', {
+        projectId: 'p1',
+        mode: 'continue',
+      })
+      expect(result).toEqual(mockResult)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns mock result when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.launchClaudeSession('p1', 'fresh')
+
+      expect(result).toHaveProperty('tmux_window')
+      expect(result).toHaveProperty('tmux_pane')
+    })
+  })
+
+  describe('stopClaudeSession()', () => {
+    it('calls invoke with tmux pane ID', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.stopClaudeSession('%3')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('stop_claude_session', { tmuxPane: '%3' })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('navigateToSession()', () => {
+    it('calls invoke with tmux session, window, and pane', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.navigateToSession('main', '1', '%3')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('navigate_to_session', {
+        tmuxSession: 'main',
+        tmuxWindow: '1',
+        tmuxPane: '%3',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
 })
