@@ -3,7 +3,7 @@
 
   let {
     project = null,
-    session = null,
+    sessions = [],
     anchorEl = null,
   } = $props()
 
@@ -11,8 +11,7 @@
   let posX = $state(0)
   let posY = $state(0)
 
-  const badge = $derived(sessionBadge(session))
-  const hasSession = $derived(hasLiveSession(session))
+  const liveSessions = $derived((sessions || []).filter(s => hasLiveSession(s)))
 
   // Activity state labels
   const activityLabels = {
@@ -91,26 +90,31 @@
     <div class="h-px bg-white/[0.06] my-2.5"></div>
 
     <!-- Session info -->
-    {#if hasSession}
-      <div class="flex items-center gap-2 mb-1.5">
-        <span
-          class="inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] px-1.5 h-[16px] {badge.badgeClass}"
-        >{badge.label}</span>
-        <span class="text-[12px] text-white/55">
-          {badge.toolLabel} {session.state === 'idle' ? '— waiting for input' : '— working'}
-        </span>
-      </div>
-      <div class="space-y-0.5 text-[11px] font-mono text-white/25">
-        {#if session.session_id}
-          <div>sid: {session.session_id.slice(0, 12)}</div>
-        {/if}
-        {#if session.tmux_session}
-          <div>tmux: {session.tmux_session}{session.tmux_window != null ? `:${session.tmux_window}` : ''}</div>
-        {/if}
-        {#if session.pid}
-          <div>pid: {session.pid}</div>
-        {/if}
-      </div>
+    {#if liveSessions.length > 0}
+      {#each liveSessions as s}
+        {@const badge = sessionBadge(s)}
+        <div class="mb-2 last:mb-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span
+              class="inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] px-1.5 h-[16px] {badge.badgeClass}"
+            >{badge.label}</span>
+            <span class="text-[12px] text-white/55">
+              {badge.toolLabel} {s.state === 'idle' ? '— waiting for input' : '— working'}
+            </span>
+          </div>
+          <div class="space-y-0.5 text-[11px] font-mono text-white/25">
+            {#if s.session_id}
+              <div>sid: {s.session_id.slice(0, 12)}</div>
+            {/if}
+            {#if s.tmux_session}
+              <div>tmux: {s.tmux_session}{s.tmux_window != null ? `:${s.tmux_window}` : ''}</div>
+            {/if}
+            {#if s.pid}
+              <div>pid: {s.pid}</div>
+            {/if}
+          </div>
+        </div>
+      {/each}
     {:else}
       <div class="text-[11px] text-white/25">No active session</div>
     {/if}

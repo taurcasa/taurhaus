@@ -9,8 +9,8 @@
   import ContextMenu from './lib/ContextMenu.svelte'
   import { classifyFile } from './lib/fileClassifier.js'
   import * as assetCache from './lib/assetCache.js'
-  import { startPolling as startSessionPolling, stopPolling as stopSessionPolling, getSessionForProject } from './lib/sessionStore.svelte.js'
-  import { rowTintClass, sessionBadge } from './lib/sessionIndicator.js'
+  import { startPolling as startSessionPolling, stopPolling as stopSessionPolling, getSessionForProject, getSessionsForProject } from './lib/sessionStore.svelte.js'
+  import { rowTintClass, rowTintForSessions, sessionBadge, toolIndicators } from './lib/sessionIndicator.js'
   import HoverCard from './lib/HoverCard.svelte'
 
   let dark = $state(false)
@@ -28,13 +28,13 @@
   let ctxConfirmTimeout = $state(null)
 
   // Hover card state
-  let hoverCard = $state(null) // { project, session, anchorEl }
+  let hoverCard = $state(null) // { project, sessions, anchorEl }
   let hoverTimeout = $state(null)
 
-  function showHoverCard(project, session, el) {
+  function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
     hoverTimeout = setTimeout(() => {
-      if (!ctxMenu) hoverCard = { project, session, anchorEl: el }
+      if (!ctxMenu) hoverCard = { project, sessions, anchorEl: el }
     }, 80)
   }
 
@@ -311,26 +311,10 @@
   const CTX_ICON_RESTART = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>'
   const CTX_ICON_STOP = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 0 1 7.5 5.25h9a2.25 2.25 0 0 1 2.25 2.25v9a2.25 2.25 0 0 1-2.25 2.25h-9a2.25 2.25 0 0 1-2.25-2.25v-9Z"/></svg>'
 
-  function ctxContinueSession() {
+  function ctxLaunchTool(mode, tool = 'claude') {
     if (!ctxMenu?.project) return
-    console.log('[cmd-center] Continue Session:', ctxMenu.project.id, ctxMenu.project.name)
-    launchClaudeSession(ctxMenu.project.id, 'continue')
-      .then(r => console.log('[cmd-center] launch OK:', r))
-      .catch(e => console.error('[cmd-center] launch FAILED:', e))
-  }
-
-  function ctxNewSession() {
-    if (!ctxMenu?.project) return
-    console.log('[cmd-center] New Session:', ctxMenu.project.id, ctxMenu.project.name)
-    launchClaudeSession(ctxMenu.project.id, 'fresh')
-      .then(r => console.log('[cmd-center] launch OK:', r))
-      .catch(e => console.error('[cmd-center] launch FAILED:', e))
-  }
-
-  function ctxResumeSession() {
-    if (!ctxMenu?.project) return
-    console.log('[cmd-center] Resume Session:', ctxMenu.project.id, ctxMenu.project.name)
-    launchClaudeSession(ctxMenu.project.id, 'resume')
+    console.log(`[cmd-center] ${mode} ${tool} session:`, ctxMenu.project.id, ctxMenu.project.name)
+    launchClaudeSession(ctxMenu.project.id, mode, tool)
       .then(r => console.log('[cmd-center] launch OK:', r))
       .catch(e => console.error('[cmd-center] launch FAILED:', e))
   }
@@ -380,26 +364,28 @@
   /** Generate session-specific context menu items based on current session state. */
   function sessionCtxItems() {
     if (!ctxMenu?.project) return []
-    const session = getSessionForProject(ctxMenu.project.path)
+    const allSessions = getSessionsForProject(ctxMenu.project.path)
+    const hasAny = allSessions.length > 0
 
-    if (session?.state === 'active' || session?.state === 'idle') {
-      return [
-        { label: 'Open in Terminal', action: ctxOpenInTerminal, icon: CTX_ICON_TERMINAL },
-        { separator: true },
-        { label: 'Continue Session', disabled: true, icon: CTX_ICON_PLAY },
-        { label: 'New Session', disabled: true, icon: CTX_ICON_PLUS },
-        { label: 'Resume (pick)...', disabled: true, icon: CTX_ICON_CLOCK },
-        { separator: true },
-        { label: 'Restart Session', action: ctxRestartSession, icon: CTX_ICON_RESTART },
-        { label: ctxConfirmStop ? 'Confirm stop?' : 'Stop Session', action: ctxStopSession, danger: true, keepOpen: !ctxConfirmStop, icon: CTX_ICON_STOP },
-      ]
+    const items = []
+
+    if (hasAny) {
+      items.push({ label: 'Open in Terminal', action: ctxOpenInTerminal, icon: CTX_ICON_TERMINAL })
+      items.push({ separator: true })
     }
 
-    return [
-      { label: 'Continue Session', action: ctxContinueSession, icon: CTX_ICON_PLAY },
-      { label: 'New Session', action: ctxNewSession, icon: CTX_ICON_PLUS },
-      { label: 'Resume (pick)...', action: ctxResumeSession, icon: CTX_ICON_CLOCK },
-    ]
+    // Launch options — one sub-entry per tool
+    items.push({ label: 'Claude', action: () => ctxLaunchTool('continue', 'claude'), icon: CTX_ICON_PLAY })
+    items.push({ label: 'Codex', action: () => ctxLaunchTool('continue', 'codex'), icon: CTX_ICON_PLAY })
+    items.push({ label: 'Gemini', action: () => ctxLaunchTool('continue', 'gemini'), icon: CTX_ICON_PLAY })
+
+    if (hasAny) {
+      items.push({ separator: true })
+      items.push({ label: 'Restart Session', action: ctxRestartSession, icon: CTX_ICON_RESTART })
+      items.push({ label: ctxConfirmStop ? 'Confirm stop?' : 'Stop Session', action: ctxStopSession, danger: true, keepOpen: !ctxConfirmStop, icon: CTX_ICON_STOP })
+    }
+
+    return items
   }
 
   const CTX_ICON_COPY = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/></svg>'
@@ -882,14 +868,15 @@
               </div>
               {#each items as project}
                 {@const selected = selectedProject && project.id === selectedProject.id}
-                {@const session = getSessionForProject(project.path)}
-                {@const badge = sessionBadge(session)}
+                {@const projectSessions = getSessionsForProject(project.path)}
+                {@const session = projectSessions[0] ?? null}
+                {@const indicators = toolIndicators(projectSessions)}
                 <button
                   class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
-                    {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintClass(session)}`}"
+                    {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
                   onclick={() => selectProject(project)}
                   oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
-                  onmouseenter={(e) => showHoverCard(project, session, e.currentTarget)}
+                  onmouseenter={(e) => showHoverCard(project, projectSessions, e.currentTarget)}
                   onmouseleave={hideHoverCard}
                 >
                   {#if selected}
@@ -897,42 +884,30 @@
                   {/if}
                   <span class="w-[7px] h-[7px] rounded-full shrink-0 {dotClassFor(project)}"></span>
                   <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
-                  {#if badge.interactive}
-                    <span
-                      class="session-pill w-[33px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] transition-opacity duration-150 opacity-100 {badge.badgeClass}"
-                      role="button"
-                      tabindex="0"
-                      aria-label={badge.ariaLabel}
-                      onclick={(e) => jumpToSession(e, session)}
-                      onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, session) }}
-                    >{badge.label}</span>
-                  {:else if badge.visible}
-                    <span
-                      class="session-pill w-[33px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] transition-opacity duration-150 opacity-100 {badge.badgeClass}"
-                      aria-label={badge.ariaLabel}
-                    >{badge.label}</span>
+                  {#if indicators.length > 0}
+                    <span class="flex items-center gap-0.5 shrink-0">
+                      {#each indicators as ind}
+                        {#if ind.interactive}
+                          <span
+                            class="w-[16px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-bold rounded border transition-opacity duration-150 {ind.badgeClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                            role="button"
+                            tabindex="0"
+                            title={ind.ariaLabel}
+                            aria-label={ind.ariaLabel}
+                            onclick={(e) => jumpToSession(e, ind.session)}
+                            onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, ind.session) }}
+                          >{ind.label}</span>
+                        {:else}
+                          <span
+                            class="w-[16px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-bold rounded border transition-opacity duration-150 {ind.badgeClass}"
+                            title={ind.ariaLabel}
+                            aria-label={ind.ariaLabel}
+                          >{ind.label}</span>
+                        {/if}
+                      {/each}
+                    </span>
                   {/if}
                   <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch || ''}</span>
-                  {#if badge.visible}
-                    {#if badge.interactive}
-                      <span
-                        class="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-white/40 hover:text-white/70 transition-colors"
-                        role="button"
-                        tabindex="0"
-                        aria-label="Open in Terminal session"
-                        onclick={(e) => jumpToSession(e, session)}
-                        onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, session) }}
-                      >
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3"/></svg>
-                      </span>
-                    {:else}
-                      <span class="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-white/20" aria-hidden="true">
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3"/></svg>
-                      </span>
-                    {/if}
-                  {:else}
-                    <span class="w-3.5 h-3.5 shrink-0 opacity-0 pointer-events-none"></span>
-                  {/if}
                   {#if project.is_dirty}
                     <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
                   {/if}
@@ -1360,7 +1335,7 @@
   {/if}
 
   {#if hoverCard}
-    <HoverCard project={hoverCard.project} session={hoverCard.session} anchorEl={hoverCard.anchorEl} />
+    <HoverCard project={hoverCard.project} sessions={hoverCard.sessions} anchorEl={hoverCard.anchorEl} />
   {/if}
 </div>
 {/if}
