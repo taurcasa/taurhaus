@@ -66,14 +66,26 @@ pub fn launch_in_tmux(
     Ok((window_name, pane_id))
 }
 
-/// Stop a CLI tool session by sending the exit command to the tmux pane.
+/// Stop a CLI tool session by sending the exit signal to the tmux pane.
 ///
 /// After the tool exits, polls for the process to terminate (pane returns
 /// to shell), then kills the pane to clean up. If it's the last pane in the
 /// window, tmux automatically closes the window too.
+///
+/// Exit strategies differ per tool:
+/// - Claude & Gemini: `/exit` text command (typed + Enter)
+/// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
-    let config = cli_tool::config_for(tool);
-    run_tmux_send_keys(tmux_pane, config.exit_command)?;
+    match tool {
+        CliTool::Codex => {
+            // Codex exits on Ctrl+C, not a text command
+            run_tmux_raw_key(tmux_pane, "C-c")?;
+        }
+        _ => {
+            let config = cli_tool::config_for(tool);
+            run_tmux_send_keys(tmux_pane, config.exit_command)?;
+        }
+    }
 
     // Poll for exit, then kill the pane. Background thread so we don't block IPC.
     let pane = tmux_pane.to_string();
@@ -219,6 +231,23 @@ fn detect_tmux_session() -> Result<String, String> {
 /// `$()`, and all other metacharacters.
 fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Send a raw key sequence to a tmux pane (no Enter, no text escaping).
+///
+/// Used for control sequences like `C-c` (Ctrl+C) that aren't typed text.
+fn run_tmux_raw_key(pane: &str, key: &str) -> Result<(), String> {
+    let output = Command::new("tmux")
+        .args(["send-keys", "-t", pane, key])
+        .output()
+        .map_err(|e| format!("Failed to send key to tmux pane {pane}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux send-keys failed: {stderr}"));
+    }
+
+    Ok(())
 }
 
 /// Send keys to a tmux pane (with Enter).

@@ -140,7 +140,7 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     let processes = process::scan_processes();
     let pane_map = tmux::list_panes();
 
-    let sessions: Vec<ClaudeSession> = processes
+    let mut sessions: Vec<ClaudeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
@@ -175,6 +175,12 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
         })
         .collect();
 
+    // Deduplicate: when a tool runs via an fnm/node shim, both the shim
+    // process and the native binary appear in `ps` output sharing the same
+    // TTY.  Keep only one session per (tty, cli_tool) pair.
+    let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
+    sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
+
     // Clean up stale PID entries from both trackers
     let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
     proc_io::retain_pids(&active_pids);
@@ -197,7 +203,7 @@ where
     let processes = process_scanner();
     let pane_map = tmux_lister();
 
-    processes
+    let mut sessions: Vec<ClaudeSession> = processes
         .into_iter()
         .map(|proc| {
             // Look up tmux pane by TTY
@@ -221,7 +227,13 @@ where
                 jsonl_path: idle_result.jsonl_path,
             }
         })
-        .collect()
+        .collect();
+
+    // Deduplicate: same logic as scan_sessions (see comment there)
+    let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
+    sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
+
+    sessions
 }
 
 #[cfg(test)]
@@ -479,5 +491,89 @@ mod tests {
             let guard = STATE_TRACKERS.lock().unwrap();
             assert!(!guard.as_ref().unwrap().contains_key(&pid));
         }
+    }
+
+    #[test]
+    fn scan_sessions_deduplicates_same_tty_same_tool() {
+        // Simulates the fnm shim scenario: node shim + native binary
+        // both detected as Codex, same TTY (same tmux pane).
+        let mock_processes = || {
+            vec![
+                process::ProcessInfo {
+                    pid: 500,
+                    project_path: "/home/user/proj-a".to_string(),
+                    tty: "/dev/pts/3".to_string(),
+                    args: "node /path/to/bin/codex --yolo".to_string(),
+                    cli_tool: CliTool::Codex,
+                },
+                process::ProcessInfo {
+                    pid: 501,
+                    project_path: "/home/user/proj-a".to_string(),
+                    tty: "/dev/pts/3".to_string(),
+                    args: "/path/to/codex/codex --yolo".to_string(),
+                    cli_tool: CliTool::Codex,
+                },
+            ]
+        };
+
+        let mock_tmux = || {
+            let mut map = HashMap::new();
+            map.insert(
+                "/dev/pts/3".to_string(),
+                tmux::TmuxPane {
+                    pane_id: "%5".to_string(),
+                    tty: "/dev/pts/3".to_string(),
+                    window_index: "2".to_string(),
+                    window_name: "proj-a".to_string(),
+                    session_name: "0".to_string(),
+                },
+            );
+            map
+        };
+
+        let mock_idle = |_: &str| idle::IdleResult {
+            state: SessionState::Idle,
+            session_id: None,
+            jsonl_path: None,
+        };
+
+        let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
+        assert_eq!(sessions.len(), 1, "should deduplicate same-TTY same-tool processes");
+        assert_eq!(sessions[0].cli_tool, CliTool::Codex);
+        assert_eq!(sessions[0].tmux_pane.as_deref(), Some("%5"));
+    }
+
+    #[test]
+    fn scan_sessions_keeps_different_tools_on_same_tty() {
+        // Different tools on different TTYs should NOT be deduped.
+        // (Same TTY + different tool would be unusual but should also be kept.)
+        let mock_processes = || {
+            vec![
+                process::ProcessInfo {
+                    pid: 600,
+                    project_path: "/home/user/proj-a".to_string(),
+                    tty: "/dev/pts/4".to_string(),
+                    args: "claude --continue".to_string(),
+                    cli_tool: CliTool::Claude,
+                },
+                process::ProcessInfo {
+                    pid: 700,
+                    project_path: "/home/user/proj-a".to_string(),
+                    tty: "/dev/pts/5".to_string(),
+                    args: "codex --yolo".to_string(),
+                    cli_tool: CliTool::Codex,
+                },
+            ]
+        };
+
+        let mock_tmux = || HashMap::new();
+        let mock_idle = |_: &str| idle::IdleResult {
+            state: SessionState::Active,
+            session_id: None,
+            jsonl_path: None,
+        };
+
+        let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
+        assert_eq!(sessions.len(), 2, "different tools should not be deduped");
     }
 }
