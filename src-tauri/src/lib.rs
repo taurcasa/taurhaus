@@ -108,6 +108,11 @@ pub fn run() {
                     distro.as_deref(),
                     daemon::server::DEFAULT_PORT,
                 );
+                tracing::warn!(
+                    daemon_connected = daemon.is_some(),
+                    distro = ?distro,
+                    "Daemon connection result at startup"
+                );
                 (daemon, distro)
             };
 

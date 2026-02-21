@@ -167,4 +167,25 @@ describe('sessionStore', () => {
     expect(store.getSessionForProject('/home/user/proj-a')).toBeTruthy()
     expect(store.getSessionForProject('/home/user/proj-a/')).toBeTruthy()
   })
+
+  // WSL path normalization: \\wsl.localhost\ and \\wsl$\ should match
+  it('matches sessions across wsl.localhost and wsl$ path forms', async () => {
+    // Backend returns \\wsl.localhost\ form
+    const session = {
+      pid: 100,
+      project_path: '\\\\wsl.localhost\\Ubuntu\\home\\user\\proj',
+      state: 'active',
+      tty: '/dev/pts/1',
+      args: 'claude',
+    }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    // DB stores \\wsl$\ form — should still match
+    expect(store.getSessionForProject('\\\\wsl$\\Ubuntu\\home\\user\\proj')).toBeTruthy()
+    // And the \\wsl.localhost\ form should also match
+    expect(store.getSessionForProject('\\\\wsl.localhost\\Ubuntu\\home\\user\\proj')).toBeTruthy()
+  })
 })

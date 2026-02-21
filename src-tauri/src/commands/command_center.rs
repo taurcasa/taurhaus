@@ -3,8 +3,11 @@
 //! These commands are called by the frontend to list, launch, stop, and
 //! navigate to Claude Code sessions running in tmux.
 
+use std::io::Write;
+
 use tauri::State;
 
+use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::daemon::protocol::{self, LaunchMode};
 use crate::session_scanner::ClaudeSession;
@@ -17,8 +20,17 @@ use crate::ProviderState;
 #[tauri::command]
 pub fn list_claude_sessions(
     provider: State<'_, ProviderState>,
+    log_file: State<'_, LogFileState>,
 ) -> Result<Vec<ClaudeSession>, String> {
     // Try daemon first (required on Windows where we can't run ps/tmux directly)
+    let has_daemon = provider.daemon.is_some();
+    let daemon_connected = provider.daemon.as_ref().map(|d| d.is_connected()).unwrap_or(false);
+
+    // Write diagnostics to the app log file (visible on Windows)
+    if let Ok(mut f) = log_file.0.lock() {
+        let _ = writeln!(f, "[cmd-center] list_claude_sessions: has_daemon={has_daemon} connected={daemon_connected} distro={:?}", provider.wsl_distro);
+    }
+
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "list-sessions";
@@ -29,17 +41,38 @@ pub fn list_claude_sessions(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    let sessions: Vec<ClaudeSession> = response
+                    let mut sessions: Vec<ClaudeSession> = response
                         .result
                         .and_then(|v| serde_json::from_value(v).ok())
                         .unwrap_or_default();
+
+                    // Convert Linux project paths to WSL UNC paths so the frontend
+                    // can match sessions to projects (which are stored as UNC paths).
+                    if let Some(ref distro) = provider.wsl_distro {
+                        for session in &mut sessions {
+                            if session.project_path.starts_with('/') {
+                                session.project_path =
+                                    crate::provider::path::linux_to_wsl_unc(
+                                        &session.project_path,
+                                        distro,
+                                    );
+                            }
+                        }
+                    }
+
+                    if let Ok(mut f) = log_file.0.lock() {
+                        for s in &sessions {
+                            let _ = writeln!(f, "[cmd-center] session: path={} state={:?} tmux_session={:?} tmux_window={:?} tmux_pane={:?}",
+                                s.project_path, s.state, s.tmux_session, s.tmux_window, s.tmux_pane
+                            );
+                        }
+                    }
                     return Ok(sessions);
                 }
                 Ok(response) => {
-                    tracing::warn!(
-                        error = ?response.error,
-                        "Daemon list_claude_sessions failed"
-                    );
+                    if let Ok(mut f) = log_file.0.lock() {
+                        let _ = writeln!(f, "[cmd-center] daemon returned error: {:?}", response.error);
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "Failed to reach daemon for session listing");
@@ -49,7 +82,11 @@ pub fn list_claude_sessions(
     }
 
     // Fall back to direct scan (works on Linux where ps/tmux are available)
-    Ok(crate::session_scanner::scan_sessions())
+    let fallback = crate::session_scanner::scan_sessions();
+    if let Ok(mut f) = log_file.0.lock() {
+        let _ = writeln!(f, "[cmd-center] using fallback scan, found {} sessions", fallback.len());
+    }
+    Ok(fallback)
 }
 
 /// Launch a new Claude Code session for a project.
@@ -60,9 +97,14 @@ pub fn list_claude_sessions(
 pub fn launch_claude_session(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
+    log_file: State<'_, LogFileState>,
     project_id: String,
     mode: LaunchMode,
 ) -> Result<protocol::LaunchSessionResult, String> {
+    if let Ok(mut f) = log_file.0.lock() {
+        let _ = writeln!(f, "[cmd-center] launch_claude_session: project_id={project_id} mode={mode:?}");
+    }
+
     // Resolve project path from DB
     let project_path = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -75,6 +117,10 @@ pub fn launch_claude_session(
     // Convert WSL UNC path to Linux path if needed
     let linux_path = crate::provider::path::wsl_unc_to_linux(&project_path)
         .unwrap_or_else(|| project_path.clone());
+
+    if let Ok(mut f) = log_file.0.lock() {
+        let _ = writeln!(f, "[cmd-center] launch: db_path={project_path} linux_path={linux_path}");
+    }
 
     // Try daemon first
     if let Some(ref daemon) = provider.daemon {
@@ -95,6 +141,10 @@ pub fn launch_claude_session(
                         .and_then(|v| serde_json::from_value(v).ok())
                         .ok_or("Invalid launch result from daemon")?;
 
+                    if let Ok(mut f) = log_file.0.lock() {
+                        let _ = writeln!(f, "[cmd-center] launch SUCCESS via daemon: window={} pane={}", result.tmux_window, result.tmux_pane);
+                    }
+
                     // Focus Windows Terminal after successful launch
                     let _ = crate::terminal::focus_windows_terminal();
                     return Ok(result);
@@ -104,9 +154,15 @@ pub fn launch_claude_session(
                         .error
                         .map(|e| e.message)
                         .unwrap_or_else(|| "Unknown error".to_string());
+                    if let Ok(mut f) = log_file.0.lock() {
+                        let _ = writeln!(f, "[cmd-center] launch FAILED via daemon: {msg}");
+                    }
                     return Err(format!("Failed to launch session: {msg}"));
                 }
                 Err(e) => {
+                    if let Ok(mut f) = log_file.0.lock() {
+                        let _ = writeln!(f, "[cmd-center] launch: daemon unreachable: {e}");
+                    }
                     tracing::warn!(error = %e, "Daemon unreachable for launch");
                 }
             }
@@ -114,6 +170,9 @@ pub fn launch_claude_session(
     }
 
     // Fall back to direct launch (Linux dev)
+    if let Ok(mut f) = log_file.0.lock() {
+        let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
+    }
     let (window, pane) =
         crate::session_scanner::control::launch_in_tmux(&linux_path, mode)
             .map_err(|e| format!("Failed to launch session: {e}"))?;
@@ -166,10 +225,14 @@ pub fn stop_claude_session(
 #[tauri::command]
 pub fn navigate_to_session(
     provider: State<'_, ProviderState>,
+    log_file: State<'_, LogFileState>,
     tmux_session: String,
     tmux_window: String,
     tmux_pane: String,
 ) -> Result<(), String> {
+    if let Ok(mut f) = log_file.0.lock() {
+        let _ = writeln!(f, "[cmd-center] navigate_to_session: session={tmux_session} window={tmux_window} pane={tmux_pane}");
+    }
     // Try daemon first
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {

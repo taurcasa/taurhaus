@@ -208,6 +208,7 @@ fn dispatch(
     provider: &LocalProvider,
     start_time: Instant,
 ) -> DaemonResponse {
+    tracing::info!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
         protocol::method::PING => handle_ping(&request.id, start_time),
         protocol::method::GIT_STATUS => handle_git_status(&request.id, &request.params, provider),
