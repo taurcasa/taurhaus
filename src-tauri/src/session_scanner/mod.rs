@@ -7,6 +7,7 @@
 
 pub mod control;
 pub mod idle;
+pub mod proc_io;
 pub mod process;
 pub mod tmux;
 
@@ -52,14 +53,35 @@ pub struct ClaudeSession {
 
 /// Scan for all running Claude Code sessions.
 ///
-/// Orchestrates process scanning, tmux mapping, and idle detection
-/// into a single comprehensive scan.
+/// Orchestrates process scanning, tmux mapping, idle detection,
+/// and `/proc/PID/io` activity tracking into a single comprehensive scan.
+///
+/// State determination is two-phase:
+/// 1. JSONL mtime check (fast, filesystem-based)
+/// 2. If JSONL says Idle, check `/proc/PID/io` delta — if the process is
+///    doing significant IO (e.g. streaming an API response), override to Active.
+///
+/// This catches the "thinking gap" where Claude is waiting for an API response
+/// and hasn't written to the transcript yet.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
-    scan_sessions_with(
+    let mut sessions = scan_sessions_with(
         &process::scan_processes,
         &tmux::list_panes,
         &idle::detect_idle,
-    )
+    );
+
+    // Phase 2: proc IO override for sessions that JSONL thinks are idle
+    for session in &mut sessions {
+        if session.state == SessionState::Idle && proc_io::is_process_active(session.pid) {
+            session.state = SessionState::Active;
+        }
+    }
+
+    // Clean up stale PID entries
+    let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
+    proc_io::retain_pids(&active_pids);
+
+    sessions
 }
 
 /// Testable version of scan_sessions that accepts injectable functions.
