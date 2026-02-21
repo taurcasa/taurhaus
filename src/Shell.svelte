@@ -332,8 +332,8 @@
     }
   }
 
-  function ctxStopSession() {
-    if (!ctxMenu?.project) return
+  function ctxStopTool(session) {
+    if (!session?.tmux_pane) return
     if (!ctxConfirmStop) {
       ctxConfirmStop = true
       ctxConfirmTimeout = setTimeout(() => {
@@ -342,47 +342,54 @@
       }, 3000)
       return
     }
-    const session = getSessionForProject(ctxMenu.project.path)
-    if (session?.tmux_pane) {
-      stopClaudeSession(session.tmux_pane, session.cli_tool).catch(e => console.error('Failed to stop session:', e))
-    }
+    stopClaudeSession(session.tmux_pane, session.cli_tool).catch(e => console.error('Failed to stop session:', e))
     closeContextMenu()
   }
 
-  function ctxRestartSession() {
-    if (!ctxMenu?.project) return
-    const session = getSessionForProject(ctxMenu.project.path)
+  function ctxRestartTool(session) {
+    if (!ctxMenu?.project || !session?.tmux_pane) return
     const projectId = ctxMenu.project.id
-    const tool = session?.cli_tool
-    if (session?.tmux_pane) {
-      stopClaudeSession(session.tmux_pane, tool)
-        .then(() => launchClaudeSession(projectId, 'continue', tool))
-        .catch(e => console.error('Failed to restart session:', e))
-    }
+    const tool = session.cli_tool
+    stopClaudeSession(session.tmux_pane, tool)
+      .then(() => launchClaudeSession(projectId, 'continue', tool))
+      .catch(e => console.error('Failed to restart session:', e))
   }
+
+  /** Tool display names for context menu labels. */
+  const TOOL_DISPLAY = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }
 
   /** Generate session-specific context menu items based on current session state. */
   function sessionCtxItems() {
     if (!ctxMenu?.project) return []
     const allSessions = getSessionsForProject(ctxMenu.project.path)
-    const hasAny = allSessions.length > 0
+    const liveSessions = allSessions.filter(s => s.state === 'active' || s.state === 'idle')
 
     const items = []
 
-    if (hasAny) {
+    if (liveSessions.length > 0) {
       items.push({ label: 'Open in Terminal', action: ctxOpenInTerminal, icon: CTX_ICON_TERMINAL })
       items.push({ separator: true })
     }
 
-    // Launch options — one sub-entry per tool
+    // Launch options — one entry per tool
     items.push({ label: 'Claude', action: () => ctxLaunchTool('continue', 'claude'), icon: CTX_ICON_PLAY })
     items.push({ label: 'Codex', action: () => ctxLaunchTool('continue', 'codex'), icon: CTX_ICON_PLAY })
     items.push({ label: 'Gemini', action: () => ctxLaunchTool('continue', 'gemini'), icon: CTX_ICON_PLAY })
 
-    if (hasAny) {
+    // Per-tool stop/restart for each running session
+    if (liveSessions.length > 0) {
       items.push({ separator: true })
-      items.push({ label: 'Restart Session', action: ctxRestartSession, icon: CTX_ICON_RESTART })
-      items.push({ label: ctxConfirmStop ? 'Confirm stop?' : 'Stop Session', action: ctxStopSession, danger: true, keepOpen: !ctxConfirmStop, icon: CTX_ICON_STOP })
+      for (const s of liveSessions) {
+        const name = TOOL_DISPLAY[s.cli_tool] || 'Session'
+        items.push({ label: `Restart ${name}`, action: () => ctxRestartTool(s), icon: CTX_ICON_RESTART })
+        items.push({
+          label: ctxConfirmStop ? `Confirm stop ${name}?` : `Stop ${name}`,
+          action: () => ctxStopTool(s),
+          danger: true,
+          keepOpen: !ctxConfirmStop,
+          icon: CTX_ICON_STOP,
+        })
+      }
     }
 
     return items
@@ -885,25 +892,22 @@
                   <span class="w-[7px] h-[7px] rounded-full shrink-0 {dotClassFor(project)}"></span>
                   <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
                   {#if indicators.length > 0}
-                    <span class="flex items-center gap-0.5 shrink-0">
+                    <span class="flex items-center gap-1 shrink-0">
                       {#each indicators as ind}
-                        {#if ind.interactive}
-                          <span
-                            class="w-[16px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-bold rounded border transition-opacity duration-150 {ind.badgeClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                            role="button"
-                            tabindex="0"
-                            title={ind.ariaLabel}
-                            aria-label={ind.ariaLabel}
-                            onclick={(e) => jumpToSession(e, ind.session)}
-                            onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, ind.session) }}
-                          >{ind.label}</span>
-                        {:else}
-                          <span
-                            class="w-[16px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-bold rounded border transition-opacity duration-150 {ind.badgeClass}"
-                            title={ind.ariaLabel}
-                            aria-label={ind.ariaLabel}
-                          >{ind.label}</span>
-                        {/if}
+                        <span
+                          class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                          class:cursor-pointer={ind.interactive}
+                          role={ind.interactive ? 'button' : undefined}
+                          tabindex={ind.interactive ? 0 : undefined}
+                          title={ind.ariaLabel}
+                          aria-label={ind.ariaLabel}
+                          onclick={ind.interactive ? (e) => jumpToSession(e, ind.session) : undefined}
+                          onkeydown={ind.interactive ? (e) => { if (e.key === 'Enter') jumpToSession(e, ind.session) } : undefined}
+                        >
+                          <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                            <path d={ind.icon.path}/>
+                          </svg>
+                        </span>
                       {/each}
                     </span>
                   {/if}
