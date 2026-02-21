@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The app checks this on connect. If the daemon's protocol version is
 /// lower than what the app expects, it warns the user to rebuild the daemon.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -177,6 +177,13 @@ pub enum LaunchMode {
 pub struct LaunchSessionParams {
     pub project_path: String,
     pub mode: LaunchMode,
+    /// Which CLI tool to launch. Defaults to Claude for backward compatibility.
+    #[serde(default = "default_cli_tool")]
+    pub cli_tool: crate::session_scanner::cli_tool::CliTool,
+}
+
+fn default_cli_tool() -> crate::session_scanner::cli_tool::CliTool {
+    crate::session_scanner::cli_tool::CliTool::Claude
 }
 
 /// `launch_session` result
@@ -190,6 +197,9 @@ pub struct LaunchSessionResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StopSessionParams {
     pub tmux_pane: String,
+    /// Which CLI tool is running. Defaults to Claude for backward compatibility.
+    #[serde(default = "default_cli_tool")]
+    pub cli_tool: crate::session_scanner::cli_tool::CliTool,
 }
 
 /// `navigate_to_session` params
@@ -512,10 +522,19 @@ mod tests {
         let p = LaunchSessionParams {
             project_path: "/home/user/proj".to_string(),
             mode: LaunchMode::Continue,
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Claude,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: LaunchSessionParams = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
+    }
+
+    #[test]
+    fn launch_session_params_defaults_to_claude() {
+        // Old daemon protocol without cli_tool field should default to Claude
+        let json = r#"{"project_path":"/proj","mode":"fresh"}"#;
+        let p: LaunchSessionParams = serde_json::from_str(json).unwrap();
+        assert_eq!(p.cli_tool, crate::session_scanner::cli_tool::CliTool::Claude);
     }
 
     #[test]
@@ -531,10 +550,20 @@ mod tests {
 
     #[test]
     fn stop_session_params_roundtrip() {
-        let p = StopSessionParams { tmux_pane: "%3".to_string() };
+        let p = StopSessionParams {
+            tmux_pane: "%3".to_string(),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Claude,
+        };
         let json = serde_json::to_string(&p).unwrap();
         let back: StopSessionParams = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
+    }
+
+    #[test]
+    fn stop_session_params_defaults_to_claude() {
+        let json = r#"{"tmux_pane":"%3"}"#;
+        let p: StopSessionParams = serde_json::from_str(json).unwrap();
+        assert_eq!(p.cli_tool, crate::session_scanner::cli_tool::CliTool::Claude);
     }
 
     #[test]

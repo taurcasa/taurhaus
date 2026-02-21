@@ -1,17 +1,20 @@
-//! Process scanner — find Claude Code CLI processes via ps + /proc.
+//! Process scanner — find CLI tool processes via ps + /proc.
 
 use std::fs;
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Information about a running claude process.
+use super::cli_tool::CliTool;
+
+/// Information about a running CLI tool process.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcessInfo {
     pub pid: u32,
     pub project_path: String,
     pub tty: String,
     pub args: String,
+    pub cli_tool: CliTool,
 }
 
 /// Scan for claude processes by running `ps` and reading `/proc`.
@@ -79,16 +82,16 @@ pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
     }
 }
 
-/// Parse ps output, filter for claude processes, and read /proc for each.
+/// Parse ps output, filter for CLI tool processes, and read /proc for each.
 fn parse_and_enrich(ps_output: &str) -> Vec<ProcessInfo> {
     parse_ps_output(ps_output)
         .into_iter()
-        .filter_map(|(pid, args)| enrich_from_proc(pid, args))
+        .filter_map(|(pid, args, tool)| enrich_from_proc(pid, args, tool))
         .collect()
 }
 
-/// Parse `ps -eo pid,args` output into (pid, args) pairs for claude processes.
-pub fn parse_ps_output(output: &str) -> Vec<(u32, String)> {
+/// Parse `ps -eo pid,args` output into (pid, args, cli_tool) tuples for detected CLI tools.
+pub fn parse_ps_output(output: &str) -> Vec<(u32, String, CliTool)> {
     output
         .lines()
         .filter_map(|line| {
@@ -97,57 +100,64 @@ pub fn parse_ps_output(output: &str) -> Vec<(u32, String)> {
             let (pid_str, args) = line.split_once(char::is_whitespace)?;
             let args = args.trim();
 
-            // Filter: the executable must be `claude` (not our grep or ps process)
-            if !is_claude_process(args) {
-                return None;
-            }
-
+            let tool = detect_cli_tool(args)?;
             let pid: u32 = pid_str.parse().ok()?;
-            Some((pid, args.to_string()))
+            Some((pid, args.to_string(), tool))
         })
         .collect()
 }
 
-/// Check if the command args represent a Claude Code CLI process.
+/// Detect which CLI tool a process belongs to from its command line args.
 ///
-/// Matches patterns like:
-/// - `claude`
-/// - `claude --dangerously-skip-permissions`
-/// - `/home/user/.local/bin/claude ...`
-/// - `node /path/to/claude ...`
-/// - `node /home/user/.nvm/.../node_modules/@anthropic-ai/claude-code/dist/cli.js`
+/// Returns `Some(CliTool)` if the args match a known CLI tool, `None` otherwise.
+///
+/// Matches:
+/// - **Codex**: `codex`, `/path/to/codex`
+/// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, `node .../@anthropic-ai/claude-code/...`
+/// - **Gemini**: `node .../@google/gemini-cli/...`
 ///
 /// Excludes:
-/// - `grep claude`
-/// - `ps -eo ... claude`
-/// - `claude-something-else`
-/// - `node /path/to/other-app/cli.js`
-fn is_claude_process(args: &str) -> bool {
-    // Get the first token (the binary name/path)
-    let first_token = args.split_whitespace().next().unwrap_or("");
+/// - `grep claude`, `ps -eo ...`, `claude-something-else`, `vim claude.md`, etc.
+pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
+    let first = args.split_whitespace().next().unwrap_or("");
 
-    // Direct match: bare `claude` or path ending in `/claude`
-    if first_token == "claude" || first_token.ends_with("/claude") {
-        return true;
+    // Codex: native Rust binary "codex" or "/path/to/codex"
+    if first == "codex" || first.ends_with("/codex") {
+        return Some(CliTool::Codex);
     }
 
-    // Node-launched: `node /path/to/claude` or `node .../claude-code/dist/cli.js`
-    if first_token == "node" || first_token.ends_with("/node") {
-        let second_token = args.split_whitespace().nth(1).unwrap_or("");
-        if second_token == "claude" || second_token.ends_with("/claude") {
-            return true;
+    // Claude: bare "claude" or "/path/to/claude"
+    if first == "claude" || first.ends_with("/claude") {
+        return Some(CliTool::Claude);
+    }
+
+    // Gemini: bare "gemini" or "/path/to/gemini"
+    if first == "gemini" || first.ends_with("/gemini") {
+        return Some(CliTool::Gemini);
+    }
+
+    // Node-launched tools
+    if first == "node" || first.ends_with("/node") {
+        let second = args.split_whitespace().nth(1).unwrap_or("");
+
+        // Claude via node: `node /path/to/claude` or `node .../claude-code/...`
+        if second == "claude" || second.ends_with("/claude")
+            || second.contains("@anthropic-ai/claude-code")
+        {
+            return Some(CliTool::Claude);
         }
-        // npm-installed: path contains @anthropic-ai/claude-code
-        if second_token.contains("@anthropic-ai/claude-code") {
-            return true;
+
+        // Gemini via node: `node .../@google/gemini-cli/...`
+        if second.contains("@google/gemini-cli") {
+            return Some(CliTool::Gemini);
         }
     }
 
-    false
+    None
 }
 
 /// Read /proc/PID/cwd and /proc/PID/fd/0 to get project path and TTY.
-fn enrich_from_proc(pid: u32, args: String) -> Option<ProcessInfo> {
+fn enrich_from_proc(pid: u32, args: String, cli_tool: CliTool) -> Option<ProcessInfo> {
     let cwd = fs::read_link(format!("/proc/{pid}/cwd"))
         .ok()?
         .to_string_lossy()
@@ -163,6 +173,7 @@ fn enrich_from_proc(pid: u32, args: String) -> Option<ProcessInfo> {
         project_path: cwd,
         tty,
         args,
+        cli_tool,
     })
 }
 
@@ -178,7 +189,9 @@ mod tests {
  5678 bash";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], (1234, "claude".to_string()));
+        assert_eq!(result[0].0, 1234);
+        assert_eq!(result[0].1, "claude");
+        assert_eq!(result[0].2, CliTool::Claude);
     }
 
     #[test]
@@ -192,6 +205,7 @@ mod tests {
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].0, 4927);
         assert!(result[0].1.contains("--dangerously-skip-permissions"));
+        assert_eq!(result[0].2, CliTool::Claude);
         assert_eq!(result[1].0, 4928);
         assert!(result[1].1.contains("--continue"));
         assert_eq!(result[2].0, 4929);
@@ -206,24 +220,25 @@ mod tests {
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, 1000);
+        assert_eq!(result[0].2, CliTool::Claude);
     }
 
     #[test]
     fn parse_ps_finds_node_launched_claude() {
-        // npm-installed via nvm: path contains @anthropic-ai/claude-code
         let output = "\
   PID COMMAND
  2000 node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, 2000);
+        assert_eq!(result[0].2, CliTool::Claude);
 
-        // Binary named claude:
         let output2 = "\
   PID COMMAND
  2000 node /usr/local/bin/claude --dangerously-skip-permissions";
         let result2 = parse_ps_output(output2);
         assert_eq!(result2.len(), 1);
+        assert_eq!(result2[0].2, CliTool::Claude);
     }
 
     #[test]
@@ -261,33 +276,75 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    // -----------------------------------------------------------------------
+    // detect_cli_tool tests
+    // -----------------------------------------------------------------------
+
     #[test]
-    fn is_claude_process_matches_correctly() {
-        // Direct binary matches
-        assert!(is_claude_process("claude"));
-        assert!(is_claude_process("claude --dangerously-skip-permissions"));
-        assert!(is_claude_process("claude --continue"));
-        assert!(is_claude_process("/home/user/.local/bin/claude"));
-        assert!(is_claude_process("/home/user/.local/bin/claude --resume"));
+    fn detect_claude_processes() {
+        assert_eq!(detect_cli_tool("claude"), Some(CliTool::Claude));
+        assert_eq!(detect_cli_tool("claude --dangerously-skip-permissions"), Some(CliTool::Claude));
+        assert_eq!(detect_cli_tool("claude --continue"), Some(CliTool::Claude));
+        assert_eq!(detect_cli_tool("/home/user/.local/bin/claude"), Some(CliTool::Claude));
+        assert_eq!(detect_cli_tool("/home/user/.local/bin/claude --resume"), Some(CliTool::Claude));
+        assert_eq!(detect_cli_tool("node /usr/local/bin/claude"), Some(CliTool::Claude));
+        assert_eq!(
+            detect_cli_tool("node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js"),
+            Some(CliTool::Claude)
+        );
+        assert_eq!(
+            detect_cli_tool("/usr/bin/node /usr/local/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js --dangerously-skip-permissions"),
+            Some(CliTool::Claude)
+        );
+    }
 
-        // Node-launched: binary named claude
-        assert!(is_claude_process("node /usr/local/bin/claude"));
+    #[test]
+    fn detect_codex_processes() {
+        assert_eq!(detect_cli_tool("codex --full-auto"), Some(CliTool::Codex));
+        assert_eq!(detect_cli_tool("codex"), Some(CliTool::Codex));
+        assert_eq!(detect_cli_tool("/usr/local/bin/codex --full-auto"), Some(CliTool::Codex));
+        assert_eq!(detect_cli_tool("/home/user/.cargo/bin/codex resume --last"), Some(CliTool::Codex));
+    }
 
-        // Node-launched: npm-installed @anthropic-ai/claude-code package
-        assert!(is_claude_process(
-            "node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js"
-        ));
-        assert!(is_claude_process(
-            "/usr/bin/node /usr/local/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js --dangerously-skip-permissions"
-        ));
+    #[test]
+    fn detect_gemini_processes() {
+        assert_eq!(
+            detect_cli_tool("node /path/@google/gemini-cli/dist/cli.mjs"),
+            Some(CliTool::Gemini)
+        );
+        assert_eq!(
+            detect_cli_tool("/usr/bin/node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@google/gemini-cli/dist/cli.mjs --sandbox"),
+            Some(CliTool::Gemini)
+        );
+        assert_eq!(detect_cli_tool("gemini --sandbox"), Some(CliTool::Gemini));
+        assert_eq!(detect_cli_tool("/usr/local/bin/gemini --resume"), Some(CliTool::Gemini));
+    }
 
-        // Negative cases
-        assert!(!is_claude_process("grep claude"));
-        assert!(!is_claude_process("claude-code-server"));
-        assert!(!is_claude_process("ps -eo pid,args"));
-        assert!(!is_claude_process("bash"));
-        assert!(!is_claude_process("vim claude.md"));
-        assert!(!is_claude_process("node server.js"));
-        assert!(!is_claude_process("node /path/to/other-app/cli.js"));
+    #[test]
+    fn detect_non_cli_processes() {
+        assert_eq!(detect_cli_tool("vim"), None);
+        assert_eq!(detect_cli_tool("bash"), None);
+        assert_eq!(detect_cli_tool("grep claude"), None);
+        assert_eq!(detect_cli_tool("claude-code-server"), None);
+        assert_eq!(detect_cli_tool("ps -eo pid,args"), None);
+        assert_eq!(detect_cli_tool("vim claude.md"), None);
+        assert_eq!(detect_cli_tool("node server.js"), None);
+        assert_eq!(detect_cli_tool("node /path/to/other-app/cli.js"), None);
+    }
+
+    #[test]
+    fn parse_ps_detects_mixed_tools() {
+        let output = "\
+  PID COMMAND
+ 1000 claude --continue
+ 2000 codex --full-auto
+ 3000 node /path/@google/gemini-cli/dist/cli.mjs
+ 4000 bash
+ 5000 vim";
+        let result = parse_ps_output(output);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], (1000, "claude --continue".to_string(), CliTool::Claude));
+        assert_eq!(result[1], (2000, "codex --full-auto".to_string(), CliTool::Codex));
+        assert_eq!(result[2], (3000, "node /path/@google/gemini-cli/dist/cli.mjs".to_string(), CliTool::Gemini));
     }
 }

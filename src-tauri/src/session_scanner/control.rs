@@ -1,17 +1,22 @@
-//! tmux control — launch, stop, and navigate to Claude Code sessions.
+//! tmux control — launch, stop, and navigate to CLI tool sessions.
 
 use std::path::Path;
 use std::process::Command;
 
 use crate::daemon::protocol::LaunchMode;
+use crate::session_scanner::cli_tool::{self, CliTool};
 
-/// Launch a Claude Code session in a new tmux window.
+/// Launch a CLI tool session in a new tmux window.
 ///
 /// Creates a new tmux window named after the project directory,
-/// then sends the cd + claude command to it.
+/// then sends the cd + tool command to it.
 ///
 /// Returns `(window_name, pane_id)` on success.
-pub fn launch_in_tmux(project_path: &str, mode: LaunchMode) -> Result<(String, String), String> {
+pub fn launch_in_tmux(
+    project_path: &str,
+    mode: LaunchMode,
+    tool: CliTool,
+) -> Result<(String, String), String> {
     // Validate project path
     if !Path::new(project_path).is_dir() {
         return Err(format!("Project path does not exist: {project_path}"));
@@ -49,26 +54,26 @@ pub fn launch_in_tmux(project_path: &str, mode: LaunchMode) -> Result<(String, S
 
     let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    // Build the claude command
-    let claude_cmd = build_claude_command(mode);
+    // Build the tool-specific command
+    let tool_cmd = build_launch_command(tool, mode);
 
-    // Send the cd + claude command to the new pane.
+    // Send the cd + tool command to the new pane.
     // Shell-escape the path to prevent injection via crafted directory names.
     let escaped_path = shell_escape(project_path);
-    let keys = format!("cd {escaped_path} && {claude_cmd}");
+    let keys = format!("cd {escaped_path} && {tool_cmd}");
     run_tmux_send_keys(&pane_id, &keys)?;
 
     Ok((window_name, pane_id))
 }
 
-/// Stop a Claude Code session by sending /exit to the tmux pane.
+/// Stop a CLI tool session by sending the exit command to the tmux pane.
 ///
-/// After Claude Code exits, polls for the process to terminate (pane returns
+/// After the tool exits, polls for the process to terminate (pane returns
 /// to shell), then kills the pane to clean up. If it's the last pane in the
 /// window, tmux automatically closes the window too.
-pub fn stop_session(tmux_pane: &str) -> Result<(), String> {
-    // Send /exit (graceful Claude Code exit command)
-    run_tmux_send_keys(tmux_pane, "/exit")?;
+pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
+    let config = cli_tool::config_for(tool);
+    run_tmux_send_keys(tmux_pane, config.exit_command)?;
 
     // Poll for exit, then kill the pane. Background thread so we don't block IPC.
     let pane = tmux_pane.to_string();
@@ -161,16 +166,28 @@ pub fn navigate_to_pane(
     Ok(())
 }
 
-/// Build the claude command string for a given launch mode.
-pub fn build_claude_command(mode: LaunchMode) -> String {
-    match mode {
-        LaunchMode::Continue => {
-            "claude --dangerously-skip-permissions --continue".to_string()
-        }
-        LaunchMode::Fresh => "claude --dangerously-skip-permissions".to_string(),
-        LaunchMode::Resume => {
-            "claude --dangerously-skip-permissions --resume".to_string()
-        }
+/// Build the launch command string for a given tool and launch mode.
+pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
+    match tool {
+        CliTool::Claude => match mode {
+            LaunchMode::Continue => {
+                "claude --dangerously-skip-permissions --continue".to_string()
+            }
+            LaunchMode::Fresh => "claude --dangerously-skip-permissions".to_string(),
+            LaunchMode::Resume => {
+                "claude --dangerously-skip-permissions --resume".to_string()
+            }
+        },
+        CliTool::Codex => match mode {
+            LaunchMode::Continue => "codex --full-auto".to_string(),
+            LaunchMode::Fresh => "codex --full-auto".to_string(),
+            LaunchMode::Resume => "codex resume --last".to_string(),
+        },
+        CliTool::Gemini => match mode {
+            LaunchMode::Continue => "gemini --sandbox --resume".to_string(),
+            LaunchMode::Fresh => "gemini --sandbox".to_string(),
+            LaunchMode::Resume => "gemini --sandbox --resume".to_string(),
+        },
     }
 }
 
@@ -242,33 +259,77 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    // -----------------------------------------------------------------------
+    // Claude command tests
+    // -----------------------------------------------------------------------
+
     #[test]
-    fn build_continue_command() {
+    fn build_claude_continue_command() {
         assert_eq!(
-            build_claude_command(LaunchMode::Continue),
+            build_launch_command(CliTool::Claude, LaunchMode::Continue),
             "claude --dangerously-skip-permissions --continue"
         );
     }
 
     #[test]
-    fn build_fresh_command() {
+    fn build_claude_fresh_command() {
         assert_eq!(
-            build_claude_command(LaunchMode::Fresh),
+            build_launch_command(CliTool::Claude, LaunchMode::Fresh),
             "claude --dangerously-skip-permissions"
         );
     }
 
     #[test]
-    fn build_resume_command() {
+    fn build_claude_resume_command() {
         assert_eq!(
-            build_claude_command(LaunchMode::Resume),
+            build_launch_command(CliTool::Claude, LaunchMode::Resume),
             "claude --dangerously-skip-permissions --resume"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Codex command tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_codex_fresh_command() {
+        assert_eq!(
+            build_launch_command(CliTool::Codex, LaunchMode::Fresh),
+            "codex --full-auto"
+        );
+    }
+
+    #[test]
+    fn build_codex_resume_command() {
+        assert_eq!(
+            build_launch_command(CliTool::Codex, LaunchMode::Resume),
+            "codex resume --last"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Gemini command tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_gemini_fresh_command() {
+        assert_eq!(
+            build_launch_command(CliTool::Gemini, LaunchMode::Fresh),
+            "gemini --sandbox"
+        );
+    }
+
+    #[test]
+    fn build_gemini_resume_command() {
+        assert_eq!(
+            build_launch_command(CliTool::Gemini, LaunchMode::Resume),
+            "gemini --sandbox --resume"
         );
     }
 
     #[test]
     fn launch_rejects_nonexistent_path() {
-        let result = launch_in_tmux("/nonexistent/path/12345", LaunchMode::Continue);
+        let result = launch_in_tmux("/nonexistent/path/12345", LaunchMode::Continue, CliTool::Claude);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
     }

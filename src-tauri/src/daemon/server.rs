@@ -466,7 +466,7 @@ fn handle_launch_session(id: &str, params: &serde_json::Value) -> DaemonResponse
         Ok(p) => p,
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
-    match crate::session_scanner::control::launch_in_tmux(&params.project_path, params.mode) {
+    match crate::session_scanner::control::launch_in_tmux(&params.project_path, params.mode, params.cli_tool) {
         Ok((window, pane)) => DaemonResponse::ok(
             id,
             protocol::LaunchSessionResult {
@@ -483,7 +483,7 @@ fn handle_stop_session(id: &str, params: &serde_json::Value) -> DaemonResponse {
         Ok(p) => p,
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
-    match crate::session_scanner::control::stop_session(&params.tmux_pane) {
+    match crate::session_scanner::control::stop_session(&params.tmux_pane, params.cli_tool) {
         Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
         Err(e) => DaemonResponse::err(id, "STOP_ERROR", e),
     }

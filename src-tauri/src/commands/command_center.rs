@@ -10,6 +10,7 @@ use tauri::State;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::daemon::protocol::{self, LaunchMode};
+use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
 use crate::ProviderState;
 
@@ -86,9 +87,12 @@ pub fn launch_claude_session(
     log_file: State<'_, LogFileState>,
     project_id: String,
     mode: LaunchMode,
+    cli_tool: Option<CliTool>,
 ) -> Result<protocol::LaunchSessionResult, String> {
+    let tool = cli_tool.unwrap_or(CliTool::Claude);
+
     if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] launch_claude_session: project_id={project_id} mode={mode:?}");
+        let _ = writeln!(f, "[cmd-center] launch_claude_session: project_id={project_id} mode={mode:?} tool={tool:?}");
     }
 
     // Resolve project path from DB
@@ -118,6 +122,7 @@ pub fn launch_claude_session(
                 protocol::LaunchSessionParams {
                     project_path: linux_path.clone(),
                     mode,
+                    cli_tool: tool,
                 },
             );
             match daemon.send_status_request(&request) {
@@ -160,7 +165,7 @@ pub fn launch_claude_session(
         let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
     }
     let (window, pane) =
-        crate::session_scanner::control::launch_in_tmux(&linux_path, mode)
+        crate::session_scanner::control::launch_in_tmux(&linux_path, mode, tool)
             .map_err(|e| format!("Failed to launch session: {e}"))?;
 
     Ok(protocol::LaunchSessionResult {
@@ -169,12 +174,15 @@ pub fn launch_claude_session(
     })
 }
 
-/// Stop a running Claude Code session by sending /exit to its tmux pane.
+/// Stop a running CLI tool session by sending the exit command to its tmux pane.
 #[tauri::command]
 pub fn stop_claude_session(
     provider: State<'_, ProviderState>,
     tmux_pane: String,
+    cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
+    let tool = cli_tool.unwrap_or(CliTool::Claude);
+
     // Try daemon first
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
@@ -184,6 +192,7 @@ pub fn stop_claude_session(
                 protocol::method::STOP_SESSION,
                 protocol::StopSessionParams {
                     tmux_pane: tmux_pane.clone(),
+                    cli_tool: tool,
                 },
             );
             match daemon.send_status_request(&request) {
@@ -203,7 +212,7 @@ pub fn stop_claude_session(
     }
 
     // Fall back to direct stop (Linux dev)
-    crate::session_scanner::control::stop_session(&tmux_pane)
+    crate::session_scanner::control::stop_session(&tmux_pane, tool)
         .map_err(|e| format!("Failed to stop session: {e}"))
 }
 

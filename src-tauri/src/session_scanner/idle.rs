@@ -11,6 +11,7 @@
 //! subagents directory to cover all active phases including compaction.
 
 use crate::claude_code::resolver;
+use crate::session_scanner::cli_tool::{self, CliTool};
 use crate::session_scanner::SessionState;
 use std::collections::HashMap;
 use std::fs;
@@ -34,10 +35,11 @@ pub struct IdleResult {
 
 /// Detect idle state for a project by checking JSONL transcript mtime.
 ///
-/// Uses the default Claude Code projects directory (~/.claude/projects/).
-pub fn detect_idle(project_path: &str) -> IdleResult {
-    let claude_dir = match dirs::home_dir() {
-        Some(home) => home.join(".claude").join("projects"),
+/// Uses the tool-specific projects directory (e.g., `~/.claude/projects/`).
+pub fn detect_idle(project_path: &str, tool: CliTool) -> IdleResult {
+    let config = cli_tool::config_for(tool);
+    let base_dir = match dirs::home_dir() {
+        Some(home) => home.join(config.base_dir_name).join(config.projects_subdir),
         None => {
             return IdleResult {
                 state: SessionState::Idle,
@@ -46,7 +48,7 @@ pub fn detect_idle(project_path: &str) -> IdleResult {
             }
         }
     };
-    detect_idle_in(project_path, &claude_dir)
+    detect_idle_in(project_path, &base_dir)
 }
 
 /// Testable version: detect idle state using a custom Claude projects directory.

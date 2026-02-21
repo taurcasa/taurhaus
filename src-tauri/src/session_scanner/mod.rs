@@ -9,11 +9,14 @@
 //! only takes effect after 2 consecutive polls agree on the new state.
 //! This eliminates flickering from transient signals in either direction.
 
+pub mod cli_tool;
 pub mod control;
 pub mod idle;
 pub mod proc_io;
 pub mod process;
 pub mod tmux;
+
+pub use cli_tool::CliTool;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -29,10 +32,10 @@ pub enum SessionState {
     Idle,
 }
 
-/// A detected Claude Code session with all available metadata.
+/// A detected CLI tool session with all available metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClaudeSession {
-    /// Process ID of the claude CLI.
+    /// Process ID of the CLI tool.
     pub pid: u32,
     /// Absolute path to the project directory (from /proc/PID/cwd).
     pub project_path: String,
@@ -40,6 +43,8 @@ pub struct ClaudeSession {
     pub tty: String,
     /// The full command line args.
     pub args: String,
+    /// Which CLI tool this session belongs to.
+    pub cli_tool: CliTool,
     /// tmux session name (if mapped).
     pub tmux_session: Option<String>,
     /// tmux window index (if mapped).
@@ -50,7 +55,7 @@ pub struct ClaudeSession {
     pub tmux_window_name: Option<String>,
     /// Session state: Active or Idle.
     pub state: SessionState,
-    /// Claude Code session ID (from JSONL filename, if found).
+    /// Session ID (from JSONL filename, if found).
     pub session_id: Option<String>,
     /// Path to the active JSONL transcript file (if found).
     pub jsonl_path: Option<String>,
@@ -139,7 +144,7 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
-            let idle_result = idle::detect_idle(&proc.project_path);
+            let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
 
             // Raw state from all three signals (OR)
             let raw_state = if idle_result.state == SessionState::Active
@@ -158,6 +163,7 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                 project_path: proc.project_path,
                 tty: proc.tty,
                 args: proc.args,
+                cli_tool: proc.cli_tool,
                 tmux_session: tmux.map(|t| t.session_name.clone()),
                 tmux_window: tmux.map(|t| t.window_index.clone()),
                 tmux_pane: tmux.map(|t| t.pane_id.clone()),
@@ -205,6 +211,7 @@ where
                 project_path: proc.project_path,
                 tty: proc.tty,
                 args: proc.args,
+                cli_tool: proc.cli_tool,
                 tmux_session: tmux.map(|t| t.session_name.clone()),
                 tmux_window: tmux.map(|t| t.window_index.clone()),
                 tmux_pane: tmux.map(|t| t.pane_id.clone()),
@@ -240,6 +247,7 @@ mod tests {
             project_path: "/home/user/projects/foo".to_string(),
             tty: "/dev/pts/2".to_string(),
             args: "claude --dangerously-skip-permissions".to_string(),
+            cli_tool: CliTool::Claude,
             tmux_session: Some("0".to_string()),
             tmux_window: Some("1".to_string()),
             tmux_pane: Some("%3".to_string()),
@@ -252,6 +260,7 @@ mod tests {
         let json = serde_json::to_value(&session).unwrap();
         assert_eq!(json["pid"], 1234);
         assert_eq!(json["project_path"], "/home/user/projects/foo");
+        assert_eq!(json["cli_tool"], "claude");
         assert_eq!(json["state"], "active");
         assert_eq!(json["tmux_pane"], "%3");
         assert_eq!(json["session_id"], "abc-123");
@@ -264,6 +273,7 @@ mod tests {
             project_path: "/home/user/projects/foo".to_string(),
             tty: "/dev/pts/2".to_string(),
             args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
             tmux_session: None,
             tmux_window: None,
             tmux_pane: None,
@@ -288,12 +298,14 @@ mod tests {
                     project_path: "/home/user/proj-a".to_string(),
                     tty: "/dev/pts/1".to_string(),
                     args: "claude --continue".to_string(),
+                    cli_tool: CliTool::Claude,
                 },
                 process::ProcessInfo {
                     pid: 200,
                     project_path: "/home/user/proj-b".to_string(),
                     tty: "/dev/pts/5".to_string(),
                     args: "claude".to_string(),
+                    cli_tool: CliTool::Claude,
                 },
             ]
         };
@@ -337,6 +349,7 @@ mod tests {
         let a = &sessions[0];
         assert_eq!(a.pid, 100);
         assert_eq!(a.project_path, "/home/user/proj-a");
+        assert_eq!(a.cli_tool, CliTool::Claude);
         assert_eq!(a.tmux_session.as_deref(), Some("main"));
         assert_eq!(a.tmux_pane.as_deref(), Some("%0"));
         assert_eq!(a.state, SessionState::Active);
@@ -346,6 +359,7 @@ mod tests {
         let b = &sessions[1];
         assert_eq!(b.pid, 200);
         assert_eq!(b.project_path, "/home/user/proj-b");
+        assert_eq!(b.cli_tool, CliTool::Claude);
         assert!(b.tmux_session.is_none());
         assert!(b.tmux_pane.is_none());
         assert_eq!(b.state, SessionState::Idle);
