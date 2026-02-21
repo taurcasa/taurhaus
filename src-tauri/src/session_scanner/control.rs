@@ -179,14 +179,14 @@ pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
             }
         },
         CliTool::Codex => match mode {
-            LaunchMode::Continue => "codex --full-auto".to_string(),
-            LaunchMode::Fresh => "codex --full-auto".to_string(),
-            LaunchMode::Resume => "codex resume --last".to_string(),
+            LaunchMode::Continue => "codex --yolo".to_string(),
+            LaunchMode::Fresh => "codex --yolo".to_string(),
+            LaunchMode::Resume => "codex resume --last --yolo".to_string(),
         },
         CliTool::Gemini => match mode {
-            LaunchMode::Continue => "gemini --sandbox --resume".to_string(),
-            LaunchMode::Fresh => "gemini --sandbox".to_string(),
-            LaunchMode::Resume => "gemini --sandbox --resume".to_string(),
+            LaunchMode::Continue => "gemini --yolo --resume".to_string(),
+            LaunchMode::Fresh => "gemini --yolo".to_string(),
+            LaunchMode::Resume => "gemini --yolo --resume".to_string(),
         },
     }
 }
@@ -295,7 +295,7 @@ mod tests {
     fn build_codex_fresh_command() {
         assert_eq!(
             build_launch_command(CliTool::Codex, LaunchMode::Fresh),
-            "codex --full-auto"
+            "codex --yolo"
         );
     }
 
@@ -303,7 +303,7 @@ mod tests {
     fn build_codex_resume_command() {
         assert_eq!(
             build_launch_command(CliTool::Codex, LaunchMode::Resume),
-            "codex resume --last"
+            "codex resume --last --yolo"
         );
     }
 
@@ -315,7 +315,7 @@ mod tests {
     fn build_gemini_fresh_command() {
         assert_eq!(
             build_launch_command(CliTool::Gemini, LaunchMode::Fresh),
-            "gemini --sandbox"
+            "gemini --yolo"
         );
     }
 
@@ -323,7 +323,7 @@ mod tests {
     fn build_gemini_resume_command() {
         assert_eq!(
             build_launch_command(CliTool::Gemini, LaunchMode::Resume),
-            "gemini --sandbox --resume"
+            "gemini --yolo --resume"
         );
     }
 

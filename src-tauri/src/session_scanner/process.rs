@@ -136,9 +136,17 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
         return Some(CliTool::Gemini);
     }
 
-    // Node-launched tools
+    // Node-launched tools: `node /path/to/tool` or `/path/to/node /path/to/tool`
     if first == "node" || first.ends_with("/node") {
         let second = args.split_whitespace().nth(1).unwrap_or("");
+
+        // Codex via node shim: `node /path/to/bin/codex`
+        // or via package path: `node .../@openai/codex/...`
+        if second == "codex" || second.ends_with("/codex")
+            || second.contains("@openai/codex")
+        {
+            return Some(CliTool::Codex);
+        }
 
         // Claude via node: `node /path/to/claude` or `node .../claude-code/...`
         if second == "claude" || second.ends_with("/claude")
@@ -147,8 +155,10 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
             return Some(CliTool::Claude);
         }
 
-        // Gemini via node: `node .../@google/gemini-cli/...`
-        if second.contains("@google/gemini-cli") {
+        // Gemini via node: `node /path/to/gemini` or `node .../@google/gemini-cli/...`
+        if second == "gemini" || second.ends_with("/gemini")
+            || second.contains("@google/gemini-cli")
+        {
             return Some(CliTool::Gemini);
         }
     }
@@ -302,8 +312,19 @@ mod tests {
     fn detect_codex_processes() {
         assert_eq!(detect_cli_tool("codex --full-auto"), Some(CliTool::Codex));
         assert_eq!(detect_cli_tool("codex"), Some(CliTool::Codex));
+        assert_eq!(detect_cli_tool("codex --yolo"), Some(CliTool::Codex));
         assert_eq!(detect_cli_tool("/usr/local/bin/codex --full-auto"), Some(CliTool::Codex));
         assert_eq!(detect_cli_tool("/home/user/.cargo/bin/codex resume --last"), Some(CliTool::Codex));
+        // Real fnm shim path (observed from live ps output)
+        assert_eq!(
+            detect_cli_tool("node /run/user/1000/fnm_multishells/587700_1771710301602/bin/codex --yolo"),
+            Some(CliTool::Codex)
+        );
+        // Real native binary path (observed from live ps output)
+        assert_eq!(
+            detect_cli_tool("/home/mstie/.local/share/fnm/node-versions/v22.19.0/installation/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex/codex --yolo"),
+            Some(CliTool::Codex)
+        );
     }
 
     #[test]
@@ -317,7 +338,18 @@ mod tests {
             Some(CliTool::Gemini)
         );
         assert_eq!(detect_cli_tool("gemini --sandbox"), Some(CliTool::Gemini));
+        assert_eq!(detect_cli_tool("gemini --yolo"), Some(CliTool::Gemini));
         assert_eq!(detect_cli_tool("/usr/local/bin/gemini --resume"), Some(CliTool::Gemini));
+        // Real fnm shim path (observed from live ps output)
+        assert_eq!(
+            detect_cli_tool("node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
+            Some(CliTool::Gemini)
+        );
+        // Real node-launched via full path (observed from live ps output)
+        assert_eq!(
+            detect_cli_tool("/home/mstie/.local/share/fnm/node-versions/v22.19.0/installation/bin/node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
+            Some(CliTool::Gemini)
+        );
     }
 
     #[test]
