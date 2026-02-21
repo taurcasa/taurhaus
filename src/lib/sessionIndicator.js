@@ -1,11 +1,23 @@
 /** Session indicator semantics for sidebar rows. */
 
-/** Return true when a row has an active or idle Claude session. */
+/** Display names for each CLI tool. */
+const TOOL_NAMES = {
+  claude: 'Claude',
+  codex: 'Codex',
+  gemini: 'Gemini',
+}
+
+/** Get the display name for a session's CLI tool, defaulting to "Claude". */
+function toolName(session) {
+  return TOOL_NAMES[session?.cli_tool] || 'Claude'
+}
+
+/** Return true when a row has an active or idle session. */
 export function hasLiveSession(session) {
   return session?.state === 'active' || session?.state === 'idle'
 }
 
-/** Return true when Claude is actively working (not waiting for input). */
+/** Return true when the tool is actively working (not waiting for input). */
 export function isActiveSession(session) {
   return session?.state === 'active'
 }
@@ -17,10 +29,11 @@ export function rowTintClass(session) {
 
 /** Human-readable tooltip for hover information on the session badge. */
 export function sessionTooltip(session) {
-  if (!hasLiveSession(session)) return 'No Claude session'
+  if (!hasLiveSession(session)) return 'No active session'
 
+  const name = toolName(session)
   const lines = [
-    `Claude session: ${session.state === 'idle' ? 'IDLE (waiting for input)' : 'RUNNING (Claude working)'}`,
+    `${name} session: ${session.state === 'idle' ? 'IDLE (waiting for input)' : `RUNNING (${name} working)`}`,
   ]
 
   if (session.session_id) lines.push(`Session ID: ${session.session_id}`)
@@ -55,8 +68,9 @@ export function sessionBadge(session) {
     return {
       visible: true,
       label: 'IDLE',
+      toolLabel: toolName(session),
       badgeClass: 'session-pill-idle rounded-[4px] bg-warning-300/18 text-warning-300 border border-warning-300/65',
-      ariaLabel: 'Claude session idle, waiting for input',
+      ariaLabel: `${toolName(session)} session idle, waiting for input`,
       interactive: Boolean(session.tmux_session && session.tmux_window && session.tmux_pane),
     }
   }
@@ -65,8 +79,9 @@ export function sessionBadge(session) {
     return {
       visible: true,
       label: 'RUN',
+      toolLabel: toolName(session),
       badgeClass: 'session-pill-active rounded-full bg-success-300/18 text-success-300 border border-success-300/55',
-      ariaLabel: 'Claude session active',
+      ariaLabel: `${toolName(session)} session active`,
       interactive: Boolean(session.tmux_session && session.tmux_window && session.tmux_pane),
     }
   }
@@ -74,8 +89,9 @@ export function sessionBadge(session) {
   return {
     visible: false,
     label: '',
+    toolLabel: '',
     badgeClass: '',
-    ariaLabel: 'No Claude session',
+    ariaLabel: 'No active session',
     interactive: false,
   }
 }

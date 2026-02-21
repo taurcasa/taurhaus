@@ -360,7 +360,7 @@
     }
     const session = getSessionForProject(ctxMenu.project.path)
     if (session?.tmux_pane) {
-      stopClaudeSession(session.tmux_pane).catch(e => console.error('Failed to stop session:', e))
+      stopClaudeSession(session.tmux_pane, session.cli_tool).catch(e => console.error('Failed to stop session:', e))
     }
     closeContextMenu()
   }
@@ -369,9 +369,10 @@
     if (!ctxMenu?.project) return
     const session = getSessionForProject(ctxMenu.project.path)
     const projectId = ctxMenu.project.id
+    const tool = session?.cli_tool
     if (session?.tmux_pane) {
-      stopClaudeSession(session.tmux_pane)
-        .then(() => launchClaudeSession(projectId, 'continue'))
+      stopClaudeSession(session.tmux_pane, tool)
+        .then(() => launchClaudeSession(projectId, 'continue', tool))
         .catch(e => console.error('Failed to restart session:', e))
     }
   }

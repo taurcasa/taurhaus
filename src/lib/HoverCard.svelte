@@ -97,7 +97,7 @@
           class="inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] px-1.5 h-[16px] {badge.badgeClass}"
         >{badge.label}</span>
         <span class="text-[12px] text-white/55">
-          {session.state === 'idle' ? 'Waiting for input' : 'Claude working'}
+          {badge.toolLabel} {session.state === 'idle' ? '— waiting for input' : '— working'}
         </span>
       </div>
       <div class="space-y-0.5 text-[11px] font-mono text-white/25">
