@@ -44,13 +44,15 @@ pub fn list_claude_sessions(
                         .and_then(|v| serde_json::from_value(v).ok())
                         .unwrap_or_default();
 
-                    // Convert Linux project paths to WSL UNC paths so the frontend
-                    // can match sessions to projects (which are stored as UNC paths).
+                    // Convert Linux project paths to Windows paths so the frontend
+                    // can match sessions to projects (stored as Windows paths).
+                    // - /mnt/d/foo → D:\foo (Windows-native projects)
+                    // - /home/user/foo → \\wsl.localhost\distro\... (WSL projects)
                     if let Some(ref distro) = provider.wsl_distro {
                         for session in &mut sessions {
                             if session.project_path.starts_with('/') {
                                 session.project_path =
-                                    crate::provider::path::linux_to_wsl_unc(
+                                    crate::provider::path::to_windows(
                                         &session.project_path,
                                         distro,
                                     );
@@ -104,8 +106,8 @@ pub fn launch_claude_session(
         project.path
     };
 
-    // Convert WSL UNC path to Linux path if needed
-    let linux_path = crate::provider::path::wsl_unc_to_linux(&project_path)
+    // Convert Windows path to Linux path if needed (WSL UNC or drive path)
+    let linux_path = crate::provider::path::to_linux(&project_path)
         .unwrap_or_else(|| project_path.clone());
 
     if let Ok(mut f) = log_file.0.lock() {

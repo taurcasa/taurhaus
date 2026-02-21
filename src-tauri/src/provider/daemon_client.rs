@@ -185,9 +185,10 @@ impl DaemonProvider {
     }
 
     /// Translate a project path to a Linux-native path for the daemon.
+    /// Handles WSL UNC paths (`\\wsl$\...`) and Windows drive paths (`D:\...`).
     /// If it's already a Linux path, return as-is.
     fn translate_path(path: &str) -> String {
-        wsl_path::wsl_unc_to_linux(path).unwrap_or_else(|| path.to_string())
+        wsl_path::to_linux(path).unwrap_or_else(|| path.to_string())
     }
 
     /// Send a request and receive the response.
@@ -564,6 +565,15 @@ mod tests {
 
         let local = DaemonProvider::translate_path("/home/user/projects");
         assert_eq!(local, "/home/user/projects");
+    }
+
+    #[test]
+    fn daemon_provider_translates_windows_drive_paths() {
+        let linux = DaemonProvider::translate_path(r"D:\projects\foo");
+        assert_eq!(linux, "/mnt/d/projects/foo");
+
+        let linux = DaemonProvider::translate_path(r"C:\Users\me\code");
+        assert_eq!(linux, "/mnt/c/Users/me/code");
     }
 
     #[test]

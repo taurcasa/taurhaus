@@ -216,6 +216,28 @@ describe('sessionStore', () => {
     expect(store.getSessionForProject('\\\\wsl.localhost\\Ubuntu\\home\\user\\proj')).toBeTruthy()
   })
 
+  // Windows drive path normalization
+  it('matches sessions across Windows drive letter casing', async () => {
+    const session = {
+      pid: 100,
+      project_path: 'D:\\projects\\foo',
+      state: 'active',
+      tty: '/dev/pts/1',
+      args: 'claude',
+      cli_tool: 'claude',
+    }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Both uppercase and lowercase drive letters should match
+    expect(store.getSessionForProject('D:\\projects\\foo')).toBeTruthy()
+    expect(store.getSessionForProject('d:\\projects\\foo')).toBeTruthy()
+    // Trailing backslash should also match
+    expect(store.getSessionForProject('D:\\projects\\foo\\')).toBeTruthy()
+  })
+
   // Multiple CLI tools on the same project
   it('groups multiple CLI tools on the same project', async () => {
     const mockSessions = [

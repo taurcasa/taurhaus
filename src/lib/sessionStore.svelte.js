@@ -27,15 +27,24 @@ let timerId = null
 
 /**
  * Normalize path for consistent matching.
- * - Strips trailing slashes
+ * - Strips trailing slashes and backslashes
  * - Normalizes WSL UNC prefixes: \\wsl.localhost\ and \\wsl$\ → \\wsl$\
  *   (projects may be registered with either form)
+ * - Normalizes Windows drive letters to uppercase (D:\foo, not d:\foo)
  */
 function normalizePath(path) {
-  let p = path.endsWith('/') ? path.slice(0, -1) : path
+  let p = path
+  // Strip trailing separators
+  while (p.length > 1 && (p.endsWith('/') || p.endsWith('\\'))) {
+    p = p.slice(0, -1)
+  }
   // Normalize \\wsl.localhost\ → \\wsl$\ for consistent matching
   if (p.toLowerCase().startsWith('\\\\wsl.localhost\\')) {
     p = '\\\\wsl$\\' + p.slice('\\\\wsl.localhost\\'.length)
+  }
+  // Normalize Windows drive letter to uppercase (d:\foo → D:\foo)
+  if (/^[a-z]:[/\\]/.test(p)) {
+    p = p[0].toUpperCase() + p.slice(1)
   }
   return p
 }

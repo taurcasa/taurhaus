@@ -1,11 +1,15 @@
-//! WSL path detection and translation utilities.
+//! Path detection and translation utilities for WSL and Windows.
 //!
-//! Windows accesses WSL filesystems via UNC paths:
-//! - `\\wsl$\<distro>\...`
-//! - `\\wsl.localhost\<distro>\...`
+//! Two path families need translation:
 //!
-//! The daemon expects native Linux paths (`/home/user/...`), so we need to
-//! translate between the two forms.
+//! 1. **WSL UNC paths** — Windows accessing WSL filesystems:
+//!    - `\\wsl$\<distro>\...` ↔ `/home/user/...`
+//!    - `\\wsl.localhost\<distro>\...` ↔ `/home/user/...`
+//!
+//! 2. **Windows drive paths** — WSL accessing Windows filesystems:
+//!    - `D:\projects\foo` ↔ `/mnt/d/projects/foo`
+//!
+//! The daemon expects native Linux paths, so we translate at the boundary.
 
 /// Check whether a path is a WSL UNC path.
 pub fn is_wsl_path(path: &str) -> bool {
@@ -53,6 +57,78 @@ pub fn wsl_distro_from_path(unc_path: &str) -> Option<String> {
 pub fn linux_to_wsl_unc(linux_path: &str, distro: &str) -> String {
     let windows_subpath = linux_path.replace('/', "\\");
     format!(r"\\wsl.localhost\{distro}{windows_subpath}")
+}
+
+// ---------------------------------------------------------------------------
+// Windows drive path translation (D:\foo ↔ /mnt/d/foo)
+// ---------------------------------------------------------------------------
+
+/// Check if a path is a Windows drive path (e.g., `D:\foo` or `C:\Users`).
+pub fn is_windows_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+}
+
+/// Convert a Windows drive path to a WSL mount path.
+///
+/// `D:\projects\foo` → `/mnt/d/projects/foo`
+/// `C:\Users\me` → `/mnt/c/Users/me`
+///
+/// Returns `None` if the path isn't a Windows drive path.
+pub fn windows_drive_to_linux(path: &str) -> Option<String> {
+    if !is_windows_drive_path(path) {
+        return None;
+    }
+    let drive = (path.as_bytes()[0]).to_ascii_lowercase() as char;
+    let rest = &path[2..]; // includes leading \ or /
+    let linux_rest = rest.replace('\\', "/");
+    Some(format!("/mnt/{drive}{linux_rest}"))
+}
+
+/// Convert a WSL mount path (`/mnt/<drive>/...`) back to a Windows drive path.
+///
+/// `/mnt/d/projects/foo` → `D:\projects\foo`
+/// `/mnt/c/Users/me` → `C:\Users\me`
+///
+/// Returns `None` if the path isn't a `/mnt/<single-letter>/` mount.
+pub fn linux_mount_to_windows(path: &str) -> Option<String> {
+    if !path.starts_with("/mnt/") || path.len() < 6 {
+        return None;
+    }
+    let drive_byte = path.as_bytes()[5];
+    if !drive_byte.is_ascii_alphabetic() {
+        return None;
+    }
+    // Must be followed by '/' or end of string (just `/mnt/d`)
+    if path.len() > 6 && path.as_bytes()[6] != b'/' {
+        return None;
+    }
+    let drive = (drive_byte).to_ascii_uppercase() as char;
+    let rest = if path.len() > 6 { &path[6..] } else { "" };
+    let win_rest = rest.replace('/', "\\");
+    Some(format!("{drive}:{win_rest}"))
+}
+
+/// Convert any Windows path form to a Linux path.
+///
+/// Tries WSL UNC first (`\\wsl$\...`), then Windows drive (`D:\...`).
+/// Returns `None` if the path is neither.
+pub fn to_linux(path: &str) -> Option<String> {
+    wsl_unc_to_linux(path).or_else(|| windows_drive_to_linux(path))
+}
+
+/// Convert a Linux path back to the appropriate Windows form.
+///
+/// - `/mnt/d/...` → `D:\...` (Windows-native mount)
+/// - `/home/user/...` → `\\wsl.localhost\<distro>\...` (WSL-native)
+///
+/// Falls back to WSL UNC if the path isn't a `/mnt/<drive>/` mount.
+pub fn to_windows(path: &str, distro: &str) -> String {
+    linux_mount_to_windows(path)
+        .unwrap_or_else(|| linux_to_wsl_unc(path, distro))
 }
 
 /// Strip the WSL UNC prefix, returning the rest starting with the distro name.
@@ -220,5 +296,129 @@ mod tests {
         let back = linux_to_wsl_unc(&linux, &distro);
         // Round-trip normalizes \\wsl$ to \\wsl.localhost
         assert_eq!(back, r"\\wsl.localhost\Ubuntu\home\user");
+    }
+
+    // -- is_windows_drive_path --
+
+    #[test]
+    fn detects_windows_drive_paths() {
+        assert!(is_windows_drive_path(r"D:\projects\foo"));
+        assert!(is_windows_drive_path(r"C:\Users\me"));
+        assert!(is_windows_drive_path(r"c:\lowercase"));
+        assert!(is_windows_drive_path("D:/forward/slashes"));
+    }
+
+    #[test]
+    fn rejects_non_drive_paths() {
+        assert!(!is_windows_drive_path("/home/user"));
+        assert!(!is_windows_drive_path(r"\\wsl$\Ubuntu\home"));
+        assert!(!is_windows_drive_path(""));
+        assert!(!is_windows_drive_path("D:"));  // no separator after colon
+        assert!(!is_windows_drive_path("1:\\bad")); // digit, not letter
+    }
+
+    // -- windows_drive_to_linux --
+
+    #[test]
+    fn converts_drive_path_to_linux() {
+        assert_eq!(
+            windows_drive_to_linux(r"D:\projects\foo"),
+            Some("/mnt/d/projects/foo".to_string())
+        );
+    }
+
+    #[test]
+    fn converts_c_drive_to_linux() {
+        assert_eq!(
+            windows_drive_to_linux(r"C:\Users\me\code"),
+            Some("/mnt/c/Users/me/code".to_string())
+        );
+    }
+
+    #[test]
+    fn converts_uppercase_drive_to_lowercase_mount() {
+        assert_eq!(
+            windows_drive_to_linux(r"E:\data"),
+            Some("/mnt/e/data".to_string())
+        );
+    }
+
+    #[test]
+    fn drive_conversion_returns_none_for_non_drive() {
+        assert_eq!(windows_drive_to_linux("/home/user"), None);
+        assert_eq!(windows_drive_to_linux(r"\\wsl$\Ubuntu\home"), None);
+    }
+
+    // -- linux_mount_to_windows --
+
+    #[test]
+    fn converts_linux_mount_to_drive() {
+        assert_eq!(
+            linux_mount_to_windows("/mnt/d/projects/foo"),
+            Some(r"D:\projects\foo".to_string())
+        );
+    }
+
+    #[test]
+    fn converts_linux_mount_uppercase() {
+        assert_eq!(
+            linux_mount_to_windows("/mnt/c/Users/me"),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn mount_bare_drive() {
+        assert_eq!(
+            linux_mount_to_windows("/mnt/d"),
+            Some("D:".to_string())
+        );
+    }
+
+    #[test]
+    fn mount_rejects_non_mount_paths() {
+        assert_eq!(linux_mount_to_windows("/home/user"), None);
+        assert_eq!(linux_mount_to_windows("/mnt/"), None);      // no drive letter
+        assert_eq!(linux_mount_to_windows("/mnt/dd/foo"), None); // multi-char
+    }
+
+    // -- round-trip drive paths --
+
+    #[test]
+    fn round_trip_drive_to_linux_and_back() {
+        let original = r"D:\projects\taurhaus";
+        let linux = windows_drive_to_linux(original).unwrap();
+        assert_eq!(linux, "/mnt/d/projects/taurhaus");
+        let back = linux_mount_to_windows(&linux).unwrap();
+        assert_eq!(back, original);
+    }
+
+    // -- to_linux / to_windows --
+
+    #[test]
+    fn to_linux_handles_both_path_types() {
+        assert_eq!(
+            to_linux(r"\\wsl$\Ubuntu\home\user"),
+            Some("/home/user".to_string())
+        );
+        assert_eq!(
+            to_linux(r"D:\projects\foo"),
+            Some("/mnt/d/projects/foo".to_string())
+        );
+        assert_eq!(to_linux("/already/linux"), None);
+    }
+
+    #[test]
+    fn to_windows_routes_correctly() {
+        // /mnt mount → drive path
+        assert_eq!(
+            to_windows("/mnt/d/projects/foo", "Ubuntu"),
+            r"D:\projects\foo"
+        );
+        // WSL-native → UNC path
+        assert_eq!(
+            to_windows("/home/user/projects", "Ubuntu"),
+            r"\\wsl.localhost\Ubuntu\home\user\projects"
+        );
     }
 }
