@@ -53,29 +53,45 @@ pub struct ClaudeSession {
 
 /// Scan for all running Claude Code sessions.
 ///
-/// Orchestrates process scanning, tmux mapping, idle detection,
-/// and `/proc/PID/io` activity tracking into a single comprehensive scan.
+/// Orchestrates process scanning, tmux mapping, JSONL session ID lookup,
+/// and `/proc/PID/io` activity tracking.
 ///
-/// State determination is two-phase:
-/// 1. JSONL mtime check (fast, filesystem-based)
-/// 2. If JSONL says Idle, check `/proc/PID/io` delta — if the process is
-///    doing significant IO (e.g. streaming an API response), override to Active.
-///
-/// This catches the "thinking gap" where Claude is waiting for an API response
-/// and hasn't written to the transcript yet.
+/// Active/idle is determined solely by proc IO deltas — if the process
+/// is doing significant IO (API streaming, file writes), it's Active.
+/// JSONL transcript is only used to extract the session ID, not for
+/// state detection.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
-    let mut sessions = scan_sessions_with(
-        &process::scan_processes,
-        &tmux::list_panes,
-        &idle::detect_idle,
-    );
+    let processes = process::scan_processes();
+    let pane_map = tmux::list_panes();
 
-    // Phase 2: proc IO override for sessions that JSONL thinks are idle
-    for session in &mut sessions {
-        if session.state == SessionState::Idle && proc_io::is_process_active(session.pid) {
-            session.state = SessionState::Active;
-        }
-    }
+    let sessions: Vec<ClaudeSession> = processes
+        .into_iter()
+        .map(|proc| {
+            let tmux = pane_map.get(&proc.tty);
+            let idle_result = idle::detect_idle(&proc.project_path);
+
+            // State from proc IO — ignore JSONL mtime
+            let state = if proc_io::is_process_active(proc.pid) {
+                SessionState::Active
+            } else {
+                SessionState::Idle
+            };
+
+            ClaudeSession {
+                pid: proc.pid,
+                project_path: proc.project_path,
+                tty: proc.tty,
+                args: proc.args,
+                tmux_session: tmux.map(|t| t.session_name.clone()),
+                tmux_window: tmux.map(|t| t.window_index.clone()),
+                tmux_pane: tmux.map(|t| t.pane_id.clone()),
+                tmux_window_name: tmux.map(|t| t.window_name.clone()),
+                state,
+                session_id: idle_result.session_id,
+                jsonl_path: idle_result.jsonl_path,
+            }
+        })
+        .collect();
 
     // Clean up stale PID entries
     let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
