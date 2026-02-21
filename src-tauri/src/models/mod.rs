@@ -203,6 +203,10 @@ pub struct DaemonStatus {
     /// "connected", "disconnected", "not_configured", "reconnecting"
     pub status: String,
     pub version: Option<String>,
+    /// Protocol version reported by the daemon (0 = old daemon without versioning).
+    pub protocol_version: u32,
+    /// Protocol version the app expects. If daemon < expected, daemon is stale.
+    pub expected_protocol_version: u32,
     pub uptime_secs: Option<u64>,
     pub port: u16,
     pub wsl_distro: Option<String>,

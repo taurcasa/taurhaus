@@ -1,6 +1,6 @@
 use tauri::{Emitter, State};
 
-use crate::daemon::protocol::{self, PingResult};
+use crate::daemon::protocol::{self, PingResult, PROTOCOL_VERSION};
 use crate::daemon::server::DEFAULT_PORT;
 use crate::models::DaemonStatus;
 use crate::ProviderState;
@@ -14,6 +14,8 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
         return Ok(DaemonStatus {
             status: "not_configured".to_string(),
             version: None,
+            protocol_version: 0,
+            expected_protocol_version: PROTOCOL_VERSION,
             uptime_secs: None,
             port,
             wsl_distro: provider.wsl_distro.clone(),
@@ -24,6 +26,8 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
         return Ok(DaemonStatus {
             status: "disconnected".to_string(),
             version: None,
+            protocol_version: 0,
+            expected_protocol_version: PROTOCOL_VERSION,
             uptime_secs: None,
             port,
             wsl_distro: provider.wsl_distro.clone(),
@@ -41,6 +45,8 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
             Ok(DaemonStatus {
                 status: "connected".to_string(),
                 version: ping.as_ref().map(|p| p.version.clone()),
+                protocol_version: ping.as_ref().map(|p| p.protocol_version).unwrap_or(0),
+                expected_protocol_version: PROTOCOL_VERSION,
                 uptime_secs: ping.as_ref().map(|p| p.uptime_secs),
                 port,
                 wsl_distro: provider.wsl_distro.clone(),
@@ -49,6 +55,8 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
         _ => Ok(DaemonStatus {
             status: "disconnected".to_string(),
             version: None,
+            protocol_version: 0,
+            expected_protocol_version: PROTOCOL_VERSION,
             uptime_secs: None,
             port,
             wsl_distro: provider.wsl_distro.clone(),

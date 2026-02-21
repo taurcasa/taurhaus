@@ -77,6 +77,22 @@ impl DaemonProvider {
         }
     }
 
+    /// Ping the daemon and return its protocol version (0 if old daemon).
+    pub fn ping_protocol_version(&self) -> Result<u32, AppError> {
+        let id = self.next_id();
+        let request = DaemonRequest::ping(&id);
+        let response = self.send_request(&request, PING_TIMEOUT)?;
+        if !response.is_ok() {
+            return Err(AppError::InvalidPath("Daemon ping failed".to_string()));
+        }
+        let version = response
+            .result
+            .and_then(|v| serde_json::from_value::<protocol::PingResult>(v).ok())
+            .map(|p| p.protocol_version)
+            .unwrap_or(0);
+        Ok(version)
+    }
+
     /// Send a request for status/admin purposes (e.g., ping from IPC commands).
     ///
     /// Unlike the trait methods, this returns the raw DaemonResponse so callers

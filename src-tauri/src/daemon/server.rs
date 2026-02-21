@@ -255,6 +255,7 @@ fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {
         id,
         protocol::PingResult {
             version: env!("CARGO_PKG_VERSION").to_string(),
+            protocol_version: protocol::PROTOCOL_VERSION,
             uptime_secs: start_time.elapsed().as_secs(),
         },
     )

@@ -5,6 +5,13 @@
 /// field instead of `id`.
 use serde::{Deserialize, Serialize};
 
+/// Protocol version — bump this whenever the daemon API changes in a way
+/// that requires the app to be rebuilt against the new daemon.
+///
+/// The app checks this on connect. If the daemon's protocol version is
+/// lower than what the app expects, it warns the user to rebuild the daemon.
+pub const PROTOCOL_VERSION: u32 = 2;
+
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
 // ---------------------------------------------------------------------------
@@ -91,6 +98,10 @@ pub mod event {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PingResult {
     pub version: String,
+    /// Protocol version for compatibility checking. Old daemons that don't
+    /// include this field will deserialize as 0 (the default).
+    #[serde(default)]
+    pub protocol_version: u32,
     pub uptime_secs: u64,
 }
 
@@ -352,10 +363,22 @@ mod tests {
 
     #[test]
     fn ping_result_roundtrip() {
-        let r = PingResult { version: "0.1.0".to_string(), uptime_secs: 120 };
+        let r = PingResult {
+            version: "0.1.0".to_string(),
+            protocol_version: PROTOCOL_VERSION,
+            uptime_secs: 120,
+        };
         let json = serde_json::to_string(&r).unwrap();
         let back: PingResult = serde_json::from_str(&json).unwrap();
         assert_eq!(r, back);
+    }
+
+    #[test]
+    fn ping_result_old_daemon_without_protocol_version() {
+        // Old daemons won't include protocol_version — should default to 0
+        let json = r#"{"version":"0.1.0","uptime_secs":60}"#;
+        let r: PingResult = serde_json::from_str(json).unwrap();
+        assert_eq!(r.protocol_version, 0);
     }
 
     #[test]

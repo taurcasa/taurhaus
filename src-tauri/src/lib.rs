@@ -113,6 +113,27 @@ pub fn run() {
                     distro = ?distro,
                     "Daemon connection result at startup"
                 );
+
+                // Check protocol version compatibility
+                if let Some(ref d) = daemon {
+                    let expected = daemon::protocol::PROTOCOL_VERSION;
+                    match d.ping_protocol_version() {
+                        Ok(v) if v < expected => {
+                            tracing::error!(
+                                daemon_version = v,
+                                expected = expected,
+                                "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
+                            );
+                        }
+                        Ok(v) => {
+                            tracing::info!(protocol_version = v, "Daemon protocol version OK");
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Could not check daemon protocol version");
+                        }
+                    }
+                }
+
                 (daemon, distro)
             };
 
