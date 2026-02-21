@@ -494,19 +494,30 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
     }
 }
 
+/// How many days back to scan for Codex session files.
+///
+/// Codex stores session files in date-organized directories (YYYY/MM/DD/).
+/// When a session is resumed, Codex appends to the *original* file — which
+/// stays in the date directory where it was first created. A session created
+/// on Monday and resumed on Thursday would still live in Monday's directory
+/// but with Thursday's mtime. We scan back far enough to catch these.
+const CODEX_LOOKBACK_DAYS: i64 = 7;
+
 /// Scan recent date directories to find the Codex session file for a project.
 ///
-/// Checks today's and yesterday's directories. For each JSONL file, reads
-/// the first line to extract `session_meta.payload.cwd` and matches against
-/// the target project path.
+/// Checks the last [`CODEX_LOOKBACK_DAYS`] date directories. For each JSONL
+/// file, reads the first line to extract `session_meta.payload.cwd` and
+/// matches against the target project path. Files are checked newest-first
+/// within each directory, and directories are checked newest-first, so the
+/// active session is found quickly.
 fn codex_find_session_for_project(project_path: &str, sessions_dir: &Path) -> Option<PathBuf> {
     use chrono::Local;
 
     let today = Local::now().date_naive();
-    let yesterday = today - chrono::Duration::days(1);
 
-    // Check today first (most likely), then yesterday
-    for date in [today, yesterday] {
+    // Scan backwards from today — most likely hit is today, then yesterday, etc.
+    for days_back in 0..CODEX_LOOKBACK_DAYS {
+        let date = today - chrono::Duration::days(days_back);
         let date_dir = sessions_dir
             .join(date.format("%Y").to_string())
             .join(date.format("%m").to_string())
@@ -1029,6 +1040,60 @@ mod tests {
         // Query without trailing slash — should still match
         let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
         assert_eq!(result.state, SessionState::Active);
+    }
+
+    #[test]
+    fn codex_finds_session_from_days_ago() {
+        let tmp = TempDir::new().unwrap();
+        // Place the session file 5 days ago (within 7-day lookback window)
+        let five_days_ago = chrono::Local::now().date_naive() - chrono::Duration::days(5);
+        let date_dir = tmp
+            .path()
+            .join(five_days_ago.format("%Y").to_string())
+            .join(five_days_ago.format("%m").to_string())
+            .join(five_days_ago.format("%d").to_string());
+
+        let path = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-16T10-00-00-resumed-uuid.jsonl",
+            "/home/user/projects/myapp",
+        );
+
+        // Even though the file is old by date directory, if mtime is recent
+        // (because codex resume appended to it), it should be found AND active
+        let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
+        assert_eq!(result.state, SessionState::Active);
+        assert!(result.session_id.is_some());
+
+        // Now make the mtime old — should still find it but report Idle
+        let old_time = SystemTime::now() - Duration::from_secs(120);
+        filetime_set_mtime(&path, old_time);
+
+        let result2 = codex_detect_idle("/home/user/projects/myapp", tmp.path());
+        assert_eq!(result2.state, SessionState::Idle);
+        assert!(result2.session_id.is_some());
+    }
+
+    #[test]
+    fn codex_ignores_session_beyond_lookback_window() {
+        let tmp = TempDir::new().unwrap();
+        // Place session 10 days ago — beyond the 7-day window
+        let ten_days_ago = chrono::Local::now().date_naive() - chrono::Duration::days(10);
+        let date_dir = tmp
+            .path()
+            .join(ten_days_ago.format("%Y").to_string())
+            .join(ten_days_ago.format("%m").to_string())
+            .join(ten_days_ago.format("%d").to_string());
+
+        create_codex_session(
+            &date_dir,
+            "rollout-2026-02-11T10-00-00-ancient-uuid.jsonl",
+            "/home/user/projects/myapp",
+        );
+
+        let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
+        assert_eq!(result.state, SessionState::Idle);
+        assert!(result.session_id.is_none()); // Not found — beyond lookback
     }
 
     // -----------------------------------------------------------------------
