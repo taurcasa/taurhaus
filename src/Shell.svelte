@@ -10,7 +10,8 @@
   import { classifyFile } from './lib/fileClassifier.js'
   import * as assetCache from './lib/assetCache.js'
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling, getSessionForProject } from './lib/sessionStore.svelte.js'
-  import { rowTintClass, sessionBadge, sessionTooltip, sidebarHoverInfo } from './lib/sessionIndicator.js'
+  import { rowTintClass, sessionBadge } from './lib/sessionIndicator.js'
+  import HoverCard from './lib/HoverCard.svelte'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -25,6 +26,22 @@
   let ctxConfirmRemove = $state(false)
   let ctxConfirmStop = $state(false)
   let ctxConfirmTimeout = $state(null)
+
+  // Hover card state
+  let hoverCard = $state(null) // { project, session, anchorEl }
+  let hoverTimeout = $state(null)
+
+  function showHoverCard(project, session, el) {
+    clearTimeout(hoverTimeout)
+    hoverTimeout = setTimeout(() => {
+      if (!ctxMenu) hoverCard = { project, session, anchorEl: el }
+    }, 250)
+  }
+
+  function hideHoverCard() {
+    clearTimeout(hoverTimeout)
+    hoverTimeout = setTimeout(() => { hoverCard = null }, 80)
+  }
 
   /*
    * Layout dimensions
@@ -828,7 +845,7 @@
       </div>
 
       <!-- Project list -->
-      <div class="flex-1 overflow-y-auto px-1.5 pt-1">
+      <div class="flex-1 overflow-y-auto px-1.5 pt-1" onscroll={() => { hoverCard = null; clearTimeout(hoverTimeout) }}>
         {#if sidebarLoading}
           <!-- Loading skeleton -->
           <div class="px-3 pt-3 space-y-1" data-testid="sidebar-skeleton">
@@ -870,8 +887,9 @@
                   class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
                     {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintClass(session)}`}"
                   onclick={() => selectProject(project)}
-                  oncontextmenu={(e) => openContextMenu(e, project)}
-                  title={sidebarHoverInfo(project, session)}
+                  oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
+                  onmouseenter={(e) => showHoverCard(project, session, e.currentTarget)}
+                  onmouseleave={hideHoverCard}
                 >
                   {#if selected}
                     <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
@@ -884,7 +902,6 @@
                       role="button"
                       tabindex="0"
                       aria-label={badge.ariaLabel}
-                      title={sessionTooltip(session)}
                       onclick={(e) => jumpToSession(e, session)}
                       onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, session) }}
                     >{badge.label}</span>
@@ -892,7 +909,6 @@
                     <span
                       class="session-pill w-[33px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] transition-opacity duration-150 opacity-100 {badge.badgeClass}"
                       aria-label={badge.ariaLabel}
-                      title={sessionTooltip(session)}
                     >{badge.label}</span>
                   {/if}
                   <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch || ''}</span>
@@ -903,7 +919,6 @@
                         role="button"
                         tabindex="0"
                         aria-label="Open in Terminal session"
-                        title="Open in Terminal session"
                         onclick={(e) => jumpToSession(e, session)}
                         onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, session) }}
                       >
@@ -1341,6 +1356,10 @@
 
   {#if ctxMenu}
     <ContextMenu items={ctxMenuItems} x={ctxMenu.x} y={ctxMenu.y} dark={true} onClose={closeContextMenu} />
+  {/if}
+
+  {#if hoverCard}
+    <HoverCard project={hoverCard.project} session={hoverCard.session} anchorEl={hoverCard.anchorEl} />
   {/if}
 </div>
 {/if}
