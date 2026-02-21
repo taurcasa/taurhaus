@@ -56,10 +56,12 @@ pub struct ClaudeSession {
 /// Orchestrates process scanning, tmux mapping, JSONL session ID lookup,
 /// and `/proc/PID/io` activity tracking.
 ///
-/// Active/idle is determined solely by proc IO deltas — if the process
-/// is doing significant IO (API streaming, file writes), it's Active.
-/// JSONL transcript is only used to extract the session ID, not for
-/// state detection.
+/// Active/idle is determined by combining two signals (OR):
+/// - **Proc IO**: rchar delta > 1KB means network activity (API streaming)
+/// - **JSONL mtime**: file modified < 5s ago means tool use / file writes
+///
+/// Either signal alone can miss activity windows, but together they
+/// cover the full Claude work cycle without flickering.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
     let processes = process::scan_processes();
     let pane_map = tmux::list_panes();
@@ -70,8 +72,12 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
             let tmux = pane_map.get(&proc.tty);
             let idle_result = idle::detect_idle(&proc.project_path);
 
-            // State from proc IO — ignore JSONL mtime
-            let state = if proc_io::is_process_active(proc.pid) {
+            // Active if EITHER signal fires:
+            // - proc IO: network activity (API streaming, even during "thinking" gaps)
+            // - JSONL mtime: file writes (tool use, code edits)
+            let state = if proc_io::is_process_active(proc.pid)
+                || idle_result.state == SessionState::Active
+            {
                 SessionState::Active
             } else {
                 SessionState::Idle
