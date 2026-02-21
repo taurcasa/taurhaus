@@ -279,53 +279,60 @@ describe('Session-aware dot class derivation', () => {
   }
 
   // Mirrors the dotClassFor() function from Shell.svelte
+  // Color = git activity state (always). Pulse = session running (additive).
   function dotClassFor(project, sessionMap) {
+    const base = dotColor[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
     const session = sessionMap.get(project.path) ?? null
-    if (session?.state === 'active') return 'bg-success-300 session-active-dot'
-    if (session?.state === 'idle') return 'bg-warning-300'
-    return dotColor[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
+    if (session?.state === 'active' || session?.state === 'idle') {
+      return base + ' session-active-dot'
+    }
+    return base
   }
 
-  it('returns pulse class for active session', () => {
+  it('adds pulse to activity dot for active session', () => {
     const project = { path: '/proj', activity_state: 'dormant' }
     const sessions = new Map([['/proj', { state: 'active' }]])
     const cls = dotClassFor(project, sessions)
+    // Keeps dormant color + adds pulse
+    expect(cls).toContain('bg-zinc-400')
+    expect(cls).toContain('session-active-dot')
+  })
+
+  it('adds pulse to activity dot for idle session', () => {
+    const project = { path: '/proj', activity_state: 'active' }
+    const sessions = new Map([['/proj', { state: 'idle' }]])
+    const cls = dotClassFor(project, sessions)
+    // Keeps active color + adds pulse
     expect(cls).toContain('bg-success-300')
     expect(cls).toContain('session-active-dot')
   })
 
-  it('returns amber for idle session', () => {
-    const project = { path: '/proj', activity_state: 'active' }
-    const sessions = new Map([['/proj', { state: 'idle' }]])
-    const cls = dotClassFor(project, sessions)
-    expect(cls).toBe('bg-warning-300')
-    expect(cls).not.toContain('session-active-dot')
-  })
-
-  it('returns activity dot when no session', () => {
+  it('returns activity dot without pulse when no session', () => {
     const project = { path: '/proj', activity_state: 'recent' }
     const sessions = new Map()
     const cls = dotClassFor(project, sessions)
     expect(cls).toContain('bg-info-300')
     expect(cls).toContain('shadow-')
+    expect(cls).not.toContain('session-active-dot')
   })
 
-  it('overrides dormant activity with active session', () => {
+  it('preserves dormant color when session active', () => {
     const project = { path: '/proj', activity_state: 'dormant' }
     const sessions = new Map([['/proj', { state: 'active' }]])
     const cls = dotClassFor(project, sessions)
-    // Should be green pulse, not grey dormant
-    expect(cls).toContain('bg-success-300')
-    expect(cls).not.toContain('bg-zinc-400')
+    // Color stays dormant grey — session only adds pulse
+    expect(cls).toContain('bg-zinc-400')
+    expect(cls).toContain('session-active-dot')
   })
 
-  it('reverts to activity dot when session ends', () => {
+  it('removes pulse when session ends', () => {
     const project = { path: '/proj', activity_state: 'stale' }
-    // First: session active
+    // First: session active — pulse added
     const withSession = new Map([['/proj', { state: 'active' }]])
     expect(dotClassFor(project, withSession)).toContain('session-active-dot')
+    expect(dotClassFor(project, withSession)).toContain('bg-warning-300')
 
-    // Then: session gone
+    // Then: session gone — pulse removed, color unchanged
     const without = new Map()
     const cls = dotClassFor(project, without)
     expect(cls).toContain('bg-warning-300')

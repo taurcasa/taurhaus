@@ -58,12 +58,16 @@
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
   const dots           = $derived(dark ? dotColorDark : dotColor)
 
-  /** Compute dot CSS class for a project, overriding with session state if present. */
+  /** Compute dot CSS class for a project.
+   *  Color = git activity state (always). Pulse = Claude Code session running (additive).
+   *  When session-active, the CSS animation handles box-shadow so we skip the static shadow. */
   function dotClassFor(project) {
+    const color = dots[project.activity_state]
     const session = getSessionForProject(project.path)
-    if (session?.state === 'active') return 'bg-success-300 session-active-dot'
-    if (session?.state === 'idle') return 'bg-warning-300'
-    return dots[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
+    if (session?.state === 'active' || session?.state === 'idle') {
+      return color + ' session-active-dot'
+    }
+    return color + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
   }
 
   /** Whether a project has an active or idle session (shows jump icon). */
@@ -305,24 +309,38 @@
 
   function ctxContinueSession() {
     if (!ctxMenu?.project) return
-    launchClaudeSession(ctxMenu.project.id, 'continue').catch(e => console.error('Failed to launch session:', e))
+    console.log('[cmd-center] Continue Session:', ctxMenu.project.id, ctxMenu.project.name)
+    launchClaudeSession(ctxMenu.project.id, 'continue')
+      .then(r => console.log('[cmd-center] launch OK:', r))
+      .catch(e => console.error('[cmd-center] launch FAILED:', e))
   }
 
   function ctxNewSession() {
     if (!ctxMenu?.project) return
-    launchClaudeSession(ctxMenu.project.id, 'fresh').catch(e => console.error('Failed to launch session:', e))
+    console.log('[cmd-center] New Session:', ctxMenu.project.id, ctxMenu.project.name)
+    launchClaudeSession(ctxMenu.project.id, 'fresh')
+      .then(r => console.log('[cmd-center] launch OK:', r))
+      .catch(e => console.error('[cmd-center] launch FAILED:', e))
   }
 
   function ctxResumeSession() {
     if (!ctxMenu?.project) return
-    launchClaudeSession(ctxMenu.project.id, 'resume').catch(e => console.error('Failed to launch session:', e))
+    console.log('[cmd-center] Resume Session:', ctxMenu.project.id, ctxMenu.project.name)
+    launchClaudeSession(ctxMenu.project.id, 'resume')
+      .then(r => console.log('[cmd-center] launch OK:', r))
+      .catch(e => console.error('[cmd-center] launch FAILED:', e))
   }
 
   function ctxOpenInTerminal() {
     if (!ctxMenu?.project) return
     const session = getSessionForProject(ctxMenu.project.path)
+    console.log('[cmd-center] Open in Terminal:', ctxMenu.project.path, 'session:', session ? { tmux_session: session.tmux_session, tmux_window: session.tmux_window, tmux_pane: session.tmux_pane } : 'null')
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
+        .then(() => console.log('[cmd-center] navigate OK'))
+        .catch(e => console.error('[cmd-center] navigate FAILED:', e))
+    } else {
+      console.warn('[cmd-center] Open in Terminal: missing tmux fields, cannot navigate')
     }
   }
 
