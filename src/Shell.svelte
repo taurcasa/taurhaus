@@ -10,6 +10,7 @@
   import { classifyFile } from './lib/fileClassifier.js'
   import * as assetCache from './lib/assetCache.js'
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling, getSessionForProject } from './lib/sessionStore.svelte.js'
+  import { rowTintClass, sessionBadge, sessionTooltip, sidebarHoverInfo } from './lib/sessionIndicator.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -33,7 +34,7 @@
    * - Frame:    6px (p-1.5) padding around panels inside the dark frame
    */
 
-  // Sidebar status dots — bright for visibility against dark bg
+  // Sidebar status dots — color = git activity state only (never changes for session)
   const dotColor     = { active: 'bg-success-300', recent: 'bg-info-300', stale: 'bg-warning-300', dormant: 'bg-zinc-400' }
   const dotColorDark = { active: 'bg-success-300', recent: 'bg-info-300', stale: 'bg-warning-300', dormant: 'bg-zinc-500' }
 
@@ -58,28 +59,14 @@
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
   const dots           = $derived(dark ? dotColorDark : dotColor)
 
-  /** Compute dot CSS class for a project.
-   *  Color = git activity state (always). Pulse = Claude Code session running (additive).
-   *  When session-active, the CSS animation handles box-shadow so we skip the static shadow. */
+  /** Dot class = git activity color + ambient shadow. No session logic (Option B). */
   function dotClassFor(project) {
-    const color = dots[project.activity_state]
-    const session = getSessionForProject(project.path)
-    if (session?.state === 'active' || session?.state === 'idle') {
-      return color + ' session-active-dot'
-    }
-    return color + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
-  }
-
-  /** Whether a project has an active or idle session (shows jump icon). */
-  function hasSession(project) {
-    const session = getSessionForProject(project.path)
-    return session?.state === 'active' || session?.state === 'idle'
+    return dots[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
   }
 
   /** Navigate to a project's Claude Code session in tmux. */
-  function jumpToSession(e, project) {
+  function jumpToSession(e, session) {
     e.stopPropagation()
-    const session = getSessionForProject(project.path)
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
     }
@@ -877,28 +864,59 @@
               </div>
               {#each items as project}
                 {@const selected = selectedProject && project.id === selectedProject.id}
+                {@const session = getSessionForProject(project.path)}
+                {@const badge = sessionBadge(session)}
                 <button
                   class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
-                    {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}"
+                    {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintClass(session)}`}"
                   onclick={() => selectProject(project)}
                   oncontextmenu={(e) => openContextMenu(e, project)}
+                  title={sidebarHoverInfo(project, session)}
                 >
                   {#if selected}
                     <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
                   {/if}
                   <span class="w-[7px] h-[7px] rounded-full shrink-0 {dotClassFor(project)}"></span>
                   <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
+                  {#if badge.interactive}
+                    <span
+                      class="session-pill w-[33px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] transition-opacity duration-150 opacity-100 {badge.badgeClass}"
+                      role="button"
+                      tabindex="0"
+                      aria-label={badge.ariaLabel}
+                      title={sessionTooltip(session)}
+                      onclick={(e) => jumpToSession(e, session)}
+                      onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, session) }}
+                    >{badge.label}</span>
+                  {:else if badge.visible}
+                    <span
+                      class="session-pill w-[33px] h-[16px] shrink-0 inline-flex items-center justify-center text-[9px] font-semibold tracking-[0.08em] transition-opacity duration-150 opacity-100 {badge.badgeClass}"
+                      aria-label={badge.ariaLabel}
+                      title={sessionTooltip(session)}
+                    >{badge.label}</span>
+                  {/if}
                   <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch || ''}</span>
-                  <span
-                    class="w-3 h-3 shrink-0 transition-opacity duration-150 {hasSession(project) ? 'opacity-100' : 'opacity-0 pointer-events-none'} text-white/30 hover:text-white/60"
-                    role="button"
-                    tabindex={hasSession(project) ? 0 : -1}
-                    aria-label="Jump to session"
-                    onclick={(e) => jumpToSession(e, project)}
-                    onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, project) }}
-                  >
-                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
-                  </span>
+                  {#if badge.visible}
+                    {#if badge.interactive}
+                      <span
+                        class="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-white/40 hover:text-white/70 transition-colors"
+                        role="button"
+                        tabindex="0"
+                        aria-label="Open in Terminal session"
+                        title="Open in Terminal session"
+                        onclick={(e) => jumpToSession(e, session)}
+                        onkeydown={(e) => { if (e.key === 'Enter') jumpToSession(e, session) }}
+                      >
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3"/></svg>
+                      </span>
+                    {:else}
+                      <span class="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-white/20" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3"/></svg>
+                      </span>
+                    {/if}
+                  {:else}
+                    <span class="w-3.5 h-3.5 shrink-0 opacity-0 pointer-events-none"></span>
+                  {/if}
                   {#if project.is_dirty}
                     <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
                   {/if}
