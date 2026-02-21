@@ -9,18 +9,7 @@
  *   getSessionForProject('/home/user/proj')  // → ClaudeSession | null
  */
 
-import { listClaudeSessions, isTauri } from './ipc.js'
-
-/** Send a log line to the backend log file (fire-and-forget). */
-async function log(msg) {
-  console.log('[sessionStore]', msg)
-  if (isTauri()) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      invoke('frontend_log', { level: 'info', message: `[sessionStore] ${msg}` })
-    } catch (_) { /* best-effort */ }
-  }
-}
+import { listClaudeSessions } from './ipc.js'
 
 const POLL_INTERVAL_MS = 500
 
@@ -63,10 +52,6 @@ async function poll() {
       const key = normalizePath(session.project_path)
       next.set(key, session)
     }
-    // Diagnostic: log first successful poll and any changes
-    if (next.size > 0 && (sessions.size !== next.size || thisGen <= 3)) {
-      log(`poll: ${next.size} sessions, keys=[${[...next.keys()].join(', ')}], states=[${[...next.values()].map(s => s.state).join(', ')}]`)
-    }
     sessions = next
   } catch (err) {
     // On error, keep previous state (graceful degradation)
@@ -101,14 +86,7 @@ export function getSessions() {
 }
 
 /** Look up the session for a project by its path. Returns null if none. */
-let _lookupLogCount = 0
 export function getSessionForProject(projectPath) {
   const key = normalizePath(projectPath)
-  const result = sessions.get(key) ?? null
-  // Log first few lookups to diagnose path matching
-  if (_lookupLogCount < 5) {
-    _lookupLogCount++
-    log(`lookup: path="${projectPath}" → key="${key}" → ${result ? `MATCH(state=${result.state})` : `MISS(map size=${sessions.size}, keys=[${[...sessions.keys()].join(',')}])`}`)
-  }
-  return result
+  return sessions.get(key) ?? null
 }

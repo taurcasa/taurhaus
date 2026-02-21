@@ -56,26 +56,30 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Command Center — session pulse animation.
-   Animates the dot's box-shadow between a subtle static glow and a
-   brighter halo. No pseudo-elements — avoids overflow clipping issues
-   in the scrollable sidebar project list. */
-.session-active-dot {
-  animation: dot-glow 2s ease-in-out infinite;
+/* Command Center — sidebar session pills.
+   RUN = active Claude work, IDLE = waiting for user input. */
+.session-pill {
+  line-height: 1;
 }
 
-@keyframes dot-glow {
-  0%, 100% {
-    box-shadow: 0 0 4px rgba(255, 255, 255, 0.15);
-  }
-  50% {
-    box-shadow: 0 0 8px 3px rgba(255, 255, 255, 0.5);
-  }
+.session-pill-active {
+  animation: session-pill-breathe 1.8s ease-in-out infinite;
+}
+
+.session-pill-idle {
+  box-shadow:
+    inset 0 0 0 1px rgba(251, 191, 36, 0.2),
+    0 0 0 1px rgba(251, 191, 36, 0.15);
+}
+
+@keyframes session-pill-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .session-active-dot {
+  .session-pill-active {
     animation: none;
-    box-shadow: 0 0 6px 2px rgba(255, 255, 255, 0.35);
+    filter: brightness(1.1);
   }
 }
