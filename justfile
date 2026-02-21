@@ -81,7 +81,8 @@ sync-windows:
     @echo "✓ Sync complete"
 
 # Build Windows NSIS installer (syncs first, builds natively on Windows)
-build-windows: sync-windows
+# Also rebuilds the WSL daemon to keep them in sync.
+build-windows: install-daemon sync-windows
     @echo "Note: cmd.exe may print 'UNC paths are not supported'. This is harmless."
     @echo "▸ Installing frontend dependencies on Windows…"
     cmd.exe /c "cd /d {{win_drive}} && npm install"

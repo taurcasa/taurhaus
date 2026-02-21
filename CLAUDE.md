@@ -44,7 +44,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `npx tauri bui
 |--------|-------------|
 | `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
 | `just dev-frontend` | Frontend dev server only (no Rust backend) |
-| `just build-windows` | **The Windows build.** Syncs source to `D:\taurhaus_build`, runs `npm install` + `cargo tauri build` natively on Windows via `cmd.exe`. Produces NSIS installer. |
+| `just build-windows` | **The Windows build.** Rebuilds the WSL daemon first, then syncs source to `D:\taurhaus_build`, runs `npm install` + `cargo tauri build` natively on Windows via `cmd.exe`. Produces NSIS installer. |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
 | `just install-daemon` | Builds + copies daemon to `~/.local/bin/` |
 | `just check` | Full quality gate: clippy + svelte-check + all tests |
