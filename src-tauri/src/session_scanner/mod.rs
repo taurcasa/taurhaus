@@ -4,6 +4,10 @@
 //! 1. Process scanning (ps + /proc) — find claude processes and their project paths
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
 //! 3. Idle detection — check JSONL + subagent mtime to determine active vs idle
+//!
+//! State changes use bidirectional hysteresis: a transition (idle↔active)
+//! only takes effect after 2 consecutive polls agree on the new state.
+//! This eliminates flickering from transient signals in either direction.
 
 pub mod control;
 pub mod idle;
@@ -13,6 +17,7 @@ pub mod tmux;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// State of a Claude Code session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,18 +56,81 @@ pub struct ClaudeSession {
     pub jsonl_path: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Bidirectional state hysteresis
+// ---------------------------------------------------------------------------
+
+/// Per-PID state tracker for bidirectional hysteresis.
+///
+/// State changes only take effect after 2 consecutive polls agree on the new
+/// state. This prevents flickering in both directions (idle→active and
+/// active→idle).
+struct StateTracker {
+    /// The state we last reported to the frontend.
+    reported: SessionState,
+    /// The raw (unfiltered) state from the previous poll.
+    prev_raw: SessionState,
+}
+
+/// State trackers keyed by PID.
+static STATE_TRACKERS: Mutex<Option<HashMap<u32, StateTracker>>> = Mutex::new(None);
+
+/// Apply bidirectional hysteresis to a raw state reading.
+///
+/// Returns the state to report. Only changes from the previously reported
+/// state when 2 consecutive raw readings agree on the new state.
+fn apply_hysteresis(pid: u32, raw: SessionState) -> SessionState {
+    let mut guard = STATE_TRACKERS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+
+    let result = match map.get(&pid) {
+        Some(tracker) => {
+            if raw == tracker.prev_raw && raw != tracker.reported {
+                // Two consecutive readings of the new state → switch
+                raw
+            } else {
+                // Hold the current reported state
+                tracker.reported
+            }
+        }
+        None => {
+            // First observation for this PID — report as-is
+            raw
+        }
+    };
+
+    map.insert(pid, StateTracker {
+        reported: result,
+        prev_raw: raw,
+    });
+
+    result
+}
+
+/// Remove stale PID entries from the state tracker.
+fn retain_state_trackers(active_pids: &[u32]) {
+    let mut guard = STATE_TRACKERS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(map) = guard.as_mut() {
+        map.retain(|pid, _| active_pids.contains(pid));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /// Scan for all running Claude Code sessions.
 ///
 /// Orchestrates process scanning, tmux mapping, idle detection, and
 /// proc IO activity tracking.
 ///
-/// Active if ANY of these is true (OR):
+/// **Raw state** — Active if ANY of these is true (OR):
 /// - **JSONL mtime**: main transcript modified < 5s ago (tool use, streaming)
 /// - **Subagent mtime**: subagent file modified < 5s ago (compaction)
-/// - **Proc IO**: rchar delta > 500 bytes since last poll (thinking, API wait)
+/// - **Proc IO**: rchar delta > 500 bytes for 2+ consecutive polls (thinking)
 ///
-/// Each signal covers a different phase of the Claude work cycle.
-/// Together they provide continuous coverage with no gaps.
+/// **Reported state** — applies bidirectional hysteresis on top: a state
+/// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
     let processes = process::scan_processes();
     let pane_map = tmux::list_panes();
@@ -73,13 +141,17 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
             let tmux = pane_map.get(&proc.tty);
             let idle_result = idle::detect_idle(&proc.project_path);
 
-            let state = if idle_result.state == SessionState::Active
+            // Raw state from all three signals (OR)
+            let raw_state = if idle_result.state == SessionState::Active
                 || proc_io::is_process_active(proc.pid)
             {
                 SessionState::Active
             } else {
                 SessionState::Idle
             };
+
+            // Apply bidirectional hysteresis
+            let state = apply_hysteresis(proc.pid, raw_state);
 
             ClaudeSession {
                 pid: proc.pid,
@@ -97,9 +169,10 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
         })
         .collect();
 
-    // Clean up stale PID entries
+    // Clean up stale PID entries from both trackers
     let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
     proc_io::retain_pids(&active_pids);
+    retain_state_trackers(&active_pids);
 
     sessions
 }
@@ -291,5 +364,106 @@ mod tests {
             },
         );
         assert!(sessions.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Hysteresis unit tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn hysteresis_first_observation_reports_raw() {
+        // New PID → report whatever the raw state is
+        assert_eq!(apply_hysteresis(900_001, SessionState::Idle), SessionState::Idle);
+        // Clean up
+        retain_state_trackers(&[]);
+    }
+
+    #[test]
+    fn hysteresis_holds_state_on_single_change() {
+        let pid = 900_002;
+
+        // Establish baseline: idle
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        // Single active reading → still reports idle (held)
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+
+        // Back to idle → still idle (no change ever happened)
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        retain_state_trackers(&[]);
+    }
+
+    #[test]
+    fn hysteresis_switches_after_two_consecutive() {
+        let pid = 900_003;
+
+        // Baseline: idle
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        // First active reading → held
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+
+        // Second consecutive active → switch!
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Active);
+
+        retain_state_trackers(&[]);
+    }
+
+    #[test]
+    fn hysteresis_works_in_both_directions() {
+        let pid = 900_004;
+
+        // Start idle
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        // Switch to active (2 consecutive)
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Active);
+
+        // Now try to go back to idle — single reading is held
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Active);
+
+        // Second consecutive idle → switch back
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        retain_state_trackers(&[]);
+    }
+
+    #[test]
+    fn hysteresis_absorbs_alternating_readings() {
+        let pid = 900_005;
+
+        // Baseline: idle
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        // Alternating: active, idle, active, idle → never switches
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+
+        retain_state_trackers(&[]);
+    }
+
+    #[test]
+    fn retain_state_trackers_cleans_up() {
+        let pid = 900_006;
+        apply_hysteresis(pid, SessionState::Idle);
+
+        // Verify it's tracked
+        {
+            let guard = STATE_TRACKERS.lock().unwrap();
+            assert!(guard.as_ref().unwrap().contains_key(&pid));
+        }
+
+        // Retain only other PIDs
+        retain_state_trackers(&[1]);
+
+        // Should be gone
+        {
+            let guard = STATE_TRACKERS.lock().unwrap();
+            assert!(!guard.as_ref().unwrap().contains_key(&pid));
+        }
     }
 }
