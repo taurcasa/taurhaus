@@ -3,15 +3,19 @@
 //! Claude Code writes session transcripts to:
 //!   `~/.claude/projects/<slug>/<session-id>.jsonl`
 //!
-//! The file grows continuously while Claude is working and stops growing
-//! when idle (waiting for user input). File mtime is the simplest idle detector.
+//! During normal work, the main JSONL updates every ~1 second. During
+//! compaction, a subagent writes to:
+//!   `~/.claude/projects/<slug>/<session-id>/subagents/agent-acompact-*.jsonl`
+//!
+//! We check the most recent mtime across both the main JSONL and the
+//! subagents directory to cover all active phases including compaction.
 
 use crate::session_scanner::SessionState;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// Threshold: if JSONL mtime is less than this, session is Active.
+/// Threshold: if any session file mtime is less than this, session is Active.
 const ACTIVE_THRESHOLD: Duration = Duration::from_secs(5);
 
 /// Result of idle detection for a project.
@@ -68,14 +72,28 @@ pub fn detect_idle_in(project_path: &str, claude_projects_dir: &Path) -> IdleRes
 
     let jsonl_path = jsonl.to_string_lossy().to_string();
 
-    // Check mtime
-    let state = match fs::metadata(&jsonl) {
-        Ok(meta) => match meta.modified() {
-            Ok(mtime) => classify_mtime(mtime),
-            Err(_) => SessionState::Idle,
-        },
-        Err(_) => SessionState::Idle,
+    // Check mtime of main JSONL
+    let main_mtime = file_mtime(&jsonl);
+
+    // Also check the subagents directory for this session.
+    // During compaction, Claude writes to subagents/agent-acompact-*.jsonl
+    // while the main JSONL goes quiet.
+    let subagent_mtime = session_id.as_deref().and_then(|sid| {
+        let subagents_dir = project_dir.join(sid).join("subagents");
+        newest_file_mtime(&subagents_dir)
+    });
+
+    // Active if EITHER the main JSONL or any subagent file was recently modified
+    let most_recent = match (main_mtime, subagent_mtime) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
     };
+
+    let state = most_recent
+        .map(classify_mtime)
+        .unwrap_or(SessionState::Idle);
 
     IdleResult {
         state,
@@ -105,6 +123,24 @@ fn classify_mtime(mtime: SystemTime) -> SessionState {
         // The 5-10s gap is a brief transition zone that avoids flickering.
         SessionState::Idle
     }
+}
+
+/// Get a file's modification time.
+fn file_mtime(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).ok()?.modified().ok()
+}
+
+/// Get the most recent mtime of any file in a directory (non-recursive).
+fn newest_file_mtime(dir: &Path) -> Option<SystemTime> {
+    if !dir.is_dir() {
+        return None;
+    }
+    fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().ok().is_some_and(|ft| ft.is_file()))
+        .filter_map(|e| e.metadata().ok()?.modified().ok())
+        .max()
 }
 
 /// Find the most recently modified .jsonl file in a directory.
@@ -268,9 +304,57 @@ mod tests {
 
     #[test]
     fn classify_mtime_transition_zone() {
-        // Between 5s and 10s: should classify as Idle (conservative)
+        // 7s is beyond threshold — should be Idle
         let mid = SystemTime::now() - Duration::from_secs(7);
         assert_eq!(classify_mtime(mid), SessionState::Idle);
+    }
+
+    #[test]
+    fn detect_idle_active_during_compaction_via_subagent() {
+        let tmp = TempDir::new().unwrap();
+        let project_dir = tmp.path().join("-home-user-projects-foo");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Main JSONL is old (compaction started, main transcript quiet)
+        let jsonl_path = project_dir.join("my-session-id.jsonl");
+        File::create(&jsonl_path).unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(120);
+        filetime_set_mtime(&jsonl_path, old_time);
+
+        // But subagent compaction file is fresh (written by compaction agent)
+        let subagents_dir = project_dir.join("my-session-id").join("subagents");
+        fs::create_dir_all(&subagents_dir).unwrap();
+        let compact_path = subagents_dir.join("agent-acompact-abc123.jsonl");
+        let mut f = File::create(&compact_path).unwrap();
+        writeln!(f, "{{}}").unwrap();
+        f.sync_all().unwrap();
+
+        let result = detect_idle_in("/home/user/projects/foo", tmp.path());
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(result.session_id.as_deref(), Some("my-session-id"));
+    }
+
+    #[test]
+    fn detect_idle_idle_when_both_main_and_subagent_old() {
+        let tmp = TempDir::new().unwrap();
+        let project_dir = tmp.path().join("-home-user-projects-foo");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Main JSONL is old
+        let jsonl_path = project_dir.join("my-session-id.jsonl");
+        File::create(&jsonl_path).unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(120);
+        filetime_set_mtime(&jsonl_path, old_time);
+
+        // Subagent file also old
+        let subagents_dir = project_dir.join("my-session-id").join("subagents");
+        fs::create_dir_all(&subagents_dir).unwrap();
+        let compact_path = subagents_dir.join("agent-acompact-abc123.jsonl");
+        File::create(&compact_path).unwrap();
+        filetime_set_mtime(&compact_path, old_time);
+
+        let result = detect_idle_in("/home/user/projects/foo", tmp.path());
+        assert_eq!(result.state, SessionState::Idle);
     }
 
     /// Helper: set file mtime using std::fs.

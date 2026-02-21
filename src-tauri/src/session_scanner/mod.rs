@@ -3,7 +3,7 @@
 //! Combines three detection strategies:
 //! 1. Process scanning (ps + /proc) — find claude processes and their project paths
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
-//! 3. Idle detection — check JSONL transcript mtime to determine active vs idle
+//! 3. Idle detection — check JSONL + subagent mtime to determine active vs idle
 
 pub mod control;
 pub mod idle;
@@ -53,15 +53,16 @@ pub struct ClaudeSession {
 
 /// Scan for all running Claude Code sessions.
 ///
-/// Orchestrates process scanning, tmux mapping, JSONL session ID lookup,
-/// and `/proc/PID/io` activity tracking.
+/// Orchestrates process scanning, tmux mapping, idle detection, and
+/// proc IO activity tracking.
 ///
-/// Active/idle is determined by combining two signals (OR):
-/// - **Proc IO**: rchar delta > 1KB means network activity (API streaming)
-/// - **JSONL mtime**: file modified < 5s ago means tool use / file writes
+/// Active if ANY of these is true (OR):
+/// - **JSONL mtime**: main transcript modified < 5s ago (tool use, streaming)
+/// - **Subagent mtime**: subagent file modified < 5s ago (compaction)
+/// - **Proc IO**: rchar delta > 500 bytes since last poll (thinking, API wait)
 ///
-/// Either signal alone can miss activity windows, but together they
-/// cover the full Claude work cycle without flickering.
+/// Each signal covers a different phase of the Claude work cycle.
+/// Together they provide continuous coverage with no gaps.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
     let processes = process::scan_processes();
     let pane_map = tmux::list_panes();
@@ -72,11 +73,8 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
             let tmux = pane_map.get(&proc.tty);
             let idle_result = idle::detect_idle(&proc.project_path);
 
-            // Active if EITHER signal fires:
-            // - proc IO: network activity (API streaming, even during "thinking" gaps)
-            // - JSONL mtime: file writes (tool use, code edits)
-            let state = if proc_io::is_process_active(proc.pid)
-                || idle_result.state == SessionState::Active
+            let state = if idle_result.state == SessionState::Active
+                || proc_io::is_process_active(proc.pid)
             {
                 SessionState::Active
             } else {
