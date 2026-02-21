@@ -365,6 +365,7 @@ const MOCK_CLAUDE_SESSIONS = [
     project_path: '~/projects/taurhaus',
     tty: '/dev/pts/2',
     args: 'claude --dangerously-skip-permissions --continue',
+    cli_tool: 'claude',
     tmux_session: '0',
     tmux_window: '1',
     tmux_pane: '%3',
@@ -378,6 +379,7 @@ const MOCK_CLAUDE_SESSIONS = [
     project_path: '~/projects/mir',
     tty: '/dev/pts/4',
     args: 'claude --dangerously-skip-permissions',
+    cli_tool: 'claude',
     tmux_session: '0',
     tmux_window: '3',
     tmux_pane: '%7',
@@ -393,17 +395,17 @@ export function listClaudeSessions() {
   return invokeOrMock('list_claude_sessions', undefined, () => MOCK_CLAUDE_SESSIONS)
 }
 
-/** Launch a new Claude Code session for a project. Mode: "continue" | "fresh" | "resume". */
-export function launchClaudeSession(projectId, mode) {
-  return invokeOrMock('launch_claude_session', { projectId, mode }, () => ({
+/** Launch a new CLI tool session for a project. Mode: "continue" | "fresh" | "resume". cliTool: "claude" | "codex" | "gemini" (optional, defaults to "claude"). */
+export function launchClaudeSession(projectId, mode, cliTool) {
+  return invokeOrMock('launch_claude_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
     tmux_window: 'project',
     tmux_pane: '%99',
   }))
 }
 
-/** Stop a running Claude Code session by tmux pane ID. */
-export function stopClaudeSession(tmuxPane) {
-  return invokeOrMock('stop_claude_session', { tmuxPane }, () => undefined)
+/** Stop a running CLI tool session by tmux pane ID. cliTool: "claude" | "codex" | "gemini" (optional, defaults to "claude"). */
+export function stopClaudeSession(tmuxPane, cliTool) {
+  return invokeOrMock('stop_claude_session', { tmuxPane, cliTool: cliTool ?? null }, () => undefined)
 }
 
 /** Navigate to a Claude Code session's tmux pane and focus the terminal. */

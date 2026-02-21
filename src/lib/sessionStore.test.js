@@ -42,8 +42,8 @@ describe('sessionStore', () => {
   // AC2: Sessions are keyed by project path
   it('stores sessions keyed by project path', async () => {
     const mockSessions = [
-      { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude' },
-      { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'claude' },
+      { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' },
+      { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'claude', cli_tool: 'claude' },
     ]
     ipc.listClaudeSessions.mockResolvedValue(mockSessions)
     store.startPolling()
@@ -58,7 +58,7 @@ describe('sessionStore', () => {
 
   // AC3: getSessionForProject returns matching session or null
   it('getSessionForProject returns session by path', async () => {
-    const session = { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude' }
+    const session = { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
 
@@ -125,7 +125,7 @@ describe('sessionStore', () => {
 
   // AC7: Empty response clears session state
   it('clears sessions when empty response received', async () => {
-    const session = { pid: 100, project_path: '/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude' }
+    const session = { pid: 100, project_path: '/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions
       .mockResolvedValueOnce([session])
       .mockResolvedValueOnce([])
@@ -141,7 +141,7 @@ describe('sessionStore', () => {
 
   // AC7: IPC error doesn't crash, keeps previous state
   it('keeps previous state on IPC error', async () => {
-    const session = { pid: 100, project_path: '/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude' }
+    const session = { pid: 100, project_path: '/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions
       .mockResolvedValueOnce([session])
       .mockRejectedValueOnce(new Error('daemon offline'))
@@ -158,7 +158,7 @@ describe('sessionStore', () => {
 
   // Path normalization: trailing slashes
   it('normalizes trailing slashes in project paths', async () => {
-    const session = { pid: 100, project_path: '/home/user/proj-a/', state: 'active', tty: '/dev/pts/1', args: 'claude' }
+    const session = { pid: 100, project_path: '/home/user/proj-a/', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
 
@@ -178,6 +178,7 @@ describe('sessionStore', () => {
       state: 'active',
       tty: '/dev/pts/1',
       args: 'claude',
+      cli_tool: 'claude',
     }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
@@ -188,5 +189,36 @@ describe('sessionStore', () => {
     expect(store.getSessionForProject('\\\\wsl$\\Ubuntu\\home\\user\\proj')).toBeTruthy()
     // And the \\wsl.localhost\ form should also match
     expect(store.getSessionForProject('\\\\wsl.localhost\\Ubuntu\\home\\user\\proj')).toBeTruthy()
+  })
+
+  // Multi-CLI tool support
+  it('coexists sessions from different CLI tools on different projects', async () => {
+    const mockSessions = [
+      { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude --continue', cli_tool: 'claude' },
+      { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'codex --full-auto', cli_tool: 'codex' },
+      { pid: 300, project_path: '/home/user/proj-c', state: 'active', tty: '/dev/pts/3', args: 'gemini --sandbox', cli_tool: 'gemini' },
+    ]
+    ipc.listClaudeSessions.mockResolvedValue(mockSessions)
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const sessions = store.getSessions()
+    expect(sessions.size).toBe(3)
+    expect(sessions.get('/home/user/proj-a').cli_tool).toBe('claude')
+    expect(sessions.get('/home/user/proj-b').cli_tool).toBe('codex')
+    expect(sessions.get('/home/user/proj-c').cli_tool).toBe('gemini')
+  })
+
+  it('session objects include cli_tool field', async () => {
+    const session = { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const found = store.getSessionForProject('/home/user/proj-a')
+    expect(found).toBeTruthy()
+    expect(found.cli_tool).toBe('claude')
   })
 })
