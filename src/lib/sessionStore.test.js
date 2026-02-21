@@ -39,8 +39,8 @@ describe('sessionStore', () => {
     expect(ipc.listClaudeSessions).toHaveBeenCalledTimes(3)
   })
 
-  // AC2: Sessions are keyed by project path
-  it('stores sessions keyed by project path', async () => {
+  // AC2: Sessions are grouped by project path
+  it('stores sessions grouped by project path', async () => {
     const mockSessions = [
       { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' },
       { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'claude', cli_tool: 'claude' },
@@ -52,12 +52,12 @@ describe('sessionStore', () => {
 
     const sessions = store.getSessions()
     expect(sessions.size).toBe(2)
-    expect(sessions.get('/home/user/proj-a')).toEqual(mockSessions[0])
-    expect(sessions.get('/home/user/proj-b')).toEqual(mockSessions[1])
+    expect(sessions.get('/home/user/proj-a')).toEqual([mockSessions[0]])
+    expect(sessions.get('/home/user/proj-b')).toEqual([mockSessions[1]])
   })
 
-  // AC3: getSessionForProject returns matching session or null
-  it('getSessionForProject returns session by path', async () => {
+  // AC3: getSessionForProject returns first matching session or null
+  it('getSessionForProject returns first session by path', async () => {
     const session = { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
@@ -66,6 +66,31 @@ describe('sessionStore', () => {
 
     expect(store.getSessionForProject('/home/user/proj-a')).toEqual(session)
     expect(store.getSessionForProject('/home/user/nonexistent')).toBeNull()
+  })
+
+  // getSessionsForProject returns all sessions for a project
+  it('getSessionsForProject returns all sessions for a project', async () => {
+    const mockSessions = [
+      { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' },
+      { pid: 200, project_path: '/home/user/proj-a', state: 'idle', tty: '/dev/pts/2', args: 'codex --yolo', cli_tool: 'codex' },
+    ]
+    ipc.listClaudeSessions.mockResolvedValue(mockSessions)
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const all = store.getSessionsForProject('/home/user/proj-a')
+    expect(all).toHaveLength(2)
+    expect(all[0].cli_tool).toBe('claude')
+    expect(all[1].cli_tool).toBe('codex')
+  })
+
+  it('getSessionsForProject returns empty array when no sessions', async () => {
+    ipc.listClaudeSessions.mockResolvedValue([])
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(store.getSessionsForProject('/nonexistent')).toEqual([])
   })
 
   // AC4: Self-scheduling prevents overlapping polls
@@ -191,12 +216,34 @@ describe('sessionStore', () => {
     expect(store.getSessionForProject('\\\\wsl.localhost\\Ubuntu\\home\\user\\proj')).toBeTruthy()
   })
 
-  // Multi-CLI tool support
+  // Multiple CLI tools on the same project
+  it('groups multiple CLI tools on the same project', async () => {
+    const mockSessions = [
+      { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude --continue', cli_tool: 'claude' },
+      { pid: 200, project_path: '/home/user/proj-a', state: 'idle', tty: '/dev/pts/2', args: 'codex --yolo', cli_tool: 'codex' },
+      { pid: 300, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/3', args: 'gemini --yolo', cli_tool: 'gemini' },
+    ]
+    ipc.listClaudeSessions.mockResolvedValue(mockSessions)
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const sessions = store.getSessions()
+    expect(sessions.size).toBe(1) // One project key
+    const all = store.getSessionsForProject('/home/user/proj-a')
+    expect(all).toHaveLength(3)
+    expect(all.map(s => s.cli_tool)).toEqual(['claude', 'codex', 'gemini'])
+
+    // getSessionForProject returns the first one
+    expect(store.getSessionForProject('/home/user/proj-a').cli_tool).toBe('claude')
+  })
+
+  // Multi-CLI tools across different projects
   it('coexists sessions from different CLI tools on different projects', async () => {
     const mockSessions = [
       { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude --continue', cli_tool: 'claude' },
-      { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'codex --full-auto', cli_tool: 'codex' },
-      { pid: 300, project_path: '/home/user/proj-c', state: 'active', tty: '/dev/pts/3', args: 'gemini --sandbox', cli_tool: 'gemini' },
+      { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'codex --yolo', cli_tool: 'codex' },
+      { pid: 300, project_path: '/home/user/proj-c', state: 'active', tty: '/dev/pts/3', args: 'gemini --yolo', cli_tool: 'gemini' },
     ]
     ipc.listClaudeSessions.mockResolvedValue(mockSessions)
     store.startPolling()
@@ -205,20 +252,8 @@ describe('sessionStore', () => {
 
     const sessions = store.getSessions()
     expect(sessions.size).toBe(3)
-    expect(sessions.get('/home/user/proj-a').cli_tool).toBe('claude')
-    expect(sessions.get('/home/user/proj-b').cli_tool).toBe('codex')
-    expect(sessions.get('/home/user/proj-c').cli_tool).toBe('gemini')
-  })
-
-  it('session objects include cli_tool field', async () => {
-    const session = { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
-    ipc.listClaudeSessions.mockResolvedValue([session])
-    store.startPolling()
-
-    await vi.advanceTimersByTimeAsync(0)
-
-    const found = store.getSessionForProject('/home/user/proj-a')
-    expect(found).toBeTruthy()
-    expect(found.cli_tool).toBe('claude')
+    expect(store.getSessionForProject('/home/user/proj-a').cli_tool).toBe('claude')
+    expect(store.getSessionForProject('/home/user/proj-b').cli_tool).toBe('codex')
+    expect(store.getSessionForProject('/home/user/proj-c').cli_tool).toBe('gemini')
   })
 })

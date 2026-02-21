@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasLiveSession, isActiveSession, rowTintClass, sessionBadge, sessionTooltip, sidebarHoverInfo } from './sessionIndicator.js'
+import { hasLiveSession, isActiveSession, rowTintClass, rowTintForSessions, sessionBadge, sessionTooltip, sidebarHoverInfo, toolIndicators } from './sessionIndicator.js'
 
 describe('sessionIndicator', () => {
   it('detects live sessions', () => {
@@ -113,5 +113,54 @@ describe('sessionIndicator', () => {
     expect(text).toContain('Working tree: dirty')
     expect(text).toContain('IDLE (waiting for input)')
     expect(text).toContain('Session ID: s-1')
+  })
+
+  // --- Multi-session support ---
+
+  it('rowTintForSessions returns tint when any session is live', () => {
+    expect(rowTintForSessions([{ state: 'active' }])).toBe('bg-white/[0.03]')
+    expect(rowTintForSessions([{ state: 'idle' }])).toBe('bg-white/[0.03]')
+    expect(rowTintForSessions([])).toBe('')
+    expect(rowTintForSessions(null)).toBe('')
+  })
+
+  it('toolIndicators returns one indicator per live session', () => {
+    const sessions = [
+      { state: 'active', cli_tool: 'claude', tmux_session: '0', tmux_window: '1', tmux_pane: '%3' },
+      { state: 'idle', cli_tool: 'codex', tmux_session: '0', tmux_window: '1', tmux_pane: '%4' },
+    ]
+    const indicators = toolIndicators(sessions)
+    expect(indicators).toHaveLength(2)
+    expect(indicators[0].label).toBe('C')
+    expect(indicators[0].fullName).toBe('Claude')
+    expect(indicators[0].isActive).toBe(true)
+    expect(indicators[0].interactive).toBe(true)
+    expect(indicators[1].label).toBe('X')
+    expect(indicators[1].fullName).toBe('Codex')
+    expect(indicators[1].isActive).toBe(false)
+    expect(indicators[1].interactive).toBe(true)
+  })
+
+  it('toolIndicators returns empty array for no sessions', () => {
+    expect(toolIndicators([])).toEqual([])
+    expect(toolIndicators(null)).toEqual([])
+  })
+
+  it('toolIndicators for all three tools', () => {
+    const sessions = [
+      { state: 'active', cli_tool: 'claude' },
+      { state: 'active', cli_tool: 'codex' },
+      { state: 'idle', cli_tool: 'gemini' },
+    ]
+    const indicators = toolIndicators(sessions)
+    expect(indicators).toHaveLength(3)
+    expect(indicators.map(i => i.label)).toEqual(['C', 'X', 'G'])
+    expect(indicators.map(i => i.fullName)).toEqual(['Claude', 'Codex', 'Gemini'])
+  })
+
+  it('toolIndicators carries session reference', () => {
+    const session = { state: 'active', cli_tool: 'claude', pid: 12345 }
+    const indicators = toolIndicators([session])
+    expect(indicators[0].session).toBe(session)
   })
 })

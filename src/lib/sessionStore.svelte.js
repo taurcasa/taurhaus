@@ -1,19 +1,22 @@
 /**
- * Session store — polls for running Claude Code sessions and exposes
+ * Session store — polls for running CLI tool sessions and exposes
  * reactive state keyed by project path.
  *
+ * A project can have multiple concurrent sessions (e.g. Claude + Codex).
+ * The store groups sessions by normalized project path.
+ *
  * Usage:
- *   import { startPolling, stopPolling, getSessionForProject } from './sessionStore.svelte.js'
+ *   import { startPolling, stopPolling, getSessionsForProject } from './sessionStore.svelte.js'
  *   startPolling()   // on mount
  *   stopPolling()    // on unmount
- *   getSessionForProject('/home/user/proj')  // → ClaudeSession | null
+ *   getSessionsForProject('/home/user/proj')  // → ClaudeSession[]
  */
 
 import { listClaudeSessions } from './ipc.js'
 
 const POLL_INTERVAL_MS = 500
 
-/** @type {Map<string, object>} Reactive map of project_path → ClaudeSession */
+/** @type {Map<string, object[]>} Reactive map of project_path → ClaudeSession[] */
 let sessions = $state(new Map())
 
 /** Whether the poll loop is running. */
@@ -45,7 +48,9 @@ async function poll() {
     const next = new Map()
     for (const session of result) {
       const key = normalizePath(session.project_path)
-      next.set(key, session)
+      const list = next.get(key) || []
+      list.push(session)
+      next.set(key, list)
     }
     sessions = next
   } catch (err) {
@@ -67,7 +72,7 @@ async function pollLoop() {
   }
 }
 
-/** Start polling for Claude Code sessions. Idempotent — calling twice is safe. */
+/** Start polling for CLI tool sessions. Idempotent — calling twice is safe. */
 export function startPolling() {
   if (running) return
   running = true
@@ -88,8 +93,18 @@ export function getSessions() {
   return sessions
 }
 
-/** Look up the session for a project by its path. Returns null if none. */
-export function getSessionForProject(projectPath) {
+/** Get all sessions for a project. Returns empty array if none. */
+export function getSessionsForProject(projectPath) {
   const key = normalizePath(projectPath)
-  return sessions.get(key) ?? null
+  return sessions.get(key) ?? []
+}
+
+/**
+ * Get a single session for a project by its path.
+ * Returns the first session found (backward compatible).
+ * Prefer getSessionsForProject() for multi-tool support.
+ */
+export function getSessionForProject(projectPath) {
+  const list = getSessionsForProject(projectPath)
+  return list[0] ?? null
 }
