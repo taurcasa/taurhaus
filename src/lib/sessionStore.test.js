@@ -68,32 +68,33 @@ describe('sessionStore', () => {
     expect(store.getSessionForProject('/home/user/nonexistent')).toBeNull()
   })
 
-  // AC4: Stale responses are discarded
-  it('discards stale responses from older polling generations', async () => {
+  // AC4: Self-scheduling prevents overlapping polls
+  it('does not start a new poll while the previous one is still in-flight', async () => {
     let resolveFirst
     const firstCall = new Promise(resolve => { resolveFirst = resolve })
-    const secondResult = [{ pid: 200, project_path: '/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'claude' }]
 
     ipc.listClaudeSessions
       .mockReturnValueOnce(firstCall)
-      .mockResolvedValueOnce(secondResult)
+      .mockResolvedValue([])
 
     store.startPolling()
 
-    // First call starts
+    // First call starts immediately
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ipc.listClaudeSessions).toHaveBeenCalledTimes(1)
+
+    // Advance well past the poll interval — should NOT start a second poll
+    // because the first one hasn't resolved yet
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(ipc.listClaudeSessions).toHaveBeenCalledTimes(1)
+
+    // Now resolve the first call
+    resolveFirst([])
     await vi.advanceTimersByTimeAsync(0)
 
-    // Second call starts (500ms later)
+    // After resolution + 500ms interval, the next poll fires
     await vi.advanceTimersByTimeAsync(500)
-
-    // Now resolve the first call AFTER the second — it should be discarded
-    resolveFirst([{ pid: 100, project_path: '/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude' }])
-    await vi.advanceTimersByTimeAsync(0)
-
-    // Should only have the second result
-    const sessions = store.getSessions()
-    expect(sessions.has('/proj-b')).toBe(true)
-    expect(sessions.has('/proj-a')).toBe(false)
+    expect(ipc.listClaudeSessions).toHaveBeenCalledTimes(2)
   })
 
   // AC5: Polling stops cleanly

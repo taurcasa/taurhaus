@@ -10,9 +10,12 @@
 //! We check the most recent mtime across both the main JSONL and the
 //! subagents directory to cover all active phases including compaction.
 
+use crate::claude_code::resolver;
 use crate::session_scanner::SessionState;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 /// Threshold: if any session file mtime is less than this, session is Active.
@@ -104,10 +107,10 @@ pub fn detect_idle_in(project_path: &str, claude_projects_dir: &Path) -> IdleRes
 
 /// Convert a project path to Claude Code's project slug format.
 ///
-/// The slug replaces `/` with `-` and drops the leading `/`:
-/// `/home/mstie/projects/taurhaus` → `-home-mstie-projects-taurhaus`
+/// Delegates to `claude_code::resolver::project_slug()` — the canonical
+/// implementation that handles both `/` and `\` separators.
 pub fn path_to_slug(path: &str) -> String {
-    path.replace('/', "-")
+    resolver::project_slug(Path::new(path))
 }
 
 /// Classify mtime into Active or Idle based on how recent it is.
@@ -143,12 +146,66 @@ fn newest_file_mtime(dir: &Path) -> Option<SystemTime> {
         .max()
 }
 
+// ---------------------------------------------------------------------------
+// JSONL directory cache
+// ---------------------------------------------------------------------------
+
+/// Cached result of a directory scan for the latest .jsonl file.
+struct CachedJsonlEntry {
+    /// Directory mtime at the time of the scan.
+    dir_mtime: SystemTime,
+    /// Path to the most recent .jsonl file (None if directory was empty).
+    latest_path: Option<PathBuf>,
+}
+
+/// Cache keyed by project directory path.
+static JSONL_CACHE: Mutex<Option<HashMap<PathBuf, CachedJsonlEntry>>> = Mutex::new(None);
+
 /// Find the most recently modified .jsonl file in a directory.
+///
+/// Uses a directory-mtime cache: only rescans when the directory's mtime
+/// has changed (Linux updates dir mtime on file creation/deletion).
+/// In steady state this costs 1 stat() instead of N.
 fn find_latest_jsonl(dir: &Path) -> Option<PathBuf> {
     if !dir.is_dir() {
         return None;
     }
 
+    let dir_mtime = fs::metadata(dir).ok()?.modified().ok()?;
+
+    // Check cache
+    {
+        let guard = JSONL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(map) = guard.as_ref() {
+            if let Some(entry) = map.get(dir) {
+                if entry.dir_mtime == dir_mtime {
+                    return entry.latest_path.clone();
+                }
+            }
+        }
+    }
+
+    // Cache miss — full scan
+    let latest = scan_latest_jsonl(dir);
+
+    // Update cache
+    {
+        let mut guard = JSONL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(
+            dir.to_path_buf(),
+            CachedJsonlEntry {
+                dir_mtime,
+                latest_path: latest.clone(),
+            },
+        );
+    }
+
+    latest
+}
+
+/// Scan a directory for the most recently modified .jsonl file.
+fn scan_latest_jsonl(dir: &Path) -> Option<PathBuf> {
     fs::read_dir(dir)
         .ok()?
         .filter_map(|entry| entry.ok())
@@ -166,6 +223,14 @@ fn find_latest_jsonl(dir: &Path) -> Option<PathBuf> {
                 .unwrap_or(SystemTime::UNIX_EPOCH)
         })
         .map(|entry| entry.path())
+}
+
+/// Clean up stale cache entries for directories that no longer have active sessions.
+pub fn clear_jsonl_cache() {
+    let mut guard = JSONL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(map) = guard.as_mut() {
+        map.clear();
+    }
 }
 
 #[cfg(test)]
@@ -194,6 +259,15 @@ mod tests {
     #[test]
     fn slug_preserves_case() {
         assert_eq!(path_to_slug("/home/User/MyProject"), "-home-User-MyProject");
+    }
+
+    #[test]
+    fn slug_handles_backslashes() {
+        // Windows-style paths: backslashes should also be replaced
+        assert_eq!(
+            path_to_slug("C:\\Users\\test\\project"),
+            "C:-Users-test-project"
+        );
     }
 
     #[test]

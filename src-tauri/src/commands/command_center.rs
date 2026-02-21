@@ -20,18 +20,15 @@ use crate::ProviderState;
 #[tauri::command]
 pub fn list_claude_sessions(
     provider: State<'_, ProviderState>,
-    log_file: State<'_, LogFileState>,
 ) -> Result<Vec<ClaudeSession>, String> {
     // Try daemon first (required on Windows where we can't run ps/tmux directly)
-    let has_daemon = provider.daemon.is_some();
-    let daemon_connected = provider.daemon.as_ref().map(|d| d.is_connected()).unwrap_or(false);
-
-    // Write diagnostics to the app log file (visible on Windows)
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] list_claude_sessions: has_daemon={has_daemon} connected={daemon_connected} distro={:?}", provider.wsl_distro);
-    }
 
     if let Some(ref daemon) = provider.daemon {
+        // If disconnected, try a rate-limited inline reconnect (max once per 5s)
+        if !daemon.is_connected() {
+            daemon.try_reconnect();
+        }
+
         if daemon.is_connected() {
             let id = "list-sessions";
             let request = protocol::DaemonRequest::new(
@@ -60,19 +57,10 @@ pub fn list_claude_sessions(
                         }
                     }
 
-                    if let Ok(mut f) = log_file.0.lock() {
-                        for s in &sessions {
-                            let _ = writeln!(f, "[cmd-center] session: path={} state={:?} tmux_session={:?} tmux_window={:?} tmux_pane={:?}",
-                                s.project_path, s.state, s.tmux_session, s.tmux_window, s.tmux_pane
-                            );
-                        }
-                    }
                     return Ok(sessions);
                 }
                 Ok(response) => {
-                    if let Ok(mut f) = log_file.0.lock() {
-                        let _ = writeln!(f, "[cmd-center] daemon returned error: {:?}", response.error);
-                    }
+                    tracing::warn!(error = ?response.error, "Daemon returned error for session listing");
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "Failed to reach daemon for session listing");
@@ -83,9 +71,7 @@ pub fn list_claude_sessions(
 
     // Fall back to direct scan (works on Linux where ps/tmux are available)
     let fallback = crate::session_scanner::scan_sessions();
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] using fallback scan, found {} sessions", fallback.len());
-    }
+    tracing::debug!(count = fallback.len(), "list_claude_sessions: fallback scan");
     Ok(fallback)
 }
 

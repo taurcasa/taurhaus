@@ -1,7 +1,6 @@
 //! tmux mapper — map terminal TTYs to tmux pane/window IDs.
 
 use std::collections::HashMap;
-use std::process::Command;
 
 /// Information about a tmux pane.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,18 +29,18 @@ pub fn list_panes() -> HashMap<String, TmuxPane> {
 }
 
 /// Run `tmux list-panes -a` and return stdout.
+///
+/// Uses `run_with_timeout` to avoid hanging if tmux is unresponsive.
 fn run_tmux_list_panes() -> Option<String> {
-    Command::new("tmux")
-        .args([
+    super::process::run_with_timeout(
+        "tmux",
+        &[
             "list-panes",
             "-a",
             "-F",
             "#{pane_id} #{pane_tty} #{window_index} #{window_name} #{session_name}",
-        ])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        ],
+    )
 }
 
 /// Parse tmux list-panes output into a TTY → TmuxPane map.

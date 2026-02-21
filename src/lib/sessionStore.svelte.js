@@ -16,11 +16,11 @@ const POLL_INTERVAL_MS = 500
 /** @type {Map<string, object>} Reactive map of project_path → ClaudeSession */
 let sessions = $state(new Map())
 
-/** @type {number | null} */
-let intervalId = null
+/** Whether the poll loop is running. */
+let running = false
 
-/** Generation counter for stale response detection. */
-let generation = 0
+/** Timer handle for the scheduled next poll (for cleanup on stop). */
+let timerId = null
 
 /**
  * Normalize path for consistent matching.
@@ -39,13 +39,8 @@ function normalizePath(path) {
 
 /** Perform a single poll and update the sessions map. */
 async function poll() {
-  const thisGen = ++generation
-
   try {
     const result = await listClaudeSessions()
-
-    // Discard stale response (a newer poll has already started)
-    if (thisGen !== generation) return
 
     const next = new Map()
     for (const session of result) {
@@ -55,28 +50,36 @@ async function poll() {
     sessions = next
   } catch (err) {
     // On error, keep previous state (graceful degradation)
-    if (thisGen === generation) {
-      // Only log if this is still the current generation
-      console.warn('[sessionStore] poll failed:', err)
-    }
+    console.warn('[sessionStore] poll failed:', err)
+  }
+}
+
+/**
+ * Self-scheduling poll loop. Waits for the current poll to complete
+ * before scheduling the next one, guaranteeing at most one in-flight
+ * request at a time.
+ */
+async function pollLoop() {
+  if (!running) return
+  await poll()
+  if (running) {
+    timerId = setTimeout(pollLoop, POLL_INTERVAL_MS)
   }
 }
 
 /** Start polling for Claude Code sessions. Idempotent — calling twice is safe. */
 export function startPolling() {
-  if (intervalId !== null) return
-
-  // Immediate first poll
-  poll()
-
-  intervalId = setInterval(poll, POLL_INTERVAL_MS)
+  if (running) return
+  running = true
+  pollLoop()
 }
 
-/** Stop polling and clean up the interval. */
+/** Stop polling and clean up. */
 export function stopPolling() {
-  if (intervalId !== null) {
-    clearInterval(intervalId)
-    intervalId = null
+  running = false
+  if (timerId !== null) {
+    clearTimeout(timerId)
+    timerId = null
   }
 }
 

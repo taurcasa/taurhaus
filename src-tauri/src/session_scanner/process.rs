@@ -1,7 +1,9 @@
 //! Process scanner — find Claude Code CLI processes via ps + /proc.
 
 use std::fs;
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// Information about a running claude process.
 #[derive(Debug, Clone, PartialEq)]
@@ -24,14 +26,57 @@ pub fn scan_processes() -> Vec<ProcessInfo> {
     parse_and_enrich(&ps_output)
 }
 
+/// Timeout for subprocess execution. If `ps` or similar hangs (e.g. stale
+/// NFS mount affecting `/proc`), we bail out instead of blocking forever.
+const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Run `ps -eo pid,args` and return stdout.
+///
+/// Returns `None` if the command fails, is unavailable, or exceeds the timeout.
 fn run_ps() -> Option<String> {
-    Command::new("ps")
-        .args(["-eo", "pid,args"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+    run_with_timeout("ps", &["-eo", "pid,args"])
+}
+
+/// Spawn a subprocess and wait for it with a timeout.
+///
+/// Returns the stdout as a string on success. Returns `None` if the command
+/// fails to spawn, exits with error, or exceeds `SUBPROCESS_TIMEOUT`.
+/// On timeout, the child process is killed.
+pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
+    let mut child = Command::new(cmd)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let deadline = Instant::now() + SUBPROCESS_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Process exited. Read stdout from the pipe buffer.
+                let mut buf = String::new();
+                if let Some(ref mut stdout) = child.stdout {
+                    let _ = stdout.read_to_string(&mut buf);
+                }
+                return if status.success() { Some(buf) } else { None };
+            }
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait(); // reap zombie
+                    tracing::warn!(cmd, "Subprocess timed out after {SUBPROCESS_TIMEOUT:?}");
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
 }
 
 /// Parse ps output, filter for claude processes, and read /proc for each.
@@ -68,14 +113,15 @@ pub fn parse_ps_output(output: &str) -> Vec<(u32, String)> {
 /// Matches patterns like:
 /// - `claude`
 /// - `claude --dangerously-skip-permissions`
-/// - `claude --dangerously-skip-permissions --continue`
 /// - `/home/user/.local/bin/claude ...`
 /// - `node /path/to/claude ...`
+/// - `node /home/user/.nvm/.../node_modules/@anthropic-ai/claude-code/dist/cli.js`
 ///
 /// Excludes:
 /// - `grep claude`
 /// - `ps -eo ... claude`
 /// - `claude-something-else`
+/// - `node /path/to/other-app/cli.js`
 fn is_claude_process(args: &str) -> bool {
     // Get the first token (the binary name/path)
     let first_token = args.split_whitespace().next().unwrap_or("");
@@ -85,10 +131,14 @@ fn is_claude_process(args: &str) -> bool {
         return true;
     }
 
-    // Node-launched: `node /path/to/claude ...`
+    // Node-launched: `node /path/to/claude` or `node .../claude-code/dist/cli.js`
     if first_token == "node" || first_token.ends_with("/node") {
         let second_token = args.split_whitespace().nth(1).unwrap_or("");
         if second_token == "claude" || second_token.ends_with("/claude") {
+            return true;
+        }
+        // npm-installed: path contains @anthropic-ai/claude-code
+        if second_token.contains("@anthropic-ai/claude-code") {
             return true;
         }
     }
@@ -160,14 +210,15 @@ mod tests {
 
     #[test]
     fn parse_ps_finds_node_launched_claude() {
+        // npm-installed via nvm: path contains @anthropic-ai/claude-code
         let output = "\
   PID COMMAND
  2000 node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
-        // This won't match because the path doesn't end in /claude
         let result = parse_ps_output(output);
-        assert_eq!(result.len(), 0);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, 2000);
 
-        // But this will (if the binary is named claude):
+        // Binary named claude:
         let output2 = "\
   PID COMMAND
  2000 node /usr/local/bin/claude --dangerously-skip-permissions";
@@ -212,17 +263,31 @@ mod tests {
 
     #[test]
     fn is_claude_process_matches_correctly() {
+        // Direct binary matches
         assert!(is_claude_process("claude"));
         assert!(is_claude_process("claude --dangerously-skip-permissions"));
         assert!(is_claude_process("claude --continue"));
         assert!(is_claude_process("/home/user/.local/bin/claude"));
         assert!(is_claude_process("/home/user/.local/bin/claude --resume"));
+
+        // Node-launched: binary named claude
         assert!(is_claude_process("node /usr/local/bin/claude"));
 
+        // Node-launched: npm-installed @anthropic-ai/claude-code package
+        assert!(is_claude_process(
+            "node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js"
+        ));
+        assert!(is_claude_process(
+            "/usr/bin/node /usr/local/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js --dangerously-skip-permissions"
+        ));
+
+        // Negative cases
         assert!(!is_claude_process("grep claude"));
         assert!(!is_claude_process("claude-code-server"));
         assert!(!is_claude_process("ps -eo pid,args"));
         assert!(!is_claude_process("bash"));
         assert!(!is_claude_process("vim claude.md"));
+        assert!(!is_claude_process("node server.js"));
+        assert!(!is_claude_process("node /path/to/other-app/cli.js"));
     }
 }
