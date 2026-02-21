@@ -36,6 +36,24 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 | Frame padding | 6px | `p-1.5` around panels inside frame |
 | Tab pill | 36px tall | `rounded-t-lg`, connects to main panel |
 
+## Build & Development
+
+All builds use `just` recipes. Never use raw `cargo tauri build`, `npx tauri build`, or cross-compilation toolchains.
+
+| Recipe | What it does |
+|--------|-------------|
+| `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
+| `just dev-frontend` | Frontend dev server only (no Rust backend) |
+| `just build-windows` | **The Windows build.** Syncs source to `D:\taurhaus_build`, runs `npm install` + `cargo tauri build` natively on Windows via `cmd.exe`. Produces NSIS installer. |
+| `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
+| `just install-daemon` | Builds + copies daemon to `~/.local/bin/` |
+| `just check` | Full quality gate: clippy + svelte-check + all tests |
+| `just test` | All tests (Rust + frontend) |
+
+**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`cmd.exe`). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, npm install, and native Windows cargo build.
+
+If the build fails with "Access is denied" on the exe, the app is still running — close it first, then rebuild.
+
 ## Architecture Summary
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
