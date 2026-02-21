@@ -9,6 +9,9 @@
 /// sees the terminal where the session is running.
 #[cfg(target_os = "windows")]
 pub fn focus_windows_terminal() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     // Use PowerShell to find and focus the Windows Terminal window.
     // The script finds the process, gets its main window handle, and calls
     // SetForegroundWindow via Add-Type interop.
@@ -31,6 +34,7 @@ pub fn focus_windows_terminal() -> Result<(), String> {
     "#;
 
     let output = std::process::Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW)
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
         .map_err(|e| format!("Failed to run PowerShell: {e}"))?;

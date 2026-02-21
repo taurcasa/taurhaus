@@ -26,14 +26,15 @@ pub fn launch_in_tmux(project_path: &str, mode: LaunchMode) -> Result<(String, S
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "claude".to_string());
 
-    // Create new tmux window
+    // Create new tmux window (trailing colon = next available index in session)
+    let target = format!("{tmux_session}:");
     let output = Command::new("tmux")
         .args([
             "new-window",
             "-n",
             &window_name,
             "-t",
-            &tmux_session,
+            &target,
             "-P",
             "-F",
             "#{pane_id}",
@@ -59,10 +60,71 @@ pub fn launch_in_tmux(project_path: &str, mode: LaunchMode) -> Result<(String, S
 }
 
 /// Stop a Claude Code session by sending /exit to the tmux pane.
+///
+/// After Claude Code exits, polls for the process to terminate (pane returns
+/// to shell), then kills the pane to clean up. If it's the last pane in the
+/// window, tmux automatically closes the window too.
 pub fn stop_session(tmux_pane: &str) -> Result<(), String> {
     // Send /exit (graceful Claude Code exit command)
     run_tmux_send_keys(tmux_pane, "/exit")?;
+
+    // Poll for exit, then kill the pane. Background thread so we don't block IPC.
+    let pane = tmux_pane.to_string();
+    std::thread::spawn(move || {
+        const POLL_MS: u64 = 200;
+        const TIMEOUT_MS: u64 = 5000;
+        let mut elapsed = 0u64;
+
+        tracing::info!(pane = %pane, "stop_session: polling for exit");
+
+        // Poll until the pane's command becomes a shell (Claude exited)
+        // or the pane disappears, or we hit the timeout.
+        while elapsed < TIMEOUT_MS {
+            std::thread::sleep(std::time::Duration::from_millis(POLL_MS));
+            elapsed += POLL_MS;
+
+            match pane_current_command(&pane) {
+                Some(cmd) if is_shell(&cmd) => {
+                    tracing::info!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: shell detected, killing pane");
+                    break;
+                }
+                None => {
+                    tracing::info!(pane = %pane, "stop_session: pane already gone");
+                    return;
+                }
+                Some(cmd) => {
+                    tracing::debug!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: still running");
+                }
+            }
+        }
+
+        if elapsed >= TIMEOUT_MS {
+            tracing::warn!(pane = %pane, "stop_session: timeout, killing pane anyway");
+        }
+
+        // Kill the pane (noop if already gone)
+        let result = Command::new("tmux")
+            .args(["kill-pane", "-t", &pane])
+            .output();
+        tracing::info!(pane = %pane, success = ?result.as_ref().map(|o| o.status.success()), "stop_session: kill-pane result");
+    });
+
     Ok(())
+}
+
+/// Get the current command running in a tmux pane.
+fn pane_current_command(pane: &str) -> Option<String> {
+    Command::new("tmux")
+        .args(["display-message", "-p", "-t", pane, "#{pane_current_command}"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
+/// Check if a command name is a shell (meaning Claude Code has exited).
+fn is_shell(cmd: &str) -> bool {
+    matches!(cmd, "zsh" | "bash" | "fish" | "sh" | "dash")
 }
 
 /// Navigate to a specific tmux session/window/pane.
@@ -131,15 +193,34 @@ fn detect_tmux_session() -> Result<String, String> {
 }
 
 /// Send keys to a tmux pane (with Enter).
+///
+/// Sends the text first, waits briefly for the terminal to process it,
+/// then sends Enter separately. Without this delay, fast terminals can
+/// receive Enter before the text is fully rendered in the prompt.
 fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
+    // Send the text
     let output = Command::new("tmux")
-        .args(["send-keys", "-t", pane, keys, "Enter"])
+        .args(["send-keys", "-t", pane, keys])
         .output()
         .map_err(|e| format!("Failed to send keys to tmux pane {pane}: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("tmux send-keys failed: {stderr}"));
+    }
+
+    // Brief pause so the terminal processes the text before Enter (matches aitx @ 200ms)
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Send Enter
+    let output = Command::new("tmux")
+        .args(["send-keys", "-t", pane, "Enter"])
+        .output()
+        .map_err(|e| format!("Failed to send Enter to tmux pane {pane}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux send-keys Enter failed: {stderr}"));
     }
 
     Ok(())
