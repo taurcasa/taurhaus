@@ -61,7 +61,7 @@
 {#if project}
   <div
     bind:this={cardEl}
-    class="fixed z-[90] w-[260px] rounded-lg border border-white/[0.08] bg-brand-900 shadow-xl shadow-black/40 py-3 px-3.5 pointer-events-none"
+    class="fixed z-[90] w-[260px] rounded-lg border border-white/[0.08] bg-brand-950 shadow-xl shadow-black/40 py-3 px-3.5 pointer-events-none"
     style="left: {posX}px; top: {posY}px;"
     role="tooltip"
   >

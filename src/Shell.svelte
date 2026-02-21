@@ -35,7 +35,7 @@
     clearTimeout(hoverTimeout)
     hoverTimeout = setTimeout(() => {
       if (!ctxMenu) hoverCard = { project, session, anchorEl: el }
-    }, 250)
+    }, 80)
   }
 
   function hideHoverCard() {
