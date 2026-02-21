@@ -16,6 +16,12 @@ use crate::provider::ProjectProvider;
 /// Default port for the daemon.
 pub const DEFAULT_PORT: u16 = 17233;
 
+/// Maximum allowed length for a single request line (1 MB).
+///
+/// Normal requests are typically < 10 KB. This limit prevents unbounded
+/// memory allocation from malicious or misbehaving clients.
+const MAX_REQUEST_LINE_LEN: usize = 1_048_576;
+
 /// Configuration for the daemon server.
 pub struct DaemonConfig {
     pub port: u16,
@@ -88,6 +94,44 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
     Ok(())
 }
 
+/// Read a newline-terminated line from a `BufReader`, respecting a max byte limit.
+///
+/// Returns:
+/// - `Ok(Some(line))` — successfully read a line (newline stripped)
+/// - `Ok(None)` — EOF (client disconnected)
+/// - `Err(InvalidData)` — line exceeded `max_len` bytes
+/// - `Err(other)` — propagated I/O error (timeout, etc.)
+fn read_bounded_line(reader: &mut BufReader<TcpStream>, max_len: usize) -> std::io::Result<Option<String>> {
+    // BufReader::read_line is the simplest approach. It grows the buffer
+    // dynamically, but we check the length immediately after and reject.
+    // For a localhost-only daemon this is sufficient defense-in-depth.
+    let mut line = String::new();
+    let bytes_read = reader.read_line(&mut line)?;
+
+    if bytes_read == 0 {
+        return Ok(None); // EOF
+    }
+
+    if line.len() > max_len {
+        // Drain any remaining bytes up to the next newline to resync.
+        // (The read_line already consumed through the newline, so we're synced.)
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "request line too large",
+        ));
+    }
+
+    // Strip the trailing newline
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+
+    Ok(Some(line))
+}
+
 /// Handle a single client connection: read NDJSON requests, dispatch, respond.
 ///
 /// Uses a shared writer (`Arc<Mutex<TcpStream>>`) so that watch event callbacks
@@ -101,23 +145,34 @@ fn handle_connection(
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(1)))?;
 
-    let reader = BufReader::new(stream.try_clone()?);
+    let mut reader = BufReader::new(stream.try_clone()?);
     let writer = Arc::new(Mutex::new(stream));
     let provider = LocalProvider;
     let mut active_watches: HashMap<String, RecommendedWatcher> = HashMap::new();
     let git_debounce: Arc<Mutex<HashMap<String, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
-    for line_result in reader.lines() {
+    loop {
         if shutdown.load(Ordering::Relaxed) {
             break;
         }
 
-        let line = match line_result {
-            Ok(l) => l,
+        let line = match read_bounded_line(&mut reader, MAX_REQUEST_LINE_LEN) {
+            Ok(Some(l)) => l,
+            Ok(None) => break, // EOF — client disconnected
             Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut
                 || e.kind() == std::io::ErrorKind::WouldBlock =>
             {
+                continue;
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                // Line exceeded max length
+                let resp = DaemonResponse::err(
+                    "",
+                    "REQUEST_TOO_LARGE",
+                    format!("Request line exceeds {MAX_REQUEST_LINE_LEN} byte limit"),
+                );
+                write_locked(&writer, &resp)?;
                 continue;
             }
             Err(e) => return Err(e),
@@ -880,5 +935,35 @@ mod tests {
         // Server thread should have exited
         let result = handle.join().unwrap();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn server_rejects_oversized_request() {
+        let (port, shutdown) = start_test_server();
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        // Send a line that exceeds MAX_REQUEST_LINE_LEN (1 MB)
+        // We only need slightly over the limit to trigger rejection
+        let oversized = "x".repeat(MAX_REQUEST_LINE_LEN + 100);
+        stream.write_all(oversized.as_bytes()).unwrap();
+        stream.write_all(b"\n").unwrap();
+        stream.flush().unwrap();
+
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let resp: DaemonResponse = serde_json::from_str(&line).unwrap();
+        assert!(!resp.is_ok());
+        assert_eq!(resp.error.unwrap().code, "REQUEST_TOO_LARGE");
+
+        // Connection should still work for normal requests afterward
+        let r = send_request(&mut stream, &mut reader, &DaemonRequest::ping("p1"));
+        assert!(r.is_ok());
+
+        shutdown.store(true, Ordering::Relaxed);
     }
 }

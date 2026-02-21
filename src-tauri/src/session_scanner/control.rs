@@ -52,8 +52,10 @@ pub fn launch_in_tmux(project_path: &str, mode: LaunchMode) -> Result<(String, S
     // Build the claude command
     let claude_cmd = build_claude_command(mode);
 
-    // Send the cd + claude command to the new pane
-    let keys = format!("cd {project_path} && {claude_cmd}");
+    // Send the cd + claude command to the new pane.
+    // Shell-escape the path to prevent injection via crafted directory names.
+    let escaped_path = shell_escape(project_path);
+    let keys = format!("cd {escaped_path} && {claude_cmd}");
     run_tmux_send_keys(&pane_id, &keys)?;
 
     Ok((window_name, pane_id))
@@ -192,6 +194,16 @@ fn detect_tmux_session() -> Result<String, String> {
         .ok_or_else(|| "No tmux sessions found.".to_string())
 }
 
+/// Escape a string for safe use in a POSIX shell command.
+///
+/// Wraps the string in single quotes and escapes any embedded single quotes
+/// using the `'\''` technique (end quote, escaped quote, start quote).
+/// This prevents shell interpretation of spaces, semicolons, backticks,
+/// `$()`, and all other metacharacters.
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 /// Send keys to a tmux pane (with Enter).
 ///
 /// Sends the text first, waits briefly for the terminal to process it,
@@ -285,5 +297,61 @@ mod tests {
         assert_eq!(f, LaunchMode::Fresh);
         let r: LaunchMode = serde_json::from_str("\"resume\"").unwrap();
         assert_eq!(r, LaunchMode::Resume);
+    }
+
+    // -----------------------------------------------------------------------
+    // Shell escaping tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn shell_escape_simple_path() {
+        assert_eq!(shell_escape("/home/user/project"), "'/home/user/project'");
+    }
+
+    #[test]
+    fn shell_escape_path_with_spaces() {
+        assert_eq!(
+            shell_escape("/home/user/my project"),
+            "'/home/user/my project'"
+        );
+    }
+
+    #[test]
+    fn shell_escape_path_with_special_chars() {
+        // Semicolons, backticks, dollar signs — all neutralized by single quotes
+        assert_eq!(
+            shell_escape("/tmp/foo; echo pwned"),
+            "'/tmp/foo; echo pwned'"
+        );
+        assert_eq!(
+            shell_escape("/tmp/foo$(rm -rf /)"),
+            "'/tmp/foo$(rm -rf /)'"
+        );
+        assert_eq!(
+            shell_escape("/tmp/foo`id`bar"),
+            "'/tmp/foo`id`bar'"
+        );
+    }
+
+    #[test]
+    fn shell_escape_path_with_single_quotes() {
+        // Single quotes within the path get the '\'' treatment
+        assert_eq!(
+            shell_escape("/home/user/it's a project"),
+            "'/home/user/it'\\''s a project'"
+        );
+    }
+
+    #[test]
+    fn shell_escape_path_with_parentheses() {
+        assert_eq!(
+            shell_escape("/home/user/project (v2)"),
+            "'/home/user/project (v2)'"
+        );
+    }
+
+    #[test]
+    fn shell_escape_empty_string() {
+        assert_eq!(shell_escape(""), "''");
     }
 }
