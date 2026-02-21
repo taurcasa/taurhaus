@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
@@ -22,17 +22,27 @@ const FILE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Timeout for health check pings.
 const PING_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Minimum interval between inline reconnection attempts.
+const RECONNECT_COOLDOWN: Duration = Duration::from_secs(5);
+
 /// A ProjectProvider that forwards all operations to the WSL daemon via TCP.
 ///
 /// Automatically translates Windows UNC paths to Linux-native paths before
 /// sending requests. Tracks connection state so the provider router can
 /// fall back to LocalProvider when the daemon is down.
+/// A connected TCP stream paired with its buffered reader.
+struct Connection {
+    stream: TcpStream,
+    reader: BufReader<TcpStream>,
+}
+
 pub struct DaemonProvider {
-    stream: Mutex<Option<TcpStream>>,
-    reader: Mutex<Option<BufReader<TcpStream>>>,
+    conn: Mutex<Option<Connection>>,
     addr: String,
     next_id: AtomicU64,
     connected: AtomicBool,
+    /// Timestamp of the last inline reconnection attempt (for rate limiting).
+    last_reconnect_attempt: Mutex<Option<Instant>>,
 }
 
 impl DaemonProvider {
@@ -47,11 +57,11 @@ impl DaemonProvider {
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
         Ok(Self {
-            stream: Mutex::new(Some(stream)),
-            reader: Mutex::new(Some(reader)),
+            conn: Mutex::new(Some(Connection { stream, reader })),
             addr: addr.to_string(),
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(true),
+            last_reconnect_attempt: Mutex::new(None),
         })
     }
 
@@ -117,12 +127,8 @@ impl DaemonProvider {
         })?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
-        // Replace the stream and reader under locks
-        if let Ok(mut guard) = self.stream.lock() {
-            *guard = Some(stream);
-        }
-        if let Ok(mut guard) = self.reader.lock() {
-            *guard = Some(reader);
+        if let Ok(mut guard) = self.conn.lock() {
+            *guard = Some(Connection { stream, reader });
         }
 
         self.connected.store(true, Ordering::Relaxed);
@@ -130,14 +136,44 @@ impl DaemonProvider {
         Ok(())
     }
 
-    /// Mark the provider as disconnected (clears the TCP stream).
+    /// Attempt to reconnect, but only if the cooldown period has elapsed.
+    ///
+    /// Returns `true` if reconnection succeeded, `false` if skipped (too soon)
+    /// or failed. Safe to call on every poll — the rate limiter prevents
+    /// thundering-herd reconnection attempts.
+    pub fn try_reconnect(&self) -> bool {
+        // Rate-limit: skip if we attempted recently
+        {
+            let guard = self.last_reconnect_attempt.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(last) = *guard {
+                if last.elapsed() < RECONNECT_COOLDOWN {
+                    return false;
+                }
+            }
+        }
+
+        // Record this attempt
+        {
+            let mut guard = self.last_reconnect_attempt.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = Some(Instant::now());
+        }
+
+        match self.reconnect() {
+            Ok(()) => {
+                tracing::info!(addr = %self.addr, "Inline reconnect succeeded");
+                true
+            }
+            Err(e) => {
+                tracing::debug!(addr = %self.addr, error = %e, "Inline reconnect failed");
+                false
+            }
+        }
+    }
+
+    /// Mark the provider as disconnected (clears the TCP connection).
     fn mark_disconnected(&self) {
         self.connected.store(false, Ordering::Relaxed);
-        // Clear the stream/reader so future calls fail fast
-        if let Ok(mut guard) = self.stream.lock() {
-            *guard = None;
-        }
-        if let Ok(mut guard) = self.reader.lock() {
+        if let Ok(mut guard) = self.conn.lock() {
             *guard = None;
         }
     }
@@ -174,25 +210,19 @@ impl DaemonProvider {
         request: &DaemonRequest,
         timeout: Duration,
     ) -> Result<DaemonResponse, AppError> {
-        let mut stream_guard = self.stream.lock().map_err(|_| {
+        let mut conn_guard = self.conn.lock().map_err(|_| {
             AppError::InvalidPath("Daemon connection lock poisoned".to_string())
         })?;
-        let mut reader_guard = self.reader.lock().map_err(|_| {
-            AppError::InvalidPath("Daemon reader lock poisoned".to_string())
+
+        let conn = conn_guard.as_mut().ok_or_else(|| {
+            AppError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "Daemon not connected",
+            ))
         })?;
 
-        let stream = stream_guard.as_mut().ok_or_else(|| {
-            AppError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Daemon not connected",
-            ))
-        })?;
-        let reader = reader_guard.as_mut().ok_or_else(|| {
-            AppError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Daemon not connected",
-            ))
-        })?;
+        let stream = &mut conn.stream;
+        let reader = &mut conn.reader;
 
         stream.set_read_timeout(Some(timeout)).map_err(AppError::Io)?;
 
@@ -608,5 +638,30 @@ mod tests {
         assert!(provider.ping().is_ok());
 
         shutdown2.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn try_reconnect_rate_limits() {
+        // No daemon running — every try_reconnect will fail, but we can verify
+        // rate limiting: the second call within the cooldown should return false
+        // immediately without attempting a connection.
+        let provider = DaemonProvider {
+            conn: Mutex::new(None),
+            addr: "127.0.0.1:1".to_string(),
+            next_id: AtomicU64::new(1),
+            connected: AtomicBool::new(false),
+            last_reconnect_attempt: Mutex::new(None),
+        };
+
+        // First attempt: should try (and fail, but that's fine)
+        let result1 = provider.try_reconnect();
+        assert!(!result1); // fails because no daemon
+
+        // Second attempt immediately: should be rate-limited (returns false fast)
+        let start = Instant::now();
+        let result2 = provider.try_reconnect();
+        assert!(!result2);
+        // Should return very quickly (< 100ms), not spending time on TCP connect
+        assert!(start.elapsed() < Duration::from_millis(100));
     }
 }
