@@ -1,5 +1,6 @@
 <script>
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
+  import MarkdownRenderer from './MarkdownRenderer.svelte'
 
   /** @type {{ task: object, detail: object|null, dark: boolean, onClose: () => void }} */
   let { task, detail, dark, onClose } = $props()
@@ -121,8 +122,8 @@
 
         <!-- Description -->
         {#if detail.task.description}
-          <section class="py-3" data-testid="detail-description">
-            <p class="text-[13px] leading-relaxed {textBody}">{detail.task.description}</p>
+          <section class="py-3 text-[13px]" data-testid="detail-description">
+            <MarkdownRenderer source={detail.task.description} {dark} />
           </section>
         {/if}
 
@@ -230,5 +231,10 @@
     .task-detail-enter {
       animation: none;
     }
+  }
+
+  /* Scale MarkdownRenderer prose to match panel's 13px content scale */
+  :global([data-testid="detail-description"] .th-prose) {
+    font-size: 13px;
   }
 </style>

@@ -6,7 +6,15 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/svelte'
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte'
+
+// Mock markdown rendering (MarkdownRenderer depends on shiki which needs WASM)
+vi.mock('./markdown.js', () => ({
+  renderMarkdown: vi.fn((source) => Promise.resolve(
+    source ? `<p>${source}</p>` : ''
+  )),
+}))
+
 import TaskDetailPanel from './TaskDetailPanel.svelte'
 
 // ---------------------------------------------------------------------------
@@ -136,10 +144,20 @@ describe('Loading state', () => {
 })
 
 describe('Description section', () => {
-  it('shows description when present', () => {
+  it('shows description via MarkdownRenderer when present', async () => {
     renderPanel()
     expect(screen.getByTestId('detail-description')).toBeTruthy()
-    expect(screen.getByText('Parse tasks from all three CLI tools')).toBeTruthy()
+    // MarkdownRenderer renders asynchronously
+    await waitFor(() => {
+      expect(screen.getByText('Parse tasks from all three CLI tools')).toBeTruthy()
+    })
+  })
+
+  it('renders description through markdown pipeline', async () => {
+    renderPanel()
+    await waitFor(() => {
+      expect(screen.getByTestId('markdown-content')).toBeTruthy()
+    })
   })
 
   it('hides description section for sparse task', () => {
