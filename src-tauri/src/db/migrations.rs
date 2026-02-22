@@ -23,6 +23,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "cached_git_status",
         include_str!("migrations/004_cached_git_status.sql"),
     ),
+    (
+        5,
+        "session_activity",
+        include_str!("migrations/005_session_activity.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

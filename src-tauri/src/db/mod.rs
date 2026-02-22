@@ -1,3 +1,4 @@
+pub mod activity_queries;
 pub mod migrations;
 pub mod queries;
 pub mod relationship_queries;
@@ -37,14 +38,14 @@ mod tests {
         let conn = init_db(tmp.path()).unwrap();
 
         let tables: Vec<String> = conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '\\__%' ESCAPE '\\' ORDER BY name")
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '\\__%' ESCAPE '\\' AND name != 'sqlite_sequence' ORDER BY name")
             .unwrap()
             .query_map([], |row| row.get(0))
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
 
-        assert_eq!(tables, vec!["projects", "relationships", "sessions", "settings"]);
+        assert_eq!(tables, vec!["projects", "relationships", "session_activity", "sessions", "settings"]);
     }
 
     #[test]
@@ -59,7 +60,7 @@ mod tests {
         let count: i64 = conn2
             .query_row("SELECT COUNT(*) FROM _migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 4);
+        assert_eq!(count, 5);
     }
 
     #[test]

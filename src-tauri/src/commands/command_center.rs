@@ -271,6 +271,41 @@ pub fn navigate_to_session(
     .map_err(|e| format!("Failed to navigate: {e}"))
 }
 
+/// Record a completed CLI session's activity stats for historical tracking.
+#[tauri::command]
+pub fn record_session_activity(
+    db: State<'_, DbState>,
+    project_path: String,
+    cli_tool: String,
+    started_at: String,
+    ended_at: String,
+    active_duration_ms: i64,
+    total_duration_ms: i64,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::activity_queries::insert_session_activity(
+        &conn,
+        &project_path,
+        &cli_tool,
+        &started_at,
+        &ended_at,
+        active_duration_ms,
+        total_duration_ms,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Get aggregated activity stats for a project path.
+#[tauri::command]
+pub fn get_project_activity(
+    db: State<'_, DbState>,
+    project_path: String,
+) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::activity_queries::get_project_activity(&conn, &project_path)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

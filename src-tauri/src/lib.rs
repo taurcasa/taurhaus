@@ -246,6 +246,8 @@ pub fn run() {
             commands::command_center::launch_claude_session,
             commands::command_center::stop_claude_session,
             commands::command_center::navigate_to_session,
+            commands::command_center::record_session_activity,
+            commands::command_center::get_project_activity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
