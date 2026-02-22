@@ -1,0 +1,544 @@
+//! Codex CLI task parser.
+//!
+//! Codex tracks tasks via `update_plan` function calls in session JSONL files.
+//! The plan contains a list of steps, each with a description and status.
+//!
+//! **Live session**: Use `jsonl_path` from running sessions.
+//! **Offline fallback**: Reuse CodexResolver logic — scan `~/.codex/sessions/YYYY/MM/DD/`
+//! with 7-day lookback, match by `cwd` in first JSONL line.
+
+use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::ClaudeSession;
+use crate::task_scanner::types::{TaskStatus, UnifiedTask};
+use std::fs;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+
+/// How many bytes from the end of file to read when searching for update_plan.
+/// 256KB is generous — plans are small, and we want the last one.
+const TAIL_READ_SIZE: u64 = 256 * 1024;
+
+/// How many days back to scan for offline sessions (matches idle.rs).
+const CODEX_LOOKBACK_DAYS: i64 = 7;
+
+/// Get tasks from Codex session JSONL files.
+pub fn get_tasks(
+    project_path: &str,
+    sessions: &[&ClaudeSession],
+) -> Result<Vec<UnifiedTask>, String> {
+    // Try live sessions first — use jsonl_path directly
+    for session in sessions {
+        if let Some(ref jsonl_path) = session.jsonl_path {
+            let path = Path::new(jsonl_path);
+            if path.exists() {
+                let tasks = parse_update_plan(path)?;
+                if !tasks.is_empty() {
+                    return Ok(tasks);
+                }
+            }
+        }
+    }
+
+    // Offline fallback
+    get_tasks_offline(project_path)
+}
+
+/// Testable version with injectable sessions directory.
+pub fn get_tasks_in(
+    project_path: &str,
+    sessions: &[&ClaudeSession],
+    sessions_dir: &Path,
+) -> Result<Vec<UnifiedTask>, String> {
+    // Try live sessions first
+    for session in sessions {
+        if let Some(ref jsonl_path) = session.jsonl_path {
+            let path = Path::new(jsonl_path);
+            if path.exists() {
+                let tasks = parse_update_plan(path)?;
+                if !tasks.is_empty() {
+                    return Ok(tasks);
+                }
+            }
+        }
+    }
+
+    // Offline fallback with custom dir
+    get_tasks_offline_in(project_path, sessions_dir)
+}
+
+/// Offline fallback: scan recent Codex sessions to find one matching this project.
+fn get_tasks_offline(project_path: &str) -> Result<Vec<UnifiedTask>, String> {
+    let sessions_dir = match dirs::home_dir() {
+        Some(h) => h.join(".codex").join("sessions"),
+        None => return Ok(vec![]),
+    };
+    get_tasks_offline_in(project_path, &sessions_dir)
+}
+
+/// Offline fallback with injectable directory.
+fn get_tasks_offline_in(
+    project_path: &str,
+    sessions_dir: &Path,
+) -> Result<Vec<UnifiedTask>, String> {
+    if !sessions_dir.is_dir() {
+        return Ok(vec![]);
+    }
+
+    // Reuse the same date-scanning logic as CodexResolver in idle.rs
+    match find_codex_session_for_project(project_path, sessions_dir) {
+        Some(path) => parse_update_plan(&path),
+        None => Ok(vec![]),
+    }
+}
+
+/// Scan recent date directories to find a Codex session file matching a project.
+fn find_codex_session_for_project(project_path: &str, sessions_dir: &Path) -> Option<PathBuf> {
+    use chrono::Local;
+
+    let today = Local::now().date_naive();
+
+    for days_back in 0..CODEX_LOOKBACK_DAYS {
+        let date = today - chrono::Duration::days(days_back);
+        let date_dir = sessions_dir
+            .join(date.format("%Y").to_string())
+            .join(date.format("%m").to_string())
+            .join(date.format("%d").to_string());
+
+        if !date_dir.is_dir() {
+            continue;
+        }
+
+        let mut entries: Vec<_> = fs::read_dir(&date_dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext == "jsonl")
+            })
+            .collect();
+
+        // Sort by mtime descending
+        entries.sort_by(|a, b| {
+            let mt_a = a
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            let mt_b = b
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            mt_b.cmp(&mt_a)
+        });
+
+        for entry in entries {
+            if codex_session_matches_project(&entry.path(), project_path) {
+                return Some(entry.path());
+            }
+        }
+    }
+
+    None
+}
+
+/// Check if a Codex JSONL file's first line session_meta.payload.cwd matches a project path.
+fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool {
+    use std::io::{BufRead, BufReader};
+
+    let file = match fs::File::open(jsonl_path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+
+    let mut reader = BufReader::new(file);
+    let mut first_line = String::new();
+    if reader.read_line(&mut first_line).is_err() || first_line.is_empty() {
+        return false;
+    }
+
+    let parsed: serde_json::Value = match serde_json::from_str(&first_line) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    if parsed.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
+        return false;
+    }
+
+    let cwd = match parsed
+        .get("payload")
+        .and_then(|p| p.get("cwd"))
+        .and_then(|c| c.as_str())
+    {
+        Some(cwd) => cwd,
+        None => return false,
+    };
+
+    let norm_cwd = cwd.trim_end_matches('/');
+    let norm_target = project_path.trim_end_matches('/');
+    norm_cwd == norm_target
+}
+
+/// Parse the last `update_plan` function call from a Codex JSONL file.
+///
+/// Reads the tail of the file for efficiency (large sessions can be megabytes).
+/// Finds the last line with `type: "function_call"` and `name: "update_plan"`,
+/// then double-parses: `payload.arguments` is a JSON string containing `{plan: [{step, status}]}`.
+pub fn parse_update_plan(jsonl_path: &Path) -> Result<Vec<UnifiedTask>, String> {
+    let tail = read_file_tail(jsonl_path, TAIL_READ_SIZE)
+        .map_err(|e| format!("Failed to read Codex JSONL: {e}"))?;
+
+    // Find the last update_plan line
+    let mut last_plan_line: Option<&str> = None;
+    for line in tail.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        // Quick pre-filter before parsing JSON
+        if !line.contains("update_plan") {
+            continue;
+        }
+        if is_update_plan_line(line) {
+            last_plan_line = Some(line);
+        }
+    }
+
+    let plan_line = match last_plan_line {
+        Some(line) => line,
+        None => return Ok(vec![]),
+    };
+
+    parse_plan_from_line(plan_line)
+}
+
+/// Check if a JSONL line is an update_plan function call.
+fn is_update_plan_line(line: &str) -> bool {
+    let parsed: serde_json::Value = match serde_json::from_str(line) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    let payload = match parsed.get("payload") {
+        Some(p) => p,
+        None => return false,
+    };
+
+    payload.get("type").and_then(|v| v.as_str()) == Some("function_call")
+        && payload.get("name").and_then(|v| v.as_str()) == Some("update_plan")
+}
+
+/// Extract tasks from a single update_plan JSONL line.
+///
+/// Structure: `{"payload":{"type":"function_call","name":"update_plan","arguments":"{\"plan\":[{\"step\":\"...\",\"status\":\"...\"}]}"}}`
+/// Note: `arguments` is a JSON-encoded string, so we need to double-parse.
+fn parse_plan_from_line(line: &str) -> Result<Vec<UnifiedTask>, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(line).map_err(|e| format!("Parse error: {e}"))?;
+
+    let arguments_str = parsed
+        .get("payload")
+        .and_then(|p| p.get("arguments"))
+        .and_then(|a| a.as_str())
+        .ok_or("Missing payload.arguments")?;
+
+    // Double-parse: arguments is a JSON string
+    let arguments: serde_json::Value =
+        serde_json::from_str(arguments_str).map_err(|e| format!("Arguments parse error: {e}"))?;
+
+    let plan = match arguments.get("plan").and_then(|p| p.as_array()) {
+        Some(arr) => arr,
+        None => return Ok(vec![]),
+    };
+
+    let tasks: Vec<UnifiedTask> = plan
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, step)| {
+            let description = step.get("step").and_then(|s| s.as_str())?;
+            let status_str = step
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("open");
+
+            let status = match status_str {
+                "completed" | "done" => TaskStatus::Completed,
+                "in-progress" | "in_progress" | "started" => TaskStatus::InProgress,
+                _ => TaskStatus::Pending, // "open", "not-started", etc.
+            };
+
+            Some(UnifiedTask {
+                id: format!("codex-{idx}"),
+                subject: description.to_string(),
+                description: None,
+                active_form: None,
+                status,
+                source: CliTool::Codex,
+                blocks: vec![],
+                blocked_by: vec![],
+                owner: None,
+            })
+        })
+        .collect();
+
+    Ok(tasks)
+}
+
+/// Read the last N bytes of a file as a UTF-8 string.
+///
+/// If the file is smaller than `max_bytes`, reads the entire file.
+/// Trims the first partial line (from the seek position) to avoid broken JSON.
+fn read_file_tail(path: &Path, max_bytes: u64) -> Result<String, std::io::Error> {
+    let mut file = fs::File::open(path)?;
+    let file_size = file.metadata()?.len();
+
+    let start_pos = file_size.saturating_sub(max_bytes);
+
+    file.seek(SeekFrom::Start(start_pos))?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)?;
+
+    // If we seeked into the middle of the file, skip the first partial line
+    if start_pos > 0 {
+        if let Some(newline_pos) = buf.find('\n') {
+            buf = buf[newline_pos + 1..].to_string();
+        }
+    }
+
+    Ok(buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    fn write_codex_session(dir: &Path, filename: &str, cwd: &str, lines: &[&str]) -> PathBuf {
+        fs::create_dir_all(dir).unwrap();
+        let path = dir.join(filename);
+        let mut f = File::create(&path).unwrap();
+        // Write session_meta first line
+        writeln!(
+            f,
+            r#"{{"timestamp":"2026-02-21T16:00:00Z","type":"session_meta","payload":{{"cwd":"{cwd}","id":"test-id"}}}}"#
+        )
+        .unwrap();
+        for line in lines {
+            writeln!(f, "{line}").unwrap();
+        }
+        f.sync_all().unwrap();
+        path
+    }
+
+    fn make_update_plan_line(steps: &[(&str, &str)]) -> String {
+        let plan_items: Vec<String> = steps
+            .iter()
+            .map(|(step, status)| format!(r#"{{"step":"{step}","status":"{status}"}}"#))
+            .collect();
+        let plan_json = format!("[{}]", plan_items.join(","));
+        // arguments is a JSON-encoded string
+        let arguments = format!(r#"{{"plan":{plan_json}}}"#);
+        let escaped_arguments = arguments.replace('"', r#"\""#);
+        format!(
+            r#"{{"timestamp":"2026-02-21T16:00:00Z","payload":{{"type":"function_call","name":"update_plan","arguments":"{escaped_arguments}"}}}}"#
+        )
+    }
+
+    #[test]
+    fn parse_single_update_plan() {
+        let tmp = TempDir::new().unwrap();
+        let plan_line = make_update_plan_line(&[
+            ("Set up project structure", "completed"),
+            ("Implement core logic", "in-progress"),
+            ("Write tests", "open"),
+        ]);
+
+        let path = write_codex_session(
+            tmp.path(),
+            "session.jsonl",
+            "/home/user/project",
+            &[&plan_line],
+        );
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].id, "codex-0");
+        assert_eq!(tasks[0].subject, "Set up project structure");
+        assert_eq!(tasks[0].status, TaskStatus::Completed);
+        assert_eq!(tasks[0].source, CliTool::Codex);
+        assert_eq!(tasks[1].id, "codex-1");
+        assert_eq!(tasks[1].status, TaskStatus::InProgress);
+        assert_eq!(tasks[2].id, "codex-2");
+        assert_eq!(tasks[2].status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn multiple_update_plans_uses_last() {
+        let tmp = TempDir::new().unwrap();
+
+        let plan1 = make_update_plan_line(&[("Old task", "open")]);
+        let plan2 = make_update_plan_line(&[
+            ("Old task", "completed"),
+            ("New task", "in-progress"),
+        ]);
+
+        let path = write_codex_session(
+            tmp.path(),
+            "session.jsonl",
+            "/home/user/project",
+            &[&plan1, r#"{"payload":{"type":"response_item"}}"#, &plan2],
+        );
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].subject, "Old task");
+        assert_eq!(tasks[0].status, TaskStatus::Completed);
+        assert_eq!(tasks[1].subject, "New task");
+        assert_eq!(tasks[1].status, TaskStatus::InProgress);
+    }
+
+    #[test]
+    fn no_update_plan_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        let path = write_codex_session(
+            tmp.path(),
+            "session.jsonl",
+            "/home/user/project",
+            &[
+                r#"{"payload":{"type":"response_item"}}"#,
+                r#"{"payload":{"type":"function_call","name":"other_fn","arguments":"{}"}}"#,
+            ],
+        );
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn malformed_jsonl_lines_skipped() {
+        let tmp = TempDir::new().unwrap();
+        let plan_line = make_update_plan_line(&[("Valid task", "open")]);
+
+        let path = write_codex_session(
+            tmp.path(),
+            "session.jsonl",
+            "/home/user/project",
+            &["not valid json", "", &plan_line],
+        );
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Valid task");
+    }
+
+    #[test]
+    fn status_mapping_variants() {
+        let tmp = TempDir::new().unwrap();
+        let plan_line = make_update_plan_line(&[
+            ("Done task", "done"),
+            ("Started task", "started"),
+            ("In progress task", "in-progress"),
+            ("Not started", "not-started"),
+            ("Completed task", "completed"),
+        ]);
+
+        let path =
+            write_codex_session(tmp.path(), "session.jsonl", "/home/user/project", &[&plan_line]);
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert_eq!(tasks[0].status, TaskStatus::Completed); // done
+        assert_eq!(tasks[1].status, TaskStatus::InProgress); // started
+        assert_eq!(tasks[2].status, TaskStatus::InProgress); // in-progress
+        assert_eq!(tasks[3].status, TaskStatus::Pending); // not-started
+        assert_eq!(tasks[4].status, TaskStatus::Completed); // completed
+    }
+
+    #[test]
+    fn offline_fallback_finds_session() {
+        let tmp = TempDir::new().unwrap();
+        let sessions_dir = tmp.path().join("sessions");
+
+        let today = chrono::Local::now().date_naive();
+        let date_dir = sessions_dir
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let plan_line = make_update_plan_line(&[("Offline task", "open")]);
+        write_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T10-00-00-test-uuid.jsonl",
+            "/home/user/projects/myapp",
+            &[&plan_line],
+        );
+
+        let tasks =
+            get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Offline task");
+    }
+
+    #[test]
+    fn offline_no_match_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        let sessions_dir = tmp.path().join("sessions");
+
+        let today = chrono::Local::now().date_naive();
+        let date_dir = sessions_dir
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let plan_line = make_update_plan_line(&[("Other task", "open")]);
+        write_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T10-00-00-test-uuid.jsonl",
+            "/home/user/projects/other",
+            &[&plan_line],
+        );
+
+        let tasks =
+            get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn read_file_tail_small_file() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("small.txt");
+        let mut f = File::create(&path).unwrap();
+        writeln!(f, "line 1").unwrap();
+        writeln!(f, "line 2").unwrap();
+        f.sync_all().unwrap();
+
+        let content = read_file_tail(&path, TAIL_READ_SIZE).unwrap();
+        assert!(content.contains("line 1"));
+        assert!(content.contains("line 2"));
+    }
+
+    #[test]
+    fn read_file_tail_large_file_skips_partial_first_line() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("large.txt");
+        let mut f = File::create(&path).unwrap();
+        // Write enough data to exceed our small test tail size
+        for i in 0..100 {
+            writeln!(f, "line {i}: {}", "x".repeat(100)).unwrap();
+        }
+        f.sync_all().unwrap();
+
+        // Read only last 500 bytes
+        let content = read_file_tail(&path, 500).unwrap();
+        // Should not start with a partial line
+        let first_line = content.lines().next().unwrap_or("");
+        assert!(
+            first_line.starts_with("line "),
+            "First line should be complete, got: {first_line}"
+        );
+    }
+}

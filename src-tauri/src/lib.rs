@@ -20,6 +20,8 @@ pub mod provider;
 
 pub mod session_scanner;
 
+pub mod task_scanner;
+
 pub mod terminal;
 
 use std::sync::Mutex;
@@ -248,6 +250,7 @@ pub fn run() {
             commands::command_center::navigate_to_session,
             commands::command_center::record_session_activity,
             commands::command_center::get_project_activity,
+            commands::command_center::get_project_tasks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");

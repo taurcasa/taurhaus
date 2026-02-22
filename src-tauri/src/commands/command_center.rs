@@ -306,6 +306,68 @@ pub fn get_project_activity(
         .map_err(|e| e.to_string())
 }
 
+/// Get tasks from all CLI tools for a project.
+///
+/// Scans Claude task files, Codex update_plan entries, and Gemini TODO.md
+/// for the specified project path. Returns partial results if any source fails.
+#[tauri::command]
+pub fn get_project_tasks(
+    provider: State<'_, ProviderState>,
+    project_path: String,
+) -> Result<crate::task_scanner::TaskResult, String> {
+    // Get current sessions from scanner (reuses existing scan logic)
+    let all_sessions = if let Some(ref daemon) = provider.daemon {
+        if daemon.is_connected() {
+            // Try daemon first for Windows/WSL scenarios
+            let id = "list-sessions-for-tasks";
+            let request = crate::daemon::protocol::DaemonRequest::new(
+                id,
+                crate::daemon::protocol::method::LIST_CLAUDE_SESSIONS,
+                serde_json::Value::Null,
+            );
+            match daemon.send_status_request(&request) {
+                Ok(response) if response.is_ok() => {
+                    let mut sessions: Vec<ClaudeSession> = response
+                        .result
+                        .and_then(|v| serde_json::from_value(v).ok())
+                        .unwrap_or_default();
+
+                    // Convert Linux paths to Windows paths (same as list_claude_sessions)
+                    if let Some(ref distro) = provider.wsl_distro {
+                        for session in &mut sessions {
+                            if session.project_path.starts_with('/') {
+                                session.project_path =
+                                    crate::provider::path::to_windows(
+                                        &session.project_path,
+                                        distro,
+                                    );
+                            }
+                        }
+                    }
+
+                    sessions
+                }
+                _ => crate::session_scanner::scan_sessions(),
+            }
+        } else {
+            crate::session_scanner::scan_sessions()
+        }
+    } else {
+        crate::session_scanner::scan_sessions()
+    };
+
+    // Filter to sessions for this project
+    let project_sessions: Vec<ClaudeSession> = all_sessions
+        .into_iter()
+        .filter(|s| s.project_path == project_path)
+        .collect();
+
+    Ok(crate::task_scanner::get_tasks_for_project(
+        &project_path,
+        &project_sessions,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
