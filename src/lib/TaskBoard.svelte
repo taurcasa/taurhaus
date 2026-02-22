@@ -12,14 +12,15 @@
   const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
   const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const hoverRow      = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50')
-  const tagBg         = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
+  const cardBg        = $derived(dark ? 'bg-zinc-900/60' : 'bg-zinc-50/80')
+  const cardHover     = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-100/80')
+  const cardBorder    = $derived(dark ? 'border-zinc-800/60' : 'border-zinc-200/80')
+  const columnBg      = $derived(dark ? 'bg-zinc-900/30' : 'bg-zinc-50/40')
 
   // Task data state
   let tasks = $state([])
   let errors = $state([])
   let loading = $state(true)
-  let completedCollapsed = $state(true)
 
   // Tool icon SVG paths (same as sessionIndicator.js — monochrome, uses currentColor)
   const TOOL_ICONS = {
@@ -31,27 +32,54 @@
   /** Source display labels. */
   const SOURCE_LABELS = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }
 
-  // Group tasks by status
-  const inProgress = $derived(tasks.filter(t => t.status === 'in_progress'))
-  const pending    = $derived(tasks.filter(t => t.status === 'pending'))
-  const completed  = $derived(tasks.filter(t => t.status === 'completed'))
-  const showCompletedToggle = $derived(completed.length > 5)
-  const visibleCompleted = $derived(
-    completedCollapsed && showCompletedToggle ? completed.slice(0, 3) : completed
-  )
+  // Column definitions (static keys + labels; dot color resolved via $derived)
+  const COLUMNS = [
+    { key: 'in_progress', label: 'In Progress' },
+    { key: 'pending', label: 'Pending' },
+    { key: 'completed', label: 'Completed' },
+  ]
 
-  // Fetch tasks on mount and when projectPath changes
+  /** Dot color per column key, reactive to dark mode. */
+  const dotColors = $derived({
+    in_progress: 'bg-success-400',
+    pending: 'bg-info-400',
+    completed: dark ? 'bg-zinc-600' : 'bg-zinc-400',
+  })
+
+  // Group tasks by status
+  const grouped = $derived({
+    in_progress: tasks.filter(t => t.status === 'in_progress'),
+    pending: tasks.filter(t => t.status === 'pending'),
+    completed: tasks.filter(t => t.status === 'completed'),
+  })
+
+  // Fetch tasks on mount and when projectPath changes.
+  // In Tauri mode, listen for backend-pushed task change events (event-driven).
+  // In Vite-only mode, fall back to polling for mock data.
   $effect(() => {
     if (!projectPath) return
     let cancelled = false
+    let unlisten = null
+    let interval = null
 
     // Initial fetch
     fetchTasks()
 
-    // Auto-refresh every 5 seconds while tab is active
-    const interval = setInterval(() => {
-      if (!document.hidden) fetchTasks()
-    }, 5000)
+    // Event-driven updates in Tauri mode
+    const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+    if (isTauriEnv) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        if (cancelled) return
+        listen('project-tasks-changed', () => {
+          if (!cancelled && !document.hidden) fetchTasks()
+        }).then(fn => { unlisten = fn })
+      })
+    } else {
+      // Vite-only mode — poll for mock data
+      interval = setInterval(() => {
+        if (!document.hidden) fetchTasks()
+      }, 5000)
+    }
 
     async function fetchTasks() {
       try {
@@ -69,143 +97,124 @@
 
     return () => {
       cancelled = true
-      clearInterval(interval)
+      if (unlisten) unlisten()
+      if (interval) clearInterval(interval)
     }
   })
 </script>
 
-<div class="flex-1 overflow-y-auto content-enter">
-  <div class="max-w-[700px] px-7 py-5">
+<div class="flex-1 flex flex-col overflow-hidden content-enter">
 
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-5">
-      <h2 class="text-[15px] font-semibold {textPrimary}">Tasks</h2>
-      {#if tasks.length > 0}
-        <span class="text-[11px] {textTertiary}">{tasks.length} task{tasks.length !== 1 ? 's' : ''}</span>
-      {/if}
+  <!-- Header bar -->
+  <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
+    <h2 class="text-[15px] font-semibold {textPrimary}">Tasks</h2>
+    {#if tasks.length > 0}
+      <span class="text-[11px] {textTertiary}">{tasks.length} task{tasks.length !== 1 ? 's' : ''}</span>
+    {/if}
+  </div>
+
+  {#if loading}
+    <!-- Loading skeleton — three column placeholders -->
+    <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden" data-testid="tasks-loading">
+      {#each Array(3) as _}
+        <div class="flex-1 rounded-lg {columnBg} p-3">
+          <div class="h-3 w-20 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse mb-4"></div>
+          {#each Array(3) as __}
+            <div class="rounded-lg {cardBg} border {cardBorder} p-3 mb-2">
+              <div class="h-3 w-full rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse mb-2"></div>
+              <div class="h-2.5 w-3/4 rounded {dark ? 'bg-zinc-800/30' : 'bg-zinc-100/60'} animate-pulse"></div>
+            </div>
+          {/each}
+        </div>
+      {/each}
     </div>
-
-    {#if loading}
-      <!-- Loading skeleton -->
-      <div class="space-y-3" data-testid="tasks-loading">
-        {#each Array(4) as _}
-          <div class="flex items-center h-[36px] gap-3">
-            <div class="w-3 h-3 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-            <div class="h-3 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse"></div>
-            <div class="h-3 w-16 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse"></div>
-          </div>
-        {/each}
-      </div>
-    {:else if tasks.length === 0}
-      <!-- Empty state -->
-      <div class="py-12 text-center" data-testid="tasks-empty">
+  {:else if tasks.length === 0}
+    <!-- Empty state -->
+    <div class="flex-1 flex items-center justify-center" data-testid="tasks-empty">
+      <div class="text-center">
         <svg class="w-10 h-10 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
         </svg>
         <p class="mt-3 text-[13px] {textMuted}">No tasks tracked</p>
         <p class="mt-1 text-[11px] {textTertiary}">Tasks appear when AI tools create plans or task lists</p>
       </div>
-    {:else}
+    </div>
+  {:else}
 
-      <!-- Error indicators (per-source) -->
-      {#if errors.length > 0}
-        <div class="mb-4 space-y-1">
-          {#each errors as [source, message]}
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
-              <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-              <span>{SOURCE_LABELS[source] || source}: {message}</span>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- In Progress group -->
-      {#if inProgress.length > 0}
-        <section class="mb-5">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="w-[6px] h-[6px] rounded-full bg-success-400"></span>
-            <span class="text-[10px] font-medium uppercase tracking-[0.06em] {textTertiary}">In Progress</span>
-            <span class="text-[10px] {textMuted}">{inProgress.length}</span>
+    <!-- Error indicators (per-source) -->
+    {#if errors.length > 0}
+      <div class="px-5 pb-2 space-y-1 shrink-0">
+        {#each errors as [source, message]}
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
+            <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <span>{SOURCE_LABELS[source] || source}: {message}</span>
           </div>
-          {#each inProgress as task}
-            {@render taskRow(task)}
-          {/each}
-        </section>
-      {/if}
-
-      <!-- Pending group -->
-      {#if pending.length > 0}
-        <section class="mb-5">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="w-[6px] h-[6px] rounded-full bg-info-400"></span>
-            <span class="text-[10px] font-medium uppercase tracking-[0.06em] {textTertiary}">Pending</span>
-            <span class="text-[10px] {textMuted}">{pending.length}</span>
-          </div>
-          {#each pending as task}
-            {@render taskRow(task)}
-          {/each}
-        </section>
-      {/if}
-
-      <!-- Completed group -->
-      {#if completed.length > 0}
-        <section class="mb-5">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="w-[6px] h-[6px] rounded-full {dark ? 'bg-zinc-600' : 'bg-zinc-400'}"></span>
-            <span class="text-[10px] font-medium uppercase tracking-[0.06em] {textTertiary}">Completed</span>
-            <span class="text-[10px] {textMuted}">{completed.length}</span>
-          </div>
-          {#each visibleCompleted as task}
-            {@render taskRow(task)}
-          {/each}
-          {#if showCompletedToggle}
-            <button
-              class="mt-1 text-[11px] {textTertiary} hover:underline"
-              onclick={() => completedCollapsed = !completedCollapsed}
-            >{completedCollapsed ? `Show all ${completed.length}` : 'Show fewer'}</button>
-          {/if}
-        </section>
-      {/if}
-
+        {/each}
+      </div>
     {/if}
-  </div>
-</div>
 
-{#snippet taskRow(task)}
-  {@const icon = TOOL_ICONS[task.source] || TOOL_ICONS.claude}
-  <div class="flex items-start gap-2.5 py-1.5 px-2 -mx-2 rounded {hoverRow} group" data-testid="task-row">
-    <!-- Tool icon -->
-    <span class="w-[14px] h-[14px] shrink-0 mt-0.5 {textTertiary}" aria-label={SOURCE_LABELS[task.source] || task.source}>
-      <svg class="w-[12px] h-[12px]" viewBox={icon.viewBox} fill="currentColor" aria-hidden="true">
-        <path d={icon.path}/>
-      </svg>
-    </span>
+    <!-- Kanban columns -->
+    <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden min-h-0">
+      {#each COLUMNS as col}
+        {@const colTasks = grouped[col.key] || []}
+        <section class="flex-1 flex flex-col min-w-0 rounded-lg {columnBg} min-h-0" data-testid="kanban-column">
+          <!-- Column header -->
+          <div class="flex items-center gap-2 px-3 pt-3 pb-2 shrink-0">
+            <span class="w-[6px] h-[6px] rounded-full {dotColors[col.key]}"></span>
+            <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary}">{col.label}</span>
+            <span class="text-[10px] {textMuted}">{colTasks.length}</span>
+          </div>
 
-    <!-- Task content -->
-    <div class="flex-1 min-w-0">
-      <span class="text-[13px] {task.status === 'completed' ? textMuted : textBody} {task.status === 'completed' ? 'line-through' : ''}">{task.subject}</span>
-      {#if task.description}
-        <p class="text-[11px] {textTertiary} mt-0.5 line-clamp-1">{task.description}</p>
-      {/if}
-      <!-- Metadata line: blocked_by + owner -->
-      {#if task.blocked_by.length > 0 || task.owner}
-        <div class="flex items-center gap-2 mt-0.5">
-          {#if task.blocked_by.length > 0}
-            <span class="text-[10px] {textMuted}">blocked by: {task.blocked_by.map(id => `#${id}`).join(', ')}</span>
-          {/if}
-          {#if task.owner}
-            <span class="text-[10px] {textMuted}">{task.owner}</span>
-          {/if}
-        </div>
-      {/if}
+          <!-- Scrollable card list -->
+          <div class="flex-1 overflow-y-auto px-2 pb-2 min-h-0">
+            {#each colTasks as task}
+              {@render taskCard(task)}
+            {:else}
+              <div class="px-2 py-6 text-center">
+                <span class="text-[11px] {textMuted}">No tasks</span>
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/each}
     </div>
 
-    <!-- Status badge -->
-    <span class="shrink-0 mt-0.5 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider rounded {statusBadgeClass(task.status)}">
-      {statusLabel(task.status)}
-    </span>
+  {/if}
+</div>
+
+{#snippet taskCard(task)}
+  {@const icon = TOOL_ICONS[task.source] || TOOL_ICONS.claude}
+  <div
+    class="rounded-lg {cardBg} border {cardBorder} {cardHover} px-3 py-2.5 mb-2 transition-colors"
+    data-testid="task-row"
+  >
+    <!-- Top line: tool icon + subject -->
+    <div class="flex items-start gap-2">
+      <span class="w-[14px] h-[14px] shrink-0 mt-0.5 {textTertiary}" aria-label={SOURCE_LABELS[task.source] || task.source}>
+        <svg class="w-[12px] h-[12px]" viewBox={icon.viewBox} fill="currentColor" aria-hidden="true">
+          <path d={icon.path}/>
+        </svg>
+      </span>
+      <span class="text-[13px] leading-snug {task.status === 'completed' ? `${textMuted} line-through` : textBody}">{task.subject}</span>
+    </div>
+
+    <!-- Description -->
+    {#if task.description}
+      <p class="text-[11px] {textTertiary} mt-1.5 ml-[22px] line-clamp-2">{task.description}</p>
+    {/if}
+
+    <!-- Metadata: blocked_by + owner -->
+    {#if task.blocked_by.length > 0 || task.owner}
+      <div class="flex items-center gap-2 mt-1.5 ml-[22px]">
+        {#if task.blocked_by.length > 0}
+          <span class="text-[10px] {textMuted}">blocked by: {task.blocked_by.map(id => `#${id}`).join(', ')}</span>
+        {/if}
+        {#if task.owner}
+          <span class="text-[10px] {textMuted}">{task.owner}</span>
+        {/if}
+      </div>
+    {/if}
   </div>
 {/snippet}
-

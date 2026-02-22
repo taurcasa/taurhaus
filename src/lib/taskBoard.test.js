@@ -1,8 +1,8 @@
 /**
  * TaskBoard component tests.
  *
- * Tests the helper functions and the component rendering logic
- * including status grouping, tool icon selection, and edge states.
+ * Tests the helper functions and the Kanban board rendering logic
+ * including column grouping, tool icon selection, and edge states.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -101,7 +101,23 @@ describe('TaskBoard component', () => {
     })
   })
 
-  it('renders task rows grouped by status', async () => {
+  it('renders three kanban columns', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: '1', subject: 'Active task', status: 'in_progress' }),
+        makeTask({ id: '2', subject: 'Waiting task', status: 'pending' }),
+        makeTask({ id: '3', subject: 'Done task', status: 'completed' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getAllByTestId('kanban-column')).toHaveLength(3)
+    })
+  })
+
+  it('renders task cards across columns', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
         makeTask({ id: '1', subject: 'Active task', status: 'in_progress' }),
@@ -116,7 +132,6 @@ describe('TaskBoard component', () => {
       expect(screen.getAllByTestId('task-row')).toHaveLength(3)
     })
 
-    // Check all three task subjects render
     expect(screen.getByText('Active task')).toBeTruthy()
     expect(screen.getByText('Waiting task')).toBeTruthy()
     expect(screen.getByText('Done task')).toBeTruthy()
@@ -225,6 +240,34 @@ describe('TaskBoard component', () => {
     await waitFor(() => {
       const subject = screen.getByText('Finished work')
       expect(subject.className).toContain('line-through')
+    })
+  })
+
+  it('shows column headers with correct labels', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByText('In Progress')).toBeTruthy()
+      expect(screen.getByText('Pending')).toBeTruthy()
+      expect(screen.getByText('Completed')).toBeTruthy()
+    })
+  })
+
+  it('shows "No tasks" in empty columns', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'in_progress' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      // Two columns (pending + completed) should show "No tasks"
+      const emptyLabels = screen.getAllByText('No tasks')
+      expect(emptyLabels.length).toBe(2)
     })
   })
 })
