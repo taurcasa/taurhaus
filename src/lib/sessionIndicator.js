@@ -35,6 +35,12 @@ function toolName(session) {
   return TOOL_NAMES[session?.cli_tool] || 'Claude'
 }
 
+/** Get the SVG icon data for a session's CLI tool. */
+export function toolIcon(session) {
+  const tool = session?.cli_tool || 'claude'
+  return TOOL_ICONS[tool] || TOOL_ICONS.claude
+}
+
 /** Return true when a row has an active or idle session. */
 export function hasLiveSession(session) {
   return session?.state === 'active' || session?.state === 'idle'
