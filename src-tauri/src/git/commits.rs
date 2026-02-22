@@ -142,6 +142,125 @@ pub fn get_latest_commit_time(repo_path: &Path) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp(commit.time().seconds(), 0)
 }
 
+/// Get commits in a time range (inclusive), newest first.
+///
+/// Returns commits whose author date falls within `[after, before]`.
+/// Used to find commits made during a specific CLI session.
+pub fn get_commits_in_range(
+    repo_path: &Path,
+    after: DateTime<Utc>,
+    before: DateTime<Utc>,
+) -> Result<Vec<Commit>, AppError> {
+    let repo = Repository::open(repo_path).map_err(|e| {
+        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+    })?;
+
+    let mut revwalk = repo.revwalk().map_err(git_err)?;
+    if revwalk.push_head().is_err() {
+        return Ok(vec![]);
+    }
+    revwalk
+        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
+        .map_err(git_err)?;
+
+    let now = Utc::now();
+    let after_ts = after.timestamp();
+    let before_ts = before.timestamp();
+    let mut commits = Vec::new();
+
+    for oid_result in revwalk {
+        let oid = oid_result.map_err(git_err)?;
+        let commit = repo.find_commit(oid).map_err(git_err)?;
+        let ts = commit.time().seconds();
+
+        // Stop early — commits are newest-first, so once we're before the range, we're done
+        if ts < after_ts {
+            break;
+        }
+
+        if ts <= before_ts {
+            let message = commit
+                .message()
+                .unwrap_or("")
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string();
+
+            commits.push(Commit {
+                hash: format!("{:.8}", oid),
+                message,
+                author: commit.author().name().unwrap_or("unknown").to_string(),
+                date: format_relative_time(ts, now),
+            });
+        }
+    }
+
+    Ok(commits)
+}
+
+/// Get deduplicated list of files changed across a set of commits.
+///
+/// Walks each commit's diff against its parent to collect changed file paths.
+pub fn get_files_changed_in_range(
+    repo_path: &Path,
+    after: DateTime<Utc>,
+    before: DateTime<Utc>,
+) -> Result<Vec<String>, AppError> {
+    let repo = Repository::open(repo_path).map_err(|e| {
+        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+    })?;
+
+    let mut revwalk = repo.revwalk().map_err(git_err)?;
+    if revwalk.push_head().is_err() {
+        return Ok(vec![]);
+    }
+    revwalk
+        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
+        .map_err(git_err)?;
+
+    let after_ts = after.timestamp();
+    let before_ts = before.timestamp();
+    let mut files = std::collections::BTreeSet::new();
+
+    for oid_result in revwalk {
+        let oid = oid_result.map_err(git_err)?;
+        let commit = repo.find_commit(oid).map_err(git_err)?;
+        let ts = commit.time().seconds();
+
+        if ts < after_ts {
+            break;
+        }
+
+        if ts <= before_ts {
+            let tree = commit.tree().map_err(git_err)?;
+            let parent_tree = commit
+                .parent(0)
+                .ok()
+                .and_then(|p| p.tree().ok());
+
+            let diff = repo
+                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+                .map_err(git_err)?;
+
+            diff.foreach(
+                &mut |delta, _| {
+                    if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                        files.insert(path.to_string());
+                    }
+                    true
+                },
+                None,
+                None,
+                None,
+            )
+            .map_err(git_err)?;
+        }
+    }
+
+    Ok(files.into_iter().collect())
+}
+
 fn git_err(e: git2::Error) -> AppError {
     AppError::Git(e)
 }
@@ -260,6 +379,95 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let result = get_recent_commits(dir.path(), 10);
         assert!(result.is_err());
+    }
+
+    fn create_commit_with_file(repo: &Repository, dir: &Path, filename: &str, message: &str) {
+        let file_path = dir.join(filename);
+        std::fs::write(&file_path, format!("content of {filename}")).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(Path::new(filename))
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+
+        let sig = Signature::now("Test User", "test@example.com").unwrap();
+        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit> = parent.iter().collect();
+
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .unwrap();
+    }
+
+    #[test]
+    fn get_commits_in_range_filters_by_time() {
+        let (dir, repo) = init_test_repo();
+        create_commit(&repo, "Old commit");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let after = Utc::now();
+        create_commit(&repo, "In-range commit");
+        let before = Utc::now();
+
+        let commits = get_commits_in_range(dir.path(), after, before).unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].message, "In-range commit");
+    }
+
+    #[test]
+    fn get_commits_in_range_empty_when_no_match() {
+        let (dir, repo) = init_test_repo();
+        create_commit(&repo, "Old commit");
+
+        let after = Utc::now() + chrono::Duration::hours(1);
+        let before = after + chrono::Duration::hours(1);
+
+        let commits = get_commits_in_range(dir.path(), after, before).unwrap();
+        assert!(commits.is_empty());
+    }
+
+    #[test]
+    fn get_commits_in_range_empty_repo() {
+        let (dir, _repo) = init_test_repo();
+        let now = Utc::now();
+        let commits = get_commits_in_range(dir.path(), now, now).unwrap();
+        assert!(commits.is_empty());
+    }
+
+    #[test]
+    fn get_files_changed_in_range_returns_files() {
+        let (dir, repo) = init_test_repo();
+        // Create an initial commit with a file (outside the range)
+        create_commit_with_file(&repo, dir.path(), "old.txt", "Old file");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let after = Utc::now();
+        create_commit_with_file(&repo, dir.path(), "new.txt", "New file");
+        create_commit_with_file(&repo, dir.path(), "another.txt", "Another file");
+        let before = Utc::now();
+
+        let files = get_files_changed_in_range(dir.path(), after, before).unwrap();
+        assert!(files.contains(&"new.txt".to_string()));
+        assert!(files.contains(&"another.txt".to_string()));
+        assert!(!files.contains(&"old.txt".to_string()));
+    }
+
+    #[test]
+    fn get_files_changed_deduplicates() {
+        let (dir, repo) = init_test_repo();
+        let after = Utc::now() - chrono::Duration::hours(1);
+        // Two commits touching the same file
+        create_commit_with_file(&repo, dir.path(), "shared.txt", "First version");
+        std::fs::write(dir.path().join("shared.txt"), "Updated content").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("shared.txt")).unwrap();
+        index.write().unwrap();
+        create_commit(&repo, "Update shared.txt");
+        let before = Utc::now();
+
+        let files = get_files_changed_in_range(dir.path(), after, before).unwrap();
+        // Should appear only once despite two commits
+        assert_eq!(files.iter().filter(|f| *f == "shared.txt").count(), 1);
     }
 
     #[test]

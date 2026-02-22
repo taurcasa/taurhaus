@@ -14,7 +14,7 @@ pub mod codex;
 pub mod gemini;
 pub mod types;
 
-pub use types::{TaskResult, TaskStatus, UnifiedTask};
+pub use types::{SessionInfo, TaskDetail, TaskResult, TaskStatus, UnifiedTask};
 
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
@@ -102,6 +102,7 @@ mod tests {
                 blocks: vec![],
                 blocked_by: vec![],
                 owner: None,
+                session_id: None,
             }],
             errors: vec![],
         };

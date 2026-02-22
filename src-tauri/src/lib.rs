@@ -284,6 +284,7 @@ pub fn run() {
             commands::command_center::record_session_activity,
             commands::command_center::get_project_activity,
             commands::command_center::get_project_tasks,
+            commands::command_center::get_task_detail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");

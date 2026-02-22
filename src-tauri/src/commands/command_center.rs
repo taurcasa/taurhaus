@@ -343,6 +343,7 @@ pub fn get_project_tasks(
             blocks: t.blocks,
             blocked_by: t.blocked_by,
             owner: t.owner,
+            session_id: t.session_id,
         })
         .collect();
 
@@ -350,6 +351,95 @@ pub fn get_project_tasks(
         tasks,
         errors: vec![],
     })
+}
+
+/// Get enriched detail for a single task: full data + session info + commits + files changed.
+#[tauri::command]
+pub fn get_task_detail(
+    db: State<'_, DbState>,
+    project_path: String,
+    task_id: String,
+    source: String,
+) -> Result<crate::task_scanner::TaskDetail, String> {
+    let normalized_path = crate::provider::path::to_linux(&project_path)
+        .unwrap_or_else(|| project_path.clone());
+
+    // Find the task in DB
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let db_tasks = crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path)
+        .map_err(|e| e.to_string())?;
+
+    let db_task = db_tasks
+        .into_iter()
+        .find(|t| t.source_task_id == task_id && t.source == source)
+        .ok_or_else(|| format!("Task not found: {source}/{task_id}"))?;
+
+    let task = crate::task_scanner::UnifiedTask {
+        id: db_task.source_task_id,
+        subject: db_task.subject,
+        description: db_task.description,
+        active_form: db_task.active_form,
+        status: match db_task.status.as_str() {
+            "in_progress" => crate::task_scanner::TaskStatus::InProgress,
+            "completed" => crate::task_scanner::TaskStatus::Completed,
+            _ => crate::task_scanner::TaskStatus::Pending,
+        },
+        source: match db_task.source.as_str() {
+            "codex" => CliTool::Codex,
+            "gemini" => CliTool::Gemini,
+            _ => CliTool::Claude,
+        },
+        blocks: db_task.blocks,
+        blocked_by: db_task.blocked_by,
+        owner: db_task.owner,
+        session_id: db_task.session_id.clone(),
+    };
+
+    // Try to enrich with session context (commits + files changed)
+    let (session, commits, files_changed) = match db_task.session_id {
+        Some(ref session_id) => enrich_from_session(&normalized_path, session_id),
+        None => (None, vec![], vec![]),
+    };
+
+    Ok(crate::task_scanner::TaskDetail {
+        task,
+        session,
+        commits,
+        files_changed,
+    })
+}
+
+/// Look up session time range and find commits/files changed during it.
+fn enrich_from_session(
+    project_path: &str,
+    session_id: &str,
+) -> (
+    Option<crate::task_scanner::SessionInfo>,
+    Vec<crate::models::Commit>,
+    Vec<String>,
+) {
+    let path = std::path::Path::new(project_path);
+
+    let time_range = crate::claude_code::resolver::session_time_range(path, session_id);
+
+    match time_range {
+        Some((start, end)) => {
+            let session_info = crate::task_scanner::SessionInfo {
+                id: session_id.to_string(),
+                started_at: start.to_rfc3339(),
+                ended_at: end.to_rfc3339(),
+            };
+
+            let commits = crate::git::commits::get_commits_in_range(path, start, end)
+                .unwrap_or_default();
+
+            let files = crate::git::commits::get_files_changed_in_range(path, start, end)
+                .unwrap_or_default();
+
+            (Some(session_info), commits, files)
+        }
+        None => (None, vec![], vec![]),
+    }
 }
 
 /// Persist scanned tasks into SQLite (upsert — never lose history).
@@ -376,7 +466,7 @@ pub(crate) fn persist_task_scan(
             blocks: t.blocks.clone(),
             blocked_by: t.blocked_by.clone(),
             owner: t.owner.clone(),
-            session_id: None,
+            session_id: t.session_id.clone(),
             first_seen_at: now.clone(),
             updated_at: now.clone(),
         })

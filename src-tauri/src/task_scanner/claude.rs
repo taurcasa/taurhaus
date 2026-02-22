@@ -146,7 +146,13 @@ fn get_tasks_offline_in(
 }
 
 /// Parse all task JSON files in a directory.
+///
+/// The `session_id` is extracted from the directory name (the parent UUID).
 fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
+    let session_id = dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string());
     let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read task dir: {e}"))?;
 
     let mut tasks = Vec::new();
@@ -167,7 +173,7 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
             }
         }
 
-        match parse_task_file(&path) {
+        match parse_task_file(&path, session_id.clone()) {
             Ok(task) => tasks.push(task),
             Err(e) => {
                 tracing::warn!(
@@ -193,7 +199,7 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
 }
 
 /// Parse a single Claude task JSON file into a UnifiedTask.
-fn parse_task_file(path: &Path) -> Result<UnifiedTask, String> {
+fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<UnifiedTask, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Read error: {e}"))?;
     let raw: RawClaudeTask =
         serde_json::from_str(&content).map_err(|e| format!("Parse error: {e}"))?;
@@ -214,6 +220,7 @@ fn parse_task_file(path: &Path) -> Result<UnifiedTask, String> {
         blocks: raw.blocks,
         blocked_by: raw.blocked_by,
         owner: raw.owner,
+        session_id,
     })
 }
 
@@ -266,6 +273,24 @@ mod tests {
         assert_eq!(tasks[0].blocks, vec!["2"]);
         assert!(tasks[0].blocked_by.is_empty());
         assert_eq!(tasks[0].owner.as_deref(), Some("agent-1"));
+        assert_eq!(tasks[0].session_id.as_deref(), Some("session-123"));
+    }
+
+    #[test]
+    fn session_id_extracted_from_directory_name() {
+        let tmp = TempDir::new().unwrap();
+        let uuid = "a7a1946e-6c27-468b-a46b-0eb005992454";
+        let task_dir = tmp.path().join(uuid);
+        fs::create_dir_all(&task_dir).unwrap();
+
+        write_task(
+            &task_dir,
+            "1.json",
+            r#"{"id":"1","subject":"Test","status":"pending"}"#,
+        );
+
+        let tasks = parse_task_directory(&task_dir).unwrap();
+        assert_eq!(tasks[0].session_id.as_deref(), Some(uuid));
     }
 
     #[test]

@@ -46,6 +46,9 @@ pub struct UnifiedTask {
     pub blocked_by: Vec<String>,
     /// Agent name for team tasks (Claude only).
     pub owner: Option<String>,
+    /// Session UUID that created this task (Claude only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 /// Result of scanning tasks for a project.
@@ -68,4 +71,28 @@ impl TaskResult {
             errors: vec![],
         }
     }
+}
+
+/// Enriched task detail with session context, commits, and files changed.
+///
+/// Returned by the `get_task_detail` IPC command when the user clicks a task card.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskDetail {
+    /// Full task data.
+    pub task: UnifiedTask,
+    /// Session info (if a session_id was associated).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<SessionInfo>,
+    /// Commits made during the session window.
+    pub commits: Vec<crate::models::Commit>,
+    /// Deduplicated file paths changed during the session window.
+    pub files_changed: Vec<String>,
+}
+
+/// Lightweight session metadata for the task detail panel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInfo {
+    pub id: String,
+    pub started_at: String,
+    pub ended_at: String,
 }

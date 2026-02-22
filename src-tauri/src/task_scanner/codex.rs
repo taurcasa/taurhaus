@@ -280,6 +280,7 @@ fn parse_plan_from_line(line: &str) -> Result<Vec<UnifiedTask>, String> {
                 blocks: vec![],
                 blocked_by: vec![],
                 owner: None,
+                session_id: None,
             })
         })
         .collect();

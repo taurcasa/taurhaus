@@ -97,6 +97,7 @@ fn parse_checkbox_line(line: &str, line_num: usize) -> Option<UnifiedTask> {
         blocks: vec![],
         blocked_by: vec![],
         owner: None,
+        session_id: None,
     })
 }
 
