@@ -1,4 +1,4 @@
-/** Session indicator semantics for sidebar rows. */
+/** Session indicator semantics for sidebar rows and HoverCard display. */
 
 /** Display names for each CLI tool. */
 const TOOL_NAMES = {
@@ -54,38 +54,6 @@ export function rowTintClass(session) {
 export function rowTintForSessions(sessions) {
   if (!sessions || sessions.length === 0) return ''
   return sessions.some(s => hasLiveSession(s)) ? 'bg-white/[0.03]' : ''
-}
-
-/** Human-readable tooltip for hover information on the session badge. */
-export function sessionTooltip(session) {
-  if (!hasLiveSession(session)) return 'No active session'
-
-  const name = toolName(session)
-  const lines = [
-    `${name} session: ${session.state === 'idle' ? 'IDLE (waiting for input)' : `RUNNING (${name} working)`}`,
-  ]
-
-  if (session.session_id) lines.push(`Session ID: ${session.session_id}`)
-  if (session.tmux_session && session.tmux_window && session.tmux_pane) {
-    lines.push(`tmux: ${session.tmux_session}:${session.tmux_window} ${session.tmux_pane}`)
-  }
-  if (session.pid) lines.push(`PID: ${session.pid}`)
-
-  return lines.join('\n')
-}
-
-/** Full sidebar row hover text (project + git + session). */
-export function sidebarHoverInfo(project, session) {
-  const lines = [
-    project?.name ? `Project: ${project.name}` : 'Project',
-    `Git: ${String(project?.activity_state ?? 'unknown').toUpperCase()}`,
-    `Branch: ${project?.branch || '(none)'}`,
-  ]
-
-  if (project?.is_dirty) lines.push('Working tree: dirty')
-
-  lines.push(sessionTooltip(session))
-  return lines.join('\n')
 }
 
 /**

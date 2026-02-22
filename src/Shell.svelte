@@ -51,9 +51,6 @@
    * - Frame:    6px (p-1.5) padding around panels inside the dark frame
    */
 
-  // Sidebar status dots — color = git activity state only (never changes for session)
-  const dotColor     = { active: 'bg-success-300', recent: 'bg-info-300', stale: 'bg-warning-300', dormant: 'bg-zinc-400' }
-  const dotColorDark = { active: 'bg-success-300', recent: 'bg-info-300', stale: 'bg-warning-300', dormant: 'bg-zinc-500' }
 
   // Main content panel — all dark-mode switching via $derived tokens
   const mainBg         = $derived(dark ? 'bg-zinc-950' : 'bg-white')
@@ -74,13 +71,6 @@
   const sessionTint    = $derived(dark ? 'bg-brand-500/[0.03]' : 'bg-brand-50/40')
   const sessionBorder  = $derived(dark ? 'border-brand-400' : 'border-brand-500')
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
-  const dots           = $derived(dark ? dotColorDark : dotColor)
-
-  /** Dot class = git activity color + ambient shadow. No session logic (Option B). */
-  function dotClassFor(project) {
-    return dots[project.activity_state] + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
-  }
-
   /** Navigate to a project's Claude Code session in tmux. */
   function jumpToSession(e, session) {
     e.stopPropagation()
@@ -876,7 +866,7 @@
           {#each groups as group}
             {@const items = projects.filter(p => p.activity_state === group.key)}
             {#if items.length > 0}
-              <div class="px-3.5 pt-3 pb-1">
+              <div class="px-3.5 pt-4 pb-1.5">
                 <span class="text-[10px] font-medium uppercase tracking-[0.06em] text-white/20">{group.label}</span>
               </div>
               {#each items as project}
@@ -885,7 +875,7 @@
                 {@const session = projectSessions[0] ?? null}
                 {@const indicators = toolIndicators(projectSessions)}
                 <button
-                  class="w-full flex items-center gap-2 px-3 h-[34px] rounded-md text-left transition-all duration-75
+                  class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75
                     {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
                   onclick={() => selectProject(project)}
                   oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
@@ -895,8 +885,7 @@
                   {#if selected}
                     <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
                   {/if}
-                  <span class="w-[7px] h-[7px] rounded-full shrink-0 {dotClassFor(project)}"></span>
-                  <span class="text-[13px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
+                  <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
                   {#if indicators.length > 0}
                     <span class="flex items-center gap-1 shrink-0">
                       {#each indicators as ind}
@@ -905,7 +894,6 @@
                           class:cursor-pointer={ind.interactive}
                           role={ind.interactive ? 'button' : undefined}
                           tabindex={ind.interactive ? 0 : undefined}
-                          title={ind.ariaLabel}
                           aria-label={ind.ariaLabel}
                           onclick={ind.interactive ? (e) => jumpToSession(e, ind.session) : undefined}
                           onkeydown={ind.interactive ? (e) => { if (e.key === 'Enter') jumpToSession(e, ind.session) } : undefined}

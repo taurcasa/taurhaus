@@ -62,20 +62,6 @@ describe('Sidebar data loading', () => {
     expect(groups.dormant).toHaveLength(1)
   })
 
-  it('activity_state maps to correct dot color class', () => {
-    const dotColor = {
-      active: 'bg-success-300',
-      recent: 'bg-info-300',
-      stale: 'bg-warning-300',
-      dormant: 'bg-zinc-400',
-    }
-
-    expect(dotColor['active']).toBe('bg-success-300')
-    expect(dotColor['recent']).toBe('bg-info-300')
-    expect(dotColor['stale']).toBe('bg-warning-300')
-    expect(dotColor['dormant']).toBe('bg-zinc-400')
-  })
-
   it('listProjects handles error gracefully', async () => {
     ipc.listProjects.mockRejectedValue(new Error('Connection failed'))
 
@@ -271,21 +257,6 @@ describe('Context menu session actions', () => {
 })
 
 describe('Sidebar visual indicators', () => {
-  // Dot color = git activity state ONLY (Option B: dot never reflects session)
-  const dotColor = {
-    active: 'bg-success-300',
-    recent: 'bg-info-300',
-    stale: 'bg-warning-300',
-    dormant: 'bg-zinc-400',
-  }
-
-  // Mirrors dotClassFor() from Shell.svelte.
-  // Dot = git activity color + ambient shadow. No session logic.
-  function dotClassFor(project) {
-    const color = dotColor[project.activity_state]
-    return color + ' shadow-[0_0_4px_rgba(255,255,255,0.15)]'
-  }
-
   // Mirrors hasSession() from Shell.svelte.
   function hasSession(project, sessionMap) {
     const session = sessionMap.get(project.path) ?? null
@@ -307,32 +278,6 @@ describe('Sidebar visual indicators', () => {
     }
     return ''
   }
-
-  // --- Dot tests (git-only, no session influence) ---
-
-  it('dot always uses ambient shadow regardless of session', () => {
-    const project = { path: '/proj', activity_state: 'dormant' }
-    const cls = dotClassFor(project)
-    expect(cls).toContain('bg-zinc-400')
-    expect(cls).toContain('shadow-')
-    expect(cls).not.toContain('session-')
-  })
-
-  it('dot never has session classes even with active session', () => {
-    const project = { path: '/proj', activity_state: 'active' }
-    const cls = dotClassFor(project)
-    expect(cls).toBe('bg-success-300 shadow-[0_0_4px_rgba(255,255,255,0.15)]')
-    expect(cls).not.toContain('session-')
-  })
-
-  it('dot color maps correctly for all activity states', () => {
-    for (const [state, color] of Object.entries(dotColor)) {
-      const cls = dotClassFor({ activity_state: state })
-      expect(cls).toContain(color)
-    }
-  })
-
-  // --- Session indicator tests (separate element on row) ---
 
   it('hasSession true for active session', () => {
     const project = { path: '/proj', activity_state: 'dormant' }
