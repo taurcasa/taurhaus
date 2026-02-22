@@ -16,6 +16,9 @@
   const hashColor     = $derived(dark ? 'text-brand-400' : 'text-brand-600')
   const fileBg        = $derived(dark ? 'bg-zinc-800/50' : 'bg-zinc-100/80')
   const divideColor   = $derived(dark ? 'divide-zinc-800' : 'divide-zinc-200')
+  const hashPillBg    = $derived(dark ? 'bg-brand-950/80' : 'bg-brand-50')
+  const depChipBg     = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-100')
+  const depChipText   = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
 
   // Tool icon SVG paths (reused from TaskBoard)
   const TOOL_ICONS = {
@@ -33,6 +36,13 @@
   // Close on Escape key
   function handleKeydown(e) {
     if (e.key === 'Escape') onClose()
+  }
+
+  /** Split a file path into directory and filename. */
+  function splitPath(filePath) {
+    const lastSlash = filePath.lastIndexOf('/')
+    if (lastSlash === -1) return { dir: '', name: filePath }
+    return { dir: filePath.slice(0, lastSlash + 1), name: filePath.slice(lastSlash + 1) }
   }
 
   /** Format a time range as "Feb 22, 03:59 - 04:05 (6m)". */
@@ -137,12 +147,12 @@
             <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
               Commits ({detail.commits.length})
             </h4>
-            <div class="space-y-1">
+            <div class="space-y-1.5">
               {#each detail.commits as commit}
-                <div class="{sectionBg} rounded-md px-3 py-2 flex items-start gap-2">
-                  <span class="text-[11px] font-mono {hashColor} shrink-0">{commit.hash}</span>
-                  <span class="text-[12px] {textSecondary} truncate flex-1">{commit.message}</span>
-                  <span class="text-[10px] {textMuted} shrink-0">{commit.date}</span>
+                <div class="flex items-start gap-2">
+                  <code class="text-[11px] font-mono {hashColor} {hashPillBg} px-1.5 py-0.5 rounded shrink-0" data-testid="commit-hash">{commit.hash}</code>
+                  <span class="text-[12px] {textSecondary} truncate flex-1 pt-px">{commit.message}</span>
+                  <span class="text-[10px] {textMuted} shrink-0 pt-0.5">{commit.date}</span>
                 </div>
               {/each}
             </div>
@@ -157,8 +167,9 @@
             </h4>
             <div class="space-y-0.5">
               {#each detail.files_changed as filePath}
-                <div class="{fileBg} rounded px-2.5 py-1.5">
-                  <span class="text-[11px] font-mono {textSecondary}">{filePath}</span>
+                {@const parts = splitPath(filePath)}
+                <div class="{fileBg} rounded px-2.5 py-1.5 font-mono text-[11px]">
+                  {#if parts.dir}<span class="{textMuted}" data-testid="file-dir">{parts.dir}</span>{/if}<span class="{textSecondary}" data-testid="file-name">{parts.name}</span>
                 </div>
               {/each}
             </div>
@@ -169,17 +180,21 @@
         {#if detail.task.blocked_by?.length > 0 || detail.task.blocks?.length > 0}
           <section class="py-3" data-testid="detail-dependencies">
             <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Dependencies</h4>
-            <div class="space-y-1.5">
+            <div class="space-y-2">
               {#if detail.task.blocked_by?.length > 0}
-                <div class="text-[12px] {textBody}">
-                  <span class="{textMuted}">Blocked by:</span>
-                  {detail.task.blocked_by.map(id => `#${id}`).join(', ')}
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-[11px] {textMuted}">Blocked by</span>
+                  {#each detail.task.blocked_by as id}
+                    <span class="text-[11px] font-mono {depChipText} {depChipBg} px-1.5 py-0.5 rounded" data-testid="dep-chip">#{id}</span>
+                  {/each}
                 </div>
               {/if}
               {#if detail.task.blocks?.length > 0}
-                <div class="text-[12px] {textBody}">
-                  <span class="{textMuted}">Blocks:</span>
-                  {detail.task.blocks.map(id => `#${id}`).join(', ')}
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-[11px] {textMuted}">Blocks</span>
+                  {#each detail.task.blocks as id}
+                    <span class="text-[11px] font-mono {depChipText} {depChipBg} px-1.5 py-0.5 rounded" data-testid="dep-chip">#{id}</span>
+                  {/each}
                 </div>
               {/if}
             </div>

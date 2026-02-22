@@ -177,6 +177,15 @@ describe('Commits section', () => {
     expect(screen.getByText('Implement Claude parser')).toBeTruthy()
   })
 
+  it('renders commit hashes as styled pills', () => {
+    renderPanel()
+    const pills = screen.getAllByTestId('commit-hash')
+    expect(pills).toHaveLength(2)
+    expect(pills[0].tagName).toBe('CODE')
+    expect(pills[0].className).toContain('font-mono')
+    expect(pills[0].className).toContain('rounded')
+  })
+
   it('hides commits section when empty', () => {
     renderPanel({ task: SPARSE_TASK, detail: SPARSE_DETAIL })
     expect(screen.queryByTestId('detail-commits')).toBeNull()
@@ -190,10 +199,25 @@ describe('Files Changed section', () => {
     expect(screen.getByText('Files Changed (3)')).toBeTruthy()
   })
 
-  it('shows file paths', () => {
+  it('splits file paths into directory and filename', () => {
     renderPanel()
-    expect(screen.getByText('src-tauri/src/task_scanner/mod.rs')).toBeTruthy()
-    expect(screen.getByText('src/lib/TaskBoard.svelte')).toBeTruthy()
+    // Directory portions
+    const dirs = screen.getAllByTestId('file-dir')
+    expect(dirs.length).toBeGreaterThan(0)
+    expect(dirs[0].textContent).toBe('src-tauri/src/task_scanner/')
+    // Filename portions
+    const names = screen.getAllByTestId('file-name')
+    expect(names.length).toBe(3)
+    expect(names[0].textContent).toBe('mod.rs')
+  })
+
+  it('renders filename at higher contrast than directory', () => {
+    renderPanel()
+    const dir = screen.getAllByTestId('file-dir')[0]
+    const name = screen.getAllByTestId('file-name')[0]
+    // Dir uses muted color, name uses secondary (higher contrast)
+    expect(dir.className).toMatch(/text-zinc-[56]00/)
+    expect(name.className).toMatch(/text-zinc-[36]00/)
   })
 
   it('hides files section when empty', () => {
@@ -208,6 +232,23 @@ describe('Dependencies section', () => {
     expect(screen.getByTestId('detail-dependencies')).toBeTruthy()
     expect(screen.getByText(/Blocked by/)).toBeTruthy()
     expect(screen.getByText(/Blocks/)).toBeTruthy()
+  })
+
+  it('renders dependency IDs as individual chips', () => {
+    renderPanel()
+    const chips = screen.getAllByTestId('dep-chip')
+    // FULL_TASK has blocks: ['2', '3'] and blocked_by: ['0'] = 3 chips total
+    expect(chips).toHaveLength(3)
+    expect(chips[0].textContent).toBe('#0')
+    expect(chips[1].textContent).toBe('#2')
+    expect(chips[2].textContent).toBe('#3')
+  })
+
+  it('styles dependency chips with background and rounded corners', () => {
+    renderPanel()
+    const chip = screen.getAllByTestId('dep-chip')[0]
+    expect(chip.className).toContain('font-mono')
+    expect(chip.className).toContain('rounded')
   })
 
   it('hides dependencies for task without them', () => {
