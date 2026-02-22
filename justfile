@@ -58,10 +58,54 @@ build-daemon:
     cd src-tauri && cargo build --release --bin taurhaus-daemon
 
 # Install daemon to ~/.local/bin/ (WSL)
-install-daemon: build-daemon
-    mkdir -p ~/.local/bin
-    cp src-tauri/target/release/taurhaus-daemon ~/.local/bin/
-    @echo "Installed taurhaus-daemon to ~/.local/bin/"
+# Automatically stops a running daemon before install and restarts it after.
+install-daemon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAEMON_BIN="taurhaus-daemon"
+    INSTALL_DIR="$HOME/.local/bin"
+    WAS_RUNNING=false
+
+    # Check if daemon is currently running
+    if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
+        echo "▸ Stopping running $DAEMON_BIN…"
+        pkill -x "$DAEMON_BIN" || true
+        # Wait for it to actually exit (up to 5s)
+        for i in $(seq 1 10); do
+            if ! pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then break; fi
+            sleep 0.5
+        done
+        if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
+            echo "✗ Could not stop $DAEMON_BIN — force killing"
+            pkill -9 -x "$DAEMON_BIN" || true
+            sleep 0.5
+        fi
+        echo "✓ Daemon stopped"
+        WAS_RUNNING=true
+    fi
+
+    # Build
+    echo "▸ Building daemon…"
+    cd src-tauri && cargo build --release --bin "$DAEMON_BIN"
+    cd ..
+
+    # Install
+    mkdir -p "$INSTALL_DIR"
+    cp "src-tauri/target/release/$DAEMON_BIN" "$INSTALL_DIR/"
+    echo "✓ Installed $DAEMON_BIN to $INSTALL_DIR/"
+
+    # Restart if it was running before
+    if [ "$WAS_RUNNING" = true ]; then
+        echo "▸ Restarting daemon…"
+        nohup "$INSTALL_DIR/$DAEMON_BIN" >/dev/null 2>&1 &
+        sleep 0.5
+        if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
+            echo "✓ Daemon restarted (PID $(pgrep -x $DAEMON_BIN))"
+        else
+            echo "⚠ Daemon did not restart — start it manually"
+        fi
+    fi
 
 # Run the daemon in foreground (for development)
 run-daemon:
