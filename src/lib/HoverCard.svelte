@@ -1,5 +1,7 @@
 <script>
   import { sessionBadge, hasLiveSession } from './sessionIndicator.js'
+  import { getProjectActivity } from './ipc.js'
+  import { formatDuration } from './format.js'
 
   let {
     project = null,
@@ -10,6 +12,7 @@
   let cardEl = $state(null)
   let posX = $state(0)
   let posY = $state(0)
+  let historicalStats = $state(null)
 
   const liveSessions = $derived((sessions || []).filter(s => hasLiveSession(s)))
 
@@ -27,6 +30,28 @@
     stale: 'bg-warning-300',
     dormant: 'bg-zinc-500',
   }
+
+  /** Time since a timestamp, formatted as relative duration. */
+  function timeSince(timestamp) {
+    return formatDuration(Date.now() - timestamp)
+  }
+
+  // Fetch historical stats when project changes
+  $effect(() => {
+    if (!project?.path) {
+      historicalStats = null
+      return
+    }
+    const path = project.path
+    getProjectActivity(path).then(stats => {
+      // Guard against stale responses
+      if (project?.path === path) {
+        historicalStats = stats
+      }
+    }).catch(() => {
+      historicalStats = null
+    })
+  })
 
   // Position the card anchored to the right edge of the sidebar row
   $effect(() => {
@@ -86,6 +111,13 @@
       </div>
     {/if}
 
+    <!-- Historical LLM time -->
+    {#if historicalStats && historicalStats.session_count > 0}
+      <div class="mt-1.5 text-[11px] text-white/35">
+        LLM time: {formatDuration(historicalStats.total_active_ms)} across {historicalStats.session_count} session{historicalStats.session_count === 1 ? '' : 's'}
+      </div>
+    {/if}
+
     <!-- Separator -->
     <div class="h-px bg-white/[0.06] my-2.5"></div>
 
@@ -102,6 +134,18 @@
               {badge.toolLabel} {s.state === 'idle' ? '— waiting for input' : '— working'}
             </span>
           </div>
+
+          <!-- Duration stats -->
+          {#if s._duration != null}
+            <div class="space-y-0.5 text-[11px] text-white/40 mb-1">
+              <div>Running for {formatDuration(s._duration)}</div>
+              <div>Active: {formatDuration(s._activeMs)} ({s._activePercent}%)</div>
+              {#if s.state === 'idle' && s._lastTransition}
+                <div>Idle since {timeSince(s._lastTransition)} ago</div>
+              {/if}
+            </div>
+          {/if}
+
           <div class="space-y-0.5 text-[11px] font-mono text-white/25">
             {#if s.session_id}
               <div>sid: {s.session_id.slice(0, 12)}</div>

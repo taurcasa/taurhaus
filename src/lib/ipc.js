@@ -440,3 +440,18 @@ export function stopClaudeSession(tmuxPane, cliTool) {
 export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane) {
   return invokeOrMock('navigate_to_session', { tmuxSession, tmuxWindow, tmuxPane }, () => undefined)
 }
+
+/** Record a completed CLI session's activity stats. */
+export function recordSessionActivity(projectPath, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs) {
+  return invokeOrMock('record_session_activity', { projectPath, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs }, () => undefined)
+}
+
+/** Get aggregated activity stats for a project path. */
+export function getProjectActivity(projectPath) {
+  return invokeOrMock('get_project_activity', { projectPath }, () => ({
+    total_active_ms: 0,
+    total_duration_ms: 0,
+    session_count: 0,
+    last_session_at: null,
+  }))
+}

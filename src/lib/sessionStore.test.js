@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('./ipc.js', () => ({
   listClaudeSessions: vi.fn(),
+  recordSessionActivity: vi.fn().mockResolvedValue(undefined),
 }))
 
 describe('sessionStore', () => {
@@ -277,5 +278,153 @@ describe('sessionStore', () => {
     expect(store.getSessionForProject('/home/user/proj-a').cli_tool).toBe('claude')
     expect(store.getSessionForProject('/home/user/proj-b').cli_tool).toBe('codex')
     expect(store.getSessionForProject('/home/user/proj-c').cli_tool).toBe('gemini')
+  })
+
+  // --- Activity Tracker Tests ---
+
+  it('creates tracker on first poll with new PID', async () => {
+    const session = { pid: 500, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const stats = store.getSessionStats(500)
+    expect(stats).not.toBeNull()
+    expect(stats.totalTicks).toBe(1)
+    expect(stats.activeTicks).toBe(1)
+    expect(stats.projectPath).toBe('/proj')
+    expect(stats.cliTool).toBe('claude')
+  })
+
+  it('increments activeTicks only when state is active', async () => {
+    const session = { pid: 600, project_path: '/proj', state: 'idle', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const stats = store.getSessionStats(600)
+    expect(stats.totalTicks).toBe(1)
+    expect(stats.activeTicks).toBe(0) // idle — no active tick
+  })
+
+  it('increments totalTicks regardless of state', async () => {
+    const session = { pid: 700, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    // 3 poll cycles
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(500)
+
+    const stats = store.getSessionStats(700)
+    expect(stats.totalTicks).toBe(3)
+    expect(stats.activeTicks).toBe(3)
+  })
+
+  it('updates lastTransitionTime on state change', async () => {
+    const session = { pid: 800, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+    const initialTransition = store.getSessionStats(800).lastTransitionTime
+
+    // Still active — no transition
+    await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionStats(800).lastTransitionTime).toBe(initialTransition)
+
+    // Switch to idle — transition should update
+    session.state = 'idle'
+    await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionStats(800).lastTransitionTime).toBeGreaterThan(initialTransition)
+    expect(store.getSessionStats(800).lastState).toBe('idle')
+  })
+
+  it('enriches session objects with computed fields', async () => {
+    const session = { pid: 900, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const s = store.getSessionForProject('/proj')
+    expect(s._duration).toBeTypeOf('number')
+    expect(s._activeMs).toBeTypeOf('number')
+    expect(s._activePercent).toBeTypeOf('number')
+    expect(s._lastTransition).toBeTypeOf('number')
+    expect(s._activePercent).toBe(100) // all ticks were active
+  })
+
+  it('computes _activePercent as ratio of active to total ticks', async () => {
+    const session = { pid: 1000, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    // 2 active polls
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(500)
+
+    // Switch to idle for 2 polls
+    session.state = 'idle'
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(500)
+
+    const s = store.getSessionForProject('/proj')
+    // 2 active out of 4 total = 50%
+    expect(s._activePercent).toBe(50)
+  })
+
+  it('triggers recordSessionActivity IPC when session disappears', async () => {
+    const session = { pid: 1100, project_path: '/proj-x', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions
+      .mockResolvedValueOnce([session])
+      .mockResolvedValue([]) // session disappears
+
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSessionStats(1100)).not.toBeNull()
+
+    // Session disappears on next poll
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledTimes(1)
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      '/proj-x',
+      'claude',
+      expect.any(String), // startedAt
+      expect.any(String), // endedAt
+      expect.any(Number), // activeDurationMs
+      expect.any(Number), // totalDurationMs
+    )
+  })
+
+  it('cleans up tracker after session disappears', async () => {
+    const session = { pid: 1200, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions
+      .mockResolvedValueOnce([session])
+      .mockResolvedValue([])
+
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSessionStats(1200)).not.toBeNull()
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionStats(1200)).toBeNull()
+  })
+
+  it('stopPolling clears all trackers', async () => {
+    const session = { pid: 1300, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSessionStats(1300)).not.toBeNull()
+
+    store.stopPolling()
+    expect(store.getSessionStats(1300)).toBeNull()
   })
 })
