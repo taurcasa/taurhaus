@@ -76,12 +76,23 @@ const SPARSE_DETAIL = {
   files_changed: [],
 }
 
+/** Related tasks for dependency resolution. */
+const RELATED_TASKS = [
+  FULL_TASK,
+  { id: '0', subject: 'Set up project scaffold', status: 'completed', source: 'claude', blocks: ['1'], blocked_by: [], owner: null },
+  { id: '2', subject: 'Build TaskBoard UI', status: 'pending', source: 'claude', blocks: [], blocked_by: ['1'], owner: null },
+  { id: '3', subject: 'Write integration tests', status: 'pending', source: 'claude', blocks: [], blocked_by: ['1'], owner: null },
+  SPARSE_TASK,
+]
+
 function renderPanel(props = {}) {
   return render(TaskDetailPanel, {
     task: FULL_TASK,
     detail: FULL_DETAIL,
     dark: true,
+    allTasks: RELATED_TASKS,
     onClose: vi.fn(),
+    onNavigateTask: vi.fn(),
     ...props,
   })
 }
@@ -252,14 +263,41 @@ describe('Dependencies section', () => {
     expect(screen.getByText(/Blocks/)).toBeTruthy()
   })
 
-  it('renders dependency IDs as individual chips', () => {
+  it('renders dependency chips with resolved task subjects', () => {
     renderPanel()
     const chips = screen.getAllByTestId('dep-chip')
     // FULL_TASK has blocks: ['2', '3'] and blocked_by: ['0'] = 3 chips total
     expect(chips).toHaveLength(3)
+    expect(chips[0].textContent).toBe('#0 · Set up project scaffold')
+    expect(chips[1].textContent).toBe('#2 · Build TaskBoard UI')
+    expect(chips[2].textContent).toBe('#3 · Write integration tests')
+  })
+
+  it('renders resolved chips as clickable buttons', () => {
+    renderPanel()
+    const chips = screen.getAllByTestId('dep-chip')
+    expect(chips[0].tagName).toBe('BUTTON')
+    expect(chips[0].className).toContain('cursor-pointer')
+  })
+
+  it('calls onNavigateTask when dependency chip is clicked', async () => {
+    const onNavigateTask = vi.fn()
+    renderPanel({ onNavigateTask })
+    const chip = screen.getAllByTestId('dep-chip')[0]
+    await fireEvent.click(chip)
+    expect(onNavigateTask).toHaveBeenCalledOnce()
+    expect(onNavigateTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: '0', subject: 'Set up project scaffold' })
+    )
+  })
+
+  it('renders unresolved IDs as inert spans', () => {
+    // Pass empty allTasks so nothing resolves
+    renderPanel({ allTasks: [] })
+    const chips = screen.getAllByTestId('dep-chip')
+    expect(chips[0].tagName).toBe('SPAN')
     expect(chips[0].textContent).toBe('#0')
-    expect(chips[1].textContent).toBe('#2')
-    expect(chips[2].textContent).toBe('#3')
+    expect(chips[0].className).toContain('opacity-60')
   })
 
   it('styles dependency chips with background and rounded corners', () => {

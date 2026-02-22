@@ -249,7 +249,9 @@
       task={selectedTask}
       detail={taskDetail}
       {dark}
+      allTasks={tasks}
       onClose={closeDetail}
+      onNavigateTask={selectTask}
     />
   {/if}
 </div>

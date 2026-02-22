@@ -2,8 +2,13 @@
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
   import MarkdownRenderer from './MarkdownRenderer.svelte'
 
-  /** @type {{ task: object, detail: object|null, dark: boolean, onClose: () => void }} */
-  let { task, detail, dark, onClose } = $props()
+  /** @type {{ task: object, detail: object|null, dark: boolean, allTasks: object[], onClose: () => void, onNavigateTask?: (task: object) => void }} */
+  let { task, detail, dark, allTasks = [], onClose, onNavigateTask } = $props()
+
+  /** Look up a task by ID in the loaded task list. */
+  function resolveTask(id) {
+    return allTasks.find(t => t.id === id)
+  }
 
   // Dark mode tokens
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
@@ -20,6 +25,7 @@
   const hashPillBg    = $derived(dark ? 'bg-brand-950/80' : 'bg-brand-50')
   const depChipBg     = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-100')
   const depChipText   = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
+  const depChipHover  = $derived(dark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200')
 
   // Tool icon SVG paths (reused from TaskBoard)
   const TOOL_ICONS = {
@@ -183,18 +189,36 @@
             <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Dependencies</h4>
             <div class="space-y-2">
               {#if detail.task.blocked_by?.length > 0}
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-[11px] {textMuted}">Blocked by</span>
+                <div class="flex items-start gap-1.5 flex-wrap">
+                  <span class="text-[11px] {textMuted} py-0.5">Blocked by</span>
                   {#each detail.task.blocked_by as id}
-                    <span class="text-[11px] font-mono {depChipText} {depChipBg} px-1.5 py-0.5 rounded" data-testid="dep-chip">#{id}</span>
+                    {@const resolved = resolveTask(id)}
+                    {#if resolved && onNavigateTask}
+                      <button
+                        class="text-[11px] font-mono {depChipText} {depChipBg} {depChipHover} px-1.5 py-0.5 rounded cursor-pointer transition-colors text-left max-w-full truncate"
+                        data-testid="dep-chip"
+                        onclick={() => onNavigateTask(resolved)}
+                      >#{id} · {resolved.subject}</button>
+                    {:else}
+                      <span class="text-[11px] font-mono {depChipText} {depChipBg} px-1.5 py-0.5 rounded opacity-60" data-testid="dep-chip">#{id}</span>
+                    {/if}
                   {/each}
                 </div>
               {/if}
               {#if detail.task.blocks?.length > 0}
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-[11px] {textMuted}">Blocks</span>
+                <div class="flex items-start gap-1.5 flex-wrap">
+                  <span class="text-[11px] {textMuted} py-0.5">Blocks</span>
                   {#each detail.task.blocks as id}
-                    <span class="text-[11px] font-mono {depChipText} {depChipBg} px-1.5 py-0.5 rounded" data-testid="dep-chip">#{id}</span>
+                    {@const resolved = resolveTask(id)}
+                    {#if resolved && onNavigateTask}
+                      <button
+                        class="text-[11px] font-mono {depChipText} {depChipBg} {depChipHover} px-1.5 py-0.5 rounded cursor-pointer transition-colors text-left max-w-full truncate"
+                        data-testid="dep-chip"
+                        onclick={() => onNavigateTask(resolved)}
+                      >#{id} · {resolved.subject}</button>
+                    {:else}
+                      <span class="text-[11px] font-mono {depChipText} {depChipBg} px-1.5 py-0.5 rounded opacity-60" data-testid="dep-chip">#{id}</span>
+                    {/if}
                   {/each}
                 </div>
               {/if}
