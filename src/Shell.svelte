@@ -88,10 +88,10 @@
 
   // Activity state groups for sidebar ordering
   const groups = [
-    { key: 'active', label: 'ACTIVE' },
-    { key: 'recent', label: 'RECENT' },
-    { key: 'stale', label: 'STALE' },
-    { key: 'dormant', label: 'DORMANT' },
+    { key: 'active', label: 'ACTIVE', labelClass: 'text-success-300/40' },
+    { key: 'recent', label: 'RECENT', labelClass: 'text-info-300/40' },
+    { key: 'stale', label: 'STALE', labelClass: 'text-warning-300/40' },
+    { key: 'dormant', label: 'DORMANT', labelClass: 'text-zinc-400/40' },
   ]
 
   // --- Data state ---
@@ -867,7 +867,7 @@
             {@const items = projects.filter(p => p.activity_state === group.key)}
             {#if items.length > 0}
               <div class="px-3.5 pt-4 pb-1.5">
-                <span class="text-[10px] font-medium uppercase tracking-[0.06em] text-white/20">{group.label}</span>
+                <span class="text-[10px] font-medium uppercase tracking-[0.06em] {group.labelClass}">{group.label}</span>
               </div>
               {#each items as project}
                 {@const selected = selectedProject && project.id === selectedProject.id}
