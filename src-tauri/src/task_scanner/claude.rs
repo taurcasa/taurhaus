@@ -148,6 +148,7 @@ fn get_tasks_offline_in(
 /// Parse all task JSON files in a directory.
 ///
 /// The `session_id` is extracted from the directory name (the parent UUID).
+/// Tasks with `status: "deleted"` are silently excluded.
 fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
     let session_id = dir
         .file_name()
@@ -174,7 +175,8 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
         }
 
         match parse_task_file(&path, session_id.clone()) {
-            Ok(task) => tasks.push(task),
+            Ok(Some(task)) => tasks.push(task),
+            Ok(None) => {} // Deleted task — silently skip
             Err(e) => {
                 tracing::warn!(
                     path = %path.display(),
@@ -199,10 +201,18 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
 }
 
 /// Parse a single Claude task JSON file into a UnifiedTask.
-fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<UnifiedTask, String> {
+///
+/// Returns `Ok(None)` for deleted tasks (status: "deleted") so they are
+/// silently excluded from the board without logging a warning.
+fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<Option<UnifiedTask>, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Read error: {e}"))?;
     let raw: RawClaudeTask =
         serde_json::from_str(&content).map_err(|e| format!("Parse error: {e}"))?;
+
+    // Deleted tasks are excluded entirely — they should not appear on the board
+    if raw.status == "deleted" {
+        return Ok(None);
+    }
 
     let status = match raw.status.as_str() {
         "in_progress" => TaskStatus::InProgress,
@@ -210,7 +220,7 @@ fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<UnifiedTas
         _ => TaskStatus::Pending, // "pending" and anything unknown → Pending
     };
 
-    Ok(UnifiedTask {
+    Ok(Some(UnifiedTask {
         id: raw.id,
         subject: raw.subject,
         description: raw.description,
@@ -221,7 +231,7 @@ fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<UnifiedTas
         blocked_by: raw.blocked_by,
         owner: raw.owner,
         session_id,
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -382,6 +392,35 @@ mod tests {
         assert_eq!(tasks[1].status, TaskStatus::InProgress);
         assert_eq!(tasks[2].status, TaskStatus::Completed);
         assert_eq!(tasks[3].status, TaskStatus::Pending); // unknown → Pending
+    }
+
+    #[test]
+    fn deleted_tasks_are_excluded() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("session-deleted");
+        fs::create_dir_all(&task_dir).unwrap();
+
+        write_task(
+            &task_dir,
+            "1.json",
+            r#"{"id":"1","subject":"Active task","status":"in_progress"}"#,
+        );
+        write_task(
+            &task_dir,
+            "2.json",
+            r#"{"id":"2","subject":"Deleted task","status":"deleted"}"#,
+        );
+        write_task(
+            &task_dir,
+            "3.json",
+            r#"{"id":"3","subject":"Another active","status":"pending"}"#,
+        );
+
+        let tasks = parse_task_directory(&task_dir).unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].id, "1");
+        assert_eq!(tasks[1].id, "3");
+        // Deleted task #2 should not appear
     }
 
     #[test]

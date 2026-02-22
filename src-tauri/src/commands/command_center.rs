@@ -442,7 +442,13 @@ fn enrich_from_session(
     }
 }
 
-/// Persist scanned tasks into SQLite (upsert — never lose history).
+/// Persist scanned tasks into SQLite (upsert + prune stale entries).
+///
+/// After upserting the current scan results, removes DB entries for tasks that
+/// no longer appear in the scan (e.g., deleted from disk or status changed to
+/// "deleted"). Only prunes sources that contributed at least one task — if a
+/// source returned 0 tasks, its existing DB entries are preserved (the scanner
+/// may not have been able to reach the data).
 pub(crate) fn persist_task_scan(
     conn: &rusqlite::Connection,
     normalized_path: &str,
@@ -473,6 +479,27 @@ pub(crate) fn persist_task_scan(
         .collect();
     if let Err(e) = crate::db::task_queries::upsert_tasks(conn, &persisted) {
         tracing::warn!(error = %e, "Failed to persist scanned tasks");
+    }
+
+    // Prune stale tasks: for each source that contributed ≥1 task,
+    // remove DB entries that are no longer in the scan result.
+    let mut sources: std::collections::HashMap<String, Vec<&str>> =
+        std::collections::HashMap::new();
+    for task in &scan_result.tasks {
+        sources
+            .entry(task.source.to_string())
+            .or_default()
+            .push(&task.id);
+    }
+    for (source, active_ids) in &sources {
+        if let Err(e) = crate::db::task_queries::delete_stale_tasks_for_source(
+            conn,
+            normalized_path,
+            source,
+            active_ids,
+        ) {
+            tracing::warn!(error = %e, source = %source, "Failed to prune stale tasks");
+        }
     }
 }
 

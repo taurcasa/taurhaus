@@ -106,6 +106,41 @@ pub fn get_tasks_for_project(
     Ok(tasks)
 }
 
+/// Delete tasks for a project+source that are NOT in the given set of IDs.
+///
+/// Used after scanning: if the scanner returned tasks `{1, 3, 5}` for Claude,
+/// any Claude tasks in DB with IDs not in that set are stale (deleted from disk
+/// or status changed to "deleted") and should be removed.
+pub fn delete_stale_tasks_for_source(
+    conn: &Connection,
+    project_path: &str,
+    source: &str,
+    active_ids: &[&str],
+) -> Result<usize, rusqlite::Error> {
+    if active_ids.is_empty() {
+        // If no active IDs, don't delete anything — the scanner may not have run
+        return Ok(0);
+    }
+
+    // Build comma-separated placeholders for the IN clause
+    let placeholders: Vec<String> = (0..active_ids.len()).map(|i| format!("?{}", i + 3)).collect();
+    let sql = format!(
+        "DELETE FROM tasks WHERE project_path = ?1 AND source = ?2 AND source_task_id NOT IN ({})",
+        placeholders.join(", ")
+    );
+
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+        Box::new(project_path.to_string()),
+        Box::new(source.to_string()),
+    ];
+    for id in active_ids {
+        params.push(Box::new(id.to_string()));
+    }
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    conn.execute(&sql, param_refs.as_slice())
+}
+
 /// Delete all tasks for a project from a specific source.
 /// Useful when re-importing from a source that replaces all tasks (e.g., Codex update_plan).
 pub fn delete_tasks_for_source(
@@ -287,5 +322,56 @@ mod tests {
         let (conn, _tmp) = test_db();
         let tasks = get_tasks_for_project(&conn, "/projects/nonexistent").unwrap();
         assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn delete_stale_removes_tasks_not_in_active_set() {
+        let (conn, _tmp) = test_db();
+
+        upsert_task(&conn, &make_task("claude", "1", "Task 1", "pending")).unwrap();
+        upsert_task(&conn, &make_task("claude", "2", "Task 2", "in_progress")).unwrap();
+        upsert_task(&conn, &make_task("claude", "3", "Task 3", "completed")).unwrap();
+
+        // Simulate scan returning only tasks 1 and 3 (task 2 was deleted)
+        let deleted =
+            delete_stale_tasks_for_source(&conn, "/projects/foo", "claude", &["1", "3"]).unwrap();
+        assert_eq!(deleted, 1);
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].source_task_id, "1");
+        assert_eq!(tasks[1].source_task_id, "3");
+    }
+
+    #[test]
+    fn delete_stale_does_not_affect_other_sources() {
+        let (conn, _tmp) = test_db();
+
+        upsert_task(&conn, &make_task("claude", "1", "Claude task", "pending")).unwrap();
+        upsert_task(&conn, &make_task("codex", "codex-0", "Codex task", "pending")).unwrap();
+
+        // Prune claude with active set containing only task 1 — codex should be untouched
+        let deleted =
+            delete_stale_tasks_for_source(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+        assert_eq!(deleted, 0);
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks.len(), 2);
+    }
+
+    #[test]
+    fn delete_stale_with_empty_active_ids_is_noop() {
+        let (conn, _tmp) = test_db();
+
+        upsert_task(&conn, &make_task("claude", "1", "Task 1", "pending")).unwrap();
+
+        // Empty active_ids means scanner didn't run — should not delete anything
+        let deleted: Vec<&str> = vec![];
+        let removed =
+            delete_stale_tasks_for_source(&conn, "/projects/foo", "claude", &deleted).unwrap();
+        assert_eq!(removed, 0);
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks.len(), 1);
     }
 }
