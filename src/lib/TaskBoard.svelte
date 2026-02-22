@@ -144,6 +144,14 @@
     taskDetail = null
   }
 
+  /** Close panel when clicking the board background (not a card). */
+  function handleBoardClick(e) {
+    if (!selectedTask) return
+    // Don't close if click was on a task card (or inside one)
+    if (e.target.closest('[data-testid="task-row"]')) return
+    closeDetail()
+  }
+
   /** Check if a task is currently selected. */
   function isSelected(task) {
     return selectedTask && selectedTask.id === task.id && selectedTask.source === task.source
@@ -152,7 +160,9 @@
 
 <div class="flex-1 flex overflow-hidden content-enter">
   <!-- Board area (flex-1 to compress when detail panel opens) -->
-  <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="flex-1 flex flex-col overflow-hidden min-w-0" onclick={handleBoardClick}>
 
   <!-- Header bar -->
   <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
@@ -248,7 +258,8 @@
   {@const icon = TOOL_ICONS[task.source] || TOOL_ICONS.claude}
   {@const selected = isSelected(task)}
   <button
-    class="w-full text-left rounded-lg border px-3 py-2.5 mb-2 transition-colors cursor-pointer
+    class="w-full text-left rounded-lg border px-3 py-2.5 mb-2 transition-all cursor-pointer
+      active:scale-[0.98] motion-reduce:active:scale-100
       {selected ? `${cardSelectedBg} ${cardSelectedBorder} border-l-2` : `${cardBg} ${cardBorder} ${cardHover}`}"
     data-testid="task-row"
     onclick={() => selectTask(task)}

@@ -9,6 +9,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/svelte'
 import { statusBadgeClass, statusLabel } from './taskHelpers.js'
 
+// Mock markdown rendering (MarkdownRenderer depends on shiki/WASM)
+vi.mock('./markdown.js', () => ({
+  renderMarkdown: vi.fn((source) => Promise.resolve(
+    source ? `<p>${source}</p>` : ''
+  )),
+}))
+
 // ---------------------------------------------------------------------------
 // Pure helper function tests
 // ---------------------------------------------------------------------------
@@ -373,5 +380,48 @@ describe('TaskBoard component', () => {
       expect(screen.getByTestId('task-row')).toBeTruthy()
     })
     expect(screen.queryByTestId('task-detail-panel')).toBeNull()
+  })
+
+  it('card has active press state class', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      const card = screen.getByTestId('task-row')
+      expect(card.className).toContain('active:scale-[0.98]')
+    })
+  })
+
+  it('closes detail panel when clicking board background', async () => {
+    const task = makeTask({ status: 'pending', subject: 'Outside click test' })
+    getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })
+    getTaskDetail.mockResolvedValue({
+      task,
+      session: null,
+      commits: [],
+      files_changed: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Outside click test')).toBeTruthy()
+    })
+
+    // Open panel
+    await fireEvent.click(screen.getByTestId('task-row'))
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+
+    // Click on a column (board background, not a card)
+    const column = screen.getAllByTestId('kanban-column')[0]
+    await fireEvent.click(column)
+    await waitFor(() => {
+      expect(screen.queryByTestId('task-detail-panel')).toBeNull()
+    })
   })
 })
