@@ -37,9 +37,10 @@ test-frontend:
 test-watch:
     npm run test:watch
 
-# Run E2E tests (when available)
+# Run E2E tests (builds Tauri debug binary with embedded frontend, then tests via tauri-driver)
+# Set E2E_SKIP_BUILD=1 to skip the build step if you already have a fresh binary.
 test-e2e:
-    @echo "E2E tests not yet configured"
+    npx wdio run e2e/wdio.conf.js
 
 # Reset database (delete SQLite file)
 db-reset:
