@@ -28,6 +28,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "session_activity",
         include_str!("migrations/005_session_activity.sql"),
     ),
+    (
+        6,
+        "tasks",
+        include_str!("migrations/006_tasks.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

@@ -4,6 +4,7 @@ pub mod queries;
 pub mod relationship_queries;
 pub mod session_queries;
 pub mod settings_queries;
+pub mod task_queries;
 
 use std::path::Path;
 
@@ -45,7 +46,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
 
-        assert_eq!(tables, vec!["projects", "relationships", "session_activity", "sessions", "settings"]);
+        assert_eq!(tables, vec!["projects", "relationships", "session_activity", "sessions", "settings", "tasks"]);
     }
 
     #[test]
@@ -60,7 +61,7 @@ mod tests {
         let count: i64 = conn2
             .query_row("SELECT COUNT(*) FROM _migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 5);
+        assert_eq!(count, 6);
     }
 
     #[test]

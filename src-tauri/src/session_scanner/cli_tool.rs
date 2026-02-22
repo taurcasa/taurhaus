@@ -14,6 +14,16 @@ pub enum CliTool {
     Gemini,
 }
 
+impl std::fmt::Display for CliTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CliTool::Claude => write!(f, "claude"),
+            CliTool::Codex => write!(f, "codex"),
+            CliTool::Gemini => write!(f, "gemini"),
+        }
+    }
+}
+
 /// Static configuration for a CLI tool — directory layout, commands, etc.
 pub struct CliToolConfig {
     pub tool: CliTool,

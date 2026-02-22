@@ -15,6 +15,16 @@ pub enum TaskStatus {
     Completed,
 }
 
+impl std::fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskStatus::Pending => write!(f, "pending"),
+            TaskStatus::InProgress => write!(f, "in_progress"),
+            TaskStatus::Completed => write!(f, "completed"),
+        }
+    }
+}
+
 /// A task normalized from any CLI tool's native format.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnifiedTask {
