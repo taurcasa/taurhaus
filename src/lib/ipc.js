@@ -446,6 +446,23 @@ export function recordSessionActivity(projectPath, cliTool, startedAt, endedAt, 
   return invokeOrMock('record_session_activity', { projectPath, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs }, () => undefined)
 }
 
+/** Get tasks from all CLI tools for a project. */
+export function getProjectTasks(projectPath) {
+  return invokeOrMock('get_project_tasks', { projectPath }, () => ({
+    tasks: [
+      { id: '1', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: 'Adding task scanner', status: 'in_progress', source: 'claude', blocks: ['2'], blocked_by: [], owner: null },
+      { id: '2', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'pending', source: 'claude', blocks: [], blocked_by: ['1'], owner: null },
+      { id: '3', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+      { id: 'codex-0', subject: 'Initialize project structure', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
+      { id: 'codex-1', subject: 'Implement CLI parsing', description: null, active_form: null, status: 'in_progress', source: 'codex', blocks: [], blocked_by: [], owner: null },
+      { id: 'codex-2', subject: 'Add error handling', description: null, active_form: null, status: 'pending', source: 'codex', blocks: [], blocked_by: [], owner: null },
+      { id: 'todo-1', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'gemini', blocks: [], blocked_by: [], owner: null },
+      { id: 'todo-2', subject: 'Update documentation', description: null, active_form: null, status: 'completed', source: 'gemini', blocks: [], blocked_by: [], owner: null },
+    ],
+    errors: [],
+  }))
+}
+
 /** Get aggregated activity stats for a project path. */
 export function getProjectActivity(projectPath) {
   return invokeOrMock('get_project_activity', { projectPath }, () => ({

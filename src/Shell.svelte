@@ -1,5 +1,6 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession, launchClaudeSession, stopClaudeSession } from './lib/ipc.js'
+  import TaskBoard from './lib/TaskBoard.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
@@ -789,6 +790,12 @@
               {activeTab === 'files' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('files')}
           >Files</button>
+          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
+          <button
+            class="px-3 py-1 text-[13px] transition-colors border-b-2
+              {activeTab === 'tasks' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+            onclick={() => switchTab('tasks')}
+          >Tasks</button>
         {/if}
       </div>
 
@@ -1197,6 +1204,9 @@
 
           </div>
         </div>
+      {:else if activeTab === 'tasks'}
+        <!-- ═══ TASKS TAB ═══ -->
+        <TaskBoard projectPath={selectedProject.path} {dark} />
       {:else}
         <!-- ═══ FILES TAB ═══ -->
         <div class="flex-1 flex min-h-0">
