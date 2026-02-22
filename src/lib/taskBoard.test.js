@@ -53,13 +53,14 @@ describe('statusLabel', () => {
 // Component rendering tests
 // ---------------------------------------------------------------------------
 
-// Mock the ipc module so we can control what getProjectTasks returns
+// Mock the ipc module so we can control what getProjectTasks/getTaskDetail return
 vi.mock('./ipc.js', () => ({
   getProjectTasks: vi.fn(),
+  getTaskDetail: vi.fn(),
 }))
 
-// Import the mock after vi.mock so we can control return values
-const { getProjectTasks } = await import('./ipc.js')
+// Import the mocks after vi.mock so we can control return values
+const { getProjectTasks, getTaskDetail } = await import('./ipc.js')
 
 /** Helper to build a task with defaults. */
 function makeTask(overrides = {}) {
@@ -269,5 +270,108 @@ describe('TaskBoard component', () => {
       const emptyLabels = screen.getAllByText('No tasks')
       expect(emptyLabels.length).toBe(2)
     })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Card selection + detail panel
+  // ---------------------------------------------------------------------------
+
+  it('opens detail panel when card is clicked', async () => {
+    const task = makeTask({ status: 'in_progress', subject: 'Clickable task' })
+    getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })
+    getTaskDetail.mockResolvedValue({
+      task,
+      session: null,
+      commits: [],
+      files_changed: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Clickable task')).toBeTruthy()
+    })
+
+    // Click the card
+    const card = screen.getByTestId('task-row')
+    await fireEvent.click(card)
+
+    // Detail panel should appear
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+  })
+
+  it('closes detail panel when close button is clicked', async () => {
+    const task = makeTask({ status: 'pending', subject: 'Closable task' })
+    getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })
+    getTaskDetail.mockResolvedValue({
+      task,
+      session: null,
+      commits: [],
+      files_changed: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Closable task')).toBeTruthy()
+    })
+
+    // Open panel
+    await fireEvent.click(screen.getByTestId('task-row'))
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+
+    // Close panel via close button
+    await fireEvent.click(screen.getByTestId('detail-close'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('task-detail-panel')).toBeNull()
+    })
+  })
+
+  it('toggles detail panel when same card clicked twice', async () => {
+    const task = makeTask({ status: 'pending', subject: 'Toggle task' })
+    getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })
+    getTaskDetail.mockResolvedValue({
+      task,
+      session: null,
+      commits: [],
+      files_changed: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Toggle task')).toBeTruthy()
+    })
+
+    const card = screen.getByTestId('task-row')
+
+    // First click opens
+    await fireEvent.click(card)
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+
+    // Second click closes
+    await fireEvent.click(card)
+    await waitFor(() => {
+      expect(screen.queryByTestId('task-detail-panel')).toBeNull()
+    })
+  })
+
+  it('no detail panel visible by default', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByTestId('task-row')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('task-detail-panel')).toBeNull()
   })
 })

@@ -1,6 +1,7 @@
 <script>
-  import { getProjectTasks } from './ipc.js'
+  import { getProjectTasks, getTaskDetail } from './ipc.js'
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
+  import TaskDetailPanel from './TaskDetailPanel.svelte'
 
   /** @type {{ projectPath: string, dark: boolean }} */
   let { projectPath, dark } = $props()
@@ -15,12 +16,18 @@
   const cardBg        = $derived(dark ? 'bg-zinc-900/60' : 'bg-zinc-50/80')
   const cardHover     = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-100/80')
   const cardBorder    = $derived(dark ? 'border-zinc-800/60' : 'border-zinc-200/80')
+  const cardSelectedBorder = $derived(dark ? 'border-brand-500/60' : 'border-brand-500/50')
+  const cardSelectedBg     = $derived(dark ? 'bg-zinc-900/80' : 'bg-zinc-50')
   const columnBg      = $derived(dark ? 'bg-zinc-900/30' : 'bg-zinc-50/40')
 
   // Task data state
   let tasks = $state([])
   let errors = $state([])
   let loading = $state(true)
+
+  // Selection + detail panel state
+  let selectedTask = $state(null)
+  let taskDetail = $state(null)
 
   // Tool icon SVG paths (same as sessionIndicator.js — monochrome, uses currentColor)
   const TOOL_ICONS = {
@@ -101,9 +108,51 @@
       if (interval) clearInterval(interval)
     }
   })
+
+  /** Handle card click: toggle selection and fetch detail. */
+  function selectTask(task) {
+    if (selectedTask && selectedTask.id === task.id && selectedTask.source === task.source) {
+      // Clicking same card again — deselect
+      selectedTask = null
+      taskDetail = null
+    } else {
+      selectedTask = task
+      taskDetail = null // Show loading state immediately
+      fetchDetail(task)
+    }
+  }
+
+  /** Fetch enriched detail for a task. */
+  async function fetchDetail(task) {
+    try {
+      const detail = await getTaskDetail(projectPath, task.id, task.source)
+      // Only apply if this task is still selected
+      if (selectedTask && selectedTask.id === task.id && selectedTask.source === task.source) {
+        taskDetail = detail
+      }
+    } catch (e) {
+      // Silently fail — panel shows header without detail sections
+      if (selectedTask && selectedTask.id === task.id && selectedTask.source === task.source) {
+        taskDetail = { task, session: null, commits: [], files_changed: [] }
+      }
+    }
+  }
+
+  /** Close the detail panel. */
+  function closeDetail() {
+    selectedTask = null
+    taskDetail = null
+  }
+
+  /** Check if a task is currently selected. */
+  function isSelected(task) {
+    return selectedTask && selectedTask.id === task.id && selectedTask.source === task.source
+  }
 </script>
 
-<div class="flex-1 flex flex-col overflow-hidden content-enter">
+<div class="flex-1 flex overflow-hidden content-enter">
+  <!-- Board area (flex-1 to compress when detail panel opens) -->
+  <div class="flex-1 flex flex-col overflow-hidden min-w-0">
 
   <!-- Header bar -->
   <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
@@ -182,13 +231,27 @@
     </div>
 
   {/if}
+  </div>
+
+  <!-- Detail panel (slides in from right) -->
+  {#if selectedTask}
+    <TaskDetailPanel
+      task={selectedTask}
+      detail={taskDetail}
+      {dark}
+      onClose={closeDetail}
+    />
+  {/if}
 </div>
 
 {#snippet taskCard(task)}
   {@const icon = TOOL_ICONS[task.source] || TOOL_ICONS.claude}
-  <div
-    class="rounded-lg {cardBg} border {cardBorder} {cardHover} px-3 py-2.5 mb-2 transition-colors"
+  {@const selected = isSelected(task)}
+  <button
+    class="w-full text-left rounded-lg border px-3 py-2.5 mb-2 transition-colors cursor-pointer
+      {selected ? `${cardSelectedBg} ${cardSelectedBorder} border-l-2` : `${cardBg} ${cardBorder} ${cardHover}`}"
     data-testid="task-row"
+    onclick={() => selectTask(task)}
   >
     <!-- Top line: tool icon + subject -->
     <div class="flex items-start gap-2">
@@ -216,5 +279,5 @@
         {/if}
       </div>
     {/if}
-  </div>
+  </button>
 {/snippet}

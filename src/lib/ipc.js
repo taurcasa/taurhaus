@@ -463,6 +463,41 @@ export function getProjectTasks(projectPath) {
   }))
 }
 
+/** Get enriched detail for a single task: full data + session info + commits + files changed. */
+export function getTaskDetail(projectPath, taskId, source) {
+  return invokeOrMock('get_task_detail', { projectPath, taskId, source }, () => ({
+    task: {
+      id: taskId,
+      subject: 'Add task scanner backend',
+      description: 'Parse tasks from all three CLI tools and present them in a unified task board.',
+      active_form: 'Adding task scanner',
+      status: 'in_progress',
+      source: source || 'claude',
+      blocks: ['2'],
+      blocked_by: [],
+      owner: null,
+      session_id: 'abc-123-def',
+    },
+    session: {
+      id: 'abc-123-def',
+      started_at: new Date(Date.now() - 3600000).toISOString(),
+      ended_at: new Date().toISOString(),
+    },
+    commits: [
+      { hash: 'abc12345', message: 'Add task scanner types and module scaffold', author: 'Developer', date: '30m' },
+      { hash: 'def67890', message: 'Implement Claude task file parser', author: 'Developer', date: '1h' },
+      { hash: 'ghi11111', message: 'Add Codex JSONL plan parser', author: 'Developer', date: '2h' },
+    ],
+    files_changed: [
+      'src-tauri/src/task_scanner/mod.rs',
+      'src-tauri/src/task_scanner/types.rs',
+      'src-tauri/src/task_scanner/claude.rs',
+      'src-tauri/src/task_scanner/codex.rs',
+      'src-tauri/src/task_scanner/gemini.rs',
+    ],
+  }))
+}
+
 /** Get aggregated activity stats for a project path. */
 export function getProjectActivity(projectPath) {
   return invokeOrMock('get_project_activity', { projectPath }, () => ({
