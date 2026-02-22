@@ -15,6 +15,7 @@
   const sectionBg     = $derived(dark ? 'bg-zinc-900/50' : 'bg-zinc-50/80')
   const hashColor     = $derived(dark ? 'text-brand-400' : 'text-brand-600')
   const fileBg        = $derived(dark ? 'bg-zinc-800/50' : 'bg-zinc-100/80')
+  const divideColor   = $derived(dark ? 'divide-zinc-800' : 'divide-zinc-200')
 
   // Tool icon SVG paths (reused from TaskBoard)
   const TOOL_ICONS = {
@@ -93,11 +94,11 @@
   </header>
 
   <!-- Scrollable content -->
-  <div class="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+  <div class="flex-1 overflow-y-auto px-4">
 
     <!-- Loading state -->
     {#if !detail}
-      <div class="space-y-3" data-testid="detail-loading">
+      <div class="space-y-3 py-3" data-testid="detail-loading">
         {#each Array(3) as _}
           <div class="h-3 w-full rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
         {/each}
@@ -105,90 +106,95 @@
 
     {:else}
 
-      <!-- Description -->
-      {#if detail.task.description}
-        <section data-testid="detail-description">
-          <p class="text-[13px] leading-relaxed {textBody}">{detail.task.description}</p>
-        </section>
-      {/if}
+      <!-- Sections with keyline dividers between them -->
+      <div class="divide-y {divideColor}" data-testid="detail-sections">
 
-      <!-- Session info -->
-      {#if detail.session}
-        <section data-testid="detail-session">
-          <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Session</h4>
-          <div class="{sectionBg} rounded-md px-3 py-2 space-y-1">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-mono {hashColor}">{detail.session.id.slice(0, 8)}</span>
+        <!-- Description -->
+        {#if detail.task.description}
+          <section class="py-3" data-testid="detail-description">
+            <p class="text-[13px] leading-relaxed {textBody}">{detail.task.description}</p>
+          </section>
+        {/if}
+
+        <!-- Session info -->
+        {#if detail.session}
+          <section class="py-3" data-testid="detail-session">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Session</h4>
+            <div class="{sectionBg} rounded-md px-3 py-2 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-mono {hashColor}">{detail.session.id.slice(0, 8)}</span>
+              </div>
+              <div class="text-[11px] {textMuted}">
+                {formatTimeRange(detail.session.started_at, detail.session.ended_at)}
+              </div>
             </div>
-            <div class="text-[11px] {textMuted}">
-              {formatTimeRange(detail.session.started_at, detail.session.ended_at)}
+          </section>
+        {/if}
+
+        <!-- Commits -->
+        {#if detail.commits.length > 0}
+          <section class="py-3" data-testid="detail-commits">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
+              Commits ({detail.commits.length})
+            </h4>
+            <div class="space-y-1">
+              {#each detail.commits as commit}
+                <div class="{sectionBg} rounded-md px-3 py-2 flex items-start gap-2">
+                  <span class="text-[11px] font-mono {hashColor} shrink-0">{commit.hash}</span>
+                  <span class="text-[12px] {textSecondary} truncate flex-1">{commit.message}</span>
+                  <span class="text-[10px] {textMuted} shrink-0">{commit.date}</span>
+                </div>
+              {/each}
             </div>
-          </div>
-        </section>
-      {/if}
+          </section>
+        {/if}
 
-      <!-- Commits -->
-      {#if detail.commits.length > 0}
-        <section data-testid="detail-commits">
-          <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
-            Commits ({detail.commits.length})
-          </h4>
-          <div class="space-y-1">
-            {#each detail.commits as commit}
-              <div class="{sectionBg} rounded-md px-3 py-2 flex items-start gap-2">
-                <span class="text-[11px] font-mono {hashColor} shrink-0">{commit.hash}</span>
-                <span class="text-[12px] {textSecondary} truncate flex-1">{commit.message}</span>
-                <span class="text-[10px] {textMuted} shrink-0">{commit.date}</span>
-              </div>
-            {/each}
-          </div>
-        </section>
-      {/if}
+        <!-- Files Changed -->
+        {#if detail.files_changed.length > 0}
+          <section class="py-3" data-testid="detail-files">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
+              Files Changed ({detail.files_changed.length})
+            </h4>
+            <div class="space-y-0.5">
+              {#each detail.files_changed as filePath}
+                <div class="{fileBg} rounded px-2.5 py-1.5">
+                  <span class="text-[11px] font-mono {textSecondary}">{filePath}</span>
+                </div>
+              {/each}
+            </div>
+          </section>
+        {/if}
 
-      <!-- Files Changed -->
-      {#if detail.files_changed.length > 0}
-        <section data-testid="detail-files">
-          <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
-            Files Changed ({detail.files_changed.length})
-          </h4>
-          <div class="space-y-0.5">
-            {#each detail.files_changed as filePath}
-              <div class="{fileBg} rounded px-2.5 py-1.5">
-                <span class="text-[11px] font-mono {textSecondary}">{filePath}</span>
-              </div>
-            {/each}
-          </div>
-        </section>
-      {/if}
+        <!-- Dependencies -->
+        {#if detail.task.blocked_by?.length > 0 || detail.task.blocks?.length > 0}
+          <section class="py-3" data-testid="detail-dependencies">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Dependencies</h4>
+            <div class="space-y-1.5">
+              {#if detail.task.blocked_by?.length > 0}
+                <div class="text-[12px] {textBody}">
+                  <span class="{textMuted}">Blocked by:</span>
+                  {detail.task.blocked_by.map(id => `#${id}`).join(', ')}
+                </div>
+              {/if}
+              {#if detail.task.blocks?.length > 0}
+                <div class="text-[12px] {textBody}">
+                  <span class="{textMuted}">Blocks:</span>
+                  {detail.task.blocks.map(id => `#${id}`).join(', ')}
+                </div>
+              {/if}
+            </div>
+          </section>
+        {/if}
 
-      <!-- Dependencies -->
-      {#if detail.task.blocked_by?.length > 0 || detail.task.blocks?.length > 0}
-        <section data-testid="detail-dependencies">
-          <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Dependencies</h4>
-          <div class="space-y-1.5">
-            {#if detail.task.blocked_by?.length > 0}
-              <div class="text-[12px] {textBody}">
-                <span class="{textMuted}">Blocked by:</span>
-                {detail.task.blocked_by.map(id => `#${id}`).join(', ')}
-              </div>
-            {/if}
-            {#if detail.task.blocks?.length > 0}
-              <div class="text-[12px] {textBody}">
-                <span class="{textMuted}">Blocks:</span>
-                {detail.task.blocks.map(id => `#${id}`).join(', ')}
-              </div>
-            {/if}
-          </div>
-        </section>
-      {/if}
+        <!-- Owner -->
+        {#if detail.task.owner}
+          <section class="py-3" data-testid="detail-owner">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Owner</h4>
+            <span class="text-[12px] {textBody}">{detail.task.owner}</span>
+          </section>
+        {/if}
 
-      <!-- Owner -->
-      {#if detail.task.owner}
-        <section data-testid="detail-owner">
-          <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Owner</h4>
-          <span class="text-[12px] {textBody}">{detail.task.owner}</span>
-        </section>
-      {/if}
+      </div>
 
     {/if}
 

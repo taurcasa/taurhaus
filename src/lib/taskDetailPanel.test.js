@@ -246,6 +246,19 @@ describe('Sparse task rendering', () => {
   })
 })
 
+describe('Section structure', () => {
+  it('wraps sections in a divide-y container for keyline dividers', () => {
+    renderPanel()
+    const sections = screen.getByTestId('detail-sections')
+    expect(sections.className).toContain('divide-y')
+  })
+
+  it('has no section container during loading', () => {
+    renderPanel({ detail: null })
+    expect(screen.queryByTestId('detail-sections')).toBeNull()
+  })
+})
+
 describe('Dark mode', () => {
   it('uses dark panel background in dark mode', () => {
     renderPanel({ dark: true })
