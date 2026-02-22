@@ -308,64 +308,132 @@ pub fn get_project_activity(
 
 /// Get tasks from all CLI tools for a project.
 ///
-/// Scans Claude task files, Codex update_plan entries, and Gemini TODO.md
-/// for the specified project path. Returns partial results if any source fails.
+/// Pure DB read — returns persisted tasks from SQLite.
+/// Task scanning and persistence happen in the background via the event-driven
+/// task sync pipeline (daemon watches `~/.claude/tasks/`, triggers scan + persist).
 #[tauri::command]
 pub fn get_project_tasks(
-    provider: State<'_, ProviderState>,
+    db: State<'_, DbState>,
     project_path: String,
 ) -> Result<crate::task_scanner::TaskResult, String> {
-    // Get current sessions from scanner (reuses existing scan logic)
-    let all_sessions = if let Some(ref daemon) = provider.daemon {
+    let normalized_path = crate::provider::path::to_linux(&project_path)
+        .unwrap_or_else(|| project_path.clone());
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let db_tasks = crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path)
+        .map_err(|e| e.to_string())?;
+
+    let tasks: Vec<crate::task_scanner::UnifiedTask> = db_tasks
+        .into_iter()
+        .map(|t| crate::task_scanner::UnifiedTask {
+            id: t.source_task_id,
+            subject: t.subject,
+            description: t.description,
+            active_form: t.active_form,
+            status: match t.status.as_str() {
+                "in_progress" => crate::task_scanner::TaskStatus::InProgress,
+                "completed" => crate::task_scanner::TaskStatus::Completed,
+                _ => crate::task_scanner::TaskStatus::Pending,
+            },
+            source: match t.source.as_str() {
+                "codex" => CliTool::Codex,
+                "gemini" => CliTool::Gemini,
+                _ => CliTool::Claude,
+            },
+            blocks: t.blocks,
+            blocked_by: t.blocked_by,
+            owner: t.owner,
+        })
+        .collect();
+
+    Ok(crate::task_scanner::TaskResult {
+        tasks,
+        errors: vec![],
+    })
+}
+
+/// Persist scanned tasks into SQLite (upsert — never lose history).
+pub(crate) fn persist_task_scan(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+    scan_result: &crate::task_scanner::TaskResult,
+) {
+    if scan_result.tasks.is_empty() {
+        return;
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let persisted: Vec<crate::db::task_queries::PersistedTask> = scan_result
+        .tasks
+        .iter()
+        .map(|t| crate::db::task_queries::PersistedTask {
+            project_path: normalized_path.to_string(),
+            source: t.source.to_string(),
+            source_task_id: t.id.clone(),
+            subject: t.subject.clone(),
+            description: t.description.clone(),
+            active_form: t.active_form.clone(),
+            status: t.status.to_string(),
+            blocks: t.blocks.clone(),
+            blocked_by: t.blocked_by.clone(),
+            owner: t.owner.clone(),
+            session_id: None,
+            first_seen_at: now.clone(),
+            updated_at: now.clone(),
+        })
+        .collect();
+    if let Err(e) = crate::db::task_queries::upsert_tasks(conn, &persisted) {
+        tracing::warn!(error = %e, "Failed to persist scanned tasks");
+    }
+}
+
+/// Scan task files from live sources (daemon or local).
+pub(crate) fn scan_tasks_from_files(
+    provider: &ProviderState,
+    project_path: &str,
+) -> crate::task_scanner::TaskResult {
+    // Try daemon first — required on Windows where task files live in WSL
+    if let Some(ref daemon) = provider.daemon {
+        if !daemon.is_connected() {
+            daemon.try_reconnect();
+        }
+
         if daemon.is_connected() {
-            // Try daemon first for Windows/WSL scenarios
-            let id = "list-sessions-for-tasks";
-            let request = crate::daemon::protocol::DaemonRequest::new(
+            let linux_path = crate::provider::path::to_linux(project_path)
+                .unwrap_or_else(|| project_path.to_string());
+
+            let id = "scan-project-tasks";
+            let request = protocol::DaemonRequest::new(
                 id,
-                crate::daemon::protocol::method::LIST_CLAUDE_SESSIONS,
-                serde_json::Value::Null,
+                protocol::method::GET_PROJECT_TASKS,
+                protocol::PathParams { path: linux_path },
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    let mut sessions: Vec<ClaudeSession> = response
+                    if let Some(result) = response
                         .result
                         .and_then(|v| serde_json::from_value(v).ok())
-                        .unwrap_or_default();
-
-                    // Convert Linux paths to Windows paths (same as list_claude_sessions)
-                    if let Some(ref distro) = provider.wsl_distro {
-                        for session in &mut sessions {
-                            if session.project_path.starts_with('/') {
-                                session.project_path =
-                                    crate::provider::path::to_windows(
-                                        &session.project_path,
-                                        distro,
-                                    );
-                            }
-                        }
+                    {
+                        return result;
                     }
-
-                    sessions
                 }
-                _ => crate::session_scanner::scan_sessions(),
+                Ok(response) => {
+                    tracing::warn!(error = ?response.error, "Daemon task scan failed");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Daemon request failed for task scan");
+                }
             }
-        } else {
-            crate::session_scanner::scan_sessions()
         }
-    } else {
-        crate::session_scanner::scan_sessions()
-    };
+    }
 
-    // Filter to sessions for this project
+    // Local fallback (Linux, or daemon unavailable)
+    let all_sessions = crate::session_scanner::scan_sessions();
     let project_sessions: Vec<ClaudeSession> = all_sessions
         .into_iter()
         .filter(|s| s.project_path == project_path)
         .collect();
 
-    Ok(crate::task_scanner::get_tasks_for_project(
-        &project_path,
-        &project_sessions,
-    ))
+    crate::task_scanner::get_tasks_for_project(project_path, &project_sessions)
 }
 
 #[cfg(test)]

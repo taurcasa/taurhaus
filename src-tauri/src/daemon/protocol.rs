@@ -82,6 +82,9 @@ pub mod method {
     pub const LAUNCH_SESSION: &str = "launch_session";
     pub const STOP_SESSION: &str = "stop_session";
     pub const NAVIGATE_TO_SESSION: &str = "navigate_to_session";
+
+    // Task scanner
+    pub const GET_PROJECT_TASKS: &str = "get_project_tasks";
 }
 
 pub mod event {

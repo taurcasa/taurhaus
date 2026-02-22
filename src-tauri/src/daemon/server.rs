@@ -290,6 +290,9 @@ fn dispatch(
         protocol::method::NAVIGATE_TO_SESSION => {
             handle_navigate_to_session(&request.id, &request.params)
         }
+        protocol::method::GET_PROJECT_TASKS => {
+            handle_get_project_tasks(&request.id, &request.params)
+        }
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
@@ -502,6 +505,28 @@ fn handle_navigate_to_session(id: &str, params: &serde_json::Value) -> DaemonRes
         Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
         Err(e) => DaemonResponse::err(id, "NAVIGATE_ERROR", e),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Task scanner handler
+// ---------------------------------------------------------------------------
+
+fn handle_get_project_tasks(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+
+    // Get sessions from the daemon-local scanner, filter to this project
+    let all_sessions = crate::session_scanner::scan_sessions();
+    let project_sessions: Vec<crate::session_scanner::ClaudeSession> = all_sessions
+        .into_iter()
+        .filter(|s| s.project_path == params.path)
+        .collect();
+
+    let result =
+        crate::task_scanner::get_tasks_for_project(&params.path, &project_sessions);
+    DaemonResponse::ok(id, result)
 }
 
 // ---------------------------------------------------------------------------

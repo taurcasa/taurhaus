@@ -166,6 +166,8 @@ pub fn run() {
 
             // If daemon is connected, start an event listener for WSL projects.
             // This opens a second TCP connection dedicated to receiving watch events.
+            // The daemon also watches ~/.claude/tasks/ for event-driven task sync.
+            let has_daemon = daemon_addr.is_some();
             if let Some(daemon_addr) = daemon_addr {
                 let distro = wsl_distro.clone();
                 let event_tx_clone = event_tx.clone();
@@ -191,6 +193,34 @@ pub fn run() {
                 .expect("failed to initialize search index");
             app.manage(SearchState(Mutex::new(search_index)));
 
+            // Watch Claude task directories for event-driven task sync.
+            // In daemon mode, start_daemon_watches handles this.
+            // In local mode, we watch directly via the ProjectWatcher.
+            if !has_daemon {
+                if let Some(home) = dirs::home_dir() {
+                    let tasks_dir = home.join(".claude").join("tasks");
+                    if tasks_dir.is_dir() {
+                        let watcher_state = app.state::<WatcherState>();
+                        let mut watcher_guard = watcher_state.0.lock().unwrap();
+                        if let Err(e) = watcher_guard.watch_project(
+                            "__claude_tasks__".to_string(),
+                            tasks_dir.clone(),
+                        ) {
+                            tracing::debug!(
+                                error = %e,
+                                path = %tasks_dir.display(),
+                                "Could not watch Claude tasks directory"
+                            );
+                        } else {
+                            tracing::info!(
+                                path = %tasks_dir.display(),
+                                "Watching Claude tasks directory (local)"
+                            );
+                        }
+                    }
+                }
+            }
+
             // Run slow startup tasks on a background thread so the window
             // appears immediately.  These involve git operations that can take
             // seconds per project over cross-filesystem paths (WSL UNC).
@@ -204,6 +234,9 @@ pub fn run() {
 
                 // Build search index if empty
                 startup_search_index(&bg_handle);
+
+                // Seed task database from live sources
+                startup_task_scan(&bg_handle);
             });
 
             tracing::info!(?db_path, "database initialized");
@@ -272,7 +305,30 @@ fn process_watch_events(
 ) {
     use fs::watcher::WatchEvent;
 
+    // Spawn task scan thread with trailing-edge debounce.
+    // When task-related file events arrive, we send a () trigger. The scan
+    // thread waits for 2 seconds of silence, then runs one scan + persist.
+    let (task_trigger_tx, task_trigger_rx) = std::sync::mpsc::channel::<()>();
+    let app_for_tasks = app.clone();
+    std::thread::spawn(move || {
+        task_scan_loop(task_trigger_rx, app_for_tasks);
+    });
+
     for event in rx {
+        // Intercept internal watch events (task directory, etc.).
+        // These don't correspond to real projects — skip activity tracking
+        // and all normal event processing.
+        match &event {
+            WatchEvent::FileChanged { project_id, .. }
+            | WatchEvent::GitChanged { project_id }
+                if project_id.starts_with("__") =>
+            {
+                let _ = task_trigger_tx.send(());
+                continue;
+            }
+            _ => {}
+        }
+
         // Bump last_activity_at for any file/git/session activity
         let activity_project_id = match &event {
             WatchEvent::GitChanged { project_id }
@@ -625,6 +681,126 @@ fn startup_session_scan(app: &tauri::AppHandle) {
     }
 }
 
+/// On startup, scan all registered projects' tasks and seed the SQLite database.
+///
+/// This ensures the first frontend read has data. Subsequent updates are
+/// event-driven (daemon watches `~/.claude/tasks/`).
+fn startup_task_scan(app: &tauri::AppHandle) {
+    sync_all_project_tasks(app);
+}
+
+/// Background thread that handles task re-scanning with trailing-edge debounce.
+///
+/// Waits for a trigger signal (from file watcher events), then drains additional
+/// signals for 2 seconds. After the debounce window closes, scans all projects'
+/// tasks and persists to SQLite. This ensures rapid task file changes (e.g.,
+/// Claude creating 4 tasks at once) result in only one scan.
+fn task_scan_loop(
+    rx: std::sync::mpsc::Receiver<()>,
+    app: tauri::AppHandle,
+) {
+    use std::time::{Duration, Instant};
+    const DEBOUNCE: Duration = Duration::from_secs(2);
+
+    loop {
+        // Wait for first trigger
+        if rx.recv().is_err() {
+            break;
+        }
+
+        // Trailing-edge debounce: drain for 2 seconds
+        let deadline = Instant::now() + DEBOUNCE;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match rx.recv_timeout(remaining) {
+                Ok(()) => {} // More triggers, keep draining
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            }
+        }
+
+        // Scan all projects' tasks
+        sync_all_project_tasks(&app);
+    }
+}
+
+/// Scan tasks for all registered projects, persist to SQLite, and notify frontend.
+///
+/// Called from both the startup seed and the event-driven scan loop.
+fn sync_all_project_tasks(app: &tauri::AppHandle) {
+    let db_state = app.state::<DbState>();
+    let provider_state = app.state::<ProviderState>();
+
+    // Snapshot project list (brief DB lock)
+    let projects = {
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        db::queries::list_projects(&conn).unwrap_or_default()
+    };
+
+    let mut total_tasks = 0;
+    for project in &projects {
+        // Scan tasks from files (daemon or local)
+        let scan_result = commands::command_center::scan_tasks_from_files(
+            &provider_state,
+            &project.path,
+        );
+
+        if scan_result.tasks.is_empty() {
+            continue;
+        }
+
+        // Normalize path for DB storage
+        let normalized_path = provider::path::to_linux(&project.path)
+            .unwrap_or_else(|| project.path.clone());
+
+        // Persist to SQLite (brief DB lock per project)
+        {
+            let conn = match db_state.0.lock() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            commands::command_center::persist_task_scan(
+                &conn,
+                &normalized_path,
+                &scan_result,
+            );
+        }
+
+        total_tasks += scan_result.tasks.len();
+
+        // Emit per-project event to frontend
+        let _ = app.emit(
+            "project-tasks-changed",
+            serde_json::json!({
+                "project_id": project.id,
+                "task_count": scan_result.tasks.len(),
+            }),
+        );
+    }
+
+    if total_tasks > 0 {
+        tracing::debug!(total_tasks, projects = projects.len(), "Task sync complete");
+    }
+}
+
+/// Extract the WSL home directory from a Linux path.
+///
+/// `/home/mstie/projects/foo` → `/home/mstie`
+fn extract_wsl_home(linux_path: &str) -> Option<String> {
+    let parts: Vec<&str> = linux_path.splitn(4, '/').collect();
+    if parts.len() >= 3 && parts[1] == "home" {
+        Some(format!("/{}/{}", parts[1], parts[2]))
+    } else {
+        None
+    }
+}
+
 /// Start daemon event listener for WSL projects.
 ///
 /// Opens a dedicated TCP connection to the daemon, sends `watch` commands for
@@ -650,6 +826,7 @@ fn start_daemon_watches(
 
     // Register watches for all WSL projects
     let mut count = 0;
+    let mut wsl_home: Option<String> = None;
     for project in &projects {
         if !provider::path::is_wsl_path(&project.path) {
             continue;
@@ -664,6 +841,11 @@ fn start_daemon_watches(
             }
         };
 
+        // Extract WSL home from first successful conversion
+        if wsl_home.is_none() {
+            wsl_home = extract_wsl_home(&linux_path);
+        }
+
         if let Err(e) = listener.watch(&project.id, &linux_path) {
             tracing::warn!(
                 project = project.name,
@@ -675,7 +857,23 @@ fn start_daemon_watches(
         }
     }
 
-    if count > 0 {
+    // Watch Claude task directories for event-driven task sync.
+    // Uses a special "__claude_tasks__" project ID that process_watch_events
+    // intercepts to trigger background task scanning instead of normal file handling.
+    if let Some(ref home) = wsl_home {
+        let claude_tasks_dir = format!("{home}/.claude/tasks");
+        if let Err(e) = listener.watch("__claude_tasks__", &claude_tasks_dir) {
+            tracing::debug!(
+                error = %e,
+                path = %claude_tasks_dir,
+                "Could not watch Claude tasks directory (may not exist yet)"
+            );
+        } else {
+            tracing::info!(path = %claude_tasks_dir, "Watching Claude tasks directory (daemon)");
+        }
+    }
+
+    if count > 0 || wsl_home.is_some() {
         tracing::info!(
             count,
             distro = ?wsl_distro,
