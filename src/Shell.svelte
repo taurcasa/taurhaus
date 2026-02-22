@@ -16,6 +16,11 @@
 
   let dark = $state(false)
   let preview = $state(false)
+
+  // Sync dark mode to <html> element so global CSS (scrollbar styling) can react
+  $effect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+  })
   let searchOpen = $state(false)
   let settingsOpen = $state(false)
   let showAddProject = $state(false)

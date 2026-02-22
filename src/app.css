@@ -83,3 +83,66 @@ body {
     filter: brightness(1.1);
   }
 }
+
+/* ── Scrollbar styling ────────────────────────────────────────────────── */
+/* Explicit scrollbar styling for both modes — no OS defaults.
+   Ensures consistent appearance across Windows, macOS, and Linux.
+   Tauri uses WebView2 (Chromium) on Windows, WebKit on macOS/Linux. */
+
+/* ─── Base: both modes ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ─── Light mode ─── */
+::-webkit-scrollbar-thumb {
+  background: #d4d4d8; /* zinc-300 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa; /* zinc-400 */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ─── Dark mode — main content ─── */
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46; /* zinc-700 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b; /* zinc-600 */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ─── Dark mode — sidebar (darker surface = subtler thumb) ─── */
+.dark aside ::-webkit-scrollbar-thumb {
+  background: #27272a; /* zinc-800 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark aside ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46; /* zinc-700 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
