@@ -889,6 +889,75 @@ fn start_daemon_watches(
     }
 }
 
+/// Re-register all daemon watches after a reconnection.
+///
+/// Spawns a new `start_daemon_watches` thread using current project list from DB.
+/// The old event listener thread has already exited (daemon connection was lost),
+/// so this creates a fresh TCP connection for the event stream.
+fn respawn_daemon_watches(app: &tauri::AppHandle) {
+    let provider_state = app.state::<ProviderState>();
+    let Some(ref daemon) = provider_state.daemon else {
+        return;
+    };
+    let daemon_addr = daemon.addr().to_string();
+    let distro = provider_state.wsl_distro.clone();
+
+    let watcher_state = app.state::<WatcherState>();
+    let event_tx = match watcher_state.0.lock() {
+        Ok(w) => w.event_sender(),
+        Err(_) => return,
+    };
+
+    let db_state = app.state::<commands::projects::DbState>();
+    let projects = match db_state.0.lock() {
+        Ok(conn) => db::queries::list_projects(&conn).unwrap_or_default(),
+        Err(_) => return,
+    };
+
+    tracing::info!(
+        project_count = projects.len(),
+        "Re-registering daemon watches after reconnection"
+    );
+
+    std::thread::spawn(move || {
+        start_daemon_watches(daemon_addr, event_tx, distro, projects);
+    });
+
+    // Also re-scan sessions that may have been missed while disconnected
+    {
+        let db_state = app.state::<commands::projects::DbState>();
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let all_projects = db::queries::list_projects(&conn).unwrap_or_default();
+        for project in &all_projects {
+            let root = if provider::path::is_wsl_path(&project.path) {
+                provider::path::wsl_unc_to_linux(&project.path)
+                    .map(std::path::PathBuf::from)
+            } else {
+                Some(std::path::PathBuf::from(&project.path))
+            };
+            if let Some(root) = root {
+                match services::session_import::scan_and_import_sessions(
+                    &conn,
+                    &project.id,
+                    &root,
+                ) {
+                    Ok(imported) if !imported.is_empty() => {
+                        tracing::info!(
+                            project = project.name,
+                            count = imported.len(),
+                            "Imported missed sessions after reconnection"
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
 /// Background thread that monitors daemon health via periodic pings.
 ///
 /// On disconnect: attempts restart and reconnection (max 3 attempts per session).
@@ -958,6 +1027,8 @@ fn daemon_health_check(app: tauri::AppHandle) {
             if daemon.reconnect().is_ok() {
                 tracing::info!("Reconnected to daemon");
                 consecutive_failures = 0;
+                restart_attempts = 0;
+                respawn_daemon_watches(&app);
                 let _ = app.emit(
                     "daemon-status",
                     serde_json::json!({ "status": "connected" }),
@@ -982,6 +1053,8 @@ fn daemon_health_check(app: tauri::AppHandle) {
                     if daemon.reconnect().is_ok() {
                         tracing::info!("Reconnected after daemon restart");
                         consecutive_failures = 0;
+                        restart_attempts = 0;
+                        respawn_daemon_watches(&app);
                         let _ = app.emit(
                             "daemon-status",
                             serde_json::json!({ "status": "connected" }),
