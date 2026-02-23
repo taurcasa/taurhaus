@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession, launchClaudeSession, stopClaudeSession } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession, launchClaudeSession, stopClaudeSession, getSettings } from './lib/ipc.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
@@ -14,9 +14,17 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling, getSessionForProject, getSessionsForProject } from './lib/sessionStore.svelte.js'
   import { rowTintClass, rowTintForSessions, sessionBadge, toolIndicators } from './lib/sessionIndicator.js'
   import HoverCard from './lib/HoverCard.svelte'
+  import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
+
+  import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
 
   let dark = $state(false)
   let preview = $state(false)
+
+  // Code theme preferences (persisted in settings)
+  let codeThemeLight = $state(DEFAULT_LIGHT_THEME)
+  let codeThemeDark = $state(DEFAULT_DARK_THEME)
+  const codeTheme = $derived(dark ? codeThemeDark : codeThemeLight)
 
   // Sync dark mode to <html> element so global CSS (scrollbar styling) can react
   $effect(() => {
@@ -110,6 +118,7 @@
 
   // Tab state
   let activeTab = $state('overview')
+  let visitedTabs = $state(new Set(['overview']))
 
   // Overview: commits
   let recentCommits = $state([])
@@ -140,12 +149,12 @@
 
   function navigateToCommit(hash) {
     gitNavTarget = { type: 'commit', hash }
-    switchTab('git')
+    switchTab('git', { tab: 'git', commit: hash })
   }
 
   function navigateToCommitRange(after, before) {
     gitNavTarget = { type: 'range', after, before }
-    switchTab('git')
+    switchTab('git', { tab: 'git', rangeFilter: { after, before } })
   }
 
   // Computed hero display — session if fresh (<7 days), README otherwise
@@ -161,6 +170,23 @@
     if (!readmeContent?.content) return ''
     return readmeContent.content.replace(/^#\s+[^\n]*\n?/, '')
   })
+
+  // Load code theme prefs from settings
+  async function loadCodeThemeFromSettings() {
+    try {
+      const s = await getSettings()
+      if (s.code_theme) {
+        codeThemeLight = s.code_theme.light || DEFAULT_LIGHT_THEME
+        codeThemeDark = s.code_theme.dark || DEFAULT_DARK_THEME
+      }
+    } catch {
+      // Keep defaults on error
+    }
+  }
+
+  function handleCodeThemeChanged() {
+    loadCodeThemeFromSettings()
+  }
 
   // Check first-run + load projects on mount
   $effect(() => {
@@ -178,12 +204,14 @@
     }
     if (!showWizard) {
       loadProjects()
+      loadCodeThemeFromSettings()
     }
   }
 
   function handleWizardComplete() {
     showWizard = false
     loadProjects()
+    loadCodeThemeFromSettings()
   }
 
   // Command Center — poll for Claude Code sessions
@@ -469,6 +497,9 @@
     detailLoading = false
     showAllCommits = false
     heroMode = 'auto'
+    activeTab = 'overview'
+    visitedTabs = new Set(['overview'])
+    resetNav()
     recentCommits = commits
     commitsLoading = false
     latestSession = sessions[0]
@@ -590,11 +621,24 @@
     await loadCommits(selectedProject.id, 50)
   }
 
-  function switchTab(tab) {
+  function switchTab(tab, navEntry) {
+    visitedTabs = new Set([...visitedTabs, tab])
     activeTab = tab
+    pushNav(navEntry || { tab })
     if (tab === 'files' && selectedProject && fileTree.length === 0) {
       loadFileTree(selectedProject.id)
     }
+  }
+
+  /** Restore a navigation history entry (back/forward). */
+  function applyNavEntry(entry) {
+    navWithSuppressed(() => {
+      visitedTabs = new Set([...visitedTabs, entry.tab])
+      activeTab = entry.tab
+      if (entry.tab === 'files' && entry.file) openFile(entry.file, entry.lineNumber)
+      if (entry.tab === 'git' && entry.commit) gitNavTarget = { type: 'commit', hash: entry.commit }
+      if (entry.tab === 'git' && entry.rangeFilter) gitNavTarget = { type: 'range', ...entry.rangeFilter }
+    })
   }
 
   async function loadFileTree(projectId) {
@@ -723,6 +767,38 @@
     return () => document.removeEventListener('keydown', handler)
   })
 
+  // Back/Forward navigation — mouse buttons + Alt+Arrow keys
+  $effect(() => {
+    function onMouseUp(e) {
+      if (e.button === 3) {
+        e.preventDefault()
+        const entry = navGoBack()
+        if (entry) applyNavEntry(entry)
+      } else if (e.button === 4) {
+        e.preventDefault()
+        const entry = navGoForward()
+        if (entry) applyNavEntry(entry)
+      }
+    }
+    function onKeyDown(e) {
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault()
+        const entry = navGoBack()
+        if (entry) applyNavEntry(entry)
+      } else if (e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault()
+        const entry = navGoForward()
+        if (entry) applyNavEntry(entry)
+      }
+    }
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  })
+
   function handleMarkdownNavigate(relativePath) {
     if (!selectedProject) return
 
@@ -758,13 +834,13 @@
     console.log(`[markdown] navigate: "${relativePath}" → "${resolved}"`)
 
     // Switch to files tab and open the file
-    switchTab('files')
+    switchTab('files', { tab: 'files', file: resolved })
     openFile(resolved)
   }
 
   function handleSearchNavigate(action) {
     if (action.tab === 'files' && action.filePath) {
-      switchTab('files')
+      switchTab('files', { tab: 'files', file: action.filePath })
       openFile(action.filePath)
     } else if (action.tab === 'overview') {
       switchTab('overview')
@@ -971,7 +1047,7 @@
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {mainBg} {textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
       {#if settingsOpen}
-        <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} />
+        <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} {codeThemeLight} {codeThemeDark} onCodeThemeChanged={handleCodeThemeChanged} />
       {:else if !selectedProject}
         <!-- No project selected -->
         <div class="flex-1 flex items-center justify-center">
@@ -980,8 +1056,8 @@
       {:else}
       {#key selectedProject.id}
       <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-      {#if activeTab === 'overview'}
-        <!-- ═══ OVERVIEW TAB ═══ -->
+      <!-- ═══ OVERVIEW TAB ═══ -->
+      <div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:hidden={activeTab !== 'overview'}>
         <!-- Project header -->
         <div class="px-7 pt-5 pb-4 shrink-0 content-enter">
           <div class="flex items-baseline gap-3">
@@ -1065,7 +1141,7 @@
                 </div>
               {:else if showReadme && readmeContent}
                 <!-- README display (first H1 stripped — title is in the header above) -->
-                <MarkdownRenderer source={readmeForOverview} {dark} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
+                <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
               {:else}
                 <!-- Empty state -->
                 <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
@@ -1236,27 +1312,39 @@
 
           </div>
         </div>
-      {:else if activeTab === 'tasks'}
-        <!-- ═══ TASKS TAB ═══ -->
-        <TaskBoard
-          projectPath={selectedProject.path}
-          {dark}
-          onNavigateToCommit={navigateToCommit}
-          onNavigateToFile={(path, lineNumber) => { switchTab('files'); openFile(path, lineNumber) }}
-          onNavigateToCommitRange={navigateToCommitRange}
-        />
-      {:else if activeTab === 'git'}
-        <!-- ═══ GIT TAB ═══ -->
-        <GitTab
-          projectPath={selectedProject.path}
-          projectId={selectedProject.id}
-          {dark}
-          {gitNavTarget}
-          onNavigateToFile={(path, lineNumber) => { switchTab('files'); openFile(path, lineNumber) }}
-          onClearNavTarget={() => { gitNavTarget = null }}
-        />
-      {:else}
-        <!-- ═══ FILES TAB ═══ -->
+      </div>
+
+      <!-- ═══ TASKS TAB ═══ -->
+      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'tasks'}>
+        {#if visitedTabs.has('tasks')}
+          <TaskBoard
+            projectPath={selectedProject.path}
+            {dark}
+            {codeTheme}
+            onNavigateToCommit={navigateToCommit}
+            onNavigateToFile={(path, lineNumber) => { switchTab('files', { tab: 'files', file: path, lineNumber }); openFile(path, lineNumber) }}
+            onNavigateToCommitRange={navigateToCommitRange}
+          />
+        {/if}
+      </div>
+
+      <!-- ═══ GIT TAB ═══ -->
+      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'git'}>
+        {#if visitedTabs.has('git')}
+          <GitTab
+            projectPath={selectedProject.path}
+            projectId={selectedProject.id}
+            {dark}
+            {gitNavTarget}
+            onNavigateToFile={(path, lineNumber) => { switchTab('files', { tab: 'files', file: path, lineNumber }); openFile(path, lineNumber) }}
+            onClearNavTarget={() => { gitNavTarget = null }}
+          />
+        {/if}
+      </div>
+
+      <!-- ═══ FILES TAB ═══ -->
+      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'files'}>
+        {#if visitedTabs.has('files')}
         <div class="flex-1 flex min-h-0">
 
           <!-- File tree (200px fixed) -->
@@ -1364,17 +1452,18 @@
                 {:else if fileContent}
                   {#if fileType === 'markdown'}
                     <div class="p-6 overflow-auto">
-                      <MarkdownRenderer source={fileContent.content} {dark} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
+                      <MarkdownRenderer source={fileContent.content} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
                     </div>
                   {:else}
-                    <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} scrollToLine={targetLineNumber} />
+                    <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} {codeTheme} scrollToLine={targetLineNumber} />
                   {/if}
                 {/if}
               </div>
             {/if}
           </div>
         </div>
-      {/if}
+        {/if}
+      </div>
       </div>
       {/key}
       {/if}

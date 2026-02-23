@@ -1,7 +1,8 @@
 <script>
   import { getSettings, updateSettings, getIndexStatus, rebuildIndex } from './ipc.js'
+  import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
 
-  let { dark = false, onClose = () => {}, onSettingsChanged = () => {} } = $props()
+  let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
 
   // Color tokens — $derived based on dark prop
   const mainBg        = $derived(dark ? 'bg-zinc-950' : 'bg-white')
@@ -51,6 +52,7 @@
         scan_directories: ['~/projects'],
         thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
         ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
+        code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
       }
     } finally {
       loading = false
@@ -76,6 +78,12 @@
     } finally {
       saving = false
     }
+  }
+
+  function handleCodeThemeChange(mode, value) {
+    if (!settings.code_theme) settings.code_theme = { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME }
+    settings.code_theme[mode] = value
+    saveSettings().then(() => onCodeThemeChanged())
   }
 
   function handleThresholdBlur(field, value) {
@@ -316,6 +324,41 @@
                   data-testid="threshold-stale"
                 />
                 <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Syntax highlighting themes -->
+          <div class="mt-5 pt-4 border-t {keyline}">
+            <p class="text-[13px] {textSecondary} mb-3">Syntax highlighting</p>
+            <div class="space-y-3">
+              <div class="flex items-center gap-3">
+                <label for="code-theme-light" class="text-[13px] {textBody} w-20">Light</label>
+                <select
+                  id="code-theme-light"
+                  class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  value={codeThemeLight}
+                  onchange={(e) => handleCodeThemeChange('light', e.target.value)}
+                  data-testid="code-theme-light"
+                >
+                  {#each lightThemes as theme}
+                    <option value={theme.id}>{theme.displayName}</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <label for="code-theme-dark" class="text-[13px] {textBody} w-20">Dark</label>
+                <select
+                  id="code-theme-dark"
+                  class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  value={codeThemeDark}
+                  onchange={(e) => handleCodeThemeChange('dark', e.target.value)}
+                  data-testid="code-theme-dark"
+                >
+                  {#each darkThemes as theme}
+                    <option value={theme.id}>{theme.displayName}</option>
+                  {/each}
+                </select>
               </div>
             </div>
           </div>

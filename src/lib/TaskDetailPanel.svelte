@@ -2,8 +2,8 @@
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
   import MarkdownRenderer from './MarkdownRenderer.svelte'
 
-  /** @type {{ task: object, detail: object|null, dark: boolean, allTasks: object[], onClose: () => void, onNavigateTask?: (task: object) => void }} */
-  let { task, detail, dark, allTasks = [], onClose, onNavigateTask } = $props()
+  /** @type {{ task: object, detail: object|null, dark: boolean, codeTheme?: string, allTasks: object[], onClose: () => void, onNavigateTask?: (task: object) => void }} */
+  let { task, detail, dark, codeTheme = 'github-light', allTasks = [], onClose, onNavigateTask } = $props()
 
   /** Look up a task by ID in the loaded task list. */
   function resolveTask(id) {
@@ -129,7 +129,7 @@
         <!-- Description -->
         {#if detail.task.description}
           <section class="py-3 text-[13px]" data-testid="detail-description">
-            <MarkdownRenderer source={detail.task.description} {dark} />
+            <MarkdownRenderer source={detail.task.description} {dark} {codeTheme} />
           </section>
         {/if}
 

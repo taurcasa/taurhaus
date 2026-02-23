@@ -3,7 +3,7 @@
   import { readProjectAsset, openExternalUrl } from './ipc.js'
   import * as assetCache from './assetCache.js'
 
-  let { source = '', dark = false, projectId = null, onNavigate = null } = $props()
+  let { source = '', dark = false, codeTheme = 'github-light', projectId = null, onNavigate = null } = $props()
 
   let html = $state('')
   let loading = $state(true)
@@ -12,9 +12,9 @@
   // Re-render when source, theme, or project changes
   $effect(() => {
     const src = source
-    const isDark = dark
+    const theme = codeTheme
     loading = true
-    renderMarkdown(src, isDark).then(result => {
+    renderMarkdown(src, theme).then(result => {
       html = result
       loading = false
       console.log(`[markdown] rendered ${src.length} chars → ${result.length} chars HTML`)
@@ -327,13 +327,11 @@
     border-color: var(--color-zinc-800, #27272a);
   }
 
-  /* Shiki generates pre with inline background — override to use ours */
+  /* Let Shiki's inline style="background-color: ..." show through for
+     authentic theme backgrounds. The generic pre rule above provides a
+     fallback for non-Shiki pre blocks. */
   .th-prose :global(pre.shiki) {
-    background: var(--color-zinc-50, #fafafa) !important;
-  }
-
-  .th-prose-dark :global(pre.shiki) {
-    background: var(--color-zinc-900, #18181b) !important;
+    background: unset;
   }
 
   /* ─── Horizontal Rules ─── */

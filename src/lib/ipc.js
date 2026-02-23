@@ -322,6 +322,7 @@ const MOCK_SETTINGS = {
   scan_directories: ['~/projects'],
   thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
   ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
+  code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
 }
 
 /** Get current application settings. */

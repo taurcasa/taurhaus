@@ -1,7 +1,7 @@
 <script>
   import { highlightCode } from './markdown.js'
 
-  let { code = '', language = '', dark = false, scrollToLine = null } = $props()
+  let { code = '', language = '', dark = false, codeTheme = 'github-light', scrollToLine = null } = $props()
 
   let highlightedHtml = $state('')
   let ready = $state(false)
@@ -9,14 +9,14 @@
   const textBody = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const lineNumColor = $derived(dark ? 'text-zinc-700' : 'text-zinc-300')
 
-  // Highlight when code, language, or dark changes
+  // Highlight when code, language, or theme changes
   $effect(() => {
     const src = code
     const lang = language
-    const isDark = dark
+    const theme = codeTheme
     if (!src) { highlightedHtml = ''; ready = true; return }
 
-    highlightCode(src, lang || 'text', isDark).then(html => {
+    highlightCode(src, lang || 'text', theme).then(html => {
       highlightedHtml = html
       ready = true
       console.log(`[code] highlighted ${src.length} chars as "${lang || 'text'}"`)

@@ -4,8 +4,8 @@
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
-  /** @type {{ projectPath: string, dark: boolean, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
-  let { projectPath, dark, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
+  /** @type {{ projectPath: string, dark: boolean, codeTheme?: string, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
+  let { projectPath, dark, codeTheme = 'github-light', onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
@@ -283,6 +283,7 @@
       task={selectedTask}
       detail={taskDetail}
       {dark}
+      {codeTheme}
       allTasks={tasks}
       onClose={closeDetail}
       onNavigateTask={selectTask}
