@@ -60,14 +60,15 @@ describe('statusLabel', () => {
 // Component rendering tests
 // ---------------------------------------------------------------------------
 
-// Mock the ipc module so we can control what getProjectTasks/getTaskDetail return
+// Mock the ipc module so we can control what getProjectTasks/getTaskDetail/getArchivedSessions return
 vi.mock('./ipc.js', () => ({
   getProjectTasks: vi.fn(),
   getTaskDetail: vi.fn(),
+  getArchivedSessions: vi.fn(),
 }))
 
 // Import the mocks after vi.mock so we can control return values
-const { getProjectTasks, getTaskDetail } = await import('./ipc.js')
+const { getProjectTasks, getTaskDetail, getArchivedSessions } = await import('./ipc.js')
 
 /** Helper to build a task with defaults. */
 function makeTask(overrides = {}) {
@@ -145,7 +146,7 @@ describe('TaskBoard component', () => {
     expect(screen.getByText('Done task')).toBeTruthy()
   })
 
-  it('shows task count in header', async () => {
+  it('shows task count in Active sub-tab', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
         makeTask({ id: '1', status: 'pending' }),
@@ -156,7 +157,8 @@ describe('TaskBoard component', () => {
 
     render(TaskBoard, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
-      expect(screen.getByText('2 tasks')).toBeTruthy()
+      const activeTab = screen.getByTestId('sub-tab-active')
+      expect(activeTab.textContent).toContain('2')
     })
   })
 
@@ -422,6 +424,128 @@ describe('TaskBoard component', () => {
     await fireEvent.click(column)
     await waitFor(() => {
       expect(screen.queryByTestId('task-detail-panel')).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Sub-tab switcher (Active / History)
+  // ---------------------------------------------------------------------------
+
+  it('renders Active and History sub-tabs', async () => {
+    getProjectTasks.mockResolvedValue({ tasks: [makeTask({ status: 'pending' })], errors: [] })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-active')).toBeTruthy()
+      expect(screen.getByTestId('sub-tab-history')).toBeTruthy()
+    })
+  })
+
+  it('defaults to Active sub-tab with Kanban visible', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-active').getAttribute('aria-selected')).toBe('true')
+      expect(screen.getByTestId('sub-tab-history').getAttribute('aria-selected')).toBe('false')
+      expect(screen.getAllByTestId('kanban-column')).toHaveLength(3)
+    })
+  })
+
+  it('switches to History tab and hides Kanban', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getAllByTestId('kanban-column')).toHaveLength(3)
+    })
+
+    await fireEvent.click(screen.getByTestId('sub-tab-history'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-history').getAttribute('aria-selected')).toBe('true')
+      expect(screen.getByTestId('sub-tab-active').getAttribute('aria-selected')).toBe('false')
+      expect(screen.queryAllByTestId('kanban-column')).toHaveLength(0)
+      expect(screen.getByTestId('history-tab-content')).toBeTruthy()
+    })
+  })
+
+  it('switches back to Active tab from History', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getAllByTestId('kanban-column')).toHaveLength(3)
+    })
+
+    // Switch to History
+    await fireEvent.click(screen.getByTestId('sub-tab-history'))
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('kanban-column')).toHaveLength(0)
+    })
+
+    // Switch back to Active
+    await fireEvent.click(screen.getByTestId('sub-tab-active'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId('kanban-column')).toHaveLength(3)
+    })
+  })
+
+  it('shows task count in Active tab', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: '1', status: 'pending' }),
+        makeTask({ id: '2', status: 'completed', subject: 'Done' }),
+        makeTask({ id: '3', status: 'in_progress', subject: 'Working' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      const activeTab = screen.getByTestId('sub-tab-active')
+      expect(activeTab.textContent).toContain('3')
+    })
+  })
+
+  it('shows history placeholder content', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending' })],
+      errors: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-history')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('sub-tab-history'))
+    await waitFor(() => {
+      expect(screen.getByTestId('history-placeholder')).toBeTruthy()
+      expect(screen.getByText('Session history')).toBeTruthy()
+    })
+  })
+
+  it('sub-tabs have tablist role', async () => {
+    getProjectTasks.mockResolvedValue({ tasks: [makeTask({ status: 'pending' })], errors: [] })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-list').getAttribute('role')).toBe('tablist')
+      expect(screen.getByTestId('sub-tab-active').getAttribute('role')).toBe('tab')
+      expect(screen.getByTestId('sub-tab-history').getAttribute('role')).toBe('tab')
     })
   })
 })

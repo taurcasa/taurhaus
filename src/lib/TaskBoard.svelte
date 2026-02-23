@@ -6,6 +6,9 @@
   /** @type {{ projectPath: string, dark: boolean }} */
   let { projectPath, dark } = $props()
 
+  // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
+  let activeSubTab = $state('active')
+
   // Dark mode tokens (same pattern as Shell.svelte)
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
@@ -19,6 +22,8 @@
   const cardSelectedBorder = $derived(dark ? 'border-brand-500/60' : 'border-brand-500/50')
   const cardSelectedBg     = $derived(dark ? 'bg-zinc-900/80' : 'bg-zinc-50')
   const columnBg      = $derived(dark ? 'bg-zinc-900/30' : 'bg-zinc-50/40')
+  const subTabActive  = $derived(dark ? 'text-zinc-100 border-brand-500' : 'text-zinc-900 border-brand-500')
+  const subTabInactive = $derived(dark ? 'text-zinc-500 border-transparent hover:text-zinc-400' : 'text-zinc-400 border-transparent hover:text-zinc-500')
 
   // Task data state
   let tasks = $state([])
@@ -164,82 +169,111 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="flex-1 flex flex-col overflow-hidden min-w-0" onclick={handleBoardClick}>
 
-  <!-- Header bar -->
+  <!-- Header bar with sub-tab switcher -->
   <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
-    <h2 class="text-[15px] font-semibold {textPrimary}">Tasks</h2>
-    {#if tasks.length > 0}
-      <span class="text-[11px] {textTertiary}">{tasks.length} task{tasks.length !== 1 ? 's' : ''}</span>
-    {/if}
+    <div class="flex items-center gap-1" role="tablist" data-testid="sub-tab-list">
+      <button
+        role="tab"
+        aria-selected={activeSubTab === 'active'}
+        class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] border-b-2 transition-colors cursor-pointer
+          {activeSubTab === 'active' ? subTabActive : subTabInactive}"
+        data-testid="sub-tab-active"
+        onclick={() => activeSubTab = 'active'}
+      >Active{#if activeSubTab === 'active' && tasks.length > 0}<span class="ml-1.5 font-normal normal-case tracking-normal {textTertiary}">&middot; {tasks.length}</span>{/if}</button>
+      <button
+        role="tab"
+        aria-selected={activeSubTab === 'history'}
+        class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] border-b-2 transition-colors cursor-pointer
+          {activeSubTab === 'history' ? subTabActive : subTabInactive}"
+        data-testid="sub-tab-history"
+        onclick={() => activeSubTab = 'history'}
+      >History</button>
+    </div>
   </div>
 
-  {#if loading}
-    <!-- Loading skeleton — three column placeholders -->
-    <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden" data-testid="tasks-loading">
-      {#each Array(3) as _}
-        <div class="flex-1 rounded-lg {columnBg} p-3">
-          <div class="h-3 w-20 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse mb-4"></div>
-          {#each Array(3) as __}
-            <div class="rounded-lg {cardBg} border {cardBorder} p-3 mb-2">
-              <div class="h-3 w-full rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse mb-2"></div>
-              <div class="h-2.5 w-3/4 rounded {dark ? 'bg-zinc-800/30' : 'bg-zinc-100/60'} animate-pulse"></div>
-            </div>
-          {/each}
-        </div>
-      {/each}
-    </div>
-  {:else if tasks.length === 0}
-    <!-- Empty state -->
-    <div class="flex-1 flex items-center justify-center" data-testid="tasks-empty">
-      <div class="text-center">
-        <svg class="w-10 h-10 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
-        </svg>
-        <p class="mt-3 text-[13px] {textMuted}">No tasks tracked</p>
-        <p class="mt-1 text-[11px] {textTertiary}">Tasks appear when AI tools create plans or task lists</p>
-      </div>
-    </div>
-  {:else}
-
-    <!-- Error indicators (per-source) -->
-    {#if errors.length > 0}
-      <div class="px-5 pb-2 space-y-1 shrink-0">
-        {#each errors as [source, message]}
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
-            <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <span>{SOURCE_LABELS[source] || source}: {message}</span>
-          </div>
-        {/each}
-      </div>
-    {/if}
-
-    <!-- Kanban columns -->
-    <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden min-h-0">
-      {#each COLUMNS as col}
-        {@const colTasks = grouped[col.key] || []}
-        <section class="flex-1 flex flex-col min-w-0 rounded-lg {columnBg} min-h-0" data-testid="kanban-column">
-          <!-- Column header -->
-          <div class="flex items-center gap-2 px-3 pt-3 pb-2 shrink-0">
-            <span class="w-[6px] h-[6px] rounded-full {dotColors[col.key]}"></span>
-            <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary}">{col.label}</span>
-            <span class="text-[10px] {textMuted}">{colTasks.length}</span>
-          </div>
-
-          <!-- Scrollable card list -->
-          <div class="flex-1 overflow-y-auto px-2 pb-2 min-h-0">
-            {#each colTasks as task}
-              {@render taskCard(task)}
-            {:else}
-              <div class="px-2 py-6 text-center">
-                <span class="text-[11px] {textMuted}">No tasks</span>
+  {#if activeSubTab === 'active'}
+    {#if loading}
+      <!-- Loading skeleton — three column placeholders -->
+      <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden" data-testid="tasks-loading">
+        {#each Array(3) as _}
+          <div class="flex-1 rounded-lg {columnBg} p-3">
+            <div class="h-3 w-20 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse mb-4"></div>
+            {#each Array(3) as __}
+              <div class="rounded-lg {cardBg} border {cardBorder} p-3 mb-2">
+                <div class="h-3 w-full rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse mb-2"></div>
+                <div class="h-2.5 w-3/4 rounded {dark ? 'bg-zinc-800/30' : 'bg-zinc-100/60'} animate-pulse"></div>
               </div>
             {/each}
           </div>
-        </section>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {:else if tasks.length === 0}
+      <!-- Empty state -->
+      <div class="flex-1 flex items-center justify-center" data-testid="tasks-empty">
+        <div class="text-center">
+          <svg class="w-10 h-10 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+          </svg>
+          <p class="mt-3 text-[13px] {textMuted}">No tasks tracked</p>
+          <p class="mt-1 text-[11px] {textTertiary}">Tasks appear when AI tools create plans or task lists</p>
+        </div>
+      </div>
+    {:else}
 
+      <!-- Error indicators (per-source) -->
+      {#if errors.length > 0}
+        <div class="px-5 pb-2 space-y-1 shrink-0">
+          {#each errors as [source, message]}
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
+              <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <span>{SOURCE_LABELS[source] || source}: {message}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Kanban columns -->
+      <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden min-h-0">
+        {#each COLUMNS as col}
+          {@const colTasks = grouped[col.key] || []}
+          <section class="flex-1 flex flex-col min-w-0 rounded-lg {columnBg} min-h-0" data-testid="kanban-column">
+            <!-- Column header -->
+            <div class="flex items-center gap-2 px-3 pt-3 pb-2 shrink-0">
+              <span class="w-[6px] h-[6px] rounded-full {dotColors[col.key]}"></span>
+              <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary}">{col.label}</span>
+              <span class="text-[10px] {textMuted}">{colTasks.length}</span>
+            </div>
+
+            <!-- Scrollable card list -->
+            <div class="flex-1 overflow-y-auto px-2 pb-2 min-h-0">
+              {#each colTasks as task}
+                {@render taskCard(task)}
+              {:else}
+                <div class="px-2 py-6 text-center">
+                  <span class="text-[11px] {textMuted}">No tasks</span>
+                </div>
+              {/each}
+            </div>
+          </section>
+        {/each}
+      </div>
+
+    {/if}
+  {:else}
+    <!-- History sub-tab — SessionHistory component will replace this placeholder -->
+    <div class="flex-1 overflow-hidden" data-testid="history-tab-content">
+      <div class="flex-1 flex items-center justify-center h-full" data-testid="history-placeholder">
+        <div class="text-center">
+          <svg class="w-10 h-10 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p class="mt-3 text-[13px] {textMuted}">Session history</p>
+          <p class="mt-1 text-[11px] {textTertiary}">Completed work from previous sessions will appear here</p>
+        </div>
+      </div>
+    </div>
   {/if}
   </div>
 
