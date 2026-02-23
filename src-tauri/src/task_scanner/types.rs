@@ -96,3 +96,35 @@ pub struct SessionInfo {
     pub started_at: String,
     pub ended_at: String,
 }
+
+/// A group of archived tasks from a single session, enriched with context.
+///
+/// Returned by the `get_archived_sessions` IPC command for the History sub-tab.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedSession {
+    /// Session UUID (or "ungrouped" for tasks without a session_id).
+    pub session_id: String,
+    /// Session start time (ISO 8601).
+    pub started_at: Option<String>,
+    /// Session end time (ISO 8601).
+    pub ended_at: Option<String>,
+    /// Session duration in milliseconds.
+    pub duration_ms: Option<i64>,
+    /// Archived tasks in this session.
+    pub tasks: Vec<UnifiedTask>,
+    /// Number of commits made during the session window.
+    pub commit_count: usize,
+    /// Number of files changed during the session window.
+    pub file_count: usize,
+    /// Which CLI tools contributed tasks to this session.
+    pub sources: Vec<String>,
+}
+
+/// Result of querying archived sessions for a project.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedSessionsResult {
+    /// Sessions sorted reverse-chronological (newest first).
+    pub sessions: Vec<ArchivedSession>,
+    /// Errors encountered during enrichment.
+    pub errors: Vec<String>,
+}

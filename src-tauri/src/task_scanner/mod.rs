@@ -14,7 +14,10 @@ pub mod codex;
 pub mod gemini;
 pub mod types;
 
-pub use types::{SessionInfo, TaskDetail, TaskResult, TaskStatus, UnifiedTask};
+pub use types::{
+    ArchivedSession, ArchivedSessionsResult, SessionInfo, TaskDetail, TaskResult, TaskStatus,
+    UnifiedTask,
+};
 
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;

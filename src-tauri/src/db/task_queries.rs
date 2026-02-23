@@ -174,6 +174,47 @@ pub struct StaleTaskResult {
     pub deleted: usize,
 }
 
+/// Get archived tasks for a project, ordered by session_id then source_task_id.
+///
+/// Returns tasks where `archived_at IS NOT NULL`. The caller groups these by
+/// `session_id` to build the session history timeline.
+pub fn get_archived_tasks_for_project(
+    conn: &Connection,
+    project_path: &str,
+) -> Result<Vec<PersistedTask>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, updated_at, archived_at
+         FROM tasks
+         WHERE project_path = ?1 AND archived_at IS NOT NULL
+         ORDER BY session_id, source, source_task_id",
+    )?;
+
+    let tasks = stmt
+        .query_map([project_path], |row| {
+            let blocks_str: String = row.get(7)?;
+            let blocked_by_str: String = row.get(8)?;
+            Ok(PersistedTask {
+                project_path: row.get(0)?,
+                source: row.get(1)?,
+                source_task_id: row.get(2)?,
+                subject: row.get(3)?,
+                description: row.get(4)?,
+                active_form: row.get(5)?,
+                status: row.get(6)?,
+                blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
+                blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+                owner: row.get(9)?,
+                session_id: row.get(10)?,
+                first_seen_at: row.get(11)?,
+                updated_at: row.get(12)?,
+                archived_at: row.get(13)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(tasks)
+}
+
 /// Delete all tasks for a project from a specific source.
 /// Useful when re-importing from a source that replaces all tasks (e.g., Codex update_plan).
 pub fn delete_tasks_for_source(
@@ -503,5 +544,179 @@ mod tests {
         let r2 =
             archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
         assert_eq!(r2.archived, 0);
+    }
+
+    // --- get_archived_tasks_for_project tests ---
+
+    #[test]
+    fn archived_query_returns_only_archived_tasks() {
+        let (conn, _tmp) = test_db();
+
+        // Create 3 tasks: one active, two will become stale (one completed → archived, one pending → deleted)
+        upsert_task(&conn, &make_task("claude", "1", "Active", "in_progress")).unwrap();
+        upsert_task(&conn, &make_task("claude", "2", "Done A", "completed")).unwrap();
+        upsert_task(&conn, &make_task("claude", "3", "Abandoned", "pending")).unwrap();
+
+        // Archive task 2, delete task 3
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].source_task_id, "2");
+        assert_eq!(archived[0].subject, "Done A");
+        assert!(archived[0].archived_at.is_some());
+    }
+
+    #[test]
+    fn archived_query_returns_empty_when_no_archived() {
+        let (conn, _tmp) = test_db();
+
+        upsert_task(&conn, &make_task("claude", "1", "Active", "in_progress")).unwrap();
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert!(archived.is_empty());
+    }
+
+    #[test]
+    fn archived_query_returns_empty_for_nonexistent_project() {
+        let (conn, _tmp) = test_db();
+        let archived = get_archived_tasks_for_project(&conn, "/projects/ghost").unwrap();
+        assert!(archived.is_empty());
+    }
+
+    #[test]
+    fn archived_query_groups_by_session_id() {
+        let (conn, _tmp) = test_db();
+
+        // Create tasks with different session_ids
+        let mut t1 = make_task("claude", "1", "Session A task 1", "completed");
+        t1.session_id = Some("sess-aaa".to_string());
+        upsert_task(&conn, &t1).unwrap();
+
+        let mut t2 = make_task("claude", "2", "Session A task 2", "completed");
+        t2.session_id = Some("sess-aaa".to_string());
+        upsert_task(&conn, &t2).unwrap();
+
+        let mut t3 = make_task("claude", "3", "Session B task 1", "completed");
+        t3.session_id = Some("sess-bbb".to_string());
+        upsert_task(&conn, &t3).unwrap();
+
+        // Keep one active so we can archive the others
+        upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();
+
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 3);
+
+        // Ordered by session_id: sess-aaa (2 tasks) then sess-bbb (1 task)
+        assert_eq!(archived[0].session_id.as_deref(), Some("sess-aaa"));
+        assert_eq!(archived[1].session_id.as_deref(), Some("sess-aaa"));
+        assert_eq!(archived[2].session_id.as_deref(), Some("sess-bbb"));
+    }
+
+    #[test]
+    fn archived_query_includes_tasks_without_session_id() {
+        let (conn, _tmp) = test_db();
+
+        // Task with no session_id (e.g., Gemini/Codex source)
+        upsert_task(&conn, &make_task("gemini", "todo-1", "Gemini task", "completed")).unwrap();
+
+        // Task with session_id
+        let mut t2 = make_task("claude", "1", "Claude task", "completed");
+        t2.session_id = Some("sess-123".to_string());
+        upsert_task(&conn, &t2).unwrap();
+
+        // Keep one active
+        upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("gemini", "todo-99", "Active gemini", "in_progress"),
+        )
+        .unwrap();
+
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &["todo-99"]).unwrap();
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 2);
+
+        // NULL session_id sorts first in SQLite ORDER BY
+        let session_ids: Vec<Option<&str>> =
+            archived.iter().map(|t| t.session_id.as_deref()).collect();
+        assert!(session_ids.contains(&None));
+        assert!(session_ids.contains(&Some("sess-123")));
+    }
+
+    #[test]
+    fn archived_query_isolates_projects() {
+        let (conn, _tmp) = test_db();
+
+        let mut t1 = make_task("claude", "1", "Foo task", "completed");
+        t1.project_path = "/projects/foo".to_string();
+        upsert_task(&conn, &t1).unwrap();
+
+        let mut t2 = make_task("claude", "1", "Bar task", "completed");
+        t2.project_path = "/projects/bar".to_string();
+        upsert_task(&conn, &t2).unwrap();
+
+        // Archive both by adding active tasks then pruning
+        upsert_task(&conn, &{
+            let mut t = make_task("claude", "99", "Active foo", "in_progress");
+            t.project_path = "/projects/foo".to_string();
+            t
+        })
+        .unwrap();
+        upsert_task(&conn, &{
+            let mut t = make_task("claude", "99", "Active bar", "in_progress");
+            t.project_path = "/projects/bar".to_string();
+            t
+        })
+        .unwrap();
+
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/bar", "claude", &["99"]).unwrap();
+
+        let foo_archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(foo_archived.len(), 1);
+        assert_eq!(foo_archived[0].subject, "Foo task");
+
+        let bar_archived = get_archived_tasks_for_project(&conn, "/projects/bar").unwrap();
+        assert_eq!(bar_archived.len(), 1);
+        assert_eq!(bar_archived[0].subject, "Bar task");
+    }
+
+    #[test]
+    fn archived_query_spans_multiple_sources() {
+        let (conn, _tmp) = test_db();
+
+        upsert_task(&conn, &make_task("claude", "1", "Claude done", "completed")).unwrap();
+        upsert_task(&conn, &make_task("codex", "codex-0", "Codex done", "completed")).unwrap();
+        upsert_task(&conn, &make_task("gemini", "todo-1", "Gemini done", "completed")).unwrap();
+
+        // Keep one active per source
+        upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("codex", "codex-99", "Active", "in_progress"),
+        )
+        .unwrap();
+        upsert_task(
+            &conn,
+            &make_task("gemini", "todo-99", "Active", "in_progress"),
+        )
+        .unwrap();
+
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "codex", &["codex-99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &["todo-99"]).unwrap();
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 3);
+
+        let sources: Vec<&str> = archived.iter().map(|t| t.source.as_str()).collect();
+        assert!(sources.contains(&"claude"));
+        assert!(sources.contains(&"codex"));
+        assert!(sources.contains(&"gemini"));
     }
 }
