@@ -498,6 +498,64 @@ export function getTaskDetail(projectPath, taskId, source) {
   }))
 }
 
+/** Get archived sessions for the session history timeline. */
+export function getArchivedSessions(projectPath) {
+  return invokeOrMock('get_archived_sessions', { projectPath }, () => ({
+    sessions: [
+      {
+        session_id: 'sess-aaa-111',
+        started_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        ended_at: new Date(Date.now() - 2 * 86400000 + 8100000).toISOString(),
+        duration_ms: 8100000,
+        tasks: [
+          { id: '10', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: null, status: 'completed', source: 'claude', blocks: ['11'], blocked_by: [], owner: null },
+          { id: '11', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: ['10'], owner: null },
+          { id: '12', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: 'todo-5', subject: 'Update README with task board docs', description: null, active_form: null, status: 'completed', source: 'gemini', blocks: [], blocked_by: [], owner: null },
+          { id: 'codex-3', subject: 'Lint and format codebase', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
+        ],
+        commit_count: 12,
+        file_count: 8,
+        sources: ['claude', 'codex', 'gemini'],
+      },
+      {
+        session_id: 'sess-bbb-222',
+        started_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+        ended_at: new Date(Date.now() - 5 * 86400000 + 6120000).toISOString(),
+        duration_ms: 6120000,
+        tasks: [
+          { id: '7', subject: 'Implement session scanner', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '8', subject: 'Add idle detection', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '9', subject: 'Wire up IPC commands', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+        ],
+        commit_count: 7,
+        file_count: 5,
+        sources: ['claude'],
+      },
+      {
+        session_id: 'sess-ccc-333',
+        started_at: new Date(Date.now() - 12 * 86400000).toISOString(),
+        ended_at: new Date(Date.now() - 12 * 86400000 + 11100000).toISOString(),
+        duration_ms: 11100000,
+        tasks: [
+          { id: '1', subject: 'Set up project scaffold', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '2', subject: 'Configure Tauri + Svelte', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '3', subject: 'Add SQLite storage layer', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '4', subject: 'Build sidebar and navigation', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '5', subject: 'Implement git integration', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '6', subject: 'Add file tree component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: 'codex-0', subject: 'Initialize project dependencies', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
+          { id: 'codex-1', subject: 'Set up CI pipeline', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
+        ],
+        commit_count: 15,
+        file_count: 12,
+        sources: ['claude', 'codex'],
+      },
+    ],
+    errors: [],
+  }))
+}
+
 /** Get aggregated activity stats for a project path. */
 export function getProjectActivity(projectPath) {
   return invokeOrMock('get_project_activity', { projectPath }, () => ({
