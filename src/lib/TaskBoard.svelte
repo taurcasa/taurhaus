@@ -4,8 +4,8 @@
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
-  /** @type {{ projectPath: string, dark: boolean }} */
-  let { projectPath, dark } = $props()
+  /** @type {{ projectPath: string, dark: boolean, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
+  let { projectPath, dark, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
@@ -272,7 +272,7 @@
   {:else}
     <!-- History sub-tab — SessionHistory accordion -->
     <div class="flex-1 overflow-hidden" data-testid="history-tab-content">
-      <SessionHistory {projectPath} {dark} onSelectTask={selectTask} />
+      <SessionHistory {projectPath} {dark} onSelectTask={selectTask} {onNavigateToCommit} {onNavigateToFile} {onNavigateToCommitRange} />
     </div>
   {/if}
   </div>

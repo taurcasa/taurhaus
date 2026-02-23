@@ -296,6 +296,9 @@ fn dispatch(
         protocol::method::GIT_COMMITS_IN_RANGE => {
             handle_git_commits_in_range(&request.id, &request.params, provider)
         }
+        protocol::method::GIT_COMMIT_FILES => {
+            handle_git_commit_files(&request.id, &request.params, provider)
+        }
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
@@ -386,6 +389,21 @@ fn handle_git_commits_in_range(
             id,
             protocol::GitCommitsInRangeResult { commits, files },
         ),
+        Err(e) => DaemonResponse::err(id, "GIT_ERROR", e.to_string()),
+    }
+}
+
+fn handle_git_commit_files(
+    id: &str,
+    params: &serde_json::Value,
+    provider: &LocalProvider,
+) -> DaemonResponse {
+    let params: protocol::GitCommitFilesParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+    match provider.commit_files(&params.path, &params.hash) {
+        Ok(files) => DaemonResponse::ok(id, protocol::GitCommitFilesResult { files }),
         Err(e) => DaemonResponse::err(id, "GIT_ERROR", e.to_string()),
     }
 }

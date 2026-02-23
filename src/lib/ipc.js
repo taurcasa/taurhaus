@@ -556,6 +556,29 @@ export function getArchivedSessions(projectPath) {
   }))
 }
 
+/** Get files changed by a specific commit (for Git tab detail). */
+export function getCommitFiles(projectPath, hash) {
+  return invokeOrMock('get_commit_files', { projectPath, hash }, () => [
+    { path: 'src/lib/GitTab.svelte', status: 'added' },
+    { path: 'src/Shell.svelte', status: 'modified' },
+    { path: 'src/lib/ipc.js', status: 'modified' },
+    { path: 'src-tauri/src/git/commits.rs', status: 'modified' },
+    { path: 'src-tauri/src/models/mod.rs', status: 'modified' },
+  ])
+}
+
+/** Get commits and files changed in a time range (for Git tab range view). */
+export function getCommitsInRange(projectPath, after, before) {
+  return invokeOrMock('get_commits_in_range', { projectPath, after, before }, () => ({
+    commits: [
+      { hash: 'abc12345', message: 'Add Git tab component', author: 'Developer', date: '2h' },
+      { hash: 'def67890', message: 'Wire cross-tab navigation', author: 'Developer', date: '3h' },
+      { hash: 'ghi11111', message: 'Add commit file detail view', author: 'Developer', date: '4h' },
+    ],
+    files: ['src/lib/GitTab.svelte', 'src/Shell.svelte', 'src/lib/ipc.js'],
+  }))
+}
+
 /** Get aggregated activity stats for a project path. */
 export function getProjectActivity(projectPath) {
   return invokeOrMock('get_project_activity', { projectPath }, () => ({

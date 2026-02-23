@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use git2::Repository;
 
 use crate::errors::AppError;
-use crate::models::Commit;
+use crate::models::{Commit, CommitFile};
 
 /// Get recent commits from a git repository, newest first.
 pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>, AppError> {
@@ -261,6 +261,65 @@ pub fn get_files_changed_in_range(
     Ok(files.into_iter().collect())
 }
 
+/// Get the list of files changed by a specific commit.
+///
+/// Diffs the commit's tree against its parent to find changed files.
+/// For the initial commit (no parent), diffs against an empty tree.
+pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<CommitFile>, AppError> {
+    let repo = Repository::open(repo_path).map_err(|e| {
+        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+    })?;
+
+    // Resolve partial hash to full OID
+    let oid = repo
+        .revparse_single(commit_hash)
+        .map_err(|_| AppError::NotFound(format!("Commit not found: {commit_hash}")))?
+        .peel_to_commit()
+        .map_err(|_| AppError::NotFound(format!("Not a commit: {commit_hash}")))?
+        .id();
+
+    let commit = repo.find_commit(oid).map_err(git_err)?;
+    let tree = commit.tree().map_err(git_err)?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+        .map_err(git_err)?;
+
+    let mut files = Vec::new();
+    diff.foreach(
+        &mut |delta, _| {
+            let path = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())
+                .and_then(|p| p.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            let status = match delta.status() {
+                git2::Delta::Added => "added",
+                git2::Delta::Deleted => "deleted",
+                git2::Delta::Renamed => "renamed",
+                _ => "modified",
+            };
+
+            files.push(CommitFile {
+                path,
+                status: status.to_string(),
+            });
+            true
+        },
+        None,
+        None,
+        None,
+    )
+    .map_err(git_err)?;
+
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
 fn git_err(e: git2::Error) -> AppError {
     AppError::Git(e)
 }
@@ -496,5 +555,106 @@ mod tests {
         let now = Utc::now();
         let ts = (now - chrono::Duration::weeks(2)).timestamp();
         assert_eq!(format_relative_time(ts, now), "2w");
+    }
+
+    #[test]
+    fn get_commit_files_added() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "hello.txt", "Add hello");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "hello.txt");
+        assert_eq!(files[0].status, "added");
+    }
+
+    #[test]
+    fn get_commit_files_modified() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "file.txt", "Initial");
+        // Modify the file
+        std::fs::write(dir.path().join("file.txt"), "Modified content").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("file.txt")).unwrap();
+        index.write().unwrap();
+        create_commit(&repo, "Update file");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "file.txt");
+        assert_eq!(files[0].status, "modified");
+    }
+
+    #[test]
+    fn get_commit_files_deleted() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "gone.txt", "Initial");
+        // Delete the file
+        std::fs::remove_file(dir.path().join("gone.txt")).unwrap();
+        let mut index = repo.index().unwrap();
+        index.remove_path(Path::new("gone.txt")).unwrap();
+        index.write().unwrap();
+        create_commit(&repo, "Delete file");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "gone.txt");
+        assert_eq!(files[0].status, "deleted");
+    }
+
+    #[test]
+    fn get_commit_files_multiple() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "existing.txt", "Initial");
+        // Create a commit that adds one file and modifies another
+        std::fs::write(dir.path().join("existing.txt"), "Changed").unwrap();
+        std::fs::write(dir.path().join("new.txt"), "Brand new").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("existing.txt")).unwrap();
+        index.add_path(Path::new("new.txt")).unwrap();
+        index.write().unwrap();
+        create_commit(&repo, "Multi-change");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
+        assert_eq!(files.len(), 2);
+        // Sorted by path
+        assert_eq!(files[0].path, "existing.txt");
+        assert_eq!(files[0].status, "modified");
+        assert_eq!(files[1].path, "new.txt");
+        assert_eq!(files[1].status, "added");
+    }
+
+    #[test]
+    fn get_commit_files_invalid_hash() {
+        let (dir, repo) = init_test_repo();
+        create_commit(&repo, "Initial");
+
+        let result = get_commit_files(dir.path(), "deadbeef99999999");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_commit_files_initial_commit_all_added() {
+        let (dir, repo) = init_test_repo();
+        // First commit with a file: everything is "added"
+        std::fs::write(dir.path().join("a.txt"), "aaa").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "bbb").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("a.txt")).unwrap();
+        index.add_path(Path::new("b.txt")).unwrap();
+        index.write().unwrap();
+        let sig = Signature::now("Test User", "test@example.com").unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial with files", &tree, &[]).unwrap();
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|f| f.status == "added"));
     }
 }

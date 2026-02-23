@@ -18,9 +18,10 @@ vi.mock('./markdown.js', () => ({
 // Mock IPC
 vi.mock('./ipc.js', () => ({
   getArchivedSessions: vi.fn(),
+  getCommitsInRange: vi.fn(),
 }))
 
-const { getArchivedSessions } = await import('./ipc.js')
+const { getArchivedSessions, getCommitsInRange } = await import('./ipc.js')
 
 /** Build a mock archived session with defaults. */
 function makeSession(overrides = {}) {
@@ -45,6 +46,8 @@ import SessionHistory from './SessionHistory.svelte'
 describe('SessionHistory component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default: getCommitsInRange never resolves (keeps loading state)
+    getCommitsInRange.mockReturnValue(new Promise(() => {}))
   })
 
   // --- Loading state ---
@@ -268,5 +271,168 @@ describe('SessionHistory component', () => {
       const header = screen.getByTestId('session-header')
       expect(header.className).toContain('text-zinc-900')
     })
+  })
+
+  // --- Lazy-loaded commits ---
+
+  it('shows loading skeleton for commits when expanding', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-commits-loading')).toBeTruthy()
+    })
+  })
+
+  it('shows commits after lazy loading', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+    getCommitsInRange.mockResolvedValue({
+      commits: [
+        { hash: 'aaa11111', message: 'First commit', author: 'Dev', date: '1h' },
+        { hash: 'bbb22222', message: 'Second commit', author: 'Dev', date: '2h' },
+      ],
+      files: ['src/foo.js', 'src/bar.js'],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-commits')).toBeTruthy()
+      expect(screen.getAllByTestId('session-commit')).toHaveLength(2)
+    })
+  })
+
+  it('shows files after lazy loading', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+    getCommitsInRange.mockResolvedValue({
+      commits: [],
+      files: ['src/a.js', 'src/b.js', 'src/c.js'],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-files')).toBeTruthy()
+      expect(screen.getAllByTestId('session-file')).toHaveLength(3)
+    })
+  })
+
+  // --- Navigation callbacks ---
+
+  it('clicking commit calls onNavigateToCommit', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+    getCommitsInRange.mockResolvedValue({
+      commits: [{ hash: 'abc12345', message: 'Test commit', author: 'Dev', date: '1h' }],
+      files: [],
+    })
+
+    const onNavigateToCommit = vi.fn()
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false, onNavigateToCommit } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-commit')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-commit'))
+    expect(onNavigateToCommit).toHaveBeenCalledWith('abc12345')
+  })
+
+  it('clicking file calls onNavigateToFile', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+    getCommitsInRange.mockResolvedValue({
+      commits: [],
+      files: ['src/target.js'],
+    })
+
+    const onNavigateToFile = vi.fn()
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false, onNavigateToFile } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-file')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-file'))
+    expect(onNavigateToFile).toHaveBeenCalledWith('src/target.js')
+  })
+
+  it('shows "View in Git" button in expanded session', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('view-in-git')).toBeTruthy()
+    })
+  })
+
+  it('clicking "View in Git" calls onNavigateToCommitRange', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+
+    const onNavigateToCommitRange = vi.fn()
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false, onNavigateToCommitRange } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('view-in-git')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('view-in-git'))
+    expect(onNavigateToCommitRange).toHaveBeenCalledWith('2026-02-20T10:00:00Z', '2026-02-20T12:15:00Z')
   })
 })

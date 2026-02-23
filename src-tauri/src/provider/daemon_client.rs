@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
 use crate::errors::AppError;
-use crate::models::{Commit, FileContent, FileTreeNode, GitStatus};
+use crate::models::{Commit, CommitFile, FileContent, FileTreeNode, GitStatus};
 use crate::provider::path as wsl_path;
 use crate::provider::ProjectProvider;
 
@@ -349,6 +349,23 @@ impl ProjectProvider for DaemonProvider {
             GIT_TIMEOUT,
         )?;
         Ok((result.commits, result.files))
+    }
+
+    fn commit_files(
+        &self,
+        project_path: &str,
+        hash: &str,
+    ) -> Result<Vec<CommitFile>, AppError> {
+        let path = Self::translate_path(project_path);
+        let result: protocol::GitCommitFilesResult = self.call(
+            protocol::method::GIT_COMMIT_FILES,
+            protocol::GitCommitFilesParams {
+                path,
+                hash: hash.to_string(),
+            },
+            GIT_TIMEOUT,
+        )?;
+        Ok(result.files)
     }
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {

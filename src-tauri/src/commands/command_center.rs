@@ -531,6 +531,38 @@ pub fn get_archived_sessions(
     Ok(crate::task_scanner::ArchivedSessionsResult { sessions, errors })
 }
 
+/// Get files changed by a specific commit.
+///
+/// Used by the Git tab to show commit detail (file list with status).
+#[tauri::command]
+pub fn get_commit_files(
+    providers: State<'_, ProviderState>,
+    project_path: String,
+    hash: String,
+) -> Result<Vec<crate::models::CommitFile>, String> {
+    let provider = providers.resolve(&project_path);
+    provider
+        .commit_files(&project_path, &hash)
+        .map_err(|e| e.to_string())
+}
+
+/// Get commits and files changed in a time range.
+///
+/// Used by the Git tab for range-filtered views and Session History enrichment.
+#[tauri::command]
+pub fn get_commits_in_range(
+    providers: State<'_, ProviderState>,
+    project_path: String,
+    after: String,
+    before: String,
+) -> Result<crate::daemon::protocol::GitCommitsInRangeResult, String> {
+    let provider = providers.resolve(&project_path);
+    let (commits, files) = provider
+        .commits_in_range(&project_path, &after, &before)
+        .map_err(|e| e.to_string())?;
+    Ok(crate::daemon::protocol::GitCommitsInRangeResult { commits, files })
+}
+
 /// Convert a persisted DB task row to a UnifiedTask.
 fn persisted_to_unified(t: crate::db::task_queries::PersistedTask) -> crate::task_scanner::UnifiedTask {
     crate::task_scanner::UnifiedTask {

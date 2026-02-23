@@ -248,6 +248,13 @@ pub struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CommitFile {
+    pub path: String,
+    /// One of: "added", "modified", "deleted", "renamed"
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SearchResult {
     pub project_id: String,
     pub entity_type: String,

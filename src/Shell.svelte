@@ -1,6 +1,7 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession, launchClaudeSession, stopClaudeSession } from './lib/ipc.js'
   import TaskBoard from './lib/TaskBoard.svelte'
+  import GitTab from './lib/GitTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
@@ -133,6 +134,19 @@
   // Relationship state
   let relationships = $state([])
   let relationshipsLoading = $state(false)
+
+  // Cross-tab navigation state for Git tab
+  let gitNavTarget = $state(null) // { type: 'commit', hash } | { type: 'range', after, before } | null
+
+  function navigateToCommit(hash) {
+    gitNavTarget = { type: 'commit', hash }
+    switchTab('git')
+  }
+
+  function navigateToCommitRange(after, before) {
+    gitNavTarget = { type: 'range', after, before }
+    switchTab('git')
+  }
 
   // Computed hero display — session if fresh (<7 days), README otherwise
   const showSession = $derived(
@@ -801,6 +815,12 @@
               {activeTab === 'tasks' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('tasks')}
           >Tasks</button>
+          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
+          <button
+            class="px-3 py-1 text-[13px] transition-colors border-b-2
+              {activeTab === 'git' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+            onclick={() => switchTab('git')}
+          >Git</button>
         {/if}
       </div>
 
@@ -1073,11 +1093,15 @@
               {:else}
                 <div>
                   {#each recentCommits as commit}
-                    <div class="flex items-center h-[30px] text-[13px] {hoverRow} -mx-2 px-2 rounded">
+                    <button
+                      class="w-full flex items-center h-[30px] text-[13px] text-left {hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
+                      onclick={() => navigateToCommit(commit.hash)}
+                      data-testid="overview-commit-row"
+                    >
                       <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
                       <span class="{textBody} truncate flex-1">{commit.message}</span>
                       <span class="text-[11px] {timeColor} shrink-0 ml-3">{commit.date}</span>
-                    </div>
+                    </button>
                   {/each}
                 </div>
                 {#if !showAllCommits}
@@ -1211,7 +1235,23 @@
         </div>
       {:else if activeTab === 'tasks'}
         <!-- ═══ TASKS TAB ═══ -->
-        <TaskBoard projectPath={selectedProject.path} {dark} />
+        <TaskBoard
+          projectPath={selectedProject.path}
+          {dark}
+          onNavigateToCommit={navigateToCommit}
+          onNavigateToFile={(path) => { switchTab('files'); openFile(path) }}
+          onNavigateToCommitRange={navigateToCommitRange}
+        />
+      {:else if activeTab === 'git'}
+        <!-- ═══ GIT TAB ═══ -->
+        <GitTab
+          projectPath={selectedProject.path}
+          projectId={selectedProject.id}
+          {dark}
+          {gitNavTarget}
+          onNavigateToFile={(path) => { switchTab('files'); openFile(path) }}
+          onClearNavTarget={() => { gitNavTarget = null }}
+        />
       {:else}
         <!-- ═══ FILES TAB ═══ -->
         <div class="flex-1 flex min-h-0">

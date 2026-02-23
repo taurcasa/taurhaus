@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use crate::errors::AppError;
 use crate::fs::{reader, readme, tree};
 use crate::git::{commits, status};
-use crate::models::{Commit, FileContent, FileTreeNode, GitStatus};
+use crate::models::{Commit, CommitFile, FileContent, FileTreeNode, GitStatus};
 
 use super::ProjectProvider;
 
@@ -60,6 +60,14 @@ impl ProjectProvider for LocalProvider {
         let range_commits = commits::get_commits_in_range(path, after_dt, before_dt)?;
         let files = commits::get_files_changed_in_range(path, after_dt, before_dt)?;
         Ok((range_commits, files))
+    }
+
+    fn commit_files(
+        &self,
+        project_path: &str,
+        hash: &str,
+    ) -> Result<Vec<CommitFile>, AppError> {
+        commits::get_commit_files(Path::new(project_path), hash)
     }
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {

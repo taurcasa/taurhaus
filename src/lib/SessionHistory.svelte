@@ -1,9 +1,9 @@
 <script>
-  import { getArchivedSessions } from './ipc.js'
+  import { getArchivedSessions, getCommitsInRange } from './ipc.js'
   import { formatDuration } from './format.js'
 
-  /** @type {{ projectPath: string, dark: boolean, onSelectTask?: (task: any) => void }} */
-  let { projectPath, dark, onSelectTask } = $props()
+  /** @type {{ projectPath: string, dark: boolean, onSelectTask?: (task: any) => void, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
+  let { projectPath, dark, onSelectTask, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
 
   // Dark mode tokens
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
@@ -16,6 +16,9 @@
   const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
   const detailBg      = $derived(dark ? 'bg-zinc-900/20' : 'bg-zinc-50/30')
   const hashBg        = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-200/80')
+  const hashColor     = $derived(dark ? 'text-brand-400' : 'text-brand-600')
+  const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
+  const fileBg        = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80')
 
   // Tool icon SVG paths (same as TaskBoard)
   const TOOL_ICONS = {
@@ -34,11 +37,40 @@
   // Expand/collapse state — Set of session_ids that are open
   let expanded = $state(new Set())
 
+  // Lazy-loaded detail data per session: Map<session_id, { commits, files, loading, error }>
+  let expandedData = $state(new Map())
+
   function toggleSession(sessionId) {
     if (expanded.has(sessionId)) {
       expanded = new Set([...expanded].filter(id => id !== sessionId))
     } else {
       expanded = new Set([...expanded, sessionId])
+      // Lazy-load if not already cached
+      if (!expandedData.has(sessionId)) {
+        loadSessionDetail(sessionId)
+      }
+    }
+  }
+
+  async function loadSessionDetail(sessionId) {
+    const session = sessions.find(s => s.session_id === sessionId)
+    if (!session) return
+    expandedData = new Map(expandedData).set(sessionId, { commits: [], files: [], loading: true, error: null })
+    try {
+      const result = await getCommitsInRange(projectPath, session.started_at, session.ended_at)
+      expandedData = new Map(expandedData).set(sessionId, {
+        commits: result.commits || [],
+        files: result.files || [],
+        loading: false,
+        error: null,
+      })
+    } catch (e) {
+      expandedData = new Map(expandedData).set(sessionId, {
+        commits: [],
+        files: [],
+        loading: false,
+        error: e.message || 'Failed to load details',
+      })
     }
   }
 
@@ -178,6 +210,7 @@
 
           <!-- Expandable detail (CSS grid animation) -->
           {#if open}
+            {@const detail = expandedData.get(session.session_id)}
             <div
               class="px-4 pb-3 pt-1 {detailBg} rounded-b-lg"
               data-testid="session-detail"
@@ -211,18 +244,73 @@
                 </div>
               </div>
 
-              <!-- Commits sub-section (count only — full list shown in TaskDetailPanel) -->
-              {#if session.commit_count > 0}
+              <!-- Commits sub-section (lazy-loaded) -->
+              {#if detail?.loading}
+                <div class="mb-3 space-y-1" data-testid="session-commits-loading">
+                  {#each Array(3) as _}
+                    <div class="flex items-center gap-2 h-[22px]">
+                      <div class="h-2 w-14 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
+                      <div class="h-2 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse"></div>
+                    </div>
+                  {/each}
+                </div>
+              {:else if detail?.commits?.length > 0}
+                <div class="mb-3" data-testid="session-commits">
+                  <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-1.5">Commits</h4>
+                  <div class="space-y-0.5">
+                    {#each detail.commits.slice(0, 5) as commit}
+                      <button
+                        class="w-full text-left flex items-center gap-2 px-2 py-0.5 rounded transition-colors {fileBg}"
+                        onclick={() => onNavigateToCommit?.(commit.hash)}
+                        data-testid="session-commit"
+                      >
+                        <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
+                        <span class="text-[12px] {textBody} truncate">{commit.message}</span>
+                      </button>
+                    {/each}
+                    {#if detail.commits.length > 5}
+                      <span class="text-[10px] {textTertiary} px-2">+ {detail.commits.length - 5} more</span>
+                    {/if}
+                  </div>
+                </div>
+              {:else if session.commit_count > 0}
                 <div class="mb-2">
                   <span class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary}">{session.commit_count} commit{session.commit_count !== 1 ? 's' : ''}</span>
                 </div>
               {/if}
 
-              <!-- Files changed footer -->
-              {#if session.file_count > 0}
+              <!-- Files sub-section (lazy-loaded) -->
+              {#if detail && !detail.loading && detail.files?.length > 0}
+                <div class="mb-3" data-testid="session-files">
+                  <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-1.5">Files changed</h4>
+                  <div class="space-y-0.5">
+                    {#each detail.files.slice(0, 8) as filePath}
+                      <button
+                        class="w-full text-left flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-mono {textBody} transition-colors {fileBg}"
+                        onclick={() => onNavigateToFile?.(filePath)}
+                        data-testid="session-file"
+                      >
+                        {filePath}
+                      </button>
+                    {/each}
+                    {#if detail.files.length > 8}
+                      <span class="text-[10px] {textTertiary} px-2">+ {detail.files.length - 8} more files</span>
+                    {/if}
+                  </div>
+                </div>
+              {:else if session.file_count > 0 && (!detail || detail.loading)}
                 <div class="text-[10px] {textMuted}">
                   {session.file_count} file{session.file_count !== 1 ? 's' : ''} changed
                 </div>
+              {/if}
+
+              <!-- View in Git button -->
+              {#if session.started_at && session.ended_at}
+                <button
+                  class="mt-1 text-[11px] {linkColor} transition-colors"
+                  onclick={() => onNavigateToCommitRange?.(session.started_at, session.ended_at)}
+                  data-testid="view-in-git"
+                >View in Git &rarr;</button>
               {/if}
             </div>
           {/if}

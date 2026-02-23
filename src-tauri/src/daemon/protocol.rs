@@ -88,6 +88,9 @@ pub mod method {
 
     // Git range queries (for archived session enrichment)
     pub const GIT_COMMITS_IN_RANGE: &str = "git_commits_in_range";
+
+    // Per-commit file changes (for Git tab detail view)
+    pub const GIT_COMMIT_FILES: &str = "git_commit_files";
 }
 
 pub mod event {
@@ -144,6 +147,19 @@ pub struct GitCommitsInRangeParams {
 pub struct GitCommitsInRangeResult {
     pub commits: Vec<crate::models::Commit>,
     pub files: Vec<String>,
+}
+
+/// `git_commit_files` params — get files changed by a specific commit
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitCommitFilesParams {
+    pub path: String,
+    pub hash: String,
+}
+
+/// `git_commit_files` result — list of changed files with status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitCommitFilesResult {
+    pub files: Vec<crate::models::CommitFile>,
 }
 
 /// `read_file` params
