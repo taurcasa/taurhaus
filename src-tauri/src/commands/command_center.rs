@@ -429,20 +429,26 @@ pub fn get_archived_sessions(
         });
     }
 
-    // Group tasks by session_id (None → "ungrouped")
-    let mut groups: std::collections::BTreeMap<String, Vec<crate::task_scanner::UnifiedTask>> =
-        std::collections::BTreeMap::new();
+    // Group raw persisted tasks by session_id (None → "ungrouped").
+    // We keep PersistedTask (not UnifiedTask) so we can derive time ranges
+    // from first_seen_at / updated_at timestamps in the DB rows.
+    let mut groups: std::collections::BTreeMap<
+        String,
+        Vec<crate::db::task_queries::PersistedTask>,
+    > = std::collections::BTreeMap::new();
     for t in db_tasks {
         let session_key = t.session_id.clone().unwrap_or_else(|| "ungrouped".to_string());
-        groups.entry(session_key).or_default().push(
-            persisted_to_unified(t),
-        );
+        groups.entry(session_key).or_default().push(t);
     }
 
     let mut sessions = Vec::new();
-    let mut errors = Vec::new();
+    let errors: Vec<String> = Vec::new();
+    let path = std::path::Path::new(&normalized_path);
 
-    for (session_key, tasks) in &groups {
+    for (session_key, raw_tasks) in &groups {
+        let tasks: Vec<crate::task_scanner::UnifiedTask> =
+            raw_tasks.iter().cloned().map(persisted_to_unified).collect();
+
         let sources: Vec<String> = {
             let mut s: Vec<String> = tasks.iter().map(|t| t.source.to_string()).collect();
             s.sort();
@@ -450,61 +456,77 @@ pub fn get_archived_sessions(
             s
         };
 
-        if session_key == "ungrouped" {
+        // Derive session time range from DB timestamps (earliest first_seen_at,
+        // latest updated_at). This works cross-platform — no JSONL file access needed.
+        let started_at = raw_tasks
+            .iter()
+            .map(|t| t.first_seen_at.as_str())
+            .min()
+            .map(String::from);
+        let ended_at = raw_tasks
+            .iter()
+            .map(|t| t.updated_at.as_str())
+            .max()
+            .map(String::from);
+
+        let duration_ms = started_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .and_then(|start| {
+                ended_at
+                    .as_deref()
+                    .and_then(|e| chrono::DateTime::parse_from_rfc3339(e).ok())
+                    .map(|end| (end - start).num_milliseconds())
+            });
+
+        // Query git for commits and files changed during the session time range
+        let (commit_count, file_count) = match (&started_at, &ended_at) {
+            (Some(s), Some(e)) => {
+                let start = chrono::DateTime::parse_from_rfc3339(s)
+                    .ok()
+                    .map(|d| d.with_timezone(&chrono::Utc));
+                let end = chrono::DateTime::parse_from_rfc3339(e)
+                    .ok()
+                    .map(|d| d.with_timezone(&chrono::Utc));
+
+                match (start, end) {
+                    (Some(s), Some(e)) => {
+                        let commits =
+                            crate::git::commits::get_commits_in_range(path, s, e)
+                                .unwrap_or_default();
+                        let files =
+                            crate::git::commits::get_files_changed_in_range(path, s, e)
+                                .unwrap_or_default();
+                        (commits.len(), files.len())
+                    }
+                    _ => (0, 0),
+                }
+            }
+            _ => (0, 0),
+        };
+
+        if session_key == "ungrouped" && started_at.is_none() {
             sessions.push(crate::task_scanner::ArchivedSession {
                 session_id: "ungrouped".to_string(),
                 started_at: None,
                 ended_at: None,
                 duration_ms: None,
-                tasks: tasks.clone(),
+                tasks,
                 commit_count: 0,
                 file_count: 0,
                 sources,
             });
-            continue;
-        }
-
-        // Enrich from session: time range, commits, files
-        let (session_info, commits, files) =
-            enrich_from_session(&normalized_path, session_key);
-
-        match session_info {
-            Some(info) => {
-                let duration_ms = chrono::DateTime::parse_from_rfc3339(&info.ended_at)
-                    .ok()
-                    .and_then(|end| {
-                        chrono::DateTime::parse_from_rfc3339(&info.started_at)
-                            .ok()
-                            .map(|start| (end - start).num_milliseconds())
-                    });
-
-                sessions.push(crate::task_scanner::ArchivedSession {
-                    session_id: session_key.clone(),
-                    started_at: Some(info.started_at),
-                    ended_at: Some(info.ended_at),
-                    duration_ms,
-                    tasks: tasks.clone(),
-                    commit_count: commits.len(),
-                    file_count: files.len(),
-                    sources,
-                });
-            }
-            None => {
-                errors.push(format!(
-                    "Could not resolve session time range for {}",
-                    session_key
-                ));
-                sessions.push(crate::task_scanner::ArchivedSession {
-                    session_id: session_key.clone(),
-                    started_at: None,
-                    ended_at: None,
-                    duration_ms: None,
-                    tasks: tasks.clone(),
-                    commit_count: 0,
-                    file_count: 0,
-                    sources,
-                });
-            }
+        } else {
+            sessions.push(crate::task_scanner::ArchivedSession {
+                session_id: session_key.clone(),
+                started_at,
+                ended_at,
+                duration_ms,
+                tasks,
+                commit_count,
+                file_count,
+                sources,
+            });
         }
     }
 
