@@ -475,6 +475,7 @@ pub(crate) fn persist_task_scan(
             session_id: t.session_id.clone(),
             first_seen_at: now.clone(),
             updated_at: now.clone(),
+            archived_at: None,
         })
         .collect();
     if let Err(e) = crate::db::task_queries::upsert_tasks(conn, &persisted) {
@@ -492,13 +493,25 @@ pub(crate) fn persist_task_scan(
             .push(&task.id);
     }
     for (source, active_ids) in &sources {
-        if let Err(e) = crate::db::task_queries::delete_stale_tasks_for_source(
+        match crate::db::task_queries::archive_or_delete_stale_tasks(
             conn,
             normalized_path,
             source,
             active_ids,
         ) {
-            tracing::warn!(error = %e, source = %source, "Failed to prune stale tasks");
+            Ok(result) => {
+                if result.archived > 0 || result.deleted > 0 {
+                    tracing::info!(
+                        source = %source,
+                        archived = result.archived,
+                        deleted = result.deleted,
+                        "Pruned stale tasks"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, source = %source, "Failed to prune stale tasks");
+            }
         }
     }
 }
