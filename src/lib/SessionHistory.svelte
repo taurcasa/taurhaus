@@ -89,6 +89,24 @@
     }
   }
 
+  /** Format an ISO date string as a relative time ("2h ago", "3d ago"). */
+  function formatRelativeTime(iso) {
+    if (!iso) return null
+    try {
+      const ms = Date.now() - new Date(iso).getTime()
+      if (ms < 0) return null
+      const mins = Math.floor(ms / 60000)
+      if (mins < 1) return 'just now'
+      if (mins < 60) return `${mins}m ago`
+      const hours = Math.floor(mins / 60)
+      if (hours < 24) return `${hours}h ago`
+      const days = Math.floor(hours / 24)
+      return `${days}d ago`
+    } catch {
+      return null
+    }
+  }
+
   // Fetch on mount
   $effect(() => {
     if (!projectPath) return
@@ -177,10 +195,13 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
             </svg>
 
-            <!-- Date + duration -->
+            <!-- Date + duration + last archived -->
             <span class="text-[13px] font-semibold">{formatDate(session.started_at)}</span>
             {#if session.duration_ms}
               <span class="text-[11px] {textTertiary}">{formatDuration(session.duration_ms)}</span>
+            {/if}
+            {#if formatRelativeTime(session.last_archived_at)}
+              <span class="text-[10px] {textMuted}" data-testid="last-archived">archived {formatRelativeTime(session.last_archived_at)}</span>
             {/if}
 
             <!-- Spacer -->

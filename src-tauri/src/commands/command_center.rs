@@ -492,6 +492,13 @@ pub fn get_archived_sessions(
             _ => (0, 0),
         };
 
+        // Most recent archival timestamp — when tasks last moved into this group.
+        let last_archived_at = raw_tasks
+            .iter()
+            .filter_map(|t| t.archived_at.as_deref())
+            .max()
+            .map(String::from);
+
         if session_key == "ungrouped" && started_at.is_none() {
             sessions.push(crate::task_scanner::ArchivedSession {
                 session_id: "ungrouped".to_string(),
@@ -502,6 +509,7 @@ pub fn get_archived_sessions(
                 commit_count: 0,
                 file_count: 0,
                 sources,
+                last_archived_at,
             });
         } else {
             sessions.push(crate::task_scanner::ArchivedSession {
@@ -513,6 +521,7 @@ pub fn get_archived_sessions(
                 commit_count,
                 file_count,
                 sources,
+                last_archived_at,
             });
         }
     }

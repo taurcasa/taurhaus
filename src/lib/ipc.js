@@ -532,6 +532,7 @@ export function getArchivedSessions(projectPath) {
         commit_count: 12,
         file_count: 8,
         sources: ['claude', 'codex', 'gemini'],
+        last_archived_at: new Date(Date.now() - 3600000).toISOString(), // 1h ago
       },
       {
         session_id: 'sess-bbb-222',
@@ -546,6 +547,7 @@ export function getArchivedSessions(projectPath) {
         commit_count: 7,
         file_count: 5,
         sources: ['claude'],
+        last_archived_at: new Date(Date.now() - 5 * 86400000).toISOString(),
       },
       {
         session_id: 'sess-ccc-333',
@@ -565,6 +567,7 @@ export function getArchivedSessions(projectPath) {
         commit_count: 15,
         file_count: 12,
         sources: ['claude', 'codex'],
+        last_archived_at: new Date(Date.now() - 12 * 86400000).toISOString(),
       },
     ],
     errors: [],

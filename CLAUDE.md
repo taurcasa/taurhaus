@@ -54,6 +54,8 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `npx tauri bui
 
 If the build fails with "Access is denied" on the exe, the app is still running — close it first, then rebuild.
 
+**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), NOT from `src-tauri/`. If `npx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the project root first.
+
 ## Architecture Summary
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)

@@ -231,6 +231,35 @@ describe('SessionHistory component', () => {
     })
   })
 
+  // --- Last archived indicator ---
+
+  it('shows last archived relative time when present', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession({ last_archived_at: new Date(Date.now() - 3600000).toISOString() })],
+      errors: [],
+    })
+
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      const el = screen.getByTestId('last-archived')
+      expect(el).toBeTruthy()
+      expect(el.textContent).toContain('archived 1h ago')
+    })
+  })
+
+  it('does not show last archived when field is missing', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession()],
+      errors: [],
+    })
+
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('last-archived')).toBeNull()
+  })
+
   // --- Error state ---
 
   it('shows error indicator when errors present', async () => {

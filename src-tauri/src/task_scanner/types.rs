@@ -118,6 +118,8 @@ pub struct ArchivedSession {
     pub file_count: usize,
     /// Which CLI tools contributed tasks to this session.
     pub sources: Vec<String>,
+    /// When tasks were most recently archived into this session group (ISO 8601).
+    pub last_archived_at: Option<String>,
 }
 
 /// Result of querying archived sessions for a project.
