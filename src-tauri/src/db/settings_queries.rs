@@ -5,7 +5,7 @@
 
 use rusqlite::Connection;
 
-use crate::models::{ActivityThresholds, DaemonSettings, Settings};
+use crate::models::{ActivityThresholds, CodeThemeSettings, DaemonSettings, Settings};
 
 /// Get a single setting value by key.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusqlite::Error> {
@@ -42,6 +42,8 @@ const KEY_IGNORE_PATTERNS: &str = "ignore_patterns";
 const KEY_DAEMON_PORT: &str = "daemon.port";
 const KEY_DAEMON_PATH: &str = "daemon.path";
 const KEY_DAEMON_AUTO_START: &str = "daemon.auto_start";
+const KEY_CODE_THEME_LIGHT: &str = "code_theme.light";
+const KEY_CODE_THEME_DARK: &str = "code_theme.dark";
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -78,6 +80,12 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.daemon.auto_start);
 
+    let code_theme_light = get_setting(conn, KEY_CODE_THEME_LIGHT)?
+        .unwrap_or(defaults.code_theme.light);
+
+    let code_theme_dark = get_setting(conn, KEY_CODE_THEME_DARK)?
+        .unwrap_or(defaults.code_theme.dark);
+
     Ok(Settings {
         scan_directories,
         thresholds: ActivityThresholds {
@@ -90,6 +98,10 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             port: daemon_port,
             path: daemon_path,
             auto_start: daemon_auto_start,
+        },
+        code_theme: CodeThemeSettings {
+            light: code_theme_light,
+            dark: code_theme_dark,
         },
     })
 }
@@ -127,6 +139,9 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
         KEY_DAEMON_AUTO_START,
         &settings.daemon.auto_start.to_string(),
     )?;
+
+    set_setting(conn, KEY_CODE_THEME_LIGHT, &settings.code_theme.light)?;
+    set_setting(conn, KEY_CODE_THEME_DARK, &settings.code_theme.dark)?;
 
     Ok(())
 }
@@ -213,6 +228,10 @@ mod tests {
                 path: "/custom/daemon".to_string(),
                 auto_start: false,
             },
+            code_theme: CodeThemeSettings {
+                light: "one-light".into(),
+                dark: "dracula".into(),
+            },
         };
 
         save_settings(&conn, &settings).unwrap();
@@ -226,6 +245,8 @@ mod tests {
         assert_eq!(loaded.daemon.port, 18000);
         assert_eq!(loaded.daemon.path, "/custom/daemon");
         assert!(!loaded.daemon.auto_start);
+        assert_eq!(loaded.code_theme.light, "one-light");
+        assert_eq!(loaded.code_theme.dark, "dracula");
     }
 
     #[test]
@@ -255,6 +276,7 @@ mod tests {
             },
             ignore_patterns: vec![],
             daemon: DaemonSettings::default(),
+            code_theme: CodeThemeSettings::default(),
         };
         save_settings(&conn, &settings1).unwrap();
 
@@ -266,6 +288,7 @@ mod tests {
                 stale_days: 60,
             },
             ignore_patterns: vec!["target".to_string()],
+            code_theme: CodeThemeSettings::default(),
             daemon: DaemonSettings::default(),
         };
         save_settings(&conn, &settings2).unwrap();

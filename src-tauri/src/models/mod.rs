@@ -169,12 +169,29 @@ pub struct Relationship {
 // Settings
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CodeThemeSettings {
+    pub light: String,
+    pub dark: String,
+}
+
+impl Default for CodeThemeSettings {
+    fn default() -> Self {
+        Self {
+            light: "github-light".into(),
+            dark: "github-dark-dimmed".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     pub scan_directories: Vec<String>,
     pub thresholds: ActivityThresholds,
     pub ignore_patterns: Vec<String>,
     pub daemon: DaemonSettings,
+    #[serde(default)]
+    pub code_theme: CodeThemeSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
