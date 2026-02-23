@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
 use crate::errors::AppError;
-use crate::models::{Commit, CommitFile, FileContent, FileTreeNode, GitStatus};
+use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitStatus};
 use crate::provider::path as wsl_path;
 use crate::provider::ProjectProvider;
 
@@ -366,6 +366,25 @@ impl ProjectProvider for DaemonProvider {
             GIT_TIMEOUT,
         )?;
         Ok(result.files)
+    }
+
+    fn commit_diff(
+        &self,
+        project_path: &str,
+        hash: &str,
+        file_path: &str,
+    ) -> Result<Vec<DiffHunk>, AppError> {
+        let path = Self::translate_path(project_path);
+        let result: protocol::GitCommitDiffResult = self.call(
+            protocol::method::GIT_COMMIT_DIFF,
+            protocol::GitCommitDiffParams {
+                path,
+                hash: hash.to_string(),
+                file_path: file_path.to_string(),
+            },
+            GIT_TIMEOUT,
+        )?;
+        Ok(result.hunks)
     }
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {

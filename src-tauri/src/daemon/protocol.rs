@@ -91,6 +91,9 @@ pub mod method {
 
     // Per-commit file changes (for Git tab detail view)
     pub const GIT_COMMIT_FILES: &str = "git_commit_files";
+
+    // Per-file diff within a commit (for inline diff view)
+    pub const GIT_COMMIT_DIFF: &str = "git_commit_diff";
 }
 
 pub mod event {
@@ -160,6 +163,20 @@ pub struct GitCommitFilesParams {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GitCommitFilesResult {
     pub files: Vec<crate::models::CommitFile>,
+}
+
+/// `git_commit_diff` params — get diff hunks for a specific file in a commit
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitCommitDiffParams {
+    pub path: String,
+    pub hash: String,
+    pub file_path: String,
+}
+
+/// `git_commit_diff` result — diff hunks with line detail
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitCommitDiffResult {
+    pub hunks: Vec<crate::models::DiffHunk>,
 }
 
 /// `read_file` params
@@ -472,7 +489,7 @@ mod tests {
     #[test]
     fn response_result_can_hold_commits() {
         let commits = vec![
-            Commit { hash: "abc12345".into(), message: "Initial".into(), author: "Me".into(), date: "2h".into() },
+            Commit { hash: "abc12345".into(), message: "Initial".into(), body: None, author: "Me".into(), date: "2h".into() },
         ];
         let resp = DaemonResponse::ok("r1", &commits);
         let result = resp.result.unwrap();

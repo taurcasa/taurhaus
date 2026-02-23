@@ -4,7 +4,20 @@ use chrono::{DateTime, Utc};
 use git2::Repository;
 
 use crate::errors::AppError;
-use crate::models::{Commit, CommitFile};
+use crate::models::{Commit, CommitFile, DiffHunk, DiffLine};
+
+/// Extract subject (first line) and optional body (remaining lines after first blank line).
+fn extract_subject_and_body(raw: &str) -> (String, Option<String>) {
+    let mut lines = raw.lines();
+    let subject = lines.next().unwrap_or("").to_string();
+    let body_lines: Vec<&str> = lines.skip_while(|l| l.trim().is_empty()).collect();
+    let body = if body_lines.is_empty() {
+        None
+    } else {
+        Some(body_lines.join("\n"))
+    };
+    (subject, body)
+}
 
 /// Get recent commits from a git repository, newest first.
 pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>, AppError> {
@@ -30,17 +43,12 @@ pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>,
 
         let timestamp = commit.time().seconds();
         let date = format_relative_time(timestamp, now);
-        let message = commit
-            .message()
-            .unwrap_or("")
-            .lines()
-            .next()
-            .unwrap_or("")
-            .to_string();
+        let (message, body) = extract_subject_and_body(commit.message().unwrap_or(""));
 
         commits.push(Commit {
             hash: format!("{:.8}", oid),
             message,
+            body,
             author: commit.author().name().unwrap_or("unknown").to_string(),
             date,
         });
@@ -76,17 +84,12 @@ pub fn get_all_commits(
 
         let timestamp = commit.time().seconds();
         let date = format_relative_time(timestamp, now);
-        let message = commit
-            .message()
-            .unwrap_or("")
-            .lines()
-            .next()
-            .unwrap_or("")
-            .to_string();
+        let (message, body) = extract_subject_and_body(commit.message().unwrap_or(""));
 
         commits.push(Commit {
             hash: format!("{:.8}", oid),
             message,
+            body,
             author: commit.author().name().unwrap_or("unknown").to_string(),
             date,
         });
@@ -179,17 +182,12 @@ pub fn get_commits_in_range(
         }
 
         if ts <= before_ts {
-            let message = commit
-                .message()
-                .unwrap_or("")
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let (message, body) = extract_subject_and_body(commit.message().unwrap_or(""));
 
             commits.push(Commit {
                 hash: format!("{:.8}", oid),
                 message,
+                body,
                 author: commit.author().name().unwrap_or("unknown").to_string(),
                 date: format_relative_time(ts, now),
             });
@@ -320,6 +318,78 @@ pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<Commi
     Ok(files)
 }
 
+/// Get the diff hunks for a specific file in a specific commit.
+///
+/// Returns a list of hunks with line-level detail. For binary files or
+/// non-existent paths, returns an empty vec.
+pub fn get_commit_diff(
+    repo_path: &Path,
+    commit_hash: &str,
+    file_path: &str,
+) -> Result<Vec<DiffHunk>, AppError> {
+    let repo = Repository::open(repo_path).map_err(|e| {
+        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+    })?;
+
+    let oid = repo
+        .revparse_single(commit_hash)
+        .map_err(|_| AppError::NotFound(format!("Commit not found: {commit_hash}")))?
+        .peel_to_commit()
+        .map_err(|_| AppError::NotFound(format!("Not a commit: {commit_hash}")))?
+        .id();
+
+    let commit = repo.find_commit(oid).map_err(git_err)?;
+    let tree = commit.tree().map_err(git_err)?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path);
+    opts.context_lines(3);
+
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+        .map_err(git_err)?;
+
+    let mut hunks: Vec<DiffHunk> = Vec::new();
+
+    diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
+        match line.origin() {
+            'H' | 'F' => {
+                // Hunk header or file header — push a new hunk if we have hunk info
+                if let Some(h) = hunk {
+                    hunks.push(DiffHunk {
+                        old_start: h.old_start(),
+                        old_lines: h.old_lines(),
+                        new_start: h.new_start(),
+                        new_lines: h.new_lines(),
+                        lines: Vec::new(),
+                    });
+                }
+            }
+            '+' | '-' | ' ' => {
+                let content = std::str::from_utf8(line.content())
+                    .unwrap_or("")
+                    .trim_end_matches('\n')
+                    .to_string();
+                let diff_line = DiffLine {
+                    origin: line.origin(),
+                    content,
+                    old_lineno: line.old_lineno(),
+                    new_lineno: line.new_lineno(),
+                };
+                if let Some(last_hunk) = hunks.last_mut() {
+                    last_hunk.lines.push(diff_line);
+                }
+            }
+            _ => {}
+        }
+        true
+    })
+    .map_err(git_err)?;
+
+    Ok(hunks)
+}
+
 fn git_err(e: git2::Error) -> AppError {
     AppError::Git(e)
 }
@@ -431,6 +501,45 @@ mod tests {
 
         let commits = get_recent_commits(dir.path(), 1).unwrap();
         assert_eq!(commits[0].message, "First line");
+    }
+
+    #[test]
+    fn multiline_message_extracts_body() {
+        let (dir, repo) = init_test_repo();
+        create_commit(&repo, "Subject\n\nBody paragraph\nMore details");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        assert_eq!(commits[0].message, "Subject");
+        assert_eq!(commits[0].body, Some("Body paragraph\nMore details".to_string()));
+    }
+
+    #[test]
+    fn single_line_message_has_no_body() {
+        let (dir, repo) = init_test_repo();
+        create_commit(&repo, "Single line");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        assert_eq!(commits[0].message, "Single line");
+        assert_eq!(commits[0].body, None);
+    }
+
+    #[test]
+    fn extract_subject_and_body_helper() {
+        let (s, b) = extract_subject_and_body("Subject\n\nBody line 1\nBody line 2");
+        assert_eq!(s, "Subject");
+        assert_eq!(b, Some("Body line 1\nBody line 2".to_string()));
+
+        let (s, b) = extract_subject_and_body("Just subject");
+        assert_eq!(s, "Just subject");
+        assert_eq!(b, None);
+
+        let (s, b) = extract_subject_and_body("Subject\n\n");
+        assert_eq!(s, "Subject");
+        assert_eq!(b, None);
+
+        let (s, b) = extract_subject_and_body("");
+        assert_eq!(s, "");
+        assert_eq!(b, None);
     }
 
     #[test]
@@ -656,5 +765,94 @@ mod tests {
         let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
         assert_eq!(files.len(), 2);
         assert!(files.iter().all(|f| f.status == "added"));
+    }
+
+    // --- get_commit_diff tests ---
+
+    #[test]
+    fn get_commit_diff_added_file() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "hello.txt", "Add hello");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let hunks = get_commit_diff(dir.path(), &commits[0].hash, "hello.txt").unwrap();
+        assert!(!hunks.is_empty());
+        // All lines should be additions
+        for hunk in &hunks {
+            for line in &hunk.lines {
+                assert_eq!(line.origin, '+');
+            }
+        }
+    }
+
+    #[test]
+    fn get_commit_diff_modified_file() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "file.txt", "Initial");
+        // Modify
+        std::fs::write(dir.path().join("file.txt"), "line1\nline2\nline3").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("file.txt")).unwrap();
+        index.write().unwrap();
+        create_commit(&repo, "Update file");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let hunks = get_commit_diff(dir.path(), &commits[0].hash, "file.txt").unwrap();
+        assert!(!hunks.is_empty());
+        // Should have mixed origins (context, add, delete)
+        let origins: Vec<char> = hunks.iter().flat_map(|h| h.lines.iter().map(|l| l.origin)).collect();
+        assert!(origins.contains(&'+') || origins.contains(&'-'));
+    }
+
+    #[test]
+    fn get_commit_diff_deleted_file() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "gone.txt", "Initial");
+        std::fs::remove_file(dir.path().join("gone.txt")).unwrap();
+        let mut index = repo.index().unwrap();
+        index.remove_path(Path::new("gone.txt")).unwrap();
+        index.write().unwrap();
+        create_commit(&repo, "Delete file");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let hunks = get_commit_diff(dir.path(), &commits[0].hash, "gone.txt").unwrap();
+        assert!(!hunks.is_empty());
+        for hunk in &hunks {
+            for line in &hunk.lines {
+                assert_eq!(line.origin, '-');
+            }
+        }
+    }
+
+    #[test]
+    fn get_commit_diff_invalid_hash() {
+        let (dir, repo) = init_test_repo();
+        create_commit(&repo, "Initial");
+        let result = get_commit_diff(dir.path(), "deadbeef99999999", "file.txt");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_commit_diff_nonexistent_file_path() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "real.txt", "Add file");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let hunks = get_commit_diff(dir.path(), &commits[0].hash, "nonexistent.txt").unwrap();
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn get_commit_diff_has_line_numbers() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "nums.txt", "Add nums");
+
+        let commits = get_recent_commits(dir.path(), 1).unwrap();
+        let hunks = get_commit_diff(dir.path(), &commits[0].hash, "nums.txt").unwrap();
+        assert!(!hunks.is_empty());
+        let first_line = &hunks[0].lines[0];
+        // Added file: old_lineno is None, new_lineno is Some
+        assert!(first_line.old_lineno.is_none());
+        assert!(first_line.new_lineno.is_some());
     }
 }

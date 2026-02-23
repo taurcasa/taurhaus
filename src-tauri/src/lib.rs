@@ -287,6 +287,7 @@ pub fn run() {
             commands::command_center::get_task_detail,
             commands::command_center::get_archived_sessions,
             commands::command_center::get_commit_files,
+            commands::command_center::get_commit_diff,
             commands::command_center::get_commits_in_range,
         ])
         .run(tauri::generate_context!())

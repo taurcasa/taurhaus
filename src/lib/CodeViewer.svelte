@@ -1,7 +1,7 @@
 <script>
   import { highlightCode } from './markdown.js'
 
-  let { code = '', language = '', dark = false } = $props()
+  let { code = '', language = '', dark = false, scrollToLine = null } = $props()
 
   let highlightedHtml = $state('')
   let ready = $state(false)
@@ -30,9 +30,27 @@
 
   // Split code into lines for fallback display
   const lines = $derived(code ? code.split('\n') : [])
+
+  let containerEl = $state(null)
+
+  // Scroll to target line after highlighting completes
+  $effect(() => {
+    if (!ready || !scrollToLine || !containerEl) return
+    // Wait a tick for DOM to update
+    requestAnimationFrame(() => {
+      const lineEls = containerEl.querySelectorAll('.line')
+      const targetIdx = scrollToLine - 1
+      if (targetIdx >= 0 && targetIdx < lineEls.length) {
+        const el = lineEls[targetIdx]
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        el.classList.add('line-highlight')
+        setTimeout(() => el.classList.remove('line-highlight'), 2000)
+      }
+    })
+  })
 </script>
 
-<div class="code-viewer {dark ? 'code-viewer-dark' : ''}" data-testid="code-viewer">
+<div class="code-viewer {dark ? 'code-viewer-dark' : ''}" data-testid="code-viewer" bind:this={containerEl}>
   {#if ready && highlightedHtml}
     <div class="code-highlighted">
       {@html highlightedHtml}
@@ -96,5 +114,12 @@
   .code-viewer-dark :global(pre.shiki code .line::before) {
     color: var(--color-zinc-700, #3f3f46);
     border-right-color: var(--color-zinc-800, #27272a);
+  }
+
+  /* Line highlight flash for scroll-to-line */
+  .code-viewer :global(.line-highlight) {
+    background: var(--color-warning-500, #eab308) / 0.15;
+    background: color-mix(in srgb, var(--color-warning-500, #eab308) 15%, transparent);
+    transition: background 0.5s ease-out;
   }
 </style>

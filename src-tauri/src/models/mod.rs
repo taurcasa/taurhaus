@@ -243,6 +243,8 @@ pub struct GitStatus {
 pub struct Commit {
     pub hash: String,
     pub message: String,
+    #[serde(default)]
+    pub body: Option<String>,
     pub author: String,
     pub date: String,
 }
@@ -252,6 +254,23 @@ pub struct CommitFile {
     pub path: String,
     /// One of: "added", "modified", "deleted", "renamed"
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DiffLine {
+    pub origin: char,
+    pub content: String,
+    pub old_lineno: Option<u32>,
+    pub new_lineno: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DiffHunk {
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub lines: Vec<DiffLine>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

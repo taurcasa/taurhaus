@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use crate::errors::AppError;
 use crate::fs::{reader, readme, tree};
 use crate::git::{commits, status};
-use crate::models::{Commit, CommitFile, FileContent, FileTreeNode, GitStatus};
+use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitStatus};
 
 use super::ProjectProvider;
 
@@ -68,6 +68,15 @@ impl ProjectProvider for LocalProvider {
         hash: &str,
     ) -> Result<Vec<CommitFile>, AppError> {
         commits::get_commit_files(Path::new(project_path), hash)
+    }
+
+    fn commit_diff(
+        &self,
+        project_path: &str,
+        hash: &str,
+        file_path: &str,
+    ) -> Result<Vec<DiffHunk>, AppError> {
+        commits::get_commit_diff(Path::new(project_path), hash, file_path)
     }
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {

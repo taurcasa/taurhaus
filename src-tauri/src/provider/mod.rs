@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
 use crate::errors::AppError;
-use crate::models::{Commit, CommitFile, FileContent, FileTreeNode, GitStatus};
+use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitStatus};
 
 /// Abstraction over filesystem and git operations for a project.
 ///
@@ -54,6 +54,14 @@ pub trait ProjectProvider: Send + Sync {
         project_path: &str,
         hash: &str,
     ) -> Result<Vec<CommitFile>, AppError>;
+
+    /// Get diff hunks for a specific file in a specific commit.
+    fn commit_diff(
+        &self,
+        project_path: &str,
+        hash: &str,
+        file_path: &str,
+    ) -> Result<Vec<DiffHunk>, AppError>;
 
     // -- Files --
 
@@ -127,6 +135,9 @@ mod tests {
             Ok((vec![], vec![]))
         }
         fn commit_files(&self, _: &str, _: &str) -> Result<Vec<CommitFile>, crate::errors::AppError> {
+            Ok(vec![])
+        }
+        fn commit_diff(&self, _: &str, _: &str, _: &str) -> Result<Vec<DiffHunk>, crate::errors::AppError> {
             Ok(vec![])
         }
         fn file_tree(&self, _: &str) -> Result<Vec<FileTreeNode>, crate::errors::AppError> {

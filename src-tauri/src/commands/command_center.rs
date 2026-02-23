@@ -546,6 +546,22 @@ pub fn get_commit_files(
         .map_err(|e| e.to_string())
 }
 
+/// Get diff hunks for a specific file in a specific commit.
+///
+/// Used by the Git tab for inline diff view.
+#[tauri::command]
+pub fn get_commit_diff(
+    providers: State<'_, ProviderState>,
+    project_path: String,
+    hash: String,
+    file_path: String,
+) -> Result<Vec<crate::models::DiffHunk>, String> {
+    let provider = providers.resolve(&project_path);
+    provider
+        .commit_diff(&project_path, &hash, &file_path)
+        .map_err(|e| e.to_string())
+}
+
 /// Get commits and files changed in a time range.
 ///
 /// Used by the Git tab for range-filtered views and Session History enrichment.

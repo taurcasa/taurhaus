@@ -642,9 +642,12 @@
   let fileType = $state(null)
   let imageDataUri = $state(null)
 
-  async function openFile(relativePath) {
+  let targetLineNumber = $state(null)
+
+  async function openFile(relativePath, lineNumber = null) {
     if (!selectedProject) return
     selectedFile = relativePath
+    targetLineNumber = lineNumber
     fileContentLoading = true
     fileContent = null
     fileError = null
@@ -1239,7 +1242,7 @@
           projectPath={selectedProject.path}
           {dark}
           onNavigateToCommit={navigateToCommit}
-          onNavigateToFile={(path) => { switchTab('files'); openFile(path) }}
+          onNavigateToFile={(path, lineNumber) => { switchTab('files'); openFile(path, lineNumber) }}
           onNavigateToCommitRange={navigateToCommitRange}
         />
       {:else if activeTab === 'git'}
@@ -1249,7 +1252,7 @@
           projectId={selectedProject.id}
           {dark}
           {gitNavTarget}
-          onNavigateToFile={(path) => { switchTab('files'); openFile(path) }}
+          onNavigateToFile={(path, lineNumber) => { switchTab('files'); openFile(path, lineNumber) }}
           onClearNavTarget={() => { gitNavTarget = null }}
         />
       {:else}
@@ -1364,7 +1367,7 @@
                       <MarkdownRenderer source={fileContent.content} {dark} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
                     </div>
                   {:else}
-                    <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} />
+                    <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} scrollToLine={targetLineNumber} />
                   {/if}
                 {/if}
               </div>

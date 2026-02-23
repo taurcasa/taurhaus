@@ -37,9 +37,24 @@ const MOCK_PROJECTS = [
 ]
 
 const MOCK_COMMITS = [
-  { hash: 'abc12345', message: 'Add new feature', author: 'Developer', date: '2h' },
-  { hash: 'def67890', message: 'Fix bug in parser', author: 'Developer', date: '5h' },
-  { hash: 'ghi11111', message: 'Update dependencies', author: 'Developer', date: '1d' },
+  { hash: 'abc12345', message: 'Add new feature', body: 'Implemented the session history view with accordion\nlayout and drill-down navigation.', author: 'Developer', date: '2h' },
+  { hash: 'def67890', message: 'Fix bug in parser', body: null, author: 'Developer', date: '5h' },
+  { hash: 'ghi11111', message: 'Update dependencies', body: null, author: 'Developer', date: '1d' },
+]
+
+const MOCK_DIFF_HUNKS = [
+  {
+    old_start: 1, old_lines: 5, new_start: 1, new_lines: 7,
+    lines: [
+      { origin: ' ', content: 'import { onMount } from "svelte"', old_lineno: 1, new_lineno: 1 },
+      { origin: ' ', content: '', old_lineno: 2, new_lineno: 2 },
+      { origin: '-', content: 'const count = 0', old_lineno: 3, new_lineno: null },
+      { origin: '+', content: 'let count = $state(0)', old_lineno: null, new_lineno: 3 },
+      { origin: '+', content: 'let doubled = $derived(count * 2)', old_lineno: null, new_lineno: 4 },
+      { origin: ' ', content: '', old_lineno: 4, new_lineno: 5 },
+      { origin: ' ', content: 'function increment() {', old_lineno: 5, new_lineno: 6 },
+    ],
+  },
 ]
 
 const MOCK_FILE_TREE = [
@@ -567,13 +582,18 @@ export function getCommitFiles(projectPath, hash) {
   ])
 }
 
+/** Get diff hunks for a specific file in a specific commit (for inline diff view). */
+export function getCommitDiff(projectPath, hash, filePath) {
+  return invokeOrMock('get_commit_diff', { projectPath, hash, filePath }, () => MOCK_DIFF_HUNKS)
+}
+
 /** Get commits and files changed in a time range (for Git tab range view). */
 export function getCommitsInRange(projectPath, after, before) {
   return invokeOrMock('get_commits_in_range', { projectPath, after, before }, () => ({
     commits: [
-      { hash: 'abc12345', message: 'Add Git tab component', author: 'Developer', date: '2h' },
-      { hash: 'def67890', message: 'Wire cross-tab navigation', author: 'Developer', date: '3h' },
-      { hash: 'ghi11111', message: 'Add commit file detail view', author: 'Developer', date: '4h' },
+      { hash: 'abc12345', message: 'Add Git tab component', body: null, author: 'Developer', date: '2h' },
+      { hash: 'def67890', message: 'Wire cross-tab navigation', body: null, author: 'Developer', date: '3h' },
+      { hash: 'ghi11111', message: 'Add commit file detail view', body: null, author: 'Developer', date: '4h' },
     ],
     files: ['src/lib/GitTab.svelte', 'src/Shell.svelte', 'src/lib/ipc.js'],
   }))
