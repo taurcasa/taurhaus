@@ -8,7 +8,7 @@
   // Dark mode tokens
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
   const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const headerBg      = $derived(dark ? 'bg-zinc-900/40' : 'bg-zinc-50/60')
@@ -125,10 +125,10 @@
     {/if}
 
     <!-- Session accordion list -->
-    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1.5">
       {#each sessions as session (session.session_id)}
         {@const open = isExpanded(session.session_id)}
-        <div class="rounded-lg overflow-hidden">
+        <div class="rounded-lg overflow-hidden border {keyline}">
           <!-- Session header (click target) -->
           <button
             class="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg transition-colors cursor-pointer
