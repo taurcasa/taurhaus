@@ -293,6 +293,9 @@ fn dispatch(
         protocol::method::GET_PROJECT_TASKS => {
             handle_get_project_tasks(&request.id, &request.params)
         }
+        protocol::method::GIT_COMMITS_IN_RANGE => {
+            handle_git_commits_in_range(&request.id, &request.params, provider)
+        }
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
@@ -364,6 +367,24 @@ fn handle_git_latest_commit_time(
             protocol::LatestCommitTimeResult {
                 timestamp: time.map(|t| t.to_rfc3339()),
             },
+        ),
+        Err(e) => DaemonResponse::err(id, "GIT_ERROR", e.to_string()),
+    }
+}
+
+fn handle_git_commits_in_range(
+    id: &str,
+    params: &serde_json::Value,
+    provider: &LocalProvider,
+) -> DaemonResponse {
+    let params: protocol::GitCommitsInRangeParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+    match provider.commits_in_range(&params.path, &params.after, &params.before) {
+        Ok((commits, files)) => DaemonResponse::ok(
+            id,
+            protocol::GitCommitsInRangeResult { commits, files },
         ),
         Err(e) => DaemonResponse::err(id, "GIT_ERROR", e.to_string()),
     }

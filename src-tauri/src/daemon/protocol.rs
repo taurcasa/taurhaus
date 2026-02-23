@@ -85,6 +85,9 @@ pub mod method {
 
     // Task scanner
     pub const GET_PROJECT_TASKS: &str = "get_project_tasks";
+
+    // Git range queries (for archived session enrichment)
+    pub const GIT_COMMITS_IN_RANGE: &str = "git_commits_in_range";
 }
 
 pub mod event {
@@ -126,6 +129,21 @@ pub struct GitLogParams {
 
 fn default_limit() -> usize {
     50
+}
+
+/// `git_commits_in_range` params — time-bounded commit query
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitCommitsInRangeParams {
+    pub path: String,
+    pub after: String,  // RFC 3339 timestamp
+    pub before: String, // RFC 3339 timestamp
+}
+
+/// `git_commits_in_range` result — commits + file paths
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitCommitsInRangeResult {
+    pub commits: Vec<crate::models::Commit>,
+    pub files: Vec<String>,
 }
 
 /// `read_file` params

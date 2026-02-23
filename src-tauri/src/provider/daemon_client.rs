@@ -332,6 +332,25 @@ impl ProjectProvider for DaemonProvider {
         }
     }
 
+    fn commits_in_range(
+        &self,
+        project_path: &str,
+        after: &str,
+        before: &str,
+    ) -> Result<(Vec<Commit>, Vec<String>), AppError> {
+        let path = Self::translate_path(project_path);
+        let result: protocol::GitCommitsInRangeResult = self.call(
+            protocol::method::GIT_COMMITS_IN_RANGE,
+            protocol::GitCommitsInRangeParams {
+                path,
+                after: after.to_string(),
+                before: before.to_string(),
+            },
+            GIT_TIMEOUT,
+        )?;
+        Ok((result.commits, result.files))
+    }
+
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {
         let path = Self::translate_path(project_path);
         self.call(

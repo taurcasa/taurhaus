@@ -412,10 +412,12 @@ fn enrich_from_session(
 #[tauri::command]
 pub fn get_archived_sessions(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
     project_path: String,
 ) -> Result<crate::task_scanner::ArchivedSessionsResult, String> {
     let normalized_path = crate::provider::path::to_linux(&project_path)
         .unwrap_or_else(|| project_path.clone());
+    let provider = providers.resolve(&project_path);
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let db_tasks =
@@ -443,7 +445,6 @@ pub fn get_archived_sessions(
 
     let mut sessions = Vec::new();
     let errors: Vec<String> = Vec::new();
-    let path = std::path::Path::new(&normalized_path);
 
     for (session_key, raw_tasks) in &groups {
         let tasks: Vec<crate::task_scanner::UnifiedTask> =
@@ -479,27 +480,13 @@ pub fn get_archived_sessions(
                     .map(|end| (end - start).num_milliseconds())
             });
 
-        // Query git for commits and files changed during the session time range
+        // Query git for commits and files changed during the session time range.
+        // Uses the provider (daemon for WSL paths, local for Windows paths).
         let (commit_count, file_count) = match (&started_at, &ended_at) {
             (Some(s), Some(e)) => {
-                let start = chrono::DateTime::parse_from_rfc3339(s)
-                    .ok()
-                    .map(|d| d.with_timezone(&chrono::Utc));
-                let end = chrono::DateTime::parse_from_rfc3339(e)
-                    .ok()
-                    .map(|d| d.with_timezone(&chrono::Utc));
-
-                match (start, end) {
-                    (Some(s), Some(e)) => {
-                        let commits =
-                            crate::git::commits::get_commits_in_range(path, s, e)
-                                .unwrap_or_default();
-                        let files =
-                            crate::git::commits::get_files_changed_in_range(path, s, e)
-                                .unwrap_or_default();
-                        (commits.len(), files.len())
-                    }
-                    _ => (0, 0),
+                match provider.commits_in_range(&project_path, s, e) {
+                    Ok((commits, files)) => (commits.len(), files.len()),
+                    Err(_) => (0, 0),
                 }
             }
             _ => (0, 0),

@@ -44,6 +44,24 @@ impl ProjectProvider for LocalProvider {
         Ok(commits::get_latest_commit_time(Path::new(project_path)))
     }
 
+    fn commits_in_range(
+        &self,
+        project_path: &str,
+        after: &str,
+        before: &str,
+    ) -> Result<(Vec<Commit>, Vec<String>), AppError> {
+        let path = Path::new(project_path);
+        let after_dt = chrono::DateTime::parse_from_rfc3339(after)
+            .map_err(|e| AppError::InvalidPath(format!("Bad 'after' timestamp: {e}")))?
+            .with_timezone(&chrono::Utc);
+        let before_dt = chrono::DateTime::parse_from_rfc3339(before)
+            .map_err(|e| AppError::InvalidPath(format!("Bad 'before' timestamp: {e}")))?
+            .with_timezone(&chrono::Utc);
+        let range_commits = commits::get_commits_in_range(path, after_dt, before_dt)?;
+        let files = commits::get_files_changed_in_range(path, after_dt, before_dt)?;
+        Ok((range_commits, files))
+    }
+
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {
         tree::build_file_tree(Path::new(project_path))
     }

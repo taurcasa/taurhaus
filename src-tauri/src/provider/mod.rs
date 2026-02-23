@@ -40,6 +40,14 @@ pub trait ProjectProvider: Send + Sync {
         project_path: &str,
     ) -> Result<Option<DateTime<Utc>>, AppError>;
 
+    /// Get commits and files changed within a time range (RFC 3339 strings).
+    fn commits_in_range(
+        &self,
+        project_path: &str,
+        after: &str,
+        before: &str,
+    ) -> Result<(Vec<Commit>, Vec<String>), AppError>;
+
     // -- Files --
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError>;
@@ -107,6 +115,9 @@ mod tests {
         }
         fn latest_commit_time(&self, _: &str) -> Result<Option<DateTime<Utc>>, crate::errors::AppError> {
             Ok(None)
+        }
+        fn commits_in_range(&self, _: &str, _: &str, _: &str) -> Result<(Vec<Commit>, Vec<String>), crate::errors::AppError> {
+            Ok((vec![], vec![]))
         }
         fn file_tree(&self, _: &str) -> Result<Vec<FileTreeNode>, crate::errors::AppError> {
             Ok(vec![])
