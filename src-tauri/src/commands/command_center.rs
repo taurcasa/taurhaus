@@ -325,26 +325,7 @@ pub fn get_project_tasks(
 
     let tasks: Vec<crate::task_scanner::UnifiedTask> = db_tasks
         .into_iter()
-        .map(|t| crate::task_scanner::UnifiedTask {
-            id: t.source_task_id,
-            subject: t.subject,
-            description: t.description,
-            active_form: t.active_form,
-            status: match t.status.as_str() {
-                "in_progress" => crate::task_scanner::TaskStatus::InProgress,
-                "completed" => crate::task_scanner::TaskStatus::Completed,
-                _ => crate::task_scanner::TaskStatus::Pending,
-            },
-            source: match t.source.as_str() {
-                "codex" => CliTool::Codex,
-                "gemini" => CliTool::Gemini,
-                _ => CliTool::Claude,
-            },
-            blocks: t.blocks,
-            blocked_by: t.blocked_by,
-            owner: t.owner,
-            session_id: t.session_id,
-        })
+        .map(persisted_to_unified)
         .collect();
 
     Ok(crate::task_scanner::TaskResult {
@@ -374,29 +355,11 @@ pub fn get_task_detail(
         .find(|t| t.source_task_id == task_id && t.source == source)
         .ok_or_else(|| format!("Task not found: {source}/{task_id}"))?;
 
-    let task = crate::task_scanner::UnifiedTask {
-        id: db_task.source_task_id,
-        subject: db_task.subject,
-        description: db_task.description,
-        active_form: db_task.active_form,
-        status: match db_task.status.as_str() {
-            "in_progress" => crate::task_scanner::TaskStatus::InProgress,
-            "completed" => crate::task_scanner::TaskStatus::Completed,
-            _ => crate::task_scanner::TaskStatus::Pending,
-        },
-        source: match db_task.source.as_str() {
-            "codex" => CliTool::Codex,
-            "gemini" => CliTool::Gemini,
-            _ => CliTool::Claude,
-        },
-        blocks: db_task.blocks,
-        blocked_by: db_task.blocked_by,
-        owner: db_task.owner,
-        session_id: db_task.session_id.clone(),
-    };
+    let session_id_for_enrich = db_task.session_id.clone();
+    let task = persisted_to_unified(db_task);
 
     // Try to enrich with session context (commits + files changed)
-    let (session, commits, files_changed) = match db_task.session_id {
+    let (session, commits, files_changed) = match session_id_for_enrich {
         Some(ref session_id) => enrich_from_session(&normalized_path, session_id),
         None => (None, vec![], vec![]),
     };
@@ -439,6 +402,147 @@ fn enrich_from_session(
             (Some(session_info), commits, files)
         }
         None => (None, vec![], vec![]),
+    }
+}
+
+/// Get archived sessions for the session history timeline.
+///
+/// Returns completed tasks grouped by session, enriched with commit and file counts.
+/// Sorted reverse-chronological (newest session first).
+#[tauri::command]
+pub fn get_archived_sessions(
+    db: State<'_, DbState>,
+    project_path: String,
+) -> Result<crate::task_scanner::ArchivedSessionsResult, String> {
+    let normalized_path = crate::provider::path::to_linux(&project_path)
+        .unwrap_or_else(|| project_path.clone());
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let db_tasks =
+        crate::db::task_queries::get_archived_tasks_for_project(&conn, &normalized_path)
+            .map_err(|e| e.to_string())?;
+
+    if db_tasks.is_empty() {
+        return Ok(crate::task_scanner::ArchivedSessionsResult {
+            sessions: vec![],
+            errors: vec![],
+        });
+    }
+
+    // Group tasks by session_id (None → "ungrouped")
+    let mut groups: std::collections::BTreeMap<String, Vec<crate::task_scanner::UnifiedTask>> =
+        std::collections::BTreeMap::new();
+    for t in db_tasks {
+        let session_key = t.session_id.clone().unwrap_or_else(|| "ungrouped".to_string());
+        groups.entry(session_key).or_default().push(
+            persisted_to_unified(t),
+        );
+    }
+
+    let mut sessions = Vec::new();
+    let mut errors = Vec::new();
+
+    for (session_key, tasks) in &groups {
+        let sources: Vec<String> = {
+            let mut s: Vec<String> = tasks.iter().map(|t| t.source.to_string()).collect();
+            s.sort();
+            s.dedup();
+            s
+        };
+
+        if session_key == "ungrouped" {
+            sessions.push(crate::task_scanner::ArchivedSession {
+                session_id: "ungrouped".to_string(),
+                started_at: None,
+                ended_at: None,
+                duration_ms: None,
+                tasks: tasks.clone(),
+                commit_count: 0,
+                file_count: 0,
+                sources,
+            });
+            continue;
+        }
+
+        // Enrich from session: time range, commits, files
+        let (session_info, commits, files) =
+            enrich_from_session(&normalized_path, session_key);
+
+        match session_info {
+            Some(info) => {
+                let duration_ms = chrono::DateTime::parse_from_rfc3339(&info.ended_at)
+                    .ok()
+                    .and_then(|end| {
+                        chrono::DateTime::parse_from_rfc3339(&info.started_at)
+                            .ok()
+                            .map(|start| (end - start).num_milliseconds())
+                    });
+
+                sessions.push(crate::task_scanner::ArchivedSession {
+                    session_id: session_key.clone(),
+                    started_at: Some(info.started_at),
+                    ended_at: Some(info.ended_at),
+                    duration_ms,
+                    tasks: tasks.clone(),
+                    commit_count: commits.len(),
+                    file_count: files.len(),
+                    sources,
+                });
+            }
+            None => {
+                errors.push(format!(
+                    "Could not resolve session time range for {}",
+                    session_key
+                ));
+                sessions.push(crate::task_scanner::ArchivedSession {
+                    session_id: session_key.clone(),
+                    started_at: None,
+                    ended_at: None,
+                    duration_ms: None,
+                    tasks: tasks.clone(),
+                    commit_count: 0,
+                    file_count: 0,
+                    sources,
+                });
+            }
+        }
+    }
+
+    // Sort reverse-chronological: sessions with started_at first (newest first),
+    // then ungrouped/unresolved at the end
+    sessions.sort_by(|a, b| {
+        match (&b.started_at, &a.started_at) {
+            (Some(b_start), Some(a_start)) => b_start.cmp(a_start),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
+
+    Ok(crate::task_scanner::ArchivedSessionsResult { sessions, errors })
+}
+
+/// Convert a persisted DB task row to a UnifiedTask.
+fn persisted_to_unified(t: crate::db::task_queries::PersistedTask) -> crate::task_scanner::UnifiedTask {
+    crate::task_scanner::UnifiedTask {
+        id: t.source_task_id,
+        subject: t.subject,
+        description: t.description,
+        active_form: t.active_form,
+        status: match t.status.as_str() {
+            "in_progress" => crate::task_scanner::TaskStatus::InProgress,
+            "completed" => crate::task_scanner::TaskStatus::Completed,
+            _ => crate::task_scanner::TaskStatus::Pending,
+        },
+        source: match t.source.as_str() {
+            "codex" => CliTool::Codex,
+            "gemini" => CliTool::Gemini,
+            _ => CliTool::Claude,
+        },
+        blocks: t.blocks,
+        blocked_by: t.blocked_by,
+        owner: t.owner,
+        session_id: t.session_id,
     }
 }
 
