@@ -70,6 +70,11 @@ vi.mock('./ipc.js', () => ({
 // Import the mocks after vi.mock so we can control return values
 const { getProjectTasks, getTaskDetail, getArchivedSessions } = await import('./ipc.js')
 
+/** Default mock for getArchivedSessions — used in tests that switch to History tab. */
+function mockArchivedSessions(sessions = []) {
+  getArchivedSessions.mockResolvedValue({ sessions, errors: [] })
+}
+
 /** Helper to build a task with defaults. */
 function makeTask(overrides = {}) {
   return {
@@ -460,6 +465,7 @@ describe('TaskBoard component', () => {
       tasks: [makeTask({ status: 'pending' })],
       errors: [],
     })
+    mockArchivedSessions([])
 
     const { fireEvent } = await import('@testing-library/svelte')
     render(TaskBoard, { props: { projectPath: '/test', dark: false } })
@@ -482,6 +488,7 @@ describe('TaskBoard component', () => {
       tasks: [makeTask({ status: 'pending' })],
       errors: [],
     })
+    mockArchivedSessions([])
 
     const { fireEvent } = await import('@testing-library/svelte')
     render(TaskBoard, { props: { projectPath: '/test', dark: false } })
@@ -519,11 +526,12 @@ describe('TaskBoard component', () => {
     })
   })
 
-  it('shows history placeholder content', async () => {
+  it('shows SessionHistory component in History tab', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [makeTask({ status: 'pending' })],
       errors: [],
     })
+    mockArchivedSessions([])
 
     const { fireEvent } = await import('@testing-library/svelte')
     render(TaskBoard, { props: { projectPath: '/test', dark: false } })
@@ -533,8 +541,9 @@ describe('TaskBoard component', () => {
 
     await fireEvent.click(screen.getByTestId('sub-tab-history'))
     await waitFor(() => {
-      expect(screen.getByTestId('history-placeholder')).toBeTruthy()
-      expect(screen.getByText('Session history')).toBeTruthy()
+      expect(screen.getByTestId('history-tab-content')).toBeTruthy()
+      // SessionHistory renders its own empty state
+      expect(screen.getByTestId('history-empty')).toBeTruthy()
     })
   })
 
@@ -546,6 +555,108 @@ describe('TaskBoard component', () => {
       expect(screen.getByTestId('sub-tab-list').getAttribute('role')).toBe('tablist')
       expect(screen.getByTestId('sub-tab-active').getAttribute('role')).toBe('tab')
       expect(screen.getByTestId('sub-tab-history').getAttribute('role')).toBe('tab')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // History → TaskDetailPanel integration
+  // ---------------------------------------------------------------------------
+
+  it('clicking a history task opens the detail panel', async () => {
+    const historyTask = { id: '10', subject: 'Archived task one', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null }
+    getProjectTasks.mockResolvedValue({ tasks: [makeTask({ status: 'pending' })], errors: [] })
+    getArchivedSessions.mockResolvedValue({
+      sessions: [{
+        session_id: 'sess-aaa',
+        started_at: '2026-02-20T10:00:00Z',
+        ended_at: '2026-02-20T12:00:00Z',
+        duration_ms: 7200000,
+        tasks: [historyTask],
+        commit_count: 3,
+        file_count: 2,
+        sources: ['claude'],
+      }],
+      errors: [],
+    })
+    getTaskDetail.mockResolvedValue({
+      task: historyTask,
+      session: { id: 'sess-aaa', started_at: '2026-02-20T10:00:00Z', ended_at: '2026-02-20T12:00:00Z' },
+      commits: [],
+      files_changed: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-history')).toBeTruthy()
+    })
+
+    // Switch to History tab
+    await fireEvent.click(screen.getByTestId('sub-tab-history'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+
+    // Expand the session
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByText('Archived task one')).toBeTruthy()
+    })
+
+    // Click the task
+    await fireEvent.click(screen.getByTestId('history-task'))
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+  })
+
+  it('switching from History to Active closes the detail panel', async () => {
+    const historyTask = { id: '10', subject: 'Archived task', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null }
+    getProjectTasks.mockResolvedValue({ tasks: [makeTask({ status: 'pending' })], errors: [] })
+    getArchivedSessions.mockResolvedValue({
+      sessions: [{
+        session_id: 'sess-aaa',
+        started_at: '2026-02-20T10:00:00Z',
+        ended_at: '2026-02-20T12:00:00Z',
+        duration_ms: 7200000,
+        tasks: [historyTask],
+        commit_count: 3,
+        file_count: 2,
+        sources: ['claude'],
+      }],
+      errors: [],
+    })
+    getTaskDetail.mockResolvedValue({
+      task: historyTask,
+      session: null,
+      commits: [],
+      files_changed: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('sub-tab-history')).toBeTruthy()
+    })
+
+    // Switch to History, expand session, click task
+    await fireEvent.click(screen.getByTestId('sub-tab-history'))
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      expect(screen.getByTestId('history-task')).toBeTruthy()
+    })
+    await fireEvent.click(screen.getByTestId('history-task'))
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+
+    // Switch back to Active — panel should close
+    await fireEvent.click(screen.getByTestId('sub-tab-active'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('task-detail-panel')).toBeNull()
     })
   })
 })

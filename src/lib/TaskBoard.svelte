@@ -2,6 +2,7 @@
   import { getProjectTasks, getTaskDetail } from './ipc.js'
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
   import TaskDetailPanel from './TaskDetailPanel.svelte'
+  import SessionHistory from './SessionHistory.svelte'
 
   /** @type {{ projectPath: string, dark: boolean }} */
   let { projectPath, dark } = $props()
@@ -152,14 +153,21 @@
   /** Close panel when clicking the board background (not a card). */
   function handleBoardClick(e) {
     if (!selectedTask) return
-    // Don't close if click was on a task card (or inside one)
-    if (e.target.closest('[data-testid="task-row"]')) return
+    // Don't close if click was on a task card or history task (or inside one)
+    if (e.target.closest('[data-testid="task-row"]') || e.target.closest('[data-testid="history-task"]')) return
     closeDetail()
   }
 
   /** Check if a task is currently selected. */
   function isSelected(task) {
     return selectedTask && selectedTask.id === task.id && selectedTask.source === task.source
+  }
+
+  /** Switch sub-tab, clearing any open detail panel. */
+  function switchSubTab(tab) {
+    if (activeSubTab === tab) return
+    activeSubTab = tab
+    closeDetail()
   }
 </script>
 
@@ -178,7 +186,7 @@
         class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] border-b-2 transition-colors cursor-pointer
           {activeSubTab === 'active' ? subTabActive : subTabInactive}"
         data-testid="sub-tab-active"
-        onclick={() => activeSubTab = 'active'}
+        onclick={() => switchSubTab('active')}
       >Active{#if activeSubTab === 'active' && tasks.length > 0}<span class="ml-1.5 font-normal normal-case tracking-normal {textTertiary}">&middot; {tasks.length}</span>{/if}</button>
       <button
         role="tab"
@@ -186,7 +194,7 @@
         class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] border-b-2 transition-colors cursor-pointer
           {activeSubTab === 'history' ? subTabActive : subTabInactive}"
         data-testid="sub-tab-history"
-        onclick={() => activeSubTab = 'history'}
+        onclick={() => switchSubTab('history')}
       >History</button>
     </div>
   </div>
@@ -262,17 +270,9 @@
 
     {/if}
   {:else}
-    <!-- History sub-tab — SessionHistory component will replace this placeholder -->
+    <!-- History sub-tab — SessionHistory accordion -->
     <div class="flex-1 overflow-hidden" data-testid="history-tab-content">
-      <div class="flex-1 flex items-center justify-center h-full" data-testid="history-placeholder">
-        <div class="text-center">
-          <svg class="w-10 h-10 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p class="mt-3 text-[13px] {textMuted}">Session history</p>
-          <p class="mt-1 text-[11px] {textTertiary}">Completed work from previous sessions will appear here</p>
-        </div>
-      </div>
+      <SessionHistory {projectPath} {dark} onSelectTask={selectTask} />
     </div>
   {/if}
   </div>
