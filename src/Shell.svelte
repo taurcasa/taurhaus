@@ -103,10 +103,10 @@
 
   // Activity state groups for sidebar ordering
   const groups = [
-    { key: 'active', label: 'ACTIVE', accentClass: 'bg-success-300' },
-    { key: 'recent', label: 'RECENT', accentClass: 'bg-info-300' },
-    { key: 'stale', label: 'STALE', accentClass: 'bg-warning-300' },
-    { key: 'dormant', label: 'DORMANT', accentClass: 'bg-zinc-500' },
+    { key: 'active', label: 'ACTIVE' },
+    { key: 'recent', label: 'RECENT' },
+    { key: 'stale', label: 'STALE' },
+    { key: 'dormant', label: 'DORMANT' },
   ]
 
   // --- Data state ---
@@ -977,9 +977,8 @@
           {#each groups as group}
             {@const items = projects.filter(p => p.activity_state === group.key)}
             {#if items.length > 0}
-              <div class="px-3.5 pt-4 pb-1.5 flex items-center gap-2">
-                <span class="w-[2px] h-2.5 rounded-full {group.accentClass}"></span>
-                <span class="text-[10px] font-medium uppercase tracking-[0.06em] text-white/20">{group.label}</span>
+              <div class="px-3.5 pt-8 pb-1.5">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{group.label}</span>
               </div>
               {#each items as project}
                 {@const selected = selectedProject && project.id === selectedProject.id}
@@ -995,9 +994,9 @@
                   onmouseleave={hideHoverCard}
                 >
                   {#if selected}
-                    <span class="w-[2px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
+                    <span class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
                   {/if}
-                  <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/60'}">{project.name}</span>
+                  <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
                   {#if indicators.length > 0}
                     <span class="flex items-center gap-1 shrink-0">
                       {#each indicators as ind}
@@ -1017,7 +1016,9 @@
                       {/each}
                     </span>
                   {/if}
-                  <span class="text-[10px] font-mono shrink-0 {selected ? 'text-white/30' : 'text-white/15'}">{project.branch || ''}</span>
+                  {#if project.branch}
+                    <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/40 bg-white/[0.06]' : 'text-white/20 bg-white/[0.04]'}">{project.branch}</span>
+                  {/if}
                   {#if project.is_dirty}
                     <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
                   {/if}
