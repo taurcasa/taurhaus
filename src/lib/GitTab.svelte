@@ -1,8 +1,8 @@
 <script>
   import { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } from './ipc.js'
 
-  /** @type {{ projectPath: string, projectId: string, dark: boolean, gitNavTarget: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
-  let { projectPath, projectId, dark, gitNavTarget = null, onNavigateToFile, onClearNavTarget } = $props()
+  /** @type {{ projectPath: string, projectId: string, dark: boolean, gitNavTarget: object|null, position: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
+  let { projectPath, projectId, dark, gitNavTarget = null, position = $bindable(null), onNavigateToFile, onClearNavTarget } = $props()
 
   // Dark mode tokens (same pattern as Shell.svelte)
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
@@ -53,6 +53,11 @@
   let hasMore = $state(true)
   let currentOffset = $state(0)
   let sentinelEl = $state(null)
+
+  // Sync position outward for Shell's per-project position memory
+  $effect(() => {
+    position = { selectedHash, rangeFilter }
+  })
 
   // Load commits on mount or projectId change
   $effect(() => {

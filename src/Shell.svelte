@@ -147,6 +147,25 @@
   // Cross-tab navigation state for Git tab
   let gitNavTarget = $state(null) // { type: 'commit', hash } | { type: 'range', after, before } | null
 
+  // Per-project position memory — remembers where you were when you switch away
+  const projectPositions = new Map() // projectId → { tab, visitedTabs, file?, gitPosition?, taskPosition? }
+
+  // Bound positions from child components (synced via $bindable)
+  let gitPosition = $state(null)
+  let taskPosition = $state(null)
+  let taskRestoreTarget = $state(null)
+
+  function saveProjectPosition() {
+    if (!selectedProject) return
+    projectPositions.set(selectedProject.id, {
+      tab: activeTab,
+      visitedTabs: new Set(visitedTabs),
+      file: selectedFile,
+      gitPosition: gitPosition ? { ...gitPosition } : null,
+      taskPosition: taskPosition ? { ...taskPosition } : null,
+    })
+  }
+
   function navigateToCommit(hash) {
     gitNavTarget = { type: 'commit', hash }
     switchTab('git', { tab: 'git', commit: hash })
@@ -473,7 +492,13 @@
   let _selectGeneration = 0
   async function selectProject(project) {
     const projectId = project.id
-    const wantFiles = activeTab === 'files'
+
+    // Save position in the current project before switching away
+    saveProjectPosition()
+
+    const savedPosition = projectPositions.get(projectId)
+    const restoredTab = savedPosition?.tab || 'overview'
+    const wantFiles = restoredTab === 'files'
     const generation = ++_selectGeneration
 
     // Fire all IPC calls in parallel — don't touch state yet
@@ -497,9 +522,20 @@
     detailLoading = false
     showAllCommits = false
     heroMode = 'auto'
-    activeTab = 'overview'
-    visitedTabs = new Set(['overview'])
+    activeTab = restoredTab
+    visitedTabs = savedPosition?.visitedTabs || new Set([restoredTab])
     resetNav()
+    pushNav({ tab: restoredTab, file: savedPosition?.file })
+    // Restore Git position via existing gitNavTarget mechanism
+    if (savedPosition?.gitPosition?.selectedHash) {
+      gitNavTarget = { type: 'commit', hash: savedPosition.gitPosition.selectedHash }
+    } else if (savedPosition?.gitPosition?.rangeFilter) {
+      gitNavTarget = { type: 'range', ...savedPosition.gitPosition.rangeFilter }
+    } else {
+      gitNavTarget = null
+    }
+    // Restore Task position via separate restoreTarget prop
+    taskRestoreTarget = savedPosition?.taskPosition ?? null
     recentCommits = commits
     commitsLoading = false
     latestSession = sessions[0]
@@ -518,8 +554,10 @@
     if (tree !== null) {
       fileTree = tree
       fileTreeLoading = false
-      // Auto-select README if on files tab
-      if (!selectedFile) {
+      // Restore saved file position, or fall back to README
+      if (savedPosition?.file) {
+        openFile(savedPosition.file)
+      } else if (!selectedFile) {
         const readmeNode = findReadmeInTree(fileTree)
         if (readmeNode) openFile(readmeNode.path)
       }
@@ -1339,6 +1377,9 @@
             projectPath={selectedProject.path}
             {dark}
             {codeTheme}
+            bind:position={taskPosition}
+            restoreTarget={taskRestoreTarget}
+            onClearRestoreTarget={() => { taskRestoreTarget = null }}
             onNavigateToCommit={navigateToCommit}
             onNavigateToFile={(path, lineNumber) => { switchTab('files', { tab: 'files', file: path, lineNumber }); openFile(path, lineNumber) }}
             onNavigateToCommitRange={navigateToCommitRange}
@@ -1354,6 +1395,7 @@
             projectId={selectedProject.id}
             {dark}
             {gitNavTarget}
+            bind:position={gitPosition}
             onNavigateToFile={(path, lineNumber) => { switchTab('files', { tab: 'files', file: path, lineNumber }); openFile(path, lineNumber) }}
             onClearNavTarget={() => { gitNavTarget = null }}
           />

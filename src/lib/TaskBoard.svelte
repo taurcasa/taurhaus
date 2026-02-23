@@ -4,8 +4,8 @@
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
-  /** @type {{ projectPath: string, dark: boolean, codeTheme?: string, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
-  let { projectPath, dark, codeTheme = 'github-light', onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
+  /** @type {{ projectPath: string, dark: boolean, codeTheme?: string, position: object|null, restoreTarget: object|null, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void, onClearRestoreTarget?: () => void }} */
+  let { projectPath, dark, codeTheme = 'github-light', position = $bindable(null), restoreTarget = null, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange, onClearRestoreTarget } = $props()
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
@@ -64,6 +64,36 @@
     in_progress: tasks.filter(t => t.status === 'in_progress'),
     pending: tasks.filter(t => t.status === 'pending'),
     completed: tasks.filter(t => t.status === 'completed'),
+  })
+
+  // Pending restore target — applied once tasks finish loading
+  let pendingRestore = $state(null)
+
+  // Sync position outward for Shell's per-project position memory
+  $effect(() => {
+    position = {
+      activeSubTab,
+      selectedTaskId: selectedTask?.id ?? null,
+      selectedTaskSource: selectedTask?.source ?? null,
+    }
+  })
+
+  // Handle restore target from Shell (separate channel from position sync)
+  $effect(() => {
+    if (!restoreTarget) return
+    if (restoreTarget.activeSubTab) activeSubTab = restoreTarget.activeSubTab
+    if (restoreTarget.selectedTaskId) {
+      pendingRestore = { id: restoreTarget.selectedTaskId, source: restoreTarget.selectedTaskSource }
+    }
+    onClearRestoreTarget?.()
+  })
+
+  // Apply pending restore once tasks are loaded
+  $effect(() => {
+    if (!pendingRestore || loading || tasks.length === 0) return
+    const match = tasks.find(t => t.id === pendingRestore.id && t.source === pendingRestore.source)
+    if (match) selectTask(match)
+    pendingRestore = null
   })
 
   // Fetch tasks on mount and when projectPath changes.
