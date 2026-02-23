@@ -635,7 +635,10 @@
     navWithSuppressed(() => {
       visitedTabs = new Set([...visitedTabs, entry.tab])
       activeTab = entry.tab
-      if (entry.tab === 'files' && entry.file) openFile(entry.file, entry.lineNumber)
+      if (entry.tab === 'files') {
+        if (selectedProject && fileTree.length === 0) loadFileTree(selectedProject.id)
+        if (entry.file) openFile(entry.file, entry.lineNumber)
+      }
       if (entry.tab === 'git' && entry.commit) gitNavTarget = { type: 'commit', hash: entry.commit }
       if (entry.tab === 'git' && entry.rangeFilter) gitNavTarget = { type: 'range', ...entry.rangeFilter }
     })
@@ -692,6 +695,19 @@
     if (!selectedProject) return
     selectedFile = relativePath
     targetLineNumber = lineNumber
+
+    // Auto-expand parent directories so the file is visible in the tree
+    const parts = relativePath.split('/')
+    if (parts.length > 1) {
+      const next = new Set(expandedDirs)
+      let dir = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = dir ? dir + '/' + parts[i] : parts[i]
+        next.add(dir)
+      }
+      expandedDirs = next
+    }
+
     fileContentLoading = true
     fileContent = null
     fileError = null
@@ -768,8 +784,9 @@
   })
 
   // Back/Forward navigation — mouse buttons + Alt+Arrow keys
+  // Use mousedown (not mouseup) to intercept before WebView2 handles back/forward.
   $effect(() => {
-    function onMouseUp(e) {
+    function onMouseDown(e) {
       if (e.button === 3) {
         e.preventDefault()
         const entry = navGoBack()
@@ -791,10 +808,10 @@
         if (entry) applyNavEntry(entry)
       }
     }
-    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('mousedown', onMouseDown)
     document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('keydown', onKeyDown)
     }
   })
@@ -1346,7 +1363,7 @@
       <!-- ═══ FILES TAB ═══ -->
       <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'files'}>
         {#if visitedTabs.has('files')}
-        <div class="flex-1 flex min-h-0">
+        <div class="flex-1 flex min-h-0 min-w-0 overflow-hidden">
 
           <!-- File tree (200px fixed) -->
           <div class="w-[200px] shrink-0 {treeBg} border-r {keyline} flex flex-col overflow-hidden" role="tree">
