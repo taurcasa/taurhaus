@@ -4,7 +4,7 @@ import { createHighlighter } from 'shiki'
 import DOMPurify from 'dompurify'
 
 let highlighterPromise = null
-let mdInstances = { light: null, dark: null }
+const mdInstances = {}
 
 /**
  * Lazily create and cache a Shiki highlighter.
@@ -31,14 +31,26 @@ function getHighlighter() {
 }
 
 /**
- * Get a markdown-it instance configured for the given theme.
+ * Ensure a theme is loaded in the highlighter.
+ * No-op if the theme is already loaded.
+ */
+async function ensureThemeLoaded(themeId) {
+  const highlighter = await getHighlighter()
+  const loaded = highlighter.getLoadedThemes()
+  if (!loaded.includes(themeId)) {
+    await highlighter.loadTheme(themeId)
+  }
+}
+
+/**
+ * Get a markdown-it instance configured for the given theme ID.
  * Returns a promise that resolves once Shiki is loaded.
  */
-async function getMdInstance(theme) {
-  const key = theme === 'dark' ? 'dark' : 'light'
-  if (mdInstances[key]) return mdInstances[key]
+async function getMdInstance(themeId) {
+  if (mdInstances[themeId]) return mdInstances[themeId]
 
   const highlighter = await getHighlighter()
+  await ensureThemeLoaded(themeId)
 
   const md = new MarkdownIt({
     html: true,       // Allow raw HTML blocks (common in READMEs: <div>, <img>, etc.)
@@ -52,11 +64,11 @@ async function getMdInstance(theme) {
   md.linkify.set({ fuzzyLink: false })
 
   md.use(fromHighlighter(highlighter, {
-    theme: theme === 'dark' ? 'github-dark-dimmed' : 'github-light',
+    theme: themeId,
     defaultLanguage: 'text',
   }))
 
-  mdInstances[key] = md
+  mdInstances[themeId] = md
   return md
 }
 
@@ -72,10 +84,10 @@ async function getMdInstance(theme) {
  * MarkdownRenderer component after render, via the read_project_asset IPC command.
  *
  * @param {string} source — raw markdown text
- * @param {boolean} isDark — use dark theme for syntax highlighting
+ * @param {string} theme — Shiki theme ID for syntax highlighting
  * @returns {Promise<string>} sanitized HTML string
  */
-export async function renderMarkdown(source, isDark = false) {
+export async function renderMarkdown(source, theme = 'github-light') {
   if (!source) return ''
 
   // Pre-load languages referenced in fenced code blocks so the
@@ -83,7 +95,7 @@ export async function renderMarkdown(source, isDark = false) {
   // Languages that Shiki doesn't support get replaced with 'text'.
   source = await preloadFencedLanguages(source)
 
-  const md = await getMdInstance(isDark ? 'dark' : 'light')
+  const md = await getMdInstance(theme)
   let raw
   try {
     raw = md.render(source)
@@ -141,14 +153,14 @@ async function preloadFencedLanguages(source) {
  *
  * @param {string} code — source code
  * @param {string} lang — language identifier
- * @param {boolean} isDark — use dark theme
+ * @param {string} theme — Shiki theme ID
  * @returns {Promise<string>} highlighted HTML
  */
-export async function highlightCode(code, lang, isDark = false) {
+export async function highlightCode(code, lang, theme = 'github-light') {
   if (!code) return ''
 
   const highlighter = await getHighlighter()
-  const theme = isDark ? 'github-dark-dimmed' : 'github-light'
+  await ensureThemeLoaded(theme)
 
   // Load the language on demand if not already loaded
   const loadedLangs = highlighter.getLoadedLanguages()

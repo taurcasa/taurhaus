@@ -3,13 +3,19 @@ import { renderMarkdown, highlightCode } from './markdown.js'
 
 // Mock shiki since it requires WASM (not available in jsdom)
 const loadedLangs = new Set(['javascript', 'rust'])
+const loadedThemes = new Set(['github-light', 'github-dark-dimmed'])
 vi.mock('shiki', () => ({
   createHighlighter: vi.fn(() => Promise.resolve({
     getLoadedLanguages: () => [...loadedLangs],
+    getLoadedThemes: () => [...loadedThemes],
     loadLanguage: vi.fn((lang) => {
       // Simulate: some languages load, some don't
       if (lang === 'brainfuck') return Promise.reject(new Error('not found'))
       loadedLangs.add(lang)
+      return Promise.resolve()
+    }),
+    loadTheme: vi.fn((theme) => {
+      loadedThemes.add(theme)
       return Promise.resolve()
     }),
     codeToHtml: (code, opts) => `<pre class="shiki"><code>${code}</code></pre>`,
@@ -108,11 +114,16 @@ describe('renderMarkdown', () => {
     expect(html).toContain('hi')
   })
 
-  it('returns different output for dark vs light', async () => {
-    const light = await renderMarkdown('hello', false)
-    const dark = await renderMarkdown('hello', true)
+  it('accepts theme ID strings for light and dark', async () => {
+    const light = await renderMarkdown('hello', 'github-light')
+    const dark = await renderMarkdown('hello', 'github-dark-dimmed')
     expect(light).toContain('hello')
     expect(dark).toContain('hello')
+  })
+
+  it('loads non-default themes on demand', async () => {
+    const html = await renderMarkdown('hello', 'dracula')
+    expect(html).toContain('hello')
   })
 
   it('preloads fenced code block languages before rendering', async () => {
@@ -147,5 +158,10 @@ describe('highlightCode', () => {
   it('falls back to text for unknown language', async () => {
     const html = await highlightCode('hello', 'brainfuck')
     expect(html).toContain('hello')
+  })
+
+  it('accepts theme ID string', async () => {
+    const html = await highlightCode('let x = 1', 'rust', 'github-dark-dimmed')
+    expect(html).toContain('let x = 1')
   })
 })
