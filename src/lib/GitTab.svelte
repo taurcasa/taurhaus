@@ -240,84 +240,7 @@
 
 <div class="flex-1 flex min-h-0" data-testid="git-tab">
 
-  <!-- Commit list (left panel, 250px) -->
-  <div class="w-[250px] shrink-0 {listBg} border-r {keyline} flex flex-col overflow-hidden">
-
-    <!-- Range filter indicator -->
-    {#if rangeFilter}
-      <div class="px-3 py-2 border-b {keyline} {filterBg}" data-testid="range-filter">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-medium {filterText}">Filtered to session</span>
-          <button
-            class="text-[10px] {linkColor} transition-colors"
-            onclick={clearFilter}
-          >Clear</button>
-        </div>
-        <div class="text-[10px] {textTertiary} mt-0.5">
-          {formatRangeDate(rangeFilter.after)} — {formatRangeDate(rangeFilter.before)}
-        </div>
-      </div>
-    {/if}
-
-    <!-- Commit list -->
-    <div class="flex-1 overflow-y-auto pt-1">
-      {#if loading}
-        <div class="px-3 space-y-0.5" data-testid="git-loading">
-          {#each Array(8) as _}
-            <div class="flex flex-col justify-center h-[46px] gap-1.5 px-2">
-              <div class="flex items-center gap-2">
-                <div class="h-2 w-8 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-                <div class="h-2.5 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse"></div>
-              </div>
-              <div class="flex items-center gap-2">
-                <div class="h-1.5 w-14 rounded {dark ? 'bg-zinc-800/40' : 'bg-zinc-100'} animate-pulse"></div>
-                <div class="h-1.5 w-12 rounded {dark ? 'bg-zinc-800/30' : 'bg-zinc-100/80'} animate-pulse"></div>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {:else if commits.length === 0}
-        <div class="px-4 pt-8 text-center" data-testid="git-empty">
-          <svg class="w-8 h-8 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p class="mt-2 text-[12px] {textMuted}">
-            {rangeFilter ? 'No commits in this range' : 'No commits found'}
-          </p>
-        </div>
-      {:else}
-        {#each commits as commit (commit.hash)}
-          {@const isSelected = selectedHash === commit.hash}
-          <button
-            class="w-full flex flex-col justify-center h-[46px] text-left rounded mx-1 px-2 py-1 transition-colors
-              {isSelected ? listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${listHover}`}"
-            style="width: calc(100% - 8px)"
-            onclick={() => selectCommit(commit.hash)}
-            data-testid="commit-row"
-            aria-current={isSelected ? 'true' : undefined}
-          >
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-[12px] {isSelected ? '' : timeColor} shrink-0 w-[32px]">{commit.date}</span>
-              <span class="text-[13px] truncate flex-1 {isSelected ? '' : textBody}">{commit.message}</span>
-            </div>
-            <div class="flex items-center gap-2 mt-0.5">
-              <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : textMuted}">{commit.hash}</span>
-              <span class="text-[10px] {isSelected ? 'opacity-60' : textTertiary}">{commit.author}</span>
-            </div>
-          </button>
-        {/each}
-        {#if hasMore && !rangeFilter}
-          <div bind:this={sentinelEl} class="h-8 flex items-center justify-center" data-testid="scroll-sentinel">
-            {#if loadingMore}
-              <span class="text-[10px] {textTertiary}">Loading...</span>
-            {/if}
-          </div>
-        {/if}
-      {/if}
-    </div>
-  </div>
-
-  <!-- Commit detail (right panel) -->
+  <!-- Commit detail (left panel, wide) -->
   <div class="flex-1 flex flex-col min-w-0 content-enter">
     {#if !selectedHash}
       <div class="flex-1 flex items-center justify-center">
@@ -341,44 +264,47 @@
       <div class="flex-1 overflow-y-auto">
         {#if selectedFilePath}
           <!-- Diff view -->
-          <div data-testid="diff-view">
-            <!-- Breadcrumb bar -->
-            <div class="px-4 py-2 border-b {keyline} flex items-center gap-2 shrink-0">
-              <button
-                class="text-[11px] {linkColor} transition-colors flex items-center gap-1"
-                onclick={backToFiles}
-                data-testid="back-to-files"
-              >
-                <span class="text-[13px]">&larr;</span>
-                Files ({commitFiles.length})
-              </button>
-              <span class="text-[10px] {textTertiary}">/</span>
-              <span class="text-[12px] font-mono {textBody} truncate">{selectedFilePath}</span>
-              <div class="flex-1"></div>
-              <button
-                class="text-[11px] {linkColor} transition-colors"
-                onclick={() => handleOpenFile(selectedFilePath)}
-                data-testid="open-file-btn"
-              >Open file &rarr;</button>
-            </div>
-
-            <!-- File pills (compact switching) -->
-            {#if commitFiles.length > 1}
-              <div class="px-4 py-2 border-b {keyline} flex flex-wrap gap-1">
-                {#each commitFiles as file}
-                  {@const isActive = selectedFilePath === file.path}
-                  {@const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.modified}
-                  <button
-                    class="text-[10px] px-2 py-0.5 rounded-full transition-colors font-mono
-                      {isActive ? filePillActive : filePillBg}"
-                    onclick={() => handleFileClick(file.path)}
-                    data-testid="file-pill"
-                  >
-                    <span class="{display.color} mr-0.5">{display.icon}</span>{basename(file.path)}
-                  </button>
-                {/each}
+          <div class="flex flex-col min-h-full" data-testid="diff-view">
+            <!-- Sticky navigation header -->
+            <div class="sticky top-0 z-10 {dark ? 'bg-zinc-950' : 'bg-white'}">
+              <!-- Breadcrumb bar -->
+              <div class="px-4 py-2 border-b {keyline} flex items-center gap-2">
+                <button
+                  class="text-[11px] {linkColor} transition-colors flex items-center gap-1"
+                  onclick={backToFiles}
+                  data-testid="back-to-files"
+                >
+                  <span class="text-[13px]">&larr;</span>
+                  Files ({commitFiles.length})
+                </button>
+                <span class="text-[10px] {textTertiary}">/</span>
+                <span class="text-[12px] font-mono {textBody} truncate">{selectedFilePath}</span>
+                <div class="flex-1"></div>
+                <button
+                  class="text-[11px] {linkColor} transition-colors"
+                  onclick={() => handleOpenFile(selectedFilePath)}
+                  data-testid="open-file-btn"
+                >Open file &rarr;</button>
               </div>
-            {/if}
+
+              <!-- File pills (compact switching) -->
+              {#if commitFiles.length > 1}
+                <div class="px-4 py-2 border-b {keyline} flex flex-wrap gap-1">
+                  {#each commitFiles as file}
+                    {@const isActive = selectedFilePath === file.path}
+                    {@const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.modified}
+                    <button
+                      class="text-[10px] px-2 py-0.5 rounded-full transition-colors font-mono
+                        {isActive ? filePillActive : filePillBg}"
+                      onclick={() => handleFileClick(file.path)}
+                      data-testid="file-pill"
+                    >
+                      <span class="{display.color} mr-0.5">{display.icon}</span>{basename(file.path)}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
 
             <!-- Diff content -->
             <div class="px-4 py-3">
@@ -457,5 +383,82 @@
         {/if}
       </div>
     {/if}
+  </div>
+
+  <!-- Commit list (right panel, 250px) -->
+  <div class="w-[250px] shrink-0 {listBg} border-l {keyline} flex flex-col overflow-hidden">
+
+    <!-- Range filter indicator -->
+    {#if rangeFilter}
+      <div class="px-3 py-2 border-b {keyline} {filterBg}" data-testid="range-filter">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-medium {filterText}">Filtered to session</span>
+          <button
+            class="text-[10px] {linkColor} transition-colors"
+            onclick={clearFilter}
+          >Clear</button>
+        </div>
+        <div class="text-[10px] {textTertiary} mt-0.5">
+          {formatRangeDate(rangeFilter.after)} — {formatRangeDate(rangeFilter.before)}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Commit list -->
+    <div class="flex-1 overflow-y-auto pt-1">
+      {#if loading}
+        <div class="px-3 space-y-0.5" data-testid="git-loading">
+          {#each Array(8) as _}
+            <div class="flex flex-col justify-center h-[46px] gap-1.5 px-2">
+              <div class="flex items-center gap-2">
+                <div class="h-2 w-8 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
+                <div class="h-2.5 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse"></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="h-1.5 w-14 rounded {dark ? 'bg-zinc-800/40' : 'bg-zinc-100'} animate-pulse"></div>
+                <div class="h-1.5 w-12 rounded {dark ? 'bg-zinc-800/30' : 'bg-zinc-100/80'} animate-pulse"></div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else if commits.length === 0}
+        <div class="px-4 pt-8 text-center" data-testid="git-empty">
+          <svg class="w-8 h-8 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p class="mt-2 text-[12px] {textMuted}">
+            {rangeFilter ? 'No commits in this range' : 'No commits found'}
+          </p>
+        </div>
+      {:else}
+        {#each commits as commit (commit.hash)}
+          {@const isSelected = selectedHash === commit.hash}
+          <button
+            class="w-full flex flex-col justify-center h-[46px] text-left rounded mx-1 px-2 py-1 transition-colors
+              {isSelected ? listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${listHover}`}"
+            style="width: calc(100% - 8px)"
+            onclick={() => selectCommit(commit.hash)}
+            data-testid="commit-row"
+            aria-current={isSelected ? 'true' : undefined}
+          >
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[12px] {isSelected ? '' : timeColor} shrink-0 w-[32px]">{commit.date}</span>
+              <span class="text-[13px] truncate flex-1 {isSelected ? '' : textBody}">{commit.message}</span>
+            </div>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : textMuted}">{commit.hash}</span>
+              <span class="text-[10px] {isSelected ? 'opacity-60' : textTertiary}">{commit.author}</span>
+            </div>
+          </button>
+        {/each}
+        {#if hasMore && !rangeFilter}
+          <div bind:this={sentinelEl} class="h-8 flex items-center justify-center" data-testid="scroll-sentinel">
+            {#if loadingMore}
+              <span class="text-[10px] {textTertiary}">Loading...</span>
+            {/if}
+          </div>
+        {/if}
+      {/if}
+    </div>
   </div>
 </div>
