@@ -132,7 +132,9 @@ fn retain_state_trackers(active_pids: &[u32]) {
 /// **Raw state** — Active if ANY of these is true (OR):
 /// - **JSONL mtime**: main transcript modified < 5s ago (tool use, streaming)
 /// - **Subagent mtime**: subagent file modified < 5s ago (compaction)
-/// - **Proc IO**: rchar delta > 500 bytes for 2+ consecutive polls (thinking)
+/// - **Proc IO** (Claude): rchar delta > 500 bytes for 2+ consecutive polls
+/// - **TCP sockets** (Gemini only): ESTABLISHED connection to remote port 443
+/// - **Codex**: session file mtime only (TCP keep-alive makes sockets unreliable)
 ///
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
@@ -146,10 +148,19 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
             let tmux = pane_map.get(&proc.tty);
             let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
 
-            // Raw state from all three signals (OR)
-            let raw_state = if idle_result.state == SessionState::Active
-                || proc_io::is_process_active(proc.pid)
-            {
+            // Raw state from multiple signals (OR).
+            // Claude: file mtime OR consecutive-poll IO hysteresis (sustained rchar).
+            // Gemini: file mtime OR TCP socket to :443 (Gemini closes connections when idle).
+            // Codex: file mtime ONLY — Codex keeps HTTP keep-alive connections to :443
+            //   indefinitely after finishing work, making TCP presence unreliable.
+            //   Session file mtime gives ~9s active→idle latency (5s threshold + 4s hysteresis),
+            //   which is far better than "never" from the stale TCP connection.
+            let process_active = match proc.cli_tool {
+                CliTool::Claude => proc_io::is_process_active_hysteresis(proc.pid),
+                CliTool::Gemini => proc_io::has_api_connections(proc.pid),
+                CliTool::Codex => false,
+            };
+            let raw_state = if idle_result.state == SessionState::Active || process_active {
                 SessionState::Active
             } else {
                 SessionState::Idle
@@ -178,6 +189,11 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     // Deduplicate: when a tool runs via an fnm/node shim, both the shim
     // process and the native binary appear in `ps` output sharing the same
     // TTY.  Keep only one session per (tty, cli_tool) pair.
+    //
+    // We prefer the HIGHEST PID per group — the child process (native binary)
+    // is the one that actually owns API sockets and does meaningful IO.
+    // The shim (lower PID, parent) is just a launcher with no sockets.
+    sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
 
@@ -230,6 +246,7 @@ where
         .collect();
 
     // Deduplicate: same logic as scan_sessions (see comment there)
+    sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
 
@@ -357,9 +374,8 @@ mod tests {
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
         assert_eq!(sessions.len(), 2);
 
-        // First session: has tmux, is active
-        let a = &sessions[0];
-        assert_eq!(a.pid, 100);
+        // Find sessions by PID (order may vary due to descending PID sort)
+        let a = sessions.iter().find(|s| s.pid == 100).expect("proj-a session");
         assert_eq!(a.project_path, "/home/user/proj-a");
         assert_eq!(a.cli_tool, CliTool::Claude);
         assert_eq!(a.tmux_session.as_deref(), Some("main"));
@@ -367,9 +383,7 @@ mod tests {
         assert_eq!(a.state, SessionState::Active);
         assert_eq!(a.session_id.as_deref(), Some("sess-aaa"));
 
-        // Second session: no tmux mapping, idle
-        let b = &sessions[1];
-        assert_eq!(b.pid, 200);
+        let b = sessions.iter().find(|s| s.pid == 200).expect("proj-b session");
         assert_eq!(b.project_path, "/home/user/proj-b");
         assert_eq!(b.cli_tool, CliTool::Claude);
         assert!(b.tmux_session.is_none());
@@ -541,6 +555,8 @@ mod tests {
         assert_eq!(sessions.len(), 1, "should deduplicate same-TTY same-tool processes");
         assert_eq!(sessions[0].cli_tool, CliTool::Codex);
         assert_eq!(sessions[0].tmux_pane.as_deref(), Some("%5"));
+        // Higher PID (native binary) wins over lower PID (shim)
+        assert_eq!(sessions[0].pid, 501);
     }
 
     #[test]

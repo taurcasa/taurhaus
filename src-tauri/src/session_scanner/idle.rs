@@ -19,7 +19,15 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 /// Threshold: if any session file mtime is less than this, session is Active.
+/// Used for Claude and Gemini where proc-level signals supplement the mtime.
 const ACTIVE_THRESHOLD: Duration = Duration::from_secs(5);
+
+/// Longer threshold for Codex — session file mtime is the ONLY activity signal
+/// (TCP keep-alive makes socket detection unreliable). Codex has silent gaps
+/// during API thinking where no file writes happen. A longer window reduces
+/// false idle flashes during those gaps.
+/// Total active→idle latency: 10s threshold + ~4s hysteresis = ~14s.
+const CODEX_ACTIVE_THRESHOLD: Duration = Duration::from_secs(10);
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -109,12 +117,12 @@ pub fn path_to_slug(path: &str) -> String {
 }
 
 /// Classify mtime into Active or Idle based on how recent it is.
-fn classify_mtime(mtime: SystemTime) -> SessionState {
+fn classify_mtime(mtime: SystemTime, threshold: Duration) -> SessionState {
     let elapsed = SystemTime::now()
         .duration_since(mtime)
         .unwrap_or(Duration::from_secs(999));
 
-    if elapsed < ACTIVE_THRESHOLD {
+    if elapsed < threshold {
         SessionState::Active
     } else {
         SessionState::Idle
@@ -306,7 +314,7 @@ fn claude_detect_idle(project_path: &str, projects_dir: &Path) -> IdleResult {
     });
 
     let state = most_recent_mtime(main_mtime, subagent_mtime)
-        .map(classify_mtime)
+        .map(|t| classify_mtime(t, ACTIVE_THRESHOLD))
         .unwrap_or(SessionState::Idle);
 
     IdleResult {
@@ -348,12 +356,27 @@ impl SessionResolver for GeminiResolver {
 
 /// Core Gemini idle detection — testable with custom base dir.
 fn gemini_detect_idle(project_path: &str, base_dir: &Path) -> IdleResult {
-    // Compute SHA-256 hash of the project path
+    // Gemini CLI has used two naming schemes for session directories:
+    //   - Newer (0.29+): project directory name (e.g. "my-project")
+    //   - Older: SHA-256 hash of the full project path
+    // Try the directory name first, then fall back to the hash.
+    let dir_name = Path::new(project_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    let chats_dir_by_name = base_dir.join(dir_name).join("chats");
     let hash = project_path_sha256(project_path);
-    let chats_dir = base_dir.join(&hash).join("chats");
+    let chats_dir_by_hash = base_dir.join(&hash).join("chats");
+
+    let chats_dir = if chats_dir_by_name.is_dir() {
+        &chats_dir_by_name
+    } else {
+        &chats_dir_by_hash
+    };
 
     // Find the most recently modified .json file in the chats directory
-    let session_file = match find_latest_file(&chats_dir, "json") {
+    let session_file = match find_latest_file(chats_dir, "json") {
         Some(entry) => entry,
         None => return IdleResult::idle(),
     };
@@ -369,7 +392,7 @@ fn gemini_detect_idle(project_path: &str, base_dir: &Path) -> IdleResult {
     let file_path = session_file.to_string_lossy().to_string();
 
     let state = file_mtime(&session_file)
-        .map(classify_mtime)
+        .map(|t| classify_mtime(t, ACTIVE_THRESHOLD))
         .unwrap_or(SessionState::Idle);
 
     IdleResult {
@@ -484,7 +507,7 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
     let file_path = path.to_string_lossy().to_string();
 
     let state = file_mtime(path)
-        .map(classify_mtime)
+        .map(|t| classify_mtime(t, CODEX_ACTIVE_THRESHOLD))
         .unwrap_or(SessionState::Idle);
 
     IdleResult {
@@ -660,19 +683,27 @@ mod tests {
     #[test]
     fn classify_mtime_active() {
         let recent = SystemTime::now() - Duration::from_secs(2);
-        assert_eq!(classify_mtime(recent), SessionState::Active);
+        assert_eq!(classify_mtime(recent, ACTIVE_THRESHOLD), SessionState::Active);
     }
 
     #[test]
     fn classify_mtime_idle() {
         let old = SystemTime::now() - Duration::from_secs(30);
-        assert_eq!(classify_mtime(old), SessionState::Idle);
+        assert_eq!(classify_mtime(old, ACTIVE_THRESHOLD), SessionState::Idle);
     }
 
     #[test]
     fn classify_mtime_transition_zone() {
         let mid = SystemTime::now() - Duration::from_secs(7);
-        assert_eq!(classify_mtime(mid), SessionState::Idle);
+        assert_eq!(classify_mtime(mid, ACTIVE_THRESHOLD), SessionState::Idle);
+    }
+
+    #[test]
+    fn codex_threshold_is_longer() {
+        // 7 seconds: idle with default threshold, still active with Codex threshold
+        let mid = SystemTime::now() - Duration::from_secs(7);
+        assert_eq!(classify_mtime(mid, ACTIVE_THRESHOLD), SessionState::Idle);
+        assert_eq!(classify_mtime(mid, CODEX_ACTIVE_THRESHOLD), SessionState::Active);
     }
 
     // -----------------------------------------------------------------------
@@ -902,6 +933,52 @@ mod tests {
         let result = gemini_detect_idle(project, tmp.path());
         assert_eq!(result.state, SessionState::Active);
         assert_eq!(result.session_id.as_deref(), Some("new22222"));
+    }
+
+    #[test]
+    fn gemini_detect_idle_by_dir_name() {
+        // Newer Gemini CLI (0.29+) uses project directory name, not SHA-256 hash
+        let tmp = TempDir::new().unwrap();
+        let project = "/home/user/projects/tapcount-gemini";
+        let chats_dir = tmp.path().join("tapcount-gemini").join("chats");
+        fs::create_dir_all(&chats_dir).unwrap();
+
+        let session = chats_dir.join("session-2026-02-23T22-17-80291013.json");
+        let mut f = File::create(&session).unwrap();
+        writeln!(f, r#"{{"sessionId":"80291013"}}"#).unwrap();
+        f.sync_all().unwrap();
+
+        let result = gemini_detect_idle(project, tmp.path());
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(result.session_id.as_deref(), Some("80291013"));
+    }
+
+    #[test]
+    fn gemini_prefers_dir_name_over_hash() {
+        // When both exist, the directory-name version should win
+        let tmp = TempDir::new().unwrap();
+        let project = "/home/user/projects/myapp";
+
+        // Create hash-based dir with old session
+        let hash = project_path_sha256(project);
+        let hash_chats = tmp.path().join(&hash).join("chats");
+        fs::create_dir_all(&hash_chats).unwrap();
+        let old = hash_chats.join("session-2026-01-01T00-00-oldhash1.json");
+        File::create(&old).unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        filetime_set_mtime(&old, old_time);
+
+        // Create name-based dir with fresh session
+        let name_chats = tmp.path().join("myapp").join("chats");
+        fs::create_dir_all(&name_chats).unwrap();
+        let new = name_chats.join("session-2026-02-23T12-00-newname1.json");
+        let mut f = File::create(&new).unwrap();
+        writeln!(f, "{{}}").unwrap();
+        f.sync_all().unwrap();
+
+        let result = gemini_detect_idle(project, tmp.path());
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(result.session_id.as_deref(), Some("newname1"));
     }
 
     // -----------------------------------------------------------------------
