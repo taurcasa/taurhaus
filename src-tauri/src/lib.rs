@@ -111,6 +111,7 @@ pub fn run() {
                 let daemon = daemon::launcher::try_connect_daemon(
                     distro.as_deref(),
                     port,
+                    &log_path,
                 );
                 let connected = daemon.is_some();
                 tracing::info!(
@@ -141,7 +142,7 @@ pub fn run() {
 
                 // Ensure tmux server is running (idempotent, non-fatal).
                 if let Some(ref d) = distro {
-                    daemon::launcher::ensure_tmux_server(d);
+                    daemon::launcher::ensure_tmux_server(d, &log_path);
                 }
 
                 // If we have WSL projects but the daemon didn't connect,
