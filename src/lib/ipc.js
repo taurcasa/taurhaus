@@ -612,3 +612,15 @@ export function getProjectActivity(projectPath) {
     last_session_at: null,
   }))
 }
+
+export function getDaemonStatus() {
+  return invokeOrMock('get_daemon_status', undefined, () => ({
+    status: 'connected',
+    version: null,
+    protocol_version: 0,
+    expected_protocol_version: 0,
+    uptime_secs: null,
+    port: 17233,
+    wsl_distro: null,
+  }))
+}

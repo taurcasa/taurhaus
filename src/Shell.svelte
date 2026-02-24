@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession, launchClaudeSession, stopClaudeSession, getSettings } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getFileTree, readFile, readProjectAsset, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, removeProject, isTauri, isFirstRun, navigateToSession, launchClaudeSession, stopClaudeSession, getSettings, getDaemonStatus } from './lib/ipc.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
@@ -35,6 +35,10 @@
   let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
+
+  // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
+  let daemonStatus = $state(null)
+  let daemonStatusDismissTimer = $state(null)
 
   // Context menu state
   let ctxMenu = $state(null) // { x, y, project }
@@ -224,6 +228,7 @@
     if (!showWizard) {
       loadProjects()
       loadCodeThemeFromSettings()
+      loadDaemonStatus()
     }
   }
 
@@ -231,6 +236,17 @@
     showWizard = false
     loadProjects()
     loadCodeThemeFromSettings()
+    loadDaemonStatus()
+  }
+
+  async function loadDaemonStatus() {
+    try {
+      const status = await getDaemonStatus()
+      // Only show non-connected states (connected is the happy path, don't clutter)
+      if (status.status !== 'connected') {
+        daemonStatus = status.status
+      }
+    } catch { /* ignore — not critical */ }
   }
 
   // Command Center — poll for Claude Code sessions
@@ -291,6 +307,17 @@
         if (selectedProject?.id === project_id && activeTab === 'files') {
           clearTimeout(fileTreeRefreshTimer)
           fileTreeRefreshTimer = setTimeout(() => loadFileTree(project_id), 2000)
+        }
+      }).then(u => cleanups.push(u))
+
+      // Daemon status changes (bootstrap chain + health check)
+      listen('daemon-status', (event) => {
+        const { status } = event.payload
+        daemonStatus = status
+        clearTimeout(daemonStatusDismissTimer)
+        // Auto-dismiss "connected" after 3 seconds
+        if (status === 'connected') {
+          daemonStatusDismissTimer = setTimeout(() => { daemonStatus = null }, 3000)
         }
       }).then(u => cleanups.push(u))
     })
@@ -1094,6 +1121,23 @@
         <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Manage projects" onclick={() => showAddProject = true}>
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
         </button>
+        {#if daemonStatus && daemonStatus !== 'not_configured'}
+          <span class="flex items-center gap-1.5 text-[11px] font-medium" data-testid="daemon-status">
+            {#if daemonStatus === 'connected'}
+              <span class="w-1.5 h-1.5 rounded-full bg-success-400"></span>
+              <span class="text-success-400/80">Connected</span>
+            {:else if daemonStatus === 'reconnecting'}
+              <span class="w-1.5 h-1.5 rounded-full bg-warning-400 animate-pulse"></span>
+              <span class="text-warning-400/80">Reconnecting</span>
+            {:else if daemonStatus === 'disconnected'}
+              <span class="w-1.5 h-1.5 rounded-full bg-warning-400"></span>
+              <span class="text-warning-400/80">Daemon offline</span>
+            {:else if daemonStatus === 'failed'}
+              <span class="w-1.5 h-1.5 rounded-full bg-danger-400"></span>
+              <span class="text-danger-400/80">Daemon failed</span>
+            {/if}
+          </span>
+        {/if}
         <button
           class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {settingsOpen ? 'text-white/60 bg-white/[0.08]' : 'text-white/20 hover:text-white/40 hover:bg-white/[0.06]'}"
           aria-label="Settings"
