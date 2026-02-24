@@ -573,6 +573,10 @@ fn startup_reseed_activity(app: &tauri::AppHandle) {
     if updated > 0 {
         tracing::info!(updated, "Re-seeded activity timestamps from git");
     }
+
+    // Notify frontend that cached git data is now fresh — it may have loaded
+    // the project list before the reseed completed (race on first launch).
+    let _ = app.emit("projects-reseed-complete", ());
 }
 
 /// On startup, build the search index if it's empty.

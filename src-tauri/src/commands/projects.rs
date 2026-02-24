@@ -190,7 +190,7 @@ pub fn register_projects_batch(
     Ok(results)
 }
 
-/// Reseed a single project's last_activity_at from its latest git commit.
+/// Reseed a single project's git status and last_activity_at from git.
 /// Runs synchronously but is fast for local projects; WSL projects go through the daemon.
 fn reseed_activity_for_project(
     db: &State<'_, DbState>,
@@ -199,6 +199,19 @@ fn reseed_activity_for_project(
     project_path: &str,
 ) {
     let provider = providers.resolve(project_path);
+
+    // Cache branch + dirty status so sidebar shows them immediately
+    if let Ok(status) = provider.git_status(project_path) {
+        if let Ok(conn) = db.0.lock() {
+            let _ = queries::update_cached_git_status(
+                &conn,
+                project_id,
+                status.branch.as_deref(),
+                status.is_dirty,
+            );
+        }
+    }
+
     match provider.latest_commit_time(project_path) {
         Ok(Some(commit_time)) => {
             let commit_ts = commit_time.to_rfc3339();

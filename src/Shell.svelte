@@ -279,6 +279,11 @@
         }
       }).then(u => cleanups.push(u))
 
+      // Startup reseed complete — reload project list to pick up cached git status
+      listen('projects-reseed-complete', () => {
+        loadProjects()
+      }).then(u => cleanups.push(u))
+
       // Files changed — refresh file tree if on Files tab (debounced)
       let fileTreeRefreshTimer = null
       listen('project-files-changed', (event) => {
