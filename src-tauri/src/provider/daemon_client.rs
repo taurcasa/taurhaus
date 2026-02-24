@@ -65,6 +65,20 @@ impl DaemonProvider {
         })
     }
 
+    /// Create a DaemonProvider that is initially disconnected.
+    ///
+    /// Useful when the daemon isn't available at startup — the health check
+    /// can call `reconnect()` later when the daemon becomes reachable.
+    pub fn new_disconnected(addr: &str) -> Self {
+        Self {
+            conn: Mutex::new(None),
+            addr: addr.to_string(),
+            next_id: AtomicU64::new(1),
+            connected: AtomicBool::new(false),
+            last_reconnect_attempt: Mutex::new(None),
+        }
+    }
+
     /// Whether the daemon connection is alive.
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)

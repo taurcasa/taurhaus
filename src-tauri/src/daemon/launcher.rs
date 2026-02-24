@@ -1,16 +1,24 @@
-//! Daemon connection logic.
+//! Daemon connection and auto-start logic.
 //!
 //! On app startup, if WSL projects exist in the database, we try to connect
-//! to an already-running daemon. The daemon must be started separately
-//! (e.g. `just run-daemon`).
+//! to an already-running daemon. If that fails, we auto-start the daemon
+//! via `wsl.exe` and retry the connection.
+
+use std::time::{Duration, Instant};
 
 use crate::provider::daemon_client::DaemonProvider;
+
+/// Max time to wait for daemon to become reachable after spawning.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Interval between TCP connection attempts while waiting for daemon startup.
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Try to connect to an existing daemon, or start one if needed.
 ///
 /// - If `wsl_distro` is None, no WSL projects exist — returns None immediately.
 /// - First tries a TCP connection to the daemon port.
-/// - If that fails, tries to start the daemon and retries connection.
+/// - If that fails, attempts to auto-start the daemon via `wsl.exe` and retries.
 /// - Returns None if daemon can't be reached within the timeout.
 pub fn try_connect_daemon(
     wsl_distro: Option<&str>,
@@ -27,22 +35,128 @@ pub fn try_connect_daemon(
     tracing::info!(port, distro, "Checking for WSL daemon");
 
     // Try connecting to an already-running daemon.
-    // We don't auto-start — the daemon should be launched separately
-    // (e.g. `just run-daemon` or installed via `just install-daemon`).
     if let Some(provider) = try_connect(port) {
         tracing::info!(port, "Connected to existing daemon");
         return Some(provider);
     }
 
-    tracing::warn!(port, distro, "Daemon not reachable — WSL projects will use local provider fallback. Start the daemon with: just run-daemon");
+    // Daemon not running — try to auto-start it.
+    tracing::info!(port, distro, "Daemon not reachable, attempting auto-start");
+    match try_start_daemon(distro, port) {
+        Ok(()) => {
+            // Daemon started, poll until reachable.
+            if let Some(provider) = poll_until_reachable(port, STARTUP_TIMEOUT) {
+                tracing::info!(port, "Connected to auto-started daemon");
+                return Some(provider);
+            }
+            tracing::warn!(port, "Daemon process started but not reachable within timeout");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to auto-start daemon");
+        }
+    }
+
+    tracing::warn!(
+        port,
+        distro,
+        "Daemon not available — WSL projects will use local provider fallback"
+    );
     None
 }
 
-/// Daemon restart is disabled — auto-start via wsl.exe is not used during development.
-/// The health check calls this on disconnect; we just log and report failure.
-pub fn try_restart_daemon(_distro: &str, port: u16) -> Result<(), std::io::Error> {
-    tracing::warn!(port, "Daemon disconnected. Restart it manually: just run-daemon");
-    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "auto-start disabled"))
+/// Try to restart the daemon process (called by health check on disconnect).
+///
+/// Spawns `wsl.exe -d {distro} -- taurhaus-daemon --port {port}` and waits
+/// for it to become reachable.
+pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
+    tracing::info!(port, distro, "Attempting daemon restart via wsl.exe");
+    try_start_daemon(distro, port)
+}
+
+/// Spawn the daemon process via `wsl.exe`.
+///
+/// The daemon binary must be installed at `~/.local/bin/taurhaus-daemon`
+/// (via `just install-daemon`). The process is spawned detached — it
+/// continues running after this function returns.
+fn try_start_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
+    let daemon_bin = "~/.local/bin/taurhaus-daemon";
+
+    // Use wsl.exe to launch the daemon inside the WSL distro.
+    // We wrap in a shell to expand ~ and background the process so wsl.exe
+    // returns immediately instead of blocking until the daemon exits.
+    let child = std::process::Command::new("wsl")
+        .args([
+            "-d",
+            distro,
+            "--",
+            "sh",
+            "-c",
+            &format!(
+                "nohup {daemon_bin} --port {port} > /dev/null 2>&1 &"
+            ),
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    match child {
+        Ok(mut c) => {
+            // Wait for the shell wrapper to exit (it returns immediately
+            // after backgrounding the daemon).
+            let _ = c.wait();
+            tracing::info!(port, distro, "Daemon spawn command completed");
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to spawn wsl.exe");
+            Err(e)
+        }
+    }
+}
+
+/// Poll for TCP connectivity until the daemon is reachable or timeout expires.
+fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> {
+    let start = Instant::now();
+    loop {
+        if let Some(provider) = try_connect(port) {
+            return Some(provider);
+        }
+        if start.elapsed() >= timeout {
+            return None;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// Ensure tmux server is running inside WSL.
+///
+/// `tmux start-server` is idempotent — if the server is already running,
+/// this is a no-op. Failure is non-fatal.
+pub fn ensure_tmux_server(distro: &str) {
+    tracing::info!(distro, "Ensuring tmux server is running");
+
+    let result = std::process::Command::new("wsl")
+        .args(["-d", distro, "--", "tmux", "start-server"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    match result {
+        Ok(output) if output.status.success() => {
+            tracing::info!("tmux server is running");
+        }
+        Ok(output) => {
+            tracing::warn!(
+                status = ?output.status,
+                "tmux start-server exited with non-zero status"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to run tmux start-server via wsl.exe");
+        }
+    }
 }
 
 /// Attempt a single TCP connection to the daemon.
@@ -98,10 +212,45 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         drop(listener);
 
-        // This will try to connect, fail, try to start daemon (which also fails
-        // since there's no taurhaus-daemon on PATH in test), and timeout.
-        // We override the timeout behavior by testing try_connect directly.
         let result = try_connect(port);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn poll_until_reachable_succeeds_when_daemon_starts() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        // Start daemon after a short delay (simulating startup time)
+        let shutdown_clone = shutdown.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            let config = crate::daemon::server::DaemonConfig {
+                port,
+                bind_addr: "127.0.0.1".to_string(),
+                idle_timeout_secs: None,
+            };
+            let _ = crate::daemon::server::run(&config, shutdown_clone);
+        });
+
+        let result = poll_until_reachable(port, Duration::from_secs(3));
+        assert!(result.is_some(), "Should connect to daemon that started after a delay");
+
+        shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn poll_until_reachable_times_out() {
+        // Use a port that nothing will ever listen on
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let start = Instant::now();
+        let result = poll_until_reachable(port, Duration::from_secs(1));
+        assert!(result.is_none(), "Should timeout when no daemon starts");
+        assert!(start.elapsed() >= Duration::from_secs(1), "Should wait full timeout");
     }
 }

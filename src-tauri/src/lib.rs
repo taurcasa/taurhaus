@@ -99,19 +99,22 @@ pub fn run() {
             let db_path = data_dir.join("taurhaus.db");
             let conn = db::init_db(&db_path).expect("failed to initialize database");
 
-            // Check for WSL projects and try daemon connection before managing state.
-            // This happens synchronously (max ~3s) while we still have direct conn access.
-            let (daemon_provider, wsl_distro) = {
+            // Bootstrap chain: daemon → tmux → connect.
+            // This happens synchronously (max ~10s worst case) while we still have
+            // direct conn access. The daemon auto-starts via wsl.exe if not running.
+            let (daemon_provider, wsl_distro, daemon_connected_at_startup) = {
                 let projects = db::queries::list_projects(&conn).unwrap_or_default();
                 let distro = projects
                     .iter()
                     .find_map(|p| provider::path::wsl_distro_from_path(&p.path));
+                let port = daemon::server::DEFAULT_PORT;
                 let daemon = daemon::launcher::try_connect_daemon(
                     distro.as_deref(),
-                    daemon::server::DEFAULT_PORT,
+                    port,
                 );
-                tracing::warn!(
-                    daemon_connected = daemon.is_some(),
+                let connected = daemon.is_some();
+                tracing::info!(
+                    daemon_connected = connected,
                     distro = ?distro,
                     "Daemon connection result at startup"
                 );
@@ -136,7 +139,26 @@ pub fn run() {
                     }
                 }
 
-                (daemon, distro)
+                // Ensure tmux server is running (idempotent, non-fatal).
+                if let Some(ref d) = distro {
+                    daemon::launcher::ensure_tmux_server(d);
+                }
+
+                // If we have WSL projects but the daemon didn't connect,
+                // create a disconnected provider so the health check can
+                // connect it later without requiring an app restart.
+                let provider = daemon.or_else(|| {
+                    distro.as_ref().map(|_| {
+                        let addr = format!("127.0.0.1:{port}");
+                        tracing::info!(
+                            addr,
+                            "Creating disconnected daemon provider for late-connect"
+                        );
+                        provider::daemon_client::DaemonProvider::new_disconnected(&addr)
+                    })
+                });
+
+                (provider, distro, connected)
             };
 
             app.manage(DbState(Mutex::new(conn)));
@@ -150,7 +172,9 @@ pub fn run() {
                 wsl_distro: wsl_distro.clone(),
             });
 
-            // Start daemon health check if daemon is configured
+            // Start daemon health check if WSL projects exist.
+            // Runs even if daemon didn't connect at startup — it will
+            // auto-start and connect the daemon later.
             if wsl_distro.is_some() {
                 let health_handle = app.handle().clone();
                 std::thread::spawn(move || {
@@ -164,11 +188,13 @@ pub fn run() {
             let event_tx = watcher.event_sender();
             app.manage(WatcherState(Mutex::new(watcher)));
 
-            // If daemon is connected, start an event listener for WSL projects.
+            // If daemon is connected at startup, start an event listener for WSL projects.
             // This opens a second TCP connection dedicated to receiving watch events.
             // The daemon also watches ~/.claude/tasks/ for event-driven task sync.
-            let has_daemon = daemon_addr.is_some();
-            if let Some(daemon_addr) = daemon_addr {
+            // If daemon wasn't connected, respawn_daemon_watches handles this on late-connect.
+            let has_daemon = daemon_connected_at_startup;
+            if daemon_connected_at_startup {
+                let daemon_addr = daemon_addr.expect("daemon_addr must be set when connected");
                 let distro = wsl_distro.clone();
                 let event_tx_clone = event_tx.clone();
                 let db_projects = db::queries::list_projects(
@@ -966,20 +992,38 @@ fn respawn_daemon_watches(app: &tauri::AppHandle) {
 ///
 /// On disconnect: attempts restart and reconnection (max 3 attempts per session).
 /// Emits `daemon-status` events to the frontend for UI indicators.
+/// Works for both initially-connected and initially-disconnected providers.
 fn daemon_health_check(app: tauri::AppHandle) {
     use std::time::Duration;
 
     const CHECK_INTERVAL: Duration = Duration::from_secs(30);
+    /// Shorter interval when daemon hasn't connected yet (first-time connect).
+    const FAST_CHECK_INTERVAL: Duration = Duration::from_secs(5);
     const MAX_RESTART_ATTEMPTS: u32 = 3;
 
     let mut consecutive_failures: u32 = 0;
     let mut restart_attempts: u32 = 0;
+    let mut ever_connected = false;
 
     // Initial delay — let the app finish starting
     std::thread::sleep(Duration::from_secs(5));
 
+    // Check if daemon was already connected at startup
+    {
+        let provider_state = app.state::<ProviderState>();
+        if let Some(ref daemon) = provider_state.daemon {
+            ever_connected = daemon.is_connected();
+        }
+    }
+
     loop {
-        std::thread::sleep(CHECK_INTERVAL);
+        // Use shorter interval while waiting for first connection
+        let interval = if ever_connected {
+            CHECK_INTERVAL
+        } else {
+            FAST_CHECK_INTERVAL
+        };
+        std::thread::sleep(interval);
 
         let provider_state = app.state::<ProviderState>();
         let Some(ref daemon) = provider_state.daemon else {
@@ -1032,6 +1076,7 @@ fn daemon_health_check(app: tauri::AppHandle) {
                 tracing::info!("Reconnected to daemon");
                 consecutive_failures = 0;
                 restart_attempts = 0;
+                ever_connected = true;
                 respawn_daemon_watches(&app);
                 let _ = app.emit(
                     "daemon-status",
@@ -1058,6 +1103,7 @@ fn daemon_health_check(app: tauri::AppHandle) {
                         tracing::info!("Reconnected after daemon restart");
                         consecutive_failures = 0;
                         restart_attempts = 0;
+                        ever_connected = true;
                         respawn_daemon_watches(&app);
                         let _ = app.emit(
                             "daemon-status",
