@@ -145,13 +145,17 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
         }
     }
 
-    // Spawn the daemon via sh -c with nohup to background it.
-    // Rust's Command passes each arg as a separate string to CreateProcess
-    // on Windows, so the sh -c argument arrives intact inside WSL — no
-    // shell quoting issues (those only happen when testing from within WSL
-    // where an outer shell reinterprets the args).
+    // Spawn the daemon via sh -c with proper daemonization.
+    //
+    // IMPORTANT: plain `nohup ... &` does NOT work via wsl.exe — WSL kills
+    // background child processes when wsl.exe exits, regardless of nohup.
+    // This is a known WSL bug (github.com/microsoft/WSL/issues/4649).
+    //
+    // The workaround: subshell + setsid + full fd redirect. The subshell
+    // isolates the process, setsid creates a new session leader, and closing
+    // all inherited fds prevents wsl.exe from waiting on them.
     let daemon_cmd = format!(
-        "nohup /home/mstie/.local/bin/taurhaus-daemon --port {port} >> /tmp/taurhaus-daemon.log 2>&1 &"
+        "(setsid /home/mstie/.local/bin/taurhaus-daemon --port {port} >> /tmp/taurhaus-daemon.log 2>&1 < /dev/null &)"
     );
 
     blog(log_path, &format!("Spawning daemon: sh -c '{daemon_cmd}'"));
