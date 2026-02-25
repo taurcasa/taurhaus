@@ -944,7 +944,7 @@
 <div class="h-full bg-brand-950 flex flex-col font-sans antialiased">
 
   <!-- ═══ TITLEBAR ═══ -->
-  <div class="h-[46px] flex items-end shrink-0 pl-1.5">
+  <div class="h-[46px] flex items-end shrink-0 pl-1.5" data-tauri-drag-region>
 
     <!-- Logo area (width matches sidebar panel below) -->
     <div class="w-[252px] flex items-center px-4 pb-2 shrink-0" data-tauri-drag-region>
@@ -957,7 +957,7 @@
     </div>
 
     <!-- Tab pill + drag space + controls -->
-    <div class="flex-1 flex items-end min-w-0">
+    <div class="flex-1 flex items-end min-w-0" data-tauri-drag-region>
 
       <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
       <div class="flex items-center px-4 h-[36px] {mainBg} rounded-t-lg ml-1.5">
