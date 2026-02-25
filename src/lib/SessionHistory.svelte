@@ -150,12 +150,12 @@
   {:else if sessions.length === 0}
     <!-- Empty state -->
     <div class="flex-1 flex items-center justify-center" data-testid="history-empty">
-      <div class="text-center">
-        <svg class="w-10 h-10 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+      <div class="text-center max-w-xs">
+        <svg class="w-12 h-12 {textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p class="mt-3 text-[13px] {textMuted}">No completed work yet</p>
-        <p class="mt-1 text-[11px] {textTertiary}">Finished tasks appear here after sessions end</p>
+        <p class="mt-4 text-[15px] font-medium {textMuted}">No completed work yet</p>
+        <p class="mt-2 text-[13px] leading-relaxed {textTertiary}">Session summaries appear here after AI tools finish their work.</p>
       </div>
     </div>
 

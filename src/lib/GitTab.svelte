@@ -427,13 +427,18 @@
           {/each}
         </div>
       {:else if commits.length === 0}
-        <div class="px-4 pt-8 text-center" data-testid="git-empty">
-          <svg class="w-8 h-8 {textMuted} mx-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p class="mt-2 text-[12px] {textMuted}">
-            {rangeFilter ? 'No commits in this range' : 'No commits found'}
-          </p>
+        <div class="flex-1 flex items-center justify-center px-4" data-testid="git-empty">
+          <div class="text-center max-w-xs">
+            <svg class="w-12 h-12 {textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p class="mt-4 text-[15px] font-medium {textMuted}">
+              {rangeFilter ? 'No commits in this range' : 'No commits found'}
+            </p>
+            <p class="mt-2 text-[13px] leading-relaxed {textTertiary}">
+              {rangeFilter ? 'Try adjusting the date range filter.' : 'This project has no git history yet.'}
+            </p>
+          </div>
         </div>
       {:else}
         {#each commits as commit (commit.hash)}
