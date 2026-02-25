@@ -150,4 +150,4 @@ taurhaus is in active development. Core features are implemented and functional.
 
 ## License
 
-Private — not yet open source.
+MIT — see [LICENSE](LICENSE) for details.
