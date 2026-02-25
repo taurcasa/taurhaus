@@ -174,10 +174,13 @@ fn find_latest_file(dir: &Path, extension: &str) -> Option<PathBuf> {
     // Cache miss — full scan
     let latest = scan_latest_file(dir, extension);
 
-    // Update cache
+    // Update cache (evict all if over max — simple and avoids LRU complexity)
     {
         let mut guard = FILE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         let map = guard.get_or_insert_with(HashMap::new);
+        if map.len() >= FILE_CACHE_MAX_ENTRIES {
+            map.clear();
+        }
         map.insert(
             dir.to_path_buf(),
             CachedFileEntry {
@@ -240,6 +243,9 @@ struct CachedFileEntry {
     /// Path to the most recent file (None if directory was empty).
     latest_path: Option<PathBuf>,
 }
+
+/// Maximum entries before the file cache is swept.
+const FILE_CACHE_MAX_ENTRIES: usize = 128;
 
 /// Cache keyed by directory path.
 static FILE_CACHE: Mutex<Option<HashMap<PathBuf, CachedFileEntry>>> = Mutex::new(None);
@@ -468,15 +474,21 @@ fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> IdleResult {
     // Cache miss — scan recent date directories
     let matching_file = codex_find_session_for_project(project_path, sessions_dir);
 
-    // Update cache
+    // Update cache (evict expired entries on each insert)
     if let Some(ref path) = matching_file {
         let mut guard = CODEX_PATH_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         let map = guard.get_or_insert_with(HashMap::new);
+        let now = SystemTime::now();
+        map.retain(|_, entry| {
+            now.duration_since(entry.scanned_at)
+                .unwrap_or(Duration::ZERO)
+                < CODEX_CACHE_TTL * 2
+        });
         map.insert(
             project_path.to_string(),
             CodexCacheEntry {
                 file_path: path.clone(),
-                scanned_at: SystemTime::now(),
+                scanned_at: now,
             },
         );
     }
