@@ -75,20 +75,16 @@ Full architecture: [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md
 
 | File | Purpose |
 |------|---------|
-| `prototype/src/Shell.svelte` | Main app layout (titlebar, sidebar, content) |
-| `prototype/src/App.svelte` | Thin entry wrapper |
-| `prototype/src/app.css` | Design tokens + global styles |
-| `prototype/src/data/mock.js` | Mock data (replaced by Tauri IPC in production) |
+| `src/Shell.svelte` | Main app layout (titlebar, sidebar, content) |
+| `src/App.svelte` | Entry wrapper |
+| `src/app.css` | Design tokens + global styles |
+| `src/lib/ipc.js` | Tauri IPC commands + dev-mode mock fallbacks |
 | `docs/design-brief.md` | Full requirements (Phase 2) |
 | `docs/phase-4-architecture.md` | Technical architecture (22 ADRs) |
 | `docs/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/file-rendering-pipeline.jpg` | File rendering pipeline infographic |
 | `BOOTSTRAP.md` | Project lifecycle and phase status |
-
-## Mock Data
-
-All hardcoded data lives in `prototype/src/data/mock.js`. Every export in that file **must be replaced** with real data from Tauri IPC commands before shipping. The data shapes are approximate — the real schema is defined in Phase 4 (Architecture). Do not build abstractions around the current mock shapes.
 
 ## Development Workflow (Phase 5)
 
