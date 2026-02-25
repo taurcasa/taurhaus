@@ -1058,6 +1058,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_old_session_file() {
+        // Unique project path to avoid CODEX_PATH_CACHE collisions with
+        // other tests that run in parallel and use /home/user/projects/myapp.
+        let project = "/home/user/projects/old-session-test";
         let tmp = TempDir::new().unwrap();
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
@@ -1069,12 +1072,12 @@ mod tests {
         let path = create_codex_session(
             &date_dir,
             "rollout-2026-02-21T10-00-00-old-session-id.jsonl",
-            "/home/user/projects/myapp",
+            project,
         );
         let old_time = SystemTime::now() - Duration::from_secs(120);
         filetime_set_mtime(&path, old_time);
 
-        let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
+        let result = codex_detect_idle(project, tmp.path());
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.session_id.is_some());
     }
@@ -1133,6 +1136,9 @@ mod tests {
 
     #[test]
     fn codex_finds_session_from_days_ago() {
+        // Unique project path to avoid CODEX_PATH_CACHE collisions with
+        // other tests that run in parallel and use /home/user/projects/myapp.
+        let project = "/home/user/projects/days-ago-test";
         let tmp = TempDir::new().unwrap();
         // Place the session file 5 days ago (within 7-day lookback window)
         let five_days_ago = chrono::Local::now().date_naive() - chrono::Duration::days(5);
@@ -1145,12 +1151,12 @@ mod tests {
         let path = create_codex_session(
             &date_dir,
             "rollout-2026-02-16T10-00-00-resumed-uuid.jsonl",
-            "/home/user/projects/myapp",
+            project,
         );
 
         // Even though the file is old by date directory, if mtime is recent
         // (because codex resume appended to it), it should be found AND active
-        let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
+        let result = codex_detect_idle(project, tmp.path());
         assert_eq!(result.state, SessionState::Active);
         assert!(result.session_id.is_some());
 
@@ -1158,7 +1164,7 @@ mod tests {
         let old_time = SystemTime::now() - Duration::from_secs(120);
         filetime_set_mtime(&path, old_time);
 
-        let result2 = codex_detect_idle("/home/user/projects/myapp", tmp.path());
+        let result2 = codex_detect_idle(project, tmp.path());
         assert_eq!(result2.state, SessionState::Idle);
         assert!(result2.session_id.is_some());
     }
