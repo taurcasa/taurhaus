@@ -1,6 +1,7 @@
 <script>
-  import { scanDirectory, registerProjectsBatch, listDirectory, getSystemRoots, isTauri } from './ipc.js'
+  import { scanDirectory, registerProjectsBatch, isTauri } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
+  import DirectoryBrowser from './DirectoryBrowser.svelte'
 
   let { dark = false, onComplete = () => {} } = $props()
 
@@ -11,7 +12,6 @@
   const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
   const hoverRow      = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-zinc-50 border-zinc-300 text-zinc-900')
-  const treeBg        = $derived(dark ? 'bg-zinc-900/50' : 'bg-zinc-50')
 
   // Wizard state
   let step = $state(1)  // 1=welcome, 2=browse, 3=selection, 4=progress, 5=complete
@@ -28,119 +28,6 @@
   let scanPath = $state('')
 
   const selectedCount = $derived(selected.size)
-
-  // ═══ DIRECTORY TREE BROWSER ═══
-
-  let treeChildren = $state({})
-  let treeExpanded = $state(new Set())
-  let treeLoading = $state(new Set())
-  let treeRoot = $state('~')
-  let showDrives = $state(false)
-  let systemRoots = $state([])
-
-  async function loadTreeDir(dirPath) {
-    const loadingSet = new Set(treeLoading)
-    loadingSet.add(dirPath)
-    treeLoading = loadingSet
-
-    try {
-      const entries = await listDirectory(dirPath)
-      treeChildren = { ...treeChildren, [dirPath]: entries }
-    } catch {
-      treeChildren = { ...treeChildren, [dirPath]: [] }
-    } finally {
-      const done = new Set(treeLoading)
-      done.delete(dirPath)
-      treeLoading = done
-    }
-  }
-
-  function toggleTreeDir(dirPath) {
-    const next = new Set(treeExpanded)
-    if (next.has(dirPath)) {
-      next.delete(dirPath)
-    } else {
-      next.add(dirPath)
-      if (!treeChildren[dirPath]) {
-        loadTreeDir(dirPath)
-      }
-    }
-    treeExpanded = next
-  }
-
-  function selectTreeDir(dirPath) {
-    scanPath = dirPath
-  }
-
-  /** Check if path is a filesystem root (/ on Linux, C:\ on Windows, or WSL root) */
-  function isSystemRoot(path) {
-    if (path === '/') return true
-    // Windows drive root: C:\ or C:/
-    if (/^[A-Z]:[/\\]?$/.test(path)) return true
-    // WSL root: \\wsl.localhost\Distro or \\wsl$\Distro (no further segments)
-    if (/^\\\\wsl[.$]/.test(path)) {
-      const segments = path.replace(/^\\\\/, '').split(/[/\\]/).filter(Boolean)
-      return segments.length <= 2 // e.g. ["wsl.localhost", "Ubuntu"]
-    }
-    return false
-  }
-
-  async function navigateUp() {
-    // If at a system root or ~, show the drives/roots picker
-    if (treeRoot === '~' || isSystemRoot(treeRoot)) {
-      systemRoots = await getSystemRoots()
-      showDrives = true
-      return
-    }
-    let parent
-    if (treeRoot.startsWith('~/')) {
-      const parts = treeRoot.split('/')
-      parent = parts.length <= 2 ? '~' : parts.slice(0, -1).join('/')
-    } else {
-      // Handle both / and \ separators (Windows paths from backend use \)
-      const normalized = treeRoot.replace(/\\/g, '/')
-      const parts = normalized.split('/')
-      if (parts.length <= 2) {
-        // e.g. C:/Users → C:/
-        parent = parts[0] + '/'
-      } else {
-        parent = parts.slice(0, -1).join('/')
-      }
-    }
-    treeRoot = parent
-    showDrives = false
-    if (!treeChildren[parent]) {
-      loadTreeDir(parent)
-    }
-    const next = new Set(treeExpanded)
-    next.add(parent)
-    treeExpanded = next
-  }
-
-  function selectDrive(drivePath) {
-    treeRoot = drivePath
-    showDrives = false
-    treeExpanded = new Set()
-    if (!treeChildren[drivePath]) {
-      loadTreeDir(drivePath)
-    }
-    const next = new Set(treeExpanded)
-    next.add(drivePath)
-    treeExpanded = next
-  }
-
-  const canNavigateUp = $derived(true)
-
-  async function initTree() {
-    if (!treeChildren[treeRoot]) {
-      loadTreeDir(treeRoot)
-    }
-    const next = new Set(treeExpanded)
-    next.add(treeRoot)
-    treeExpanded = next
-    // Pre-fetch roots so we have them ready
-    systemRoots = await getSystemRoots()
-  }
 
   // ═══ SCAN + REGISTER ═══
 
@@ -235,14 +122,15 @@
 
         <button
           class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors"
-          onclick={() => { step = 2; initTree() }}
+          onclick={() => step = 2}
           data-testid="get-started-button"
         >Get started</button>
       </div>
+    {/if}
 
-    {:else if step === 2}
-      <!-- ═══ STEP 2: BROWSE FOR PROJECTS FOLDER ═══ -->
-      <div data-testid="wizard-step-2">
+    {#if step >= 2}
+      <!-- Step 2 content kept mounted to preserve DirectoryBrowser tree state -->
+      <div class:hidden={step !== 2} data-testid="wizard-step-2">
         <h2 class="text-[18px] font-semibold {t.textPrimary} mb-1">Where are your projects?</h2>
         <p class="text-[13px] {t.textSecondary} mb-4">Browse to the folder that contains your project directories, or type the path directly.</p>
 
@@ -258,105 +146,8 @@
         </div>
 
         <!-- Directory tree -->
-        <div class="border {t.keyline} rounded-lg overflow-hidden mb-4 max-h-[280px] overflow-y-auto {treeBg}">
-
-          {#if showDrives}
-            <!-- Drive/root selector -->
-            {#each systemRoots as root}
-              <button
-                class="w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] font-mono transition-colors {hoverRow} {t.textPrimary}"
-                onclick={() => selectDrive(root.path)}
-              >
-                <svg class="w-4 h-4 shrink-0 {textTertiary}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z"/></svg>
-                <span>{root.name}</span>
-              </button>
-            {/each}
-            {#if systemRoots.length === 0}
-              <div class="text-[12px] {textTertiary} py-3 px-3">Loading drives...</div>
-            {/if}
-          {:else}
-
-            {#snippet treeNode(entries, depth)}
-              {#each entries as entry}
-                <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-                <div>
-                  <button
-                    class="w-full flex items-center gap-1.5 px-2 py-1 text-left text-[12px] font-mono transition-colors
-                      {scanPath === entry.path ? (dark ? 'bg-brand-900/40 text-brand-300' : 'bg-brand-100/80 text-brand-700') : hoverRow + ' ' + textPrimary}"
-                    style="padding-left: {depth * 16 + 8}px"
-                    onclick={() => selectTreeDir(entry.path)}
-                    ondblclick={() => entry.isExpandable && toggleTreeDir(entry.path)}
-                  >
-                    {#if entry.isExpandable}
-                      <span
-                        class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-white/10"
-                        role="button"
-                        tabindex="0"
-                        aria-label="Toggle folder"
-                        onclick={(e) => { e.stopPropagation(); toggleTreeDir(entry.path) }}
-                        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleTreeDir(entry.path) } }}
-                      >
-                        <svg class="w-3 h-3 transition-transform {treeExpanded.has(entry.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-                      </span>
-                    {:else}
-                      <span class="w-4 h-4 shrink-0"></span>
-                    {/if}
-                    <span class="truncate">{entry.name}</span>
-                  </button>
-
-                  {#if treeExpanded.has(entry.path)}
-                    {#if treeLoading.has(entry.path)}
-                      <div class="text-[11px] {textTertiary} py-1" style="padding-left: {(depth + 1) * 16 + 28}px">Loading...</div>
-                    {:else if treeChildren[entry.path]?.length > 0}
-                      {@render treeNode(treeChildren[entry.path], depth + 1)}
-                    {:else if treeChildren[entry.path]}
-                      <div class="text-[11px] {textTertiary} py-1" style="padding-left: {(depth + 1) * 16 + 28}px">Empty</div>
-                    {/if}
-                  {/if}
-                </div>
-              {/each}
-            {/snippet}
-
-            <!-- Navigate up -->
-            <button
-              class="w-full flex items-center gap-1.5 px-2 py-1 text-left text-[12px] font-mono {hoverRow} {textTertiary} transition-colors"
-              onclick={navigateUp}
-            >
-              <span class="w-4 h-4 flex items-center justify-center shrink-0">
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5"/></svg>
-              </span>
-              ..
-            </button>
-
-            <!-- Root entry -->
-            <button
-              class="w-full flex items-center gap-1.5 px-2 py-1 text-left text-[12px] font-mono transition-colors
-                {scanPath === treeRoot ? (dark ? 'bg-brand-900/40 text-brand-300' : 'bg-brand-100/80 text-brand-700') : hoverRow + ' ' + textPrimary}"
-              onclick={() => selectTreeDir(treeRoot)}
-              ondblclick={() => toggleTreeDir(treeRoot)}
-            >
-              <span
-                class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-white/10"
-                role="button"
-                tabindex="0"
-                aria-label="Toggle folder"
-                onclick={(e) => { e.stopPropagation(); toggleTreeDir(treeRoot) }}
-                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleTreeDir(treeRoot) } }}
-              >
-                <svg class="w-3 h-3 transition-transform {treeExpanded.has(treeRoot) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-              </span>
-              <span class="truncate font-mono">{treeRoot}</span>
-            </button>
-            {#if treeExpanded.has(treeRoot)}
-              {#if treeLoading.has(treeRoot)}
-                <div class="text-[11px] {textTertiary} py-1 pl-9">Loading...</div>
-              {:else if treeChildren[treeRoot]?.length > 0}
-                {@render treeNode(treeChildren[treeRoot], 1)}
-              {:else if treeChildren[treeRoot]}
-                <div class="text-[11px] {textTertiary} py-1 pl-9">Empty</div>
-              {/if}
-            {/if}
-          {/if}
+        <div class="mb-4">
+          <DirectoryBrowser {dark} selectedPath={scanPath} onSelect={(path) => scanPath = path} maxHeight="280px" />
         </div>
 
         {#if scanError}
@@ -377,8 +168,9 @@
           onclick={() => step = 1}
         >Back</button>
       </div>
+    {/if}
 
-    {:else if step === 3}
+    {#if step === 3}
       <!-- ═══ STEP 3: PROJECT SELECTION ═══ -->
       <div data-testid="wizard-step-3">
         {#if discovered.length === 0}
@@ -450,8 +242,9 @@
           >Browse again</button>
         {/if}
       </div>
+    {/if}
 
-    {:else if step === 4}
+    {#if step === 4}
       <!-- ═══ STEP 4: INDEXING PROGRESS ═══ -->
       <div class="text-center" data-testid="wizard-step-4">
         <h2 class="text-[18px] font-semibold {t.textPrimary} mb-4">Setting up taurhaus...</h2>
@@ -471,8 +264,9 @@
           <p class="text-[12px] {textTertiary} mt-1">Indexing: {progressName}</p>
         {/if}
       </div>
+    {/if}
 
-    {:else if step === 5}
+    {#if step === 5}
       <!-- ═══ STEP 5: COMPLETION ═══ -->
       <div class="text-center" data-testid="wizard-step-5">
         <!-- Checkmark circle -->
