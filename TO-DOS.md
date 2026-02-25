@@ -24,3 +24,20 @@ Reference: [docs/refactoring-v0.3.1.md](docs/refactoring-v0.3.1.md)
 - [x] **R12** — Fix project switch race condition with request generation counter (`Shell.svelte`) — already implemented via `_selectGeneration` counter
 - [x] **R13** — Add confirmation dialog before project removal (`Shell.svelte` Remove button) — already implemented via two-click confirm in context menu
 - [x] **R14** — Check for tantivy update with fixed `lru` crate, or document accepted risk
+
+---
+
+# Splash Screen & Logo — v0.3.2
+
+Reference: [docs/splash-screen-design.md](docs/splash-screen-design.md)
+
+Logo source: `docs/logo-candidates/candidate-01-keystone-gemini.jpg`
+
+## Tasks
+
+- [x] **S01** — Prepare logo image assets: crop/process candidate-01 to clean square PNG with transparency, generate sizes (22px, 32px, 48px, 128px, 256px, 1024px), create Windows ICO bundle (16/32/48/256)
+- [x] **S02** — Create `SplashScreen.svelte` component: full-screen `bg-brand-950`, centered logo with CSS `clip-path: inset()` reveal animation (3 phases: foundation → walls → crown), "taurhaus" wordmark (Geist 18px), status text (12px, white/30), minimum 800ms display, `prefers-reduced-motion` support
+- [x] **S03** — Integrate splash into boot sequence: modify `App.svelte` to show splash first, wire `daemon-status` Tauri events to drive animation phases, gate Shell rendering behind splash completion, error state with retry + "continue anyway" after 15s timeout
+- [x] **S04** — Replace titlebar placeholder logo: swap the "t" square in `Shell.svelte` (line 531-533) with actual logo image at 22px
+- [x] **S05** — Generate Windows app icons: update `src-tauri/icons/` with new logo PNGs and ICO, replace default Tauri icon in exe/installer
+- [x] **S06** — Update design doc: finalize `docs/splash-screen-design.md` with actual implementation approach (clip-path raster reveal instead of SVG stroke animation)

@@ -528,9 +528,7 @@
     <!-- Logo area (width matches sidebar panel below) -->
     <div class="w-[252px] flex items-center px-4 pb-2 shrink-0" data-tauri-drag-region>
       <div class="flex items-center gap-2.5">
-        <div class="w-[22px] h-[22px] rounded-[5px] bg-brand-500 flex items-center justify-center">
-          <span class="text-[10px] font-bold text-white leading-none">t</span>
-        </div>
+        <img src="/logo-22.png" alt="taurhaus" width="22" height="22" class="block" />
         <span class="text-[13px] font-semibold text-white/90 tracking-[-0.01em]">taurhaus</span>
       </div>
     </div>
