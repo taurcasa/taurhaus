@@ -64,6 +64,7 @@ body {
 
 .session-pill-active {
   animation: session-pill-breathe 1.8s ease-in-out infinite;
+  will-change: opacity;
 }
 
 .session-pill-idle {
