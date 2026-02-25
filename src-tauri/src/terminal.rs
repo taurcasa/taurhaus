@@ -50,6 +50,9 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
         return Err("Cannot open terminal: no WSL distro configured".to_string());
     };
 
+    crate::daemon::launcher::validate_wsl_distro(&distro)
+        .map_err(|e| format!("Invalid WSL distro: {e}"))?;
+
     tracing::info!(%distro, %tmux_session, "Launching Windows Terminal with tmux attach");
 
     // -w taurhaus: named window — always targets OUR terminal window.

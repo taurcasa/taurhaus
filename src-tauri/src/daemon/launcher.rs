@@ -31,6 +31,25 @@ fn bwarn(log_path: &Path, msg: &str) {
     }
 }
 
+/// Validate a WSL distro name against a safe pattern.
+///
+/// Accepts alphanumeric characters, hyphens, underscores, and dots.
+/// Rejects empty strings and anything with shell metacharacters.
+pub fn validate_wsl_distro(distro: &str) -> Result<(), String> {
+    if distro.is_empty() {
+        return Err("WSL distro name is empty".to_string());
+    }
+    if !distro
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(format!(
+            "WSL distro name contains invalid characters: {distro:?}"
+        ));
+    }
+    Ok(())
+}
+
 /// Create a `Command` for `wsl.exe` that won't flash a console window.
 ///
 /// On Windows, console subsystem processes (like wsl.exe) create a visible
@@ -74,6 +93,11 @@ pub fn try_connect_daemon(
         }
     };
 
+    if let Err(e) = validate_wsl_distro(distro) {
+        bwarn(log_path, &format!("Invalid WSL distro: {e}"));
+        return None;
+    }
+
     blog(log_path, &format!("Checking for WSL daemon on port {port} (distro: {distro})"));
 
     // Try connecting to an already-running daemon.
@@ -105,8 +129,9 @@ pub fn try_connect_daemon(
 
 /// Try to restart the daemon process (called by health check on disconnect).
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
+    validate_wsl_distro(distro)
+        .map_err(|e| std::io::Error::other(e))?;
     tracing::info!(port, distro, "Attempting daemon restart via wsl.exe");
-    // Health check doesn't have log_path — use a fallback location.
     let log_path = health_check_log_path();
     try_start_daemon(distro, port, &log_path)
 }
@@ -237,6 +262,10 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
 /// Failure is non-fatal — the daemon-side code also creates the session
 /// on demand when launching a tool.
 pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
+    if let Err(e) = validate_wsl_distro(distro) {
+        bwarn(log_path, &format!("Invalid WSL distro for tmux: {e}"));
+        return;
+    }
     use crate::session_scanner::control::TMUX_SESSION_NAME;
 
     blog(log_path, &format!("Ensuring tmux session '{TMUX_SESSION_NAME}' exists"));
@@ -381,5 +410,22 @@ mod tests {
         let result = poll_until_reachable(port, Duration::from_secs(1));
         assert!(result.is_none(), "Should timeout when no daemon starts");
         assert!(start.elapsed() >= Duration::from_secs(1), "Should wait full timeout");
+    }
+
+    #[test]
+    fn validate_distro_accepts_valid_names() {
+        assert!(validate_wsl_distro("Ubuntu").is_ok());
+        assert!(validate_wsl_distro("Ubuntu-22.04").is_ok());
+        assert!(validate_wsl_distro("Debian_11").is_ok());
+        assert!(validate_wsl_distro("kali-linux").is_ok());
+    }
+
+    #[test]
+    fn validate_distro_rejects_invalid_names() {
+        assert!(validate_wsl_distro("").is_err());
+        assert!(validate_wsl_distro("foo bar").is_err());
+        assert!(validate_wsl_distro("foo;rm -rf /").is_err());
+        assert!(validate_wsl_distro("test$(whoami)").is_err());
+        assert!(validate_wsl_distro("test`id`").is_err());
     }
 }

@@ -19,7 +19,7 @@ Reference: [docs/refactoring-v0.3.1.md](docs/refactoring-v0.3.1.md)
 
 - [x] **R08** — Rebalance Git tab panel proportions: wider commit list, narrower detail pane (`Shell.svelte` Git section)
 - [x] **R09** — Improve sidebar branch pill contrast: use `bg-white/10` instead of dark background (`Shell.svelte` sidebar)
-- [ ] **R10** — Validate WSL distro parameter against safe pattern before passing to `wsl.exe` (`launcher.rs`, `terminal.rs`)
+- [x] **R10** — Validate WSL distro parameter against safe pattern before passing to `wsl.exe` (`launcher.rs`, `terminal.rs`)
 - [ ] **R11** — Extract duplicated SVG logo data to shared `src/lib/toolLogos.js` module (`sessionIndicator.js`, `sessionStore.svelte.js`)
 - [ ] **R12** — Fix project switch race condition with request generation counter (`Shell.svelte`)
 - [ ] **R13** — Add confirmation dialog before project removal (`Shell.svelte` Remove button)
