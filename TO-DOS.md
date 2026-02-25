@@ -22,5 +22,5 @@ Reference: [docs/refactoring-v0.3.1.md](docs/refactoring-v0.3.1.md)
 - [x] **R10** — Validate WSL distro parameter against safe pattern before passing to `wsl.exe` (`launcher.rs`, `terminal.rs`)
 - [x] **R11** — Extract duplicated SVG logo data to shared `src/lib/toolLogos.js` module (`sessionIndicator.js`, `sessionStore.svelte.js`)
 - [x] **R12** — Fix project switch race condition with request generation counter (`Shell.svelte`) — already implemented via `_selectGeneration` counter
-- [ ] **R13** — Add confirmation dialog before project removal (`Shell.svelte` Remove button)
+- [x] **R13** — Add confirmation dialog before project removal (`Shell.svelte` Remove button) — already implemented via two-click confirm in context menu
 - [ ] **R14** — Check for tantivy update with fixed `lru` crate, or document accepted risk
