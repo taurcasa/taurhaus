@@ -413,7 +413,7 @@
     const session = getSessionForProject(ctxMenu.project.path)
     console.log('[cmd-center] Open in Terminal:', ctxMenu.project.path, 'session:', session ? { tmux_session: session.tmux_session, tmux_window: session.tmux_window, tmux_pane: session.tmux_pane } : 'null')
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
-      navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
+      navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane, true)
         .then(() => console.log('[cmd-center] navigate OK'))
         .catch(e => console.error('[cmd-center] navigate FAILED:', e))
     } else {

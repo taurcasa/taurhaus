@@ -719,16 +719,32 @@ describe('ipc module', () => {
   })
 
   describe('navigateToSession()', () => {
-    it('calls invoke with tmux session, window, and pane', async () => {
+    it('calls invoke with tmux coordinates and openTerminal=false by default', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue(undefined)
 
-      await ipc.navigateToSession('main', '1', '%3')
+      await ipc.navigateToSession('taurhaus', '1', '%3')
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('navigate_to_session', {
-        tmuxSession: 'main',
+        tmuxSession: 'taurhaus',
         tmuxWindow: '1',
         tmuxPane: '%3',
+        openTerminal: false,
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('passes openTerminal=true when requested', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.navigateToSession('taurhaus', '1', '%3', true)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('navigate_to_session', {
+        tmuxSession: 'taurhaus',
+        tmuxWindow: '1',
+        tmuxPane: '%3',
+        openTerminal: true,
       })
       delete window.__TAURI_INTERNALS__
     })

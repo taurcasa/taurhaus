@@ -453,9 +453,9 @@ export function stopClaudeSession(tmuxPane, cliTool) {
   return invokeOrMock('stop_claude_session', { tmuxPane, cliTool: cliTool ?? null }, () => undefined)
 }
 
-/** Navigate to a Claude Code session's tmux pane and focus the terminal. */
-export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane) {
-  return invokeOrMock('navigate_to_session', { tmuxSession, tmuxWindow, tmuxPane }, () => undefined)
+/** Navigate to a Claude Code session's tmux pane. openTerminal: if true, opens Windows Terminal when not running. */
+export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane, openTerminal = false) {
+  return invokeOrMock('navigate_to_session', { tmuxSession, tmuxWindow, tmuxPane, openTerminal }, () => undefined)
 }
 
 /** Record a completed CLI session's activity stats. */

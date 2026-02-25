@@ -11,6 +11,7 @@ use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::daemon::protocol::{self, LaunchMode};
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::control::TMUX_SESSION_NAME;
 use crate::session_scanner::ClaudeSession;
 use crate::ProviderState;
 
@@ -138,8 +139,14 @@ pub fn launch_claude_session(
                         let _ = writeln!(f, "[cmd-center] launch SUCCESS via daemon: window={} pane={}", result.tmux_window, result.tmux_pane);
                     }
 
-                    // Focus Windows Terminal after successful launch
-                    let _ = crate::terminal::focus_windows_terminal();
+                    // Open or focus Windows Terminal after successful launch
+                    let tmux_session = result.tmux_session.as_deref().unwrap_or(TMUX_SESSION_NAME);
+                    let _ = crate::terminal::handle_terminal(
+                        crate::terminal::TerminalIntent::EnsureOpen {
+                            distro: provider.wsl_distro.clone(),
+                            tmux_session: tmux_session.to_string(),
+                        },
+                    );
                     return Ok(result);
                 }
                 Ok(response) => {
@@ -166,11 +173,12 @@ pub fn launch_claude_session(
     if let Ok(mut f) = log_file.0.lock() {
         let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
     }
-    let (window, pane) =
+    let (session, window, pane) =
         crate::session_scanner::control::launch_in_tmux(&linux_path, mode, tool)
             .map_err(|e| format!("Failed to launch session: {e}"))?;
 
     Ok(protocol::LaunchSessionResult {
+        tmux_session: Some(session),
         tmux_window: window,
         tmux_pane: pane,
     })
@@ -218,7 +226,11 @@ pub fn stop_claude_session(
         .map_err(|e| format!("Failed to stop session: {e}"))
 }
 
-/// Navigate to a Claude Code session's tmux pane and focus the terminal.
+/// Navigate to a Claude Code session's tmux pane.
+///
+/// `open_terminal`: if true, opens Windows Terminal when not running
+/// (used by "Open in Terminal"). If false, only focuses an existing
+/// terminal (used by session indicator clicks).
 #[tauri::command]
 pub fn navigate_to_session(
     provider: State<'_, ProviderState>,
@@ -226,9 +238,12 @@ pub fn navigate_to_session(
     tmux_session: String,
     tmux_window: String,
     tmux_pane: String,
+    open_terminal: Option<bool>,
 ) -> Result<(), String> {
+    let should_open = open_terminal.unwrap_or(false);
+
     if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] navigate_to_session: session={tmux_session} window={tmux_window} pane={tmux_pane}");
+        let _ = writeln!(f, "[cmd-center] navigate_to_session: session={tmux_session} window={tmux_window} pane={tmux_pane} open={should_open}");
     }
     // Try daemon first
     if let Some(ref daemon) = provider.daemon {
@@ -245,7 +260,15 @@ pub fn navigate_to_session(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    let _ = crate::terminal::focus_windows_terminal();
+                    let intent = if should_open {
+                        crate::terminal::TerminalIntent::EnsureOpen {
+                            distro: provider.wsl_distro.clone(),
+                            tmux_session: tmux_session.clone(),
+                        }
+                    } else {
+                        crate::terminal::TerminalIntent::FocusOnly
+                    };
+                    let _ = crate::terminal::handle_terminal(intent);
                     return Ok(());
                 }
                 Ok(response) => {
