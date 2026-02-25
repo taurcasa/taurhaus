@@ -666,6 +666,15 @@ fn handle_unwatch(
     DaemonResponse::ok(id, protocol::WatchResult { ok: true })
 }
 
+/// Convert an absolute file path to a project-relative string.
+///
+/// Falls back to the absolute path if `strip_prefix` fails.
+fn relative_to(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .map(|r| r.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string_lossy().to_string())
+}
+
 /// Classify a notify event and push the appropriate DaemonEvent to the client.
 ///
 /// Uses the same `classify_event` logic as the local `ProjectWatcher` to ensure
@@ -718,37 +727,20 @@ fn forward_watch_event(
             }
             EventClass::SessionFile => {
                 if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
-                    let relative = path
-                        .strip_prefix(project_root)
-                        .map(|r| r.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| path.to_string_lossy().to_string());
                     push_event(
                         writer,
                         &DaemonEvent::new(
                             protocol::event::SESSION_FILE_CREATED,
                             protocol::SessionFileCreatedData {
                                 path: project_path.to_string(),
-                                file: relative,
+                                file: relative_to(path, project_root),
                             },
                         ),
                     );
                 }
             }
-            EventClass::GitignoreChange => {
-                // Gitignore changes don't have a dedicated daemon event type.
-                // They're treated as regular file changes for now.
-                regular_files.push(
-                    path.strip_prefix(project_root)
-                        .map(|r| r.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| path.to_string_lossy().to_string()),
-                );
-            }
-            EventClass::RegularFile => {
-                regular_files.push(
-                    path.strip_prefix(project_root)
-                        .map(|r| r.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| path.to_string_lossy().to_string()),
-                );
+            EventClass::GitignoreChange | EventClass::RegularFile => {
+                regular_files.push(relative_to(path, project_root));
             }
         }
     }

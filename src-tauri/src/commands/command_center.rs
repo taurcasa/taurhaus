@@ -455,8 +455,6 @@ pub fn get_archived_sessions(
     }
 
     // Group raw persisted tasks by session_id (None → "ungrouped").
-    // We keep PersistedTask (not UnifiedTask) so we can derive time ranges
-    // from first_seen_at / updated_at timestamps in the DB rows.
     let mut groups: std::collections::BTreeMap<
         String,
         Vec<crate::db::task_queries::PersistedTask>,
@@ -466,88 +464,10 @@ pub fn get_archived_sessions(
         groups.entry(session_key).or_default().push(t);
     }
 
-    let mut sessions = Vec::new();
-    let errors: Vec<String> = Vec::new();
-
-    for (session_key, raw_tasks) in &groups {
-        let tasks: Vec<crate::task_scanner::UnifiedTask> =
-            raw_tasks.iter().cloned().map(persisted_to_unified).collect();
-
-        let sources: Vec<String> = {
-            let mut s: Vec<String> = tasks.iter().map(|t| t.source.to_string()).collect();
-            s.sort();
-            s.dedup();
-            s
-        };
-
-        // Derive session time range from DB timestamps (earliest first_seen_at,
-        // latest updated_at). This works cross-platform — no JSONL file access needed.
-        let started_at = raw_tasks
-            .iter()
-            .map(|t| t.first_seen_at.as_str())
-            .min()
-            .map(String::from);
-        let ended_at = raw_tasks
-            .iter()
-            .map(|t| t.updated_at.as_str())
-            .max()
-            .map(String::from);
-
-        let duration_ms = started_at
-            .as_deref()
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .and_then(|start| {
-                ended_at
-                    .as_deref()
-                    .and_then(|e| chrono::DateTime::parse_from_rfc3339(e).ok())
-                    .map(|end| (end - start).num_milliseconds())
-            });
-
-        // Query git for commits and files changed during the session time range.
-        // Uses the provider (daemon for WSL paths, local for Windows paths).
-        let (commit_count, file_count) = match (&started_at, &ended_at) {
-            (Some(s), Some(e)) => {
-                match provider.commits_in_range(&project_path, s, e) {
-                    Ok((commits, files)) => (commits.len(), files.len()),
-                    Err(_) => (0, 0),
-                }
-            }
-            _ => (0, 0),
-        };
-
-        // Most recent archival timestamp — when tasks last moved into this group.
-        let last_archived_at = raw_tasks
-            .iter()
-            .filter_map(|t| t.archived_at.as_deref())
-            .max()
-            .map(String::from);
-
-        if session_key == "ungrouped" && started_at.is_none() {
-            sessions.push(crate::task_scanner::ArchivedSession {
-                session_id: "ungrouped".to_string(),
-                started_at: None,
-                ended_at: None,
-                duration_ms: None,
-                tasks,
-                commit_count: 0,
-                file_count: 0,
-                sources,
-                last_archived_at,
-            });
-        } else {
-            sessions.push(crate::task_scanner::ArchivedSession {
-                session_id: session_key.clone(),
-                started_at,
-                ended_at,
-                duration_ms,
-                tasks,
-                commit_count,
-                file_count,
-                sources,
-                last_archived_at,
-            });
-        }
-    }
+    let mut sessions: Vec<crate::task_scanner::ArchivedSession> = groups
+        .iter()
+        .map(|(key, raw)| build_archived_session(key, raw, provider, &project_path))
+        .collect();
 
     // Sort reverse-chronological: sessions with started_at first (newest first),
     // then ungrouped/unresolved at the end
@@ -560,7 +480,95 @@ pub fn get_archived_sessions(
         }
     });
 
-    Ok(crate::task_scanner::ArchivedSessionsResult { sessions, errors })
+    Ok(crate::task_scanner::ArchivedSessionsResult {
+        sessions,
+        errors: vec![],
+    })
+}
+
+/// Build one `ArchivedSession` from a group of persisted tasks.
+fn build_archived_session(
+    session_key: &str,
+    raw_tasks: &[crate::db::task_queries::PersistedTask],
+    provider: &dyn crate::provider::ProjectProvider,
+    project_path: &str,
+) -> crate::task_scanner::ArchivedSession {
+    let tasks: Vec<crate::task_scanner::UnifiedTask> =
+        raw_tasks.iter().cloned().map(persisted_to_unified).collect();
+
+    let sources = unique_sources(&tasks);
+    let (started_at, ended_at, duration_ms) = time_range_from_tasks(raw_tasks);
+
+    // Query git for commits and files changed during the session time range.
+    let (commit_count, file_count) = match (&started_at, &ended_at) {
+        (Some(s), Some(e)) => provider
+            .commits_in_range(project_path, s, e)
+            .map(|(c, f)| (c.len(), f.len()))
+            .unwrap_or((0, 0)),
+        _ => (0, 0),
+    };
+
+    let last_archived_at = raw_tasks
+        .iter()
+        .filter_map(|t| t.archived_at.as_deref())
+        .max()
+        .map(String::from);
+
+    // Ungrouped sessions with no timestamps get zeroed git counts.
+    if session_key == "ungrouped" && started_at.is_none() {
+        return crate::task_scanner::ArchivedSession {
+            session_id: "ungrouped".to_string(),
+            started_at: None,
+            ended_at: None,
+            duration_ms: None,
+            tasks,
+            commit_count: 0,
+            file_count: 0,
+            sources,
+            last_archived_at,
+        };
+    }
+
+    crate::task_scanner::ArchivedSession {
+        session_id: session_key.to_string(),
+        started_at,
+        ended_at,
+        duration_ms,
+        tasks,
+        commit_count,
+        file_count,
+        sources,
+        last_archived_at,
+    }
+}
+
+/// Derive session time boundaries from the earliest/latest timestamps
+/// in a set of persisted tasks.
+fn time_range_from_tasks(
+    tasks: &[crate::db::task_queries::PersistedTask],
+) -> (Option<String>, Option<String>, Option<i64>) {
+    let started_at = tasks.iter().map(|t| t.first_seen_at.as_str()).min().map(String::from);
+    let ended_at = tasks.iter().map(|t| t.updated_at.as_str()).max().map(String::from);
+
+    let duration_ms = started_at
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .and_then(|start| {
+            ended_at
+                .as_deref()
+                .and_then(|e| chrono::DateTime::parse_from_rfc3339(e).ok())
+                .map(|end| (end - start).num_milliseconds())
+        });
+
+    (started_at, ended_at, duration_ms)
+}
+
+/// Collect deduplicated, sorted tool sources from a set of unified tasks.
+fn unique_sources(tasks: &[crate::task_scanner::UnifiedTask]) -> Vec<String> {
+    let mut s: Vec<String> = tasks.iter().map(|t| t.source.to_string()).collect();
+    s.sort();
+    s.dedup();
+    s
 }
 
 /// Get files changed by a specific commit.
@@ -675,8 +683,18 @@ pub(crate) fn persist_task_scan(
         tracing::warn!(error = %e, "Failed to persist scanned tasks");
     }
 
-    // Prune stale tasks: for each source that contributed ≥1 task,
-    // remove DB entries that are no longer in the scan result.
+    prune_stale_tasks(conn, normalized_path, scan_result);
+}
+
+/// Archive or delete tasks that no longer appear in a scan result.
+///
+/// Groups scan results by source, then for each source that contributed ≥1 task,
+/// removes DB entries not present in the current scan.
+fn prune_stale_tasks(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+    scan_result: &crate::task_scanner::TaskResult,
+) {
     let mut sources: std::collections::HashMap<String, Vec<&str>> =
         std::collections::HashMap::new();
     for task in &scan_result.tasks {
