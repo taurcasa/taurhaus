@@ -527,9 +527,10 @@ fn handle_launch_session(id: &str, params: &serde_json::Value) -> DaemonResponse
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
     match crate::session_scanner::control::launch_in_tmux(&params.project_path, params.mode, params.cli_tool) {
-        Ok((window, pane)) => DaemonResponse::ok(
+        Ok((session, window, pane)) => DaemonResponse::ok(
             id,
             protocol::LaunchSessionResult {
+                tmux_session: Some(session),
                 tmux_window: window,
                 tmux_pane: pane,
             },

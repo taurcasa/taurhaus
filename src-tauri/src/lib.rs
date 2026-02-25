@@ -140,9 +140,10 @@ pub fn run() {
                     }
                 }
 
-                // Ensure tmux server is running (idempotent, non-fatal).
+                // Ensure our dedicated tmux session exists (idempotent, non-fatal).
+                // This also starts the tmux server if it's not running.
                 if let Some(ref d) = distro {
-                    daemon::launcher::ensure_tmux_server(d, &log_path);
+                    daemon::launcher::ensure_tmux_session(d, &log_path);
                 }
 
                 // If we have WSL projects but the daemon didn't connect,

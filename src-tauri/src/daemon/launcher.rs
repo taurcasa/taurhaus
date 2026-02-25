@@ -198,15 +198,37 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
     }
 }
 
-/// Ensure tmux server is running inside WSL.
+/// Ensure the taurhaus tmux session exists inside WSL.
 ///
-/// `tmux start-server` is idempotent — if the server is already running,
-/// this is a no-op. Failure is non-fatal.
-pub fn ensure_tmux_server(distro: &str, log_path: &Path) {
-    blog(log_path, "Ensuring tmux server is running");
+/// Creates a dedicated named session (`taurhaus`) so our CLI tool windows
+/// don't interfere with the user's own tmux sessions. `tmux new-session`
+/// implicitly starts the server if needed.
+///
+/// Failure is non-fatal — the daemon-side code also creates the session
+/// on demand when launching a tool.
+pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
+    use crate::session_scanner::control::TMUX_SESSION_NAME;
 
+    blog(log_path, &format!("Ensuring tmux session '{TMUX_SESSION_NAME}' exists"));
+
+    // Check if session already exists
+    let check = wsl_command()
+        .args(["-d", distro, "--", "tmux", "has-session", "-t", TMUX_SESSION_NAME])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    if let Ok(output) = &check {
+        if output.status.success() {
+            blog(log_path, &format!("tmux session '{TMUX_SESSION_NAME}' already exists"));
+            return;
+        }
+    }
+
+    // Create the session (detached — no client needed)
     let result = wsl_command()
-        .args(["-d", distro, "--", "tmux", "start-server"])
+        .args(["-d", distro, "--", "tmux", "new-session", "-d", "-s", TMUX_SESSION_NAME])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -214,13 +236,13 @@ pub fn ensure_tmux_server(distro: &str, log_path: &Path) {
 
     match result {
         Ok(output) if output.status.success() => {
-            blog(log_path, "tmux server is running");
+            blog(log_path, &format!("Created tmux session '{TMUX_SESSION_NAME}'"));
         }
         Ok(output) => {
-            bwarn(log_path, &format!("tmux start-server exited with status {:?}", output.status));
+            bwarn(log_path, &format!("tmux new-session exited with status {:?}", output.status));
         }
         Err(e) => {
-            bwarn(log_path, &format!("Failed to run tmux start-server via wsl.exe: {e}"));
+            bwarn(log_path, &format!("Failed to create tmux session via wsl.exe: {e}"));
         }
     }
 }

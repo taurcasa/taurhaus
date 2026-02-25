@@ -382,7 +382,7 @@ const MOCK_CLAUDE_SESSIONS = [
     tty: '/dev/pts/2',
     args: 'claude --dangerously-skip-permissions --continue',
     cli_tool: 'claude',
-    tmux_session: '0',
+    tmux_session: 'taurhaus',
     tmux_window: '1',
     tmux_pane: '%3',
     tmux_window_name: 'taurhaus',
@@ -396,7 +396,7 @@ const MOCK_CLAUDE_SESSIONS = [
     tty: '/dev/pts/5',
     args: 'codex --yolo',
     cli_tool: 'codex',
-    tmux_session: '0',
+    tmux_session: 'taurhaus',
     tmux_window: '1',
     tmux_pane: '%8',
     tmux_window_name: 'taurhaus',
@@ -410,7 +410,7 @@ const MOCK_CLAUDE_SESSIONS = [
     tty: '/dev/pts/4',
     args: 'claude --dangerously-skip-permissions',
     cli_tool: 'claude',
-    tmux_session: '0',
+    tmux_session: 'taurhaus',
     tmux_window: '3',
     tmux_pane: '%7',
     tmux_window_name: 'mir',
@@ -424,7 +424,7 @@ const MOCK_CLAUDE_SESSIONS = [
     tty: '/dev/pts/6',
     args: 'gemini --yolo',
     cli_tool: 'gemini',
-    tmux_session: '0',
+    tmux_session: 'taurhaus',
     tmux_window: '4',
     tmux_pane: '%10',
     tmux_window_name: 'taurui',
@@ -442,6 +442,7 @@ export function listClaudeSessions() {
 /** Launch a new CLI tool session for a project. Mode: "continue" | "fresh" | "resume". cliTool: "claude" | "codex" | "gemini" (optional, defaults to "claude"). */
 export function launchClaudeSession(projectId, mode, cliTool) {
   return invokeOrMock('launch_claude_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
+    tmux_session: 'taurhaus',
     tmux_window: 'project',
     tmux_pane: '%99',
   }))

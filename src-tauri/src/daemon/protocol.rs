@@ -243,6 +243,10 @@ fn default_cli_tool() -> crate::session_scanner::cli_tool::CliTool {
 /// `launch_session` result
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LaunchSessionResult {
+    /// Which tmux session the window was created in. Optional for backward
+    /// compat with older daemons that don't send this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tmux_session: Option<String>,
     pub tmux_window: String,
     pub tmux_pane: String,
 }
@@ -594,12 +598,22 @@ mod tests {
     #[test]
     fn launch_session_result_roundtrip() {
         let r = LaunchSessionResult {
+            tmux_session: Some("0".to_string()),
             tmux_window: "proj".to_string(),
             tmux_pane: "%5".to_string(),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: LaunchSessionResult = serde_json::from_str(&json).unwrap();
         assert_eq!(r, back);
+    }
+
+    #[test]
+    fn launch_session_result_backward_compat() {
+        // Old daemons don't send tmux_session — should deserialize with None
+        let json = r#"{"tmux_window":"proj","tmux_pane":"%5"}"#;
+        let r: LaunchSessionResult = serde_json::from_str(json).unwrap();
+        assert_eq!(r.tmux_session, None);
+        assert_eq!(r.tmux_window, "proj");
     }
 
     #[test]

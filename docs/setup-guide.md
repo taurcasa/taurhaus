@@ -16,12 +16,14 @@ taurhaus runs on Windows but relies on several components running inside WSL2. T
 When taurhaus launches, it ensures prerequisites are running in this order:
 
 ```
-1. Daemon running?      → no → wsl.exe -d {distro} -- ~/.local/bin/taurhaus-daemon --port 9000
-2. tmux server alive?   → no → wsl.exe -d {distro} -- tmux start-server
-3. (Terminal)            → opened later, on demand, when user wants to interact with a session
+1. Daemon running?            → no → wsl.exe -d {distro} -- ~/.local/bin/taurhaus-daemon --port 9000
+2. tmux "taurhaus" session?   → no → wsl.exe -d {distro} -- tmux new-session -d -s taurhaus
+3. (Terminal)                  → opened later, on demand, via wt.exe with tmux attach
 ```
 
 Each step checks whether the component is already running before acting. If WSL2 isn't started yet, the first `wsl.exe` call starts it implicitly — no separate step needed.
+
+The app uses a dedicated tmux session named `taurhaus` for all CLI tool windows. This avoids interfering with the user's own tmux sessions. The daemon-side code also creates this session on demand if it doesn't exist when launching a tool.
 
 ## How tmux fits in
 
@@ -85,25 +87,24 @@ Or reinstall and restart:
 just install-daemon
 ```
 
-### tmux not running
+### tmux not running / taurhaus session missing
 
 ```bash
 tmux list-sessions
 ```
 
-If you get "no server running", start one:
+You should see a session named `taurhaus`. If not, the app creates it automatically on startup. To create it manually:
 
 ```bash
-tmux start-server
-tmux new-session -d -s main
+tmux new-session -d -s taurhaus
 ```
 
 ### CLI tool launch fails
 
-Ensure tmux has at least one session. taurhaus creates new windows inside an existing session — it doesn't create sessions from scratch.
+The app creates tool windows inside the `taurhaus` tmux session. Check that it exists:
 
 ```bash
-tmux list-sessions    # should show at least one
+tmux has-session -t taurhaus    # exit code 0 = exists
 ```
 
 ### Phone SSH + PC resolution conflict

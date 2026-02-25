@@ -8,22 +8,24 @@ use crate::session_scanner::cli_tool::{self, CliTool};
 
 /// Launch a CLI tool session in a new tmux window.
 ///
-/// Creates a new tmux window named after the project directory,
-/// then sends the cd + tool command to it.
+/// Creates a new tmux window with the tool command as its initial process.
+/// This avoids the race condition where `send-keys` arrives before the
+/// shell prompt is ready (oh-my-zsh init takes time). When the tool exits,
+/// `exec "$SHELL"` drops the user into their normal interactive shell.
 ///
-/// Returns `(window_name, pane_id)` on success.
+/// Returns `(tmux_session, window_name, pane_id)` on success.
 pub fn launch_in_tmux(
     project_path: &str,
     mode: LaunchMode,
     tool: CliTool,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, String), String> {
     // Validate project path
     if !Path::new(project_path).is_dir() {
         return Err(format!("Project path does not exist: {project_path}"));
     }
 
-    // Detect active tmux session
-    let tmux_session = detect_tmux_session()?;
+    // Ensure our dedicated tmux session exists
+    let tmux_session = ensure_taurhaus_session()?;
 
     // Window name: last component of project path
     let window_name = Path::new(project_path)
@@ -31,7 +33,23 @@ pub fn launch_in_tmux(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "claude".to_string());
 
-    // Create new tmux window (trailing colon = next available index in session)
+    // Build the full command: cd to project, run tool, then drop into shell on exit.
+    // Shell-escape the path to prevent injection via crafted directory names.
+    let tool_cmd = build_launch_command(tool, mode);
+    let escaped_path = shell_escape(project_path);
+
+    // Inner command: what the user's shell should run.
+    let inner_cmd = format!("cd {escaped_path} && {tool_cmd}; exec \"$SHELL\"");
+
+    // Wrap in interactive shell to get the user's PATH from .zshrc/.bashrc.
+    // tmux runs commands via `$SHELL -c`, which sources .zshenv but NOT .zshrc.
+    // CLI tools (claude, codex, gemini) are installed via fnm/npm which sets up
+    // PATH in .zshrc. The -i flag forces .zshrc to load so the tools are found.
+    // `exec` replaces the outer sh process so we don't leave an extra shell layer.
+    let shell_cmd = format!("exec \"$SHELL\" -ic {}", shell_escape(&inner_cmd));
+
+    // Create new tmux window with the command as its initial process.
+    // The trailing colon = next available window index.
     let target = format!("{tmux_session}:");
     let output = Command::new("tmux")
         .args([
@@ -43,6 +61,7 @@ pub fn launch_in_tmux(
             "-P",
             "-F",
             "#{pane_id}",
+            &shell_cmd,
         ])
         .output()
         .map_err(|e| format!("Failed to create tmux window: {e}"))?;
@@ -54,16 +73,7 @@ pub fn launch_in_tmux(
 
     let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    // Build the tool-specific command
-    let tool_cmd = build_launch_command(tool, mode);
-
-    // Send the cd + tool command to the new pane.
-    // Shell-escape the path to prevent injection via crafted directory names.
-    let escaped_path = shell_escape(project_path);
-    let keys = format!("cd {escaped_path} && {tool_cmd}");
-    run_tmux_send_keys(&pane_id, &keys)?;
-
-    Ok((window_name, pane_id))
+    Ok((tmux_session, window_name, pane_id))
 }
 
 /// Stop a CLI tool session by sending the exit signal to the tmux pane.
@@ -203,24 +213,39 @@ pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
     }
 }
 
-/// Detect the first available tmux session name.
-fn detect_tmux_session() -> Result<String, String> {
-    let output = Command::new("tmux")
-        .args(["list-sessions", "-F", "#{session_name}"])
-        .output()
-        .map_err(|e| format!("tmux not running or not available: {e}"))?;
+/// The tmux session name used by taurhaus for all CLI tool windows.
+///
+/// Using a dedicated named session avoids conflicts with the user's own
+/// tmux sessions and ensures we always know where our tools are running.
+pub const TMUX_SESSION_NAME: &str = "taurhaus";
 
-    if !output.status.success() {
-        return Err("tmux is not running. Start tmux first.".to_string());
+/// Ensure the taurhaus tmux session exists, creating it if needed.
+///
+/// `tmux new-session` implicitly starts the server, so this also handles
+/// the case where no tmux server is running yet.
+fn ensure_taurhaus_session() -> Result<String, String> {
+    // Check if session already exists
+    let check = Command::new("tmux")
+        .args(["has-session", "-t", TMUX_SESSION_NAME])
+        .output()
+        .map_err(|e| format!("tmux not available: {e}"))?;
+
+    if check.status.success() {
+        return Ok(TMUX_SESSION_NAME.to_string());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
-        .lines()
-        .next()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "No tmux sessions found.".to_string())
+    // Create the session (detached — no client needed)
+    let output = Command::new("tmux")
+        .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
+        .output()
+        .map_err(|e| format!("Failed to create tmux session: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux new-session failed: {stderr}"));
+    }
+
+    Ok(TMUX_SESSION_NAME.to_string())
 }
 
 /// Escape a string for safe use in a POSIX shell command.
@@ -443,5 +468,29 @@ mod tests {
     #[test]
     fn shell_escape_empty_string() {
         assert_eq!(shell_escape(""), "''");
+    }
+
+    // -----------------------------------------------------------------------
+    // Shell command wrapping test
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn shell_cmd_wraps_in_interactive_shell() {
+        // Verify the launch command is wrapped in $SHELL -ic for PATH access.
+        // This ensures CLI tools installed via fnm/npm are found.
+        let path = "/home/user/project";
+        let tool_cmd = build_launch_command(CliTool::Claude, LaunchMode::Continue);
+        let escaped_path = shell_escape(path);
+        let inner_cmd = format!("cd {escaped_path} && {tool_cmd}; exec \"$SHELL\"");
+        let shell_cmd = format!("exec \"$SHELL\" -ic {}", shell_escape(&inner_cmd));
+
+        // Must start with exec "$SHELL" -ic
+        assert!(shell_cmd.starts_with("exec \"$SHELL\" -ic "));
+        // Inner command must contain the tool command
+        assert!(shell_cmd.contains("claude --dangerously-skip-permissions --continue"));
+        // Inner command must end with exec "$SHELL" for post-exit shell
+        assert!(shell_cmd.contains("exec \"$SHELL\""));
+        // Path must be shell-escaped inside the wrapper
+        assert!(shell_cmd.contains("/home/user/project"));
     }
 }
