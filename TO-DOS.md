@@ -61,7 +61,7 @@ What needs to happen before taurhaus can be released publicly (open source or ot
 - [x] **P06** — Create CHANGELOG.md: version history from v0.1.0 through v0.3.2 (can be reconstructed from git log and BOOTSTRAP.md)
 - [x] **P07** — Create CONTRIBUTING.md: dev environment setup, `just` recipes, code standards (Svelte 5 runes, Tailwind v4 tokens, Rust patterns), PR process, testing expectations
 - [x] **P08** — Create SECURITY.md: how to report vulnerabilities, supported versions, response timeline
-- [ ] **P09** — Condense architecture for newcomers: write a concise ARCHITECTURE.md that summarizes the 22 ADRs into a readable overview (the full ADRs stay as deep-dive reference)
+- [x] **P09** — Condense architecture for newcomers: write a concise ARCHITECTURE.md that summarizes the 22 ADRs into a readable overview (the full ADRs stay as deep-dive reference)
 
 ## App Polish — Overview Tab
 
