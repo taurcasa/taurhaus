@@ -6,8 +6,8 @@
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
-  /** @type {{ projectPath: string, dark: boolean, codeTheme?: string, position: object|null, restoreTarget: object|null, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void, onClearRestoreTarget?: () => void }} */
-  let { projectPath, dark, codeTheme = 'github-light', position = $bindable(null), restoreTarget = null, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange, onClearRestoreTarget } = $props()
+  /** @type {{ projectPath: string, dark: boolean, codeTheme?: string, position: object|null, navTarget: object|null, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void, onClearNavTarget?: () => void }} */
+  let { projectPath, dark, codeTheme = 'github-light', position = $bindable(null), navTarget = null, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange, onClearNavTarget } = $props()
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
@@ -70,12 +70,12 @@
 
   // Handle restore target from Shell (separate channel from position sync)
   $effect(() => {
-    if (!restoreTarget) return
-    if (restoreTarget.activeSubTab) activeSubTab = restoreTarget.activeSubTab
-    if (restoreTarget.selectedTaskId) {
-      pendingRestore = { id: restoreTarget.selectedTaskId, source: restoreTarget.selectedTaskSource }
+    if (!navTarget) return
+    if (navTarget.activeSubTab) activeSubTab = navTarget.activeSubTab
+    if (navTarget.selectedTaskId) {
+      pendingRestore = { id: navTarget.selectedTaskId, source: navTarget.selectedTaskSource }
     }
-    onClearRestoreTarget?.()
+    onClearNavTarget?.()
   })
 
   // Apply pending restore once tasks are loaded

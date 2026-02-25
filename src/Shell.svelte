@@ -92,7 +92,7 @@
   // Bound positions from child components (synced via $bindable)
   let gitPosition = $state(null)
   let taskPosition = $state(null)
-  let taskRestoreTarget = $state(null)
+  let taskNavTarget = $state(null)
 
   function saveProjectPosition() {
     if (!selectedProject) return
@@ -113,6 +113,11 @@
   function navigateToCommitRange(after, before) {
     gitNavTarget = { type: 'range', after, before }
     switchTab('git', { tab: 'git', rangeFilter: { after, before } })
+  }
+
+  function navigateToFile(path, lineNumber) {
+    filesNavTarget = { file: path, lineNumber }
+    switchTab('files', { tab: 'files', file: path, lineNumber })
   }
 
   // Load code theme prefs from settings
@@ -300,7 +305,7 @@
       gitNavTarget = null
     }
     // Restore Task position via separate restoreTarget prop
-    taskRestoreTarget = savedPosition?.taskPosition ?? null
+    taskNavTarget = savedPosition?.taskPosition ?? null
     recentCommits = commits
     commitsLoading = false
     latestSession = sessions[0]
@@ -659,10 +664,10 @@
             {dark}
             {codeTheme}
             bind:position={taskPosition}
-            restoreTarget={taskRestoreTarget}
-            onClearRestoreTarget={() => { taskRestoreTarget = null }}
+            navTarget={taskNavTarget}
+            onClearNavTarget={() => { taskNavTarget = null }}
             onNavigateToCommit={navigateToCommit}
-            onNavigateToFile={(path, lineNumber) => { filesNavTarget = { file: path, lineNumber }; switchTab('files', { tab: 'files', file: path, lineNumber }) }}
+            onNavigateToFile={navigateToFile}
             onNavigateToCommitRange={navigateToCommitRange}
           />
         {/if}
@@ -675,9 +680,9 @@
             projectPath={selectedProject.path}
             projectId={selectedProject.id}
             {dark}
-            {gitNavTarget}
+            navTarget={gitNavTarget}
             bind:position={gitPosition}
-            onNavigateToFile={(path, lineNumber) => { filesNavTarget = { file: path, lineNumber }; switchTab('files', { tab: 'files', file: path, lineNumber }) }}
+            onNavigateToFile={navigateToFile}
             onClearNavTarget={() => { gitNavTarget = null }}
           />
         {/if}
@@ -690,8 +695,8 @@
             {dark}
             {codeTheme}
             {selectedProject}
-            navigateTarget={filesNavTarget}
-            onClearNavigateTarget={() => { filesNavTarget = null }}
+            navTarget={filesNavTarget}
+            onClearNavTarget={() => { filesNavTarget = null }}
             bind:position={filesPosition}
             onMarkdownNavigate={handleMarkdownNavigate}
           />

@@ -356,7 +356,7 @@ describe('GitTab component', () => {
         projectPath: '/test',
         projectId: 'p1',
         dark: false,
-        gitNavTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
+        navTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
         onClearNavTarget: vi.fn(),
       },
     })
@@ -374,7 +374,7 @@ describe('GitTab component', () => {
         projectPath: '/test',
         projectId: 'p1',
         dark: false,
-        gitNavTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
+        navTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
         onClearNavTarget: vi.fn(),
       },
     })
@@ -385,7 +385,7 @@ describe('GitTab component', () => {
 
   // --- Cross-tab navigation: commit ---
 
-  it('gitNavTarget type=commit auto-selects the commit', async () => {
+  it('navTarget type=commit auto-selects the commit', async () => {
     const commits = makeCommits(3)
     getAllCommits.mockResolvedValue(commits)
     getCommitFiles.mockResolvedValue(makeFiles())
@@ -396,7 +396,7 @@ describe('GitTab component', () => {
         projectPath: '/test',
         projectId: 'p1',
         dark: false,
-        gitNavTarget: { type: 'commit', hash: 'abc00001' },
+        navTarget: { type: 'commit', hash: 'abc00001' },
         onClearNavTarget,
       },
     })
@@ -462,7 +462,7 @@ describe('GitTab component', () => {
         projectPath: '/test',
         projectId: 'p1',
         dark: false,
-        gitNavTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
+        navTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
         onClearNavTarget: vi.fn(),
       },
     })

@@ -9,7 +9,7 @@ describe('themeTokens', () => {
       'mainBg', 'cardBg', 'sectionBg', 'listBg',
       'keyline',
       'hoverRow', 'listHover', 'listSelected', 'fileBg',
-      'linkColor', 'hashColor',
+      'linkColor', 'hashColor', 'questionMark',
       'inputBg', 'checkBg', 'labelColor',
     ]
     for (const key of expectedKeys) {

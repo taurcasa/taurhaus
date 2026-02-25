@@ -2,8 +2,8 @@
   import { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
 
-  /** @type {{ projectPath: string, projectId: string, dark: boolean, gitNavTarget: object|null, position: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
-  let { projectPath, projectId, dark, gitNavTarget = null, position = $bindable(null), onNavigateToFile, onClearNavTarget } = $props()
+  /** @type {{ projectPath: string, projectId: string, dark: boolean, navTarget: object|null, position: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
+  let { projectPath, projectId, dark, navTarget = null, position = $bindable(null), onNavigateToFile, onClearNavTarget } = $props()
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -85,15 +85,15 @@
 
   // Handle cross-tab navigation target
   $effect(() => {
-    if (!gitNavTarget) return
+    if (!navTarget) return
 
-    if (gitNavTarget.type === 'commit') {
+    if (navTarget.type === 'commit') {
       // Select the specific commit
-      selectCommit(gitNavTarget.hash)
+      selectCommit(navTarget.hash)
       onClearNavTarget?.()
-    } else if (gitNavTarget.type === 'range') {
+    } else if (navTarget.type === 'range') {
       // Load commits in the time range
-      loadRange(gitNavTarget.after, gitNavTarget.before)
+      loadRange(navTarget.after, navTarget.before)
       onClearNavTarget?.()
     }
   })

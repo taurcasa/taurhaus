@@ -35,6 +35,7 @@ export function themeTokens(dark) {
     // Links & accents
     linkColor: dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700',
     hashColor: dark ? 'text-brand-400' : 'text-brand-600',
+    questionMark: dark ? 'text-amber-400' : 'text-amber-600',
 
     // Form elements
     inputBg: dark ? 'bg-zinc-800 text-zinc-100 placeholder:text-zinc-500' : 'bg-zinc-100 text-zinc-900 placeholder:text-zinc-400',

@@ -117,6 +117,38 @@
   {/if}
 </div>
 
+{#snippet sessionContent()}
+  <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+    <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
+    {#if latestSession.next_steps && latestSession.next_steps.length > 0}
+      <div class="mt-3">
+        <span class="text-[11px] {t.textTertiary}">Next steps</span>
+        <ul class="mt-1 space-y-0.5">
+          {#each latestSession.next_steps as step}
+            <li class="text-[13px] {t.textBody} flex items-start gap-2">
+              <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
+              <span>{step}</span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+    {#if latestSession.open_questions && latestSession.open_questions.length > 0}
+      <div class="mt-3">
+        <span class="text-[11px] {t.textTertiary}">Open questions</span>
+        <ul class="mt-1 space-y-0.5">
+          {#each latestSession.open_questions as question}
+            <li class="text-[13px] {t.textBody} flex items-start gap-2">
+              <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
+              <span>{question}</span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
 <!-- Scrollable content -->
 <div class="flex-1 overflow-y-auto content-enter">
   <div class="max-w-3xl px-7 pb-8">
@@ -155,69 +187,13 @@
         </div>
       {:else if hasToggle}
         {#if showSession}
-          <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-            <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
-            {#if latestSession.next_steps && latestSession.next_steps.length > 0}
-              <div class="mt-3">
-                <span class="text-[11px] {t.textTertiary}">Next steps</span>
-                <ul class="mt-1 space-y-0.5">
-                  {#each latestSession.next_steps as step}
-                    <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                      <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
-                      <span>{step}</span>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/if}
-            {#if latestSession.open_questions && latestSession.open_questions.length > 0}
-              <div class="mt-3">
-                <span class="text-[11px] {t.textTertiary}">Open questions</span>
-                <ul class="mt-1 space-y-0.5">
-                  {#each latestSession.open_questions as question}
-                    <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                      <span class="text-[10px] text-amber-500 mt-1 shrink-0">?</span>
-                      <span>{question}</span>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/if}
-          </div>
+          {@render sessionContent()}
         {/if}
         <div class:hidden={showSession}>
           <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
         </div>
       {:else if latestSession}
-        <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-          <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
-          {#if latestSession.next_steps && latestSession.next_steps.length > 0}
-            <div class="mt-3">
-              <span class="text-[11px] {t.textTertiary}">Next steps</span>
-              <ul class="mt-1 space-y-0.5">
-                {#each latestSession.next_steps as step}
-                  <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                    <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
-                    <span>{step}</span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-          {#if latestSession.open_questions && latestSession.open_questions.length > 0}
-            <div class="mt-3">
-              <span class="text-[11px] {t.textTertiary}">Open questions</span>
-              <ul class="mt-1 space-y-0.5">
-                {#each latestSession.open_questions as question}
-                  <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                    <span class="text-[10px] text-amber-500 mt-1 shrink-0">?</span>
-                    <span>{question}</span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-        </div>
+        {@render sessionContent()}
       {:else if readmeContent}
         <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
       {:else}

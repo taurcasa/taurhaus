@@ -11,8 +11,8 @@
     codeTheme,
     selectedProject,
     position = $bindable(null),
-    navigateTarget = null,
-    onClearNavigateTarget,
+    navTarget = null,
+    onClearNavTarget,
     onMarkdownNavigate,
   } = $props()
 
@@ -45,14 +45,14 @@
     loadFileTree(selectedProject.id)
   })
 
-  // Watch navigateTarget and open the requested file
+  // Watch navTarget and open the requested file
   $effect(() => {
-    if (!navigateTarget) return
-    const { file, lineNumber } = navigateTarget
+    if (!navTarget) return
+    const { file, lineNumber } = navTarget
     if (file) {
       openFile(file, lineNumber ?? null)
     }
-    onClearNavigateTarget?.()
+    onClearNavTarget?.()
   })
 
   // Listen for project-files-changed Tauri event to refresh tree
