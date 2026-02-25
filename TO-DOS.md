@@ -41,3 +41,50 @@ Logo source: `docs/logo-candidates/candidate-01-keystone-gemini.jpg`
 - [x] **S04** — Replace titlebar placeholder logo: swap the "t" square in `Shell.svelte` (line 531-533) with actual logo image at 22px
 - [x] **S05** — Generate Windows app icons: update `src-tauri/icons/` with new logo PNGs and ICO, replace default Tauri icon in exe/installer
 - [x] **S06** — Update design doc: finalize `docs/splash-screen-design.md` with actual implementation approach (clip-path raster reveal instead of SVG stroke animation)
+
+---
+
+# Pre-Publish Roadmap — v1.0
+
+What needs to happen before taurhaus can be released publicly (open source or otherwise).
+
+## Legal & Compliance
+
+- [ ] **P01** — Choose and add LICENSE file (MIT, Apache 2.0, or dual MIT/Apache — decide based on goals)
+- [ ] **P02** — Dependency license audit: verify all Cargo + npm deps are compatible with chosen license. `cargo-license` for Rust, `license-checker` for npm. Document any copyleft or problematic licenses.
+- [ ] **P03** — Formalize `cargo audit` suppressions: create `.cargo/audit.toml` with the 3 accepted advisories from `docs/known-advisories.md` (lru, git2, GTK3/glib)
+- [ ] **P04** — Run full security audit: `cargo audit` + `npm audit`, resolve or accept all findings
+
+## Documentation
+
+- [ ] **P05** — Update README.md: remove "Private — not yet open source" from License section, add license badge, review screenshots for accuracy
+- [ ] **P06** — Create CHANGELOG.md: version history from v0.1.0 through v0.3.2 (can be reconstructed from git log and BOOTSTRAP.md)
+- [ ] **P07** — Create CONTRIBUTING.md: dev environment setup, `just` recipes, code standards (Svelte 5 runes, Tailwind v4 tokens, Rust patterns), PR process, testing expectations
+- [ ] **P08** — Create SECURITY.md: how to report vulnerabilities, supported versions, response timeline
+- [ ] **P09** — Condense architecture for newcomers: write a concise ARCHITECTURE.md that summarizes the 22 ADRs into a readable overview (the full ADRs stay as deep-dive reference)
+
+## App Polish — Overview Tab
+
+The hero section anchors on session handoffs, but handoffs aren't created consistently enough to be useful. Rethink what the overview shows when there's no recent session.
+
+- [ ] **P10** — Redesign Overview tab: replace session-first hero with something more universally useful. Candidates: recent file changes, project stats (last commit, branch, file count), quick-actions (launch session, open terminal), or a condensed activity feed. Keep README rendering as a fallback. Design first, then implement.
+
+## App Polish — Git View
+
+The commit detail pane (right side) is a wall of text — file list + diff content runs together without enough visual structure.
+
+- [ ] **P11** — Improve Git commit detail pane: better visual separation between file list and diff content, collapsible file sections, syntax highlighting in diffs, change-type badges (added/modified/deleted). Take screenshot first → design → implement.
+
+## Settings Expansion
+
+Current settings are limited to activity thresholds and code themes. Users need control over terminal and session behavior — these are preference-driven and inconvenient when hardcoded.
+
+- [ ] **P12** — Terminal emulator preference: let users choose between Windows Terminal (current default), or a custom command. Store in settings DB, use in `terminal.rs` launch logic.
+- [ ] **P13** — Tmux pane layout preference: configurable strategy for how new CLI sessions are arranged. Options: (a) new window per session (current default), (b) horizontal split — fill panes in current window before creating new one, (c) per-project grouping — same project shares a window with splits, different projects get new windows. Store preference in settings, implement in daemon's tmux session creation.
+- [ ] **P14** — Reorganize settings UI: group into logical sections (General, Display, Terminal & Sessions, Search). Current flat layout won't scale with more settings.
+
+## Infrastructure
+
+- [ ] **P15** — GitHub Actions CI: run `just check` on push and PR. Needs WSL2 or Linux runner for Rust tests.
+- [ ] **P16** — Release pipeline: tag-triggered builds, auto-generate NSIS installer, publish to GitHub Releases with changelog excerpt
+- [ ] **P17** — Clean up `.gitignore`: add `.env*`, `*.log`, ensure no secrets can accidentally be committed
