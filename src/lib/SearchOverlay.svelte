@@ -16,10 +16,10 @@
   const borderColor = $derived(dark ? 'border-zinc-700' : 'border-zinc-200')
   const textPrimary = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
-  const textMuted = $derived(dark ? 'text-zinc-600' : 'text-zinc-400')
+  const textMuted = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
   const hoverBg = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-50')
   const selectedBg = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-100')
-  const groupLabel = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const groupLabel = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const snippetColor = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const footerText = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
   const kbdStyle = $derived(dark

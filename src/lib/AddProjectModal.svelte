@@ -6,7 +6,7 @@
   // Color tokens
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
   const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
   const modalBg       = $derived(dark ? 'bg-zinc-900' : 'bg-white')
@@ -14,7 +14,7 @@
   const hoverRow      = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-900')
   const badgeBg       = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
-  const sectionLabel  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const sectionLabel  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
 
   // Activity dots (same as Shell sidebar)
   const dots = {

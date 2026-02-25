@@ -13,7 +13,7 @@
   // Dark mode tokens
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
   const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const panelBg       = $derived(dark ? 'bg-zinc-950' : 'bg-white')

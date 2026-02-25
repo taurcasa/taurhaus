@@ -7,7 +7,7 @@
   // Dark mode tokens (same pattern as Shell.svelte)
   const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
   const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')

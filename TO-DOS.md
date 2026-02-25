@@ -11,7 +11,7 @@ Reference: [docs/refactoring-v0.3.1.md](docs/refactoring-v0.3.1.md)
 ## High
 
 - [x] **R04** — Improve empty states at 1280x1440: larger icons (48-64px), larger text, actionable guidance (`TaskBoard.svelte`)
-- [ ] **R05** — Darken light-mode secondary text tokens to meet WCAG AA contrast (4.5:1) (`app.css`, `Shell.svelte` derived tokens)
+- [x] **R05** — Darken light-mode secondary text tokens to meet WCAG AA contrast (4.5:1) (`app.css`, `Shell.svelte` derived tokens)
 - [ ] **R06** — Add max-width constraint to Overview tab content for comfortable reading (`Shell.svelte` Overview section)
 - [ ] **R07** — Add eviction to FILE_CACHE and CODEX_PATH_CACHE to prevent unbounded memory growth (`idle.rs:245,449`)
 
