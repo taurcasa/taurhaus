@@ -57,7 +57,7 @@ What needs to happen before taurhaus can be released publicly (open source or ot
 
 ## Documentation
 
-- [ ] **P05** — Update README.md: remove "Private — not yet open source" from License section, add license badge, review screenshots for accuracy
+- [x] **P05** — Update README.md: remove "Private — not yet open source" from License section, add license badge, review screenshots for accuracy
 - [ ] **P06** — Create CHANGELOG.md: version history from v0.1.0 through v0.3.2 (can be reconstructed from git log and BOOTSTRAP.md)
 - [ ] **P07** — Create CONTRIBUTING.md: dev environment setup, `just` recipes, code standards (Svelte 5 runes, Tailwind v4 tokens, Rust patterns), PR process, testing expectations
 - [ ] **P08** — Create SECURITY.md: how to report vulnerabilities, supported versions, response timeline

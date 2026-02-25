@@ -1,5 +1,7 @@
 # taurhaus
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > The house where all your projects live.
 
 A desktop tool that gives a single, clear view into all AI-driven projects — their code, docs, progress, and history — so you never lose context between sessions.
@@ -43,7 +45,7 @@ At least one of these AI CLI tools installed in WSL:
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
 - [Codex](https://github.com/openai/codex) — `npm install -g @openai/codex`
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli) — `npm install -g @anthropic-ai/gemini-cli`
+- [Gemini CLI](https://github.com/google-gemini/gemini-cli) — `npm install -g @google/gemini-cli`
 
 ## Installation
 
@@ -144,9 +146,9 @@ just test-frontend    # Frontend tests (373 tests)
 
 ## Project Status
 
-taurhaus is in active development. Core features are implemented and functional. See [BOOTSTRAP.md](BOOTSTRAP.md) for detailed phase status.
+taurhaus is in active development. All core features are implemented and functional.
 
-**Current focus**: Operationalization — setup guides, daemon reliability, cross-platform groundwork.
+**Current focus**: Pre-publish polish — documentation, settings expansion, UI refinements.
 
 ## License
 
