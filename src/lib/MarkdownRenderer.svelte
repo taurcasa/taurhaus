@@ -9,7 +9,9 @@
   let loading = $state(true)
   let container = $state(null)
 
-  // Re-render when source, theme, or project changes
+  // Re-render when source, theme, or project changes.
+  // renderMarkdown already falls back to plain markdown-it if Shiki fails,
+  // so the catch here only fires if something truly catastrophic happens.
   $effect(() => {
     const src = source
     const theme = codeTheme
@@ -17,12 +19,10 @@
     renderMarkdown(src, theme).then(result => {
       html = result
       loading = false
-      console.log(`[markdown] rendered ${src.length} chars → ${result.length} chars HTML`)
     }).catch((err) => {
-      // Shiki/markdown-it failed — render raw source as plaintext fallback
+      console.error(`[markdown] render failed completely: ${err}`)
       html = `<pre style="white-space:pre-wrap;word-break:break-word">${src.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`
       loading = false
-      console.error(`[markdown] render failed: ${err}`)
     })
   })
 

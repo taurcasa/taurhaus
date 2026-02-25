@@ -1223,8 +1223,46 @@
                     <div class="h-3 w-1/2 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
                   </div>
                 </div>
-              {:else if showSession && latestSession}
-                <!-- Session card -->
+              {:else if hasToggle}
+                <!-- Both session and README exist — pre-mount both, toggle visibility.
+                     MarkdownRenderer needs to mount early so its async Shiki render
+                     completes before the user clicks the README pill. -->
+                {#if showSession}
+                  <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+                    <p class="text-[13px] {textBody}">{latestSession.summary}</p>
+                    {#if latestSession.next_steps && latestSession.next_steps.length > 0}
+                      <div class="mt-3">
+                        <span class="text-[11px] {textTertiary}">Next steps</span>
+                        <ul class="mt-1 space-y-0.5">
+                          {#each latestSession.next_steps as step}
+                            <li class="text-[13px] {textBody} flex items-start gap-2">
+                              <span class="text-[10px] {textTertiary} mt-1 shrink-0">▸</span>
+                              <span>{step}</span>
+                            </li>
+                          {/each}
+                        </ul>
+                      </div>
+                    {/if}
+                    {#if latestSession.open_questions && latestSession.open_questions.length > 0}
+                      <div class="mt-3">
+                        <span class="text-[11px] {textTertiary}">Open questions</span>
+                        <ul class="mt-1 space-y-0.5">
+                          {#each latestSession.open_questions as question}
+                            <li class="text-[13px] {textBody} flex items-start gap-2">
+                              <span class="text-[10px] text-amber-500 mt-1 shrink-0">?</span>
+                              <span>{question}</span>
+                            </li>
+                          {/each}
+                        </ul>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+                <div class:hidden={showSession}>
+                  <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
+                </div>
+              {:else if latestSession}
+                <!-- Only session, no README -->
                 <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
                   <p class="text-[13px] {textBody}">{latestSession.summary}</p>
                   {#if latestSession.next_steps && latestSession.next_steps.length > 0}
@@ -1254,8 +1292,8 @@
                     </div>
                   {/if}
                 </div>
-              {:else if showReadme && readmeContent}
-                <!-- README display (first H1 stripped — title is in the header above) -->
+              {:else if readmeContent}
+                <!-- Only README, no session -->
                 <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={handleMarkdownNavigate} />
               {:else}
                 <!-- Empty state -->

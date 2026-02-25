@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify'
 
 let highlighterPromise = null
 const mdInstances = {}
+let plainMd = null
 
 /**
  * Lazily create and cache a Shiki highlighter.
@@ -73,12 +74,27 @@ async function getMdInstance(themeId) {
 }
 
 /**
+ * Plain markdown-it instance (no Shiki). Used as fallback when the full
+ * Shiki pipeline fails — renders markdown without syntax highlighting,
+ * which is far better than showing raw text.
+ */
+function getPlainMd() {
+  if (!plainMd) {
+    plainMd = new MarkdownIt({ html: true, linkify: true, typographer: false })
+    plainMd.linkify.set({ fuzzyLink: false })
+  }
+  return plainMd
+}
+
+/**
  * Render markdown to sanitized HTML.
  *
  * Pipeline:
  *   1. markdown-it (html: true) — parses markdown + raw HTML blocks
  *   2. @shikijs/markdown-it — syntax highlights fenced code blocks
  *   3. DOMPurify — sanitizes output (strips script, onclick, etc.)
+ *
+ * Falls back to plain markdown-it (no syntax highlighting) if Shiki fails.
  *
  * Image resolution (relative src → base64 data URIs) is handled by the
  * MarkdownRenderer component after render, via the read_project_asset IPC command.
@@ -90,26 +106,36 @@ async function getMdInstance(themeId) {
 export async function renderMarkdown(source, theme = 'github-light') {
   if (!source) return ''
 
-  // Pre-load languages referenced in fenced code blocks so the
-  // markdown-it plugin doesn't throw on unknown languages.
-  // Languages that Shiki doesn't support get replaced with 'text'.
-  source = await preloadFencedLanguages(source)
-
-  const md = await getMdInstance(theme)
-  let raw
   try {
-    raw = md.render(source)
-  } catch {
-    // A language Shiki can't handle slipped through — strip all language
-    // hints and retry so the rest of the markdown still renders.
-    const safeSource = source.replace(/^```\w[\w+-]*/gm, '```text')
-    raw = md.render(safeSource)
-  }
+    // Pre-load languages referenced in fenced code blocks so the
+    // markdown-it plugin doesn't throw on unknown languages.
+    // Languages that Shiki doesn't support get replaced with 'text'.
+    source = await preloadFencedLanguages(source)
 
-  return DOMPurify.sanitize(raw, {
-    ADD_TAGS: ['span'],
-    ADD_ATTR: ['class', 'style', 'target', 'rel'],
-  })
+    const md = await getMdInstance(theme)
+    let raw
+    try {
+      raw = md.render(source)
+    } catch {
+      // A language Shiki can't handle slipped through — strip all language
+      // hints and retry so the rest of the markdown still renders.
+      const safeSource = source.replace(/^```\w[\w+-]*/gm, '```text')
+      raw = md.render(safeSource)
+    }
+
+    return DOMPurify.sanitize(raw, {
+      ADD_TAGS: ['span'],
+      ADD_ATTR: ['class', 'style', 'target', 'rel'],
+    })
+  } catch (err) {
+    // Shiki pipeline failed entirely — fall back to plain markdown-it
+    console.warn(`[markdown] Shiki pipeline failed, using plain fallback: ${err}`)
+    const raw = getPlainMd().render(source)
+    return DOMPurify.sanitize(raw, {
+      ADD_TAGS: ['span'],
+      ADD_ATTR: ['class', 'style', 'target', 'rel'],
+    })
+  }
 }
 
 /**
