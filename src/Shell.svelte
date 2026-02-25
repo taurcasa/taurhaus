@@ -1114,7 +1114,7 @@
                     </span>
                   {/if}
                   {#if project.branch}
-                    <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/40 bg-white/[0.06]' : 'text-white/20 bg-white/[0.04]'}">{project.branch}</span>
+                    <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/50 bg-white/10' : 'text-white/30 bg-white/[0.07]'}">{project.branch}</span>
                   {/if}
                   {#if project.is_dirty}
                     <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
