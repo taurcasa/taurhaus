@@ -111,10 +111,40 @@ pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error>
     try_start_daemon(distro, port, &log_path)
 }
 
+/// Resolve the WSL user's home directory by running `echo $HOME` inside WSL.
+fn resolve_wsl_home(distro: &str) -> Result<String, std::io::Error> {
+    let output = wsl_command()
+        .args(["-d", distro, "--", "sh", "-c", "echo $HOME"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()?;
+
+    if !output.status.success() {
+        return Err(std::io::Error::other(
+            "Failed to resolve WSL home directory",
+        ));
+    }
+
+    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if home.is_empty() {
+        return Err(std::io::Error::other("WSL $HOME is empty"));
+    }
+    Ok(home)
+}
+
+/// Build the absolute path to the daemon binary inside WSL.
+fn daemon_binary_path(distro: &str) -> Result<String, std::io::Error> {
+    let home = resolve_wsl_home(distro)?;
+    Ok(format!("{home}/.local/bin/taurhaus-daemon"))
+}
+
 /// Spawn the daemon process via `wsl.exe`.
 fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std::io::Error> {
-    // First verify the daemon binary exists inside WSL.
-    blog(log_path, "Checking daemon binary exists at ~/.local/bin/taurhaus-daemon");
+    // Resolve the daemon binary path dynamically from WSL $HOME.
+    let binary_path = daemon_binary_path(distro)?;
+
+    // Verify the daemon binary exists inside WSL.
+    blog(log_path, &format!("Checking daemon binary exists at {binary_path}"));
     let check = wsl_command()
         .args([
             "-d",
@@ -122,7 +152,7 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
             "--",
             "test",
             "-x",
-            "/home/mstie/.local/bin/taurhaus-daemon",
+            &binary_path,
         ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -131,8 +161,8 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
 
     match check {
         Ok(output) if !output.status.success() => {
-            let msg = "taurhaus-daemon not found at ~/.local/bin/taurhaus-daemon. Run: just install-daemon";
-            bwarn(log_path, msg);
+            let msg = format!("taurhaus-daemon not found at {binary_path}. Run: just install-daemon");
+            bwarn(log_path, &msg);
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg));
         }
         Err(e) => {
@@ -162,7 +192,7 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
     let child = wsl_command()
         .args([
             "-d", distro, "--",
-            "/home/mstie/.local/bin/taurhaus-daemon",
+            &binary_path,
             "--port", &port.to_string(),
         ])
         .stdin(std::process::Stdio::null())
