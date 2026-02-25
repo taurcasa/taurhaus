@@ -390,8 +390,8 @@
     {/if}
   </div>
 
-  <!-- Commit list (right panel, 250px) -->
-  <div class="w-[250px] shrink-0 {listBg} border-l {keyline} flex flex-col overflow-hidden">
+  <!-- Commit list (right panel) -->
+  <div class="w-[320px] shrink-0 {listBg} border-l {keyline} flex flex-col overflow-hidden">
 
     <!-- Range filter indicator -->
     {#if rangeFilter}
