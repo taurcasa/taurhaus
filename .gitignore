@@ -23,6 +23,15 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Environment and secrets
+.env
+.env.*
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
 # Development screenshots (Playwright captures, visual reviews)
 *.png
 !docs/*.png

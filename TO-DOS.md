@@ -87,4 +87,4 @@ Current settings are limited to activity thresholds and code themes. Users need 
 
 - [ ] **P15** — GitHub Actions CI: run `just check` on push and PR. Needs WSL2 or Linux runner for Rust tests.
 - [ ] **P16** — Release pipeline: tag-triggered builds, auto-generate NSIS installer, publish to GitHub Releases with changelog excerpt
-- [ ] **P17** — Clean up `.gitignore`: add `.env*`, `*.log`, ensure no secrets can accidentally be committed
+- [x] **P17** — Clean up `.gitignore`: add `.env*`, `*.log`, ensure no secrets can accidentally be committed
