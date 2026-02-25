@@ -1,6 +1,6 @@
 [package]
 name = "taurhaus"
-version = "0.3.0"
+version = "0.3.1"
 description = "Desktop tool for AI project management"
 authors = ["Matthias Stier <stierms@gmail.com>"]
 edition = "2021"
