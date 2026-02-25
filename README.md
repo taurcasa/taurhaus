@@ -76,6 +76,8 @@ At least one of these AI CLI tools installed in WSL:
 
 The app automatically manages its WSL daemon. No manual daemon setup required.
 
+For detailed setup instructions, see the [Getting Started Guide](docs/getting-started.md).
+
 ## Quick Start
 
 1. **First run** — The wizard scans your project directories and registers them
