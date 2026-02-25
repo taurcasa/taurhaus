@@ -3,6 +3,10 @@
 //! Single entry point (`handle_terminal`) handles all terminal interaction:
 //! focusing an existing window, or launching a new one attached to tmux.
 //!
+//! Key invariant: if Windows Terminal is already running, we NEVER create
+//! a new tab. The tmux session is already visible in the existing tab.
+//! We only launch `wt.exe new-tab` when no WT process exists at all.
+//!
 //! On Linux: no-op (the terminal is already in the user's workspace).
 
 /// What the caller wants to do with Windows Terminal.
@@ -22,11 +26,29 @@ pub enum TerminalIntent {
     },
 }
 
+/// Result of checking for Windows Terminal.
+///
+/// Three-state detection separates "is it running?" from "can we focus it?"
+/// This matters because Windows Terminal (WinUI 3) sometimes reports
+/// MainWindowHandle as zero even when running — we must not treat that
+/// as "not running" and spawn a duplicate tab.
+#[cfg(target_os = "windows")]
+#[derive(Debug, PartialEq)]
+enum TerminalStatus {
+    /// Found the window and brought it to foreground.
+    Focused,
+    /// Process exists but we couldn't get a window handle to focus.
+    /// The terminal tab is still there — don't create another.
+    Running,
+    /// No WindowsTerminal process found. Safe to launch a new one.
+    NotRunning,
+}
+
 /// Single entry point for all Windows Terminal interactions.
 ///
-/// Both intents start by checking for an existing terminal window:
-/// - If found → focus it (restore + foreground) and return.
-/// - If not found → `FocusOnly` returns silently, `EnsureOpen` launches WT.
+/// Both intents start by checking for an existing terminal:
+/// - `Focused` or `Running` → terminal exists, return (no new tab).
+/// - `NotRunning` → `FocusOnly` returns silently, `EnsureOpen` launches WT.
 ///
 /// The `-w taurhaus` flag on `wt.exe` uses a named window — if a WT window
 /// named "taurhaus" already exists, the tab opens there. If not, a new
@@ -34,11 +56,23 @@ pub enum TerminalIntent {
 /// target *our* window, not "whatever was last used."
 #[cfg(target_os = "windows")]
 pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
-    let (focused, _) = try_focus_windows_terminal()?;
+    let status = check_windows_terminal()?;
 
-    if focused {
-        tracing::debug!("Focused existing Windows Terminal");
-        return Ok(());
+    match status {
+        TerminalStatus::Focused => {
+            tracing::debug!("Focused existing Windows Terminal");
+            return Ok(());
+        }
+        TerminalStatus::Running => {
+            // Terminal is running but we couldn't focus it (WinUI 3 window
+            // handle issue). The tab with our tmux session already exists —
+            // don't create a duplicate.
+            tracing::debug!("Windows Terminal running (couldn't focus), skipping new tab");
+            return Ok(());
+        }
+        TerminalStatus::NotRunning => {
+            tracing::debug!("Windows Terminal not running");
+        }
     }
 
     // Terminal not running. For FocusOnly, nothing more to do.
@@ -85,15 +119,25 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
     Ok(())
 }
 
-/// Try to find and focus an existing Windows Terminal window.
+/// Check if Windows Terminal is running and try to focus it.
 ///
-/// Returns `(focused, stdout)` — `focused` is true if a terminal was found
-/// and brought to foreground.
+/// Uses a two-tier approach for reliability:
+/// 1. `Get-Process` finds the WindowsTerminal process
+/// 2. If `MainWindowHandle` is zero (common with WinUI 3 apps),
+///    falls back to `EnumWindows` to find a visible window owned
+///    by the process
+///
+/// Returns `TerminalStatus::Focused` if we found and focused the window,
+/// `Running` if the process exists but we couldn't get a window handle,
+/// or `NotRunning` if no WindowsTerminal process was found.
 #[cfg(target_os = "windows")]
-fn try_focus_windows_terminal() -> Result<(bool, String), String> {
+fn check_windows_terminal() -> Result<TerminalStatus, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+    // Two-tier window detection:
+    // 1. Try MainWindowHandle (fast, works for classic Win32 apps)
+    // 2. Fall back to EnumWindows (finds WinUI 3 / XAML windows)
     let script = r#"
         Add-Type @"
             using System;
@@ -103,15 +147,52 @@ fn try_focus_windows_terminal() -> Result<(bool, String), String> {
                 public static extern bool SetForegroundWindow(IntPtr hWnd);
                 [DllImport("user32.dll")]
                 public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                [DllImport("user32.dll")]
+                public static extern bool IsWindowVisible(IntPtr hWnd);
+                [DllImport("user32.dll")]
+                public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+                public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+                [DllImport("user32.dll")]
+                public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+                public static IntPtr FindVisibleWindowByPid(uint targetPid) {
+                    IntPtr found = IntPtr.Zero;
+                    EnumWindows((hWnd, lParam) => {
+                        if (!IsWindowVisible(hWnd)) return true;
+                        uint pid;
+                        GetWindowThreadProcessId(hWnd, out pid);
+                        if (pid == targetPid) {
+                            found = hWnd;
+                            return false;
+                        }
+                        return true;
+                    }, IntPtr.Zero);
+                    return found;
+                }
             }
 "@
         $proc = Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($proc -and $proc.MainWindowHandle -ne [IntPtr]::Zero) {
-            [WinApi]::ShowWindow($proc.MainWindowHandle, 9)  # SW_RESTORE
-            [WinApi]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+        if (-not $proc) {
+            Write-Output 'NOT_RUNNING'
+            return
+        }
+
+        # Try MainWindowHandle first (fast path)
+        $hwnd = $proc.MainWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero) {
+            # WinUI 3 apps often have zero MainWindowHandle — enumerate windows instead
+            $hwnd = [WinApi]::FindVisibleWindowByPid([uint32]$proc.Id)
+        }
+
+        if ($hwnd -ne [IntPtr]::Zero) {
+            [WinApi]::ShowWindow($hwnd, 9) | Out-Null   # SW_RESTORE
+            [WinApi]::SetForegroundWindow($hwnd) | Out-Null
             Write-Output 'FOCUSED'
         } else {
-            Write-Output 'NOT_RUNNING'
+            # Process exists but no visible window found
+            Write-Output 'RUNNING'
         }
     "#;
 
@@ -122,7 +203,13 @@ fn try_focus_windows_terminal() -> Result<(bool, String), String> {
         .map_err(|e| format!("Failed to run PowerShell: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok((stdout == "FOCUSED", stdout))
+    tracing::debug!(%stdout, "Windows Terminal check result");
+
+    match stdout.as_str() {
+        "FOCUSED" => Ok(TerminalStatus::Focused),
+        "RUNNING" => Ok(TerminalStatus::Running),
+        _ => Ok(TerminalStatus::NotRunning),
+    }
 }
 
 /// Read the default profile GUID from Windows Terminal's settings.json.
