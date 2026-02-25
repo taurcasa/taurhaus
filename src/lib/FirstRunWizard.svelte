@@ -293,7 +293,11 @@
                     {#if entry.isExpandable}
                       <span
                         class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-white/10"
+                        role="button"
+                        tabindex="0"
+                        aria-label="Toggle folder"
                         onclick={(e) => { e.stopPropagation(); toggleTreeDir(entry.path) }}
+                        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleTreeDir(entry.path) } }}
                       >
                         <svg class="w-3 h-3 transition-transform {treeExpanded.has(entry.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
                       </span>
@@ -336,7 +340,11 @@
             >
               <span
                 class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-white/10"
+                role="button"
+                tabindex="0"
+                aria-label="Toggle folder"
                 onclick={(e) => { e.stopPropagation(); toggleTreeDir(treeRoot) }}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleTreeDir(treeRoot) } }}
               >
                 <svg class="w-3 h-3 transition-transform {treeExpanded.has(treeRoot) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
               </span>

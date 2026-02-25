@@ -1087,19 +1087,29 @@
                   {#if indicators.length > 0}
                     <span class="flex items-center gap-1 shrink-0">
                       {#each indicators as ind}
-                        <span
-                          class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                          class:cursor-pointer={ind.interactive}
-                          role={ind.interactive ? 'button' : undefined}
-                          tabindex={ind.interactive ? 0 : undefined}
-                          aria-label={ind.ariaLabel}
-                          onclick={ind.interactive ? (e) => jumpToSession(e, ind.session) : undefined}
-                          onkeydown={ind.interactive ? (e) => { if (e.key === 'Enter') jumpToSession(e, ind.session) } : undefined}
-                        >
-                          <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                            <path d={ind.icon.path}/>
-                          </svg>
-                        </span>
+                        {#if ind.interactive}
+                          <span
+                            class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                            role="button"
+                            tabindex="0"
+                            aria-label={ind.ariaLabel}
+                            onclick={(e) => jumpToSession(e, ind.session)}
+                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpToSession(e, ind.session) } }}
+                          >
+                            <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                              <path d={ind.icon.path}/>
+                            </svg>
+                          </span>
+                        {:else}
+                          <span
+                            class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                            aria-label={ind.ariaLabel}
+                          >
+                            <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                              <path d={ind.icon.path}/>
+                            </svg>
+                          </span>
+                        {/if}
                       {/each}
                     </span>
                   {/if}
