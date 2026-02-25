@@ -1,6 +1,27 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::Project;
+
+/// Map a database row to a `Project`.
+///
+/// Expects columns in this order:
+///   id, name, path, description, last_activity_at, hero_preference,
+///   created_at, updated_at, cached_branch, cached_is_dirty
+fn row_to_project(row: &Row) -> Result<Project, rusqlite::Error> {
+    let dirty_int: Option<i32> = row.get(9)?;
+    Ok(Project {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        path: row.get(2)?,
+        description: row.get(3)?,
+        last_activity_at: row.get(4)?,
+        hero_preference: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+        cached_branch: row.get(8)?,
+        cached_is_dirty: dirty_int.map(|v| v != 0),
+    })
+}
 
 /// Insert a new project.  The caller provides an already-populated `Project`
 /// struct (with id, created_at, updated_at already set).
@@ -29,21 +50,7 @@ pub fn get_project(conn: &Connection, id: &str) -> Result<Option<Project>, rusql
                 cached_branch, cached_is_dirty
          FROM projects WHERE id = ?1",
         [id],
-        |row| {
-            let dirty_int: Option<i32> = row.get(9)?;
-            Ok(Project {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                description: row.get(3)?,
-                last_activity_at: row.get(4)?,
-                hero_preference: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-                cached_branch: row.get(8)?,
-                cached_is_dirty: dirty_int.map(|v| v != 0),
-            })
-        },
+        row_to_project,
     )
     .optional()
 }
@@ -62,21 +69,7 @@ pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, rusqlite::Error>
          ORDER BY last_activity_at DESC NULLS LAST",
     )?;
 
-    let rows = stmt.query_map([], |row| {
-        let dirty_int: Option<i32> = row.get(9)?;
-        Ok(Project {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            path: row.get(2)?,
-            description: row.get(3)?,
-            last_activity_at: row.get(4)?,
-            hero_preference: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
-            cached_branch: row.get(8)?,
-            cached_is_dirty: dirty_int.map(|v| v != 0),
-        })
-    })?;
+    let rows = stmt.query_map([], row_to_project)?;
 
     rows.collect()
 }
