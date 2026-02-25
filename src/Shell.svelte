@@ -1161,34 +1161,6 @@
 
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {mainBg} {textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
-      <!-- Daemon connectivity banner — shown for persistent error states -->
-      {#if daemonStatus === 'failed' || daemonStatus === 'disconnected' || daemonStatus === 'not_configured'}
-        <div class="px-4 py-2.5 flex items-start gap-3 shrink-0 {dark ? 'bg-danger-950/40 border-b border-danger-900/30' : 'bg-danger-50 border-b border-danger-200'}">
-          <svg class="w-4 h-4 shrink-0 mt-0.5 {dark ? 'text-danger-400' : 'text-danger-600'}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
-          <div class="flex-1 min-w-0">
-            {#if daemonStatus === 'not_configured'}
-              <p class="text-[12px] font-medium {dark ? 'text-danger-300' : 'text-danger-700'}">No WSL distribution detected</p>
-              <p class="text-[11px] mt-0.5 {dark ? 'text-danger-400/70' : 'text-danger-600/70'}">
-                taurhaus requires WSL2 with a Linux distribution installed. Run <code class="font-mono">wsl --install</code> in PowerShell.
-              </p>
-            {:else if daemonStatus === 'failed'}
-              <p class="text-[12px] font-medium {dark ? 'text-danger-300' : 'text-danger-700'}">Daemon failed to start — session detection unavailable</p>
-              <p class="text-[11px] mt-0.5 {dark ? 'text-danger-400/70' : 'text-danger-600/70'}">
-                Restart attempts exhausted. Check that WSL2 uses mirrored networking and port 9000 is free.
-                Run <code class="font-mono">~/.local/bin/taurhaus-daemon --verbose</code> in WSL for diagnostics.
-              </p>
-            {:else}
-              <p class="text-[12px] font-medium {dark ? 'text-danger-300' : 'text-danger-700'}">Daemon offline — session detection unavailable</p>
-              <p class="text-[11px] mt-0.5 {dark ? 'text-danger-400/70' : 'text-danger-600/70'}">
-                Check that WSL2 is running with mirrored networking and port 9000 is free. Reconnecting automatically...
-              </p>
-            {/if}
-          </div>
-          <button class="shrink-0 p-0.5 rounded hover:bg-white/10" aria-label="Dismiss" onclick={() => daemonStatus = null}>
-            <svg class="w-3.5 h-3.5 {dark ? 'text-danger-400/60' : 'text-danger-500/60'}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-      {/if}
       {#if settingsOpen}
         <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} {codeThemeLight} {codeThemeDark} onCodeThemeChanged={handleCodeThemeChanged} />
       {:else if !selectedProject}
