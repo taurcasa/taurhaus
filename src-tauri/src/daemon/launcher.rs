@@ -130,7 +130,7 @@ pub fn try_connect_daemon(
 /// Try to restart the daemon process (called by health check on disconnect).
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
     validate_wsl_distro(distro)
-        .map_err(|e| std::io::Error::other(e))?;
+        .map_err(std::io::Error::other)?;
     tracing::info!(port, distro, "Attempting daemon restart via wsl.exe");
     let log_path = health_check_log_path();
     try_start_daemon(distro, port, &log_path)
