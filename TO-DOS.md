@@ -53,7 +53,7 @@ What needs to happen before taurhaus can be released publicly (open source or ot
 - [x] **P01** — Choose and add LICENSE file (MIT, Apache 2.0, or dual MIT/Apache — decide based on goals)
 - [x] **P02** — Dependency license audit: verify all Cargo + npm deps are compatible with chosen license. `cargo-license` for Rust, `license-checker` for npm. Document any copyleft or problematic licenses.
 - [x] **P03** — Formalize `cargo audit` suppressions: create `.cargo/audit.toml` with the 3 accepted advisories from `docs/known-advisories.md` (lru, git2, GTK3/glib)
-- [ ] **P04** — Run full security audit: `cargo audit` + `npm audit`, resolve or accept all findings
+- [x] **P04** — Run full security audit: `cargo audit` + `npm audit`, resolve or accept all findings
 
 ## Documentation
 
