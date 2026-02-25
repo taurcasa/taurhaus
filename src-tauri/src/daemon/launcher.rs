@@ -145,33 +145,36 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
         }
     }
 
-    // Spawn the daemon via sh -c with proper daemonization.
+    // Spawn the daemon directly — no shell wrapper.
     //
-    // IMPORTANT: plain `nohup ... &` does NOT work via wsl.exe — WSL kills
-    // background child processes when wsl.exe exits, regardless of nohup.
-    // This is a known WSL bug (github.com/microsoft/WSL/issues/4649).
+    // WSL kills background children when wsl.exe exits (WSL#4649), so we
+    // DON'T use sh -c "... &" or nohup. Instead, we run the daemon as a
+    // direct child of wsl.exe and intentionally never call .wait() on
+    // the Rust side. This keeps wsl.exe alive as a parent process for the
+    // entire app lifetime, which keeps the daemon alive inside WSL.
     //
-    // The workaround: subshell + setsid + full fd redirect. The subshell
-    // isolates the process, setsid creates a new session leader, and closing
-    // all inherited fds prevents wsl.exe from waiting on them.
-    let daemon_cmd = format!(
-        "(setsid /home/mstie/.local/bin/taurhaus-daemon --port {port} >> /tmp/taurhaus-daemon.log 2>&1 < /dev/null &)"
-    );
-
-    blog(log_path, &format!("Spawning daemon: sh -c '{daemon_cmd}'"));
+    // The wsl.exe process is lightweight (~1MB RSS) and exits automatically
+    // when the daemon terminates.
+    blog(log_path, &format!(
+        "Spawning: wsl -d {distro} -- taurhaus-daemon --port {port} (long-lived wsl.exe child)"
+    ));
 
     let child = wsl_command()
-        .args(["-d", distro, "--", "sh", "-c", &daemon_cmd])
+        .args([
+            "-d", distro, "--",
+            "/home/mstie/.local/bin/taurhaus-daemon",
+            "--port", &port.to_string(),
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
 
     match child {
-        Ok(mut c) => {
-            // sh -c "... &" backgrounds the daemon and exits immediately.
-            let _ = c.wait();
-            blog(log_path, "Daemon spawn command completed");
+        Ok(_child) => {
+            // Intentionally don't wait — wsl.exe stays alive as the daemon's
+            // parent. The child handle is dropped but the process continues.
+            blog(log_path, "Daemon wsl.exe process spawned (not waiting)");
             Ok(())
         }
         Err(e) => {
