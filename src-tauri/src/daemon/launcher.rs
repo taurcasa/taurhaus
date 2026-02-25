@@ -145,15 +145,16 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
         }
     }
 
-    // Spawn the daemon. We use a shell wrapper to:
-    // 1. Background the process so wsl.exe returns immediately
-    // 2. Redirect output to a log file for debugging
+    // Spawn the daemon via sh -c with nohup to background it.
+    // Rust's Command passes each arg as a separate string to CreateProcess
+    // on Windows, so the sh -c argument arrives intact inside WSL — no
+    // shell quoting issues (those only happen when testing from within WSL
+    // where an outer shell reinterprets the args).
     let daemon_cmd = format!(
-        "nohup /home/mstie/.local/bin/taurhaus-daemon --port {port} \
-         >> /tmp/taurhaus-daemon.log 2>&1 &"
+        "nohup /home/mstie/.local/bin/taurhaus-daemon --port {port} >> /tmp/taurhaus-daemon.log 2>&1 &"
     );
 
-    blog(log_path, &format!("Spawning: wsl -d {distro} -- sh -c \"{daemon_cmd}\""));
+    blog(log_path, &format!("Spawning daemon: sh -c '{daemon_cmd}'"));
 
     let child = wsl_command()
         .args(["-d", distro, "--", "sh", "-c", &daemon_cmd])
@@ -164,6 +165,7 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
 
     match child {
         Ok(mut c) => {
+            // sh -c "... &" backgrounds the daemon and exits immediately.
             let _ = c.wait();
             blog(log_path, "Daemon spawn command completed");
             Ok(())
