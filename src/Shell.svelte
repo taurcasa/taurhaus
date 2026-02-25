@@ -1189,7 +1189,7 @@
 
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto content-enter">
-          <div class="max-w-[700px] px-7 pb-8">
+          <div class="max-w-3xl px-7 pb-8">
 
             <!-- Hero area: Session / README toggle (ADR-006) -->
             <section class="pb-6 border-b {keyline}">
