@@ -5,7 +5,7 @@ Reference: [docs/refactoring-v0.3.1.md](docs/refactoring-v0.3.1.md)
 ## Critical
 
 - [x] **R01** — Replace hardcoded `/home/mstie/` daemon path with dynamic `dirs::home_dir()` resolution (`src-tauri/src/daemon/launcher.rs:125,165`)
-- [ ] **R02** — Replace hardcoded `/home/mstie/` paths in test code with generic paths (`resolver.rs`, `process.rs`, `idle.rs` test functions)
+- [x] **R02** — Replace hardcoded `/home/mstie/` paths in test code with generic paths (`resolver.rs`, `process.rs`, `idle.rs` test functions)
 - [ ] **R03** — Fix 5 svelte-check a11y warnings: change `<span>` click handlers to `<button>`, fix conditional tabindex (`Shell.svelte:1090`, `AddProjectModal.svelte:521`, `FirstRunWizard.svelte:294,337`)
 
 ## High

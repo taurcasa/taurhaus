@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn slug_deterministic() {
-        let path = Path::new("/home/mstie/projects/taurhaus");
+        let path = Path::new("/home/testuser/projects/taurhaus");
         let slug1 = project_slug(path);
         let slug2 = project_slug(path);
         assert_eq!(slug1, slug2);
@@ -294,10 +294,10 @@ mod tests {
     // Integration test: verify against real Claude Code data if available
     #[test]
     fn resolve_real_project_if_available() {
-        let taurhaus_path = Path::new("/home/mstie/projects/taurhaus");
+        let taurhaus_path = Path::new("/home/testuser/projects/taurhaus");
         if taurhaus_path.exists() {
             let slug = project_slug(taurhaus_path);
-            assert_eq!(slug, "-home-mstie-projects-taurhaus");
+            assert_eq!(slug, "-home-testuser-projects-taurhaus");
 
             // Only check resolution if we're on the right machine
             if let Some(project_dir) = resolve_project_dir(taurhaus_path) {

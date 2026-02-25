@@ -828,7 +828,7 @@ fn sync_all_project_tasks(app: &tauri::AppHandle) {
 
 /// Extract the WSL home directory from a Linux path.
 ///
-/// `/home/mstie/projects/foo` → `/home/mstie`
+/// `/home/user/projects/foo` → `/home/user`
 fn extract_wsl_home(linux_path: &str) -> Option<String> {
     let parts: Vec<&str> = linux_path.splitn(4, '/').collect();
     if parts.len() >= 3 && parts[1] == "home" {

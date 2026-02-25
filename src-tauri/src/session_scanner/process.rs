@@ -322,7 +322,7 @@ mod tests {
         );
         // Real native binary path (observed from live ps output)
         assert_eq!(
-            detect_cli_tool("/home/mstie/.local/share/fnm/node-versions/v22.19.0/installation/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex/codex --yolo"),
+            detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex/codex --yolo"),
             Some(CliTool::Codex)
         );
     }
@@ -347,7 +347,7 @@ mod tests {
         );
         // Real node-launched via full path (observed from live ps output)
         assert_eq!(
-            detect_cli_tool("/home/mstie/.local/share/fnm/node-versions/v22.19.0/installation/bin/node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
+            detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
             Some(CliTool::Gemini)
         );
     }

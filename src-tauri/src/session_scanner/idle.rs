@@ -654,8 +654,8 @@ mod tests {
     #[test]
     fn slug_from_absolute_path() {
         assert_eq!(
-            path_to_slug("/home/mstie/projects/taurhaus"),
-            "-home-mstie-projects-taurhaus"
+            path_to_slug("/home/testuser/projects/taurhaus"),
+            "-home-testuser-projects-taurhaus"
         );
     }
 
@@ -1194,7 +1194,7 @@ mod tests {
     #[ignore]
     fn live_codex_resolver_finds_session() {
         let resolver = resolver_for(CliTool::Codex);
-        let result = resolver.detect_idle("/home/mstie/projects/taurhaus");
+        let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
         println!("Codex: state={:?}, session_id={:?}, path={:?}", result.state, result.session_id, result.jsonl_path);
         assert!(result.jsonl_path.is_some(), "Codex resolver should find a session file");
         assert!(result.session_id.is_some(), "Codex resolver should extract session ID");
@@ -1204,7 +1204,7 @@ mod tests {
     #[ignore]
     fn live_gemini_resolver_finds_session() {
         let resolver = resolver_for(CliTool::Gemini);
-        let result = resolver.detect_idle("/home/mstie/projects/taurhaus");
+        let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
         println!("Gemini: state={:?}, session_id={:?}, path={:?}", result.state, result.session_id, result.jsonl_path);
         assert!(result.jsonl_path.is_some(), "Gemini resolver should find a session file");
         assert!(result.session_id.is_some(), "Gemini resolver should extract session ID");
@@ -1214,7 +1214,7 @@ mod tests {
     #[ignore]
     fn live_claude_resolver_finds_session() {
         let resolver = resolver_for(CliTool::Claude);
-        let result = resolver.detect_idle("/home/mstie/projects/taurhaus");
+        let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
         println!("Claude: state={:?}, session_id={:?}, path={:?}", result.state, result.session_id, result.jsonl_path);
         assert!(result.jsonl_path.is_some(), "Claude resolver should find a session file");
         assert!(result.session_id.is_some(), "Claude resolver should extract session ID");
