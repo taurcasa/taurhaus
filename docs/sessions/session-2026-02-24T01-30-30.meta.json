@@ -1,0 +1,16 @@
+{
+  "session_id": "00ca35f6-0da2-4f1c-8968-df088a26711f",
+  "ended_at": "2026-02-24T01:30:30Z",
+  "exit_reason": "manual_handoff",
+  "model": "claude-opus-4-6",
+  "tools_used": {},
+  "files_modified": [
+    "src-tauri/src/session_scanner/proc_io.rs",
+    "src-tauri/src/session_scanner/mod.rs",
+    "src-tauri/src/session_scanner/idle.rs",
+    "src-tauri/src/commands/projects.rs",
+    "src-tauri/src/lib.rs",
+    "src/Shell.svelte"
+  ],
+  "tokens": {}
+}
