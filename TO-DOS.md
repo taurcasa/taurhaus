@@ -21,6 +21,6 @@ Reference: [docs/refactoring-v0.3.1.md](docs/refactoring-v0.3.1.md)
 - [x] **R09** — Improve sidebar branch pill contrast: use `bg-white/10` instead of dark background (`Shell.svelte` sidebar)
 - [x] **R10** — Validate WSL distro parameter against safe pattern before passing to `wsl.exe` (`launcher.rs`, `terminal.rs`)
 - [x] **R11** — Extract duplicated SVG logo data to shared `src/lib/toolLogos.js` module (`sessionIndicator.js`, `sessionStore.svelte.js`)
-- [ ] **R12** — Fix project switch race condition with request generation counter (`Shell.svelte`)
+- [x] **R12** — Fix project switch race condition with request generation counter (`Shell.svelte`) — already implemented via `_selectGeneration` counter
 - [ ] **R13** — Add confirmation dialog before project removal (`Shell.svelte` Remove button)
 - [ ] **R14** — Check for tantivy update with fixed `lru` crate, or document accepted risk
