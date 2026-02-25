@@ -1,6 +1,7 @@
 <script>
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { themeTokens } from './themeTokens.js'
   import MarkdownRenderer from './MarkdownRenderer.svelte'
 
   /** @type {{ task: object, detail: object|null, dark: boolean, codeTheme?: string, allTasks: object[], onClose: () => void, onNavigateTask?: (task: object) => void }} */
@@ -11,16 +12,11 @@
     return allTasks.find(t => t.id === id)
   }
 
-  // Dark mode tokens
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
-  const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const panelBg       = $derived(dark ? 'bg-zinc-950' : 'bg-white')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const sectionBg     = $derived(dark ? 'bg-zinc-900/50' : 'bg-zinc-50/80')
-  const hashColor     = $derived(dark ? 'text-brand-400' : 'text-brand-600')
   const fileBg        = $derived(dark ? 'bg-zinc-800/50' : 'bg-zinc-100/80')
   const divideColor   = $derived(dark ? 'divide-zinc-800' : 'divide-zinc-200')
   const hashPillBg    = $derived(dark ? 'bg-brand-950/80' : 'bg-brand-50')
@@ -69,17 +65,17 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <aside
-  class="w-[360px] shrink-0 {panelBg} border-l {keyline} flex flex-col overflow-hidden task-detail-enter"
+  class="w-[360px] shrink-0 {t.mainBg} border-l {t.keyline} flex flex-col overflow-hidden task-detail-enter"
   data-testid="task-detail-panel"
   aria-label="Task detail"
 >
   <!-- Header -->
-  <header class="flex items-start gap-3 px-4 pt-4 pb-3 border-b {keyline} shrink-0">
+  <header class="flex items-start gap-3 px-4 pt-4 pb-3 border-b {t.keyline} shrink-0">
     <div class="flex-1 min-w-0">
-      <h3 class="text-[15px] font-semibold leading-snug {textPrimary}">{task.subject}</h3>
+      <h3 class="text-[15px] font-semibold leading-snug {t.textPrimary}">{task.subject}</h3>
       <div class="flex items-center gap-2 mt-1.5">
         <!-- Source tool icon + label -->
-        <span class="flex items-center gap-1 {textTertiary}">
+        <span class="flex items-center gap-1 {t.textTertiary}">
           <svg class="w-[12px] h-[12px]" viewBox={toolIcon.viewBox} fill="currentColor" aria-hidden="true">
             <path d={toolIcon.path}/>
           </svg>
@@ -93,7 +89,7 @@
     </div>
     <!-- Close button -->
     <button
-      class="p-1 rounded {textTertiary} hover:text-zinc-300 transition-colors shrink-0"
+      class="p-1 rounded {t.textTertiary} hover:text-zinc-300 transition-colors shrink-0"
       onclick={onClose}
       aria-label="Close detail panel"
       data-testid="detail-close"
@@ -130,12 +126,12 @@
         <!-- Session info -->
         {#if detail.session}
           <section class="py-3" data-testid="detail-session">
-            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Session</h4>
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-2">Session</h4>
             <div class="{sectionBg} rounded-md px-3 py-2 space-y-1">
               <div class="flex items-center justify-between">
-                <span class="text-[11px] font-mono {hashColor}">{detail.session.id.slice(0, 8)}</span>
+                <span class="text-[11px] font-mono {t.hashColor}">{detail.session.id.slice(0, 8)}</span>
               </div>
-              <div class="text-[11px] {textMuted}">
+              <div class="text-[11px] {t.textMuted}">
                 {formatTimeRange(detail.session.started_at, detail.session.ended_at)}
               </div>
             </div>
@@ -145,15 +141,15 @@
         <!-- Commits -->
         {#if detail.commits.length > 0}
           <section class="py-3" data-testid="detail-commits">
-            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-2">
               Commits ({detail.commits.length})
             </h4>
             <div class="space-y-1.5">
               {#each detail.commits as commit}
                 <div class="flex items-start gap-2">
-                  <code class="text-[11px] font-mono {hashColor} {hashPillBg} px-1.5 py-0.5 rounded shrink-0" data-testid="commit-hash">{commit.hash}</code>
-                  <span class="text-[12px] {textSecondary} truncate flex-1 pt-px">{commit.message}</span>
-                  <span class="text-[10px] {textMuted} shrink-0 pt-0.5">{commit.date}</span>
+                  <code class="text-[11px] font-mono {t.hashColor} {hashPillBg} px-1.5 py-0.5 rounded shrink-0" data-testid="commit-hash">{commit.hash}</code>
+                  <span class="text-[12px] {t.textSecondary} truncate flex-1 pt-px">{commit.message}</span>
+                  <span class="text-[10px] {t.textMuted} shrink-0 pt-0.5">{commit.date}</span>
                 </div>
               {/each}
             </div>
@@ -163,14 +159,14 @@
         <!-- Files Changed -->
         {#if detail.files_changed.length > 0}
           <section class="py-3" data-testid="detail-files">
-            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-2">
               Files Changed ({detail.files_changed.length})
             </h4>
             <div class="space-y-0.5">
               {#each detail.files_changed as filePath}
                 {@const parts = splitPath(filePath)}
                 <div class="{fileBg} rounded px-2.5 py-1.5 font-mono text-[11px]">
-                  {#if parts.dir}<span class="{textMuted}" data-testid="file-dir">{parts.dir}</span>{/if}<span class="{textSecondary}" data-testid="file-name">{parts.name}</span>
+                  {#if parts.dir}<span class="{t.textMuted}" data-testid="file-dir">{parts.dir}</span>{/if}<span class="{t.textSecondary}" data-testid="file-name">{parts.name}</span>
                 </div>
               {/each}
             </div>
@@ -180,11 +176,11 @@
         <!-- Dependencies -->
         {#if detail.task.blocked_by?.length > 0 || detail.task.blocks?.length > 0}
           <section class="py-3" data-testid="detail-dependencies">
-            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Dependencies</h4>
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-2">Dependencies</h4>
             <div class="space-y-2">
               {#if detail.task.blocked_by?.length > 0}
                 <div class="flex items-start gap-1.5 flex-wrap">
-                  <span class="text-[11px] {textMuted} py-0.5">Blocked by</span>
+                  <span class="text-[11px] {t.textMuted} py-0.5">Blocked by</span>
                   {#each detail.task.blocked_by as id}
                     {@const resolved = resolveTask(id)}
                     {#if resolved && onNavigateTask}
@@ -201,7 +197,7 @@
               {/if}
               {#if detail.task.blocks?.length > 0}
                 <div class="flex items-start gap-1.5 flex-wrap">
-                  <span class="text-[11px] {textMuted} py-0.5">Blocks</span>
+                  <span class="text-[11px] {t.textMuted} py-0.5">Blocks</span>
                   {#each detail.task.blocks as id}
                     {@const resolved = resolveTask(id)}
                     {#if resolved && onNavigateTask}
@@ -223,8 +219,8 @@
         <!-- Owner -->
         {#if detail.task.owner}
           <section class="py-3" data-testid="detail-owner">
-            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-2">Owner</h4>
-            <span class="text-[12px] {textBody}">{detail.task.owner}</span>
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-2">Owner</h4>
+            <span class="text-[12px] {t.textBody}">{detail.task.owner}</span>
           </section>
         {/if}
 

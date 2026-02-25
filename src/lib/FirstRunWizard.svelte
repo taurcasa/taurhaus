@@ -1,17 +1,14 @@
 <script>
   import { scanDirectory, registerProjectsBatch, listDirectory, getSystemRoots, isTauri } from './ipc.js'
+  import { themeTokens } from './themeTokens.js'
 
   let { dark = false, onComplete = () => {} } = $props()
 
-  // Color tokens
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens (different from shared)
   const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
-  const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
-  const mainBg        = $derived(dark ? 'bg-zinc-950' : 'bg-white')
-  const checkBg       = $derived(dark ? 'bg-zinc-800 border-zinc-600' : 'bg-white border-zinc-300')
   const hoverRow      = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-zinc-50 border-zinc-300 text-zinc-900')
   const treeBg        = $derived(dark ? 'bg-zinc-900/50' : 'bg-zinc-50')
@@ -219,7 +216,7 @@
   }
 </script>
 
-<div class="h-full {mainBg} flex items-center justify-center" data-testid="first-run-wizard" data-tauri-drag-region>
+<div class="h-full {t.mainBg} flex items-center justify-center" data-testid="first-run-wizard" data-tauri-drag-region>
   <div class="max-w-[480px] w-full px-6">
 
     {#if step === 1}
@@ -230,9 +227,9 @@
           <span class="text-[22px] font-bold text-white leading-none">t</span>
         </div>
 
-        <h1 class="text-[24px] font-semibold {textPrimary} mb-2">taurhaus</h1>
-        <p class="text-[15px] {textSecondary} mb-1">AI Project Management</p>
-        <p class="text-[13px] {textBody} mb-8 leading-relaxed">
+        <h1 class="text-[24px] font-semibold {t.textPrimary} mb-2">taurhaus</h1>
+        <p class="text-[15px] {t.textSecondary} mb-1">AI Project Management</p>
+        <p class="text-[13px] {t.textBody} mb-8 leading-relaxed">
           One clear view into all your projects — code, docs, progress, history — so you never lose context between sessions.
         </p>
 
@@ -246,8 +243,8 @@
     {:else if step === 2}
       <!-- ═══ STEP 2: BROWSE FOR PROJECTS FOLDER ═══ -->
       <div data-testid="wizard-step-2">
-        <h2 class="text-[18px] font-semibold {textPrimary} mb-1">Where are your projects?</h2>
-        <p class="text-[13px] {textSecondary} mb-4">Browse to the folder that contains your project directories, or type the path directly.</p>
+        <h2 class="text-[18px] font-semibold {t.textPrimary} mb-1">Where are your projects?</h2>
+        <p class="text-[13px] {t.textSecondary} mb-4">Browse to the folder that contains your project directories, or type the path directly.</p>
 
         <!-- Path input -->
         <div class="mb-3">
@@ -261,13 +258,13 @@
         </div>
 
         <!-- Directory tree -->
-        <div class="border {keyline} rounded-lg overflow-hidden mb-4 max-h-[280px] overflow-y-auto {treeBg}">
+        <div class="border {t.keyline} rounded-lg overflow-hidden mb-4 max-h-[280px] overflow-y-auto {treeBg}">
 
           {#if showDrives}
             <!-- Drive/root selector -->
             {#each systemRoots as root}
               <button
-                class="w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] font-mono transition-colors {hoverRow} {textPrimary}"
+                class="w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] font-mono transition-colors {hoverRow} {t.textPrimary}"
                 onclick={() => selectDrive(root.path)}
               >
                 <svg class="w-4 h-4 shrink-0 {textTertiary}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z"/></svg>
@@ -376,7 +373,7 @@
         </button>
 
         <button
-          class="text-[13px] {linkColor} transition-colors"
+          class="text-[13px] {t.linkColor} transition-colors"
           onclick={() => step = 1}
         >Back</button>
       </div>
@@ -387,28 +384,28 @@
         {#if discovered.length === 0}
           <!-- Empty scan results -->
           <div class="text-center" data-testid="empty-scan">
-            <h2 class="text-[18px] font-semibold {textPrimary} mb-2">No projects found</h2>
-            <p class="text-[13px] {textSecondary} mb-6">No git repositories were found in {scanPath}. Try a different directory.</p>
+            <h2 class="text-[18px] font-semibold {t.textPrimary} mb-2">No projects found</h2>
+            <p class="text-[13px] {t.textSecondary} mb-6">No git repositories were found in {scanPath}. Try a different directory.</p>
             <button
               class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors mb-3"
               onclick={() => step = 2}
             >Browse again</button>
           </div>
         {:else}
-          <h2 class="text-[18px] font-semibold {textPrimary} mb-1">
+          <h2 class="text-[18px] font-semibold {t.textPrimary} mb-1">
             Found {discovered.length} repositor{discovered.length === 1 ? 'y' : 'ies'}
           </h2>
-          <p class="text-[13px] {textSecondary} mb-4">in {scanPath}</p>
+          <p class="text-[13px] {t.textSecondary} mb-4">in {scanPath}</p>
 
           <!-- Select all / Deselect all -->
           <div class="flex items-center gap-3 mb-3">
             <button
-              class="text-[12px] {linkColor} transition-colors"
+              class="text-[12px] {t.linkColor} transition-colors"
               onclick={selectAll}
             >Select all</button>
             <span class="text-[12px] {textTertiary}">|</span>
             <button
-              class="text-[12px] {linkColor} transition-colors"
+              class="text-[12px] {t.linkColor} transition-colors"
               onclick={deselectAll}
             >Deselect all</button>
             <span class="flex-1"></span>
@@ -416,19 +413,19 @@
           </div>
 
           <!-- Project list -->
-          <div class="border {keyline} rounded-lg overflow-hidden mb-4 max-h-[320px] overflow-y-auto">
+          <div class="border {t.keyline} rounded-lg overflow-hidden mb-4 max-h-[320px] overflow-y-auto">
             {#each discovered as project}
               <button
-                class="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 {keyline} {hoverRow} transition-colors"
+                class="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 {t.keyline} {hoverRow} transition-colors"
                 onclick={() => toggleProject(project.path)}
               >
-                <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {selected.has(project.path) ? 'bg-brand-600 border-brand-600' : checkBg}">
+                <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {selected.has(project.path) ? 'bg-brand-600 border-brand-600' : t.checkBg}">
                   {#if selected.has(project.path)}
                     <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
                   {/if}
                 </div>
                 <div class="min-w-0 flex-1">
-                  <div class="text-[13px] font-medium {textPrimary} truncate">{project.name}</div>
+                  <div class="text-[13px] font-medium {t.textPrimary} truncate">{project.name}</div>
                   <div class="text-[12px] {textTertiary} truncate font-mono">{project.path}</div>
                 </div>
                 {#if project.has_git}
@@ -448,7 +445,7 @@
           </button>
 
           <button
-            class="text-[13px] {linkColor} transition-colors"
+            class="text-[13px] {t.linkColor} transition-colors"
             onclick={() => step = 2}
           >Browse again</button>
         {/if}
@@ -457,7 +454,7 @@
     {:else if step === 4}
       <!-- ═══ STEP 4: INDEXING PROGRESS ═══ -->
       <div class="text-center" data-testid="wizard-step-4">
-        <h2 class="text-[18px] font-semibold {textPrimary} mb-4">Setting up taurhaus...</h2>
+        <h2 class="text-[18px] font-semibold {t.textPrimary} mb-4">Setting up taurhaus...</h2>
 
         <!-- Progress bar -->
         <div class="w-full h-2 rounded-full {dark ? 'bg-zinc-800' : 'bg-zinc-200'} overflow-hidden mb-3">
@@ -467,7 +464,7 @@
           ></div>
         </div>
 
-        <p class="text-[13px] {textSecondary}">
+        <p class="text-[13px] {t.textSecondary}">
           {progressIndex} / {progressTotal} projects
         </p>
         {#if progressName}
@@ -483,18 +480,18 @@
           <svg class="w-7 h-7 text-success-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
         </div>
 
-        <h2 class="text-[18px] font-semibold {textPrimary} mb-2">
+        <h2 class="text-[18px] font-semibold {t.textPrimary} mb-2">
           {registeredCount} project{registeredCount !== 1 ? 's' : ''} registered
         </h2>
         {#if failedPaths.length > 0}
-          <p class="text-[13px] {textSecondary} mb-2">{failedPaths.length} project{failedPaths.length !== 1 ? 's' : ''} could not be registered.</p>
+          <p class="text-[13px] {t.textSecondary} mb-2">{failedPaths.length} project{failedPaths.length !== 1 ? 's' : ''} could not be registered.</p>
           <div class="text-left mb-4 max-h-[120px] overflow-y-auto">
             {#each failedPaths as failed}
               <div class="text-[12px] text-danger-500 py-0.5 font-mono truncate" title={failed.error}>{failed.path}</div>
             {/each}
           </div>
         {:else}
-          <p class="text-[13px] {textSecondary} mb-6">You're all set.</p>
+          <p class="text-[13px] {t.textSecondary} mb-6">You're all set.</p>
         {/if}
 
         <button

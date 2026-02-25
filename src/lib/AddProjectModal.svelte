@@ -1,16 +1,14 @@
 <script>
   import { scanDirectory, registerProjectsBatch, listProjects, removeProject, listDirectory, validateProjectPath, getSystemRoots } from './ipc.js'
+  import { themeTokens } from './themeTokens.js'
 
   let { dark = false, onClose = () => {}, onProjectsChanged = () => {} } = $props()
 
-  // Color tokens
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const modalBg       = $derived(dark ? 'bg-zinc-900' : 'bg-white')
-  const checkBg       = $derived(dark ? 'bg-zinc-800 border-zinc-600' : 'bg-white border-zinc-300')
   const hoverRow      = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-900')
   const badgeBg       = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
@@ -380,8 +378,8 @@
     data-testid="manage-projects-modal"
   >
     <!-- Header -->
-    <div class="flex items-center justify-between px-5 py-4 border-b {keyline}">
-      <h2 id="manage-projects-title" class="text-[16px] font-semibold {textPrimary}">Manage Projects</h2>
+    <div class="flex items-center justify-between px-5 py-4 border-b {t.keyline}">
+      <h2 id="manage-projects-title" class="text-[16px] font-semibold {t.textPrimary}">Manage Projects</h2>
       <button
         class="w-7 h-7 flex items-center justify-center rounded-md {dark ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800' : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'} transition-colors"
         onclick={onClose}
@@ -405,18 +403,18 @@
           </div>
         {:else if registered.length === 0}
           <div class="py-4 text-center" data-testid="no-projects">
-            <p class="text-[13px] {textTertiary}">No projects registered yet.</p>
+            <p class="text-[13px] {t.textTertiary}">No projects registered yet.</p>
           </div>
         {:else}
-          <div class="border {keyline} rounded-lg overflow-hidden max-h-[260px] overflow-y-auto" data-testid="registered-list">
+          <div class="border {t.keyline} rounded-lg overflow-hidden max-h-[260px] overflow-y-auto" data-testid="registered-list">
             {#each registered as project (project.id)}
               <div
-                class="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 {keyline} transition-all {removingId === project.id ? 'opacity-30' : ''}"
+                class="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 {t.keyline} transition-all {removingId === project.id ? 'opacity-30' : ''}"
               >
                 <span class="w-[7px] h-[7px] rounded-full shrink-0 {dots[project.activity_state] || 'bg-zinc-500'}"></span>
                 <div class="min-w-0 flex-1">
-                  <div class="text-[13px] font-medium {textPrimary} truncate">{project.name}</div>
-                  <div class="text-[11px] {textTertiary} truncate font-mono">{project.path}</div>
+                  <div class="text-[13px] font-medium {t.textPrimary} truncate">{project.name}</div>
+                  <div class="text-[11px] {t.textTertiary} truncate font-mono">{project.path}</div>
                 </div>
                 {#if confirmRemoveId === project.id}
                   <button
@@ -452,7 +450,7 @@
       {#if !showAddSection}
         <div class="px-5 pb-4">
           <button
-            class="w-full py-2 rounded-lg border border-dashed {keyline} text-[13px] {textTertiary} hover:border-brand-500 hover:text-brand-500 transition-colors flex items-center justify-center gap-2"
+            class="w-full py-2 rounded-lg border border-dashed {t.keyline} text-[13px] {t.textTertiary} hover:border-brand-500 hover:text-brand-500 transition-colors flex items-center justify-center gap-2"
             onclick={() => { showAddSection = true; handleScan() }}
             data-testid="show-add-section"
           >
@@ -465,7 +463,7 @@
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-[11px] font-semibold uppercase tracking-wider {sectionLabel}">Add Projects</h3>
             <button
-              class="text-[11px] {textTertiary} hover:text-zinc-600 transition-colors"
+              class="text-[11px] {t.textTertiary} hover:text-zinc-600 transition-colors"
               onclick={() => { showAddSection = false; manualMode = false; manualError = null; scanError = null }}
             >Close</button>
           </div>
@@ -473,7 +471,7 @@
           {#if manualMode}
             <!-- Manual path entry with directory browser -->
             <div>
-              <label for="manual-path" class="text-[13px] {textSecondary} mb-1.5 block">Project path</label>
+              <label for="manual-path" class="text-[13px] {t.textSecondary} mb-1.5 block">Project path</label>
               <div class="relative">
                 <input
                   id="manual-path"
@@ -504,7 +502,7 @@
               {/if}
 
               <!-- Directory tree browser -->
-              <div class="mt-3 border {keyline} rounded-lg max-h-[180px] overflow-y-auto" data-testid="directory-tree">
+              <div class="mt-3 border {t.keyline} rounded-lg max-h-[180px] overflow-y-auto" data-testid="directory-tree">
                 {#snippet treeNode(entries, depth)}
                   {#each entries as entry}
                     <div>
@@ -539,13 +537,13 @@
                         {#if treeLoading.has(entry.path)}
                           <div class="flex items-center gap-2 h-[28px]" style="padding-left: {24 + depth * 16}px">
                             <div class="w-3 h-3 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
-                            <span class="text-[11px] {textTertiary}">Loading...</span>
+                            <span class="text-[11px] {t.textTertiary}">Loading...</span>
                           </div>
                         {:else if treeChildren[entry.path]?.length > 0}
                           {@render treeNode(treeChildren[entry.path], depth + 1)}
                         {:else if treeChildren[entry.path]}
                           <div class="h-[28px] flex items-center" style="padding-left: {24 + depth * 16}px">
-                            <span class="text-[11px] {textTertiary}">Empty</span>
+                            <span class="text-[11px] {t.textTertiary}">Empty</span>
                           </div>
                         {/if}
                       {/if}
@@ -557,17 +555,17 @@
                   <!-- Drive/root selector -->
                   {#each systemRoots as root}
                     <button
-                      class="w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] font-mono transition-colors {hoverRow} {textPrimary}"
+                      class="w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] font-mono transition-colors {hoverRow} {t.textPrimary}"
                       onclick={() => selectDrive(root.path)}
                     >
-                      <svg class="w-4 h-4 shrink-0 {textTertiary}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z"/></svg>
+                      <svg class="w-4 h-4 shrink-0 {t.textTertiary}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z"/></svg>
                       <span>{root.name}</span>
                     </button>
                   {/each}
                 {:else}
                   <!-- Navigate up -->
                   <button
-                    class="w-full flex items-center gap-1.5 px-2 h-[28px] text-left text-[12px] transition-colors {hoverRow} {textTertiary}"
+                    class="w-full flex items-center gap-1.5 px-2 h-[28px] text-left text-[12px] transition-colors {hoverRow} {t.textTertiary}"
                     onclick={navigateUp}
                     data-testid="tree-navigate-up"
                   >
@@ -590,13 +588,13 @@
                     {#if treeLoading.has(treeRoot)}
                       <div class="flex items-center gap-2 h-[28px] pl-6">
                         <div class="w-3 h-3 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
-                        <span class="text-[11px] {textTertiary}">Loading...</span>
+                        <span class="text-[11px] {t.textTertiary}">Loading...</span>
                       </div>
                     {:else if treeChildren[treeRoot]?.length > 0}
                       {@render treeNode(treeChildren[treeRoot], 1)}
                     {:else if treeChildren[treeRoot]}
                       <div class="h-[28px] flex items-center pl-6">
-                        <span class="text-[11px] {textTertiary}">No subdirectories found</span>
+                        <span class="text-[11px] {t.textTertiary}">No subdirectories found</span>
                       </div>
                     {/if}
                   {/if}
@@ -605,7 +603,7 @@
 
               <div class="flex items-center justify-between mt-3">
                 <button
-                  class="text-[12px] {linkColor} transition-colors"
+                  class="text-[12px] {t.linkColor} transition-colors"
                   onclick={() => { manualMode = false; manualError = null; validation = null }}
                 >Back to scan</button>
                 <button
@@ -620,61 +618,61 @@
           {:else if scanning}
             <div class="text-center py-4" data-testid="scanning-state">
               <div class="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p class="text-[12px] {textTertiary}">Scanning ~/projects/...</p>
+              <p class="text-[12px] {t.textTertiary}">Scanning ~/projects/...</p>
             </div>
 
           {:else if scanError}
             <div class="text-center py-4" data-testid="scan-error">
-              <p class="text-[13px] {textPrimary} mb-1">Scan failed</p>
+              <p class="text-[13px] {t.textPrimary} mb-1">Scan failed</p>
               <p class="text-[11px] text-danger-500 mb-3">{scanError}</p>
               <div class="flex items-center justify-center gap-3">
-                <button class="text-[12px] {linkColor} transition-colors" onclick={handleScan}>Try again</button>
-                <span class="{textTertiary}">·</span>
-                <button class="text-[12px] {linkColor} transition-colors" onclick={() => { scanError = null; manualMode = true; initTree() }}>Browse manually</button>
+                <button class="text-[12px] {t.linkColor} transition-colors" onclick={handleScan}>Try again</button>
+                <span class="{t.textTertiary}">·</span>
+                <button class="text-[12px] {t.linkColor} transition-colors" onclick={() => { scanError = null; manualMode = true; initTree() }}>Browse manually</button>
               </div>
             </div>
 
           {:else if selectableProjects.length === 0 && discovered.length > 0}
             <div class="text-center py-4" data-testid="all-registered">
-              <p class="text-[13px] {textSecondary}">All projects in ~/projects/ are already registered.</p>
-              <button class="text-[12px] {linkColor} transition-colors mt-2" onclick={() => { manualMode = true; initTree() }}>Browse manually</button>
+              <p class="text-[13px] {t.textSecondary}">All projects in ~/projects/ are already registered.</p>
+              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true; initTree() }}>Browse manually</button>
             </div>
 
           {:else if discovered.length === 0}
             <div class="text-center py-4" data-testid="empty-scan">
-              <p class="text-[13px] {textSecondary}">No new projects found in ~/projects/.</p>
-              <button class="text-[12px] {linkColor} transition-colors mt-2" onclick={() => { manualMode = true; initTree() }}>Browse manually</button>
+              <p class="text-[13px] {t.textSecondary}">No new projects found in ~/projects/.</p>
+              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true; initTree() }}>Browse manually</button>
             </div>
 
           {:else}
             <!-- Scan results -->
             <div class="flex items-center gap-3 mb-2">
-              <p class="text-[12px] {textSecondary}">
+              <p class="text-[12px] {t.textSecondary}">
                 {selectableProjects.length} new project{selectableProjects.length !== 1 ? 's' : ''}
               </p>
               <span class="flex-1"></span>
               {#if selectableProjects.length > 1}
-                <button class="text-[11px] {linkColor} transition-colors" onclick={allSelected ? deselectAll : selectAll}>
+                <button class="text-[11px] {t.linkColor} transition-colors" onclick={allSelected ? deselectAll : selectAll}>
                   {allSelected ? 'Deselect all' : 'Select all'}
                 </button>
               {/if}
             </div>
 
-            <div class="border {keyline} rounded-lg overflow-hidden max-h-[200px] overflow-y-auto" data-testid="discovered-list">
+            <div class="border {t.keyline} rounded-lg overflow-hidden max-h-[200px] overflow-y-auto" data-testid="discovered-list">
               {#each selectableProjects as project}
                 {@const isSelected = selected.has(project.path)}
                 <button
-                  class="w-full flex items-center gap-3 px-3 py-2 text-left border-b last:border-b-0 {keyline} {hoverRow} transition-colors"
+                  class="w-full flex items-center gap-3 px-3 py-2 text-left border-b last:border-b-0 {t.keyline} {hoverRow} transition-colors"
                   onclick={() => toggleProject(project.path)}
                 >
-                  <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {isSelected ? 'bg-brand-600 border-brand-600' : checkBg}">
+                  <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {isSelected ? 'bg-brand-600 border-brand-600' : t.checkBg}">
                     {#if isSelected}
                       <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
                     {/if}
                   </div>
                   <div class="min-w-0 flex-1">
-                    <div class="text-[13px] font-medium {textPrimary} truncate">{project.name}</div>
-                    <div class="text-[11px] {textTertiary} truncate font-mono">{project.path}</div>
+                    <div class="text-[13px] font-medium {t.textPrimary} truncate">{project.name}</div>
+                    <div class="text-[11px] {t.textTertiary} truncate font-mono">{project.path}</div>
                   </div>
                   {#if project.has_git}
                     <span class="text-[10px] px-1.5 py-0.5 rounded {badgeBg}">git</span>
@@ -687,7 +685,7 @@
           {#if !scanning && !manualMode && !scanError}
             <div class="flex items-center justify-between mt-3">
               <button
-                class="text-[12px] {linkColor} transition-colors"
+                class="text-[12px] {t.linkColor} transition-colors"
                 onclick={() => { manualMode = true; initTree() }}
               >Enter path manually</button>
               {#if selectableProjects.length > 0}
@@ -708,7 +706,7 @@
     </div>
 
     <!-- Footer -->
-    <div class="flex items-center justify-end px-5 py-3 border-t {keyline}">
+    <div class="flex items-center justify-end px-5 py-3 border-t {t.keyline}">
       <button
         class="px-4 py-2 rounded-lg bg-brand-600 text-white text-[13px] font-medium hover:bg-brand-700 transition-colors"
         onclick={onClose}

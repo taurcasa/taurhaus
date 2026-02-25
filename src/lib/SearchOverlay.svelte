@@ -1,5 +1,6 @@
 <script>
   import { search } from './ipc.js'
+  import { themeTokens } from './themeTokens.js'
 
   let { open = $bindable(false), dark = false, onNavigate = () => {} } = $props()
 
@@ -10,13 +11,13 @@
   let inputEl = $state(null)
   let selectedIndex = $state(-1)
 
-  // Tokens
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const overlayBg = $derived(dark ? 'bg-zinc-900/95' : 'bg-white/95')
-  const inputBg = $derived(dark ? 'bg-zinc-800 text-zinc-100 placeholder:text-zinc-500' : 'bg-zinc-100 text-zinc-900 placeholder:text-zinc-400')
   const borderColor = $derived(dark ? 'border-zinc-700' : 'border-zinc-200')
-  const textPrimary = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const textSecondary = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
-  const textMuted = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
   const hoverBg = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-50')
   const selectedBg = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-100')
   const groupLabel = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
@@ -162,7 +163,7 @@
 
       <!-- Search input -->
       <div class="flex items-center gap-3 px-4 h-[52px] border-b {borderColor}">
-        <svg class="w-[18px] h-[18px] shrink-0 {textMuted}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <svg class="w-[18px] h-[18px] shrink-0 {t.textMuted}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
         </svg>
         <input
@@ -172,7 +173,7 @@
           oninput={handleInput}
           onkeydown={handleKeydown}
           placeholder="Search across all projects..."
-          class="flex-1 bg-transparent text-[15px] {textPrimary} outline-none placeholder:{textMuted}"
+          class="flex-1 bg-transparent text-[15px] {t.textPrimary} outline-none placeholder:{t.textMuted}"
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -182,7 +183,7 @@
           <div class="w-4 h-4 border-2 border-brand-500/30 border-t-brand-500 rounded-full animate-spin shrink-0"></div>
         {:else if query}
           <button
-            class="w-5 h-5 flex items-center justify-center rounded {textMuted} hover:{textSecondary} transition-colors"
+            class="w-5 h-5 flex items-center justify-center rounded {t.textMuted} hover:{textSecondary} transition-colors"
             onclick={() => { query = ''; results = []; selectedIndex = -1; inputEl?.focus() }}
             aria-label="Clear search"
           >
@@ -200,7 +201,7 @@
         {#if !query.trim()}
           <!-- Empty state -->
           <div class="px-4 py-8 text-center">
-            <p class="text-[13px] {textMuted}">Type to search across all projects</p>
+            <p class="text-[13px] {t.textMuted}">Type to search across all projects</p>
           </div>
         {:else if loading}
           <!-- Loading skeleton -->
@@ -217,7 +218,7 @@
         {:else if results.length === 0 && query.trim()}
           <!-- No results -->
           <div class="px-4 py-8 text-center">
-            <p class="text-[13px] {textMuted}">No matches found</p>
+            <p class="text-[13px] {t.textMuted}">No matches found</p>
           </div>
         {:else}
           <!-- Grouped results -->
@@ -237,7 +238,7 @@
                   data-testid="search-result"
                 >
                   <!-- Entity type icon -->
-                  <div class="w-4 h-4 shrink-0 mt-0.5 {textMuted}">
+                  <div class="w-4 h-4 shrink-0 mt-0.5 {t.textMuted}">
                     {#if type === 'document'}
                       <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     {:else if type === 'session'}
@@ -248,7 +249,7 @@
                   </div>
 
                   <div class="flex-1 min-w-0">
-                    <div class="text-[13px] {textPrimary} truncate">{result.title || result.file_path}</div>
+                    <div class="text-[13px] {t.textPrimary} truncate">{result.title || result.file_path}</div>
                     {#if result.snippet}
                       <div class="text-[12px] {snippetColor} truncate mt-0.5">{result.snippet}</div>
                     {/if}
@@ -256,7 +257,7 @@
 
                   <!-- File path for documents -->
                   {#if type === 'document' && result.file_path}
-                    <span class="text-[11px] font-mono {textMuted} shrink-0 mt-0.5">{result.file_path}</span>
+                    <span class="text-[11px] font-mono {t.textMuted} shrink-0 mt-0.5">{result.file_path}</span>
                   {/if}
                 </button>
               {/each}

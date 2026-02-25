@@ -2,6 +2,7 @@
   import { getProjectTasks, getTaskDetail } from './ipc.js'
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { themeTokens } from './themeTokens.js'
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
@@ -11,14 +12,10 @@
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
 
-  // Dark mode tokens (same pattern as Shell.svelte)
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
-  const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const cardBg        = $derived(dark ? 'bg-zinc-900/60' : 'bg-zinc-50/80')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const cardHover     = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-100/80')
   const cardBorder    = $derived(dark ? 'border-zinc-800/60' : 'border-zinc-200/80')
   const cardSelectedBorder = $derived(dark ? 'border-brand-500/60' : 'border-brand-500/50')
@@ -210,7 +207,7 @@
           {activeSubTab === 'active' ? subTabActive : subTabInactive}"
         data-testid="sub-tab-active"
         onclick={() => switchSubTab('active')}
-      >Active{#if activeSubTab === 'active' && tasks.length > 0}<span class="ml-1.5 font-normal normal-case tracking-normal {textTertiary}">&middot; {tasks.length}</span>{/if}</button>
+      >Active{#if activeSubTab === 'active' && tasks.length > 0}<span class="ml-1.5 font-normal normal-case tracking-normal {t.textTertiary}">&middot; {tasks.length}</span>{/if}</button>
       <button
         role="tab"
         aria-selected={activeSubTab === 'history'}
@@ -230,7 +227,7 @@
           <div class="flex-1 rounded-lg {columnBg} p-3">
             <div class="h-3 w-20 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse mb-4"></div>
             {#each Array(3) as __}
-              <div class="rounded-lg {cardBg} border {cardBorder} p-3 mb-2">
+              <div class="rounded-lg {t.cardBg} border {cardBorder} p-3 mb-2">
                 <div class="h-3 w-full rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse mb-2"></div>
                 <div class="h-2.5 w-3/4 rounded {dark ? 'bg-zinc-800/30' : 'bg-zinc-100/60'} animate-pulse"></div>
               </div>
@@ -242,11 +239,11 @@
       <!-- Empty state -->
       <div class="flex-1 flex items-center justify-center" data-testid="tasks-empty">
         <div class="text-center max-w-xs">
-          <svg class="w-12 h-12 {textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+          <svg class="w-12 h-12 {t.textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
           </svg>
-          <p class="mt-4 text-[15px] font-medium {textMuted}">No tasks tracked</p>
-          <p class="mt-2 text-[13px] leading-relaxed {textTertiary}">Tasks appear automatically when Claude, Codex, or Gemini create plans or task lists in your project.</p>
+          <p class="mt-4 text-[15px] font-medium {t.textMuted}">No tasks tracked</p>
+          <p class="mt-2 text-[13px] leading-relaxed {t.textTertiary}">Tasks appear automatically when Claude, Codex, or Gemini create plans or task lists in your project.</p>
         </div>
       </div>
     {:else}
@@ -273,8 +270,8 @@
             <!-- Column header -->
             <div class="flex items-center gap-2 px-3 pt-3 pb-2 shrink-0">
               <span class="w-[6px] h-[6px] rounded-full {dotColors[col.key]}"></span>
-              <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {textTertiary}">{col.label}</span>
-              <span class="text-[10px] {textMuted}">{colTasks.length}</span>
+              <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary}">{col.label}</span>
+              <span class="text-[10px] {t.textMuted}">{colTasks.length}</span>
             </div>
 
             <!-- Scrollable card list -->
@@ -283,7 +280,7 @@
                 {@render taskCard(task)}
               {:else}
                 <div class="px-2 py-6 text-center">
-                  <span class="text-[11px] {textMuted}">No tasks</span>
+                  <span class="text-[11px] {t.textMuted}">No tasks</span>
                 </div>
               {/each}
             </div>
@@ -320,33 +317,33 @@
   <button
     class="w-full text-left rounded-lg border px-3 py-2.5 mb-2 transition-all cursor-pointer
       active:scale-[0.98] motion-reduce:active:scale-100
-      {selected ? `${cardSelectedBg} ${cardSelectedBorder} border-l-2` : `${cardBg} ${cardBorder} ${cardHover}`}"
+      {selected ? `${cardSelectedBg} ${cardSelectedBorder} border-l-2` : `${t.cardBg} ${cardBorder} ${cardHover}`}"
     data-testid="task-row"
     onclick={() => selectTask(task)}
   >
     <!-- Top line: tool icon + subject -->
     <div class="flex items-start gap-2">
-      <span class="w-[14px] h-[14px] shrink-0 mt-0.5 {textTertiary}" aria-label={SOURCE_LABELS[task.source] || task.source}>
+      <span class="w-[14px] h-[14px] shrink-0 mt-0.5 {t.textTertiary}" aria-label={SOURCE_LABELS[task.source] || task.source}>
         <svg class="w-[12px] h-[12px]" viewBox={icon.viewBox} fill="currentColor" aria-hidden="true">
           <path d={icon.path}/>
         </svg>
       </span>
-      <span class="text-[13px] leading-snug {task.status === 'completed' ? `${textMuted} line-through` : textBody}">{task.subject}</span>
+      <span class="text-[13px] leading-snug {task.status === 'completed' ? `${t.textMuted} line-through` : t.textBody}">{task.subject}</span>
     </div>
 
     <!-- Description -->
     {#if task.description}
-      <p class="text-[11px] {textTertiary} mt-1.5 ml-[22px] line-clamp-2">{task.description}</p>
+      <p class="text-[11px] {t.textTertiary} mt-1.5 ml-[22px] line-clamp-2">{task.description}</p>
     {/if}
 
     <!-- Metadata: blocked_by + owner -->
     {#if task.blocked_by.length > 0 || task.owner}
       <div class="flex items-center gap-2 mt-1.5 ml-[22px]">
         {#if task.blocked_by.length > 0}
-          <span class="text-[10px] {textMuted}">blocked by: {task.blocked_by.map(id => `#${id}`).join(', ')}</span>
+          <span class="text-[10px] {t.textMuted}">blocked by: {task.blocked_by.map(id => `#${id}`).join(', ')}</span>
         {/if}
         {#if task.owner}
-          <span class="text-[10px] {textMuted}">{task.owner}</span>
+          <span class="text-[10px] {t.textMuted}">{task.owner}</span>
         {/if}
       </div>
     {/if}

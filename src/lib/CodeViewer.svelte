@@ -1,12 +1,16 @@
 <script>
   import { highlightCode } from './markdown.js'
+  import { themeTokens } from './themeTokens.js'
 
   let { code = '', language = '', dark = false, codeTheme = 'github-light', scrollToLine = null } = $props()
 
   let highlightedHtml = $state('')
   let ready = $state(false)
 
-  const textBody = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const lineNumColor = $derived(dark ? 'text-zinc-700' : 'text-zinc-300')
 
   // Highlight when code, language, or theme changes
@@ -57,7 +61,7 @@
     </div>
   {:else}
     <!-- Fallback: plain text with line numbers while Shiki loads -->
-    <pre class="p-6 text-[13px] font-mono leading-[1.6] {textBody} whitespace-pre-wrap break-words"><code>{#each lines as line, i}<span class="inline-block w-[3em] text-right mr-4 select-none {lineNumColor}">{i + 1}</span>{line}
+    <pre class="p-6 text-[13px] font-mono leading-[1.6] {t.textBody} whitespace-pre-wrap break-words"><code>{#each lines as line, i}<span class="inline-block w-[3em] text-right mr-4 select-none {lineNumColor}">{i + 1}</span>{line}
 {/each}</code></pre>
   {/if}
 </div>

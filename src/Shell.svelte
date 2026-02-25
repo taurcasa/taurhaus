@@ -17,6 +17,7 @@
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
+  import { themeTokens } from './lib/themeTokens.js'
 
   let dark = $state(false)
   let preview = $state(false)
@@ -71,18 +72,12 @@
    */
 
 
-  // Main content panel — all dark-mode switching via $derived tokens
-  const mainBg         = $derived(dark ? 'bg-zinc-950' : 'bg-white')
-  const textPrimary    = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary  = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary   = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const textMuted      = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
-  const textBody       = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const keyline        = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const statusColor    = $derived(dark ? 'text-success-400' : 'text-success-600')
-  const linkColor      = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
   const dangerColor    = $derived(dark ? 'text-danger-400/70 hover:text-danger-400' : 'text-danger-600/60 hover:text-danger-600')
-  const hoverRow       = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50')
   const hashColor      = $derived(dark ? 'text-zinc-600' : 'text-zinc-400')
   const timeColor      = $derived(dark ? 'text-zinc-700' : 'text-zinc-300')
   const dashBorder     = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
@@ -99,9 +94,6 @@
   }
 
   const panelBorder    = $derived(dark ? 'border border-zinc-800' : '')
-  const treeBg         = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
-  const treeHover      = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100')
-  const treeSelected   = $derived(dark ? 'bg-brand-900/40 text-brand-300' : 'bg-brand-100/80 text-brand-700')
   const treeIcon       = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
   const lineNumColor   = $derived(dark ? 'text-zinc-700' : 'text-zinc-300')
 
@@ -960,38 +952,38 @@
     <div class="flex-1 flex items-end min-w-0" data-tauri-drag-region>
 
       <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
-      <div class="flex items-center px-4 h-[36px] {mainBg} rounded-t-lg ml-1.5">
+      <div class="flex items-center px-4 h-[36px] {t.mainBg} rounded-t-lg ml-1.5">
         {#if settingsOpen}
-          <span class="px-3 py-1 text-[13px] font-medium {textPrimary}">Settings</span>
+          <span class="px-3 py-1 text-[13px] font-medium {t.textPrimary}">Settings</span>
         {:else}
           <button
             class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'overview' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+              {activeTab === 'overview' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('overview')}
           >Overview</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
             class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'files' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+              {activeTab === 'files' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('files')}
           >Files</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
             class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'tasks' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+              {activeTab === 'tasks' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('tasks')}
           >Tasks</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
             class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'git' ? `font-medium ${textPrimary} border-brand-500` : `${textTertiary} hover:text-zinc-500 border-transparent`}"
+              {activeTab === 'git' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('git')}
           >Git</button>
         {/if}
       </div>
 
       <!-- Right scoop: inverse radius where tab pill meets dark frame -->
-      <div class="w-2.5 h-2.5 {mainBg} self-end overflow-hidden shrink-0">
+      <div class="w-2.5 h-2.5 {t.mainBg} self-end overflow-hidden shrink-0">
         <div class="w-full h-full bg-brand-950 rounded-bl-full"></div>
       </div>
 
@@ -1160,13 +1152,13 @@
     </aside>
 
     <!-- ═══ MAIN PANEL ═══ -->
-    <main class="flex-1 {mainBg} {textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
+    <main class="flex-1 {t.mainBg} {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
       {#if settingsOpen}
         <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} {codeThemeLight} {codeThemeDark} onCodeThemeChanged={handleCodeThemeChanged} />
       {:else if !selectedProject}
         <!-- No project selected -->
         <div class="flex-1 flex items-center justify-center">
-          <p class="text-[13px] {textTertiary}">Select a project</p>
+          <p class="text-[13px] {t.textTertiary}">Select a project</p>
         </div>
       {:else}
       {#key selectedProject.id}
@@ -1176,14 +1168,14 @@
         <!-- Project header -->
         <div class="px-7 pt-5 pb-4 shrink-0 content-enter">
           <div class="flex items-baseline gap-3">
-            <h1 class="text-[18px] font-semibold {textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
-            <span class="text-[11px] font-mono {textTertiary}">{selectedProject.branch || ''}</span>
+            <h1 class="text-[18px] font-semibold {t.textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
+            <span class="text-[11px] font-mono {t.textTertiary}">{selectedProject.branch || ''}</span>
             {#if selectedProject.activity_state}
               <span class="text-[11px] {statusColor} font-medium capitalize">{selectedProject.activity_state}</span>
             {/if}
           </div>
           {#if selectedProject.description}
-            <p class="mt-0.5 text-[13px] {textTertiary}">{selectedProject.description}</p>
+            <p class="mt-0.5 text-[13px] {t.textTertiary}">{selectedProject.description}</p>
           {/if}
         </div>
 
@@ -1192,27 +1184,27 @@
           <div class="max-w-3xl px-7 pb-8">
 
             <!-- Hero area: Session / README toggle (ADR-006) -->
-            <section class="pb-6 border-b {keyline}">
+            <section class="pb-6 border-b {t.keyline}">
               <div class="flex items-center justify-between mb-3">
                 {#if hasToggle}
                   <!-- Segmented control -->
                   <div class="flex items-center gap-0.5 rounded-md p-0.5 {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'}">
                     <button
                       class="px-2.5 py-0.5 text-[11px] rounded transition-colors
-                        {showSession ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${textTertiary} hover:${textSecondary}`}"
+                        {showSession ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${t.textTertiary} hover:${t.textSecondary}`}"
                       onclick={() => heroMode = 'session'}
                     >Session</button>
                     <button
                       class="px-2.5 py-0.5 text-[11px] rounded transition-colors
-                        {showReadme ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${textTertiary} hover:${textSecondary}`}"
+                        {showReadme ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${t.textTertiary} hover:${t.textSecondary}`}"
                       onclick={() => heroMode = 'readme'}
                     >README</button>
                   </div>
                 {:else}
-                  <span class="text-[11px] {textTertiary}">{latestSession ? 'Latest session' : readmeContent ? 'README' : 'Latest session'}</span>
+                  <span class="text-[11px] {t.textTertiary}">{latestSession ? 'Latest session' : readmeContent ? 'README' : 'Latest session'}</span>
                 {/if}
                 {#if latestSession}
-                  <span class="text-[11px] {textTertiary}">{formatSessionDate(latestSession.date)}</span>
+                  <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
                 {/if}
               </div>
 
@@ -1229,14 +1221,14 @@
                      completes before the user clicks the README pill. -->
                 {#if showSession}
                   <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-                    <p class="text-[13px] {textBody}">{latestSession.summary}</p>
+                    <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
                     {#if latestSession.next_steps && latestSession.next_steps.length > 0}
                       <div class="mt-3">
-                        <span class="text-[11px] {textTertiary}">Next steps</span>
+                        <span class="text-[11px] {t.textTertiary}">Next steps</span>
                         <ul class="mt-1 space-y-0.5">
                           {#each latestSession.next_steps as step}
-                            <li class="text-[13px] {textBody} flex items-start gap-2">
-                              <span class="text-[10px] {textTertiary} mt-1 shrink-0">▸</span>
+                            <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                              <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">▸</span>
                               <span>{step}</span>
                             </li>
                           {/each}
@@ -1245,10 +1237,10 @@
                     {/if}
                     {#if latestSession.open_questions && latestSession.open_questions.length > 0}
                       <div class="mt-3">
-                        <span class="text-[11px] {textTertiary}">Open questions</span>
+                        <span class="text-[11px] {t.textTertiary}">Open questions</span>
                         <ul class="mt-1 space-y-0.5">
                           {#each latestSession.open_questions as question}
-                            <li class="text-[13px] {textBody} flex items-start gap-2">
+                            <li class="text-[13px] {t.textBody} flex items-start gap-2">
                               <span class="text-[10px] text-amber-500 mt-1 shrink-0">?</span>
                               <span>{question}</span>
                             </li>
@@ -1264,14 +1256,14 @@
               {:else if latestSession}
                 <!-- Only session, no README -->
                 <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-                  <p class="text-[13px] {textBody}">{latestSession.summary}</p>
+                  <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
                   {#if latestSession.next_steps && latestSession.next_steps.length > 0}
                     <div class="mt-3">
-                      <span class="text-[11px] {textTertiary}">Next steps</span>
+                      <span class="text-[11px] {t.textTertiary}">Next steps</span>
                       <ul class="mt-1 space-y-0.5">
                         {#each latestSession.next_steps as step}
-                          <li class="text-[13px] {textBody} flex items-start gap-2">
-                            <span class="text-[10px] {textTertiary} mt-1 shrink-0">▸</span>
+                          <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                            <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">▸</span>
                             <span>{step}</span>
                           </li>
                         {/each}
@@ -1280,10 +1272,10 @@
                   {/if}
                   {#if latestSession.open_questions && latestSession.open_questions.length > 0}
                     <div class="mt-3">
-                      <span class="text-[11px] {textTertiary}">Open questions</span>
+                      <span class="text-[11px] {t.textTertiary}">Open questions</span>
                       <ul class="mt-1 space-y-0.5">
                         {#each latestSession.open_questions as question}
-                          <li class="text-[13px] {textBody} flex items-start gap-2">
+                          <li class="text-[13px] {t.textBody} flex items-start gap-2">
                             <span class="text-[10px] text-amber-500 mt-1 shrink-0">?</span>
                             <span>{question}</span>
                           </li>
@@ -1298,17 +1290,17 @@
               {:else}
                 <!-- Empty state -->
                 <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
-                  <p class="text-[13px] {textMuted}">No sessions or README found for this project.</p>
+                  <p class="text-[13px] {t.textMuted}">No sessions or README found for this project.</p>
                 </div>
               {/if}
             </section>
 
             <!-- Recent Activity (commits) -->
-            <section class="py-6 border-b {keyline}">
+            <section class="py-6 border-b {t.keyline}">
               <div class="flex items-center justify-between mb-3">
-                <span class="text-[11px] {textTertiary}">Recent activity</span>
+                <span class="text-[11px] {t.textTertiary}">Recent activity</span>
                 {#if recentCommits.length > 0}
-                  <span class="text-[11px] {textTertiary}">{recentCommits.length} commit{recentCommits.length !== 1 ? 's' : ''}</span>
+                  <span class="text-[11px] {t.textTertiary}">{recentCommits.length} commit{recentCommits.length !== 1 ? 's' : ''}</span>
                 {/if}
               </div>
               {#if commitsLoading}
@@ -1321,24 +1313,24 @@
                   {/each}
                 </div>
               {:else if recentCommits.length === 0}
-                <p class="text-[13px] {textMuted}">No commits found.</p>
+                <p class="text-[13px] {t.textMuted}">No commits found.</p>
               {:else}
                 <div>
                   {#each recentCommits as commit}
                     <button
-                      class="w-full flex items-center h-[30px] text-[13px] text-left {hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
+                      class="w-full flex items-center h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
                       onclick={() => navigateToCommit(commit.hash)}
                       data-testid="overview-commit-row"
                     >
                       <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
-                      <span class="{textBody} truncate flex-1">{commit.message}</span>
+                      <span class="{t.textBody} truncate flex-1">{commit.message}</span>
                       <span class="text-[11px] {timeColor} shrink-0 ml-3">{commit.date}</span>
                     </button>
                   {/each}
                 </div>
                 {#if !showAllCommits}
                   <button
-                    class="mt-1 text-[11px] {textTertiary} hover:underline"
+                    class="mt-1 text-[11px] {t.textTertiary} hover:underline"
                     onclick={viewAllCommits}
                   >View all &rarr;</button>
                 {/if}
@@ -1346,11 +1338,11 @@
             </section>
 
             <!-- Relationships -->
-            <section class="py-6 border-b {keyline}">
+            <section class="py-6 border-b {t.keyline}">
               <div class="flex items-center justify-between mb-3">
-                <span class="text-[11px] {textTertiary}">Relationships</span>
+                <span class="text-[11px] {t.textTertiary}">Relationships</span>
                 {#if relationships.length > 0}
-                  <span class="text-[11px] {textTertiary}">{relationships.length} connection{relationships.length !== 1 ? 's' : ''}</span>
+                  <span class="text-[11px] {t.textTertiary}">{relationships.length} connection{relationships.length !== 1 ? 's' : ''}</span>
                 {/if}
               </div>
               {#if relationshipsLoading}
@@ -1364,7 +1356,7 @@
                   {/each}
                 </div>
               {:else if relationships.length === 0}
-                <p class="text-[13px] {textMuted}">No connections detected yet.</p>
+                <p class="text-[13px] {t.textMuted}">No connections detected yet.</p>
               {:else}
                 <div>
                   {#each relationships as rel}
@@ -1372,13 +1364,13 @@
                     {@const projectName = getRelatedProjectName(rel)}
                     {@const typeLabel = RELATIONSHIP_TYPE_LABELS[rel.relationship_type] || rel.relationship_type}
                     {@const sourceLabel = DETECTION_SOURCE_LABELS[rel.detection_source] || rel.detection_source}
-                    <div class="flex items-center h-[30px] text-[13px] {hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
+                    <div class="flex items-center h-[30px] text-[13px] {t.hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
                       <!-- Direction arrow -->
-                      <span class="w-5 text-center shrink-0 {textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
+                      <span class="w-5 text-center shrink-0 {t.textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
 
                       <!-- Project name (clickable) -->
                       <button
-                        class="text-[13px] {linkColor} truncate transition-colors"
+                        class="text-[13px] {t.linkColor} truncate transition-colors"
                         onclick={() => {
                           const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
                           const p = projects.find(pr => pr.id === otherId)
@@ -1390,12 +1382,12 @@
                       <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded {tagBg} shrink-0">{typeLabel}</span>
 
                       <!-- Detection source -->
-                      <span class="ml-2 text-[10px] {textTertiary} shrink-0">{sourceLabel}</span>
+                      <span class="ml-2 text-[10px] {t.textTertiary} shrink-0">{sourceLabel}</span>
 
                       <!-- Dismiss button (only for auto-detected) -->
                       {#if rel.detection_source !== 'manual'}
                         <button
-                          class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {textMuted} hover:{textSecondary} transition-all shrink-0"
+                          class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {t.textMuted} hover:{t.textSecondary} transition-all shrink-0"
                           onclick={() => handleDismissRelationship(rel.id)}
                           aria-label="Dismiss relationship"
                           data-testid="dismiss-relationship"
@@ -1412,11 +1404,11 @@
             </section>
 
             <!-- Session History -->
-            <section class="py-6 border-b {keyline}">
+            <section class="py-6 border-b {t.keyline}">
               <div class="flex items-center justify-between mb-3">
-                <span class="text-[11px] {textTertiary}">Session history</span>
+                <span class="text-[11px] {t.textTertiary}">Session history</span>
                 {#if sessionHistory.length > 0}
-                  <span class="text-[11px] {textTertiary}">{sessionHistory.length} session{sessionHistory.length !== 1 ? 's' : ''}</span>
+                  <span class="text-[11px] {t.textTertiary}">{sessionHistory.length} session{sessionHistory.length !== 1 ? 's' : ''}</span>
                 {/if}
               </div>
               {#if sessionLoading}
@@ -1429,13 +1421,13 @@
                   {/each}
                 </div>
               {:else if sessionHistory.length === 0}
-                <p class="text-[13px] {textMuted}">No sessions imported yet.</p>
+                <p class="text-[13px] {t.textMuted}">No sessions imported yet.</p>
               {:else}
                 <div>
                   {#each sessionHistory as session}
-                    <div class="flex items-start gap-3 py-1.5 {hoverRow} -mx-2 px-2 rounded">
-                      <span class="text-[11px] {textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
-                      <span class="text-[13px] {textBody} flex-1">{session.summary}</span>
+                    <div class="flex items-start gap-3 py-1.5 {t.hoverRow} -mx-2 px-2 rounded">
+                      <span class="text-[11px] {t.textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
+                      <span class="text-[13px] {t.textBody} flex-1">{session.summary}</span>
                     </div>
                   {/each}
                 </div>
@@ -1444,21 +1436,21 @@
 
             <!-- Project Info -->
             <section class="py-6 pb-10">
-              <span class="text-[11px] {textTertiary}">Project info</span>
+              <span class="text-[11px] {t.textTertiary}">Project info</span>
               <div class="mt-2 space-y-1 text-[13px]">
                 <div class="flex items-center gap-3">
-                  <span class="{textTertiary} w-14">Path</span>
-                  <span class="font-mono text-[12px] {textMuted}">{selectedProject.path}</span>
+                  <span class="{t.textTertiary} w-14">Path</span>
+                  <span class="font-mono text-[12px] {t.textMuted}">{selectedProject.path}</span>
                 </div>
                 {#if selectedProject.created_at}
                   <div class="flex items-center gap-3">
-                    <span class="{textTertiary} w-14">Created</span>
-                    <span class="text-[12px] {textMuted}">{new Date(selectedProject.created_at).toLocaleDateString()}</span>
+                    <span class="{t.textTertiary} w-14">Created</span>
+                    <span class="text-[12px] {t.textMuted}">{new Date(selectedProject.created_at).toLocaleDateString()}</span>
                   </div>
                 {/if}
               </div>
               <div class="mt-3 flex gap-3">
-                <button class="text-[11px] {textTertiary}">Edit</button>
+                <button class="text-[11px] {t.textTertiary}">Edit</button>
                 <button class="text-[11px] {dangerColor}">Remove</button>
               </div>
             </section>
@@ -1505,7 +1497,7 @@
         <div class="flex-1 flex min-h-0 min-w-0 overflow-hidden">
 
           <!-- File tree (200px fixed) -->
-          <div class="w-[200px] shrink-0 {treeBg} border-r {keyline} flex flex-col overflow-hidden" role="tree">
+          <div class="w-[200px] shrink-0 {t.listBg} border-r {t.keyline} flex flex-col overflow-hidden" role="tree">
             <div class="flex-1 overflow-y-auto pt-2">
               {#if fileTreeLoading}
                 <div class="px-3 space-y-1" data-testid="filetree-loading">
@@ -1518,15 +1510,15 @@
                 </div>
               {:else if fileTree.length === 0}
                 <div class="px-4 pt-6 text-center">
-                  <p class="text-[12px] {textMuted}">No viewable files</p>
-                  <p class="text-[11px] {textTertiary} mt-1">Check ignore patterns in Settings</p>
+                  <p class="text-[12px] {t.textMuted}">No viewable files</p>
+                  <p class="text-[11px] {t.textTertiary} mt-1">Check ignore patterns in Settings</p>
                 </div>
               {:else}
                 {#snippet treeNodes(nodes, depth)}
                   {#each nodes as node}
                     {#if node.is_dir}
                       <button
-                        class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {textSecondary} {treeHover} rounded transition-colors"
+                        class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
                         style="padding-left: {8 + depth * 16}px"
                         onclick={() => toggleDir(node.path)}
                         role="treeitem"
@@ -1544,7 +1536,7 @@
                       {@const isSelected = selectedFile === node.path}
                       <button
                         class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] rounded transition-colors
-                          {isSelected ? treeSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${treeHover}`}"
+                          {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
                         style="padding-left: {22 + depth * 16}px"
                         onclick={() => openFile(node.path)}
                         role="treeitem"
@@ -1565,16 +1557,16 @@
           <div class="flex-1 flex flex-col min-w-0 content-enter">
             {#if !selectedFile}
               <div class="flex-1 flex items-center justify-center">
-                <p class="text-[13px] {textMuted}">Select a file from the tree</p>
+                <p class="text-[13px] {t.textMuted}">Select a file from the tree</p>
               </div>
             {:else}
               <!-- File header -->
-              <div class="h-[44px] flex items-center px-6 border-b {keyline} shrink-0">
-                <span class="text-[14px] font-medium {textPrimary} truncate">{selectedFile}</span>
+              <div class="h-[44px] flex items-center px-6 border-b {t.keyline} shrink-0">
+                <span class="text-[14px] font-medium {t.textPrimary} truncate">{selectedFile}</span>
                 {#if fileType === 'image'}
-                  <span class="ml-3 text-[11px] {textTertiary}">image</span>
+                  <span class="ml-3 text-[11px] {t.textTertiary}">image</span>
                 {:else if fileContent?.language}
-                  <span class="ml-3 text-[11px] {textTertiary}">{fileContent.language}</span>
+                  <span class="ml-3 text-[11px] {t.textTertiary}">{fileContent.language}</span>
                 {/if}
               </div>
 
@@ -1587,7 +1579,7 @@
                     {/each}
                   </div>
                 {:else if fileError}
-                  <div class="flex flex-col items-center justify-center h-full gap-2 {textTertiary}">
+                  <div class="flex flex-col items-center justify-center h-full gap-2 {t.textTertiary}">
                     {#if fileError === 'binary'}
                       <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                       <span class="text-[13px]">Binary file — cannot display as text</span>

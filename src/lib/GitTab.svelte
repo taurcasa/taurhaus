@@ -1,26 +1,17 @@
 <script>
   import { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } from './ipc.js'
+  import { themeTokens } from './themeTokens.js'
 
   /** @type {{ projectPath: string, projectId: string, dark: boolean, gitNavTarget: object|null, position: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
   let { projectPath, projectId, dark, gitNavTarget = null, position = $bindable(null), onNavigateToFile, onClearNavTarget } = $props()
 
-  // Dark mode tokens (same pattern as Shell.svelte)
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
-  const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const listBg        = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
-  const listHover     = $derived(dark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100')
-  const listSelected  = $derived(dark ? 'bg-brand-900/40 text-brand-300' : 'bg-brand-100/80 text-brand-700')
-  const hashColor     = $derived(dark ? 'text-brand-400' : 'text-brand-600')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const timeColor     = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
-  const sectionBg     = $derived(dark ? 'bg-zinc-900/30' : 'bg-zinc-50/50')
-  const fileBg        = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80')
   const filterBg      = $derived(dark ? 'bg-brand-900/30 border-brand-500/30' : 'bg-brand-50 border-brand-200')
   const filterText    = $derived(dark ? 'text-brand-300' : 'text-brand-700')
-  const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
 
   // Diff view tokens
   const diffAddBg     = $derived(dark ? 'bg-success-500/10' : 'bg-success-50')
@@ -249,19 +240,19 @@
   <div class="flex-1 flex flex-col min-w-0 content-enter">
     {#if !selectedHash}
       <div class="flex-1 flex items-center justify-center">
-        <p class="text-[13px] {textMuted}">Select a commit to view details</p>
+        <p class="text-[13px] {t.textMuted}">Select a commit to view details</p>
       </div>
     {:else if selectedCommit}
       <!-- Commit header -->
-      <div class="px-6 pt-5 pb-4 border-b {keyline} shrink-0">
+      <div class="px-6 pt-5 pb-4 border-b {t.keyline} shrink-0">
         <div class="flex items-baseline gap-3">
-          <span class="font-mono text-[13px] {hashColor}">{selectedCommit.hash}</span>
-          <span class="text-[11px] {textTertiary}">{selectedCommit.author}</span>
+          <span class="font-mono text-[13px] {t.hashColor}">{selectedCommit.hash}</span>
+          <span class="text-[11px] {t.textTertiary}">{selectedCommit.author}</span>
           <span class="text-[11px] {timeColor}">{selectedCommit.date}</span>
         </div>
-        <p class="mt-2 text-[14px] {textPrimary}">{selectedCommit.message}</p>
+        <p class="mt-2 text-[14px] {t.textPrimary}">{selectedCommit.message}</p>
         {#if selectedCommit.body}
-          <p class="mt-1.5 text-[13px] {textBody} whitespace-pre-wrap">{selectedCommit.body}</p>
+          <p class="mt-1.5 text-[13px] {t.textBody} whitespace-pre-wrap">{selectedCommit.body}</p>
         {/if}
       </div>
 
@@ -273,20 +264,20 @@
             <!-- Sticky navigation header -->
             <div class="sticky top-0 z-10 {dark ? 'bg-zinc-950' : 'bg-white'}">
               <!-- Breadcrumb bar -->
-              <div class="px-4 py-2 border-b {keyline} flex items-center gap-2">
+              <div class="px-4 py-2 border-b {t.keyline} flex items-center gap-2">
                 <button
-                  class="text-[11px] {linkColor} transition-colors flex items-center gap-1"
+                  class="text-[11px] {t.linkColor} transition-colors flex items-center gap-1"
                   onclick={backToFiles}
                   data-testid="back-to-files"
                 >
                   <span class="text-[13px]">&larr;</span>
                   Files ({commitFiles.length})
                 </button>
-                <span class="text-[10px] {textTertiary}">/</span>
-                <span class="text-[12px] font-mono {textBody} truncate">{selectedFilePath}</span>
+                <span class="text-[10px] {t.textTertiary}">/</span>
+                <span class="text-[12px] font-mono {t.textBody} truncate">{selectedFilePath}</span>
                 <div class="flex-1"></div>
                 <button
-                  class="text-[11px] {linkColor} transition-colors"
+                  class="text-[11px] {t.linkColor} transition-colors"
                   onclick={() => handleOpenFile(selectedFilePath)}
                   data-testid="open-file-btn"
                 >Open file &rarr;</button>
@@ -294,7 +285,7 @@
 
               <!-- File pills (compact switching) -->
               {#if commitFiles.length > 1}
-                <div class="px-4 py-2 border-b {keyline} flex flex-wrap gap-1">
+                <div class="px-4 py-2 border-b {t.keyline} flex flex-wrap gap-1">
                   {#each commitFiles as file}
                     {@const isActive = selectedFilePath === file.path}
                     {@const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.modified}
@@ -324,21 +315,21 @@
                   {/each}
                 </div>
               {:else if diffHunks.length === 0}
-                <p class="text-[12px] {textMuted}" data-testid="diff-empty">Binary file or no changes</p>
+                <p class="text-[12px] {t.textMuted}" data-testid="diff-empty">Binary file or no changes</p>
               {:else}
-                <div class="rounded border {keyline} overflow-hidden" data-testid="diff-content">
+                <div class="rounded border {t.keyline} overflow-hidden" data-testid="diff-content">
                   {#each diffHunks as hunk, hunkIdx}
                     <!-- Hunk header -->
-                    <div class="px-3 py-1 {hunkHeaderBg} {hunkHeaderText} text-[11px] font-mono border-b {keyline}">
+                    <div class="px-3 py-1 {hunkHeaderBg} {hunkHeaderText} text-[11px] font-mono border-b {t.keyline}">
                       @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},{hunk.new_lines} @@
                     </div>
                     <!-- Diff lines -->
                     {#each hunk.lines as line}
                       {@const bgClass = line.origin === '+' ? diffAddBg : line.origin === '-' ? diffDelBg : ''}
-                      {@const textClass = line.origin === '+' ? diffAddText : line.origin === '-' ? diffDelText : textBody}
+                      {@const textClass = line.origin === '+' ? diffAddText : line.origin === '-' ? diffDelText : t.textBody}
                       <div class="flex font-mono text-[12px] leading-[20px] {bgClass}" data-testid="diff-line">
-                        <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {keyline}">{line.old_lineno ?? ''}</span>
-                        <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {keyline}">{line.new_lineno ?? ''}</span>
+                        <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {t.keyline}">{line.old_lineno ?? ''}</span>
+                        <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {t.keyline}">{line.new_lineno ?? ''}</span>
                         <span class="w-4 shrink-0 text-center select-none {textClass}">{line.origin}</span>
                         <span class="flex-1 px-1 whitespace-pre {textClass}">{line.content}</span>
                       </div>
@@ -352,9 +343,9 @@
           <!-- File list view -->
           <div class="px-6 py-4">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-[11px] font-medium uppercase tracking-[0.06em] {textTertiary}">Files changed</span>
+              <span class="text-[11px] font-medium uppercase tracking-[0.06em] {t.textTertiary}">Files changed</span>
               {#if !filesLoading}
-                <span class="text-[11px] {textTertiary}">{commitFiles.length} file{commitFiles.length !== 1 ? 's' : ''}</span>
+                <span class="text-[11px] {t.textTertiary}">{commitFiles.length} file{commitFiles.length !== 1 ? 's' : ''}</span>
               {/if}
             </div>
 
@@ -368,18 +359,18 @@
                 {/each}
               </div>
             {:else if commitFiles.length === 0}
-              <p class="text-[12px] {textMuted}">No files changed</p>
+              <p class="text-[12px] {t.textMuted}">No files changed</p>
             {:else}
               <div class="space-y-0.5">
                 {#each commitFiles as file}
                   {@const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.modified}
                   <button
-                    class="w-full text-left flex items-center gap-2 h-[28px] px-2 rounded transition-colors {fileBg}"
+                    class="w-full text-left flex items-center gap-2 h-[28px] px-2 rounded transition-colors {t.fileBg}"
                     onclick={() => handleFileClick(file.path)}
                     data-testid="commit-file"
                   >
                     <span class="w-3 text-center font-mono text-[11px] font-bold {display.color} shrink-0">{display.icon}</span>
-                    <span class="text-[12px] font-mono {textBody} truncate">{file.path}</span>
+                    <span class="text-[12px] font-mono {t.textBody} truncate">{file.path}</span>
                   </button>
                 {/each}
               </div>
@@ -391,19 +382,19 @@
   </div>
 
   <!-- Commit list (right panel) -->
-  <div class="w-[320px] shrink-0 {listBg} border-l {keyline} flex flex-col overflow-hidden">
+  <div class="w-[320px] shrink-0 {t.listBg} border-l {t.keyline} flex flex-col overflow-hidden">
 
     <!-- Range filter indicator -->
     {#if rangeFilter}
-      <div class="px-3 py-2 border-b {keyline} {filterBg}" data-testid="range-filter">
+      <div class="px-3 py-2 border-b {t.keyline} {filterBg}" data-testid="range-filter">
         <div class="flex items-center justify-between">
           <span class="text-[10px] font-medium {filterText}">Filtered to session</span>
           <button
-            class="text-[10px] {linkColor} transition-colors"
+            class="text-[10px] {t.linkColor} transition-colors"
             onclick={clearFilter}
           >Clear</button>
         </div>
-        <div class="text-[10px] {textTertiary} mt-0.5">
+        <div class="text-[10px] {t.textTertiary} mt-0.5">
           {formatRangeDate(rangeFilter.after)} — {formatRangeDate(rangeFilter.before)}
         </div>
       </div>
@@ -429,13 +420,13 @@
       {:else if commits.length === 0}
         <div class="flex-1 flex items-center justify-center px-4" data-testid="git-empty">
           <div class="text-center max-w-xs">
-            <svg class="w-12 h-12 {textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+            <svg class="w-12 h-12 {t.textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p class="mt-4 text-[15px] font-medium {textMuted}">
+            <p class="mt-4 text-[15px] font-medium {t.textMuted}">
               {rangeFilter ? 'No commits in this range' : 'No commits found'}
             </p>
-            <p class="mt-2 text-[13px] leading-relaxed {textTertiary}">
+            <p class="mt-2 text-[13px] leading-relaxed {t.textTertiary}">
               {rangeFilter ? 'Try adjusting the date range filter.' : 'This project has no git history yet.'}
             </p>
           </div>
@@ -445,7 +436,7 @@
           {@const isSelected = selectedHash === commit.hash}
           <button
             class="w-full flex flex-col justify-center h-[46px] text-left rounded mx-1 px-2 py-1 transition-colors
-              {isSelected ? listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${listHover}`}"
+              {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
             style="width: calc(100% - 8px)"
             onclick={() => selectCommit(commit.hash)}
             data-testid="commit-row"
@@ -453,18 +444,18 @@
           >
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-[12px] {isSelected ? '' : timeColor} shrink-0 w-[32px]">{commit.date}</span>
-              <span class="text-[13px] truncate flex-1 {isSelected ? '' : textBody}">{commit.message}</span>
+              <span class="text-[13px] truncate flex-1 {isSelected ? '' : t.textBody}">{commit.message}</span>
             </div>
             <div class="flex items-center gap-2 mt-0.5">
-              <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : textMuted}">{commit.hash}</span>
-              <span class="text-[10px] {isSelected ? 'opacity-60' : textTertiary}">{commit.author}</span>
+              <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : t.textMuted}">{commit.hash}</span>
+              <span class="text-[10px] {isSelected ? 'opacity-60' : t.textTertiary}">{commit.author}</span>
             </div>
           </button>
         {/each}
         {#if hasMore && !rangeFilter}
           <div bind:this={sentinelEl} class="h-8 flex items-center justify-center" data-testid="scroll-sentinel">
             {#if loadingMore}
-              <span class="text-[10px] {textTertiary}">Loading...</span>
+              <span class="text-[10px] {t.textTertiary}">Loading...</span>
             {/if}
           </div>
         {/if}

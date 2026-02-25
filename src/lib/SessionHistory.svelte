@@ -2,24 +2,19 @@
   import { getArchivedSessions, getCommitsInRange } from './ipc.js'
   import { formatDuration } from './format.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { themeTokens } from './themeTokens.js'
 
   /** @type {{ projectPath: string, dark: boolean, onSelectTask?: (task: any) => void, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
   let { projectPath, dark, onSelectTask, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
 
-  // Dark mode tokens
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
-  const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const textMuted     = $derived(dark ? 'text-zinc-600' : 'text-zinc-500')
-  const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens
   const headerBg      = $derived(dark ? 'bg-zinc-900/40' : 'bg-zinc-50/60')
   const headerHover   = $derived(dark ? 'hover:bg-zinc-900/60' : 'hover:bg-zinc-100/80')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
   const detailBg      = $derived(dark ? 'bg-zinc-900/20' : 'bg-zinc-50/30')
   const hashBg        = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-200/80')
-  const hashColor     = $derived(dark ? 'text-brand-400' : 'text-brand-600')
-  const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
-  const fileBg        = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80')
 
   const SOURCE_LABELS = TOOL_NAMES
 
@@ -145,11 +140,11 @@
     <!-- Empty state -->
     <div class="flex-1 flex items-center justify-center" data-testid="history-empty">
       <div class="text-center max-w-xs">
-        <svg class="w-12 h-12 {textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+        <svg class="w-12 h-12 {t.textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p class="mt-4 text-[15px] font-medium {textMuted}">No completed work yet</p>
-        <p class="mt-2 text-[13px] leading-relaxed {textTertiary}">Session summaries appear here after AI tools finish their work.</p>
+        <p class="mt-4 text-[15px] font-medium {t.textMuted}">No completed work yet</p>
+        <p class="mt-2 text-[13px] leading-relaxed {t.textTertiary}">Session summaries appear here after AI tools finish their work.</p>
       </div>
     </div>
 
@@ -172,18 +167,18 @@
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1.5">
       {#each sessions as session (session.session_id)}
         {@const open = isExpanded(session.session_id)}
-        <div class="rounded-lg overflow-hidden border {keyline}">
+        <div class="rounded-lg overflow-hidden border {t.keyline}">
           <!-- Session header (click target) -->
           <button
             class="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg transition-colors cursor-pointer
-              {headerBg} {headerHover} {textPrimary}"
+              {headerBg} {headerHover} {t.textPrimary}"
             data-testid="session-header"
             onclick={() => toggleSession(session.session_id)}
             aria-expanded={open}
           >
             <!-- Chevron -->
             <svg
-              class="w-3 h-3 shrink-0 {textTertiary} transition-transform duration-200 {open ? 'rotate-90' : ''}"
+              class="w-3 h-3 shrink-0 {t.textTertiary} transition-transform duration-200 {open ? 'rotate-90' : ''}"
               fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
             >
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
@@ -192,21 +187,21 @@
             <!-- Date + duration + last archived -->
             <span class="text-[13px] font-semibold">{formatDate(session.started_at)}</span>
             {#if session.duration_ms}
-              <span class="text-[11px] {textTertiary}">{formatDuration(session.duration_ms)}</span>
+              <span class="text-[11px] {t.textTertiary}">{formatDuration(session.duration_ms)}</span>
             {/if}
             {#if formatRelativeTime(session.last_archived_at)}
-              <span class="text-[10px] {textMuted}" data-testid="last-archived">archived {formatRelativeTime(session.last_archived_at)}</span>
+              <span class="text-[10px] {t.textMuted}" data-testid="last-archived">archived {formatRelativeTime(session.last_archived_at)}</span>
             {/if}
 
             <!-- Spacer -->
             <span class="flex-1"></span>
 
             <!-- Task count + commit count pills -->
-            <span class="text-[11px] {textTertiary}">
+            <span class="text-[11px] {t.textTertiary}">
               {session.tasks.length} task{session.tasks.length !== 1 ? 's' : ''}
             </span>
-            <span class="text-[11px] {textMuted}">&middot;</span>
-            <span class="text-[11px] {textTertiary}">
+            <span class="text-[11px] {t.textMuted}">&middot;</span>
+            <span class="text-[11px] {t.textTertiary}">
               {session.commit_count} commit{session.commit_count !== 1 ? 's' : ''}
             </span>
 
@@ -214,7 +209,7 @@
             {#each session.sources as source}
               {@const icon = TOOL_ICONS[source]}
               {#if icon}
-                <span class="w-3 h-3 shrink-0 {textTertiary}" aria-label={SOURCE_LABELS[source] || source}>
+                <span class="w-3 h-3 shrink-0 {t.textTertiary}" aria-label={SOURCE_LABELS[source] || source}>
                   <svg class="w-3 h-3" viewBox={icon.viewBox} fill="currentColor" aria-hidden="true">
                     <path d={icon.path}/>
                   </svg>
@@ -232,7 +227,7 @@
             >
               <!-- Tasks sub-section -->
               <div class="mb-3">
-                <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-1.5">Tasks</h4>
+                <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-1.5">Tasks</h4>
                 <div class="space-y-1">
                   {#each session.tasks as task}
                     <button
@@ -245,10 +240,10 @@
                       <svg class="w-3 h-3 shrink-0 text-success-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
-                      <span class="text-[12px] {textBody} truncate">{task.subject}</span>
+                      <span class="text-[12px] {t.textBody} truncate">{task.subject}</span>
                       <!-- Source icon -->
                       {#if TOOL_ICONS[task.source]}
-                        <span class="w-2.5 h-2.5 shrink-0 {textMuted} ml-auto">
+                        <span class="w-2.5 h-2.5 shrink-0 {t.textMuted} ml-auto">
                           <svg class="w-2.5 h-2.5" viewBox={TOOL_ICONS[task.source].viewBox} fill="currentColor" aria-hidden="true">
                             <path d={TOOL_ICONS[task.source].path}/>
                           </svg>
@@ -271,37 +266,37 @@
                 </div>
               {:else if detail?.commits?.length > 0}
                 <div class="mb-3" data-testid="session-commits">
-                  <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-1.5">Commits</h4>
+                  <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-1.5">Commits</h4>
                   <div class="space-y-0.5">
                     {#each detail.commits.slice(0, 5) as commit}
                       <button
-                        class="w-full text-left flex items-center gap-2 px-2 py-0.5 rounded transition-colors {fileBg}"
+                        class="w-full text-left flex items-center gap-2 px-2 py-0.5 rounded transition-colors {t.fileBg}"
                         onclick={() => onNavigateToCommit?.(commit.hash)}
                         data-testid="session-commit"
                       >
-                        <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
-                        <span class="text-[12px] {textBody} truncate">{commit.message}</span>
+                        <span class="font-mono text-[11px] {t.hashColor} w-[58px] shrink-0">{commit.hash}</span>
+                        <span class="text-[12px] {t.textBody} truncate">{commit.message}</span>
                       </button>
                     {/each}
                     {#if detail.commits.length > 5}
-                      <span class="text-[10px] {textTertiary} px-2">+ {detail.commits.length - 5} more</span>
+                      <span class="text-[10px] {t.textTertiary} px-2">+ {detail.commits.length - 5} more</span>
                     {/if}
                   </div>
                 </div>
               {:else if session.commit_count > 0}
                 <div class="mb-2">
-                  <span class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary}">{session.commit_count} commit{session.commit_count !== 1 ? 's' : ''}</span>
+                  <span class="text-[10px] font-semibold uppercase tracking-[0.06em] {t.textTertiary}">{session.commit_count} commit{session.commit_count !== 1 ? 's' : ''}</span>
                 </div>
               {/if}
 
               <!-- Files sub-section (lazy-loaded) -->
               {#if detail && !detail.loading && detail.files?.length > 0}
                 <div class="mb-3" data-testid="session-files">
-                  <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {textTertiary} mb-1.5">Files changed</h4>
+                  <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-1.5">Files changed</h4>
                   <div class="space-y-0.5">
                     {#each detail.files.slice(0, 8) as filePath}
                       <button
-                        class="w-full text-left flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-mono {textBody} transition-colors {fileBg}"
+                        class="w-full text-left flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-mono {t.textBody} transition-colors {t.fileBg}"
                         onclick={() => onNavigateToFile?.(filePath)}
                         data-testid="session-file"
                       >
@@ -309,12 +304,12 @@
                       </button>
                     {/each}
                     {#if detail.files.length > 8}
-                      <span class="text-[10px] {textTertiary} px-2">+ {detail.files.length - 8} more files</span>
+                      <span class="text-[10px] {t.textTertiary} px-2">+ {detail.files.length - 8} more files</span>
                     {/if}
                   </div>
                 </div>
               {:else if session.file_count > 0 && (!detail || detail.loading)}
-                <div class="text-[10px] {textMuted}">
+                <div class="text-[10px] {t.textMuted}">
                   {session.file_count} file{session.file_count !== 1 ? 's' : ''} changed
                 </div>
               {/if}
@@ -322,7 +317,7 @@
               <!-- View in Git button -->
               {#if session.started_at && session.ended_at}
                 <button
-                  class="mt-1 text-[11px] {linkColor} transition-colors"
+                  class="mt-1 text-[11px] {t.linkColor} transition-colors"
                   onclick={() => onNavigateToCommitRange?.(session.started_at, session.ended_at)}
                   data-testid="view-in-git"
                 >View in Git &rarr;</button>

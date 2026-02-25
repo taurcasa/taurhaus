@@ -1,21 +1,18 @@
 <script>
   import { getSettings, updateSettings, getIndexStatus, rebuildIndex } from './ipc.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
+  import { themeTokens } from './themeTokens.js'
 
   let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
 
-  // Color tokens — $derived based on dark prop
-  const mainBg        = $derived(dark ? 'bg-zinc-950' : 'bg-white')
-  const textPrimary   = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textSecondary = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
+  // Shared theme tokens
+  const t = $derived(themeTokens(dark))
+
+  // Component-specific tokens (different from shared)
   const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
-  const textBody      = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const keyline       = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const linkColor     = $derived(dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700')
   const cardBg        = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-900')
   const addonBg       = $derived(dark ? 'bg-zinc-700/50 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
-  const labelColor    = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
 
   // Settings state
   let settings = $state(null)
@@ -157,14 +154,14 @@
     <!-- Header -->
     <div class="mb-6">
       <button
-        class="text-[13px] {linkColor} transition-colors mb-3 flex items-center gap-1"
+        class="text-[13px] {t.linkColor} transition-colors mb-3 flex items-center gap-1"
         onclick={onClose}
         data-testid="settings-back"
       >
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
         Back to projects
       </button>
-      <h1 class="text-[20px] font-semibold {textPrimary}">Settings</h1>
+      <h1 class="text-[20px] font-semibold {t.textPrimary}">Settings</h1>
     </div>
 
     {#if loading}
@@ -185,16 +182,16 @@
         {/if}
 
         <!-- ═══ PROJECT SCANNING ═══ -->
-        <section class="{cardBg} rounded-lg border {keyline} p-4" data-testid="settings-scanning">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {labelColor} mb-3">Project Scanning</h2>
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-scanning">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Project Scanning</h2>
 
           <!-- Scan directories -->
           <div class="mb-4">
             <div class="flex items-center justify-between mb-1.5">
-              <span class="text-[13px] {textSecondary}">Scan directories</span>
+              <span class="text-[13px] {t.textSecondary}">Scan directories</span>
               {#if !editingScanDirs}
                 <button
-                  class="text-[12px] {linkColor} transition-colors"
+                  class="text-[12px] {t.linkColor} transition-colors"
                   onclick={startEditScanDirs}
                 >Edit</button>
               {/if}
@@ -221,7 +218,7 @@
               {:else}
                 <div class="space-y-1">
                   {#each settings.scan_directories as dir}
-                    <div class="text-[13px] {textBody} font-mono py-0.5">{dir}</div>
+                    <div class="text-[13px] {t.textBody} font-mono py-0.5">{dir}</div>
                   {/each}
                 </div>
               {/if}
@@ -231,10 +228,10 @@
           <!-- Ignore patterns -->
           <div>
             <div class="flex items-center justify-between mb-1.5">
-              <span class="text-[13px] {textSecondary}">Ignore patterns</span>
+              <span class="text-[13px] {t.textSecondary}">Ignore patterns</span>
               {#if !editingIgnore}
                 <button
-                  class="text-[12px] {linkColor} transition-colors"
+                  class="text-[12px] {t.linkColor} transition-colors"
                   onclick={startEditIgnore}
                 >Edit</button>
               {/if}
@@ -270,14 +267,14 @@
         </section>
 
         <!-- ═══ DISPLAY ═══ -->
-        <section class="{cardBg} rounded-lg border {keyline} p-4" data-testid="settings-display">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {labelColor} mb-3">Display</h2>
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-display">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Display</h2>
 
-          <p class="text-[13px] {textSecondary} mb-4">Activity state thresholds (days since last activity)</p>
+          <p class="text-[13px] {t.textSecondary} mb-4">Activity state thresholds (days since last activity)</p>
 
           <div class="space-y-3">
             <div class="flex items-center gap-3">
-              <label for="threshold-active" class="text-[13px] {textBody} w-20">Active</label>
+              <label for="threshold-active" class="text-[13px] {t.textBody} w-20">Active</label>
               <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
                 <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
                 <input
@@ -294,7 +291,7 @@
             </div>
 
             <div class="flex items-center gap-3">
-              <label for="threshold-recent" class="text-[13px] {textBody} w-20">Recent</label>
+              <label for="threshold-recent" class="text-[13px] {t.textBody} w-20">Recent</label>
               <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
                 <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
                 <input
@@ -311,7 +308,7 @@
             </div>
 
             <div class="flex items-center gap-3">
-              <label for="threshold-stale" class="text-[13px] {textBody} w-20">Stale</label>
+              <label for="threshold-stale" class="text-[13px] {t.textBody} w-20">Stale</label>
               <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
                 <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
                 <input
@@ -329,11 +326,11 @@
           </div>
 
           <!-- Syntax highlighting themes -->
-          <div class="mt-5 pt-4 border-t {keyline}">
-            <p class="text-[13px] {textSecondary} mb-3">Syntax highlighting</p>
+          <div class="mt-5 pt-4 border-t {t.keyline}">
+            <p class="text-[13px] {t.textSecondary} mb-3">Syntax highlighting</p>
             <div class="space-y-3">
               <div class="flex items-center gap-3">
-                <label for="code-theme-light" class="text-[13px] {textBody} w-20">Light</label>
+                <label for="code-theme-light" class="text-[13px] {t.textBody} w-20">Light</label>
                 <select
                   id="code-theme-light"
                   class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -347,7 +344,7 @@
                 </select>
               </div>
               <div class="flex items-center gap-3">
-                <label for="code-theme-dark" class="text-[13px] {textBody} w-20">Dark</label>
+                <label for="code-theme-dark" class="text-[13px] {t.textBody} w-20">Dark</label>
                 <select
                   id="code-theme-dark"
                   class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -369,13 +366,13 @@
         </section>
 
         <!-- ═══ SEARCH INDEX ═══ -->
-        <section class="{cardBg} rounded-lg border {keyline} p-4" data-testid="settings-index">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {labelColor} mb-3">Search Index</h2>
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-index">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Search Index</h2>
 
           {#if indexStatus}
             <div class="flex items-center gap-4 mb-3">
               <div>
-                <p class="text-[13px] {textBody}">
+                <p class="text-[13px] {t.textBody}">
                   {indexStatus.doc_count} document{indexStatus.doc_count !== 1 ? 's' : ''} indexed
                 </p>
               </div>
@@ -383,7 +380,7 @@
           {/if}
 
           <button
-            class="px-3 py-1.5 text-[13px] rounded-md border {keyline} {textSecondary} transition-colors disabled:opacity-50 {dark ? 'hover:bg-zinc-800 hover:border-zinc-700' : 'hover:bg-zinc-100 hover:border-zinc-300'}"
+            class="px-3 py-1.5 text-[13px] rounded-md border {t.keyline} {t.textSecondary} transition-colors disabled:opacity-50 {dark ? 'hover:bg-zinc-800 hover:border-zinc-700' : 'hover:bg-zinc-100 hover:border-zinc-300'}"
             onclick={handleRebuildIndex}
             disabled={rebuilding}
             data-testid="rebuild-index-btn"
