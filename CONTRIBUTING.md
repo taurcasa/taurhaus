@@ -1,0 +1,124 @@
+# Contributing to taurhaus
+
+Thanks for your interest in contributing! This guide covers everything you need to get started.
+
+## Development Environment
+
+### Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| WSL2 | Ubuntu recommended | `wsl --install` |
+| Rust | Latest stable | [rustup.rs](https://rustup.rs/) |
+| Node.js | 20+ | Via [fnm](https://github.com/Schniz/fnm) or nvm |
+| just | Latest | `cargo install just` |
+| tmux | 3.0+ | `sudo apt install tmux` |
+
+### Setup
+
+```bash
+git clone https://github.com/stierma/taurhaus.git
+cd taurhaus
+npm install
+just dev  # Full Tauri dev mode with hot-reload
+```
+
+For frontend-only development (no Rust backend):
+
+```bash
+just dev-frontend
+```
+
+## Code Standards
+
+### Svelte 5
+
+- **Runes only**: `$state`, `$derived`, `$effect`, `$props`. No legacy stores or reactive syntax.
+- **Dark mode via `$derived` tokens**: All color switching through named derived variables. Never inline ternaries for colors in templates.
+- **Semantic HTML**: `<aside>` for sidebar, `<main>` for content, `<nav>` for navigation.
+
+### Tailwind v4
+
+- Custom design tokens defined in `app.css` using `@theme`.
+- Document any non-standard arbitrary values.
+- If you define a color shade (e.g., `success-500`), define every shade you reference in class names.
+
+### Rust
+
+- Standard Rust conventions: `clippy` clean, `rustfmt` formatted.
+- Error handling via `thiserror` for typed errors.
+- Tests use `#[test]` with `pretty_assertions` and `tempfile` for temp dirs.
+
+### General
+
+- No over-engineering: don't abstract until there's actual duplication.
+- No backwards-compatibility hacks for removed code.
+- Keep solutions simple and focused on what was asked.
+
+## Testing
+
+All tests must pass before submitting a PR:
+
+```bash
+just check  # Runs clippy + svelte-check + all tests
+```
+
+Individual test suites:
+
+```bash
+just test-rust       # Rust unit tests
+just test-frontend   # Frontend tests (Vitest)
+```
+
+Frontend tests run from the project root (not `src-tauri/`). Vitest is configured to find test files at the root level.
+
+## Pull Request Process
+
+1. Create a feature branch from `main`
+2. Make your changes with clear, focused commits
+3. Run `just check` and ensure everything passes
+4. Open a PR with a clear title and description
+5. Include a brief test plan (what you tested and how)
+
+### Commit Messages
+
+- Use imperative mood: "Add feature" not "Added feature"
+- First line: concise summary (under 72 characters)
+- Optional body: explain "why" not "what"
+
+### What Makes a Good PR
+
+- Focused on a single concern
+- Tests for new behavior
+- No unrelated changes mixed in
+- Both light and dark mode considered for UI changes
+
+## Project Structure
+
+```
+src/                    # Svelte frontend
+  lib/                  # Shared components and utilities
+  Shell.svelte          # Main app layout
+  App.svelte            # Entry point with splash screen
+  app.css               # Design tokens and global styles
+src-tauri/              # Rust backend
+  src/
+    commands/           # Tauri IPC command handlers
+    daemon/             # WSL daemon (launcher, protocol, server)
+    session_scanner/    # Multi-CLI session detection
+    db/                 # SQLite queries and migrations
+    git/                # libgit2 wrapper
+    search/             # tantivy full-text search
+docs/                   # Design docs, architecture, guides
+e2e/                    # WebdriverIO end-to-end tests
+```
+
+## Getting Help
+
+- Check existing [issues](../../issues) before filing a new one
+- For architecture questions, see [ARCHITECTURE.md](ARCHITECTURE.md)
+- For detailed ADRs, see [docs/phase-4-architecture.md](docs/phase-4-architecture.md)
+
+## Code of Conduct
+
+Be respectful, constructive, and welcoming. We follow the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
