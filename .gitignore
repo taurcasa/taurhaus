@@ -33,6 +33,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Build artifacts (macOS/Windows binaries, DMGs, installers)
+builds/
+
 # Bundled daemon binary (built artifact, copied before Windows build)
 src-tauri/resources/
 
