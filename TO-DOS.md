@@ -118,7 +118,7 @@ taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support r
 ### Phase 1 — Platform Abstraction Design
 
 - [x] **M01** — Write platform abstraction design doc. Map every `/proc` dependency to its macOS equivalent. Document: process CWD (`/proc/PID/cwd` → libproc), IO activity (`/proc/PID/io` → `proc_pid_rusage`), TCP sockets (`/proc/PID/net/tcp` → lsof/libproc), TTY detection (`/proc/PID/fd/0` → ttyname). Define `PlatformProbe` trait API. Write to `docs/platform-abstraction.md`.
-- [ ] **M02** — Create `platform` module structure. New `src-tauri/src/platform/` with: `mod.rs` (trait definitions + compile-time dispatch), `linux.rs` (existing `/proc` code extracted), `macos.rs` (stubs that return `None`/`Err`). Project compiles on both targets with stubs.
+- [x] **M02** — Create `platform` module structure. New `src-tauri/src/platform/` with: `mod.rs` (trait definitions + compile-time dispatch), `linux.rs` (existing `/proc` code extracted), `macos.rs` (stubs that return `None`/`Err`). Project compiles on both targets with stubs.
 
 ### Phase 2 — Extract Linux Code
 

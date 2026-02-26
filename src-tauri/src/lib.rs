@@ -24,6 +24,8 @@ pub mod task_scanner;
 
 pub mod terminal;
 
+pub mod platform;
+
 use std::sync::Mutex;
 
 use commands::projects::DbState;
