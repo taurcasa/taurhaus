@@ -298,16 +298,11 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
 
         let full_path = entry.path().to_string_lossy().to_string();
 
-        // Check if this directory has subdirectories (for expand chevron)
-        let is_expandable = std::fs::read_dir(entry.path())
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .any(|e| {
-                        e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
-                            && !e.file_name().to_string_lossy().starts_with('.')
-                    })
-            })
-            .unwrap_or(false);
+        // Assume all directories are expandable (lazy-check).
+        // Eagerly checking via nested read_dir is an N+1 penalty and on macOS
+        // it triggers TCC permission prompts for protected folders like
+        // ~/Desktop, ~/Documents, etc., which block the IPC thread.
+        let is_expandable = true;
 
         entries.push(DirectoryEntry {
             name,

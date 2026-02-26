@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte'
   import { listDirectory, getSystemRoots } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
 
@@ -123,8 +124,9 @@
     systemRoots = await getSystemRoots()
   }
 
-  // Auto-init on mount
-  $effect(() => {
+  // Init once on mount (not $effect — initTree writes reactive state it also reads,
+  // which would cause an infinite re-trigger loop)
+  onMount(() => {
     initTree()
   })
 </script>
