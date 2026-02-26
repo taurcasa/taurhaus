@@ -10,7 +10,9 @@ dev-frontend:
     npm run dev
 
 # Run full Tauri dev (frontend + backend)
+# Creates placeholder daemon resource if missing (Tauri validates at compile time)
 dev:
+    @mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
     npm run dev:tauri
 
 # Run all checks (quality gate)
@@ -125,9 +127,16 @@ sync-windows:
         {{project}}/ {{win_dir}}/
     @echo "✓ Sync complete"
 
+# Copy daemon binary to Tauri resources for bundling
+bundle-daemon: build-daemon
+    @echo "▸ Bundling daemon binary into src-tauri/resources/…"
+    mkdir -p src-tauri/resources
+    cp src-tauri/target/release/taurhaus-daemon src-tauri/resources/taurhaus-daemon
+    @echo "✓ Daemon binary bundled"
+
 # Build Windows NSIS installer (syncs first, builds natively on Windows)
 # Also rebuilds the WSL daemon to keep them in sync.
-build-windows: install-daemon sync-windows
+build-windows: install-daemon bundle-daemon sync-windows
     @echo "Note: cmd.exe may print 'UNC paths are not supported'. This is harmless."
     @echo "▸ Installing frontend dependencies on Windows…"
     cmd.exe /c "cd /d {{win_drive}} && npm install"

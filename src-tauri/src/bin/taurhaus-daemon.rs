@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use taurhaus_lib::daemon::server::{DaemonConfig, DEFAULT_PORT};
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() {
     let args = parse_args();
 
@@ -92,6 +94,10 @@ fn parse_args() -> Args {
             "--verbose" | "-v" => {
                 args.verbose = true;
             }
+            "--version" | "-V" => {
+                println!("taurhaus-daemon {VERSION}");
+                std::process::exit(0);
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -122,5 +128,6 @@ fn print_help() {
     eprintln!("  -b, --bind <ADDR>          Bind address (default: 127.0.0.1)");
     eprintln!("      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)");
     eprintln!("  -v, --verbose              Enable debug logging");
+    eprintln!("  -V, --version              Print version and exit");
     eprintln!("  -h, --help                 Show this help");
 }

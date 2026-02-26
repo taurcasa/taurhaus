@@ -32,6 +32,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Bundled daemon binary (built artifact, copied before Windows build)
+src-tauri/resources/
+
 # Development screenshots (Playwright captures, visual reviews)
 *.png
 !docs/*.png
