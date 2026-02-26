@@ -32,7 +32,21 @@ describe('README Screenshots', () => {
     await browser.pause(2_000)
   })
 
-  it('hero — Overview tab', async () => {
+  it('hero — Overview tab (ledger project)', async () => {
+    // Navigate to "ledger" project for a clean README that isn't self-referential
+    // Use JS textContent because WebKit getText() doesn't return full text on truncated elements
+    const sidebarItems = await $$('[data-testid="project-item"]')
+    for (const item of sidebarItems) {
+      const text = await browser.execute((el) => el.textContent, item)
+      if (text && text.toLowerCase().includes('ledger')) {
+        await item.scrollIntoView()
+        await browser.pause(300)
+        await item.click()
+        await browser.pause(2_000)
+        break
+      }
+    }
+
     const overviewTab = await $('button=Overview')
     await overviewTab.click()
     await browser.pause(1_500)
