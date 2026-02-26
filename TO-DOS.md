@@ -134,7 +134,7 @@ taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support r
 - [x] **M09** — Implement `DarwinProbe` TCP socket detection. Use `lsof -p PID -i TCP -s TCP:ESTABLISHED` parsing or `libproc` `proc_pidinfo(PROC_PIDLISTFDS)` + `proc_pidfdinfo()`. Must detect Gemini's :443 connections.
 - [x] **M10** — Implement macOS daemon launcher. No WSL layer — daemon is a native binary. Modify `launcher.rs` with `#[cfg(target_os = "macos")]` path: spawn daemon directly, resolve home dir natively. Handle launchd integration if appropriate (daemon auto-start on login).
 - [x] **M11** — Implement macOS terminal integration. Replace Windows Terminal logic with macOS equivalents: Terminal.app via AppleScript (`osascript`), iTerm2 via its AppleScript API. Add terminal preference option for macOS (Terminal.app / iTerm2 / custom). Update Settings UI to show macOS-relevant options when running on macOS.
-- [ ] **M12** — macOS icon and bundle configuration. Generate `.icns` icon file from existing logo PNGs. Update `tauri.conf.json` with macOS bundle settings (identifier, category, entitlements). Configure DMG installer appearance.
+- [x] **M12** — macOS icon and bundle configuration. Generate `.icns` icon file from existing logo PNGs. Update `tauri.conf.json` with macOS bundle settings (identifier, category, entitlements). Configure DMG installer appearance.
 
 ### Phase 4 — Build & Test on macOS
 
