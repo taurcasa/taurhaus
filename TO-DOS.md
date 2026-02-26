@@ -91,6 +91,68 @@ Current settings are limited to activity thresholds and code themes. Users need 
 
 ---
 
+# Beta Readiness — v1.1
+
+Three topics that must be completed before beta distribution.
+
+## Topic 1: Daemon Auto-Install via Wizard
+
+Currently the WSL daemon must be pre-installed manually (`just install-daemon`). Beta users shouldn't need a dev environment. The Windows installer should handle daemon setup automatically.
+
+**Approach**: Bundle the pre-built Linux daemon binary inside the Windows app resources. The FirstRunWizard detects if the daemon is missing/outdated and offers one-click installation into WSL.
+
+- [ ] **B01** — Design doc: daemon auto-install flow. Document: (a) how the daemon binary gets bundled in Tauri resources, (b) wizard step UX (detect → prompt → install → verify), (c) version mismatch handling (app update ships newer daemon), (d) error states (no WSL, permission denied, wrong distro). Write to `docs/daemon-install.md`.
+- [ ] **B02** — Bundle daemon binary in Tauri resources. Add Linux release binary to `tauri.conf.json` `bundle.resources`. Update `justfile` to build the daemon before the Windows build and copy it to the resources directory. Verify the binary appears in the installed app's resource folder.
+- [ ] **B03** — Add daemon detection IPC command. New Rust command `check_daemon_status` that: (a) checks if `~/.local/bin/taurhaus-daemon` exists in WSL, (b) if it exists, runs it with `--version` to get the version, (c) compares against the bundled version, (d) returns `{ installed: bool, version?: string, bundled_version: string, needs_update: bool }`.
+- [ ] **B04** — Add daemon install IPC command. New Rust command `install_daemon` that: (a) resolves the bundled binary path from Tauri resources, (b) copies it to WSL `~/.local/bin/taurhaus-daemon` via `wsl.exe`, (c) sets executable permissions (`chmod +x`), (d) returns success/error. Must handle: WSL not installed, permission errors, distro detection.
+- [ ] **B05** — Add daemon setup step to FirstRunWizard. New step between welcome and project scan: (a) calls `check_daemon_status`, (b) if daemon missing/outdated shows install prompt with explanation, (c) "Install" button calls `install_daemon` with progress feedback, (d) on success shows green checkmark and proceeds, (e) on failure shows error with manual install instructions as fallback. Skip step entirely if daemon already current.
+- [ ] **B06** — Add daemon update detection to app startup. Outside the wizard, on normal app launch: (a) check daemon version vs bundled version, (b) if outdated, show a non-blocking banner "Daemon update available" with one-click update button, (c) update uses same `install_daemon` command, (d) after update, restart daemon automatically.
+- [ ] **B07** — Test daemon install end-to-end. Uninstall daemon from WSL, run app, verify wizard offers install, install succeeds, daemon starts, app connects. Test version mismatch update flow. Test error paths (no WSL, wrong permissions). Add E2E regression test.
+
+## Topic 2: macOS Port
+
+taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support requires: platform abstraction for `/proc`-dependent process detection, native daemon launching (no WSL), macOS terminal integration, and a `.dmg` build pipeline.
+
+**Approach**: `PlatformProbe` trait with `LinuxProbe` and `DarwinProbe` implementations behind `#[cfg(target_os)]`. Daemon runs natively on macOS. Build and test on a remote macOS machine (Scaleway/MacStadium).
+
+### Phase 1 — Platform Abstraction Design
+
+- [ ] **M01** — Write platform abstraction design doc. Map every `/proc` dependency to its macOS equivalent. Document: process CWD (`/proc/PID/cwd` → libproc), IO activity (`/proc/PID/io` → `proc_pid_rusage`), TCP sockets (`/proc/PID/net/tcp` → lsof/libproc), TTY detection (`/proc/PID/fd/0` → ttyname). Define `PlatformProbe` trait API. Write to `docs/platform-abstraction.md`.
+- [ ] **M02** — Create `platform` module structure. New `src-tauri/src/platform/` with: `mod.rs` (trait definitions + compile-time dispatch), `linux.rs` (existing `/proc` code extracted), `macos.rs` (stubs that return `None`/`Err`). Project compiles on both targets with stubs.
+
+### Phase 2 — Extract Linux Code
+
+- [ ] **M03** — Extract process detection to `LinuxProbe`. Move `/proc/PID/cwd` readlink, `/proc/PID/fd/0` TTY detection, and `ps` parsing from `process.rs` into `platform/linux.rs`. `process.rs` calls `PlatformProbe` methods instead of reading `/proc` directly. All existing tests pass.
+- [ ] **M04** — Extract IO activity to `LinuxProbe`. Move `proc_io.rs` `read_rchar()` function into `platform/linux.rs`. `idle.rs` Claude activity detection calls the trait method. All existing tests pass.
+- [ ] **M05** — Extract TCP socket detection to `LinuxProbe`. Move `proc_io.rs` `has_api_connections()`, `collect_socket_inodes()`, `has_established_443()` into `platform/linux.rs`. Gemini idle detection calls the trait method. All existing tests pass.
+- [ ] **M06** — Extract inotify handling to platform module. Move inotify-specific error detection and watch limit logic behind `#[cfg]`. macOS uses FSEvents (handled by `notify` crate already, but error handling differs).
+
+### Phase 3 — macOS Implementation
+
+- [ ] **M07** — Implement `DarwinProbe` process detection. Use `libproc` crate for: process CWD via `proc_pidpath()`, process list via `listpids()`. Fallback to `lsof -p PID | grep cwd` if libproc is insufficient. Write macOS-specific tests (gated with `#[cfg(target_os = "macos")]`).
+- [ ] **M08** — Implement `DarwinProbe` IO activity detection. Use `libproc` `proc_pidinfo()` with `PROC_PIDTASKINFO` for IO counters. If raw byte counters aren't available, evaluate alternatives: `rusage`, CPU time deltas, or `dtrace`-based approach. Must detect Claude streaming activity reliably.
+- [ ] **M09** — Implement `DarwinProbe` TCP socket detection. Use `lsof -p PID -i TCP -s TCP:ESTABLISHED` parsing or `libproc` `proc_pidinfo(PROC_PIDLISTFDS)` + `proc_pidfdinfo()`. Must detect Gemini's :443 connections.
+- [ ] **M10** — Implement macOS daemon launcher. No WSL layer — daemon is a native binary. Modify `launcher.rs` with `#[cfg(target_os = "macos")]` path: spawn daemon directly, resolve home dir natively. Handle launchd integration if appropriate (daemon auto-start on login).
+- [ ] **M11** — Implement macOS terminal integration. Replace Windows Terminal logic with macOS equivalents: Terminal.app via AppleScript (`osascript`), iTerm2 via its AppleScript API. Add terminal preference option for macOS (Terminal.app / iTerm2 / custom). Update Settings UI to show macOS-relevant options when running on macOS.
+- [ ] **M12** — macOS icon and bundle configuration. Generate `.icns` icon file from existing logo PNGs. Update `tauri.conf.json` with macOS bundle settings (identifier, category, entitlements). Configure DMG installer appearance.
+
+### Phase 4 — Build & Test on macOS
+
+- [ ] **M13** — Set up remote macOS build environment. Provision a cloud Mac (Scaleway M1 or MacStadium). Install Rust toolchain, Node.js, Tauri CLI prerequisites. Clone repo, verify `cargo build` succeeds.
+- [ ] **M14** — Build and run taurhaus on macOS. Build with `cargo tauri build`. Test: app launches, splash screen works, wizard completes, projects register, sidebar renders, tabs work. Fix any build/runtime issues.
+- [ ] **M15** — Test process detection on macOS. Install Claude Code, Codex CLI, Gemini CLI on the Mac. Run sessions, verify taurhaus detects them: process appears in sidebar, activity state (active/idle) is correct, session files are found. Fix any detection issues.
+- [ ] **M16** — Test terminal integration on macOS. Verify "Open terminal" and "Launch session" work with both Terminal.app and iTerm2. Verify tmux sessions attach correctly.
+- [ ] **M17** — Universal binary build. Build universal binary with `cargo tauri build --target universal-apple-darwin` (ARM + Intel). Verify the DMG installer works on both architectures.
+- [ ] **M18** — Run full test suite on macOS. Run `just check` equivalent on macOS. All Rust tests pass (with platform-gated tests). All frontend tests pass. Fix any platform-specific failures.
+
+## Topic 3: README Positioning
+
+Clarify what taurhaus is and isn't before beta distribution. Tabled until Topics 1-2 are complete — the macOS port may shift the positioning (e.g., no longer "Windows + WSL2 only").
+
+- [ ] **B08** — Write clear positioning statement for README. Add "What this is / What this isn't" section. Key points: companion tool (not IDE replacement), context window for AI CLI workflows, not a code editor or CI dashboard, for developers using Claude Code / Codex / Gemini CLI. Reflect final platform support (Windows + macOS).
+
+---
+
 # Testing — Pre-Beta
 
 Add unit tests for new P10-P14 code and build comprehensive E2E test suite with WebdriverIO + tauri-driver.
