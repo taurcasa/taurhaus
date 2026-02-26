@@ -84,6 +84,19 @@ body {
   }
 }
 
+/* ── Content enter animation ──────────────────────────────────────────── */
+/* Subtle fade-up on project switch — signals "new content" without
+   feeling like a loading transition. Triggered by {#key} recreating
+   the wrapper div. Used across Shell, OverviewTab, GitTab, TaskBoard,
+   FilesTab — must be global so extracted components can reference it. */
+.content-enter {
+  animation: content-enter 120ms ease-out;
+}
+@keyframes content-enter {
+  from { opacity: 0.6; transform: translateY(4px); }
+  to   { opacity: 1;   transform: translateY(0); }
+}
+
 /* ── Scrollbar styling ────────────────────────────────────────────────── */
 /* Explicit scrollbar styling for both modes — no OS defaults.
    Ensures consistent appearance across Windows, macOS, and Linux.

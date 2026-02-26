@@ -130,7 +130,7 @@
 </script>
 
 <!-- Directory tree browser -->
-<div class="border {t.keyline} rounded-lg overflow-y-auto" style="max-height: {maxHeight}" data-testid="directory-tree">
+<div class="border {t.keyline} rounded-lg overflow-hidden overflow-y-auto" style="max-height: {maxHeight}" data-testid="directory-tree">
   {#snippet treeNode(entries, depth)}
     {#each entries as entry}
       <div>
@@ -144,7 +144,7 @@
           <!-- Expand/collapse chevron -->
           {#if entry.isExpandable}
             <span
-              class="w-4 h-4 flex items-center justify-center shrink-0 cursor-pointer {iconColor}"
+              class="w-4 h-4 flex items-center justify-center shrink-0 cursor-pointer rounded hover:bg-white/10 {iconColor}"
               role="button"
               tabindex="0"
               aria-label="Toggle folder"
@@ -190,6 +190,9 @@
         <span>{root.name}</span>
       </button>
     {/each}
+    {#if systemRoots.length === 0}
+      <div class="text-[12px] {t.textTertiary} py-3 px-3">Loading drives...</div>
+    {/if}
   {:else}
     <!-- Navigate up -->
     <button
@@ -206,7 +209,7 @@
         {selectedPath === treeRoot ? (dark ? 'bg-brand-900/40 text-brand-300' : 'bg-brand-100/80 text-brand-700') : hoverRow + ' ' + t.textPrimary}"
       onclick={() => { onSelect(treeRoot); toggleTreeDir(treeRoot) }}
     >
-      <span class="w-4 h-4 flex items-center justify-center shrink-0 {iconColor}">
+      <span class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-white/10 {iconColor}">
         <svg class="w-3 h-3 transition-transform {treeExpanded.has(treeRoot) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
       </span>
       <svg class="w-3.5 h-3.5 shrink-0 {iconColor}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/></svg>

@@ -676,7 +676,7 @@
         </div>
       {:else}
       {#key selectedProject.id}
-      <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div class="flex-1 flex flex-col min-w-0 overflow-hidden content-enter" data-testid="content-wrapper">
       <!-- ═══ OVERVIEW TAB ═══ -->
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:hidden={activeTab !== 'overview'}>
         <OverviewTab
@@ -765,15 +765,3 @@
 </div>
 {/if}
 
-<style>
-  /* Subtle fade-up on project switch — signals "new content" without
-     feeling like a loading transition. Triggered by {#key} recreating
-     the wrapper div. */
-  .content-enter {
-    animation: content-enter 120ms ease-out;
-  }
-  @keyframes content-enter {
-    from { opacity: 0.6; transform: translateY(4px); }
-    to   { opacity: 1;   transform: translateY(0); }
-  }
-</style>
