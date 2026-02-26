@@ -81,7 +81,7 @@ Current settings are limited to activity thresholds and code themes. Users need 
 
 - [x] **P12** — Terminal emulator preference: let users choose between Windows Terminal (current default), or a custom command. Store in settings DB, use in `terminal.rs` launch logic.
 - [x] **P13** — Tmux pane layout preference: configurable strategy for how new CLI sessions are arranged. Options: (a) new window per session (current default), (b) horizontal split — fill panes in current window before creating new one, (c) per-project grouping — same project shares a window with splits, different projects get new windows. Store preference in settings, implement in daemon's tmux session creation.
-- [ ] **P14** — Reorganize settings UI: group into logical sections (General, Display, Terminal & Sessions, Search). Current flat layout won't scale with more settings.
+- [x] **P14** — Reorganize settings UI: group into logical sections (General, Display, Terminal & Sessions, Search). Current flat layout won't scale with more settings.
 
 ## Infrastructure
 

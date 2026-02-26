@@ -182,9 +182,9 @@
           </div>
         {/if}
 
-        <!-- ═══ PROJECT SCANNING ═══ -->
+        <!-- ═══ GENERAL ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-scanning">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Project Scanning</h2>
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">General</h2>
 
           <!-- Scan directories -->
           <div class="mb-4">
@@ -227,7 +227,7 @@
           </div>
 
           <!-- Ignore patterns -->
-          <div>
+          <div class="mb-4">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-[13px] {t.textSecondary}">Ignore patterns</span>
               {#if !editingIgnore}
@@ -265,98 +265,58 @@
               {/if}
             {/if}
           </div>
-        </section>
 
-        <!-- ═══ DISPLAY ═══ -->
-        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-display">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Display</h2>
-
-          <p class="text-[13px] {t.textSecondary} mb-4">Activity state thresholds (days since last activity)</p>
-
-          <div class="space-y-3">
-            <div class="flex items-center gap-3">
-              <label for="threshold-active" class="text-[13px] {t.textBody} w-20">Active</label>
-              <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
-                <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
-                <input
-                  id="threshold-active"
-                  type="number"
-                  min="1"
-                  value={settings.thresholds.active_days}
-                  onblur={(e) => handleThresholdBlur('active_days', e.target.value)}
-                  class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
-                  data-testid="threshold-active"
-                />
-                <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-3">
-              <label for="threshold-recent" class="text-[13px] {t.textBody} w-20">Recent</label>
-              <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
-                <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
-                <input
-                  id="threshold-recent"
-                  type="number"
-                  min="1"
-                  value={settings.thresholds.recent_days}
-                  onblur={(e) => handleThresholdBlur('recent_days', e.target.value)}
-                  class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
-                  data-testid="threshold-recent"
-                />
-                <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-3">
-              <label for="threshold-stale" class="text-[13px] {t.textBody} w-20">Stale</label>
-              <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
-                <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
-                <input
-                  id="threshold-stale"
-                  type="number"
-                  min="1"
-                  value={settings.thresholds.stale_days}
-                  onblur={(e) => handleThresholdBlur('stale_days', e.target.value)}
-                  class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
-                  data-testid="threshold-stale"
-                />
-                <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Syntax highlighting themes -->
-          <div class="mt-5 pt-4 border-t {t.keyline}">
-            <p class="text-[13px] {t.textSecondary} mb-3">Syntax highlighting</p>
+          <!-- Activity thresholds -->
+          <div class="pt-4 border-t {t.keyline}">
+            <p class="text-[13px] {t.textSecondary} mb-3">Activity state thresholds (days since last activity)</p>
             <div class="space-y-3">
               <div class="flex items-center gap-3">
-                <label for="code-theme-light" class="text-[13px] {t.textBody} w-20">Light</label>
-                <select
-                  id="code-theme-light"
-                  class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  value={codeThemeLight}
-                  onchange={(e) => handleCodeThemeChange('light', e.target.value)}
-                  data-testid="code-theme-light"
-                >
-                  {#each lightThemes as theme}
-                    <option value={theme.id}>{theme.displayName}</option>
-                  {/each}
-                </select>
+                <label for="threshold-active" class="text-[13px] {t.textBody} w-20">Active</label>
+                <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
+                  <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
+                  <input
+                    id="threshold-active"
+                    type="number"
+                    min="1"
+                    value={settings.thresholds.active_days}
+                    onblur={(e) => handleThresholdBlur('active_days', e.target.value)}
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
+                    data-testid="threshold-active"
+                  />
+                  <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
+                </div>
               </div>
               <div class="flex items-center gap-3">
-                <label for="code-theme-dark" class="text-[13px] {t.textBody} w-20">Dark</label>
-                <select
-                  id="code-theme-dark"
-                  class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  value={codeThemeDark}
-                  onchange={(e) => handleCodeThemeChange('dark', e.target.value)}
-                  data-testid="code-theme-dark"
-                >
-                  {#each darkThemes as theme}
-                    <option value={theme.id}>{theme.displayName}</option>
-                  {/each}
-                </select>
+                <label for="threshold-recent" class="text-[13px] {t.textBody} w-20">Recent</label>
+                <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
+                  <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
+                  <input
+                    id="threshold-recent"
+                    type="number"
+                    min="1"
+                    value={settings.thresholds.recent_days}
+                    onblur={(e) => handleThresholdBlur('recent_days', e.target.value)}
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
+                    data-testid="threshold-recent"
+                  />
+                  <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <label for="threshold-stale" class="text-[13px] {t.textBody} w-20">Stale</label>
+                <div class="flex items-stretch rounded-md border {dark ? 'border-zinc-700' : 'border-zinc-300'} overflow-hidden">
+                  <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-r {dark ? 'border-zinc-700' : 'border-zinc-300'}">{"<"}</span>
+                  <input
+                    id="threshold-stale"
+                    type="number"
+                    min="1"
+                    value={settings.thresholds.stale_days}
+                    onblur={(e) => handleThresholdBlur('stale_days', e.target.value)}
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
+                    data-testid="threshold-stale"
+                  />
+                  <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
+                </div>
               </div>
             </div>
           </div>
@@ -366,9 +326,46 @@
           {/if}
         </section>
 
-        <!-- ═══ TERMINAL ═══ -->
+        <!-- ═══ DISPLAY ═══ -->
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-display">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Display</h2>
+
+          <p class="text-[13px] {t.textSecondary} mb-3">Syntax highlighting</p>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3">
+              <label for="code-theme-light" class="text-[13px] {t.textBody} w-20">Light</label>
+              <select
+                id="code-theme-light"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                value={codeThemeLight}
+                onchange={(e) => handleCodeThemeChange('light', e.target.value)}
+                data-testid="code-theme-light"
+              >
+                {#each lightThemes as theme}
+                  <option value={theme.id}>{theme.displayName}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="flex items-center gap-3">
+              <label for="code-theme-dark" class="text-[13px] {t.textBody} w-20">Dark</label>
+              <select
+                id="code-theme-dark"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                value={codeThemeDark}
+                onchange={(e) => handleCodeThemeChange('dark', e.target.value)}
+                data-testid="code-theme-dark"
+              >
+                {#each darkThemes as theme}
+                  <option value={theme.id}>{theme.displayName}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ TERMINAL & SESSIONS ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-terminal">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Terminal</h2>
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Terminal & Sessions</h2>
 
           <div class="space-y-3">
             <div class="flex items-center gap-3">
@@ -378,7 +375,7 @@
                 class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
                 value={settings.terminal?.emulator || 'windows_terminal'}
                 onchange={(e) => {
-                  if (!settings.terminal) settings.terminal = { emulator: 'windows_terminal', custom_command: '' }
+                  if (!settings.terminal) settings.terminal = { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
                 }}
@@ -418,7 +415,7 @@
                   value={settings.terminal?.custom_command || ''}
                   placeholder="e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"
                   onblur={(e) => {
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '' }
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window' }
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
@@ -432,9 +429,9 @@
           </div>
         </section>
 
-        <!-- ═══ SEARCH INDEX ═══ -->
+        <!-- ═══ SEARCH ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-index">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Search Index</h2>
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Search</h2>
 
           {#if indexStatus}
             <div class="flex items-center gap-4 mb-3">
