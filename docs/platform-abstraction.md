@@ -126,34 +126,46 @@ The daemon binary itself is cross-platform Rust — it compiles natively for mac
 
 ---
 
-## 4. Terminal Integration Abstraction
+## 4. Terminal Integration
 
-| Platform | Terminal | Launch method |
-|----------|----------|---------------|
-| Windows | Windows Terminal (wt.exe) | `wt.exe -w taurhaus new-tab -- wsl.exe -d {distro} -- tmux attach` |
-| macOS | Terminal.app (default) | AppleScript: `tell application "Terminal" to do script "tmux attach..."` |
-| macOS | iTerm2 (if detected) | AppleScript: iTerm2's `create window with profile` |
+**Source of truth**: `src-tauri/src/terminal.rs`
 
-### Abstraction
+### Unified Decision Tree (all platforms)
+
+```
+handle_terminal(intent)
+  ├── FocusOnly { emulator }
+  │   └── Resolve emulator → is it running? → activate it
+  │
+  └── EnsureOpen { emulator, tmux_session, ... }
+      ├── "custom" → run user's command template with placeholders
+      └── Resolve emulator → is it running + tmux has client?
+          ├── Yes → activate (no duplicate tab/window)
+          └── No  → launch with `tmux attach-session -t <session>`
+```
+
+The tree is **identical on every platform**. Only the concrete emulator options and detection mechanisms differ:
+
+| Platform | Emulators | Default | Detection | Launch |
+|----------|-----------|---------|-----------|--------|
+| Windows | Windows Terminal, Custom | `windows_terminal` | PowerShell `Get-Process` + `EnumWindows` (WinUI 3 quirk) | `wt.exe -w taurhaus new-tab -- wsl.exe -d {distro} -- tmux attach` |
+| macOS | iTerm2, Ghostty, Terminal.app, Custom | `iterm2` | AppleScript `application "X" is running` + `tmux list-clients` | AppleScript (`create tab`/`do script`) or CLI (`ghostty -e`) |
+| Linux | (no-op) | — | — | User manages their own terminal |
+
+### macOS: `MacEmulator` Enum
 
 ```rust
-// terminal.rs — existing cfg blocks already separate Windows from others.
-// Add macOS block:
+enum MacEmulator { ITerm2, Ghostty, TerminalApp }
 
-#[cfg(target_os = "macos")]
-fn handle_terminal(session: &str, window: &str, pane: &str, open_terminal: bool) -> Result<String, String> {
-    if !open_terminal { return Ok("noop".into()); }
-
-    let tmux_cmd = format!("tmux attach-session -t {session}");
-
-    // Try iTerm2 first, fall back to Terminal.app
-    if is_iterm_installed() {
-        launch_iterm(&tmux_cmd)
-    } else {
-        launch_terminal_app(&tmux_cmd)
-    }
+impl MacEmulator {
+    fn from_setting(pref: &str) -> Self;   // resolve setting → concrete emulator
+    fn is_running(self) -> bool;           // AppleScript check
+    fn activate(self) -> Result<(), String>;  // bring to front
+    fn launch_with_tmux(self, session: &str) -> Result<(), String>;  // open + attach
 }
 ```
+
+Key invariant: we **always respect the user's emulator preference**. We never fall through to a different terminal just because it happens to be running. `tmux list-clients` (not `pgrep`) determines attachment state.
 
 ---
 
