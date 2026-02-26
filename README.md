@@ -1,117 +1,66 @@
 # taurhaus
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
 > The house where all your projects live.
 
-A desktop tool that gives a single, clear view into all AI-driven projects — their code, docs, progress, and history — so you never lose context between sessions.
+A desktop tool that gives a single, clear view into all your AI-driven projects — their code, docs, progress, and history — so you never lose context between sessions.
 
-Built with Tauri 2, Svelte 5, and Rust.
-
-## Screenshots
-
-| Dark mode | Light mode |
-|-----------|------------|
-| ![Overview — Dark](e2e/screenshots/01-overview-dark.png) | ![Overview — Light](e2e/screenshots/02-overview-light.png) |
-| ![Git — Dark](e2e/screenshots/09-git-dark.png) | ![Git — Light](e2e/screenshots/05-git-light.png) |
-| ![Tasks — Dark](e2e/screenshots/08-tasks-dark.png) | ![Tasks — Light](e2e/screenshots/04-tasks-light.png) |
+![taurhaus Overview](docs/screenshot-overview.png)
 
 ## Features
 
-- **Project overview** — See all your projects at a glance with activity grouping (Active / Recent / Stale / Dormant)
-- **File browser** — Browse project files with syntax-highlighted preview (VS Code grammars via Shiki)
-- **Git integration** — Commit history, diffs, blame — all in-app via libgit2, no CLI dependency
-- **Task board** — Aggregated tasks from Claude Code, Codex, and Gemini CLI
-- **Session history** — Auto-imported session handoffs with commit and file change context
-- **Multi-CLI session management** — Launch, stop, and navigate Claude Code, Codex, and Gemini CLI sessions from the sidebar
+- **Project overview** — All projects at a glance, grouped by activity (Active / Recent / Stale / Dormant)
+- **File browser** — Browse and preview files with VS Code-grade syntax highlighting (Shiki)
+- **Git integration** — Commit history, inline diffs, blame — all in-app via libgit2, no CLI dependency
+- **Task board** — Aggregated tasks from Claude Code, Codex, and Gemini CLI in one view
+- **Multi-CLI session management** — Launch, stop, and jump to Claude Code, Codex, and Gemini CLI sessions from the sidebar
 - **Live activity detection** — Real-time active/idle status for running CLI sessions
-- **Full-text search** — Search across all project content (powered by tantivy)
+- **Full-text search** — Search across all project content with Ctrl+K (powered by tantivy)
+- **Session handoffs** — Auto-imported session summaries so you can pick up where you left off
 - **Relationship mapping** — Auto-detected cross-project dependencies from Cargo.toml, CLAUDE.md, and session mentions
 
-## System Requirements
-
-| Requirement | Version |
-|-------------|---------|
-| Windows | 10 or 11 |
-| WSL2 | Any distribution (Ubuntu recommended) |
-| Windows Terminal | Latest from Microsoft Store |
-| tmux | 3.0+ (installed in WSL) |
-
-taurhaus runs as a native Windows application. It communicates with a lightweight daemon running inside WSL2 for session detection and process management.
-
-### Optional (for CLI session management)
-
-At least one of these AI CLI tools installed in WSL:
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
-- [Codex](https://github.com/openai/codex) — `npm install -g @openai/codex`
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli) — `npm install -g @google/gemini-cli`
-
-## Installation
-
-### Prerequisites
-
-1. **Enable WSL2** if not already set up:
-   ```
-   wsl --install
-   ```
-
-2. **Enable mirrored networking** in WSL (required for daemon communication):
-
-   Create or edit `%USERPROFILE%\.wslconfig`:
-   ```ini
-   [wsl2]
-   networkingMode=mirrored
-   ```
-   Then restart WSL: `wsl --shutdown`
-
-3. **Install tmux** inside WSL:
-   ```bash
-   sudo apt install tmux
-   ```
-
-### Install taurhaus
-
-1. Download the latest `taurhaus_x.x.x_x64-setup.exe` from [Releases](../../releases)
-2. Run the installer
-3. Launch taurhaus — the first-run wizard will guide you through project discovery
-
-The app automatically manages its WSL daemon. No manual daemon setup required.
-
-For detailed setup instructions, see the [Getting Started Guide](docs/getting-started.md).
-
-## Quick Start
-
-1. **First run** — The wizard scans your project directories and registers them
-2. **Browse** — Click any project in the sidebar to see its overview, files, tasks, and git history
-3. **Launch a session** — Right-click a project and select a CLI tool to start a new session
-4. **Navigate** — Click the tool indicator icons next to a project name to jump to a running session in Windows Terminal
-5. **Search** — Press `Ctrl+K` to search across all projects
+| Git tab | Files tab |
+|---------|-----------|
+| ![Git](docs/screenshot-git.png) | ![Files](docs/screenshot-files.png) |
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────┐
-│  taurhaus.exe (Windows native, Tauri 2 + Svelte) │
-│  ├── SQLite (metadata, sessions, relationships)  │
-│  ├── tantivy (full-text search index)            │
-│  └── libgit2 (in-process git operations)         │
-└─────────────────┬────────────────────────────────┘
-                  │ TCP (localhost:9000)
-┌─────────────────▼────────────────────────────────┐
-│  taurhaus-daemon (WSL2, Rust)                    │
-│  ├── Process scanning (/proc)                    │
-│  ├── Session file watching (notify + ignore)     │
-│  ├── tmux session management                     │
-│  └── Activity detection (IO, TCP, mtime)         │
-└──────────────────────────────────────────────────┘
-```
+taurhaus is a dual-process desktop application — a native Windows GUI backed by a lightweight daemon inside WSL2.
 
-See [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) for the full architecture (22 ADRs).
+![System Architecture](docs/system-architecture.jpg)
+
+The Windows exe runs the Tauri 2 shell (Svelte 5 frontend + Rust backend with SQLite, tantivy, and libgit2). The WSL2 daemon handles process scanning, file watching, tmux session management, and activity detection for Claude Code, Codex, and Gemini CLI.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical overview.
+
+## Getting Started
+
+### Requirements
+
+| Requirement | Notes |
+|-------------|-------|
+| Windows 10/11 | Native desktop app |
+| WSL2 | Any distribution (Ubuntu recommended) |
+| Windows Terminal | Latest from Microsoft Store |
+| tmux 3.0+ | Installed inside WSL |
+
+**WSL2 networking**: Create or edit `%USERPROFILE%\.wslconfig` with `networkingMode=mirrored` under `[wsl2]`, then restart WSL (`wsl --shutdown`).
+
+At least one AI CLI tool installed in WSL: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli).
+
+### Install
+
+1. Download the latest installer from [Releases](../../releases)
+2. Run the installer — the app manages its own WSL daemon automatically
+3. On first launch, the wizard scans your project directories and registers them
+
+### Quick start
+
+- **Browse** — Click any project in the sidebar to see its overview, files, tasks, and git history
+- **Launch a session** — Right-click a project to start a CLI tool session
+- **Navigate** — Click tool indicator icons next to a project name to jump to a running session
+- **Search** — Press `Ctrl+K` to search across all projects
 
 ## Development
-
-### Stack
 
 | Layer | Technology |
 |-------|------------|
@@ -119,36 +68,18 @@ See [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) for the full 
 | Backend | Rust (Tauri 2) |
 | Storage | SQLite + tantivy + filesystem |
 | Git | libgit2 via `git2` crate |
-| Build | Vite + cargo |
 | Tests | Vitest + Cargo test + WebdriverIO |
 
-### Build recipes
-
-All builds use `just` (install via `cargo install just`).
+All builds use [`just`](https://github.com/casey/just) recipes:
 
 ```bash
 just dev              # Full Tauri dev mode (hot-reload)
-just dev-frontend     # Frontend only (no Rust backend)
 just build-windows    # Windows release build (NSIS installer)
 just check            # Quality gate: clippy + svelte-check + all tests
 just test             # All tests (Rust + frontend)
 ```
 
-See the [justfile](justfile) for all available recipes.
-
-### Running tests
-
-```bash
-just test             # Everything
-just test-rust        # Rust unit tests (576 tests)
-just test-frontend    # Frontend tests (373 tests)
-```
-
-## Project Status
-
-taurhaus is in active development. All core features are implemented and functional.
-
-**Current focus**: Pre-publish polish — documentation, settings expansion, UI refinements.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
