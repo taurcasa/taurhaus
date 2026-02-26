@@ -172,3 +172,12 @@ Add unit tests for new P10-P14 code and build comprehensive E2E test suite with 
 - [x] **T08** — E2E: Search overlay — open/close, input, grouped results, keyboard navigation
 - [x] **T09** — E2E: Files tab — file tree, expand/collapse, file viewer, README auto-select, syntax highlighting
 - [x] **T10** — Run full test suite (unit + E2E) and commit
+
+---
+
+# Polish — Post-Beta
+
+## UI Fixes
+
+- [ ] **X01** — Update FirstRunWizard to use new logo instead of old placeholder icon
+- [ ] **X02** — macOS E2E test pipeline: install tauri-driver, set up test fixtures, adapt wdio.conf for macOS, add `just test-e2e-macos` recipe
