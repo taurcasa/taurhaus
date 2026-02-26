@@ -335,15 +335,25 @@ return "no""#,
     }
 
     /// Activate (bring to front) this emulator.
+    ///
+    /// Uses `.output()` (blocking) instead of `.spawn()` to ensure the
+    /// activation completes before the Tauri command returns. Without this,
+    /// the click that triggers the command brings taurhaus to front, and
+    /// the async osascript loses the race — resulting in toggle behavior
+    /// instead of reliable focus.
     fn activate(self) -> Result<(), String> {
         let script = format!(
             r#"tell application "{}" to activate"#,
             self.app_name()
         );
         tracing::debug!(emulator = ?self, "Activating terminal");
+        // Small delay lets macOS finish processing the click event that
+        // brought taurhaus to front. Without this, the activate AppleEvent
+        // can arrive while macOS is still mid-transition and get ignored.
+        std::thread::sleep(std::time::Duration::from_millis(50));
         let _ = std::process::Command::new("osascript")
             .args(["-e", &script])
-            .spawn();
+            .output();
         Ok(())
     }
 
