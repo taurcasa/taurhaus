@@ -122,9 +122,9 @@ taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support r
 
 ### Phase 2 — Extract Linux Code
 
-- [ ] **M03** — Extract process detection to `LinuxProbe`. Move `/proc/PID/cwd` readlink, `/proc/PID/fd/0` TTY detection, and `ps` parsing from `process.rs` into `platform/linux.rs`. `process.rs` calls `PlatformProbe` methods instead of reading `/proc` directly. All existing tests pass.
-- [ ] **M04** — Extract IO activity to `LinuxProbe`. Move `proc_io.rs` `read_rchar()` function into `platform/linux.rs`. `idle.rs` Claude activity detection calls the trait method. All existing tests pass.
-- [ ] **M05** — Extract TCP socket detection to `LinuxProbe`. Move `proc_io.rs` `has_api_connections()`, `collect_socket_inodes()`, `has_established_443()` into `platform/linux.rs`. Gemini idle detection calls the trait method. All existing tests pass.
+- [x] **M03** — Extract process detection to `LinuxProbe`. Move `/proc/PID/cwd` readlink, `/proc/PID/fd/0` TTY detection, and `ps` parsing from `process.rs` into `platform/linux.rs`. `process.rs` calls `PlatformProbe` methods instead of reading `/proc` directly. All existing tests pass.
+- [x] **M04** — Extract IO activity to `LinuxProbe`. Move `proc_io.rs` `read_rchar()` function into `platform/linux.rs`. `idle.rs` Claude activity detection calls the trait method. All existing tests pass.
+- [x] **M05** — Extract TCP socket detection to `LinuxProbe`. Move `proc_io.rs` `has_api_connections()`, `collect_socket_inodes()`, `has_established_443()` into `platform/linux.rs`. Gemini idle detection calls the trait method. All existing tests pass.
 - [ ] **M06** — Extract inotify handling to platform module. Move inotify-specific error detection and watch limit logic behind `#[cfg]`. macOS uses FSEvents (handled by `notify` crate already, but error handling differs).
 
 ### Phase 3 — macOS Implementation

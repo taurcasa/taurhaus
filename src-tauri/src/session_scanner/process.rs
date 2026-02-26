@@ -1,6 +1,5 @@
 //! Process scanner — find CLI tool processes via ps + /proc.
 
-use std::fs;
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -166,17 +165,13 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
     None
 }
 
-/// Read /proc/PID/cwd and /proc/PID/fd/0 to get project path and TTY.
+/// Read process CWD and TTY via platform-specific APIs.
 fn enrich_from_proc(pid: u32, args: String, cli_tool: CliTool) -> Option<ProcessInfo> {
-    let cwd = fs::read_link(format!("/proc/{pid}/cwd"))
-        .ok()?
+    let cwd = crate::platform::process_cwd(pid)?
         .to_string_lossy()
         .to_string();
 
-    let tty = fs::read_link(format!("/proc/{pid}/fd/0"))
-        .ok()?
-        .to_string_lossy()
-        .to_string();
+    let tty = crate::platform::process_tty(pid)?;
 
     Some(ProcessInfo {
         pid,
