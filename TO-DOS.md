@@ -140,16 +140,16 @@ taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support r
 
 - [x] **M13** — Set up remote macOS build environment. Provision a cloud Mac (Scaleway M1 or MacStadium). Install Rust toolchain, Node.js, Tauri CLI prerequisites. Clone repo, verify `cargo build` succeeds.
 - [x] **M14** — Build and run taurhaus on macOS. Build with `cargo tauri build`. Test: app launches, splash screen works, wizard completes, projects register, sidebar renders, tabs work. Fix any build/runtime issues.
-- [ ] **M15** — Test process detection on macOS. Install Claude Code, Codex CLI, Gemini CLI on the Mac. Run sessions, verify taurhaus detects them: process appears in sidebar, activity state (active/idle) is correct, session files are found. Fix any detection issues.
-- [ ] **M16** — Test terminal integration on macOS. Verify "Open terminal" and "Launch session" work with both Terminal.app and iTerm2. Verify tmux sessions attach correctly.
-- [ ] **M17** — Universal binary build. Build universal binary with `cargo tauri build --target universal-apple-darwin` (ARM + Intel). Verify the DMG installer works on both architectures.
+- [x] **M15** — Test process detection on macOS. Install Claude Code, Codex CLI, Gemini CLI on the Mac. Run sessions, verify taurhaus detects them: process appears in sidebar, activity state (active/idle) is correct, session files are found. Fix any detection issues.
+- [x] **M16** — Test terminal integration on macOS. Verify "Open terminal" and "Launch session" work with both Terminal.app and iTerm2. Verify tmux sessions attach correctly.
+- [x] **M17** — Universal binary build. Build universal binary with `cargo tauri build --target universal-apple-darwin` (ARM + Intel). Verify the DMG installer works on both architectures.
 - [x] **M18** — Run full test suite on macOS. Run `just check` equivalent on macOS. All Rust tests pass (with platform-gated tests). All frontend tests pass. Fix any platform-specific failures.
 
 ## Topic 3: README Positioning
 
 Clarify what taurhaus is and isn't before beta distribution. Tabled until Topics 1-2 are complete — the macOS port may shift the positioning (e.g., no longer "Windows + WSL2 only").
 
-- [ ] **B08** — Write clear positioning statement for README. Add "What this is / What this isn't" section. Key points: companion tool (not IDE replacement), context window for AI CLI workflows, not a code editor or CI dashboard, for developers using Claude Code / Codex / Gemini CLI. Reflect final platform support (Windows + macOS).
+- [x] **B08** — Write clear positioning statement for README. Add "What this is / What this isn't" section. Key points: companion tool (not IDE replacement), context window for AI CLI workflows, not a code editor or CI dashboard, for developers using Claude Code / Codex / Gemini CLI. Reflect final platform support (Windows + macOS).
 
 ---
 

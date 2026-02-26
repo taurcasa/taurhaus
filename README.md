@@ -2,9 +2,25 @@
 
 > The house where all your projects live.
 
-A desktop tool that gives a single, clear view into all your AI-driven projects — their code, docs, progress, and history — so you never lose context between sessions.
+A desktop companion for developers who have far too many AI sessions running at once and have lost track of which project Claude is refactoring, which one Codex is "thinking" about, and whether Gemini has finished or just gone quiet.
+
+If you've ever stared at six terminal tabs wondering "wait, did I already start that migration?" — this is for you.
 
 ![taurhaus Overview](docs/screenshot-overview.png)
+
+### What this is
+
+- A **side panel** that sits next to your terminal and tells you what all your AI tools are doing — so you don't have to tab through twelve tmux panes to find out
+- A **context window** for the deeply unwise workflow of running Claude Code, Codex, and Gemini CLI across multiple projects simultaneously (we're not here to judge, we're here to help)
+- A way to **see what's running**, jump between sessions, and pick up where you left off after your ambition briefly exceeded your working memory
+- Built by someone with the same problem. You're among friends here.
+
+### What this isn't
+
+- Not an IDE — VS Code, Zed, Cursor, and friends are excellent at editing code. We just watch from the sidelines.
+- Not a terminal emulator — you still type your commands where you've always typed them
+- Not a wrapper that runs AI tools for you — the tools run in your terminal, we just keep an eye on them so you don't have to
+- Not a productivity system that will make you more disciplined about how many things you start at once. If anything, it enables the problem.
 
 ## Features
 
@@ -24,17 +40,19 @@ A desktop tool that gives a single, clear view into all your AI-driven projects 
 
 ## Architecture
 
-taurhaus is a dual-process desktop application — a native Windows GUI backed by a lightweight daemon inside WSL2.
+taurhaus is a native desktop application built with Tauri 2 (Svelte 5 frontend + Rust backend with SQLite, tantivy, and libgit2).
 
 ![System Architecture](docs/system-architecture.jpg)
 
-The Windows exe runs the Tauri 2 shell (Svelte 5 frontend + Rust backend with SQLite, tantivy, and libgit2). The WSL2 daemon handles process scanning, file watching, tmux session management, and activity detection for Claude Code, Codex, and Gemini CLI.
+On **Windows**, a lightweight daemon inside WSL2 handles process scanning, file watching, and tmux session management. On **macOS**, the app inspects processes directly via libproc — no daemon needed.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical overview.
 
 ## Getting Started
 
 ### Requirements
+
+**Windows**
 
 | Requirement | Notes |
 |-------------|-------|
@@ -43,9 +61,16 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical overview.
 | Windows Terminal | Latest from Microsoft Store |
 | tmux 3.0+ | Installed inside WSL |
 
-**WSL2 networking**: Create or edit `%USERPROFILE%\.wslconfig` with `networkingMode=mirrored` under `[wsl2]`, then restart WSL (`wsl --shutdown`).
+WSL2 networking: Create or edit `%USERPROFILE%\.wslconfig` with `networkingMode=mirrored` under `[wsl2]`, then restart WSL (`wsl --shutdown`).
 
-At least one AI CLI tool installed in WSL: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli).
+**macOS**
+
+| Requirement | Notes |
+|-------------|-------|
+| macOS 10.15+ | Apple Silicon or Intel |
+| tmux 3.0+ | `brew install tmux` |
+
+At least one AI CLI tool installed: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli).
 
 ### Install
 
@@ -77,6 +102,7 @@ just dev              # Full Tauri dev mode (hot-reload)
 just build-windows    # Windows release build (NSIS installer)
 just check            # Quality gate: clippy + svelte-check + all tests
 just test             # All tests (Rust + frontend)
+# macOS: cargo tauri build (arm64) or --target universal-apple-darwin
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
