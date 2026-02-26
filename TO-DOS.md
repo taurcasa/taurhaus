@@ -97,16 +97,16 @@ Add unit tests for new P10-P14 code and build comprehensive E2E test suite with 
 
 ## Phase 1 — Unit Tests for New Code
 
-- [ ] **T01** — Write OverviewTab unit tests: quick actions, callbacks, last commit, session, relationships, dark mode (`src/lib/overviewTab.test.js`)
-- [ ] **T02** — Expand Settings unit tests for P12/P13/P14: terminal dropdown, tmux layout, custom command conditional, section structure (`src/lib/settings.test.js`)
-- [ ] **T03** — Verify GitTab tests cover P11 date grouping: date headers, author avatars, getDateLabel/authorInitial helpers (`src/lib/gitTab.test.js`)
+- [x] **T01** — Write OverviewTab unit tests: quick actions, callbacks, last commit, session, relationships, dark mode (`src/lib/overviewTab.test.js`)
+- [x] **T02** — Expand Settings unit tests for P12/P13/P14: terminal dropdown, tmux layout, custom command conditional, section structure (`src/lib/settings.test.js`)
+- [x] **T03** — Verify GitTab tests cover P11 date grouping: date headers, author avatars, getDateLabel/authorInitial helpers (`src/lib/gitTab.test.js`)
 
 ## Phase 2 — E2E Tests (WebdriverIO + tauri-driver)
 
-- [ ] **T04** — E2E: Overview tab — project header, quick actions, last commit, relationships, README
-- [ ] **T05** — E2E: Git tab — commit list with date groups, commit detail, file list, diff view, back navigation
-- [ ] **T06** — E2E: Settings — all 4 sections, terminal/tmux dropdowns, rebuild index, escape/back
-- [ ] **T07** — E2E: Sidebar — project list, activity groups, project switching, filter, branch pills
-- [ ] **T08** — E2E: Search overlay — open/close, input, grouped results, keyboard navigation
-- [ ] **T09** — E2E: Files tab — file tree, expand/collapse, file viewer, README auto-select, syntax highlighting
-- [ ] **T10** — Run full test suite (unit + E2E) and commit
+- [x] **T04** — E2E: Overview tab — project header, quick actions, last commit, relationships, README
+- [x] **T05** — E2E: Git tab — commit list with date groups, commit detail, file list, diff view, back navigation
+- [x] **T06** — E2E: Settings — all 4 sections, terminal/tmux dropdowns, rebuild index, escape/back
+- [x] **T07** — E2E: Sidebar — project list, activity groups, project switching, filter, branch pills
+- [x] **T08** — E2E: Search overlay — open/close, input, grouped results, keyboard navigation
+- [x] **T09** — E2E: Files tab — file tree, expand/collapse, file viewer, README auto-select, syntax highlighting
+- [x] **T10** — Run full test suite (unit + E2E) and commit

@@ -15,19 +15,14 @@ describe('Settings', () => {
   })
 
   describe('opening and closing', () => {
-    it('opens settings from sidebar button', async function () {
+    it('opens settings from sidebar toggle button', async function () {
       if (!mainApp) return this.skip()
 
-      // Settings button is in the sidebar
-      const settingsBtn = await $('button=Settings')
-      if (!(await settingsBtn.isExisting())) {
-        // May be an icon-only button
-        const iconBtn = await $('[data-testid="settings-btn"]')
-        if (await iconBtn.isExisting()) await iconBtn.click()
-        else return this.skip()
-      } else {
-        await settingsBtn.click()
-      }
+      // Settings toggle is an icon-only button with data-testid="settings-toggle"
+      const toggleBtn = await $('[data-testid="settings-toggle"]')
+      if (!(await toggleBtn.isExisting())) return this.skip()
+
+      await toggleBtn.click()
       await browser.pause(1_000)
 
       const settingsView = await $('[data-testid="settings-view"]')
@@ -52,7 +47,8 @@ describe('Settings', () => {
       if (!mainApp) return this.skip()
       const section = await $('[data-testid="settings-scanning"]')
       const text = await section.getText()
-      expect(text).toContain('General')
+      // Heading is rendered uppercase via CSS
+      expect(text.toUpperCase()).toContain('GENERAL')
     })
 
     it('shows scan directories', async function () {
@@ -113,7 +109,8 @@ describe('Settings', () => {
       if (!mainApp) return this.skip()
       const section = await $('[data-testid="settings-terminal"]')
       const text = await section.getText()
-      expect(text).toContain('Terminal & Sessions')
+      // Heading is rendered uppercase via CSS
+      expect(text.toUpperCase()).toContain('TERMINAL & SESSIONS')
     })
 
     it('shows terminal emulator dropdown', async function () {

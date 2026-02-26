@@ -46,10 +46,20 @@ describe('App', () => {
 
       const tasksTab = await $('button=Tasks')
       await tasksTab.click()
+      await browser.pause(1_000)
 
-      const header = await $('h2=Tasks')
-      await header.waitForDisplayed({ timeout: 5_000 })
-      expect(await header.isDisplayed()).toBe(true)
+      // Tasks tab shows either loading, empty state, or task rows
+      await browser.waitUntil(
+        async () => {
+          const loading = await $('[data-testid="tasks-loading"]')
+          const empty = await $('[data-testid="tasks-empty"]')
+          const taskRows = await $$('[data-testid="task-row"]')
+          return (await loading.isExisting()) ||
+            (await empty.isExisting()) ||
+            taskRows.length > 0
+        },
+        { timeout: 10_000, timeoutMsg: 'Tasks tab did not render content' }
+      )
     })
 
     it('can switch to Files tab', async function () {

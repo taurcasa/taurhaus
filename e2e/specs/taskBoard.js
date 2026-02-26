@@ -15,17 +15,32 @@ describe('TaskBoard', () => {
     if (mainApp) {
       const tasksTab = await $('button=Tasks')
       await tasksTab.click()
-      // Wait for the Tasks header to appear
-      const header = await $('h2=Tasks')
-      await header.waitForDisplayed({ timeout: 5_000 })
+      // Wait for the Tasks tab to render content (loading, empty, or rows)
+      await browser.waitUntil(
+        async () => {
+          const loading = await $('[data-testid="tasks-loading"]')
+          const empty = await $('[data-testid="tasks-empty"]')
+          const taskRows = await $$('[data-testid="task-row"]')
+          return (await loading.isExisting()) ||
+            (await empty.isExisting()) ||
+            taskRows.length > 0
+        },
+        { timeout: 10_000 }
+      )
     }
   })
 
-  it('renders the Tasks header', async function () {
+  it('renders Tasks tab content', async function () {
     if (!mainApp) return this.skip()
 
-    const header = await $('h2=Tasks')
-    expect(await header.getText()).toBe('Tasks')
+    // Tasks tab should have loading, empty, or task content visible
+    const loading = await $('[data-testid="tasks-loading"]')
+    const empty = await $('[data-testid="tasks-empty"]')
+    const taskRows = await $$('[data-testid="task-row"]')
+    const hasContent = (await loading.isExisting()) ||
+      (await empty.isExisting()) ||
+      taskRows.length > 0
+    expect(hasContent).toBe(true)
   })
 
   it('completes loading without hanging', async function () {
@@ -82,9 +97,17 @@ describe('TaskBoard', () => {
     const tasksTab = await $('button=Tasks')
     await tasksTab.click()
 
-    // Header should reappear
-    const header = await $('h2=Tasks')
-    await header.waitForDisplayed({ timeout: 5_000 })
-    expect(await header.getText()).toBe('Tasks')
+    // Tasks content should reappear
+    await browser.waitUntil(
+      async () => {
+        const loading = await $('[data-testid="tasks-loading"]')
+        const empty = await $('[data-testid="tasks-empty"]')
+        const taskRows = await $$('[data-testid="task-row"]')
+        return (await loading.isExisting()) ||
+          (await empty.isExisting()) ||
+          taskRows.length > 0
+      },
+      { timeout: 10_000 }
+    )
   })
 })

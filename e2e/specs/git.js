@@ -43,15 +43,18 @@ describe('Git Tab', () => {
       const commitRows = await $$('[data-testid="commit-row"]')
       if (commitRows.length === 0) return this.skip()
 
-      // Date headers are sticky divs with uppercase text like "Today", "Yesterday", etc.
-      // They appear above commit rows in the list
+      // Date headers are sticky divs with uppercase text like "TODAY", "YESTERDAY", etc.
+      // They appear above commit rows in the commit list panel (right side)
       const gitTab = await $('[data-testid="git-tab"]')
       const text = await gitTab.getText()
+      const upper = text.toUpperCase()
       // Should contain at least one date label
-      const hasDateLabel = text.includes('Today') || text.includes('Yesterday') ||
-        text.includes('Monday') || text.includes('Tuesday') || text.includes('Wednesday') ||
-        text.includes('Thursday') || text.includes('Friday') || text.includes('Saturday') ||
-        text.includes('Sunday') || /[A-Z][a-z]+ \d+/.test(text)
+      const hasDateLabel = upper.includes('TODAY') || upper.includes('YESTERDAY') ||
+        upper.includes('MONDAY') || upper.includes('TUESDAY') || upper.includes('WEDNESDAY') ||
+        upper.includes('THURSDAY') || upper.includes('FRIDAY') || upper.includes('SATURDAY') ||
+        upper.includes('SUNDAY') ||
+        // "Feb 15" or "Jan 3" style (any month abbreviation followed by space + digits)
+        /(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+\d+/.test(upper)
       expect(hasDateLabel).toBe(true)
     })
   })

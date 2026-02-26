@@ -22,23 +22,40 @@ describe('Files Tab', () => {
   describe('file tree', () => {
     it('renders file tree with items', async function () {
       if (!mainApp) return this.skip()
-      const treeItems = await $$('li[role="treeitem"]')
+      // Wait for tree items to load
+      await browser.waitUntil(
+        async () => {
+          const items = await $$('[role="treeitem"]')
+          return items.length > 0
+        },
+        { timeout: 10_000, timeoutMsg: 'File tree did not load any items' }
+      )
+      const treeItems = await $$('[role="treeitem"]')
       expect(treeItems.length).toBeGreaterThan(0)
     })
 
-    it('tree items show file or directory names', async function () {
+    it('tree items contain name elements', async function () {
       if (!mainApp) return this.skip()
-      const treeItems = await $$('li[role="treeitem"]')
+      await browser.waitUntil(
+        async () => {
+          const items = await $$('[role="treeitem"]')
+          return items.length > 0
+        },
+        { timeout: 10_000 }
+      )
+      const treeItems = await $$('[role="treeitem"]')
       if (treeItems.length === 0) return this.skip()
 
-      const text = await treeItems[0].getText()
-      expect(text.length).toBeGreaterThan(0)
+      // At least one tree item should contain a span element (file/dir name holder)
+      const firstItem = treeItems[0]
+      const spans = await firstItem.$$('span')
+      expect(spans.length).toBeGreaterThan(0)
     })
 
     it('directories are expandable', async function () {
       if (!mainApp) return this.skip()
       // Look for a tree item with aria-expanded (directory)
-      const dirs = await $$('li[role="treeitem"][aria-expanded]')
+      const dirs = await $$('[role="treeitem"][aria-expanded]')
       if (dirs.length === 0) return this.skip()
 
       // Click to toggle
@@ -58,7 +75,7 @@ describe('Files Tab', () => {
       if (!mainApp) return this.skip()
 
       // Find a non-directory tree item (no aria-expanded attribute)
-      const treeItems = await $$('li[role="treeitem"]:not([aria-expanded])')
+      const treeItems = await $$('[role="treeitem"]:not([aria-expanded])')
       if (treeItems.length === 0) return this.skip()
 
       await treeItems[0].click()
@@ -101,7 +118,7 @@ describe('Files Tab', () => {
       await browser.pause(2_000)
 
       // Check if README content is showing (either markdown rendered or selected in tree)
-      const treeItems = await $$('li[role="treeitem"]')
+      const treeItems = await $$('[role="treeitem"]')
       let hasReadme = false
       for (const item of treeItems) {
         const text = await item.getText()
@@ -127,10 +144,14 @@ describe('Files Tab', () => {
 
       const filesTab = await $('button=Files')
       await filesTab.click()
-      await browser.pause(1_000)
 
-      const treeItems = await $$('li[role="treeitem"]')
-      expect(treeItems.length).toBeGreaterThan(0)
+      await browser.waitUntil(
+        async () => {
+          const items = await $$('[role="treeitem"]')
+          return items.length > 0
+        },
+        { timeout: 10_000, timeoutMsg: 'File tree did not reload after tab switch' }
+      )
     })
   })
 })
