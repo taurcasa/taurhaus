@@ -1,6 +1,7 @@
 <script>
   import MarkdownRenderer from './MarkdownRenderer.svelte'
   import { themeTokens } from './themeTokens.js'
+  import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
 
   let {
     dark,
@@ -20,6 +21,8 @@
     onDismissRelationship,
     onSelectProject,
     onMarkdownNavigate,
+    onLaunchSession,
+    onOpenTerminal,
   } = $props()
 
   const t = $derived(themeTokens(dark))
@@ -32,29 +35,18 @@
   const sessionTint    = $derived(dark ? 'bg-brand-500/[0.03]' : 'bg-brand-50/40')
   const sessionBorder  = $derived(dark ? 'border-brand-400' : 'border-brand-500')
   const tagBg          = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600')
+  const actionBtnBase  = $derived(dark
+    ? 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border-zinc-700/50'
+    : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700 border-zinc-200')
 
-  let heroMode = $state('auto')
   let showAllCommits = $state(false)
 
-  const showSession = $derived(
-    heroMode === 'session' ||
-    (heroMode === 'auto' && latestSession && isSessionFresh(latestSession.date))
-  )
-  const showReadme = $derived(!showSession)
-  const hasToggle = $derived(latestSession && readmeContent)
+  const lastCommit = $derived(recentCommits?.[0] || null)
 
   const readmeForOverview = $derived.by(() => {
     if (!readmeContent?.content) return ''
     return readmeContent.content.replace(/^#\s+[^\n]*\n?/, '')
   })
-
-  function isSessionFresh(dateStr) {
-    if (!dateStr) return false
-    const sessionDate = new Date(dateStr)
-    const now = new Date()
-    const diffDays = (now - sessionDate) / (1000 * 60 * 60 * 24)
-    return diffDays < 7
-  }
 
   function formatSessionDate(dateStr) {
     if (!dateStr) return ''
@@ -101,6 +93,8 @@
     showAllCommits = true
     onViewAllCommits()
   }
+
+  const TOOLS = ['claude', 'codex', 'gemini']
 </script>
 
 <!-- Project header -->
@@ -108,6 +102,9 @@
   <div class="flex items-baseline gap-3">
     <h1 class="text-[18px] font-semibold {t.textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
     <span class="text-[11px] font-mono {t.textTertiary}">{selectedProject.branch || ''}</span>
+    {#if selectedProject.is_dirty}
+      <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Uncommitted changes"></span>
+    {/if}
     {#if selectedProject.activity_state}
       <span class="text-[11px] {statusColor} font-medium capitalize">{selectedProject.activity_state}</span>
     {/if}
@@ -117,94 +114,113 @@
   {/if}
 </div>
 
-{#snippet sessionContent()}
-  <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-    <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
-    {#if latestSession.next_steps && latestSession.next_steps.length > 0}
-      <div class="mt-3">
-        <span class="text-[11px] {t.textTertiary}">Next steps</span>
-        <ul class="mt-1 space-y-0.5">
-          {#each latestSession.next_steps as step}
-            <li class="text-[13px] {t.textBody} flex items-start gap-2">
-              <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
-              <span>{step}</span>
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {/if}
-    {#if latestSession.open_questions && latestSession.open_questions.length > 0}
-      <div class="mt-3">
-        <span class="text-[11px] {t.textTertiary}">Open questions</span>
-        <ul class="mt-1 space-y-0.5">
-          {#each latestSession.open_questions as question}
-            <li class="text-[13px] {t.textBody} flex items-start gap-2">
-              <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
-              <span>{question}</span>
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {/if}
-  </div>
-{/snippet}
-
 <!-- Scrollable content -->
 <div class="flex-1 overflow-y-auto content-enter">
   <div class="max-w-3xl px-7 pb-8">
 
-    <!-- Hero area: Session / README toggle (ADR-006) -->
-    <section class="pb-6 border-b {t.keyline}">
-      <div class="flex items-center justify-between mb-3">
-        {#if hasToggle}
-          <!-- Segmented control -->
-          <div class="flex items-center gap-0.5 rounded-md p-0.5 {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'}">
-            <button
-              class="px-2.5 py-0.5 text-[11px] rounded transition-colors
-                {showSession ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${t.textTertiary} hover:${t.textSecondary}`}"
-              onclick={() => heroMode = 'session'}
-            >Session</button>
-            <button
-              class="px-2.5 py-0.5 text-[11px] rounded transition-colors
-                {showReadme ? `font-medium ${dark ? 'bg-zinc-700 text-zinc-200' : 'bg-white text-zinc-700 shadow-sm'}` : `${t.textTertiary} hover:${t.textSecondary}`}"
-              onclick={() => heroMode = 'readme'}
-            >README</button>
-          </div>
-        {:else}
-          <span class="text-[11px] {t.textTertiary}">{latestSession ? 'Latest session' : readmeContent ? 'README' : 'Latest session'}</span>
-        {/if}
-        {#if latestSession}
-          <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
-        {/if}
+    <!-- Quick Actions -->
+    <section class="pb-5 border-b {t.keyline}">
+      <div class="flex items-center gap-2 flex-wrap">
+        {#each TOOLS as tool}
+          {@const icon = TOOL_ICONS[tool]}
+          <button
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-md border transition-colors {actionBtnBase}"
+            onclick={() => onLaunchSession?.(tool)}
+            data-testid="action-launch-{tool}"
+          >
+            <svg class="w-3 h-3 shrink-0" viewBox={icon.viewBox} fill="currentColor">
+              <path d={icon.path}/>
+            </svg>
+            {TOOL_NAMES[tool]}
+          </button>
+        {/each}
+        <button
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-md border transition-colors {actionBtnBase}"
+          onclick={() => onOpenTerminal?.()}
+          data-testid="action-open-terminal"
+        >
+          <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+          </svg>
+          Terminal
+        </button>
       </div>
+    </section>
 
-      {#if sessionLoading}
-        <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+    <!-- Last Commit -->
+    <section class="py-5 border-b {t.keyline}">
+      <span class="text-[11px] {t.textTertiary}">Last commit</span>
+      {#if commitsLoading}
+        <div class="mt-2 flex items-center h-[30px]">
+          <div class="h-2.5 w-12 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
+          <div class="h-2.5 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
+        </div>
+      {:else if lastCommit}
+        <button
+          class="mt-2 w-full flex items-center h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
+          onclick={() => onNavigateToCommit(lastCommit.hash)}
+          data-testid="overview-last-commit"
+        >
+          <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{lastCommit.hash}</span>
+          <span class="{t.textBody} truncate flex-1">{lastCommit.message}</span>
+          <span class="text-[11px] {timeColor} shrink-0 ml-3">{lastCommit.date}</span>
+        </button>
+      {:else}
+        <p class="mt-2 text-[13px] {t.textMuted}">No commits found.</p>
+      {/if}
+    </section>
+
+    <!-- Latest Session (compact, only if exists) -->
+    {#if sessionLoading}
+      <section class="py-5 border-b {t.keyline}">
+        <span class="text-[11px] {t.textTertiary}">Latest session</span>
+        <div class="mt-2 border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
           <div class="space-y-2 animate-pulse">
             <div class="h-3 w-3/4 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
             <div class="h-3 w-1/2 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
           </div>
         </div>
-      {:else if hasToggle}
-        {#if showSession}
-          {@render sessionContent()}
-        {/if}
-        <div class:hidden={showSession}>
-          <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
+      </section>
+    {:else if latestSession}
+      <section class="py-5 border-b {t.keyline}">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] {t.textTertiary}">Latest session</span>
+          <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
         </div>
-      {:else if latestSession}
-        {@render sessionContent()}
-      {:else if readmeContent}
-        <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
-      {:else}
-        <div class="border-l-[3px] {dashBorder} pl-5 py-3 -ml-0.5 rounded-r-sm">
-          <p class="text-[13px] {t.textMuted}">No sessions or README found for this project.</p>
+        <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
+          <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
+          {#if latestSession.next_steps && latestSession.next_steps.length > 0}
+            <div class="mt-3">
+              <span class="text-[11px] {t.textTertiary}">Next steps</span>
+              <ul class="mt-1 space-y-0.5">
+                {#each latestSession.next_steps as step}
+                  <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                    <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
+                    <span>{step}</span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+          {#if latestSession.open_questions && latestSession.open_questions.length > 0}
+            <div class="mt-3">
+              <span class="text-[11px] {t.textTertiary}">Open questions</span>
+              <ul class="mt-1 space-y-0.5">
+                {#each latestSession.open_questions as question}
+                  <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                    <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
+                    <span>{question}</span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
         </div>
-      {/if}
-    </section>
+      </section>
+    {/if}
 
     <!-- Recent Activity (commits) -->
-    <section class="py-6 border-b {t.keyline}">
+    <section class="py-5 border-b {t.keyline}">
       <div class="flex items-center justify-between mb-3">
         <span class="text-[11px] {t.textTertiary}">Recent activity</span>
         {#if recentCommits.length > 0}
@@ -245,8 +261,16 @@
       {/if}
     </section>
 
+    <!-- README -->
+    {#if readmeContent}
+      <section class="py-5 border-b {t.keyline}">
+        <span class="text-[11px] {t.textTertiary} mb-3 block">README</span>
+        <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
+      </section>
+    {/if}
+
     <!-- Relationships -->
-    <section class="py-6 border-b {t.keyline}">
+    <section class="py-5 border-b {t.keyline}">
       <div class="flex items-center justify-between mb-3">
         <span class="text-[11px] {t.textTertiary}">Relationships</span>
         {#if relationships.length > 0}
@@ -307,7 +331,7 @@
     </section>
 
     <!-- Session History -->
-    <section class="py-6 border-b {t.keyline}">
+    <section class="py-5 border-b {t.keyline}">
       <div class="flex items-center justify-between mb-3">
         <span class="text-[11px] {t.textTertiary}">Session history</span>
         {#if sessionHistory.length > 0}
@@ -338,7 +362,7 @@
     </section>
 
     <!-- Project Info -->
-    <section class="py-6 pb-10">
+    <section class="py-5 pb-10">
       <span class="text-[11px] {t.textTertiary}">Project info</span>
       <div class="mt-2 space-y-1 text-[13px]">
         <div class="flex items-center gap-3">

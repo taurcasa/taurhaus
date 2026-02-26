@@ -67,7 +67,7 @@ What needs to happen before taurhaus can be released publicly (open source or ot
 
 The hero section anchors on session handoffs, but handoffs aren't created consistently enough to be useful. Rethink what the overview shows when there's no recent session.
 
-- [ ] **P10** — Redesign Overview tab: replace session-first hero with something more universally useful. Candidates: recent file changes, project stats (last commit, branch, file count), quick-actions (launch session, open terminal), or a condensed activity feed. Keep README rendering as a fallback. Design first, then implement.
+- [x] **P10** — Redesign Overview tab: replace session-first hero with something more universally useful. Candidates: recent file changes, project stats (last commit, branch, file count), quick-actions (launch session, open terminal), or a condensed activity feed. Keep README rendering as a fallback. Design first, then implement.
 
 ## App Polish — Git View
 

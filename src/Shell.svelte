@@ -1,5 +1,6 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus, launchClaudeSession, navigateToSession } from './lib/ipc.js'
+  import { getSessionForProject } from './lib/sessionStore.svelte.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
@@ -382,6 +383,21 @@
     await loadCommits(selectedProject.id, 50)
   }
 
+  function handleOverviewLaunchSession(tool) {
+    if (!selectedProject) return
+    launchClaudeSession(selectedProject.id, 'fresh', tool)
+      .then(r => console.log('[overview] launch OK:', r))
+      .catch(e => console.error('[overview] launch FAILED:', e))
+  }
+
+  function handleOverviewOpenTerminal() {
+    if (!selectedProject) return
+    const session = getSessionForProject(selectedProject.path)
+    if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
+      navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane, true)
+    }
+  }
+
   function switchTab(tab, navEntry) {
     visitedTabs = new Set([...visitedTabs, tab])
     activeTab = tab
@@ -651,6 +667,8 @@
           onDismissRelationship={handleDismissRelationship}
           onSelectProject={selectProject}
           onMarkdownNavigate={handleMarkdownNavigate}
+          onLaunchSession={handleOverviewLaunchSession}
+          onOpenTerminal={handleOverviewOpenTerminal}
         />
       </div>
 
