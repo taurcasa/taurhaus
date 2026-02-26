@@ -236,6 +236,7 @@ pub fn run() {
                 let mut watcher_guard = watcher_state.0.lock().unwrap();
                 let mut count = 0;
 
+                let mut inotify_limit_hit = false;
                 for project in &projects {
                     // Skip WSL projects when daemon handles them
                     if has_daemon && provider::path::is_wsl_path(&project.path) {
@@ -243,22 +244,42 @@ pub fn run() {
                     }
                     let path = std::path::Path::new(&project.path);
                     if path.is_dir() {
-                        if let Err(e) = watcher_guard.watch_project(
+                        match watcher_guard.watch_project(
                             project.id.clone(),
                             path.to_path_buf(),
                         ) {
-                            tracing::debug!(
-                                project = project.name,
-                                error = %e,
-                                "Could not watch project directory (local)"
-                            );
-                        } else {
-                            count += 1;
+                            Ok(()) => count += 1,
+                            Err(e) => {
+                                let msg = e.to_string();
+                                if msg.contains("No space left on device")
+                                    || msg.contains("inotify")
+                                {
+                                    tracing::warn!(
+                                        project = project.name,
+                                        error = %e,
+                                        "inotify watch limit reached — skipping project"
+                                    );
+                                    inotify_limit_hit = true;
+                                } else {
+                                    tracing::debug!(
+                                        project = project.name,
+                                        error = %e,
+                                        "Could not watch project directory (local)"
+                                    );
+                                }
+                            }
                         }
                     }
                 }
                 if count > 0 {
                     tracing::info!(count, "Watching project directories (local)");
+                }
+                if inotify_limit_hit {
+                    tracing::warn!(
+                        "Some projects could not be watched — inotify limit reached. \
+                         File changes in those projects won't be detected. \
+                         Increase fs.inotify.max_user_watches or reduce project count."
+                    );
                 }
 
                 // Also watch Claude task directories in local mode.
