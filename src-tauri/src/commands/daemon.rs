@@ -1,9 +1,12 @@
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
+use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::daemon::protocol::{self, PingResult, PROTOCOL_VERSION};
 use crate::daemon::server::DEFAULT_PORT;
-use crate::models::DaemonStatus;
+use crate::models::{DaemonInstallStatus, DaemonStatus};
 use crate::ProviderState;
+
+const BUNDLED_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Get the current daemon connection status.
 #[tauri::command]
@@ -126,5 +129,323 @@ pub fn stop_daemon(
             response.error.map(|e| e.message).unwrap_or_default()
         )),
         Err(e) => Err(format!("Failed to send shutdown: {e}")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Daemon auto-install commands (FirstRunWizard + startup update check)
+// ---------------------------------------------------------------------------
+
+/// Detect the default WSL distro name.
+///
+/// Runs `wsl -l -q` and returns the first line (the default distro).
+/// Returns None if WSL is not available or no distro is configured.
+fn detect_default_distro() -> Result<Option<String>, String> {
+    let output = wsl_command()
+        .args(["--list", "--quiet"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("Failed to run wsl.exe: {e}"))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    // wsl -l -q output on Windows uses UTF-16LE with null bytes between chars.
+    // Try UTF-8 first, then try cleaning null bytes.
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let first_line = raw
+        .lines()
+        .map(|l| l.replace('\0', "").trim().to_string())
+        .find(|l| !l.is_empty());
+
+    Ok(first_line)
+}
+
+/// Check whether the daemon binary is installed in WSL and compare versions.
+///
+/// Used by FirstRunWizard and startup update detection.
+#[tauri::command]
+pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
+    // Step 1: Check WSL availability
+    let wsl_check = wsl_command()
+        .arg("--status")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    match wsl_check {
+        Err(_) => {
+            return Ok(DaemonInstallStatus {
+                installed: false,
+                version: None,
+                bundled_version: BUNDLED_VERSION.to_string(),
+                needs_update: false,
+                wsl_available: false,
+                error: Some("WSL is not installed".to_string()),
+            });
+        }
+        Ok(output) if !output.status.success() => {
+            return Ok(DaemonInstallStatus {
+                installed: false,
+                version: None,
+                bundled_version: BUNDLED_VERSION.to_string(),
+                needs_update: false,
+                wsl_available: false,
+                error: Some("WSL is not available".to_string()),
+            });
+        }
+        _ => {}
+    }
+
+    // Step 2: Detect default distro
+    let distro = match detect_default_distro()? {
+        Some(d) => d,
+        None => {
+            return Ok(DaemonInstallStatus {
+                installed: false,
+                version: None,
+                bundled_version: BUNDLED_VERSION.to_string(),
+                needs_update: false,
+                wsl_available: true,
+                error: Some("No WSL distro configured".to_string()),
+            });
+        }
+    };
+
+    if let Err(e) = validate_wsl_distro(&distro) {
+        return Ok(DaemonInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: BUNDLED_VERSION.to_string(),
+            needs_update: false,
+            wsl_available: true,
+            error: Some(format!("Invalid WSL distro name: {e}")),
+        });
+    }
+
+    // Step 3: Check if binary exists
+    let exists = wsl_command()
+        .args(["-d", &distro, "--", "test", "-f", "$HOME/.local/bin/taurhaus-daemon"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !exists {
+        return Ok(DaemonInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: BUNDLED_VERSION.to_string(),
+            needs_update: false,
+            wsl_available: true,
+            error: None,
+        });
+    }
+
+    // Step 4: Get installed version
+    let version_output = wsl_command()
+        .args(["-d", &distro, "--", "$HOME/.local/bin/taurhaus-daemon", "--version"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    let version = match version_output {
+        Ok(output) if output.status.success() => {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            // Output format: "taurhaus-daemon X.Y.Z"
+            raw.trim()
+                .strip_prefix("taurhaus-daemon ")
+                .map(|v| v.trim().to_string())
+        }
+        _ => None,
+    };
+
+    let needs_update = match &version {
+        Some(v) => semver_less_than(v, BUNDLED_VERSION),
+        None => true, // Can't determine version — assume needs update
+    };
+
+    Ok(DaemonInstallStatus {
+        installed: true,
+        version,
+        bundled_version: BUNDLED_VERSION.to_string(),
+        needs_update,
+        wsl_available: true,
+        error: None,
+    })
+}
+
+/// Install (or update) the daemon binary from bundled app resources into WSL.
+///
+/// Copies the bundled binary to `~/.local/bin/taurhaus-daemon` in the default
+/// WSL distro and sets executable permissions.
+#[tauri::command]
+pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
+    // Resolve bundled binary path from Tauri resources
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to resolve resource directory: {e}"))?;
+    let bundled_binary = resource_dir.join("resources").join("taurhaus-daemon");
+
+    if !bundled_binary.exists() {
+        return Err(format!(
+            "Bundled daemon binary not found at {}",
+            bundled_binary.display()
+        ));
+    }
+
+    // Detect WSL distro
+    let distro = detect_default_distro()?
+        .ok_or("No WSL distro configured")?;
+    validate_wsl_distro(&distro)
+        .map_err(|e| format!("Invalid distro: {e}"))?;
+
+    // Translate Windows path to WSL-accessible /mnt/... path.
+    // On Windows: C:\Users\... → /mnt/c/Users/...
+    // In dev (Linux): path is already a Linux path, use directly.
+    let wsl_source_path = windows_to_wsl_path(&bundled_binary)?;
+
+    // Create target directory
+    let mkdir = wsl_command()
+        .args(["-d", &distro, "--", "mkdir", "-p", "$HOME/.local/bin"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to create target directory: {e}"))?;
+
+    if !mkdir.status.success() {
+        let stderr = String::from_utf8_lossy(&mkdir.stderr);
+        return Err(format!("Failed to create ~/.local/bin: {stderr}"));
+    }
+
+    // Copy binary
+    let cp = wsl_command()
+        .args([
+            "-d", &distro, "--",
+            "cp", &wsl_source_path, "$HOME/.local/bin/taurhaus-daemon",
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to copy daemon binary: {e}"))?;
+
+    if !cp.status.success() {
+        let stderr = String::from_utf8_lossy(&cp.stderr);
+        return Err(format!("Failed to copy daemon binary: {stderr}"));
+    }
+
+    // Set executable permissions
+    let chmod = wsl_command()
+        .args(["-d", &distro, "--", "chmod", "+x", "$HOME/.local/bin/taurhaus-daemon"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to set permissions: {e}"))?;
+
+    if !chmod.status.success() {
+        let stderr = String::from_utf8_lossy(&chmod.stderr);
+        return Err(format!("Failed to set executable permission: {stderr}"));
+    }
+
+    // Verify installation by checking --version
+    let verify = wsl_command()
+        .args(["-d", &distro, "--", "$HOME/.local/bin/taurhaus-daemon", "--version"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    match verify {
+        Ok(output) if output.status.success() => {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let version = raw.trim();
+            Ok(format!("Daemon installed successfully: {version}"))
+        }
+        Ok(_) => {
+            Err("Daemon was copied but --version check failed. The binary may be corrupted.".to_string())
+        }
+        Err(e) => {
+            Err(format!("Daemon was copied but verification failed: {e}"))
+        }
+    }
+}
+
+/// Translate a Windows path to a WSL-accessible `/mnt/...` path.
+///
+/// On actual Windows: `C:\Users\foo\bar` → `/mnt/c/Users/foo/bar`
+/// On Linux (dev mode): returns the path as-is since it's already accessible.
+fn windows_to_wsl_path(path: &std::path::Path) -> Result<String, String> {
+    let path_str = path.to_string_lossy();
+
+    // Check if it looks like a Windows path (drive letter)
+    if path_str.len() >= 3 && path_str.as_bytes()[1] == b':' {
+        let drive = (path_str.as_bytes()[0] as char).to_ascii_lowercase();
+        let rest = &path_str[2..].replace('\\', "/");
+        Ok(format!("/mnt/{drive}{rest}"))
+    } else {
+        // Already a Unix path (dev mode on Linux)
+        Ok(path_str.to_string())
+    }
+}
+
+/// Simple semver less-than comparison.
+///
+/// Compares major.minor.patch numerically. Returns true if `a` < `b`.
+/// Falls back to string comparison if parsing fails.
+fn semver_less_than(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> Option<(u32, u32, u32)> {
+        let parts: Vec<&str> = s.split('.').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        Some((
+            parts[0].parse().ok()?,
+            parts[1].parse().ok()?,
+            parts[2].parse().ok()?,
+        ))
+    };
+
+    match (parse(a), parse(b)) {
+        (Some(a), Some(b)) => a < b,
+        _ => a < b, // String comparison as fallback
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn semver_comparison() {
+        assert!(semver_less_than("0.3.1", "0.3.2"));
+        assert!(semver_less_than("0.2.9", "0.3.0"));
+        assert!(semver_less_than("0.3.2", "1.0.0"));
+        assert!(!semver_less_than("0.3.2", "0.3.2"));
+        assert!(!semver_less_than("0.3.3", "0.3.2"));
+        assert!(!semver_less_than("1.0.0", "0.9.9"));
+    }
+
+    #[test]
+    fn windows_path_translation() {
+        let win = std::path::PathBuf::from("C:\\Users\\mstie\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon");
+        // On Linux this is still a valid PathBuf, just treated as a single component
+        // The function checks for drive letter pattern
+        let result = windows_to_wsl_path(&win);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn unix_path_passthrough() {
+        let unix = std::path::PathBuf::from("/home/mstie/.local/bin/taurhaus-daemon");
+        let result = windows_to_wsl_path(&unix).unwrap();
+        assert_eq!(result, "/home/mstie/.local/bin/taurhaus-daemon");
     }
 }

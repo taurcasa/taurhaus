@@ -252,6 +252,23 @@ pub struct DaemonStatus {
     pub wsl_distro: Option<String>,
 }
 
+/// Daemon installation status — used by FirstRunWizard and startup update check.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DaemonInstallStatus {
+    /// Whether the daemon binary exists in WSL (~/.local/bin/taurhaus-daemon)
+    pub installed: bool,
+    /// Version of the installed daemon (from `--version` output), if installed.
+    pub version: Option<String>,
+    /// Version bundled with this app (from CARGO_PKG_VERSION).
+    pub bundled_version: String,
+    /// True if installed version < bundled version (needs update).
+    pub needs_update: bool,
+    /// Whether WSL is available and a distro is configured.
+    pub wsl_available: bool,
+    /// Human-readable error if detection failed.
+    pub error: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // IPC response types (used by commands, implemented in later phases)
 // ---------------------------------------------------------------------------

@@ -478,3 +478,22 @@ export function getDaemonStatus() {
     wsl_distro: null,
   }))
 }
+
+/** Check daemon installation status in WSL (for wizard and update detection). */
+export function checkDaemonInstallStatus() {
+  return invokeOrMock('check_daemon_install_status', undefined, () => ({
+    installed: true,
+    version: '0.3.1',
+    bundled_version: '0.3.1',
+    needs_update: false,
+    wsl_available: true,
+    error: null,
+  }))
+}
+
+/** Install (or update) daemon binary from bundled resources into WSL. */
+export function installDaemon() {
+  return invokeOrMock('install_daemon', undefined, () =>
+    'Daemon installed successfully: taurhaus-daemon 0.3.1'
+  )
+}

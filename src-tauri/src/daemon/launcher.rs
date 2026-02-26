@@ -54,7 +54,7 @@ pub fn validate_wsl_distro(distro: &str) -> Result<(), String> {
 ///
 /// On Windows, console subsystem processes (like wsl.exe) create a visible
 /// window by default. `CREATE_NO_WINDOW` prevents this.
-fn wsl_command() -> std::process::Command {
+pub fn wsl_command() -> std::process::Command {
     #[allow(unused_mut)]
     let mut cmd = std::process::Command::new("wsl");
     #[cfg(target_os = "windows")]

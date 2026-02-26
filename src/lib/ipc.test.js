@@ -749,4 +749,56 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
   })
+
+  // ── Daemon install commands ──────────────────────────────────────────────
+
+  describe('checkDaemonInstallStatus()', () => {
+    it('returns mock data in non-Tauri mode', async () => {
+      const result = await ipc.checkDaemonInstallStatus()
+      expect(result).toEqual({
+        installed: true,
+        version: '0.3.1',
+        bundled_version: '0.3.1',
+        needs_update: false,
+        wsl_available: true,
+        error: null,
+      })
+    })
+
+    it('calls check_daemon_install_status in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        installed: false,
+        version: null,
+        bundled_version: '0.3.2',
+        needs_update: false,
+        wsl_available: true,
+        error: null,
+      })
+
+      const result = await ipc.checkDaemonInstallStatus()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('check_daemon_install_status')
+      expect(result.installed).toBe(false)
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('installDaemon()', () => {
+    it('returns mock success in non-Tauri mode', async () => {
+      const result = await ipc.installDaemon()
+      expect(result).toContain('Daemon installed successfully')
+    })
+
+    it('calls install_daemon in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('Daemon installed successfully: taurhaus-daemon 0.3.2')
+
+      const result = await ipc.installDaemon()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('install_daemon')
+      expect(result).toContain('0.3.2')
+      delete window.__TAURI_INTERNALS__
+    })
+  })
 })
