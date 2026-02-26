@@ -131,15 +131,15 @@ body {
   background-clip: padding-box;
 }
 
-/* ─── Dark mode — sidebar (darker surface = subtler thumb) ─── */
-.dark aside ::-webkit-scrollbar-thumb {
+/* ─── Sidebar — always dark teal, so one fixed scrollbar style for both modes ─── */
+aside ::-webkit-scrollbar-thumb {
   background: #27272a; /* zinc-800 */
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.dark aside ::-webkit-scrollbar-thumb:hover {
+aside ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46; /* zinc-700 */
   border-radius: 4px;
   border: 2px solid transparent;
