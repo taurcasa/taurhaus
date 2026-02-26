@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus, launchClaudeSession, navigateToSession } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession } from './lib/ipc.js'
   import { getSessionForProject } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
@@ -39,6 +39,11 @@
   // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
   let daemonStatusDismissTimer = $state(null)
+
+  // Daemon update banner state
+  let daemonUpdateAvailable = $state(null)  // { version, bundled_version } or null
+  let daemonUpdateDismissed = $state(false)
+  let daemonUpdating = $state(false)
 
   /*
    * Layout dimensions
@@ -180,6 +185,34 @@
         daemonStatus = status.status
       }
     } catch { /* ignore — not critical */ }
+
+    // Non-blocking: check if daemon binary needs updating
+    checkDaemonUpdate()
+  }
+
+  async function checkDaemonUpdate() {
+    try {
+      const status = await checkDaemonInstallStatus()
+      if (status.installed && status.needs_update) {
+        daemonUpdateAvailable = {
+          version: status.version,
+          bundled_version: status.bundled_version,
+        }
+      }
+    } catch { /* ignore — not critical */ }
+  }
+
+  async function handleDaemonUpdate() {
+    daemonUpdating = true
+    try {
+      await installDaemon()
+      daemonUpdateAvailable = null
+      daemonUpdateDismissed = false
+    } catch (e) {
+      console.error('Daemon update failed:', e)
+    } finally {
+      daemonUpdating = false
+    }
   }
 
   // Command Center — poll for Claude Code sessions
@@ -667,6 +700,28 @@
 
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {t.mainBg} {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
+
+      <!-- Daemon update banner -->
+      {#if daemonUpdateAvailable && !daemonUpdateDismissed && !settingsOpen}
+        <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" data-testid="daemon-update-banner">
+          <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+          <span class="text-[12px] {t.textSecondary} flex-1">
+            Daemon update available: v{daemonUpdateAvailable.version} → v{daemonUpdateAvailable.bundled_version}
+          </span>
+          <button
+            class="text-[12px] font-medium text-brand-500 hover:text-brand-400 transition-colors disabled:opacity-50"
+            onclick={handleDaemonUpdate}
+            disabled={daemonUpdating}
+            data-testid="daemon-update-button"
+          >{daemonUpdating ? 'Updating...' : 'Update now'}</button>
+          <button
+            class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
+            onclick={() => daemonUpdateDismissed = true}
+            data-testid="daemon-update-dismiss"
+          >Dismiss</button>
+        </div>
+      {/if}
+
       {#if settingsOpen}
         <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} {codeThemeLight} {codeThemeDark} onCodeThemeChanged={handleCodeThemeChanged} />
       {:else if !selectedProject}
