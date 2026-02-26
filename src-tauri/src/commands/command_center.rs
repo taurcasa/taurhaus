@@ -187,13 +187,28 @@ pub fn launch_claude_session(
         }
     }
 
-    // Fall back to direct launch (Linux dev)
+    // Fall back to direct launch (Linux/macOS without daemon)
     if let Ok(mut f) = log_file.0.lock() {
         let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
     }
     let (session, window, pane) =
         crate::session_scanner::control::launch_in_tmux(&linux_path, mode, tool)
             .map_err(|e| format!("Failed to launch session: {e}"))?;
+
+    // On macOS, also open the terminal emulator (direct launch doesn't go
+    // through the daemon path which handles this).
+    #[cfg(target_os = "macos")]
+    {
+        let ts = load_terminal_settings(&db);
+        let _ = crate::terminal::handle_terminal(
+            crate::terminal::TerminalIntent::EnsureOpen {
+                distro: None,
+                tmux_session: session.clone(),
+                emulator: ts.emulator,
+                custom_command: ts.custom_command,
+            },
+        );
+    }
 
     Ok(protocol::LaunchSessionResult {
         tmux_session: Some(session),
@@ -279,8 +294,8 @@ pub fn navigate_to_session(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
+                    let ts = load_terminal_settings(&db);
                     let intent = if should_open {
-                        let ts = load_terminal_settings(&db);
                         crate::terminal::TerminalIntent::EnsureOpen {
                             distro: provider.wsl_distro.clone(),
                             tmux_session: tmux_session.clone(),
@@ -288,7 +303,9 @@ pub fn navigate_to_session(
                             custom_command: ts.custom_command,
                         }
                     } else {
-                        crate::terminal::TerminalIntent::FocusOnly
+                        crate::terminal::TerminalIntent::FocusOnly {
+                            emulator: ts.emulator,
+                        }
                     };
                     let _ = crate::terminal::handle_terminal(intent);
                     return Ok(());
