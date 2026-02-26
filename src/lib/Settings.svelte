@@ -50,6 +50,7 @@
         thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
         ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
         code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
+        terminal: { emulator: 'windows_terminal', custom_command: '' },
       }
     } finally {
       loading = false
@@ -363,6 +364,53 @@
           {#if saving}
             <p class="text-[12px] {textTertiary} mt-2">Saving...</p>
           {/if}
+        </section>
+
+        <!-- ═══ TERMINAL ═══ -->
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-terminal">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Terminal</h2>
+
+          <div class="space-y-3">
+            <div class="flex items-center gap-3">
+              <label for="terminal-emulator" class="text-[13px] {t.textSecondary} w-24">Emulator</label>
+              <select
+                id="terminal-emulator"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                value={settings.terminal?.emulator || 'windows_terminal'}
+                onchange={(e) => {
+                  if (!settings.terminal) settings.terminal = { emulator: 'windows_terminal', custom_command: '' }
+                  settings.terminal.emulator = e.target.value
+                  saveSettings()
+                }}
+                data-testid="terminal-emulator"
+              >
+                <option value="windows_terminal">Windows Terminal</option>
+                <option value="custom">Custom command</option>
+              </select>
+            </div>
+
+            {#if settings.terminal?.emulator === 'custom'}
+              <div>
+                <label for="terminal-custom-cmd" class="text-[13px] {t.textSecondary} block mb-1.5">Custom command</label>
+                <input
+                  id="terminal-custom-cmd"
+                  type="text"
+                  class="w-full px-3 py-1.5 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                  value={settings.terminal?.custom_command || ''}
+                  placeholder="e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"
+                  onblur={(e) => {
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '' }
+                    settings.terminal.custom_command = e.target.value
+                    saveSettings()
+                  }}
+                  data-testid="terminal-custom-cmd"
+                />
+                <p class="mt-1.5 text-[11px] {textTertiary}">
+                  Placeholders: <code class="font-mono">{'{distro}'}</code> (WSL distro name), <code class="font-mono">{'{tmux_session}'}</code> (tmux session name)
+                </p>
+              </div>
+            {/if}
+          </div>
         </section>
 
         <!-- ═══ SEARCH INDEX ═══ -->

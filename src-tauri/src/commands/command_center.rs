@@ -10,10 +10,20 @@ use tauri::State;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::daemon::protocol::{self, LaunchMode};
+use crate::models::TerminalSettings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
 use crate::session_scanner::ClaudeSession;
 use crate::ProviderState;
+
+/// Load terminal settings from the database, falling back to defaults on error.
+fn load_terminal_settings(db: &DbState) -> TerminalSettings {
+    db.0.lock()
+        .ok()
+        .and_then(|conn| crate::db::settings_queries::get_all_settings(&conn).ok())
+        .map(|s| s.terminal)
+        .unwrap_or_default()
+}
 
 /// List all running Claude Code sessions.
 ///
@@ -141,10 +151,13 @@ pub fn launch_claude_session(
 
                     // Open or focus Windows Terminal after successful launch
                     let tmux_session = result.tmux_session.as_deref().unwrap_or(TMUX_SESSION_NAME);
+                    let ts = load_terminal_settings(&db);
                     let _ = crate::terminal::handle_terminal(
                         crate::terminal::TerminalIntent::EnsureOpen {
                             distro: provider.wsl_distro.clone(),
                             tmux_session: tmux_session.to_string(),
+                            emulator: ts.emulator,
+                            custom_command: ts.custom_command,
                         },
                     );
                     return Ok(result);
@@ -233,6 +246,7 @@ pub fn stop_claude_session(
 /// terminal (used by session indicator clicks).
 #[tauri::command]
 pub fn navigate_to_session(
+    db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     log_file: State<'_, LogFileState>,
     tmux_session: String,
@@ -261,9 +275,12 @@ pub fn navigate_to_session(
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
                     let intent = if should_open {
+                        let ts = load_terminal_settings(&db);
                         crate::terminal::TerminalIntent::EnsureOpen {
                             distro: provider.wsl_distro.clone(),
                             tmux_session: tmux_session.clone(),
+                            emulator: ts.emulator,
+                            custom_command: ts.custom_command,
                         }
                     } else {
                         crate::terminal::TerminalIntent::FocusOnly

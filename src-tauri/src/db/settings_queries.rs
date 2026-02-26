@@ -5,7 +5,7 @@
 
 use rusqlite::Connection;
 
-use crate::models::{ActivityThresholds, CodeThemeSettings, DaemonSettings, Settings};
+use crate::models::{ActivityThresholds, CodeThemeSettings, DaemonSettings, Settings, TerminalSettings};
 
 /// Get a single setting value by key.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusqlite::Error> {
@@ -44,6 +44,8 @@ const KEY_DAEMON_PATH: &str = "daemon.path";
 const KEY_DAEMON_AUTO_START: &str = "daemon.auto_start";
 const KEY_CODE_THEME_LIGHT: &str = "code_theme.light";
 const KEY_CODE_THEME_DARK: &str = "code_theme.dark";
+const KEY_TERMINAL_EMULATOR: &str = "terminal.emulator";
+const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -86,6 +88,12 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
     let code_theme_dark = get_setting(conn, KEY_CODE_THEME_DARK)?
         .unwrap_or(defaults.code_theme.dark);
 
+    let terminal_emulator = get_setting(conn, KEY_TERMINAL_EMULATOR)?
+        .unwrap_or(defaults.terminal.emulator);
+
+    let terminal_custom_command = get_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND)?
+        .unwrap_or(defaults.terminal.custom_command);
+
     Ok(Settings {
         scan_directories,
         thresholds: ActivityThresholds {
@@ -102,6 +110,10 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         code_theme: CodeThemeSettings {
             light: code_theme_light,
             dark: code_theme_dark,
+        },
+        terminal: TerminalSettings {
+            emulator: terminal_emulator,
+            custom_command: terminal_custom_command,
         },
     })
 }
@@ -142,6 +154,9 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
 
     set_setting(conn, KEY_CODE_THEME_LIGHT, &settings.code_theme.light)?;
     set_setting(conn, KEY_CODE_THEME_DARK, &settings.code_theme.dark)?;
+
+    set_setting(conn, KEY_TERMINAL_EMULATOR, &settings.terminal.emulator)?;
+    set_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND, &settings.terminal.custom_command)?;
 
     Ok(())
 }
@@ -232,6 +247,7 @@ mod tests {
                 light: "one-light".into(),
                 dark: "dracula".into(),
             },
+            terminal: TerminalSettings::default(),
         };
 
         save_settings(&conn, &settings).unwrap();
@@ -277,6 +293,7 @@ mod tests {
             ignore_patterns: vec![],
             daemon: DaemonSettings::default(),
             code_theme: CodeThemeSettings::default(),
+            terminal: TerminalSettings::default(),
         };
         save_settings(&conn, &settings1).unwrap();
 
@@ -290,6 +307,7 @@ mod tests {
             ignore_patterns: vec!["target".to_string()],
             code_theme: CodeThemeSettings::default(),
             daemon: DaemonSettings::default(),
+            terminal: TerminalSettings::default(),
         };
         save_settings(&conn, &settings2).unwrap();
 

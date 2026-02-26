@@ -184,6 +184,24 @@ impl Default for CodeThemeSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TerminalSettings {
+    /// "windows_terminal" (default) or "custom"
+    pub emulator: String,
+    /// Command template when emulator is "custom".
+    /// Placeholders: {distro}, {tmux_session}
+    pub custom_command: String,
+}
+
+impl Default for TerminalSettings {
+    fn default() -> Self {
+        Self {
+            emulator: "windows_terminal".into(),
+            custom_command: String::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     pub scan_directories: Vec<String>,
@@ -192,6 +210,8 @@ pub struct Settings {
     pub daemon: DaemonSettings,
     #[serde(default)]
     pub code_theme: CodeThemeSettings,
+    #[serde(default)]
+    pub terminal: TerminalSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

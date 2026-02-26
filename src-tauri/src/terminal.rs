@@ -23,6 +23,11 @@ pub enum TerminalIntent {
     EnsureOpen {
         distro: Option<String>,
         tmux_session: String,
+        /// "windows_terminal" (default) or "custom"
+        emulator: String,
+        /// Command template when emulator is "custom".
+        /// Placeholders: {distro}, {tmux_session}
+        custom_command: String,
     },
 }
 
@@ -76,7 +81,7 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
     }
 
     // Terminal not running. For FocusOnly, nothing more to do.
-    let TerminalIntent::EnsureOpen { distro, tmux_session } = intent else {
+    let TerminalIntent::EnsureOpen { distro, tmux_session, emulator, custom_command } = intent else {
         return Ok(());
     };
 
@@ -86,6 +91,28 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
 
     crate::daemon::launcher::validate_wsl_distro(&distro)
         .map_err(|e| format!("Invalid WSL distro: {e}"))?;
+
+    // Custom emulator: substitute placeholders and run user command
+    if emulator == "custom" && !custom_command.trim().is_empty() {
+        let cmd = custom_command
+            .replace("{distro}", &distro)
+            .replace("{tmux_session}", &tmux_session);
+
+        tracing::info!(%cmd, "Launching custom terminal emulator");
+
+        // Split on whitespace: first token is the program, rest are args.
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err("Custom terminal command is empty".to_string());
+        }
+
+        std::process::Command::new(parts[0])
+            .args(&parts[1..])
+            .spawn()
+            .map_err(|e| format!("Failed to launch custom terminal: {e}"))?;
+
+        return Ok(());
+    }
 
     tracing::info!(%distro, %tmux_session, "Launching Windows Terminal with tmux attach");
 
@@ -253,6 +280,8 @@ mod tests {
         let result = handle_terminal(TerminalIntent::EnsureOpen {
             distro: Some("Ubuntu".to_string()),
             tmux_session: "taurhaus".to_string(),
+            emulator: "windows_terminal".to_string(),
+            custom_command: String::new(),
         });
         assert!(result.is_ok());
     }
