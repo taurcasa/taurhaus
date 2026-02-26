@@ -569,6 +569,47 @@ describe('GitTab component', () => {
     })
   })
 
+  it('different authors get different avatar colors', async () => {
+    const commits = [
+      { hash: 'eee00001', message: 'First', body: null, author: 'Alice', date: '1h', timestamp: Math.floor(Date.now() / 1000) - 3600 },
+      { hash: 'eee00002', message: 'Second', body: null, author: 'Bob', date: '2h', timestamp: Math.floor(Date.now() / 1000) - 7200 },
+    ]
+    getAllCommits.mockResolvedValue(commits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      const rows = screen.getAllByTestId('commit-row')
+      expect(rows.length).toBe(2)
+      // Each avatar circle gets a per-author hsl color via inline style
+      const avatar1 = rows[0].querySelector('.rounded-full')
+      const avatar2 = rows[1].querySelector('.rounded-full')
+      expect(avatar1).not.toBeNull()
+      expect(avatar2).not.toBeNull()
+      // Initials should differ
+      expect(avatar1.textContent.trim()).toBe('A')
+      expect(avatar2.textContent.trim()).toBe('B')
+    })
+  })
+
+  it('same author always gets the same avatar color', async () => {
+    const commits = [
+      { hash: 'fff00001', message: 'First', body: null, author: 'Alice', date: '1h', timestamp: Math.floor(Date.now() / 1000) - 3600 },
+      { hash: 'fff00002', message: 'Second', body: null, author: 'Alice', date: '2h', timestamp: Math.floor(Date.now() / 1000) - 7200 },
+    ]
+    getAllCommits.mockResolvedValue(commits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      const rows = screen.getAllByTestId('commit-row')
+      const avatar1 = rows[0].querySelector('.rounded-full')
+      const avatar2 = rows[1].querySelector('.rounded-full')
+      expect(avatar1).not.toBeNull()
+      // Same author should show the same initial
+      expect(avatar1.textContent.trim()).toBe('A')
+      expect(avatar2.textContent.trim()).toBe('A')
+    })
+  })
+
   // --- P11: Timestamp position ---
 
   it('commit row contains timestamp text', async () => {

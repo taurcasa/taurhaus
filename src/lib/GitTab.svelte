@@ -14,7 +14,6 @@
   const filterText    = $derived(dark ? 'text-brand-300' : 'text-brand-700')
   const groupHeaderBg = $derived(dark ? 'bg-zinc-900/50' : 'bg-zinc-50')
   const groupHeaderText = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
-  const avatarBg      = $derived(dark ? 'bg-brand-900/60 text-brand-300' : 'bg-brand-100 text-brand-700')
   const commitMsg     = $derived(dark ? 'text-zinc-200 font-medium' : 'text-zinc-800 font-medium')
   const commitMeta    = $derived(dark ? 'text-zinc-600' : 'text-zinc-400')
   const rowBorder     = $derived(dark ? 'border-white/5' : 'border-zinc-100')
@@ -256,6 +255,24 @@
   function authorInitial(name) {
     return (name || '?')[0].toUpperCase()
   }
+
+  /** Deterministic hue from author string (0-360). Simple DJB2 hash. */
+  function authorHue(author) {
+    let h = 5381
+    for (let i = 0; i < (author || '').length; i++) {
+      h = ((h << 5) + h + author.charCodeAt(i)) | 0
+    }
+    return Math.abs(h) % 360
+  }
+
+  /** HSL avatar colors tuned for dark/light backgrounds. */
+  function avatarStyle(author) {
+    const hue = authorHue(author)
+    if (dark) {
+      return `background: hsl(${hue} 50% 20%); color: hsl(${hue} 70% 75%);`
+    }
+    return `background: hsl(${hue} 55% 90%); color: hsl(${hue} 60% 35%);`
+  }
 </script>
 
 <div class="flex-1 flex min-h-0" data-testid="git-tab">
@@ -478,8 +495,11 @@
             data-testid="commit-row"
             aria-current={isSelected ? 'true' : undefined}
           >
-            <!-- Author initial circle -->
-            <div class="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium {isSelected ? '' : avatarBg}">
+            <!-- Author initial circle — hue derived from author string -->
+            <div
+              class="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium"
+              style={isSelected ? '' : avatarStyle(commit.author)}
+            >
               {authorInitial(commit.author)}
             </div>
 
