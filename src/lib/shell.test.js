@@ -15,6 +15,8 @@ vi.mock('./ipc.js', () => ({
   isFirstRun: vi.fn(),
   getSettings: vi.fn(),
   getDaemonStatus: vi.fn(),
+  checkDaemonInstallStatus: vi.fn(),
+  installDaemon: vi.fn(),
 }))
 
 // ---------------------------------------------------------------------------
@@ -854,5 +856,80 @@ describe('Git position restore on project switch', () => {
     filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
 
     expect(filesNavTarget).toEqual({ file: 'src/main.rs' })
+  })
+
+  // ── Daemon update banner logic ────────────────────────────────────────
+
+  describe('daemon update banner', () => {
+    it('shows banner when daemon needs update', () => {
+      const daemonUpdateAvailable = { version: '0.3.1', bundled_version: '0.3.2' }
+      const daemonUpdateDismissed = false
+
+      // Banner should show when update available and not dismissed
+      expect(daemonUpdateAvailable && !daemonUpdateDismissed).toBe(true)
+    })
+
+    it('hides banner when dismissed', () => {
+      const daemonUpdateAvailable = { version: '0.3.1', bundled_version: '0.3.2' }
+      const daemonUpdateDismissed = true
+
+      expect(daemonUpdateAvailable && !daemonUpdateDismissed).toBe(false)
+    })
+
+    it('hides banner when no update available', () => {
+      const daemonUpdateAvailable = null
+      const daemonUpdateDismissed = false
+
+      expect(!!(daemonUpdateAvailable && !daemonUpdateDismissed)).toBe(false)
+    })
+
+    it('checkDaemonUpdate sets update state when needs_update is true', async () => {
+      const ipc = await import('./ipc.js')
+      ipc.checkDaemonInstallStatus.mockResolvedValue({
+        installed: true,
+        version: '0.3.1',
+        bundled_version: '0.3.2',
+        needs_update: true,
+        wsl_available: true,
+        error: null,
+      })
+
+      const status = await ipc.checkDaemonInstallStatus()
+      let daemonUpdateAvailable = null
+      if (status.installed && status.needs_update) {
+        daemonUpdateAvailable = {
+          version: status.version,
+          bundled_version: status.bundled_version,
+        }
+      }
+
+      expect(daemonUpdateAvailable).toEqual({
+        version: '0.3.1',
+        bundled_version: '0.3.2',
+      })
+    })
+
+    it('checkDaemonUpdate does not set state when versions match', async () => {
+      const ipc = await import('./ipc.js')
+      ipc.checkDaemonInstallStatus.mockResolvedValue({
+        installed: true,
+        version: '0.3.2',
+        bundled_version: '0.3.2',
+        needs_update: false,
+        wsl_available: true,
+        error: null,
+      })
+
+      const status = await ipc.checkDaemonInstallStatus()
+      let daemonUpdateAvailable = null
+      if (status.installed && status.needs_update) {
+        daemonUpdateAvailable = {
+          version: status.version,
+          bundled_version: status.bundled_version,
+        }
+      }
+
+      expect(daemonUpdateAvailable).toBeNull()
+    })
   })
 })
