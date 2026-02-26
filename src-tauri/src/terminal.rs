@@ -259,51 +259,132 @@ fn detect_wt_default_profile() -> Option<String> {
 }
 
 // macOS: Terminal.app (default), iTerm2, or custom emulator.
+//
+// Key invariant (mirrors Windows logic): if the terminal emulator is already
+// attached to our tmux session, we NEVER create a new tab/window. We just
+// activate (focus) the existing one. Only launch a new attachment when
+// none exists.
+
+/// Check if Terminal.app is already running with a tmux-attached tab.
+///
+/// Uses AppleScript to inspect Terminal.app processes. Returns true if
+/// Terminal.app has at least one window whose shell is running `tmux attach`.
+#[cfg(target_os = "macos")]
+fn is_terminal_app_attached(tmux_session: &str) -> bool {
+    // Check if any Terminal.app tab is running tmux with our session name.
+    // We look for the process rather than inspecting AppleScript window contents
+    // because that's more reliable across Terminal.app versions.
+    let output = std::process::Command::new("sh")
+        .args(["-c", &format!(
+            "pgrep -f 'tmux attach-session -t {tmux_session}' >/dev/null 2>&1 && echo attached || echo none"
+        )])
+        .output();
+
+    match output {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim() == "attached",
+        Err(_) => false,
+    }
+}
+
+/// Check if iTerm2 is already running with a tmux-attached tab.
+#[cfg(target_os = "macos")]
+fn is_iterm2_attached(tmux_session: &str) -> bool {
+    // Same pgrep approach — works regardless of which terminal hosts the attachment.
+    is_terminal_app_attached(tmux_session)
+}
+
+/// Activate (focus) Terminal.app without creating a new tab.
+#[cfg(target_os = "macos")]
+fn focus_terminal_app() -> Result<(), String> {
+    let script = r#"tell application "Terminal" to activate"#;
+    std::process::Command::new("osascript")
+        .args(["-e", script])
+        .spawn()
+        .map_err(|e| format!("Failed to activate Terminal.app: {e}"))?;
+    Ok(())
+}
+
+/// Activate (focus) iTerm2 without creating a new tab.
+#[cfg(target_os = "macos")]
+fn focus_iterm2() -> Result<(), String> {
+    let script = r#"tell application "iTerm" to activate"#;
+    std::process::Command::new("osascript")
+        .args(["-e", script])
+        .spawn()
+        .map_err(|e| format!("Failed to activate iTerm2: {e}"))?;
+    Ok(())
+}
 
 #[cfg(target_os = "macos")]
 pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
-    let TerminalIntent::EnsureOpen { tmux_session, emulator, custom_command, .. } = intent else {
-        // FocusOnly: on macOS we could AppleScript-activate Terminal.app,
-        // but tmux sessions are typically in the user's workspace already.
-        return Ok(());
-    };
-
-    // Custom emulator
-    if emulator == "custom" && !custom_command.trim().is_empty() {
-        let cmd = custom_command
-            .replace("{tmux_session}", &tmux_session);
-
-        tracing::info!(%cmd, "Launching custom terminal emulator (macOS)");
-
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        if parts.is_empty() {
-            return Err("Custom terminal command is empty".to_string());
+    match intent {
+        TerminalIntent::FocusOnly => {
+            // Try to activate the terminal that's attached to our tmux session.
+            // Check which terminal app is running and focus it.
+            let script = r#"
+                if application "iTerm" is running then
+                    tell application "iTerm" to activate
+                else if application "Terminal" is running then
+                    tell application "Terminal" to activate
+                end if
+            "#;
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", script])
+                .spawn();
+            Ok(())
         }
+        TerminalIntent::EnsureOpen { tmux_session, emulator, custom_command, .. } => {
+            // Custom emulator
+            if emulator == "custom" && !custom_command.trim().is_empty() {
+                let cmd = custom_command.replace("{tmux_session}", &tmux_session);
+                tracing::info!(%cmd, "Launching custom terminal emulator (macOS)");
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                if parts.is_empty() {
+                    return Err("Custom terminal command is empty".to_string());
+                }
+                std::process::Command::new(parts[0])
+                    .args(&parts[1..])
+                    .spawn()
+                    .map_err(|e| format!("Failed to launch custom terminal: {e}"))?;
+                return Ok(());
+            }
 
-        std::process::Command::new(parts[0])
-            .args(&parts[1..])
-            .spawn()
-            .map_err(|e| format!("Failed to launch custom terminal: {e}"))?;
+            // iTerm2
+            if emulator == "iterm2" {
+                if is_iterm2_attached(&tmux_session) {
+                    tracing::debug!("iTerm2 already attached to tmux, just focusing");
+                    return focus_iterm2();
+                }
+                return launch_iterm2(&tmux_session);
+            }
 
-        return Ok(());
+            // Default: Terminal.app
+            if is_terminal_app_attached(&tmux_session) {
+                tracing::debug!("Terminal.app already attached to tmux, just focusing");
+                return focus_terminal_app();
+            }
+            launch_terminal_app(&tmux_session)
+        }
     }
-
-    // iTerm2
-    if emulator == "iterm2" {
-        return launch_iterm2(&tmux_session);
-    }
-
-    // Default: Terminal.app
-    launch_terminal_app(&tmux_session)
 }
 
 /// Launch Terminal.app and attach to a tmux session via AppleScript.
+///
+/// Uses `do script` in the FRONT window to reuse an existing idle tab when
+/// Terminal.app is already open. Only creates a new window if Terminal isn't
+/// running yet.
 #[cfg(target_os = "macos")]
 fn launch_terminal_app(tmux_session: &str) -> Result<(), String> {
+    // Check if Terminal.app is already running. If it is, reuse the front window.
+    // If not, `do script` without `in window` creates a new window automatically.
     let script = format!(
         r#"tell application "Terminal"
     activate
-    do script "tmux attach-session -t {tmux_session}"
+    if (count of windows) > 0 then
+        do script "tmux attach-session -t {tmux_session}" in front window
+    else
+        do script "tmux attach-session -t {tmux_session}"
+    end if
 end tell"#
     );
 

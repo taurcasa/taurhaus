@@ -332,6 +332,11 @@ pub const TMUX_SESSION_NAME: &str = "taurhaus";
 ///
 /// `tmux new-session` implicitly starts the server, so this also handles
 /// the case where no tmux server is running yet.
+///
+/// After ensuring the session exists, propagates critical environment variables
+/// (API keys, NODE_EXTRA_CA_CERTS) to the tmux global environment so all new
+/// panes inherit them — even if the tmux server was started before the user's
+/// shell profile set them.
 fn ensure_taurhaus_session() -> Result<String, String> {
     // Check if session already exists
     let check = Command::new("tmux")
@@ -339,22 +344,51 @@ fn ensure_taurhaus_session() -> Result<String, String> {
         .output()
         .map_err(|e| format!("tmux not available: {e}"))?;
 
-    if check.status.success() {
-        return Ok(TMUX_SESSION_NAME.to_string());
+    if !check.status.success() {
+        // Create the session (detached — no client needed)
+        let output = Command::new("tmux")
+            .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
+            .output()
+            .map_err(|e| format!("Failed to create tmux session: {e}"))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux new-session failed: {stderr}"));
+        }
     }
 
-    // Create the session (detached — no client needed)
-    let output = Command::new("tmux")
-        .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
-        .output()
-        .map_err(|e| format!("Failed to create tmux session: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux new-session failed: {stderr}"));
-    }
+    // Propagate critical env vars to tmux global environment.
+    // This ensures API keys and certs are available in all new panes,
+    // even if the tmux server started before these were set in the shell.
+    propagate_env_to_tmux();
 
     Ok(TMUX_SESSION_NAME.to_string())
+}
+
+/// Propagate important environment variables to the tmux global environment.
+///
+/// Runs `tmux set-environment -g KEY VALUE` for each var that's set in our
+/// process environment. This is critical on macOS where the Tauri app inherits
+/// the user's login shell env (via lib.rs startup), but the tmux server may
+/// have been started earlier with a minimal env.
+fn propagate_env_to_tmux() {
+    const PROPAGATE_VARS: &[&str] = &[
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "NODE_EXTRA_CA_CERTS",
+        "PATH",
+    ];
+
+    for var in PROPAGATE_VARS {
+        if let Ok(val) = std::env::var(var) {
+            if !val.is_empty() {
+                let _ = Command::new("tmux")
+                    .args(["set-environment", "-g", var, &val])
+                    .output();
+            }
+        }
+    }
 }
 
 /// Escape a string for safe use in a POSIX shell command.
