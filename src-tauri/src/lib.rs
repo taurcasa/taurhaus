@@ -238,7 +238,7 @@ pub fn run() {
                 let mut watcher_guard = watcher_state.0.lock().unwrap();
                 let mut count = 0;
 
-                let mut inotify_limit_hit = false;
+                let mut watch_limit_hit = false;
                 for project in &projects {
                     // Skip WSL projects when daemon handles them
                     if has_daemon && provider::path::is_wsl_path(&project.path) {
@@ -253,15 +253,13 @@ pub fn run() {
                             Ok(()) => count += 1,
                             Err(e) => {
                                 let msg = e.to_string();
-                                if msg.contains("No space left on device")
-                                    || msg.contains("inotify")
-                                {
+                                if platform::is_watch_limit_error(&msg) {
                                     tracing::warn!(
                                         project = project.name,
                                         error = %e,
-                                        "inotify watch limit reached — skipping project"
+                                        "Watch limit reached — skipping project"
                                     );
-                                    inotify_limit_hit = true;
+                                    watch_limit_hit = true;
                                 } else {
                                     tracing::debug!(
                                         project = project.name,
@@ -276,11 +274,11 @@ pub fn run() {
                 if count > 0 {
                     tracing::info!(count, "Watching project directories (local)");
                 }
-                if inotify_limit_hit {
+                if watch_limit_hit {
                     tracing::warn!(
-                        "Some projects could not be watched — inotify limit reached. \
-                         File changes in those projects won't be detected. \
-                         Increase fs.inotify.max_user_watches or reduce project count."
+                        "Some projects could not be watched — watch limit reached. \
+                         File changes in those projects won't be detected. {}",
+                        platform::watch_limit_help()
                     );
                 }
 

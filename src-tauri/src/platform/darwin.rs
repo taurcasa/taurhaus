@@ -42,3 +42,16 @@ pub fn collect_socket_inodes(_pid: u32) -> Vec<u64> {
 pub fn has_established_443(_pid: u32, _socket_inodes: &[u64]) -> bool {
     false
 }
+
+/// Check if a file watcher error indicates the system watch limit was hit.
+///
+/// On macOS, FSEvents doesn't have a per-user watch limit like Linux's inotify.
+/// However, kqueue-based watchers can hit file descriptor limits.
+pub fn is_watch_limit_error(error_msg: &str) -> bool {
+    error_msg.contains("Too many open files") || error_msg.contains("kqueue")
+}
+
+/// User-facing message explaining how to fix watch limit errors.
+pub fn watch_limit_help() -> &'static str {
+    "Increase the open file limit with `ulimit -n` or reduce project count."
+}

@@ -111,6 +111,19 @@ fn is_established_443_line(line: &str, socket_inodes: &[u64]) -> bool {
     }
 }
 
+/// Check if a file watcher error indicates the system watch limit was hit.
+///
+/// On Linux, inotify has a per-user watch limit (`fs.inotify.max_user_watches`).
+/// The `notify` crate surfaces this as "No space left on device" or mentions "inotify".
+pub fn is_watch_limit_error(error_msg: &str) -> bool {
+    error_msg.contains("No space left on device") || error_msg.contains("inotify")
+}
+
+/// User-facing message explaining how to fix watch limit errors.
+pub fn watch_limit_help() -> &'static str {
+    "Increase fs.inotify.max_user_watches or reduce project count."
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
