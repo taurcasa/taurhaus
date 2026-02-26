@@ -221,29 +221,67 @@ pub fn run() {
                 .expect("failed to initialize search index");
             app.manage(SearchState(Mutex::new(search_index)));
 
-            // Watch Claude task directories for event-driven task sync.
-            // In daemon mode, start_daemon_watches handles this.
-            // In local mode, we watch directly via the ProjectWatcher.
-            if !has_daemon {
-                if let Some(home) = dirs::home_dir() {
-                    let tasks_dir = home.join(".claude").join("tasks");
-                    if tasks_dir.is_dir() {
-                        let watcher_state = app.state::<WatcherState>();
-                        let mut watcher_guard = watcher_state.0.lock().unwrap();
+            // Register local file watches for projects not covered by daemon.
+            // In daemon mode: daemon watches WSL projects, so only non-WSL
+            // projects need local watches.
+            // Without daemon: ALL projects need local watches.
+            {
+                let db_state = app.state::<DbState>();
+                let projects = db::queries::list_projects(
+                    &db_state.0.lock().unwrap(),
+                )
+                .unwrap_or_default();
+
+                let watcher_state = app.state::<WatcherState>();
+                let mut watcher_guard = watcher_state.0.lock().unwrap();
+                let mut count = 0;
+
+                for project in &projects {
+                    // Skip WSL projects when daemon handles them
+                    if has_daemon && provider::path::is_wsl_path(&project.path) {
+                        continue;
+                    }
+                    let path = std::path::Path::new(&project.path);
+                    if path.is_dir() {
                         if let Err(e) = watcher_guard.watch_project(
-                            "__claude_tasks__".to_string(),
-                            tasks_dir.clone(),
+                            project.id.clone(),
+                            path.to_path_buf(),
                         ) {
                             tracing::debug!(
+                                project = project.name,
                                 error = %e,
-                                path = %tasks_dir.display(),
-                                "Could not watch Claude tasks directory"
+                                "Could not watch project directory (local)"
                             );
                         } else {
-                            tracing::info!(
-                                path = %tasks_dir.display(),
-                                "Watching Claude tasks directory (local)"
-                            );
+                            count += 1;
+                        }
+                    }
+                }
+                if count > 0 {
+                    tracing::info!(count, "Watching project directories (local)");
+                }
+
+                // Also watch Claude task directories in local mode.
+                // In daemon mode, start_daemon_watches handles this.
+                if !has_daemon {
+                    if let Some(home) = dirs::home_dir() {
+                        let tasks_dir = home.join(".claude").join("tasks");
+                        if tasks_dir.is_dir() {
+                            if let Err(e) = watcher_guard.watch_project(
+                                "__claude_tasks__".to_string(),
+                                tasks_dir.clone(),
+                            ) {
+                                tracing::debug!(
+                                    error = %e,
+                                    path = %tasks_dir.display(),
+                                    "Could not watch Claude tasks directory"
+                                );
+                            } else {
+                                tracing::info!(
+                                    path = %tasks_dir.display(),
+                                    "Watching Claude tasks directory (local)"
+                                );
+                            }
                         }
                     }
                 }

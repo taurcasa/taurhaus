@@ -1,6 +1,7 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus, launchClaudeSession, navigateToSession } from './lib/ipc.js'
   import { getSessionForProject } from './lib/sessionStore.svelte.js'
+  import * as assetCache from './lib/assetCache.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
@@ -225,6 +226,26 @@
       // Startup reseed complete — reload project list to pick up cached git status
       listen('projects-reseed-complete', () => {
         loadProjects()
+      }).then(u => cleanups.push(u))
+
+      // File changes — invalidate caches and refresh affected views
+      listen('project-files-changed', (event) => {
+        const { project_id, paths } = event.payload
+        // Invalidate asset cache for changed image files (screenshots, diagrams)
+        if (paths?.length) {
+          for (const p of paths) {
+            if (/\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$/i.test(p)) {
+              // Extract relative path from the full path
+              const rel = p.replace(/^.*?\/(?=[^/]+\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$)/i, '')
+              assetCache.invalidate(project_id, rel)
+            }
+          }
+        }
+        if (project_id !== selectedProject?.id) return
+        // Refresh README in Overview tab if a readme file changed
+        if (paths?.some(p => /readme\.md$/i.test(p))) {
+          loadReadmeForOverview(project_id)
+        }
       }).then(u => cleanups.push(u))
 
       // Daemon status changes (bootstrap chain + health check)

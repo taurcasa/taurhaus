@@ -49,8 +49,31 @@ pub fn get_readme(
     project_id: String,
 ) -> Result<Option<FileContent>, String> {
     let path = resolve_project_path(&db, &project_id)?;
+    let is_wsl = crate::provider::path::is_wsl_path(&path);
+    let has_daemon = providers.daemon.as_ref().is_some_and(|d| d.is_connected());
+    let using_daemon = is_wsl && has_daemon;
+    tracing::debug!(
+        project_id,
+        path,
+        is_wsl,
+        has_daemon,
+        using_daemon,
+        "get_readme: resolving provider"
+    );
     let provider = providers.resolve(&path);
-    provider.read_readme(&path).map_err(|e| e.to_string())
+    let result = provider.read_readme(&path).map_err(|e| e.to_string())?;
+    if let Some(ref content) = result {
+        tracing::debug!(
+            project_id,
+            readme_path = content.path,
+            content_len = content.content.len(),
+            content_preview = &content.content[..content.content.len().min(80)],
+            "get_readme: returning content"
+        );
+    } else {
+        tracing::debug!(project_id, "get_readme: no README found");
+    }
+    Ok(result)
 }
 
 /// Read a binary file from a project directory and return it as a base64 data URI.
