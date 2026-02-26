@@ -84,7 +84,7 @@ Grouped by domain:
 - **Command Center** (5): launch session, stop session, navigate to session, list sessions, project tasks
 - **Daemon** (3): status, start, stop
 - **Settings** (2): get, update
-- **Logging** (1): frontend log forwarding
+- **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in `app_data_dir()`. Backend uses `tracing` crate. Single log file, truncated per launch.
 
 ### Session Scanner
 

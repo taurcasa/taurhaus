@@ -26,6 +26,43 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 - **Semantic HTML**: `<aside>` for sidebar, `<main>` for content, `<nav>` for navigation, `<section>` for content sections.
 - **No over-engineering**: Don't abstract until there's actual duplication. Three similar lines beat a premature abstraction.
 
+## Logging
+
+Unified logging pipeline — both frontend and backend write to a single `taurhaus.log` file in `app_data_dir()`. Truncated on each app launch.
+
+| Layer | How to log | Where it goes |
+|-------|-----------|---------------|
+| **Frontend** | `console.log/warn/error/debug` | WebView console + backend log file via IPC |
+| **Backend** | `tracing::info/warn/error/debug` | stderr + log file |
+| **Daemon** | `tracing::info/warn/error/debug` | stderr (daemon's own process) |
+
+**Frontend→backend bridge**: `src/lib/logger.js` (imported first in `main.js`) monkey-patches `console.*` to also call the `frontend_log` IPC command. This means `console.log` in frontend code already writes to the backend log file — no special import needed. Always use `console.log` for frontend logging, never a custom function.
+
+**Log format**: `[HH:MM:SS.mmm] [INF|WRN|ERR|DBG] [frontend] message` for frontend lines, standard `tracing_subscriber` format for backend lines.
+
+**Key files**: `src/lib/logger.js` (bridge), `src-tauri/src/commands/logging.rs` (IPC handler).
+
+## Svelte 5 Patterns
+
+**Consume-after-capture for signal props**: When an `$effect` reads a prop and then calls a callback that nullifies it in the parent, capture the value into a `const` first. Svelte 5 signals propagate eagerly — the prop becomes null mid-effect otherwise.
+
+```javascript
+// WRONG — changedPaths becomes null after consume
+$effect(() => {
+  if (!changedPaths) return
+  onConsumed?.()                         // sets parent signal to null
+  doWork(changedPaths)                   // reads null!
+})
+
+// RIGHT — capture before consuming
+$effect(() => {
+  const paths = changedPaths             // capture
+  if (!paths) return
+  onConsumed?.()                         // safe to consume
+  doWork(paths)                          // uses captured value
+})
+```
+
 ## Layout Dimensions
 
 | Element | Size | Notes |
