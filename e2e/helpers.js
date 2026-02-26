@@ -3,26 +3,41 @@
  */
 
 /**
- * Wait for the app to be ready — either showing the wizard or the main shell.
- * Uses a generous timeout because the Tauri app + Svelte hydration can be slow.
+ * Wait for the app to be ready — handles splash screen, wizard, or main shell.
+ *
+ * The boot sequence is: Splash Screen → (Wizard | Main Shell).
+ * The splash screen waits for the daemon, then fades to the app.
+ * If the daemon doesn't start within 15s, the splash shows "Continue anyway."
+ * We handle all three entry points.
  */
 export async function waitForAppReady() {
   // Give the app time to start up before querying the DOM
   await browser.pause(3_000)
 
-  // Look for the Overview tab button — present in the main shell (most common path)
-  // Falls back to the wizard if this is a fresh install
-  const overviewTab = await $('button=Overview')
-  const wizard = await $('[data-testid="get-started-button"]')
-
   await browser.waitUntil(
     async () => {
-      return (await overviewTab.isExisting()) || (await wizard.isExisting())
+      // Check if we're already past the splash into main app
+      const overviewTab = await $('button=Overview')
+      if (await overviewTab.isExisting()) return true
+
+      // Check for wizard (first-run)
+      const wizard = await $('[data-testid="get-started-button"]')
+      if (await wizard.isExisting()) return true
+
+      // Splash might be showing "Continue anyway" — click it to proceed
+      const continueBtn = await $('button=Continue anyway')
+      if (await continueBtn.isExisting()) {
+        await continueBtn.click()
+        await browser.pause(500)
+        return false // Will check again on next iteration
+      }
+
+      return false
     },
     {
-      timeout: 30_000,
+      timeout: 45_000,
       interval: 1_000,
-      timeoutMsg: 'App did not render within 30s (checked for Overview tab and wizard)'
+      timeoutMsg: 'App did not render within 45s (checked splash, wizard, and Overview tab)'
     }
   )
 }

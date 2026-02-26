@@ -88,3 +88,25 @@ Current settings are limited to activity thresholds and code themes. Users need 
 - [ ] **P15** — GitHub Actions CI: run `just check` on push and PR. Needs WSL2 or Linux runner for Rust tests.
 - [ ] **P16** — Release pipeline: tag-triggered builds, auto-generate NSIS installer, publish to GitHub Releases with changelog excerpt
 - [x] **P17** — Clean up `.gitignore`: add `.env*`, `*.log`, ensure no secrets can accidentally be committed
+
+---
+
+# Testing — Pre-Beta
+
+Add unit tests for new P10-P14 code and build comprehensive E2E test suite with WebdriverIO + tauri-driver.
+
+## Phase 1 — Unit Tests for New Code
+
+- [ ] **T01** — Write OverviewTab unit tests: quick actions, callbacks, last commit, session, relationships, dark mode (`src/lib/overviewTab.test.js`)
+- [ ] **T02** — Expand Settings unit tests for P12/P13/P14: terminal dropdown, tmux layout, custom command conditional, section structure (`src/lib/settings.test.js`)
+- [ ] **T03** — Verify GitTab tests cover P11 date grouping: date headers, author avatars, getDateLabel/authorInitial helpers (`src/lib/gitTab.test.js`)
+
+## Phase 2 — E2E Tests (WebdriverIO + tauri-driver)
+
+- [ ] **T04** — E2E: Overview tab — project header, quick actions, last commit, relationships, README
+- [ ] **T05** — E2E: Git tab — commit list with date groups, commit detail, file list, diff view, back navigation
+- [ ] **T06** — E2E: Settings — all 4 sections, terminal/tmux dropdowns, rebuild index, escape/back
+- [ ] **T07** — E2E: Sidebar — project list, activity groups, project switching, filter, branch pills
+- [ ] **T08** — E2E: Search overlay — open/close, input, grouped results, keyboard navigation
+- [ ] **T09** — E2E: Files tab — file tree, expand/collapse, file viewer, README auto-select, syntax highlighting
+- [ ] **T10** — Run full test suite (unit + E2E) and commit

@@ -493,4 +493,91 @@ describe('GitTab component', () => {
       expect(screen.getByTestId('files-loading')).toBeTruthy()
     })
   })
+
+  // --- P11: Date group headers ---
+
+  it('renders date group header for commits', async () => {
+    // All commits have timestamps within "today", should show "Today" header
+    getAllCommits.mockResolvedValue(makeCommits(3))
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      expect(screen.getAllByTestId('commit-row')).toHaveLength(3)
+      // There should be a "Today" group header
+      expect(screen.getByText('Today')).toBeTruthy()
+    })
+  })
+
+  it('renders separate date headers for commits on different days', async () => {
+    const now = Math.floor(Date.now() / 1000)
+    const commits = [
+      { hash: 'aaa00001', message: 'Recent commit', body: null, author: 'Dev', date: '1h', timestamp: now - 3600 },
+      { hash: 'aaa00002', message: 'Yesterday commit', body: null, author: 'Dev', date: '1d', timestamp: now - 90000 },
+    ]
+    getAllCommits.mockResolvedValue(commits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      expect(screen.getAllByTestId('commit-row')).toHaveLength(2)
+      expect(screen.getByText('Today')).toBeTruthy()
+      expect(screen.getByText('Yesterday')).toBeTruthy()
+    })
+  })
+
+  // --- P11: Author initial avatars ---
+
+  it('renders author initial in commit row', async () => {
+    const commits = [{
+      hash: 'bbb00001', message: 'Test commit', body: null,
+      author: 'John', date: '1h', timestamp: Math.floor(Date.now() / 1000) - 3600,
+    }]
+    getAllCommits.mockResolvedValue(commits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      const row = screen.getByTestId('commit-row')
+      // Should contain the author initial "J" in a circle
+      expect(row.textContent).toContain('J')
+    })
+  })
+
+  it('shows author initial as uppercase first letter', async () => {
+    const commits = [{
+      hash: 'ccc00001', message: 'Lowercase test', body: null,
+      author: 'alice', date: '1h', timestamp: Math.floor(Date.now() / 1000) - 3600,
+    }]
+    getAllCommits.mockResolvedValue(commits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      const row = screen.getByTestId('commit-row')
+      expect(row.textContent).toContain('A')
+    })
+  })
+
+  it('shows "?" for missing author name', async () => {
+    const commits = [{
+      hash: 'ddd00001', message: 'No author', body: null,
+      author: '', date: '1h', timestamp: Math.floor(Date.now() / 1000) - 3600,
+    }]
+    getAllCommits.mockResolvedValue(commits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      const row = screen.getByTestId('commit-row')
+      expect(row.textContent).toContain('?')
+    })
+  })
+
+  // --- P11: Timestamp position ---
+
+  it('commit row contains timestamp text', async () => {
+    getAllCommits.mockResolvedValue(makeCommits(1))
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      const row = screen.getByTestId('commit-row')
+      expect(row.textContent).toContain('1h')
+    })
+  })
 })
