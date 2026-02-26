@@ -338,21 +338,35 @@ return "no""#,
     ///
     /// The challenge: clicking a session indicator in taurhaus causes macOS
     /// to activate taurhaus first (standard click behavior). We need to
-    /// switch focus BACK to the terminal. macOS ignores activation requests
-    /// while its own window-switch animation is in progress (~250ms).
+    /// switch focus BACK to the terminal afterward.
     ///
-    /// Solution: spawn an osascript with a built-in `delay 0.35` that waits
-    /// for macOS to settle, then sends the `activate` AppleEvent. The
-    /// osascript process handles all timing internally. The Tauri command
-    /// returns immediately (`.spawn()` is non-blocking), so the WebView
-    /// can't interfere.
+    /// Fixed-delay approaches fail because we can't predict when macOS
+    /// finishes its window-switch animation. Instead, the AppleScript is
+    /// **event-driven**: it polls until taurhaus IS frontmost (confirming
+    /// the click-activation settled), then immediately activates the
+    /// terminal. This works regardless of animation speed or system load.
+    ///
+    /// The osascript runs as a detached process (`.spawn()`), so the Tauri
+    /// command returns immediately and the WebView can't interfere.
     fn activate(self) -> Result<(), String> {
         let script = format!(
-            r#"delay 0.35
+            r#"
+-- Wait until taurhaus is frontmost (click-activation settled).
+-- Timeout after 2s to avoid orphaned processes.
+set maxWait to 40
+repeat while maxWait > 0
+    tell application "System Events"
+        if name of first process whose frontmost is true is "taurhaus" then exit repeat
+    end tell
+    set maxWait to maxWait - 1
+    delay 0.05
+end repeat
+-- Small extra settle time for window manager
+delay 0.05
 tell application "{}" to activate"#,
             self.app_name()
         );
-        tracing::debug!(emulator = ?self, "Activating terminal (delayed AppleScript)");
+        tracing::debug!(emulator = ?self, "Activating terminal (event-driven AppleScript)");
         std::process::Command::new("osascript")
             .args(["-e", &script])
             .spawn()
