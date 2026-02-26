@@ -85,8 +85,8 @@ Current settings are limited to activity thresholds and code themes. Users need 
 
 ## Infrastructure
 
-- [ ] **P15** — GitHub Actions CI: run `just check` on push and PR. Needs WSL2 or Linux runner for Rust tests.
-- [ ] **P16** — Release pipeline: tag-triggered builds, auto-generate NSIS installer, publish to GitHub Releases with changelog excerpt
+- [ ] **P15** *(pending — needs CI infrastructure)* — GitHub Actions CI: run `just check` on push and PR. Needs WSL2 or Linux runner for Rust tests.
+- [ ] **P16** *(pending — needs CI infrastructure)* — Release pipeline: tag-triggered builds, auto-generate NSIS installer, publish to GitHub Releases with changelog excerpt
 - [x] **P17** — Clean up `.gitignore`: add `.env*`, `*.log`, ensure no secrets can accidentally be committed
 
 ---
