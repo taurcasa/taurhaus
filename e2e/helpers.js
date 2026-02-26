@@ -60,8 +60,27 @@ export async function ensureMainApp() {
   // Step 1: Get started
   await getStarted.click()
 
-  // Step 2: Scan for projects
-  const input = await $('[data-testid="wizard-step-2"] input[type="text"]')
+  // Step 2: Daemon setup — auto-proceeds if installed, otherwise skip
+  const daemonStep = await $('[data-testid="wizard-step-2"]')
+  if (await daemonStep.isExisting()) {
+    // Wait for auto-proceed (daemon already installed) or skip
+    const skipBtn = await $('[data-testid="daemon-skip-button"]')
+    const browseStep = await $('[data-testid="wizard-step-3"]')
+    await browser.waitUntil(
+      async () => {
+        if (await browseStep.isExisting()) return true
+        if (await skipBtn.isExisting()) {
+          await skipBtn.click()
+          return true
+        }
+        return false
+      },
+      { timeout: 10_000, interval: 500 }
+    )
+  }
+
+  // Step 3: Scan for projects
+  const input = await $('[data-testid="wizard-step-3"] input[type="text"]')
   await input.waitForExist({ timeout: 5_000 })
   await input.setValue('/home/mstie/projects')
 

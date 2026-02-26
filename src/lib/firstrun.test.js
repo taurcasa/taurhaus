@@ -5,6 +5,8 @@ vi.mock('./ipc.js', () => ({
   scanDirectory: vi.fn(),
   registerProjectsBatch: vi.fn(),
   isFirstRun: vi.fn(),
+  checkDaemonInstallStatus: vi.fn(),
+  installDaemon: vi.fn(),
 }))
 
 describe('First-Run wizard logic', () => {
@@ -120,5 +122,60 @@ describe('First-Run wizard logic', () => {
     expect(preSelected.has('/a')).toBe(true)
     expect(preSelected.has('/b')).toBe(false)
     expect(preSelected.has('/c')).toBe(true)
+  })
+
+  // ── Daemon install step ────────────────────────────────────────────────
+
+  it('checkDaemonInstallStatus returns install status', async () => {
+    ipc.checkDaemonInstallStatus.mockResolvedValue({
+      installed: true,
+      version: '0.3.1',
+      bundled_version: '0.3.2',
+      needs_update: true,
+      wsl_available: true,
+      error: null,
+    })
+
+    const status = await ipc.checkDaemonInstallStatus()
+    expect(status.installed).toBe(true)
+    expect(status.needs_update).toBe(true)
+    expect(status.bundled_version).toBe('0.3.2')
+  })
+
+  it('daemon not installed triggers install flow', async () => {
+    ipc.checkDaemonInstallStatus.mockResolvedValue({
+      installed: false,
+      version: null,
+      bundled_version: '0.3.2',
+      needs_update: false,
+      wsl_available: true,
+      error: null,
+    })
+
+    const status = await ipc.checkDaemonInstallStatus()
+    expect(status.installed).toBe(false)
+    // Should show "Install" button in wizard
+  })
+
+  it('installDaemon returns success message', async () => {
+    ipc.installDaemon.mockResolvedValue('Daemon installed successfully: taurhaus-daemon 0.3.2')
+
+    const result = await ipc.installDaemon()
+    expect(result).toContain('successfully')
+  })
+
+  it('no WSL returns wsl_available false', async () => {
+    ipc.checkDaemonInstallStatus.mockResolvedValue({
+      installed: false,
+      version: null,
+      bundled_version: '0.3.2',
+      needs_update: false,
+      wsl_available: false,
+      error: 'WSL is not installed',
+    })
+
+    const status = await ipc.checkDaemonInstallStatus()
+    expect(status.wsl_available).toBe(false)
+    expect(status.error).toBe('WSL is not installed')
   })
 })
