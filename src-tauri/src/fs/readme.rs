@@ -61,7 +61,14 @@ mod tests {
 
         let result = find_readme(dir.path()).unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().path, "readme.md");
+        let readme = result.unwrap();
+        // On case-insensitive filesystems (macOS APFS), "README.md" matches first
+        // in our priority list even when the file on disk is "readme.md".
+        if cfg!(target_os = "macos") {
+            assert_eq!(readme.path, "README.md");
+        } else {
+            assert_eq!(readme.path, "readme.md");
+        }
     }
 
     #[test]

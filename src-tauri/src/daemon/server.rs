@@ -616,6 +616,9 @@ fn handle_watch(
             format!("Path does not exist or is not a directory: {}", params.path),
         );
     }
+    // Canonicalize the path to resolve symlinks (critical on macOS where
+    // /var → /private/var; FSEvents watches the canonical path).
+    let path = path.canonicalize().unwrap_or(path);
 
     // Already watching this path?
     if active_watches.contains_key(&params.path) {
@@ -623,7 +626,9 @@ fn handle_watch(
     }
 
     let writer_clone = writer.clone();
-    let watch_path = params.path.clone();
+    // Use canonical path for event matching (FSEvents on macOS delivers
+    // canonical paths, e.g. /private/var/... instead of /var/...).
+    let watch_path = path.to_string_lossy().to_string();
     let debounce_clone = git_debounce.clone();
 
     let watcher_result = RecommendedWatcher::new(

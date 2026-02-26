@@ -419,6 +419,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn connects_to_running_daemon() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

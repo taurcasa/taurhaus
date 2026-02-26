@@ -27,6 +27,7 @@ Thumbs.db
 .env
 .env.*
 .env.local
+.maccreds
 
 # Logs
 *.log

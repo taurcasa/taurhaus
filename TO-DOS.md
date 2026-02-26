@@ -138,12 +138,12 @@ taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support r
 
 ### Phase 4 — Build & Test on macOS
 
-- [ ] **M13** — Set up remote macOS build environment. Provision a cloud Mac (Scaleway M1 or MacStadium). Install Rust toolchain, Node.js, Tauri CLI prerequisites. Clone repo, verify `cargo build` succeeds.
-- [ ] **M14** — Build and run taurhaus on macOS. Build with `cargo tauri build`. Test: app launches, splash screen works, wizard completes, projects register, sidebar renders, tabs work. Fix any build/runtime issues.
+- [x] **M13** — Set up remote macOS build environment. Provision a cloud Mac (Scaleway M1 or MacStadium). Install Rust toolchain, Node.js, Tauri CLI prerequisites. Clone repo, verify `cargo build` succeeds.
+- [x] **M14** — Build and run taurhaus on macOS. Build with `cargo tauri build`. Test: app launches, splash screen works, wizard completes, projects register, sidebar renders, tabs work. Fix any build/runtime issues.
 - [ ] **M15** — Test process detection on macOS. Install Claude Code, Codex CLI, Gemini CLI on the Mac. Run sessions, verify taurhaus detects them: process appears in sidebar, activity state (active/idle) is correct, session files are found. Fix any detection issues.
 - [ ] **M16** — Test terminal integration on macOS. Verify "Open terminal" and "Launch session" work with both Terminal.app and iTerm2. Verify tmux sessions attach correctly.
 - [ ] **M17** — Universal binary build. Build universal binary with `cargo tauri build --target universal-apple-darwin` (ARM + Intel). Verify the DMG installer works on both architectures.
-- [ ] **M18** — Run full test suite on macOS. Run `just check` equivalent on macOS. All Rust tests pass (with platform-gated tests). All frontend tests pass. Fix any platform-specific failures.
+- [x] **M18** — Run full test suite on macOS. Run `just check` equivalent on macOS. All Rust tests pass (with platform-gated tests). All frontend tests pass. Fix any platform-specific failures.
 
 ## Topic 3: README Positioning
 

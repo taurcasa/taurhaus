@@ -99,8 +99,14 @@ impl DaemonEventListener {
             )));
         }
 
+        // Canonicalize for matching against daemon events (which use canonical paths,
+        // critical on macOS where /var → /private/var).
+        let canonical = std::path::Path::new(linux_path)
+            .canonicalize()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| linux_path.to_string());
         self.path_to_project
-            .insert(linux_path.to_string(), project_id.to_string());
+            .insert(canonical, project_id.to_string());
         tracing::info!(project_id, linux_path, "Daemon watch registered");
         Ok(())
     }
@@ -281,14 +287,15 @@ mod tests {
         });
 
         // Create a file in the watched directory
-        std::thread::sleep(Duration::from_millis(200));
+        // FSEvents on macOS needs more setup time than inotify on Linux
+        std::thread::sleep(Duration::from_millis(500));
         std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
 
-        // Wait for the event (notify can take a moment)
-        let event = rx.recv_timeout(Duration::from_secs(5));
+        // Wait for the event (FSEvents on macOS can have higher latency than inotify)
+        let event = rx.recv_timeout(Duration::from_secs(10));
         assert!(
             event.is_ok(),
-            "Should receive a file change event within 5s"
+            "Should receive a file change event within 10s"
         );
 
         let event = event.unwrap();
@@ -331,12 +338,13 @@ mod tests {
         });
 
         // Modify a git internal file
-        std::thread::sleep(Duration::from_millis(200));
+        // FSEvents on macOS needs more setup time than inotify on Linux
+        std::thread::sleep(Duration::from_millis(500));
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/feature").unwrap();
 
-        // Collect events for up to 5 seconds
+        // Collect events (FSEvents on macOS can have higher latency than inotify)
         let mut got_git = false;
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while std::time::Instant::now() < deadline {
             match rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(WatchEvent::GitChanged { project_id }) => {
