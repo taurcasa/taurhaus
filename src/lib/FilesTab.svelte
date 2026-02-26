@@ -1,6 +1,7 @@
 <script>
-  import { getFileTree, readFile, readProjectAsset, isTauri } from './ipc.js'
+  import { getFileTree, readFile, readProjectAsset } from './ipc.js'
   import { classifyFile } from './fileClassifier.js'
+  import { pathWasChanged } from './fileChange.js'
   import * as assetCache from './assetCache.js'
   import MarkdownRenderer from './MarkdownRenderer.svelte'
   import CodeViewer from './CodeViewer.svelte'
@@ -14,6 +15,8 @@
     navTarget = null,
     onClearNavTarget,
     onMarkdownNavigate,
+    changedPaths = null,
+    onChangedPathsConsumed,
   } = $props()
 
   // Shared theme tokens
@@ -55,32 +58,19 @@
     onClearNavTarget?.()
   })
 
-  // Listen for project-files-changed Tauri event to refresh tree
+  // React to file changes signaled by Shell's central listener.
+  // Refreshes the file tree and re-reads the currently open file if affected.
   $effect(() => {
-    if (!isTauri() || !selectedProject?.id) return
-    let cleanups = []
-    let refreshTimer = null
+    if (!changedPaths || !selectedProject?.id) return
+    // Consume the signal so it doesn't re-fire
+    onChangedPathsConsumed?.()
 
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen('project-files-changed', (event) => {
-        const { project_id, paths } = event.payload
-        if (project_id !== selectedProject.id) return
+    // Refresh file tree (silent — no loading skeleton)
+    loadFileTree(selectedProject.id)
 
-        clearTimeout(refreshTimer)
-        refreshTimer = setTimeout(() => {
-          loadFileTree(selectedProject.id)
-
-          // Re-fetch open file if it was among the changed paths
-          if (selectedFile && paths?.some(p => p.endsWith('/' + selectedFile) || p === selectedFile)) {
-            openFile(selectedFile, targetLineNumber)
-          }
-        }, 2000)
-      }).then(u => cleanups.push(u))
-    })
-
-    return () => {
-      clearTimeout(refreshTimer)
-      cleanups.forEach(u => u())
+    // Re-read the currently open file if it was among the changes
+    if (selectedFile && pathWasChanged(changedPaths, selectedFile)) {
+      openFile(selectedFile, targetLineNumber)
     }
   })
 

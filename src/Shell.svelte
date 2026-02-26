@@ -2,6 +2,7 @@
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus, launchClaudeSession, navigateToSession } from './lib/ipc.js'
   import { getSessionForProject } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
+  import { anyPathMatches } from './lib/fileChange.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
@@ -74,6 +75,10 @@
   // Cross-tab navigation state for Files tab
   let filesNavTarget = $state(null) // { file: string, lineNumber?: number } | null
   let filesPosition = $state(null)
+
+  // File change signal — set by the central project-files-changed listener,
+  // consumed by FilesTab to refresh the tree and currently open file.
+  let fileChangePaths = $state(null) // string[] | null
 
   // Session state
   let latestSession = $state(null)
@@ -228,24 +233,27 @@
         loadProjects()
       }).then(u => cleanups.push(u))
 
-      // File changes — invalidate caches and refresh affected views
+      // File changes — central handler for all file-change responses.
+      // Invalidates caches, refreshes Overview README, and signals
+      // FilesTab to refresh via the fileChangePaths reactive prop.
       listen('project-files-changed', (event) => {
         const { project_id, paths } = event.payload
-        // Invalidate asset cache for changed image files (screenshots, diagrams)
+        // Invalidate asset cache for changed images
         if (paths?.length) {
           for (const p of paths) {
             if (/\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$/i.test(p)) {
-              // Extract relative path from the full path
-              const rel = p.replace(/^.*?\/(?=[^/]+\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$)/i, '')
-              assetCache.invalidate(project_id, rel)
+              assetCache.invalidateProject(project_id)
+              break // one invalidation is enough per event batch
             }
           }
         }
         if (project_id !== selectedProject?.id) return
-        // Refresh README in Overview tab if a readme file changed
-        if (paths?.some(p => /readme\.md$/i.test(p))) {
+        // Refresh README in Overview tab
+        if (anyPathMatches(paths, /readme\.md$/i)) {
           loadReadmeForOverview(project_id)
         }
+        // Signal FilesTab to refresh (it reads this reactively)
+        fileChangePaths = paths
       }).then(u => cleanups.push(u))
 
       // Daemon status changes (bootstrap chain + health check)
@@ -736,6 +744,8 @@
             onClearNavTarget={() => { filesNavTarget = null }}
             bind:position={filesPosition}
             onMarkdownNavigate={handleMarkdownNavigate}
+            changedPaths={fileChangePaths}
+            onChangedPathsConsumed={() => { fileChangePaths = null }}
           />
         {/if}
       </div>
