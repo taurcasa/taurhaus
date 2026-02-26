@@ -191,6 +191,8 @@ pub struct TerminalSettings {
     /// Command template when emulator is "custom".
     /// Placeholders: {distro}, {tmux_session}
     pub custom_command: String,
+    /// Tmux layout strategy: "new_window" (default), "split", "per_project"
+    pub tmux_layout: String,
 }
 
 impl Default for TerminalSettings {
@@ -198,6 +200,7 @@ impl Default for TerminalSettings {
         Self {
             emulator: "windows_terminal".into(),
             custom_command: String::new(),
+            tmux_layout: "new_window".into(),
         }
     }
 }

@@ -129,6 +129,7 @@ pub fn launch_claude_session(
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "launch-session";
+            let ts = load_terminal_settings(&db);
             let request = protocol::DaemonRequest::new(
                 id,
                 protocol::method::LAUNCH_SESSION,
@@ -136,6 +137,7 @@ pub fn launch_claude_session(
                     project_path: linux_path.clone(),
                     mode,
                     cli_tool: tool,
+                    tmux_layout: ts.tmux_layout.clone(),
                 },
             );
             match daemon.send_status_request(&request) {

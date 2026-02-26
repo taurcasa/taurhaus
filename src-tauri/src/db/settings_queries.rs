@@ -46,6 +46,7 @@ const KEY_CODE_THEME_LIGHT: &str = "code_theme.light";
 const KEY_CODE_THEME_DARK: &str = "code_theme.dark";
 const KEY_TERMINAL_EMULATOR: &str = "terminal.emulator";
 const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
+const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -94,6 +95,9 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
     let terminal_custom_command = get_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND)?
         .unwrap_or(defaults.terminal.custom_command);
 
+    let terminal_tmux_layout = get_setting(conn, KEY_TERMINAL_TMUX_LAYOUT)?
+        .unwrap_or(defaults.terminal.tmux_layout);
+
     Ok(Settings {
         scan_directories,
         thresholds: ActivityThresholds {
@@ -114,6 +118,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         terminal: TerminalSettings {
             emulator: terminal_emulator,
             custom_command: terminal_custom_command,
+            tmux_layout: terminal_tmux_layout,
         },
     })
 }
@@ -157,6 +162,7 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
 
     set_setting(conn, KEY_TERMINAL_EMULATOR, &settings.terminal.emulator)?;
     set_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND, &settings.terminal.custom_command)?;
+    set_setting(conn, KEY_TERMINAL_TMUX_LAYOUT, &settings.terminal.tmux_layout)?;
 
     Ok(())
 }

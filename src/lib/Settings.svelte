@@ -50,7 +50,7 @@
         thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
         ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
         code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
-        terminal: { emulator: 'windows_terminal', custom_command: '' },
+        terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' },
       }
     } finally {
       loading = false
@@ -386,6 +386,25 @@
               >
                 <option value="windows_terminal">Windows Terminal</option>
                 <option value="custom">Custom command</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <label for="tmux-layout" class="text-[13px] {t.textSecondary} w-24">Pane layout</label>
+              <select
+                id="tmux-layout"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                value={settings.terminal?.tmux_layout || 'new_window'}
+                onchange={(e) => {
+                  if (!settings.terminal) settings.terminal = { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' }
+                  settings.terminal.tmux_layout = e.target.value
+                  saveSettings()
+                }}
+                data-testid="tmux-layout"
+              >
+                <option value="new_window">New window per session</option>
+                <option value="split">Split panes (fill window, then new)</option>
+                <option value="per_project">Per-project (same project shares window)</option>
               </select>
             </div>
 

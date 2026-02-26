@@ -6,18 +6,28 @@ use std::process::Command;
 use crate::daemon::protocol::LaunchMode;
 use crate::session_scanner::cli_tool::{self, CliTool};
 
-/// Launch a CLI tool session in a new tmux window.
+/// Launch a CLI tool session in tmux using the configured layout strategy.
 ///
-/// Creates a new tmux window with the tool command as its initial process.
-/// This avoids the race condition where `send-keys` arrives before the
-/// shell prompt is ready (oh-my-zsh init takes time). When the tool exits,
-/// `exec "$SHELL"` drops the user into their normal interactive shell.
+/// Layout strategies:
+/// - `new_window` (default): Always create a new tmux window
+/// - `split`: Split an existing window horizontally, up to 4 panes per window
+/// - `per_project`: Same project shares a window with splits, different projects get new windows
 ///
 /// Returns `(tmux_session, window_name, pane_id)` on success.
 pub fn launch_in_tmux(
     project_path: &str,
     mode: LaunchMode,
     tool: CliTool,
+) -> Result<(String, String, String), String> {
+    launch_in_tmux_with_layout(project_path, mode, tool, "new_window")
+}
+
+/// Launch with explicit layout strategy.
+pub fn launch_in_tmux_with_layout(
+    project_path: &str,
+    mode: LaunchMode,
+    tool: CliTool,
+    layout: &str,
 ) -> Result<(String, String, String), String> {
     // Validate project path
     if !Path::new(project_path).is_dir() {
@@ -34,22 +44,32 @@ pub fn launch_in_tmux(
         .unwrap_or_else(|| "claude".to_string());
 
     // Build the full command: cd to project, run tool, then drop into shell on exit.
-    // Shell-escape the path to prevent injection via crafted directory names.
     let tool_cmd = build_launch_command(tool, mode);
     let escaped_path = shell_escape(project_path);
-
-    // Inner command: what the user's shell should run.
     let inner_cmd = format!("cd {escaped_path} && {tool_cmd}; exec \"$SHELL\"");
-
-    // Wrap in interactive shell to get the user's PATH from .zshrc/.bashrc.
-    // tmux runs commands via `$SHELL -c`, which sources .zshenv but NOT .zshrc.
-    // CLI tools (claude, codex, gemini) are installed via fnm/npm which sets up
-    // PATH in .zshrc. The -i flag forces .zshrc to load so the tools are found.
-    // `exec` replaces the outer sh process so we don't leave an extra shell layer.
     let shell_cmd = format!("exec \"$SHELL\" -ic {}", shell_escape(&inner_cmd));
 
-    // Create new tmux window with the command as its initial process.
-    // The trailing colon = next available window index.
+    match layout {
+        "split" => {
+            // Try to split an existing window (max 4 panes per window)
+            if let Some(target_pane) = find_window_with_space(&tmux_session, 4) {
+                let pane_id = split_pane(&target_pane, &shell_cmd)?;
+                return Ok((tmux_session, window_name, pane_id));
+            }
+            // No window with space — fall through to new window
+        }
+        "per_project" => {
+            // Try to find an existing window named after this project
+            if let Some(target_pane) = find_project_window(&tmux_session, &window_name) {
+                let pane_id = split_pane(&target_pane, &shell_cmd)?;
+                return Ok((tmux_session, window_name, pane_id));
+            }
+            // No matching window — fall through to new window
+        }
+        _ => {} // "new_window" or unknown — always create new window
+    }
+
+    // Default: create new tmux window
     let target = format!("{tmux_session}:");
     let output = Command::new("tmux")
         .args([
@@ -74,6 +94,95 @@ pub fn launch_in_tmux(
     let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     Ok((tmux_session, window_name, pane_id))
+}
+
+/// Find a window in the session that has fewer than `max_panes` panes.
+/// Returns the first pane ID in that window (as split target).
+fn find_window_with_space(tmux_session: &str, max_panes: usize) -> Option<String> {
+    let output = Command::new("tmux")
+        .args([
+            "list-windows",
+            "-t",
+            tmux_session,
+            "-F",
+            "#{window_index} #{window_panes}",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            if let Ok(pane_count) = parts[1].parse::<usize>() {
+                if pane_count < max_panes {
+                    // Return first pane in this window
+                    let window_idx = parts[0];
+                    let target = format!("{tmux_session}:{window_idx}.0");
+                    return Some(target);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find a window named after the project in the session.
+/// Returns the first pane ID in that window (as split target).
+fn find_project_window(tmux_session: &str, window_name: &str) -> Option<String> {
+    let output = Command::new("tmux")
+        .args([
+            "list-windows",
+            "-t",
+            tmux_session,
+            "-F",
+            "#{window_index} #{window_name}",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+        if parts.len() >= 2 && parts[1] == window_name {
+            let window_idx = parts[0];
+            let target = format!("{tmux_session}:{window_idx}.0");
+            return Some(target);
+        }
+    }
+    None
+}
+
+/// Split an existing pane horizontally and run a command in the new pane.
+fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
+    let output = Command::new("tmux")
+        .args([
+            "split-window",
+            "-h",
+            "-t",
+            target_pane,
+            "-P",
+            "-F",
+            "#{pane_id}",
+            shell_cmd,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to split tmux pane: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux split-window failed: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 /// Stop a CLI tool session by sending the exit signal to the tmux pane.

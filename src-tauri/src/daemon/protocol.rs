@@ -234,6 +234,14 @@ pub struct LaunchSessionParams {
     /// Which CLI tool to launch. Defaults to Claude for backward compatibility.
     #[serde(default = "default_cli_tool")]
     pub cli_tool: crate::session_scanner::cli_tool::CliTool,
+    /// Tmux layout strategy: "new_window", "split", "per_project".
+    /// Defaults to "new_window" for backward compatibility.
+    #[serde(default = "default_tmux_layout")]
+    pub tmux_layout: String,
+}
+
+fn default_tmux_layout() -> String {
+    "new_window".to_string()
 }
 
 fn default_cli_tool() -> crate::session_scanner::cli_tool::CliTool {
@@ -581,6 +589,7 @@ mod tests {
             project_path: "/home/user/proj".to_string(),
             mode: LaunchMode::Continue,
             cli_tool: crate::session_scanner::cli_tool::CliTool::Claude,
+            tmux_layout: "new_window".to_string(),
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: LaunchSessionParams = serde_json::from_str(&json).unwrap();
