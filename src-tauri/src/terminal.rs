@@ -352,16 +352,19 @@ return "no""#,
         tracing::info!(emulator = ?self, %tmux_session, "Launching terminal with tmux attach");
         match self {
             Self::ITerm2 => {
+                // Use `write text` instead of `command` parameter — the latter
+                // is unreliable and often opens a plain shell without executing.
                 let script = format!(
                     r#"tell application "iTerm"
     activate
     if (count of windows) > 0 then
-        tell current window
-            create tab with default profile command "tmux attach-session -t {tmux_session}"
-        end tell
+        tell current window to create tab with default profile
     else
-        create window with default profile command "tmux attach-session -t {tmux_session}"
+        create window with default profile
     end if
+    tell current session of current window
+        write text "tmux attach-session -t {tmux_session}"
+    end tell
 end tell"#
                 );
                 std::process::Command::new("osascript")
