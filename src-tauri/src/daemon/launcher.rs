@@ -74,12 +74,32 @@ const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Try to connect to an existing daemon, or start one if needed.
 ///
+/// **Windows**: Uses WSL to communicate with the daemon running inside Linux.
+/// If `wsl_distro` is None, no WSL projects exist — returns None immediately.
+///
+/// **macOS**: The daemon is not needed — the app inspects processes directly
+/// via libproc. Always returns None on macOS.
+///
+/// `log_path` is the path to `taurhaus.log` for bootstrap logging.
+#[cfg(target_os = "macos")]
+pub fn try_connect_daemon(
+    _wsl_distro: Option<&str>,
+    _port: u16,
+    _log_path: &Path,
+) -> Option<DaemonProvider> {
+    tracing::debug!("macOS: daemon not needed (direct process inspection)");
+    None
+}
+
+/// Try to connect to an existing daemon, or start one if needed.
+///
 /// - If `wsl_distro` is None, no WSL projects exist — returns None immediately.
 /// - First tries a TCP connection to the daemon port.
 /// - If that fails, attempts to auto-start the daemon via `wsl.exe` and retries.
 /// - Returns None if daemon can't be reached within the timeout.
 ///
 /// `log_path` is the path to `taurhaus.log` for bootstrap logging.
+#[cfg(not(target_os = "macos"))]
 pub fn try_connect_daemon(
     wsl_distro: Option<&str>,
     port: u16,
@@ -128,6 +148,15 @@ pub fn try_connect_daemon(
 }
 
 /// Try to restart the daemon process (called by health check on disconnect).
+///
+/// On macOS, daemon is not used — returns Ok immediately.
+#[cfg(target_os = "macos")]
+pub fn try_restart_daemon(_distro: &str, _port: u16) -> Result<(), std::io::Error> {
+    Ok(())
+}
+
+/// Try to restart the daemon process (called by health check on disconnect).
+#[cfg(not(target_os = "macos"))]
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
     validate_wsl_distro(distro)
         .map_err(std::io::Error::other)?;
@@ -253,7 +282,10 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
     }
 }
 
-/// Ensure the taurhaus tmux session exists inside WSL.
+/// Ensure the taurhaus tmux session exists.
+///
+/// **macOS**: Runs tmux directly (natively installed).
+/// **Windows**: Runs tmux inside WSL via `wsl.exe`.
 ///
 /// Creates a dedicated named session (`taurhaus`) so our CLI tool windows
 /// don't interfere with the user's own tmux sessions. `tmux new-session`
@@ -261,6 +293,50 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
 ///
 /// Failure is non-fatal — the daemon-side code also creates the session
 /// on demand when launching a tool.
+#[cfg(target_os = "macos")]
+pub fn ensure_tmux_session(_distro: &str, log_path: &Path) {
+    use crate::session_scanner::control::TMUX_SESSION_NAME;
+
+    blog(log_path, &format!("Ensuring tmux session '{TMUX_SESSION_NAME}' exists (native)"));
+
+    // Check if session already exists
+    let check = std::process::Command::new("tmux")
+        .args(["has-session", "-t", TMUX_SESSION_NAME])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    if let Ok(output) = &check {
+        if output.status.success() {
+            blog(log_path, &format!("tmux session '{TMUX_SESSION_NAME}' already exists"));
+            return;
+        }
+    }
+
+    // Create the session (detached)
+    let result = std::process::Command::new("tmux")
+        .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    match result {
+        Ok(output) if output.status.success() => {
+            blog(log_path, &format!("Created tmux session '{TMUX_SESSION_NAME}'"));
+        }
+        Ok(output) => {
+            bwarn(log_path, &format!("tmux new-session exited with status {:?}", output.status));
+        }
+        Err(e) => {
+            bwarn(log_path, &format!("Failed to create tmux session: {e}"));
+        }
+    }
+}
+
+/// Ensure the taurhaus tmux session exists inside WSL.
+#[cfg(not(target_os = "macos"))]
 pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
     if let Err(e) = validate_wsl_distro(distro) {
         bwarn(log_path, &format!("Invalid WSL distro for tmux: {e}"));

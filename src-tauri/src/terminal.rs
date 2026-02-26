@@ -258,9 +258,90 @@ fn detect_wt_default_profile() -> Option<String> {
     json.get("defaultProfile")?.as_str().map(String::from)
 }
 
+// macOS: Terminal.app (default), iTerm2, or custom emulator.
+
+#[cfg(target_os = "macos")]
+pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
+    let TerminalIntent::EnsureOpen { tmux_session, emulator, custom_command, .. } = intent else {
+        // FocusOnly: on macOS we could AppleScript-activate Terminal.app,
+        // but tmux sessions are typically in the user's workspace already.
+        return Ok(());
+    };
+
+    // Custom emulator
+    if emulator == "custom" && !custom_command.trim().is_empty() {
+        let cmd = custom_command
+            .replace("{tmux_session}", &tmux_session);
+
+        tracing::info!(%cmd, "Launching custom terminal emulator (macOS)");
+
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err("Custom terminal command is empty".to_string());
+        }
+
+        std::process::Command::new(parts[0])
+            .args(&parts[1..])
+            .spawn()
+            .map_err(|e| format!("Failed to launch custom terminal: {e}"))?;
+
+        return Ok(());
+    }
+
+    // iTerm2
+    if emulator == "iterm2" {
+        return launch_iterm2(&tmux_session);
+    }
+
+    // Default: Terminal.app
+    launch_terminal_app(&tmux_session)
+}
+
+/// Launch Terminal.app and attach to a tmux session via AppleScript.
+#[cfg(target_os = "macos")]
+fn launch_terminal_app(tmux_session: &str) -> Result<(), String> {
+    let script = format!(
+        r#"tell application "Terminal"
+    activate
+    do script "tmux attach-session -t {tmux_session}"
+end tell"#
+    );
+
+    tracing::info!(%tmux_session, "Launching Terminal.app with tmux attach");
+
+    std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .spawn()
+        .map_err(|e| format!("Failed to launch Terminal.app: {e}"))?;
+
+    Ok(())
+}
+
+/// Launch iTerm2 and attach to a tmux session via its AppleScript API.
+#[cfg(target_os = "macos")]
+fn launch_iterm2(tmux_session: &str) -> Result<(), String> {
+    let script = format!(
+        r#"tell application "iTerm"
+    activate
+    tell current window
+        create tab with default profile command "tmux attach-session -t {tmux_session}"
+    end tell
+end tell"#
+    );
+
+    tracing::info!(%tmux_session, "Launching iTerm2 with tmux attach");
+
+    std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .spawn()
+        .map_err(|e| format!("Failed to launch iTerm2: {e}"))?;
+
+    Ok(())
+}
+
 // Linux: no-op — terminal is already in the user's workspace.
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 pub fn handle_terminal(_intent: TerminalIntent) -> Result<(), String> {
     Ok(())
 }
