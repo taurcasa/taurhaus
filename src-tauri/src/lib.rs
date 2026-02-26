@@ -69,20 +69,31 @@ pub fn run() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    // macOS: Finder-launched apps get a minimal PATH that doesn't include
-    // homebrew, cargo, fnm, etc. Resolve the user's real PATH from their
-    // login shell so Command::new("tmux"), "claude", etc. all just work.
+    // macOS: Finder-launched apps get a minimal env that doesn't include
+    // homebrew, cargo, fnm, etc. Resolve the user's real environment from
+    // their login shell so Command::new("tmux"), "claude", etc. all work.
+    // Also inherits NODE_EXTRA_CA_CERTS (Homebrew Node.js needs this for TLS).
     #[cfg(target_os = "macos")]
     {
+        // Print key env vars as key=value lines, one per line.
+        let env_cmd = r#"echo "PATH=$PATH"; echo "NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS"; echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"; echo "OPENAI_API_KEY=$OPENAI_API_KEY"; echo "GEMINI_API_KEY=$GEMINI_API_KEY""#;
         if let Ok(output) = std::process::Command::new("/bin/zsh")
-            .args(["-lc", "echo $PATH"])
+            .args(["-lc", env_cmd])
             .output()
         {
             if output.status.success() {
-                let shell_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !shell_path.is_empty() {
-                    std::env::set_var("PATH", &shell_path);
-                    tracing::info!(path = %shell_path, "Inherited PATH from login shell");
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Some((key, val)) = line.split_once('=') {
+                        if !val.is_empty() {
+                            std::env::set_var(key, val);
+                            if key == "PATH" {
+                                tracing::info!(path = %val, "Inherited PATH from login shell");
+                            } else {
+                                tracing::info!(key, "Inherited env var from login shell");
+                            }
+                        }
+                    }
                 }
             }
         }
