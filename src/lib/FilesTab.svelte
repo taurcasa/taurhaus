@@ -63,11 +63,18 @@
 
     import('@tauri-apps/api/event').then(({ listen }) => {
       listen('project-files-changed', (event) => {
-        const { project_id } = event.payload
-        if (project_id === selectedProject.id) {
-          clearTimeout(refreshTimer)
-          refreshTimer = setTimeout(() => loadFileTree(selectedProject.id), 2000)
-        }
+        const { project_id, paths } = event.payload
+        if (project_id !== selectedProject.id) return
+
+        clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => {
+          loadFileTree(selectedProject.id)
+
+          // Re-fetch open file if it was among the changed paths
+          if (selectedFile && paths?.some(p => p.endsWith('/' + selectedFile) || p === selectedFile)) {
+            openFile(selectedFile, targetLineNumber)
+          }
+        }, 2000)
       }).then(u => cleanups.push(u))
     })
 
