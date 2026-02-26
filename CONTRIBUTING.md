@@ -72,6 +72,22 @@ just test-frontend   # Frontend tests (Vitest)
 
 Frontend tests run from the project root (not `src-tauri/`). Vitest is configured to find test files at the root level.
 
+### Regression Testing
+
+Every regression fix **must** include a test that would have caught the regression:
+
+1. Write the test first — confirm it fails against the broken code (red)
+2. Fix the regression (green)
+3. The test stays permanently as a guard
+
+Where to put regression tests:
+
+- **E2E regressions** (visual, behavioral): `e2e/specs/regressions.js`
+- **Rust regressions**: `#[test]` in the affected module with `// Regression:` comment
+- **Frontend unit regressions**: in the relevant `.test.js` with `// Regression:` comment
+
+Each regression test must document what broke and why (commit reference if available).
+
 ## Pull Request Process
 
 1. Create a feature branch from `main`

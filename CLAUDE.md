@@ -139,6 +139,19 @@ Full workflow: [`docs/phase-5-workflow.md`](docs/phase-5-workflow.md) | Infograp
 - AC-driven coverage — every acceptance criterion gets a test, no numeric targets
 - Test data generated on the fly in tempdirs, never checked-in fixtures
 
+### Regression Testing
+When a regression is discovered — frontend or backend — the fix follows TDD against the regression:
+1. **Write a failing test first** that reproduces the exact regression (red)
+2. **Fix the bug** (green)
+3. **The test stays forever** as a guard against recurrence
+
+- **E2E regressions** go in `e2e/specs/regressions.js` — one `describe` block per regression, comment documents the original commit and root cause
+- **Rust regressions** go as `#[test]` in the affected module with a `// Regression:` comment
+- **Frontend unit regressions** go in the relevant `.test.js` file with a `// Regression:` comment
+- Every regression test must document: what broke, which commit broke it, and why
+
+This is non-negotiable. No regression fix ships without a corresponding test.
+
 ### Quality Gates
 - `just check` runs full gate: clippy + svelte-check + all tests
 - Full test suite on every task. E2E at milestones.
