@@ -336,47 +336,63 @@ return "no""#,
 
     /// Activate (bring to front) this emulator.
     ///
-    /// Uses `.output()` (blocking) instead of `.spawn()` to ensure the
-    /// activation completes before the Tauri command returns. Without this,
-    /// the click that triggers the command brings taurhaus to front, and
-    /// the async osascript loses the race — resulting in toggle behavior
-    /// instead of reliable focus.
+    /// Uses `open -a` (the standard macOS app activation command) instead of
+    /// AppleScript. It's faster, hands off directly to the window server, and
+    /// doesn't require spawning osascript.
+    ///
+    /// Spawned non-blocking with a small delay. We must NOT block this thread
+    /// because the Tauri command returning can cause the WebView to reclaim
+    /// focus — undoing our activation. Instead: delay, spawn, return fast.
     fn activate(self) -> Result<(), String> {
-        let script = format!(
-            r#"tell application "{}" to activate"#,
-            self.app_name()
-        );
-        tracing::debug!(emulator = ?self, "Activating terminal");
+        let app = self.app_name();
+        tracing::debug!(emulator = ?self, "Activating terminal via open -a");
         // Small delay lets macOS finish processing the click event that
-        // brought taurhaus to front. Without this, the activate AppleEvent
-        // can arrive while macOS is still mid-transition and get ignored.
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        let _ = std::process::Command::new("osascript")
-            .args(["-e", &script])
-            .output();
+        // brought taurhaus to front. Without this, the activate arrives
+        // while macOS is still mid-transition and gets ignored.
+        let app_name = app.to_string();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = std::process::Command::new("open")
+                .args(["-a", &app_name])
+                .output();
+        });
         Ok(())
     }
 
     /// Launch this emulator with a tmux attach command.
     fn launch_with_tmux(self, tmux_session: &str) -> Result<(), String> {
-        tracing::info!(emulator = ?self, %tmux_session, "Launching terminal with tmux attach");
+        let already_running = self.is_running();
+        tracing::info!(emulator = ?self, %tmux_session, %already_running, "Launching terminal with tmux attach");
         match self {
             Self::ITerm2 => {
-                // Use `write text` instead of `command` parameter — the latter
-                // is unreliable and often opens a plain shell without executing.
-                let script = format!(
-                    r#"tell application "iTerm"
+                // Two paths to avoid double windows:
+                //   - NOT running: `activate` launches iTerm with a default
+                //     window. Just write into that default session.
+                //   - Already running: create a new tab, write into it.
+                let script = if already_running {
+                    format!(
+                        r#"tell application "iTerm"
+    tell current window to create tab with default profile
+    tell current session of current window
+        write text "tmux attach-session -t {tmux_session}"
+    end tell
     activate
-    if (count of windows) > 0 then
-        tell current window to create tab with default profile
-    else
-        create window with default profile
-    end if
+end tell"#
+                    )
+                } else {
+                    format!(
+                        r#"tell application "iTerm"
+    activate
+    -- Wait for default window from fresh launch
+    repeat while (count of windows) is 0
+        delay 0.1
+    end repeat
     tell current session of current window
         write text "tmux attach-session -t {tmux_session}"
     end tell
 end tell"#
-                );
+                    )
+                };
                 std::process::Command::new("osascript")
                     .args(["-e", &script])
                     .spawn()
