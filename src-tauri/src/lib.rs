@@ -69,6 +69,25 @@ pub fn run() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
+    // macOS: Finder-launched apps get a minimal PATH that doesn't include
+    // homebrew, cargo, fnm, etc. Resolve the user's real PATH from their
+    // login shell so Command::new("tmux"), "claude", etc. all just work.
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("/bin/zsh")
+            .args(["-lc", "echo $PATH"])
+            .output()
+        {
+            if output.status.success() {
+                let shell_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !shell_path.is_empty() {
+                    std::env::set_var("PATH", &shell_path);
+                    tracing::info!(path = %shell_path, "Inherited PATH from login shell");
+                }
+            }
+        }
+    }
+
     // Disable libgit2 ownership validation so repos on WSL filesystems
     // (accessed via \\wsl$\ UNC paths) don't get rejected as "unsafe".
     // Safe for a desktop app where the user explicitly registers projects.
