@@ -48,6 +48,9 @@ hex = "0.4"
 base64 = "0.22"
 ctrlc = "3"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libproc = "0.14"
+
 [dev-dependencies]
 pretty_assertions = "1"
 tempfile = "3"

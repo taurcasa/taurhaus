@@ -129,9 +129,9 @@ taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support r
 
 ### Phase 3 — macOS Implementation
 
-- [ ] **M07** — Implement `DarwinProbe` process detection. Use `libproc` crate for: process CWD via `proc_pidpath()`, process list via `listpids()`. Fallback to `lsof -p PID | grep cwd` if libproc is insufficient. Write macOS-specific tests (gated with `#[cfg(target_os = "macos")]`).
-- [ ] **M08** — Implement `DarwinProbe` IO activity detection. Use `libproc` `proc_pidinfo()` with `PROC_PIDTASKINFO` for IO counters. If raw byte counters aren't available, evaluate alternatives: `rusage`, CPU time deltas, or `dtrace`-based approach. Must detect Claude streaming activity reliably.
-- [ ] **M09** — Implement `DarwinProbe` TCP socket detection. Use `lsof -p PID -i TCP -s TCP:ESTABLISHED` parsing or `libproc` `proc_pidinfo(PROC_PIDLISTFDS)` + `proc_pidfdinfo()`. Must detect Gemini's :443 connections.
+- [x] **M07** — Implement `DarwinProbe` process detection. Use `libproc` crate for: process CWD via `proc_pidpath()`, process list via `listpids()`. Fallback to `lsof -p PID | grep cwd` if libproc is insufficient. Write macOS-specific tests (gated with `#[cfg(target_os = "macos")]`).
+- [x] **M08** — Implement `DarwinProbe` IO activity detection. Use `libproc` `proc_pidinfo()` with `PROC_PIDTASKINFO` for IO counters. If raw byte counters aren't available, evaluate alternatives: `rusage`, CPU time deltas, or `dtrace`-based approach. Must detect Claude streaming activity reliably.
+- [x] **M09** — Implement `DarwinProbe` TCP socket detection. Use `lsof -p PID -i TCP -s TCP:ESTABLISHED` parsing or `libproc` `proc_pidinfo(PROC_PIDLISTFDS)` + `proc_pidfdinfo()`. Must detect Gemini's :443 connections.
 - [ ] **M10** — Implement macOS daemon launcher. No WSL layer — daemon is a native binary. Modify `launcher.rs` with `#[cfg(target_os = "macos")]` path: spawn daemon directly, resolve home dir natively. Handle launchd integration if appropriate (daemon auto-start on login).
 - [ ] **M11** — Implement macOS terminal integration. Replace Windows Terminal logic with macOS equivalents: Terminal.app via AppleScript (`osascript`), iTerm2 via its AppleScript API. Add terminal preference option for macOS (Terminal.app / iTerm2 / custom). Update Settings UI to show macOS-relevant options when running on macOS.
 - [ ] **M12** — macOS icon and bundle configuration. Generate `.icns` icon file from existing logo PNGs. Update `tauri.conf.json` with macOS bundle settings (identifier, category, entitlements). Configure DMG installer appearance.
