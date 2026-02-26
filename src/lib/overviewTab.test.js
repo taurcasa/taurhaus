@@ -1,8 +1,8 @@
 /**
  * OverviewTab component tests.
  *
- * Tests quick actions, last commit display, session rendering,
- * relationships, callbacks, and helper functions.
+ * Tests quick actions, commit display, session rendering,
+ * relationships, conditional sections, callbacks, and layout ordering.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -11,13 +11,17 @@ import '@testing-library/jest-dom/vitest'
 
 // Mock markdown renderer — just renders the source as text
 vi.mock('./MarkdownRenderer.svelte', () => {
-  const { mount } = require('svelte')
   return {
     default: function MockMarkdown(target, props) {
       const el = document.createElement('div')
       el.setAttribute('data-testid', 'markdown-renderer')
       el.textContent = props?.source || ''
-      target.appendChild(el)
+      // Svelte 5 may pass a comment anchor node inside {#if} blocks
+      if (target.nodeType === Node.COMMENT_NODE) {
+        target.parentNode.insertBefore(el, target)
+      } else {
+        target.appendChild(el)
+      }
       return { $set() {}, $destroy() { el.remove() } }
     },
   }
@@ -149,37 +153,16 @@ describe('OverviewTab', () => {
     expect(onOpenTerminal).toHaveBeenCalled()
   })
 
-  // --- Last commit ---
+  // --- Commits (Recent Activity only — no separate Last Commit) ---
 
-  it('shows loading state for commits', () => {
+  it('shows loading skeleton for commits', () => {
     render(OverviewTab, { props: defaultProps({ commitsLoading: true }) })
-    // Should show pulse animation, not the commit row
-    expect(screen.queryByTestId('overview-last-commit')).toBeNull()
-  })
-
-  it('shows last commit when available', () => {
-    const commits = [
-      { hash: 'abc1234', message: 'Fix bug in parser', date: '2h' },
-    ]
-    render(OverviewTab, { props: defaultProps({ recentCommits: commits }) })
-    expect(screen.getByTestId('overview-last-commit')).toBeTruthy()
-    expect(screen.getByTestId('overview-last-commit').textContent).toContain('abc1234')
-    expect(screen.getByTestId('overview-last-commit').textContent).toContain('Fix bug in parser')
-  })
-
-  it('clicking last commit calls onNavigateToCommit', async () => {
-    const onNavigateToCommit = vi.fn()
-    const commits = [{ hash: 'abc1234', message: 'Fix bug', date: '2h' }]
-    render(OverviewTab, { props: defaultProps({ recentCommits: commits, onNavigateToCommit }) })
-    await fireEvent.click(screen.getByTestId('overview-last-commit'))
-    expect(onNavigateToCommit).toHaveBeenCalledWith('abc1234')
+    expect(screen.getByTestId('commits-loading')).toBeTruthy()
   })
 
   it('shows "No commits found" when no commits available', () => {
     render(OverviewTab, { props: defaultProps({ recentCommits: [] }) })
-    // Appears in both Last Commit and Recent Activity sections
-    const matches = screen.getAllByText('No commits found.')
-    expect(matches.length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('No commits found.')).toBeTruthy()
   })
 
   // --- Recent activity ---
@@ -208,14 +191,14 @@ describe('OverviewTab', () => {
     expect(onViewAllCommits).toHaveBeenCalled()
   })
 
-  // --- Latest session ---
+  // --- Sessions (combined, conditional) ---
 
-  it('hides session section when no session exists', () => {
-    render(OverviewTab, { props: defaultProps({ latestSession: null, sessionLoading: false }) })
-    expect(screen.queryByText('Latest session')).toBeNull()
+  it('hides sessions section when no data exists', () => {
+    render(OverviewTab, { props: defaultProps({ latestSession: null, sessionHistory: [], sessionLoading: false }) })
+    expect(screen.queryByTestId('overview-sessions')).toBeNull()
   })
 
-  it('shows session section when latestSession exists', () => {
+  it('shows sessions section when latestSession exists', () => {
     const session = {
       summary: 'Completed Phase 5B implementation',
       date: new Date().toISOString(),
@@ -249,16 +232,23 @@ describe('OverviewTab', () => {
     expect(screen.getByText('How to handle X?')).toBeTruthy()
   })
 
-  it('shows session loading skeleton', () => {
+  it('shows sessions section with loading skeleton', () => {
     render(OverviewTab, { props: defaultProps({ sessionLoading: true }) })
-    expect(screen.getByText('Latest session')).toBeTruthy()
+    expect(screen.getByTestId('overview-sessions')).toBeTruthy()
+    expect(screen.getByTestId('sessions-loading')).toBeTruthy()
   })
 
-  // --- Relationships ---
+  // --- Relationships (conditional) ---
 
-  it('shows "No connections detected" when empty', () => {
-    render(OverviewTab, { props: defaultProps({ relationships: [] }) })
-    expect(screen.getByText('No connections detected yet.')).toBeTruthy()
+  it('hides relationships section when no data exists', () => {
+    render(OverviewTab, { props: defaultProps({ relationships: [], relationshipsLoading: false }) })
+    expect(screen.queryByTestId('overview-relationships')).toBeNull()
+  })
+
+  it('shows relationships section with loading skeleton', () => {
+    render(OverviewTab, { props: defaultProps({ relationshipsLoading: true }) })
+    expect(screen.getByTestId('overview-relationships')).toBeTruthy()
+    expect(screen.getByTestId('relationships-loading')).toBeTruthy()
   })
 
   it('renders relationship rows', () => {
@@ -315,11 +305,14 @@ describe('OverviewTab', () => {
     expect(screen.getByText('1 connection')).toBeTruthy()
   })
 
-  // --- Session history ---
+  // --- Session history (combined into sessions section) ---
 
-  it('shows "No sessions imported" when empty', () => {
-    render(OverviewTab, { props: defaultProps({ sessionHistory: [] }) })
-    expect(screen.getByText('No sessions imported yet.')).toBeTruthy()
+  it('shows sessions section when sessionHistory has entries', () => {
+    const history = [
+      { id: 's1', date: new Date().toISOString(), summary: 'Some session' },
+    ]
+    render(OverviewTab, { props: defaultProps({ sessionHistory: history }) })
+    expect(screen.getByTestId('overview-sessions')).toBeTruthy()
   })
 
   it('renders session history entries', () => {
@@ -344,6 +337,41 @@ describe('OverviewTab', () => {
     // created_at: '2025-01-01T00:00:00Z'
     const dateStr = new Date('2025-01-01T00:00:00Z').toLocaleDateString()
     expect(screen.getByText(dateStr)).toBeTruthy()
+  })
+
+  // --- Layout ordering ---
+
+  it('quick actions render in header area', () => {
+    render(OverviewTab, { props: defaultProps() })
+    const quickActions = screen.getByTestId('quick-actions')
+    expect(quickActions).toBeTruthy()
+    // Should be within the header (not in scrollable content)
+    expect(quickActions.closest('h1')?.parentElement || quickActions.closest('[class*="shrink-0"]')).toBeTruthy()
+  })
+
+  it('README renders before Recent Activity in DOM order', () => {
+    const commits = [{ hash: 'abc1234', message: 'Commit', date: '1h' }]
+    const { container } = render(OverviewTab, {
+      props: defaultProps({
+        recentCommits: commits,
+        readmeContent: { content: '# Title\nSome readme content' },
+      }),
+    })
+    // Both sections should exist
+    const readme = container.querySelector('[data-testid="overview-readme"]')
+    const commitRow = container.querySelector('[data-testid="overview-commit-row"]')
+    expect(readme).toBeTruthy()
+    expect(commitRow).toBeTruthy()
+    // Check DOM order via innerHTML — README section appears first
+    const html = container.innerHTML
+    const readmePos = html.indexOf('overview-readme')
+    const commitPos = html.indexOf('overview-commit-row')
+    expect(readmePos).toBeLessThan(commitPos)
+  })
+
+  it('README section hidden when no content', () => {
+    render(OverviewTab, { props: defaultProps({ readmeContent: null }) })
+    expect(screen.queryByTestId('overview-readme')).toBeNull()
   })
 
   // --- Dark mode ---

@@ -41,8 +41,6 @@
 
   let showAllCommits = $state(false)
 
-  const lastCommit = $derived(recentCommits?.[0] || null)
-
   const readmeForOverview = $derived.by(() => {
     if (!readmeContent?.content) return ''
     return readmeContent.content.replace(/^#\s+[^\n]*\n?/, '')
@@ -99,15 +97,41 @@
 
 <!-- Project header -->
 <div class="px-7 pt-5 pb-4 shrink-0 content-enter">
-  <div class="flex items-baseline gap-3">
+  <div class="flex items-center gap-3">
     <h1 class="text-[18px] font-semibold {t.textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
-    <span class="text-[11px] font-mono {t.textTertiary}">{selectedProject.branch || ''}</span>
+    <span class="text-[11px] font-mono {t.textTertiary} self-baseline">{selectedProject.branch || ''}</span>
     {#if selectedProject.is_dirty}
       <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Uncommitted changes"></span>
     {/if}
     {#if selectedProject.activity_state}
-      <span class="text-[11px] {statusColor} font-medium capitalize">{selectedProject.activity_state}</span>
+      <span class="text-[11px] {statusColor} font-medium capitalize self-baseline">{selectedProject.activity_state}</span>
     {/if}
+    <!-- Quick actions — compact icon buttons -->
+    <div class="ml-auto flex items-center gap-1 shrink-0" data-testid="quick-actions">
+      {#each TOOLS as tool}
+        {@const icon = TOOL_ICONS[tool]}
+        <button
+          class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {actionBtnBase}"
+          onclick={() => onLaunchSession?.(tool)}
+          title={TOOL_NAMES[tool]}
+          data-testid="action-launch-{tool}"
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" viewBox={icon.viewBox} fill="currentColor">
+            <path d={icon.path}/>
+          </svg>
+        </button>
+      {/each}
+      <button
+        class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {actionBtnBase}"
+        onclick={() => onOpenTerminal?.()}
+        title="Terminal"
+        data-testid="action-open-terminal"
+      >
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+        </svg>
+      </button>
+    </div>
   </div>
   {#if selectedProject.description}
     <p class="mt-0.5 text-[13px] {t.textTertiary}">{selectedProject.description}</p>
@@ -118,108 +142,15 @@
 <div class="flex-1 overflow-y-auto content-enter">
   <div class="max-w-3xl px-7 pb-8">
 
-    <!-- Quick Actions -->
-    <section class="pb-5 border-b {t.keyline}">
-      <div class="flex items-center gap-2 flex-wrap">
-        {#each TOOLS as tool}
-          {@const icon = TOOL_ICONS[tool]}
-          <button
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-md border transition-colors {actionBtnBase}"
-            onclick={() => onLaunchSession?.(tool)}
-            data-testid="action-launch-{tool}"
-          >
-            <svg class="w-3 h-3 shrink-0" viewBox={icon.viewBox} fill="currentColor">
-              <path d={icon.path}/>
-            </svg>
-            {TOOL_NAMES[tool]}
-          </button>
-        {/each}
-        <button
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-md border transition-colors {actionBtnBase}"
-          onclick={() => onOpenTerminal?.()}
-          data-testid="action-open-terminal"
-        >
-          <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
-          </svg>
-          Terminal
-        </button>
-      </div>
-    </section>
-
-    <!-- Last Commit -->
-    <section class="py-5 border-b {t.keyline}">
-      <span class="text-[11px] {t.textTertiary}">Last commit</span>
-      {#if commitsLoading}
-        <div class="mt-2 flex items-center h-[30px]">
-          <div class="h-2.5 w-12 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-          <div class="h-2.5 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
-        </div>
-      {:else if lastCommit}
-        <button
-          class="mt-2 w-full flex items-center h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
-          onclick={() => onNavigateToCommit(lastCommit.hash)}
-          data-testid="overview-last-commit"
-        >
-          <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{lastCommit.hash}</span>
-          <span class="{t.textBody} truncate flex-1">{lastCommit.message}</span>
-          <span class="text-[11px] {timeColor} shrink-0 ml-3">{lastCommit.date}</span>
-        </button>
-      {:else}
-        <p class="mt-2 text-[13px] {t.textMuted}">No commits found.</p>
-      {/if}
-    </section>
-
-    <!-- Latest Session (compact, only if exists) -->
-    {#if sessionLoading}
-      <section class="py-5 border-b {t.keyline}">
-        <span class="text-[11px] {t.textTertiary}">Latest session</span>
-        <div class="mt-2 border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-          <div class="space-y-2 animate-pulse">
-            <div class="h-3 w-3/4 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
-            <div class="h-3 w-1/2 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
-          </div>
-        </div>
-      </section>
-    {:else if latestSession}
-      <section class="py-5 border-b {t.keyline}">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-[11px] {t.textTertiary}">Latest session</span>
-          <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
-        </div>
-        <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint}">
-          <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
-          {#if latestSession.next_steps && latestSession.next_steps.length > 0}
-            <div class="mt-3">
-              <span class="text-[11px] {t.textTertiary}">Next steps</span>
-              <ul class="mt-1 space-y-0.5">
-                {#each latestSession.next_steps as step}
-                  <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                    <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
-                    <span>{step}</span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-          {#if latestSession.open_questions && latestSession.open_questions.length > 0}
-            <div class="mt-3">
-              <span class="text-[11px] {t.textTertiary}">Open questions</span>
-              <ul class="mt-1 space-y-0.5">
-                {#each latestSession.open_questions as question}
-                  <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                    <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
-                    <span>{question}</span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-        </div>
+    <!-- 1. README — project identity, immediately below header -->
+    {#if readmeContent}
+      <section class="pb-5 border-b {t.keyline}" data-testid="overview-readme">
+        <span class="text-[11px] {t.textTertiary} mb-3 block">README</span>
+        <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
       </section>
     {/if}
 
-    <!-- Recent Activity (commits) -->
+    <!-- 2. Recent Activity (commits) -->
     <section class="py-5 border-b {t.keyline}">
       <div class="flex items-center justify-between mb-3">
         <span class="text-[11px] {t.textTertiary}">Recent activity</span>
@@ -261,107 +192,132 @@
       {/if}
     </section>
 
-    <!-- README -->
-    {#if readmeContent}
-      <section class="py-5 border-b {t.keyline}">
-        <span class="text-[11px] {t.textTertiary} mb-3 block">README</span>
-        <MarkdownRenderer source={readmeForOverview} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
+    <!-- 3. Sessions — combined, hidden when empty -->
+    {#if sessionLoading || latestSession || sessionHistory.length > 0}
+      <section class="py-5 border-b {t.keyline}" data-testid="overview-sessions">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[11px] {t.textTertiary}">Sessions</span>
+          {#if sessionHistory.length > 0}
+            <span class="text-[11px] {t.textTertiary}">{sessionHistory.length} session{sessionHistory.length !== 1 ? 's' : ''}</span>
+          {/if}
+        </div>
+        {#if sessionLoading}
+          <div class="space-y-2 animate-pulse" data-testid="sessions-loading">
+            <div class="h-3 w-3/4 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
+            <div class="h-3 w-1/2 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
+          </div>
+        {:else}
+          {#if latestSession}
+            <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint} mb-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[11px] font-medium {t.textTertiary}">Latest</span>
+                <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
+              </div>
+              <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
+              {#if latestSession.next_steps && latestSession.next_steps.length > 0}
+                <div class="mt-3">
+                  <span class="text-[11px] {t.textTertiary}">Next steps</span>
+                  <ul class="mt-1 space-y-0.5">
+                    {#each latestSession.next_steps as step}
+                      <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                        <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
+                        <span>{step}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
+              {#if latestSession.open_questions && latestSession.open_questions.length > 0}
+                <div class="mt-3">
+                  <span class="text-[11px] {t.textTertiary}">Open questions</span>
+                  <ul class="mt-1 space-y-0.5">
+                    {#each latestSession.open_questions as question}
+                      <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                        <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
+                        <span>{question}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
+            </div>
+          {/if}
+          {#if sessionHistory.length > 0}
+            <div>
+              {#each sessionHistory as session}
+                <div class="flex items-start gap-3 py-1.5 {t.hoverRow} -mx-2 px-2 rounded">
+                  <span class="text-[11px] {t.textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
+                  <span class="text-[13px] {t.textBody} flex-1">{session.summary}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
       </section>
     {/if}
 
-    <!-- Relationships -->
-    <section class="py-5 border-b {t.keyline}">
-      <div class="flex items-center justify-between mb-3">
-        <span class="text-[11px] {t.textTertiary}">Relationships</span>
-        {#if relationships.length > 0}
-          <span class="text-[11px] {t.textTertiary}">{relationships.length} connection{relationships.length !== 1 ? 's' : ''}</span>
-        {/if}
-      </div>
-      {#if relationshipsLoading}
-        <div class="space-y-1" data-testid="relationships-loading">
-          {#each Array(2) as _}
-            <div class="flex items-center h-[30px]">
-              <div class="h-2.5 w-4 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-              <div class="h-2.5 w-24 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
-              <div class="h-2.5 w-16 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
-            </div>
-          {/each}
+    <!-- 4. Relationships — hidden when empty -->
+    {#if relationshipsLoading || relationships.length > 0}
+      <section class="py-5 border-b {t.keyline}" data-testid="overview-relationships">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[11px] {t.textTertiary}">Relationships</span>
+          {#if relationships.length > 0}
+            <span class="text-[11px] {t.textTertiary}">{relationships.length} connection{relationships.length !== 1 ? 's' : ''}</span>
+          {/if}
         </div>
-      {:else if relationships.length === 0}
-        <p class="text-[13px] {t.textMuted}">No connections detected yet.</p>
-      {:else}
-        <div>
-          {#each relationships as rel}
-            {@const direction = getRelationshipDirection(rel)}
-            {@const projectName = getRelatedProjectName(rel)}
-            {@const typeLabel = RELATIONSHIP_TYPE_LABELS[rel.relationship_type] || rel.relationship_type}
-            {@const sourceLabel = DETECTION_SOURCE_LABELS[rel.detection_source] || rel.detection_source}
-            <div class="flex items-center h-[30px] text-[13px] {t.hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
-              <span class="w-5 text-center shrink-0 {t.textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
+        {#if relationshipsLoading}
+          <div class="space-y-1" data-testid="relationships-loading">
+            {#each Array(2) as _}
+              <div class="flex items-center h-[30px]">
+                <div class="h-2.5 w-4 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
+                <div class="h-2.5 w-24 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
+                <div class="h-2.5 w-16 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div>
+            {#each relationships as rel}
+              {@const direction = getRelationshipDirection(rel)}
+              {@const projectName = getRelatedProjectName(rel)}
+              {@const typeLabel = RELATIONSHIP_TYPE_LABELS[rel.relationship_type] || rel.relationship_type}
+              {@const sourceLabel = DETECTION_SOURCE_LABELS[rel.detection_source] || rel.detection_source}
+              <div class="flex items-center h-[30px] text-[13px] {t.hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
+                <span class="w-5 text-center shrink-0 {t.textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
 
-              <button
-                class="text-[13px] {t.linkColor} truncate transition-colors"
-                onclick={() => {
-                  const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
-                  const p = projects.find(pr => pr.id === otherId)
-                  if (p) onSelectProject(p)
-                }}
-              >{projectName}</button>
-
-              <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded {tagBg} shrink-0">{typeLabel}</span>
-
-              <span class="ml-2 text-[10px] {t.textTertiary} shrink-0">{sourceLabel}</span>
-
-              {#if rel.detection_source !== 'manual'}
                 <button
-                  class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {t.textMuted} hover:{t.textSecondary} transition-all shrink-0"
-                  onclick={() => onDismissRelationship(rel.id)}
-                  aria-label="Dismiss relationship"
-                  data-testid="dismiss-relationship"
-                >
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
-                  </svg>
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
+                  class="text-[13px] {t.linkColor} truncate transition-colors"
+                  onclick={() => {
+                    const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
+                    const p = projects.find(pr => pr.id === otherId)
+                    if (p) onSelectProject(p)
+                  }}
+                >{projectName}</button>
 
-    <!-- Session History -->
-    <section class="py-5 border-b {t.keyline}">
-      <div class="flex items-center justify-between mb-3">
-        <span class="text-[11px] {t.textTertiary}">Session history</span>
-        {#if sessionHistory.length > 0}
-          <span class="text-[11px] {t.textTertiary}">{sessionHistory.length} session{sessionHistory.length !== 1 ? 's' : ''}</span>
+                <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded {tagBg} shrink-0">{typeLabel}</span>
+
+                <span class="ml-2 text-[10px] {t.textTertiary} shrink-0">{sourceLabel}</span>
+
+                {#if rel.detection_source !== 'manual'}
+                  <button
+                    class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {t.textMuted} hover:{t.textSecondary} transition-all shrink-0"
+                    onclick={() => onDismissRelationship(rel.id)}
+                    aria-label="Dismiss relationship"
+                    data-testid="dismiss-relationship"
+                  >
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                {/if}
+              </div>
+            {/each}
+          </div>
         {/if}
-      </div>
-      {#if sessionLoading}
-        <div class="space-y-1" data-testid="sessions-loading">
-          {#each Array(3) as _}
-            <div class="flex items-center h-[30px]">
-              <div class="h-2.5 w-16 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-              <div class="h-2.5 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-3"></div>
-            </div>
-          {/each}
-        </div>
-      {:else if sessionHistory.length === 0}
-        <p class="text-[13px] {t.textMuted}">No sessions imported yet.</p>
-      {:else}
-        <div>
-          {#each sessionHistory as session}
-            <div class="flex items-start gap-3 py-1.5 {t.hoverRow} -mx-2 px-2 rounded">
-              <span class="text-[11px] {t.textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
-              <span class="text-[13px] {t.textBody} flex-1">{session.summary}</span>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
+      </section>
+    {/if}
 
-    <!-- Project Info -->
+    <!-- 5. Project Info -->
     <section class="py-5 pb-10">
       <span class="text-[11px] {t.textTertiary}">Project info</span>
       <div class="mt-2 space-y-1 text-[13px]">
