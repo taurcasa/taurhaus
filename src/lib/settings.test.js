@@ -16,9 +16,10 @@ vi.mock('./ipc.js', () => ({
   updateSettings: vi.fn(),
   getIndexStatus: vi.fn(),
   rebuildIndex: vi.fn(),
+  getPlatform: vi.fn(),
 }))
 
-const { getSettings, updateSettings, getIndexStatus, rebuildIndex } = await import('./ipc.js')
+const { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform } = await import('./ipc.js')
 
 import Settings from './Settings.svelte'
 
@@ -51,6 +52,7 @@ describe('Settings component', () => {
     getSettings.mockResolvedValue(mockSettings())
     getIndexStatus.mockResolvedValue({ doc_count: 42, is_empty: false })
     updateSettings.mockImplementation(async (s) => s)
+    getPlatform.mockResolvedValue('windows')
   })
 
   // --- IPC loading ---

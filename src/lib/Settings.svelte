@@ -1,5 +1,5 @@
 <script>
-  import { getSettings, updateSettings, getIndexStatus, rebuildIndex } from './ipc.js'
+  import { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform } from './ipc.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { themeTokens } from './themeTokens.js'
 
@@ -31,10 +31,14 @@
   let scanDirsText = $state('')
   let ignoreText = $state('')
 
+  // Platform detection for conditional UI
+  let platform = $state('linux')
+
   // Load settings on mount
   $effect(() => {
     loadSettings()
     loadIndexStatus()
+    getPlatform().then(p => { platform = p }).catch(() => {})
   })
 
   async function loadSettings() {
@@ -50,7 +54,7 @@
         thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
         ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
         code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
-        terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' },
+        terminal: { emulator: platform === 'macos' ? 'iterm2' : 'windows_terminal', custom_command: '', tmux_layout: 'new_window' },
       }
     } finally {
       loading = false
@@ -373,15 +377,22 @@
               <select
                 id="terminal-emulator"
                 class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
-                value={settings.terminal?.emulator || 'windows_terminal'}
+                value={settings.terminal?.emulator || (platform === 'macos' ? 'iterm2' : 'windows_terminal')}
                 onchange={(e) => {
-                  if (!settings.terminal) settings.terminal = { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' }
+                  const defaultEmulator = platform === 'macos' ? 'iterm2' : 'windows_terminal'
+                  if (!settings.terminal) settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window' }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
                 }}
                 data-testid="terminal-emulator"
               >
-                <option value="windows_terminal">Windows Terminal</option>
+                {#if platform === 'macos'}
+                  <option value="iterm2">iTerm2</option>
+                  <option value="ghostty">Ghostty</option>
+                  <option value="terminal_app">Terminal.app</option>
+                {:else if platform === 'windows'}
+                  <option value="windows_terminal">Windows Terminal</option>
+                {/if}
                 <option value="custom">Custom command</option>
               </select>
             </div>
@@ -393,7 +404,8 @@
                 class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
                 value={settings.terminal?.tmux_layout || 'new_window'}
                 onchange={(e) => {
-                  if (!settings.terminal) settings.terminal = { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' }
+                  const defaultEmulator = platform === 'macos' ? 'iterm2' : 'windows_terminal'
+                  if (!settings.terminal) settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window' }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
                 }}
@@ -413,16 +425,22 @@
                   type="text"
                   class="w-full px-3 py-1.5 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                   value={settings.terminal?.custom_command || ''}
-                  placeholder="e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"
+                  placeholder={platform === 'macos'
+                    ? "e.g. /usr/local/bin/alacritty -e tmux attach -t {'{tmux_session}'}"
+                    : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window' }
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window' };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
                   data-testid="terminal-custom-cmd"
                 />
                 <p class="mt-1.5 text-[11px] {textTertiary}">
-                  Placeholders: <code class="font-mono">{'{distro}'}</code> (WSL distro name), <code class="font-mono">{'{tmux_session}'}</code> (tmux session name)
+                  {#if platform === 'windows'}
+                    Placeholders: <code class="font-mono">{'{distro}'}</code> (WSL distro name), <code class="font-mono">{'{tmux_session}'}</code> (tmux session name)
+                  {:else}
+                    Placeholder: <code class="font-mono">{'{tmux_session}'}</code> (tmux session name)
+                  {/if}
                 </p>
               </div>
             {/if}

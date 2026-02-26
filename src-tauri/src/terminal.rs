@@ -286,53 +286,11 @@ fn is_terminal_app_attached(tmux_session: &str) -> bool {
     }
 }
 
-/// Check if iTerm2 is already running with a tmux-attached tab.
-#[cfg(target_os = "macos")]
-fn is_iterm2_attached(tmux_session: &str) -> bool {
-    // Same pgrep approach — works regardless of which terminal hosts the attachment.
-    is_terminal_app_attached(tmux_session)
-}
-
-/// Activate (focus) Terminal.app without creating a new tab.
-#[cfg(target_os = "macos")]
-fn focus_terminal_app() -> Result<(), String> {
-    let script = r#"tell application "Terminal" to activate"#;
-    std::process::Command::new("osascript")
-        .args(["-e", script])
-        .spawn()
-        .map_err(|e| format!("Failed to activate Terminal.app: {e}"))?;
-    Ok(())
-}
-
-/// Activate (focus) iTerm2 without creating a new tab.
-#[cfg(target_os = "macos")]
-fn focus_iterm2() -> Result<(), String> {
-    let script = r#"tell application "iTerm" to activate"#;
-    std::process::Command::new("osascript")
-        .args(["-e", script])
-        .spawn()
-        .map_err(|e| format!("Failed to activate iTerm2: {e}"))?;
-    Ok(())
-}
 
 #[cfg(target_os = "macos")]
 pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
     match intent {
-        TerminalIntent::FocusOnly => {
-            // Try to activate the terminal that's attached to our tmux session.
-            // Check which terminal app is running and focus it.
-            let script = r#"
-                if application "iTerm" is running then
-                    tell application "iTerm" to activate
-                else if application "Terminal" is running then
-                    tell application "Terminal" to activate
-                end if
-            "#;
-            let _ = std::process::Command::new("osascript")
-                .args(["-e", script])
-                .spawn();
-            Ok(())
-        }
+        TerminalIntent::FocusOnly => focus_running_terminal(),
         TerminalIntent::EnsureOpen { tmux_session, emulator, custom_command, .. } => {
             // Custom emulator
             if emulator == "custom" && !custom_command.trim().is_empty() {
@@ -349,23 +307,79 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
                 return Ok(());
             }
 
+            // Already attached? Just focus whichever terminal has it.
+            if is_terminal_app_attached(&tmux_session) {
+                tracing::debug!("Terminal already attached to tmux, just focusing");
+                return focus_running_terminal();
+            }
+
             // iTerm2
             if emulator == "iterm2" {
-                if is_iterm2_attached(&tmux_session) {
-                    tracing::debug!("iTerm2 already attached to tmux, just focusing");
-                    return focus_iterm2();
-                }
                 return launch_iterm2(&tmux_session);
             }
 
-            // Default: Terminal.app
-            if is_terminal_app_attached(&tmux_session) {
-                tracing::debug!("Terminal.app already attached to tmux, just focusing");
-                return focus_terminal_app();
+            // Ghostty
+            if emulator == "ghostty" {
+                return launch_ghostty(&tmux_session);
+            }
+
+            // Terminal.app
+            if emulator == "terminal_app" {
+                return launch_terminal_app(&tmux_session);
+            }
+
+            // Auto-detect: try iTerm2 first, then Ghostty, then Terminal.app
+            if is_app_installed("iTerm") {
+                return launch_iterm2(&tmux_session);
+            }
+            if is_app_installed("Ghostty") {
+                return launch_ghostty(&tmux_session);
             }
             launch_terminal_app(&tmux_session)
         }
     }
+}
+
+/// Focus whichever terminal emulator is currently running.
+#[cfg(target_os = "macos")]
+fn focus_running_terminal() -> Result<(), String> {
+    let script = r#"
+        if application "iTerm" is running then
+            tell application "iTerm" to activate
+        else if application "Ghostty" is running then
+            tell application "Ghostty" to activate
+        else if application "Terminal" is running then
+            tell application "Terminal" to activate
+        end if
+    "#;
+    let _ = std::process::Command::new("osascript")
+        .args(["-e", script])
+        .spawn();
+    Ok(())
+}
+
+/// Check if a macOS application is installed in /Applications.
+#[cfg(target_os = "macos")]
+fn is_app_installed(app_name: &str) -> bool {
+    std::path::Path::new(&format!("/Applications/{app_name}.app")).exists()
+}
+
+/// Launch Ghostty terminal and attach to a tmux session.
+///
+/// Ghostty supports `--command` flag for running a command on startup,
+/// or we can use its CLI binary directly.
+#[cfg(target_os = "macos")]
+fn launch_ghostty(tmux_session: &str) -> Result<(), String> {
+    tracing::info!(%tmux_session, "Launching Ghostty with tmux attach");
+
+    // Ghostty CLI: `ghostty -e tmux attach-session -t taurhaus`
+    // The -e flag runs a command instead of the default shell.
+    std::process::Command::new("ghostty")
+        .args(["-e", "tmux", "attach-session", "-t", tmux_session])
+        .spawn()
+        .map_err(|e| format!("Failed to launch Ghostty: {e}"))?;
+
+    Ok(())
 }
 
 /// Launch Terminal.app and attach to a tmux session via AppleScript.
@@ -399,14 +413,22 @@ end tell"#
 }
 
 /// Launch iTerm2 and attach to a tmux session via its AppleScript API.
+///
+/// Handles two cases:
+/// - iTerm2 already open: creates a new tab in the current window
+/// - iTerm2 not open: creates a new window with the tmux command
 #[cfg(target_os = "macos")]
 fn launch_iterm2(tmux_session: &str) -> Result<(), String> {
     let script = format!(
         r#"tell application "iTerm"
     activate
-    tell current window
-        create tab with default profile command "tmux attach-session -t {tmux_session}"
-    end tell
+    if (count of windows) > 0 then
+        tell current window
+            create tab with default profile command "tmux attach-session -t {tmux_session}"
+        end tell
+    else
+        create window with default profile command "tmux attach-session -t {tmux_session}"
+    end if
 end tell"#
     );
 

@@ -186,7 +186,9 @@ impl Default for CodeThemeSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TerminalSettings {
-    /// "windows_terminal" (default) or "custom"
+    /// Terminal emulator to use:
+    /// - Windows: "windows_terminal" (default), "custom"
+    /// - macOS: "iterm2" (default), "terminal_app", "ghostty", "custom"
     pub emulator: String,
     /// Command template when emulator is "custom".
     /// Placeholders: {distro}, {tmux_session}
@@ -198,10 +200,26 @@ pub struct TerminalSettings {
 impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
-            emulator: "windows_terminal".into(),
+            emulator: default_emulator().into(),
             custom_command: String::new(),
             tmux_layout: "new_window".into(),
         }
+    }
+}
+
+/// Platform-appropriate default terminal emulator.
+fn default_emulator() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "iterm2"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "windows_terminal"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "default"
     }
 }
 
