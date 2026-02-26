@@ -82,12 +82,19 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `npx tauri bui
 | `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
 | `just dev-frontend` | Frontend dev server only (no Rust backend) |
 | `just build-windows` | **The Windows build.** Rebuilds the WSL daemon first, then syncs source to `D:\taurhaus_build`, runs `npm install` + `cargo tauri build` natively on Windows via `cmd.exe`. Produces NSIS installer. |
+| `just build-macos` | **The macOS build.** Syncs source via rsync to Mac Mini (`m1@62.210.195.235`), installs deps, builds daemon + app bundle natively via SSH. Produces `.app` + `.dmg`. |
+| `just build-macos-universal` | Universal macOS binary (arm64 + x86_64) on remote Mac. |
+| `just sync-macos` | Sync source to remote Mac Mini (rsync, excludes node_modules/target/.git). |
+| `just test-macos` | Run Rust tests on remote Mac Mini via SSH. |
+| `just test-macos-e2e` | Run full macOS E2E test suite (25 tests: prerequisites, app launch, daemon, tmux, CLI tools, terminal integration). |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
 | `just install-daemon` | Builds + copies daemon to `~/.local/bin/` |
 | `just check` | Full quality gate: clippy + svelte-check + all tests |
 | `just test` | All tests (Rust + frontend) |
 
 **Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`cmd.exe`). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, npm install, and native Windows cargo build.
+
+**macOS**: The macOS app is built **natively on a Mac Mini** (Scaleway, arm64) via SSH. We do NOT cross-compile from Linux. The `just build-macos` recipe handles everything — rsync sync, npm install, daemon build + codesign, and `cargo tauri build`. The Mac's PATH requires a login shell (`zsh -ilc`) for fnm/cargo/homebrew.
 
 If the build fails with "Access is denied" on the exe, the app is still running — close it first, then rebuild.
 

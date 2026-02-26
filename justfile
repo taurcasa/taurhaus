@@ -169,39 +169,49 @@ test-macos: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
     echo "▸ Running tests on macOS…"
-    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cd src-tauri && cargo test 2>&1'
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo test 2>&1'"
     echo "✓ macOS tests passed"
 
 # Build macOS app bundle (arm64) on remote Mac
+# Uses zsh -ilc for full login shell (fnm, cargo, homebrew, API keys, NODE_EXTRA_CA_CERTS).
 build-macos: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
     echo "▸ Installing frontend dependencies on macOS…"
-    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && npm install'
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
     echo "▸ Building daemon on macOS…"
-    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cd src-tauri && cargo build --release --bin taurhaus-daemon'
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon'"
     echo ""
     echo "▸ Installing daemon to ~/.local/bin/ on macOS…"
-    ssh {{mac_host}} 'mkdir -p ~/.local/bin && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon ~/.local/bin/ && codesign --force --sign - ~/.local/bin/taurhaus-daemon'
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p ~/.local/bin && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon ~/.local/bin/ && codesign --force --sign - ~/.local/bin/taurhaus-daemon'"
     echo ""
     echo "▸ Bundling daemon into resources…"
-    ssh {{mac_host}} 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
     echo ""
     echo "▸ Building macOS app (cargo tauri build)…"
-    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cargo tauri build 2>&1'
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && cargo tauri build 2>&1'"
     echo ""
     echo "✓ macOS build complete"
+
+# Run macOS E2E test suite on remote Mac
+test-macos-e2e: sync-macos
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Running E2E tests on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'bash {{mac_dir}}/scripts/macos-e2e-test.sh'" 2>&1
+    echo ""
+    echo "✓ macOS E2E tests complete"
 
 # Build universal macOS binary (arm64 + x86_64) on remote Mac
 build-macos-universal: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
     echo "▸ Installing frontend dependencies on macOS…"
-    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && npm install'
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
     echo "▸ Building universal macOS binary (arm64 + x86_64)…"
-    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cargo tauri build --target universal-apple-darwin 2>&1'
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && cargo tauri build --target universal-apple-darwin 2>&1'"
     echo ""
     echo "✓ Universal macOS build complete"
 
