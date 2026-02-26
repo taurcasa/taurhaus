@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn response_result_can_hold_commits() {
         let commits = vec![
-            Commit { hash: "abc12345".into(), message: "Initial".into(), body: None, author: "Me".into(), date: "2h".into() },
+            Commit { hash: "abc12345".into(), message: "Initial".into(), body: None, author: "Me".into(), date: "2h".into(), timestamp: 1740000000 },
         ];
         let resp = DaemonResponse::ok("r1", &commits);
         let result = resp.result.unwrap();

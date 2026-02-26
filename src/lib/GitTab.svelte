@@ -12,6 +12,12 @@
   const timeColor     = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
   const filterBg      = $derived(dark ? 'bg-brand-900/30 border-brand-500/30' : 'bg-brand-50 border-brand-200')
   const filterText    = $derived(dark ? 'text-brand-300' : 'text-brand-700')
+  const groupHeaderBg = $derived(dark ? 'bg-zinc-900/50' : 'bg-zinc-50')
+  const groupHeaderText = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const avatarBg      = $derived(dark ? 'bg-brand-900/60 text-brand-300' : 'bg-brand-100 text-brand-700')
+  const commitMsg     = $derived(dark ? 'text-zinc-200 font-medium' : 'text-zinc-800 font-medium')
+  const commitMeta    = $derived(dark ? 'text-zinc-600' : 'text-zinc-400')
+  const rowBorder     = $derived(dark ? 'border-white/5' : 'border-zinc-100')
 
   // Diff view tokens
   const diffAddBg     = $derived(dark ? 'bg-success-500/10' : 'bg-success-50')
@@ -232,6 +238,24 @@
 
   /** Get the selected commit object. */
   const selectedCommit = $derived(commits.find(c => c.hash === selectedHash))
+
+  /** Group commits by date for visual grouping headers. */
+  function getDateLabel(ts) {
+    const d = new Date(ts * 1000)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const commitDay = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    const diffDays = Math.round((today - commitDay) / 86400000)
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return d.toLocaleDateString('en-US', { weekday: 'long' })
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  /** Get author initial for avatar circle. */
+  function authorInitial(name) {
+    return (name || '?')[0].toUpperCase()
+  }
 </script>
 
 <div class="flex-1 flex min-h-0" data-testid="git-tab">
@@ -432,24 +456,45 @@
           </div>
         </div>
       {:else}
-        {#each commits as commit (commit.hash)}
+        {#each commits as commit, idx (commit.hash)}
           {@const isSelected = selectedHash === commit.hash}
+          {@const prevCommit = idx > 0 ? commits[idx - 1] : null}
+          {@const currentLabel = commit.timestamp ? getDateLabel(commit.timestamp) : ''}
+          {@const prevLabel = prevCommit?.timestamp ? getDateLabel(prevCommit.timestamp) : ''}
+          {@const showHeader = currentLabel && currentLabel !== prevLabel}
+
+          <!-- Date group header -->
+          {#if showHeader}
+            <div class="sticky top-0 z-10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] {groupHeaderBg} {groupHeaderText} {idx > 0 ? 'mt-1' : ''}">
+              {currentLabel}
+            </div>
+          {/if}
+
+          <!-- Commit row -->
           <button
-            class="w-full flex flex-col justify-center h-[46px] text-left rounded mx-1 px-2 py-1 transition-colors
-              {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
-            style="width: calc(100% - 8px)"
+            class="w-full flex items-center h-[46px] text-left px-3 gap-2.5 transition-colors border-b {rowBorder}
+              {isSelected ? t.listSelected : t.listHover}"
             onclick={() => selectCommit(commit.hash)}
             data-testid="commit-row"
             aria-current={isSelected ? 'true' : undefined}
           >
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-[12px] {isSelected ? '' : timeColor} shrink-0 w-[32px]">{commit.date}</span>
-              <span class="text-[13px] truncate flex-1 {isSelected ? '' : t.textBody}">{commit.message}</span>
+            <!-- Author initial circle -->
+            <div class="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium {isSelected ? '' : avatarBg}">
+              {authorInitial(commit.author)}
             </div>
-            <div class="flex items-center gap-2 mt-0.5">
-              <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : t.textMuted}">{commit.hash}</span>
-              <span class="text-[10px] {isSelected ? 'opacity-60' : t.textTertiary}">{commit.author}</span>
+
+            <!-- Message + metadata -->
+            <div class="flex-1 flex flex-col justify-center min-w-0">
+              <span class="text-[13px] truncate {isSelected ? '' : commitMsg}">{commit.message}</span>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : commitMeta}">{commit.hash}</span>
+                <span class="{isSelected ? 'opacity-40' : commitMeta} text-[8px]">&#183;</span>
+                <span class="text-[10px] truncate {isSelected ? 'opacity-60' : commitMeta}">{commit.author}</span>
+              </div>
             </div>
+
+            <!-- Timestamp (right-aligned) -->
+            <span class="text-[11px] shrink-0 {isSelected ? '' : timeColor}">{commit.date}</span>
           </button>
         {/each}
         {#if hasMore && !rangeFilter}

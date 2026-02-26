@@ -264,6 +264,9 @@ pub struct Commit {
     pub body: Option<String>,
     pub author: String,
     pub date: String,
+    /// Unix timestamp (seconds since epoch) for frontend grouping
+    #[serde(default)]
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

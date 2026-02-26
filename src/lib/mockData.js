@@ -17,9 +17,9 @@ export const MOCK_PROJECTS = [
 ]
 
 export const MOCK_COMMITS = [
-  { hash: 'abc12345', message: 'Add new feature', body: 'Implemented the session history view with accordion\nlayout and drill-down navigation.', author: 'Developer', date: '2h' },
-  { hash: 'def67890', message: 'Fix bug in parser', body: null, author: 'Developer', date: '5h' },
-  { hash: 'ghi11111', message: 'Update dependencies', body: null, author: 'Developer', date: '1d' },
+  { hash: 'abc12345', message: 'Add new feature', body: 'Implemented the session history view with accordion\nlayout and drill-down navigation.', author: 'Developer', date: '2h', timestamp: Math.floor(Date.now() / 1000) - 7200 },
+  { hash: 'def67890', message: 'Fix bug in parser', body: null, author: 'Developer', date: '5h', timestamp: Math.floor(Date.now() / 1000) - 18000 },
+  { hash: 'ghi11111', message: 'Update dependencies', body: null, author: 'Developer', date: '1d', timestamp: Math.floor(Date.now() / 1000) - 86400 },
 ]
 
 export const MOCK_DIFF_HUNKS = [

@@ -73,7 +73,7 @@ The hero section anchors on session handoffs, but handoffs aren't created consis
 
 The commit detail pane (right side) is a wall of text — file list + diff content runs together without enough visual structure.
 
-- [ ] **P11** — Improve Git commit detail pane: better visual separation between file list and diff content, collapsible file sections, syntax highlighting in diffs, change-type badges (added/modified/deleted). Take screenshot first → design → implement.
+- [x] **P11** — Improve Git commit detail pane: better visual separation between file list and diff content, collapsible file sections, syntax highlighting in diffs, change-type badges (added/modified/deleted). Take screenshot first → design → implement.
 
 ## Settings Expansion
 

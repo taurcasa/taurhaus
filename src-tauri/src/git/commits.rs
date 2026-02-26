@@ -51,6 +51,7 @@ pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>,
             body,
             author: commit.author().name().unwrap_or("unknown").to_string(),
             date,
+            timestamp,
         });
     }
 
@@ -92,6 +93,7 @@ pub fn get_all_commits(
             body,
             author: commit.author().name().unwrap_or("unknown").to_string(),
             date,
+            timestamp,
         });
     }
 
@@ -190,6 +192,7 @@ pub fn get_commits_in_range(
                 body,
                 author: commit.author().name().unwrap_or("unknown").to_string(),
                 date: format_relative_time(ts, now),
+                timestamp: ts,
             });
         }
     }

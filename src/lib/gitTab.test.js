@@ -29,12 +29,14 @@ const { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } = awai
 
 /** Build mock commits. */
 function makeCommits(n = 3, opts = {}) {
+  const now = Math.floor(Date.now() / 1000)
   return Array.from({ length: n }, (_, i) => ({
     hash: `abc${String(i).padStart(5, '0')}`,
     message: `Commit message ${i + 1}`,
     body: opts.body ?? null,
     author: 'Developer',
     date: `${i + 1}h`,
+    timestamp: now - (i + 1) * 3600,
   }))
 }
 
@@ -415,8 +417,9 @@ describe('GitTab component', () => {
     render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: true } })
     await waitFor(() => {
       const row = screen.getByTestId('commit-row')
-      // In dark mode, unselected rows have dark text colors
-      expect(row.className).toContain('text-zinc-400')
+      // In dark mode, unselected rows have border separator
+      expect(row.className).toContain('border-b')
+      expect(row.className).toContain('border-white/5')
     })
   })
 
@@ -426,7 +429,8 @@ describe('GitTab component', () => {
     render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
     await waitFor(() => {
       const row = screen.getByTestId('commit-row')
-      expect(row.className).toContain('text-zinc-600')
+      expect(row.className).toContain('border-b')
+      expect(row.className).toContain('border-zinc-100')
     })
   })
 
