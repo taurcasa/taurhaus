@@ -7,6 +7,7 @@ vi.mock('./ipc.js', () => ({
   isFirstRun: vi.fn(),
   checkDaemonInstallStatus: vi.fn(),
   installDaemon: vi.fn(),
+  getPlatform: vi.fn().mockResolvedValue('linux'),
 }))
 
 describe('First-Run wizard logic', () => {

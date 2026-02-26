@@ -37,7 +37,10 @@ use tracing_subscriber::EnvFilter;
 pub struct ProviderState {
     pub local: provider::local::LocalProvider,
     pub daemon: Option<provider::daemon_client::DaemonProvider>,
-    /// WSL distro name (extracted from first WSL project). Used for daemon restarts.
+    /// Distro identifier for daemon management.
+    /// On Windows: WSL distro name (e.g., "Ubuntu"), extracted from project paths.
+    /// On macOS/Linux: synthetic `"native"` — daemon runs natively, no WSL needed.
+    /// `None` only on Windows when no WSL projects are registered.
     pub wsl_distro: Option<String>,
 }
 
@@ -106,9 +109,15 @@ pub fn run() {
             // direct conn access. The daemon auto-starts via wsl.exe if not running.
             let (daemon_provider, wsl_distro, daemon_connected_at_startup) = {
                 let projects = db::queries::list_projects(&conn).unwrap_or_default();
-                let distro = projects
-                    .iter()
-                    .find_map(|p| provider::path::wsl_distro_from_path(&p.path));
+                // On macOS/Linux the daemon runs natively — no WSL distro needed.
+                // On Windows, extract distro from WSL project paths.
+                let distro = if daemon::launcher::is_native_daemon() {
+                    Some("native".to_string())
+                } else {
+                    projects
+                        .iter()
+                        .find_map(|p| provider::path::wsl_distro_from_path(&p.path))
+                };
                 let port = daemon::server::DEFAULT_PORT;
                 let daemon = daemon::launcher::try_connect_daemon(
                     distro.as_deref(),
@@ -176,7 +185,9 @@ pub fn run() {
                 wsl_distro: wsl_distro.clone(),
             });
 
-            // Start daemon health check if WSL projects exist.
+            // Start daemon health check.
+            // On macOS/Linux: always runs (daemon is native).
+            // On Windows: runs when WSL projects exist.
             // Runs even if daemon didn't connect at startup — it will
             // auto-start and connect the daemon later.
             if wsl_distro.is_some() {
@@ -282,9 +293,11 @@ pub fn run() {
                     );
                 }
 
-                // Also watch Claude task directories in local mode.
-                // In daemon mode, start_daemon_watches handles this.
-                if !has_daemon {
+                // Also watch Claude task directories locally.
+                // On Windows in daemon mode, start_daemon_watches handles
+                // this via WSL. On macOS/Linux, always watch locally because
+                // the daemon doesn't have WSL path context.
+                if !has_daemon || daemon::launcher::is_native_daemon() {
                     if let Some(home) = dirs::home_dir() {
                         let tasks_dir = home.join(".claude").join("tasks");
                         if tasks_dir.is_dir() {
@@ -360,6 +373,7 @@ pub fn run() {
             commands::relationships::remove_relationship,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::daemon::get_platform,
             commands::daemon::get_daemon_status,
             commands::daemon::start_daemon,
             commands::daemon::stop_daemon,
@@ -1028,6 +1042,10 @@ fn extract_wsl_home(linux_path: &str) -> Option<String> {
 /// each WSL project, then runs the event loop. Events are forwarded to the
 /// shared watcher channel, where `process_watch_events` handles them identically
 /// to local watcher events.
+///
+/// On macOS/Linux (native daemon), this is a no-op — all project paths are local
+/// and the local watcher handles them. The function still runs for consistency
+/// but registers zero watches and exits immediately.
 fn start_daemon_watches(
     daemon_addr: String,
     event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,

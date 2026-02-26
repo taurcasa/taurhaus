@@ -421,4 +421,76 @@ mod tests {
             r"\\wsl.localhost\Ubuntu\home\user\projects"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Cross-platform path safety tests
+    //
+    // These verify that macOS/Linux native paths are never corrupted by
+    // Windows/WSL path conversion logic. Critical for the unified daemon
+    // architecture where the same code runs on all platforms.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn macos_path_is_not_wsl() {
+        assert!(!is_wsl_path("/Users/dev/projects/myapp"));
+        assert!(!is_wsl_path("/Users/dev"));
+        assert!(!is_wsl_path("/"));
+    }
+
+    #[test]
+    fn linux_native_path_is_not_wsl() {
+        assert!(!is_wsl_path("/home/user/projects/myapp"));
+        assert!(!is_wsl_path("/opt/data"));
+        assert!(!is_wsl_path("/var/lib/myapp"));
+    }
+
+    #[test]
+    fn to_linux_returns_none_for_native_paths() {
+        // Native macOS/Linux paths should NOT be converted — they're already valid.
+        assert_eq!(to_linux("/Users/dev/projects/myapp"), None);
+        assert_eq!(to_linux("/home/user/code"), None);
+        assert_eq!(to_linux("/opt/data"), None);
+    }
+
+    #[test]
+    fn to_linux_unwrap_preserves_native_paths() {
+        // The pattern used in command_center.rs: to_linux().unwrap_or(original)
+        // Must preserve native paths untouched.
+        let macos_path = "/Users/dev/projects/myapp";
+        let result = to_linux(macos_path).unwrap_or_else(|| macos_path.to_string());
+        assert_eq!(result, macos_path);
+
+        let linux_path = "/home/user/code/app";
+        let result = to_linux(linux_path).unwrap_or_else(|| linux_path.to_string());
+        assert_eq!(result, linux_path);
+    }
+
+    #[test]
+    fn to_windows_corrupts_native_paths() {
+        // This documents WHY we skip to_windows on native platforms:
+        // calling it with a native path and "native" distro produces garbage.
+        let native_path = "/Users/dev/projects/myapp";
+        let corrupted = to_windows(native_path, "native");
+        assert!(
+            corrupted.contains("wsl.localhost"),
+            "to_windows converts native paths to UNC — must not be called on native platforms"
+        );
+    }
+
+    #[test]
+    fn wsl_distro_from_native_path_is_none() {
+        // On macOS/Linux, no project paths should extract a WSL distro.
+        assert_eq!(wsl_distro_from_path("/Users/dev/projects"), None);
+        assert_eq!(wsl_distro_from_path("/home/user/code"), None);
+    }
+
+    #[test]
+    fn native_path_routes_to_local_provider() {
+        // Verify the provider routing logic works for native paths.
+        // All native paths (macOS/Linux) should route to local, never daemon.
+        assert!(!is_wsl_path("/Users/dev/myapp"));
+        assert!(!is_wsl_path("/home/user/code"));
+        // Windows drive paths also route to local
+        assert!(!is_wsl_path(r"C:\Users\me\projects"));
+    }
 }

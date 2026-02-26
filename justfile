@@ -5,6 +5,10 @@ project   := justfile_directory()
 win_dir   := "/mnt/d/taurhaus_build"
 win_drive := "D:\\taurhaus_build"
 
+# macOS remote build host (Scaleway Mac mini)
+mac_host  := "m1@62.210.195.235"
+mac_dir   := "~/projects/taurhaus"
+
 # Run frontend dev server only
 dev-frontend:
     npm run dev
@@ -146,6 +150,60 @@ build-windows: install-daemon bundle-daemon sync-windows
     @echo ""
     @echo "✓ Windows build complete:"
     @ls -lh {{win_dir}}/src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || echo "  (no installer found)"
+
+# ── macOS Build (via SSH to remote Mac mini) ─────────────────────────────────
+
+# Sync source to remote Mac
+sync-macos:
+    @echo "▸ Syncing source to {{mac_host}}:{{mac_dir}}…"
+    rsync -az --delete \
+        --exclude='node_modules' \
+        --exclude='target' \
+        --exclude='dist' \
+        --exclude='.git' \
+        {{project}}/ {{mac_host}}:{{mac_dir}}/
+    @echo "✓ Sync complete"
+
+# Run tests on remote Mac
+test-macos: sync-macos
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Running tests on macOS…"
+    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cd src-tauri && cargo test 2>&1'
+    echo "✓ macOS tests passed"
+
+# Build macOS app bundle (arm64) on remote Mac
+build-macos: sync-macos
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Installing frontend dependencies on macOS…"
+    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && npm install'
+    echo ""
+    echo "▸ Building daemon on macOS…"
+    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cd src-tauri && cargo build --release --bin taurhaus-daemon'
+    echo ""
+    echo "▸ Installing daemon to ~/.local/bin/ on macOS…"
+    ssh {{mac_host}} 'mkdir -p ~/.local/bin && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon ~/.local/bin/ && codesign --force --sign - ~/.local/bin/taurhaus-daemon'
+    echo ""
+    echo "▸ Bundling daemon into resources…"
+    ssh {{mac_host}} 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'
+    echo ""
+    echo "▸ Building macOS app (cargo tauri build)…"
+    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cargo tauri build 2>&1'
+    echo ""
+    echo "✓ macOS build complete"
+
+# Build universal macOS binary (arm64 + x86_64) on remote Mac
+build-macos-universal: sync-macos
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Installing frontend dependencies on macOS…"
+    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && npm install'
+    echo ""
+    echo "▸ Building universal macOS binary (arm64 + x86_64)…"
+    ssh {{mac_host}} 'cd {{mac_dir}} && export PATH="$HOME/.homebrew/bin:$HOME/.cargo/bin:$PATH" && cargo tauri build --target universal-apple-darwin 2>&1'
+    echo ""
+    echo "✓ Universal macOS build complete"
 
 # ── Daemon Connectivity Tests ────────────────────────────────────────────────
 # Run these in order to verify the daemon chain step by step.

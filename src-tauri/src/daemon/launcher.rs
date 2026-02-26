@@ -1,8 +1,9 @@
 //! Daemon connection and auto-start logic.
 //!
-//! On app startup, if WSL projects exist in the database, we try to connect
-//! to an already-running daemon. If that fails, we auto-start the daemon
-//! via `wsl.exe` and retry the connection.
+//! On app startup we try to connect to an already-running daemon. If that
+//! fails, we auto-start it and retry. The same daemon binary is used on all
+//! platforms — on Windows it's spawned via `wsl.exe`, on macOS/Linux it runs
+//! natively.
 //!
 //! Bootstrap logs are written to `taurhaus.log` via `bootstrap_log` so they're
 //! visible on Windows (where Rust tracing to stderr is invisible in GUI apps).
@@ -72,53 +73,51 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 /// Interval between TCP connection attempts while waiting for daemon startup.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
+/// Whether the current platform runs the daemon natively (macOS, Linux)
+/// vs. via WSL (Windows).
+pub fn is_native_daemon() -> bool {
+    cfg!(any(target_os = "macos", target_os = "linux"))
+}
+
 /// Try to connect to an existing daemon, or start one if needed.
 ///
 /// **Windows**: Uses WSL to communicate with the daemon running inside Linux.
 /// If `wsl_distro` is None, no WSL projects exist — returns None immediately.
 ///
-/// **macOS**: The daemon is not needed — the app inspects processes directly
-/// via libproc. Always returns None on macOS.
+/// **macOS/Linux**: The daemon runs natively. `wsl_distro` is ignored.
 ///
 /// `log_path` is the path to `taurhaus.log` for bootstrap logging.
-#[cfg(target_os = "macos")]
-pub fn try_connect_daemon(
-    _wsl_distro: Option<&str>,
-    _port: u16,
-    _log_path: &Path,
-) -> Option<DaemonProvider> {
-    tracing::debug!("macOS: daemon not needed (direct process inspection)");
-    None
-}
-
-/// Try to connect to an existing daemon, or start one if needed.
-///
-/// - If `wsl_distro` is None, no WSL projects exist — returns None immediately.
-/// - First tries a TCP connection to the daemon port.
-/// - If that fails, attempts to auto-start the daemon via `wsl.exe` and retries.
-/// - Returns None if daemon can't be reached within the timeout.
-///
-/// `log_path` is the path to `taurhaus.log` for bootstrap logging.
-#[cfg(not(target_os = "macos"))]
 pub fn try_connect_daemon(
     wsl_distro: Option<&str>,
     port: u16,
     log_path: &Path,
 ) -> Option<DaemonProvider> {
-    let distro = match wsl_distro {
-        Some(d) => d,
-        None => {
-            tracing::debug!("No WSL projects registered, skipping daemon");
-            return None;
+    // On Windows, we need a WSL distro to know where to spawn the daemon.
+    // On macOS/Linux, the daemon runs natively — no distro needed.
+    let distro = if is_native_daemon() {
+        // Synthetic value — not used for WSL commands on native platforms.
+        "native"
+    } else {
+        match wsl_distro {
+            Some(d) => d,
+            None => {
+                tracing::debug!("No WSL projects registered, skipping daemon");
+                return None;
+            }
         }
     };
 
-    if let Err(e) = validate_wsl_distro(distro) {
-        bwarn(log_path, &format!("Invalid WSL distro: {e}"));
-        return None;
+    if !is_native_daemon() {
+        if let Err(e) = validate_wsl_distro(distro) {
+            bwarn(log_path, &format!("Invalid WSL distro: {e}"));
+            return None;
+        }
     }
 
-    blog(log_path, &format!("Checking for WSL daemon on port {port} (distro: {distro})"));
+    blog(log_path, &format!(
+        "Checking for daemon on port {port} ({})",
+        if is_native_daemon() { "native".to_string() } else { format!("distro: {distro}") }
+    ));
 
     // Try connecting to an already-running daemon.
     if let Some(provider) = try_connect(port) {
@@ -127,10 +126,12 @@ pub fn try_connect_daemon(
     }
 
     // Daemon not running — try to auto-start it.
-    blog(log_path, "Daemon not reachable, attempting auto-start via wsl.exe");
+    blog(log_path, &format!(
+        "Daemon not reachable, attempting auto-start {}",
+        if is_native_daemon() { "(native)" } else { "via wsl.exe" }
+    ));
     match try_start_daemon(distro, port, log_path) {
         Ok(()) => {
-            // Daemon started, poll until reachable.
             blog(log_path, &format!("Daemon spawned, polling for connectivity (up to {STARTUP_TIMEOUT:?})"));
             if let Some(provider) = poll_until_reachable(port, STARTUP_TIMEOUT) {
                 blog(log_path, "Connected to auto-started daemon");
@@ -143,26 +144,36 @@ pub fn try_connect_daemon(
         }
     }
 
-    bwarn(log_path, "Daemon not available — WSL projects will use local provider fallback");
+    bwarn(log_path, "Daemon not available — will use local provider fallback");
     None
 }
 
 /// Try to restart the daemon process (called by health check on disconnect).
-///
-/// On macOS, daemon is not used — returns Ok immediately.
-#[cfg(target_os = "macos")]
-pub fn try_restart_daemon(_distro: &str, _port: u16) -> Result<(), std::io::Error> {
-    Ok(())
-}
-
-/// Try to restart the daemon process (called by health check on disconnect).
-#[cfg(not(target_os = "macos"))]
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
-    validate_wsl_distro(distro)
-        .map_err(std::io::Error::other)?;
-    tracing::info!(port, distro, "Attempting daemon restart via wsl.exe");
+    if !is_native_daemon() {
+        validate_wsl_distro(distro).map_err(std::io::Error::other)?;
+    }
+    tracing::info!(port, distro, "Attempting daemon restart");
     let log_path = health_check_log_path();
     try_start_daemon(distro, port, &log_path)
+}
+
+/// Resolve the daemon binary path.
+///
+/// **macOS/Linux**: `~/.local/bin/taurhaus-daemon`
+/// **Windows**: Resolves via WSL `$HOME`.
+fn daemon_binary_path(distro: &str) -> Result<String, std::io::Error> {
+    if is_native_daemon() {
+        let home = dirs::home_dir()
+            .ok_or_else(|| std::io::Error::other("Could not determine home directory"))?;
+        Ok(home
+            .join(".local/bin/taurhaus-daemon")
+            .to_string_lossy()
+            .to_string())
+    } else {
+        let home = resolve_wsl_home(distro)?;
+        Ok(format!("{home}/.local/bin/taurhaus-daemon"))
+    }
 }
 
 /// Resolve the WSL user's home directory by running `echo $HOME` inside WSL.
@@ -186,28 +197,71 @@ fn resolve_wsl_home(distro: &str) -> Result<String, std::io::Error> {
     Ok(home)
 }
 
-/// Build the absolute path to the daemon binary inside WSL.
-fn daemon_binary_path(distro: &str) -> Result<String, std::io::Error> {
-    let home = resolve_wsl_home(distro)?;
-    Ok(format!("{home}/.local/bin/taurhaus-daemon"))
-}
-
-/// Spawn the daemon process via `wsl.exe`.
+/// Spawn the daemon process.
+///
+/// **macOS/Linux**: Spawns the daemon binary directly.
+/// **Windows**: Spawns via `wsl.exe` as a long-lived child process.
 fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std::io::Error> {
-    // Resolve the daemon binary path dynamically from WSL $HOME.
     let binary_path = daemon_binary_path(distro)?;
 
+    if is_native_daemon() {
+        try_start_daemon_native(&binary_path, port, log_path)
+    } else {
+        try_start_daemon_wsl(distro, &binary_path, port, log_path)
+    }
+}
+
+/// Spawn the daemon natively (macOS/Linux).
+fn try_start_daemon_native(
+    binary_path: &str,
+    port: u16,
+    log_path: &Path,
+) -> Result<(), std::io::Error> {
+    // Verify the daemon binary exists.
+    blog(log_path, &format!("Checking daemon binary exists at {binary_path}"));
+    let path = Path::new(binary_path);
+    if !path.exists() {
+        let msg = format!(
+            "taurhaus-daemon not found at {binary_path}. Install with: just install-daemon"
+        );
+        bwarn(log_path, &msg);
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg));
+    }
+
+    blog(log_path, &format!(
+        "Spawning: {binary_path} --port {port} (native daemon)"
+    ));
+
+    let child = std::process::Command::new(binary_path)
+        .args(["--port", &port.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    match child {
+        Ok(_child) => {
+            blog(log_path, "Native daemon process spawned");
+            Ok(())
+        }
+        Err(e) => {
+            bwarn(log_path, &format!("Failed to spawn daemon: {e}"));
+            Err(e)
+        }
+    }
+}
+
+/// Spawn the daemon via `wsl.exe` (Windows).
+fn try_start_daemon_wsl(
+    distro: &str,
+    binary_path: &str,
+    port: u16,
+    log_path: &Path,
+) -> Result<(), std::io::Error> {
     // Verify the daemon binary exists inside WSL.
     blog(log_path, &format!("Checking daemon binary exists at {binary_path}"));
     let check = wsl_command()
-        .args([
-            "-d",
-            distro,
-            "--",
-            "test",
-            "-x",
-            &binary_path,
-        ])
+        .args(["-d", distro, "--", "test", "-x", binary_path])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -244,11 +298,7 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
     ));
 
     let child = wsl_command()
-        .args([
-            "-d", distro, "--",
-            &binary_path,
-            "--port", &port.to_string(),
-        ])
+        .args(["-d", distro, "--", binary_path, "--port", &port.to_string()])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -256,8 +306,6 @@ fn try_start_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std:
 
     match child {
         Ok(_child) => {
-            // Intentionally don't wait — wsl.exe stays alive as the daemon's
-            // parent. The child handle is dropped but the process continues.
             blog(log_path, "Daemon wsl.exe process spawned (not waiting)");
             Ok(())
         }
@@ -284,7 +332,7 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
 
 /// Ensure the taurhaus tmux session exists.
 ///
-/// **macOS**: Runs tmux directly (natively installed).
+/// **macOS/Linux**: Runs tmux directly (natively installed).
 /// **Windows**: Runs tmux inside WSL via `wsl.exe`.
 ///
 /// Creates a dedicated named session (`taurhaus`) so our CLI tool windows
@@ -293,15 +341,21 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
 ///
 /// Failure is non-fatal — the daemon-side code also creates the session
 /// on demand when launching a tool.
-#[cfg(target_os = "macos")]
-pub fn ensure_tmux_session(_distro: &str, log_path: &Path) {
+pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
     use crate::session_scanner::control::TMUX_SESSION_NAME;
 
-    blog(log_path, &format!("Ensuring tmux session '{TMUX_SESSION_NAME}' exists (native)"));
+    if is_native_daemon() {
+        ensure_tmux_session_native(TMUX_SESSION_NAME, log_path);
+    } else {
+        ensure_tmux_session_wsl(distro, TMUX_SESSION_NAME, log_path);
+    }
+}
 
-    // Check if session already exists
+fn ensure_tmux_session_native(session_name: &str, log_path: &Path) {
+    blog(log_path, &format!("Ensuring tmux session '{session_name}' exists (native)"));
+
     let check = std::process::Command::new("tmux")
-        .args(["has-session", "-t", TMUX_SESSION_NAME])
+        .args(["has-session", "-t", session_name])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -309,14 +363,13 @@ pub fn ensure_tmux_session(_distro: &str, log_path: &Path) {
 
     if let Ok(output) = &check {
         if output.status.success() {
-            blog(log_path, &format!("tmux session '{TMUX_SESSION_NAME}' already exists"));
+            blog(log_path, &format!("tmux session '{session_name}' already exists"));
             return;
         }
     }
 
-    // Create the session (detached)
     let result = std::process::Command::new("tmux")
-        .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
+        .args(["new-session", "-d", "-s", session_name])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -324,7 +377,7 @@ pub fn ensure_tmux_session(_distro: &str, log_path: &Path) {
 
     match result {
         Ok(output) if output.status.success() => {
-            blog(log_path, &format!("Created tmux session '{TMUX_SESSION_NAME}'"));
+            blog(log_path, &format!("Created tmux session '{session_name}'"));
         }
         Ok(output) => {
             bwarn(log_path, &format!("tmux new-session exited with status {:?}", output.status));
@@ -335,20 +388,16 @@ pub fn ensure_tmux_session(_distro: &str, log_path: &Path) {
     }
 }
 
-/// Ensure the taurhaus tmux session exists inside WSL.
-#[cfg(not(target_os = "macos"))]
-pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
+fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
     if let Err(e) = validate_wsl_distro(distro) {
         bwarn(log_path, &format!("Invalid WSL distro for tmux: {e}"));
         return;
     }
-    use crate::session_scanner::control::TMUX_SESSION_NAME;
 
-    blog(log_path, &format!("Ensuring tmux session '{TMUX_SESSION_NAME}' exists"));
+    blog(log_path, &format!("Ensuring tmux session '{session_name}' exists"));
 
-    // Check if session already exists
     let check = wsl_command()
-        .args(["-d", distro, "--", "tmux", "has-session", "-t", TMUX_SESSION_NAME])
+        .args(["-d", distro, "--", "tmux", "has-session", "-t", session_name])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -356,14 +405,13 @@ pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
 
     if let Ok(output) = &check {
         if output.status.success() {
-            blog(log_path, &format!("tmux session '{TMUX_SESSION_NAME}' already exists"));
+            blog(log_path, &format!("tmux session '{session_name}' already exists"));
             return;
         }
     }
 
-    // Create the session (detached — no client needed)
     let result = wsl_command()
-        .args(["-d", distro, "--", "tmux", "new-session", "-d", "-s", TMUX_SESSION_NAME])
+        .args(["-d", distro, "--", "tmux", "new-session", "-d", "-s", session_name])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -371,7 +419,7 @@ pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
 
     match result {
         Ok(output) if output.status.success() => {
-            blog(log_path, &format!("Created tmux session '{TMUX_SESSION_NAME}'"));
+            blog(log_path, &format!("Created tmux session '{session_name}'"));
         }
         Ok(output) => {
             bwarn(log_path, &format!("tmux new-session exited with status {:?}", output.status));
@@ -413,13 +461,16 @@ mod tests {
     }
 
     #[test]
-    fn no_distro_returns_none_immediately() {
-        let result = try_connect_daemon(None, DEFAULT_PORT, &test_log_path());
-        assert!(result.is_none());
+    fn no_distro_on_windows_returns_none() {
+        // On native platforms (macOS/Linux), None distro still connects.
+        // On Windows, None means no WSL projects → skip daemon.
+        if !is_native_daemon() {
+            let result = try_connect_daemon(None, DEFAULT_PORT, &test_log_path());
+            assert!(result.is_none());
+        }
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
     fn connects_to_running_daemon() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -437,7 +488,10 @@ mod tests {
         });
         std::thread::sleep(Duration::from_millis(100));
 
-        let result = try_connect_daemon(Some("Ubuntu"), port, &test_log_path());
+        // On native platforms, distro is ignored — daemon connects directly.
+        // On Windows/Linux-in-WSL, we'd need a valid distro.
+        let distro = if is_native_daemon() { None } else { Some("Ubuntu") };
+        let result = try_connect_daemon(distro, port, &test_log_path());
         assert!(result.is_some());
 
         shutdown.store(true, Ordering::Relaxed);
@@ -504,5 +558,100 @@ mod tests {
         assert!(validate_wsl_distro("foo;rm -rf /").is_err());
         assert!(validate_wsl_distro("test$(whoami)").is_err());
         assert!(validate_wsl_distro("test`id`").is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Platform dispatch tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_native_daemon_matches_platform() {
+        let native = is_native_daemon();
+        if cfg!(target_os = "macos") || cfg!(target_os = "linux") {
+            assert!(native, "macOS and Linux should use native daemon");
+        }
+        if cfg!(target_os = "windows") {
+            assert!(!native, "Windows should use WSL daemon");
+        }
+    }
+
+    #[test]
+    fn daemon_binary_path_resolves_on_native() {
+        if !is_native_daemon() {
+            return; // WSL path resolution needs real WSL — skip on Windows
+        }
+        let path = daemon_binary_path("anything").unwrap();
+        assert!(
+            path.ends_with("/.local/bin/taurhaus-daemon"),
+            "Native daemon path should end with ~/.local/bin/taurhaus-daemon, got: {path}"
+        );
+        assert!(
+            path.starts_with('/'),
+            "Native daemon path should be absolute, got: {path}"
+        );
+    }
+
+    #[test]
+    fn native_daemon_connects_with_none_distro() {
+        // On native platforms, try_connect_daemon works with None distro
+        // (uses synthetic "native" internally). Verify by connecting to
+        // a real test server — if None distro caused early return, this
+        // would fail.
+        if !is_native_daemon() {
+            return; // Only relevant on macOS/Linux
+        }
+
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let config = crate::daemon::server::DaemonConfig {
+            port,
+            bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
+        };
+        let shutdown_clone = shutdown.clone();
+        std::thread::spawn(move || {
+            let _ = crate::daemon::server::run(&config, shutdown_clone);
+        });
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Key assertion: None distro doesn't cause early return on native.
+        let result = try_connect_daemon(None, port, &test_log_path());
+        assert!(result.is_some(), "None distro should still connect on native platforms");
+
+        shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn native_daemon_skips_wsl_validation() {
+        // On native platforms, try_restart_daemon should NOT validate
+        // the distro string against WSL name rules.
+        if is_native_daemon() {
+            // "native" isn't a real WSL distro, but on native platforms
+            // the validation is skipped entirely — only the spawn matters.
+            // This won't actually spawn (binary doesn't exist in tests),
+            // but it shouldn't error on distro validation.
+            let result = try_restart_daemon("native", 0);
+            // Should fail with "not found" (binary missing), NOT with
+            // "invalid WSL distro" — because validation is skipped.
+            if let Err(e) = result {
+                assert!(
+                    !e.to_string().contains("invalid"),
+                    "Should not fail on distro validation, got: {e}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn health_check_log_path_resolves() {
+        // Smoke test: should always return a path, never panic.
+        let path = health_check_log_path();
+        assert!(
+            !path.as_os_str().is_empty(),
+            "Health check log path should not be empty"
+        );
     }
 }

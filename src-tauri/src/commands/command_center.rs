@@ -55,18 +55,21 @@ pub fn list_claude_sessions(
                         .and_then(|v| serde_json::from_value(v).ok())
                         .unwrap_or_default();
 
-                    // Convert Linux project paths to Windows paths so the frontend
-                    // can match sessions to projects (stored as Windows paths).
+                    // On Windows, convert Linux paths from the daemon to Windows paths
+                    // so the frontend can match sessions to projects (stored as Windows paths).
                     // - /mnt/d/foo → D:\foo (Windows-native projects)
                     // - /home/user/foo → \\wsl.localhost\distro\... (WSL projects)
-                    if let Some(ref distro) = provider.wsl_distro {
-                        for session in &mut sessions {
-                            if session.project_path.starts_with('/') {
-                                session.project_path =
-                                    crate::provider::path::to_windows(
-                                        &session.project_path,
-                                        distro,
-                                    );
+                    // On macOS/Linux, paths are already native — no conversion needed.
+                    if !crate::daemon::launcher::is_native_daemon() {
+                        if let Some(ref distro) = provider.wsl_distro {
+                            for session in &mut sessions {
+                                if session.project_path.starts_with('/') {
+                                    session.project_path =
+                                        crate::provider::path::to_windows(
+                                            &session.project_path,
+                                            distro,
+                                        );
+                                }
                             }
                         }
                     }

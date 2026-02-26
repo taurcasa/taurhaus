@@ -8,6 +8,21 @@ use crate::ProviderState;
 
 const BUNDLED_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Get the current platform identifier.
+///
+/// Returns "macos", "linux", or "windows". Used by the frontend to show
+/// platform-appropriate UI (e.g., wizard text about WSL vs native daemon).
+#[tauri::command]
+pub fn get_platform() -> String {
+    if cfg!(target_os = "macos") {
+        "macos".to_string()
+    } else if cfg!(target_os = "windows") {
+        "windows".to_string()
+    } else {
+        "linux".to_string()
+    }
+}
+
 /// Get the current daemon connection status.
 #[tauri::command]
 pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonStatus, String> {
@@ -76,7 +91,13 @@ pub fn start_daemon(
     let distro = provider
         .wsl_distro
         .as_deref()
-        .ok_or("No WSL distro configured")?;
+        .ok_or_else(|| {
+            if crate::daemon::launcher::is_native_daemon() {
+                "No daemon configuration available".to_string()
+            } else {
+                "No WSL distro configured".to_string()
+            }
+        })?;
 
     let port = DEFAULT_PORT;
 
@@ -163,11 +184,71 @@ fn detect_default_distro() -> Result<Option<String>, String> {
     Ok(first_line)
 }
 
-/// Check whether the daemon binary is installed in WSL and compare versions.
+/// Check whether the daemon binary is installed and compare versions.
+///
+/// On macOS/Linux: checks `~/.local/bin/taurhaus-daemon` directly.
+/// On Windows: checks inside WSL.
 ///
 /// Used by FirstRunWizard and startup update detection.
 #[tauri::command]
 pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
+    if crate::daemon::launcher::is_native_daemon() {
+        check_daemon_install_native()
+    } else {
+        check_daemon_install_wsl()
+    }
+}
+
+/// Native daemon check (macOS/Linux): just stat the binary and run --version.
+fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
+    let home = dirs::home_dir()
+        .ok_or("Could not determine home directory")?;
+    let binary = home.join(".local/bin/taurhaus-daemon");
+
+    if !binary.exists() {
+        return Ok(DaemonInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: BUNDLED_VERSION.to_string(),
+            needs_update: false,
+            wsl_available: true, // "available" means daemon CAN run — true on native
+            error: None,
+        });
+    }
+
+    let version_output = std::process::Command::new(&binary)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    let version = match version_output {
+        Ok(output) if output.status.success() => {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            raw.trim()
+                .strip_prefix("taurhaus-daemon ")
+                .map(|v| v.trim().to_string())
+        }
+        _ => None,
+    };
+
+    let needs_update = match &version {
+        Some(v) => semver_less_than(v, BUNDLED_VERSION),
+        None => true,
+    };
+
+    Ok(DaemonInstallStatus {
+        installed: true,
+        version,
+        bundled_version: BUNDLED_VERSION.to_string(),
+        needs_update,
+        wsl_available: true,
+        error: None,
+    })
+}
+
+/// WSL daemon check (Windows): probe WSL, detect distro, check binary inside WSL.
+fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
     // Step 1: Check WSL availability
     let wsl_check = wsl_command()
         .arg("--status")
@@ -257,7 +338,6 @@ pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
     let version = match version_output {
         Ok(output) if output.status.success() => {
             let raw = String::from_utf8_lossy(&output.stdout);
-            // Output format: "taurhaus-daemon X.Y.Z"
             raw.trim()
                 .strip_prefix("taurhaus-daemon ")
                 .map(|v| v.trim().to_string())
@@ -267,7 +347,7 @@ pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
 
     let needs_update = match &version {
         Some(v) => semver_less_than(v, BUNDLED_VERSION),
-        None => true, // Can't determine version — assume needs update
+        None => true,
     };
 
     Ok(DaemonInstallStatus {
@@ -280,10 +360,10 @@ pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
     })
 }
 
-/// Install (or update) the daemon binary from bundled app resources into WSL.
+/// Install (or update) the daemon binary from bundled app resources.
 ///
-/// Copies the bundled binary to `~/.local/bin/taurhaus-daemon` in the default
-/// WSL distro and sets executable permissions.
+/// On macOS/Linux: copies directly to `~/.local/bin/taurhaus-daemon`.
+/// On Windows: copies into the default WSL distro.
 #[tauri::command]
 pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
     // Resolve bundled binary path from Tauri resources
@@ -300,16 +380,91 @@ pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
         ));
     }
 
-    // Detect WSL distro
+    if crate::daemon::launcher::is_native_daemon() {
+        install_daemon_native(&bundled_binary)
+    } else {
+        install_daemon_wsl(&bundled_binary)
+    }
+}
+
+/// Install daemon natively (macOS/Linux): copy binary + chmod + verify.
+fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<String, String> {
+    let home = dirs::home_dir()
+        .ok_or("Could not determine home directory")?;
+    let target_dir = home.join(".local/bin");
+    let target_path = target_dir.join("taurhaus-daemon");
+
+    // Create target directory
+    std::fs::create_dir_all(&target_dir)
+        .map_err(|e| format!("Failed to create ~/.local/bin: {e}"))?;
+
+    // Copy binary
+    std::fs::copy(bundled_binary, &target_path)
+        .map_err(|e| format!("Failed to copy daemon binary: {e}"))?;
+
+    // Set executable permissions
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&target_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set executable permission: {e}"))?;
+    }
+
+    // On macOS, re-sign the binary after copying.
+    // Cargo's linker-signed adhoc binaries get invalidated on copy;
+    // macOS Sequoia+ enforces code signature validity and kills unsigned binaries.
+    #[cfg(target_os = "macos")]
+    {
+        let sign = std::process::Command::new("codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&target_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .output();
+        match sign {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("Failed to sign daemon binary: {stderr}"));
+            }
+            Err(e) => {
+                return Err(format!("Failed to run codesign: {e}"));
+            }
+        }
+    }
+
+    // Verify installation
+    let verify = std::process::Command::new(&target_path)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    match verify {
+        Ok(output) if output.status.success() => {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let version = raw.trim();
+            Ok(format!("Daemon installed successfully: {version}"))
+        }
+        Ok(_) => {
+            Err("Daemon was copied but --version check failed. The binary may be corrupted.".to_string())
+        }
+        Err(e) => {
+            Err(format!("Daemon was copied but verification failed: {e}"))
+        }
+    }
+}
+
+/// Install daemon via WSL (Windows): copy into WSL distro + chmod + verify.
+fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String> {
     let distro = detect_default_distro()?
         .ok_or("No WSL distro configured")?;
     validate_wsl_distro(&distro)
         .map_err(|e| format!("Invalid distro: {e}"))?;
 
     // Translate Windows path to WSL-accessible /mnt/... path.
-    // On Windows: C:\Users\... → /mnt/c/Users/...
-    // In dev (Linux): path is already a Linux path, use directly.
-    let wsl_source_path = windows_to_wsl_path(&bundled_binary)?;
+    let wsl_source_path = windows_to_wsl_path(bundled_binary)?;
 
     // Create target directory
     let mkdir = wsl_command()
@@ -356,7 +511,7 @@ pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
         return Err(format!("Failed to set executable permission: {stderr}"));
     }
 
-    // Verify installation by checking --version
+    // Verify installation
     let verify = wsl_command()
         .args(["-d", &distro, "--", "$HOME/.local/bin/taurhaus-daemon", "--version"])
         .stdin(std::process::Stdio::null())

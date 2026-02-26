@@ -479,7 +479,12 @@ export function getDaemonStatus() {
   }))
 }
 
-/** Check daemon installation status in WSL (for wizard and update detection). */
+/** Get the current platform: "macos", "linux", or "windows". */
+export function getPlatform() {
+  return invokeOrMock('get_platform', undefined, () => 'linux')
+}
+
+/** Check daemon installation status (for wizard and update detection). */
 export function checkDaemonInstallStatus() {
   return invokeOrMock('check_daemon_install_status', undefined, () => ({
     installed: true,
@@ -491,7 +496,7 @@ export function checkDaemonInstallStatus() {
   }))
 }
 
-/** Install (or update) daemon binary from bundled resources into WSL. */
+/** Install (or update) daemon binary from bundled resources. */
 export function installDaemon() {
   return invokeOrMock('install_daemon', undefined, () =>
     'Daemon installed successfully: taurhaus-daemon 0.3.1'

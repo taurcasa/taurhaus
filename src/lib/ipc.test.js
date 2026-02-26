@@ -750,7 +750,25 @@ describe('ipc module', () => {
     })
   })
 
-  // ── Daemon install commands ──────────────────────────────────────────────
+  // ── Platform + Daemon install commands ──────────────────────────────────
+
+  describe('getPlatform()', () => {
+    it('returns mock linux in non-Tauri mode', async () => {
+      const result = await ipc.getPlatform()
+      expect(result).toBe('linux')
+    })
+
+    it('calls get_platform in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('macos')
+
+      const result = await ipc.getPlatform()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_platform')
+      expect(result).toBe('macos')
+      delete window.__TAURI_INTERNALS__
+    })
+  })
 
   describe('checkDaemonInstallStatus()', () => {
     it('returns mock data in non-Tauri mode', async () => {

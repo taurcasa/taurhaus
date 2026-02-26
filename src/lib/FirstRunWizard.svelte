@@ -1,5 +1,5 @@
 <script>
-  import { scanDirectory, registerProjectsBatch, checkDaemonInstallStatus, installDaemon, isTauri } from './ipc.js'
+  import { scanDirectory, registerProjectsBatch, checkDaemonInstallStatus, installDaemon, getPlatform, isTauri } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
   import DirectoryBrowser from './DirectoryBrowser.svelte'
 
@@ -28,11 +28,16 @@
   let scanError = $state(null)
   let scanPath = $state('')
 
+  // Platform detection (for platform-appropriate wizard text)
+  let platform = $state('windows') // conservative default
+
   // Daemon setup state
   let daemonStatus = $state(null)
   let daemonChecking = $state(false)
   let daemonInstalling = $state(false)
   let daemonError = $state(null)
+
+  const isWindows = $derived(platform === 'windows')
 
   const selectedCount = $derived(selected.size)
 
@@ -42,7 +47,13 @@
     daemonChecking = true
     daemonError = null
     try {
-      daemonStatus = await checkDaemonInstallStatus()
+      // Fetch platform in parallel with daemon status check
+      const [status, plat] = await Promise.all([
+        checkDaemonInstallStatus(),
+        getPlatform(),
+      ])
+      platform = plat
+      daemonStatus = status
       // Auto-proceed if daemon is already installed and current
       if (daemonStatus.installed && !daemonStatus.needs_update) {
         setTimeout(() => { step = 3 }, 800)
@@ -175,7 +186,7 @@
       <div data-testid="wizard-step-2">
         <h2 class="text-[18px] font-semibold {t.textPrimary} mb-1">Setup Helper Service</h2>
         <p class="text-[13px] {t.textSecondary} mb-5">
-          taurhaus uses a helper service in WSL to watch your projects and detect AI sessions.
+          taurhaus uses a helper service{isWindows ? ' in WSL' : ''} to watch your projects and detect AI sessions.
         </p>
 
         {#if daemonChecking}
@@ -194,9 +205,9 @@
             <div class="flex items-start gap-3">
               <svg class="w-5 h-5 text-danger-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>
               <div>
-                <p class="text-[13px] font-medium text-danger-500 mb-1">WSL 2 is required</p>
+                <p class="text-[13px] font-medium text-danger-500 mb-1">{isWindows ? 'WSL 2 is required' : 'Setup error'}</p>
                 <p class="text-[12px] {t.textSecondary}">
-                  {daemonStatus.error || 'WSL is not installed or not available.'}
+                  {daemonStatus.error || (isWindows ? 'WSL is not installed or not available.' : 'Helper service could not be configured.')}
                 </p>
               </div>
             </div>
@@ -230,7 +241,7 @@
                 <p class="text-[13px] font-medium text-danger-500 mb-1">Installation failed</p>
                 <p class="text-[12px] {t.textSecondary} mb-2">{daemonError}</p>
                 <p class="text-[12px] {textTertiary}">
-                  Manual install: run <code class="font-mono text-[11px]">just install-daemon</code> in WSL
+                  Manual install: run <code class="font-mono text-[11px]">just install-daemon</code>{isWindows ? ' in WSL' : ''}
                 </p>
               </div>
             </div>
