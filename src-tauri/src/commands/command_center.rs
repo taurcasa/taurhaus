@@ -295,7 +295,11 @@ pub fn navigate_to_session(
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
                     let ts = load_terminal_settings(&db);
-                    let intent = if should_open {
+                    // On macOS, always use EnsureOpen — the terminal app might
+                    // be completely closed. EnsureOpen already handles the
+                    // "already running + tmux has client" case by just activating.
+                    // On Windows, FocusOnly is useful because WT is always running.
+                    let intent = if should_open || cfg!(target_os = "macos") {
                         crate::terminal::TerminalIntent::EnsureOpen {
                             distro: provider.wsl_distro.clone(),
                             tmux_session: tmux_session.clone(),
