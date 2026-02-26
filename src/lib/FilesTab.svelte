@@ -60,16 +60,24 @@
 
   // React to file changes signaled by Shell's central listener.
   // Refreshes the file tree and re-reads the currently open file if affected.
+  //
+  // IMPORTANT: Capture changedPaths into a local BEFORE consuming. In Svelte 5,
+  // signals propagate eagerly — onChangedPathsConsumed() sets the parent's
+  // fileChangePaths to null, which immediately nullifies changedPaths here.
+  // Reading changedPaths after consume would see null and skip the file refresh.
   $effect(() => {
-    if (!changedPaths || !selectedProject?.id) return
-    // Consume the signal so it doesn't re-fire
+    const paths = changedPaths
+    if (!paths || !selectedProject?.id) return
     onChangedPathsConsumed?.()
+
+    console.log(`[filewatch] FilesTab: received ${paths.length} changed path(s), selectedFile=${selectedFile}`)
 
     // Refresh file tree (silent — no loading skeleton)
     loadFileTree(selectedProject.id)
 
     // Re-read the currently open file if it was among the changes
-    if (selectedFile && pathWasChanged(changedPaths, selectedFile)) {
+    if (selectedFile && pathWasChanged(paths, selectedFile)) {
+      console.log(`[filewatch] FilesTab: re-reading "${selectedFile}"`)
       openFile(selectedFile, targetLineNumber)
     }
   })
