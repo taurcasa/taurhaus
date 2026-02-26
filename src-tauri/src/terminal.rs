@@ -336,26 +336,27 @@ return "no""#,
 
     /// Activate (bring to front) this emulator.
     ///
-    /// Uses `open -a` (the standard macOS app activation command) instead of
-    /// AppleScript. It's faster, hands off directly to the window server, and
-    /// doesn't require spawning osascript.
+    /// The challenge: clicking a session indicator in taurhaus causes macOS
+    /// to activate taurhaus first (standard click behavior). We need to
+    /// switch focus BACK to the terminal. macOS ignores activation requests
+    /// while its own window-switch animation is in progress (~250ms).
     ///
-    /// Spawned non-blocking with a small delay. We must NOT block this thread
-    /// because the Tauri command returning can cause the WebView to reclaim
-    /// focus — undoing our activation. Instead: delay, spawn, return fast.
+    /// Solution: spawn an osascript with a built-in `delay 0.35` that waits
+    /// for macOS to settle, then sends the `activate` AppleEvent. The
+    /// osascript process handles all timing internally. The Tauri command
+    /// returns immediately (`.spawn()` is non-blocking), so the WebView
+    /// can't interfere.
     fn activate(self) -> Result<(), String> {
-        let app = self.app_name();
-        tracing::debug!(emulator = ?self, "Activating terminal via open -a");
-        // Small delay lets macOS finish processing the click event that
-        // brought taurhaus to front. Without this, the activate arrives
-        // while macOS is still mid-transition and gets ignored.
-        let app_name = app.to_string();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            let _ = std::process::Command::new("open")
-                .args(["-a", &app_name])
-                .output();
-        });
+        let script = format!(
+            r#"delay 0.35
+tell application "{}" to activate"#,
+            self.app_name()
+        );
+        tracing::debug!(emulator = ?self, "Activating terminal (delayed AppleScript)");
+        std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .spawn()
+            .map_err(|e| format!("Failed to activate {}: {e}", self.app_name()))?;
         Ok(())
     }
 
