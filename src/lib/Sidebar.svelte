@@ -27,6 +27,14 @@
     { key: 'dormant', label: 'DORMANT' },
   ]
 
+  // Sidebar filter
+  let filterQuery = $state('')
+  const filteredProjects = $derived(
+    filterQuery.trim()
+      ? projects.filter(p => p.name.toLowerCase().includes(filterQuery.trim().toLowerCase()))
+      : projects
+  )
+
   // --- Context menu state ---
   let ctxMenu = $state(null) // { x, y, project }
   let ctxConfirmRemove = $state(false)
@@ -218,9 +226,26 @@
 
   <!-- Filter -->
   <div class="px-3 pt-3 pb-1">
-    <div class="flex items-center gap-2 px-3 h-[32px] rounded-md bg-white/[0.05] border border-white/[0.07] text-[13px] text-white/25 transition-colors hover:bg-white/[0.07]">
-      <svg class="w-[13px] h-[13px]" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
-      Filter...
+    <div class="flex items-center gap-2 px-3 h-[32px] rounded-md bg-white/[0.05] border border-white/[0.07] text-[13px] text-white/25 transition-colors focus-within:border-brand-500/40 focus-within:bg-white/[0.07]">
+      <svg class="w-[13px] h-[13px] shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
+      <input
+        type="text"
+        bind:value={filterQuery}
+        placeholder="Filter..."
+        class="flex-1 bg-transparent text-[13px] text-white/75 outline-none placeholder:text-white/25"
+        spellcheck="false"
+        autocomplete="off"
+        data-testid="sidebar-filter"
+      />
+      {#if filterQuery}
+        <button
+          class="text-white/30 hover:text-white/60 transition-colors"
+          onclick={() => { filterQuery = '' }}
+          aria-label="Clear filter"
+        >
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -252,9 +277,14 @@
         <p class="mt-2 text-[12px] text-white/40">No projects yet</p>
         <button class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors">Scan for projects</button>
       </div>
+    {:else if filteredProjects.length === 0 && filterQuery}
+      <!-- No filter matches -->
+      <div class="px-4 pt-6 text-center" data-testid="sidebar-no-matches">
+        <p class="text-[12px] text-white/30">No matching projects</p>
+      </div>
     {:else}
       {#each groups as group}
-        {@const items = projects.filter(p => p.activity_state === group.key)}
+        {@const items = filteredProjects.filter(p => p.activity_state === group.key)}
         {#if items.length > 0}
           <div class="px-3.5 pt-8 pb-1.5">
             <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{group.label}</span>
