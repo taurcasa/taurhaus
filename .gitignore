@@ -5,6 +5,9 @@ dist/
 # Claude Code instructions (local dev only, not published)
 CLAUDE.md
 
+# Session handoff files (auto-generated, local only)
+docs/sessions/
+
 # Rust build artifacts
 src-tauri/target/
 target/
