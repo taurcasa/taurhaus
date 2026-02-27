@@ -413,6 +413,117 @@ test-daemon-connectivity: test-daemon-local test-daemon-windows test-daemon-auto
     @echo "  All daemon connectivity tests passed"
     @echo "═══════════════════════════════════════"
 
+# ── Release ──────────────────────────────────────────────────────────────────
+# Creates a GitHub Release with build artifacts from builds/.
+#
+# Workflow:
+#   1. Update version:  just bump 0.4.0
+#   2. Build:           just build-windows && just build-macos-universal
+#   3. Release:         just release
+#
+# The version is read from tauri.conf.json. Artifacts are matched by glob
+# from builds/ — if a platform dir is empty or missing, it's skipped.
+
+# Bump version in tauri.conf.json, Cargo.toml, and CHANGELOG.md
+bump version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Bumping version to {{version}}…"
+
+    # tauri.conf.json
+    sed -i 's/"version": "[^"]*"/"version": "{{version}}"/' src-tauri/tauri.conf.json
+    echo "  ✓ src-tauri/tauri.conf.json"
+
+    # Cargo.toml (first version = line in [package])
+    sed -i '0,/^version = "[^"]*"/s//version = "{{version}}"/' src-tauri/Cargo.toml
+    echo "  ✓ src-tauri/Cargo.toml"
+
+    # CHANGELOG.md — add new section under [Unreleased] if not already present
+    if ! grep -q "## \[{{version}}\]" CHANGELOG.md; then
+        DATE=$(date +%Y-%m-%d)
+        sed -i "/^## \[Unreleased\]/a\\\\n## [{{version}}] - $DATE" CHANGELOG.md
+        echo "  ✓ CHANGELOG.md (added [{{version}}] section — fill in changes before releasing)"
+    else
+        echo "  · CHANGELOG.md already has [{{version}}]"
+    fi
+
+    echo ""
+    echo "Next: edit CHANGELOG.md, commit, build, then run: just release"
+
+# Create GitHub Release from current version and upload artifacts
+release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Read version from tauri.conf.json
+    VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+    TAG="v$VERSION"
+
+    echo "▸ Creating release $TAG…"
+    echo ""
+
+    # Verify we're on main and clean
+    BRANCH=$(git branch --show-current)
+    if [ "$BRANCH" != "main" ]; then
+        echo "✗ Must be on main branch (currently on $BRANCH)"
+        exit 1
+    fi
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "✗ Working tree is dirty — commit or stash changes first"
+        exit 1
+    fi
+
+    # Check tag doesn't already exist
+    if git tag -l "$TAG" | grep -q "$TAG"; then
+        echo "✗ Tag $TAG already exists"
+        exit 1
+    fi
+
+    # Collect artifacts
+    ARTIFACTS=()
+    for f in builds/macos-universal/*.dmg; do
+        [ -f "$f" ] && ARTIFACTS+=("$f")
+    done
+    for f in builds/macos-aarch64/*.dmg; do
+        [ -f "$f" ] && ARTIFACTS+=("$f")
+    done
+    for f in builds/macos-x86_64/*.dmg; do
+        [ -f "$f" ] && ARTIFACTS+=("$f")
+    done
+    # Windows: NSIS installer lives in the Windows build dir
+    WIN_NSIS="{{win_dir}}/src-tauri/target/release/bundle/nsis"
+    for f in "$WIN_NSIS"/*.exe; do
+        [ -f "$f" ] && ARTIFACTS+=("$f")
+    done
+
+    if [ ${#ARTIFACTS[@]} -eq 0 ]; then
+        echo "✗ No build artifacts found in builds/ or Windows NSIS output"
+        echo "  Run build recipes first: just build-windows && just build-macos-universal"
+        exit 1
+    fi
+
+    echo "  Artifacts to upload:"
+    for f in "${ARTIFACTS[@]}"; do
+        SIZE=$(du -h "$f" | cut -f1)
+        echo "    $f ($SIZE)"
+    done
+    echo ""
+
+    # Extract changelog section for this version
+    NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} /^## \[/{if(found) exit} found{print}" CHANGELOG.md)
+    if [ -z "$NOTES" ]; then
+        NOTES="Release $TAG"
+    fi
+
+    # Create release with artifacts
+    gh release create "$TAG" \
+        --title "$TAG" \
+        --notes "$NOTES" \
+        "${ARTIFACTS[@]}"
+
+    echo ""
+    echo "✓ Release $TAG published: https://github.com/taurcasa/taurhaus/releases/tag/$TAG"
+
 # Take screenshot of current app state
 screenshot:
     @echo "Screenshot recipe not yet configured"

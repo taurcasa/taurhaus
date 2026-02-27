@@ -6,11 +6,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
-- Pre-publish roadmap (P01-P17) for v1.0 release
-- MIT license
-- Cargo audit suppression config (`.cargo/audit.toml`)
-
 ## [0.3.2] - 2026-02-26
 
 ### Fixed

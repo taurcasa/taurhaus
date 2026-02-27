@@ -130,6 +130,8 @@ just build-windows    # Windows release build (NSIS installer)
 just build-macos      # macOS release build (DMG)
 just check            # Quality gate: clippy + svelte-check + all tests
 just test             # All tests (Rust + frontend)
+just bump 0.4.0       # Bump version everywhere
+just release          # Create GitHub Release with artifacts
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
