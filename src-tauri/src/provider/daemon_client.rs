@@ -44,7 +44,8 @@ pub struct DaemonProvider {
     /// Timestamp of the last inline reconnection attempt (for rate limiting).
     last_reconnect_attempt: Mutex<Option<Instant>>,
     /// Auth token read from the daemon's token file.
-    auth_token: Option<String>,
+    /// Wrapped in Mutex so `reconnect()` can refresh it when the daemon restarts.
+    auth_token: Mutex<Option<String>>,
 }
 
 impl DaemonProvider {
@@ -70,7 +71,7 @@ impl DaemonProvider {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(true),
             last_reconnect_attempt: Mutex::new(None),
-            auth_token: Self::read_auth_token(),
+            auth_token: Mutex::new(Self::read_auth_token()),
         })
     }
 
@@ -85,7 +86,7 @@ impl DaemonProvider {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),
-            auth_token: Self::read_auth_token(),
+            auth_token: Mutex::new(Self::read_auth_token()),
         }
     }
 
@@ -156,6 +157,12 @@ impl DaemonProvider {
         }
 
         self.connected.store(true, Ordering::Relaxed);
+
+        // Re-read auth token — daemon may have restarted with a new one.
+        if let Ok(mut guard) = self.auth_token.lock() {
+            *guard = Self::read_auth_token();
+        }
+
         tracing::debug!(addr = %self.addr, "Daemon reconnected");
         Ok(())
     }
@@ -253,7 +260,9 @@ impl DaemonProvider {
 
         // Attach auth token to the request
         let mut authed_request = request.clone();
-        authed_request.auth = self.auth_token.clone();
+        authed_request.auth = self.auth_token.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
 
         let json = serde_json::to_string(&authed_request).map_err(|e| {
             AppError::InvalidPath(format!("Failed to serialize request: {e}"))
@@ -746,7 +755,7 @@ mod tests {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),
-            auth_token: None,
+            auth_token: Mutex::new(None),
         };
 
         // First attempt: should try (and fail, but that's fine)
