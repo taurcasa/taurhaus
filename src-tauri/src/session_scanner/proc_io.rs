@@ -195,8 +195,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn has_api_connections_current_process_no_https() {
-        // The test runner shouldn't have any HTTPS connections to :443
+        // The test runner shouldn't have any HTTPS connections to :443.
+        // Linux-only: on macOS, lsof may pick up transient system connections
+        // (TLS trust evaluation, DNS-over-HTTPS) belonging to the process.
         assert!(!has_api_connections(std::process::id()));
     }
 

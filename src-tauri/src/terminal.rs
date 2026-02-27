@@ -356,8 +356,9 @@ return "no""#,
 set maxWait to 40
 repeat while maxWait > 0
     tell application "System Events"
-        if name of first process whose frontmost is true is "taurhaus" then exit repeat
+        set frontApp to name of first process whose frontmost is true
     end tell
+    if frontApp is "taurhaus" then exit repeat
     set maxWait to maxWait - 1
     delay 0.05
 end repeat
