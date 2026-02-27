@@ -503,9 +503,9 @@ release:
     for f in builds/macos-x86_64/*.dmg; do
         [ -f "$f" ] && ARTIFACTS+=("$f")
     done
-    # Windows: NSIS installer lives in the Windows build dir
+    # Windows: NSIS installer lives in the Windows build dir (match current version only)
     WIN_NSIS="{{win_dir}}/src-tauri/target/release/bundle/nsis"
-    for f in "$WIN_NSIS"/*.exe; do
+    for f in "$WIN_NSIS"/taurhaus_${VERSION}_*.exe; do
         [ -f "$f" ] && ARTIFACTS+=("$f")
     done
 
