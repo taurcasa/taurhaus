@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-02-27
+
+### Security
+- Daemon authentication: shared token validates every request (F-01)
+- Command override validation: allowlist + shell metachar rejection (F-02)
+- Scoped tmux environment variables to session (F-03)
+- Scoped opener capability to http/https URLs only (F-04)
+- Bounded read before allocation in daemon server (F-05)
+- Error path sanitization: home directory paths replaced with ~ (F-06)
+- `#![forbid(unsafe_code)]` at crate root (F-07)
+- Supply chain policy: `deny.toml` for cargo-deny (F-08)
+- DOMPurify: forbid `<style>` elements in markdown output (F-09)
+
+### Fixed
+- Tab-switch performance regression: removed CSS animation from tab internals that caused GPU compositor thrashing with large Shiki-highlighted content
+- Window controls: replaced Preview button with minimize, maximize, close
+
 ## [0.3.2] - 2026-02-26
 
 ### Fixed
