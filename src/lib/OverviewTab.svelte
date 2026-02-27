@@ -96,7 +96,7 @@
 </script>
 
 <!-- Project header -->
-<div class="px-7 pt-5 pb-4 shrink-0 content-enter">
+<div class="px-7 pt-5 pb-4 shrink-0">
   <div class="flex items-center gap-3">
     <h1 class="text-[18px] font-semibold {t.textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
     <span class="text-[11px] font-mono {t.textTertiary} self-baseline">{selectedProject.branch || ''}</span>
@@ -139,7 +139,7 @@
 </div>
 
 <!-- Scrollable content -->
-<div class="flex-1 overflow-y-auto content-enter">
+<div class="flex-1 overflow-y-auto">
   <div class="max-w-3xl px-7 pb-8">
 
     <!-- 1. README — project identity, immediately below header -->

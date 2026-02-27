@@ -298,7 +298,7 @@
 <div class="flex-1 flex min-h-0" data-testid="git-tab">
 
   <!-- Commit detail (left panel, wide) -->
-  <div class="flex-1 flex flex-col min-w-0 content-enter">
+  <div class="flex-1 flex flex-col min-w-0">
     {#if !selectedHash}
       <div class="flex-1 flex items-center justify-center">
         <p class="text-[13px] {t.textMuted}">Select a commit to view details</p>

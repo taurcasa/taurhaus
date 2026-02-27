@@ -22,6 +22,13 @@ describe('Regressions', () => {
     // orphaned in OverviewTab, GitTab, and TaskBoard (class referenced but
     // no matching <style> block because it was scoped to Shell.svelte).
     // Fix: moved animation to app.css as a global rule.
+    //
+    // IMPORTANT: content-enter must ONLY be on the {#key} wrapper div
+    // (Shell.svelte), NOT on elements inside individual tabs. Chromium
+    // replays CSS animations when toggling display:none (class:hidden),
+    // and the transform property forces GPU compositor layer creation.
+    // For tabs with large Shiki-highlighted content (thousands of spans),
+    // this causes multi-second freezes on every tab switch.
 
     it('main content wrapper has content-enter class', async function () {
       if (!mainApp) return this.skip()
@@ -52,74 +59,16 @@ describe('Regressions', () => {
       expect(animationName).toBe('content-enter')
     })
 
-    it('OverviewTab elements have content-enter class', async function () {
+    it('tab internals do NOT have content-enter class', async function () {
       if (!mainApp) return this.skip()
 
-      // Click Overview tab to ensure it's active
-      const overviewTab = await $('button=Overview')
-      await overviewTab.click()
-      await browser.pause(300)
-
-      // The overview header and scroll area should have content-enter
-      const hasAnimation = await browser.execute(() => {
-        const els = document.querySelectorAll('.content-enter')
-        // Should have at least 2: the wrapper + at least one inside OverviewTab
-        return els.length >= 2
+      // content-enter must only exist once (on the {#key} wrapper).
+      // If any tab component also has it, the animation replays on every
+      // tab switch, causing GPU compositor thrashing with large content.
+      const count = await browser.execute(() => {
+        return document.querySelectorAll('.content-enter').length
       })
-      expect(hasAnimation).toBe(true)
-    })
-
-    it('GitTab content has content-enter class', async function () {
-      if (!mainApp) return this.skip()
-
-      const gitTab = await $('button=Git')
-      await gitTab.click()
-      await browser.pause(500)
-
-      const hasClass = await browser.execute(() => {
-        // GitTab's root content div should have content-enter
-        const gitContent = document.querySelectorAll('.content-enter')
-        return gitContent.length >= 2 // wrapper + GitTab inner
-      })
-      expect(hasClass).toBe(true)
-    })
-
-    it('TaskBoard content has content-enter class', async function () {
-      if (!mainApp) return this.skip()
-
-      const tasksTab = await $('button=Tasks')
-      await tasksTab.click()
-      await browser.pause(500)
-
-      const hasClass = await browser.execute(() => {
-        const els = document.querySelectorAll('.content-enter')
-        return els.length >= 2 // wrapper + TaskBoard inner
-      })
-      expect(hasClass).toBe(true)
-    })
-
-    it('FilesTab content has content-enter class', async function () {
-      if (!mainApp) return this.skip()
-
-      const filesTab = await $('button=Files')
-      await filesTab.click()
-      await browser.pause(500)
-
-      const hasClass = await browser.execute(() => {
-        const els = document.querySelectorAll('.content-enter')
-        return els.length >= 2 // wrapper + FilesTab inner
-      })
-      expect(hasClass).toBe(true)
-    })
-
-    // Switch back to Overview for subsequent tests
-    after(async () => {
-      if (!mainApp) return
-      const overviewTab = await $('button=Overview')
-      if (await overviewTab.isExisting()) {
-        await overviewTab.click()
-        await browser.pause(300)
-      }
+      expect(count).toBe(1) // Only the wrapper
     })
   })
 

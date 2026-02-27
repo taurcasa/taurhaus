@@ -191,7 +191,7 @@
   }
 </script>
 
-<div class="flex-1 flex overflow-hidden content-enter">
+<div class="flex-1 flex overflow-hidden">
   <!-- Board area (flex-1 to compress when detail panel opens) -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
