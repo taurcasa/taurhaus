@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand — Teal */
+  --color-brand-50: #F0FDFA;
+  --color-brand-100: #CCFBF1;
+  --color-brand-200: #99F6E4;
+  --color-brand-400: #2DD4BF;
+  --color-brand-500: #14B8A6;
+  --color-brand-600: #0D9488;
+  --color-brand-700: #0F766E;
+  --color-brand-800: #115E59;
+  --color-brand-900: #134E4A;
+  --color-brand-950: #0A2E2B;
+
+  /* Success — Green */
+  --color-success-50: #F0FDF4;
+  --color-success-300: #86EFAC;
+  --color-success-400: #4ADE80;
+  --color-success-500: #22C55E;
+  --color-success-600: #16A34A;
+  --color-success-700: #15803D;
+
+  /* Warning — Amber */
+  --color-warning-50: #FFFBEB;
+  --color-warning-300: #FCD34D;
+  --color-warning-400: #FBBF24;
+  --color-warning-500: #F59E0B;
+  --color-warning-600: #D97706;
+
+  /* Danger — Red */
+  --color-danger-50: #FEF2F2;
+  --color-danger-400: #F87171;
+  --color-danger-500: #EF4444;
+  --color-danger-600: #DC2626;
+
+  /* Info — Blue */
+  --color-info-50: #EFF6FF;
+  --color-info-300: #93C5FD;
+  --color-info-400: #60A5FA;
+  --color-info-500: #3B82F6;
+  --color-info-600: #2563EB;
+
+  /* Fonts */
+  --font-sans: 'Geist', ui-sans-serif, -apple-system, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Command Center — sidebar session pills.
+   RUN = active Claude work, IDLE = waiting for user input. */
+.session-pill {
+  line-height: 1;
+}
+
+.session-pill-active {
+  animation: session-pill-breathe 1.8s ease-in-out infinite;
+}
+
+.session-pill-idle {
+  box-shadow:
+    inset 0 0 0 1px rgba(251, 191, 36, 0.2),
+    0 0 0 1px rgba(251, 191, 36, 0.15);
+}
+
+@keyframes session-pill-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-pill-active {
+    animation: none;
+    filter: brightness(1.1);
+  }
+}
+
+/* ── Content enter animation ──────────────────────────────────────────── */
+/* Subtle fade-up on project switch — signals "new content" without
+   feeling like a loading transition. Triggered by {#key} recreating
+   the wrapper div. Used across Shell, OverviewTab, GitTab, TaskBoard,
+   FilesTab — must be global so extracted components can reference it. */
+.content-enter {
+  animation: content-enter 120ms ease-out;
+}
+@keyframes content-enter {
+  from { opacity: 0.6; transform: translateY(4px); }
+  to   { opacity: 1;   transform: translateY(0); }
+}
+
+/* ── Scrollbar styling ────────────────────────────────────────────────── */
+/* Explicit scrollbar styling for both modes — no OS defaults.
+   Ensures consistent appearance across Windows, macOS, and Linux.
+   Tauri uses WebView2 (Chromium) on Windows, WebKit on macOS/Linux. */
+
+/* ─── Base: both modes ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ─── Light mode ─── */
+::-webkit-scrollbar-thumb {
+  background: #d4d4d8; /* zinc-300 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa; /* zinc-400 */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ─── Dark mode — main content ─── */
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46; /* zinc-700 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b; /* zinc-600 */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ─── Sidebar — always dark teal, so one fixed scrollbar style for both modes ─── */
+aside ::-webkit-scrollbar-thumb {
+  background: #27272a; /* zinc-800 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+aside ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46; /* zinc-700 */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+

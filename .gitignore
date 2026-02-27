@@ -1,0 +1,51 @@
+node_modules/
+dist/
+.playwright-mcp/
+
+# Claude Code (local dev config, not published)
+CLAUDE.md
+.claude/
+
+# Session handoff files (auto-generated, local only)
+docs/sessions/
+
+# Rust build artifacts
+src-tauri/target/
+target/
+
+# SQLite database files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Tantivy search index
+search-index/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+.env.*
+.env.local
+.maccreds
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build artifacts (macOS/Windows binaries, DMGs, installers)
+builds/
+
+# Bundled daemon binary (built artifact, copied before Windows build)
+src-tauri/resources/
+
+# Development screenshots (Playwright captures, visual reviews)
+*.png
+!docs/*.png
