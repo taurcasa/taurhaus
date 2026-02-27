@@ -108,6 +108,40 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .menu(|app| {
+            use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
+
+            let app_menu = SubmenuBuilder::new(app, "taurhaus")
+                .about(None)
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .item(&PredefinedMenuItem::close_window(app, None)?)
+                .build()?;
+
+            MenuBuilder::new(app)
+                .item(&app_menu)
+                .item(&edit_menu)
+                .item(&window_menu)
+                .build()
+        })
         .setup(|app| {
             tracing::info!("taurhaus starting");
 
