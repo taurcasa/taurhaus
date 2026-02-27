@@ -169,16 +169,22 @@
       items.push({ separator: true })
     }
 
-    // Primary launch: one-click continue/start per tool
+    // Continue — consistent across all tools
     items.push({ label: 'Continue Claude', action: () => ctxLaunchTool('continue', 'claude'), icon: CTX_ICON_PLAY })
-    items.push({ label: 'Start Codex', action: () => ctxLaunchTool('continue', 'codex'), icon: CTX_ICON_PLAY })
-    items.push({ label: 'Start Gemini', action: () => ctxLaunchTool('continue', 'gemini'), icon: CTX_ICON_PLAY })
+    items.push({ label: 'Continue Codex', action: () => ctxLaunchTool('continue', 'codex'), icon: CTX_ICON_PLAY })
+    items.push({ label: 'Continue Gemini', action: () => ctxLaunchTool('continue', 'gemini'), icon: CTX_ICON_PLAY })
 
-    // Secondary launch modes
+    // New session — consistent across all tools
     items.push({ separator: true })
     items.push({ label: 'New Claude Session', action: () => ctxLaunchTool('fresh', 'claude'), icon: CTX_ICON_PLUS })
+    items.push({ label: 'New Codex Session', action: () => ctxLaunchTool('fresh', 'codex'), icon: CTX_ICON_PLUS })
+    items.push({ label: 'New Gemini Session', action: () => ctxLaunchTool('fresh', 'gemini'), icon: CTX_ICON_PLUS })
+
+    // Resume — consistent across all tools
+    items.push({ separator: true })
     items.push({ label: 'Resume Claude', action: () => ctxLaunchTool('resume', 'claude'), icon: CTX_ICON_CLOCK })
     items.push({ label: 'Resume Codex', action: () => ctxLaunchTool('resume', 'codex'), icon: CTX_ICON_CLOCK })
+    items.push({ label: 'Resume Gemini', action: () => ctxLaunchTool('resume', 'gemini'), icon: CTX_ICON_CLOCK })
 
     // Per-tool stop/restart for each running session
     if (liveSessions.length > 0) {

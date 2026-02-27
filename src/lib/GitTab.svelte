@@ -1,6 +1,7 @@
 <script>
   import { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
+  import ContextMenu from './ContextMenu.svelte'
 
   /** @type {{ projectPath: string, projectId: string, dark: boolean, navTarget: object|null, position: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
   let { projectPath, projectId, dark, navTarget = null, position = $bindable(null), onNavigateToFile, onClearNavTarget } = $props()
@@ -273,6 +274,25 @@
     }
     return `background: hsl(${hue} 55% 90%); color: hsl(${hue} 60% 35%);`
   }
+
+  // --- Commit context menu ---
+  let commitCtxMenu = $state(null) // { x, y, hash, message }
+
+  const CTX_ICON_COPY = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/></svg>'
+
+  function openCommitContextMenu(e, commit) {
+    e.preventDefault()
+    commitCtxMenu = { x: e.clientX, y: e.clientY, hash: commit.hash, message: commit.message }
+  }
+
+  function closeCommitContextMenu() {
+    commitCtxMenu = null
+  }
+
+  const commitCtxMenuItems = $derived(commitCtxMenu ? [
+    { label: 'Copy Commit Hash', action: () => { navigator.clipboard.writeText(commitCtxMenu.hash); closeCommitContextMenu() }, icon: CTX_ICON_COPY },
+    { label: 'Copy Commit Message', action: () => { navigator.clipboard.writeText(commitCtxMenu.message); closeCommitContextMenu() }, icon: CTX_ICON_COPY },
+  ] : [])
 </script>
 
 <div class="flex-1 flex min-h-0" data-testid="git-tab">
@@ -492,6 +512,7 @@
             class="w-full flex items-center h-[46px] text-left px-3 gap-2.5 transition-colors border-b {rowBorder}
               {isSelected ? t.listSelected : t.listHover}"
             onclick={() => selectCommit(commit.hash)}
+            oncontextmenu={(e) => openCommitContextMenu(e, commit)}
             data-testid="commit-row"
             aria-current={isSelected ? 'true' : undefined}
           >
@@ -528,3 +549,7 @@
     </div>
   </div>
 </div>
+
+{#if commitCtxMenu}
+  <ContextMenu items={commitCtxMenuItems} x={commitCtxMenu.x} y={commitCtxMenu.y} {dark} onClose={closeCommitContextMenu} />
+{/if}

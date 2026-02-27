@@ -5,6 +5,7 @@
   import * as assetCache from './assetCache.js'
   import MarkdownRenderer from './MarkdownRenderer.svelte'
   import CodeViewer from './CodeViewer.svelte'
+  import ContextMenu from './ContextMenu.svelte'
   import { themeTokens } from './themeTokens.js'
 
   let {
@@ -183,6 +184,32 @@
       fileContentLoading = false
     }
   }
+
+  // --- File tree context menu ---
+  let fileCtxMenu = $state(null) // { x, y, path, name }
+
+  function openFileContextMenu(e, path, name) {
+    e.preventDefault()
+    fileCtxMenu = { x: e.clientX, y: e.clientY, path, name }
+  }
+
+  function closeFileContextMenu() {
+    fileCtxMenu = null
+  }
+
+  function relativePath(fullPath) {
+    const base = selectedProject?.path || ''
+    if (fullPath.startsWith(base)) {
+      const rel = fullPath.slice(base.length)
+      return rel.startsWith('/') ? rel.slice(1) : rel
+    }
+    return fullPath
+  }
+
+  const fileCtxMenuItems = $derived(fileCtxMenu ? [
+    { label: 'Copy Path', action: () => { navigator.clipboard.writeText(fileCtxMenu.path); closeFileContextMenu() }, icon: '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/></svg>' },
+    { label: 'Copy Relative Path', action: () => { navigator.clipboard.writeText(relativePath(fileCtxMenu.path)); closeFileContextMenu() }, icon: '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/></svg>' },
+  ] : [])
 </script>
 
 <div class="flex-1 flex min-h-0 min-w-0 overflow-hidden">
@@ -212,6 +239,7 @@
                 class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
                 style="padding-left: {8 + depth * 16}px"
                 onclick={() => toggleDir(node.path)}
+                oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
                 role="treeitem"
                 aria-selected={false}
                 aria-expanded={expandedDirs.has(node.path)}
@@ -230,6 +258,7 @@
                   {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
                 style="padding-left: {22 + depth * 16}px"
                 onclick={() => openFile(node.path)}
+                oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
                 role="treeitem"
                 aria-selected={isSelected}
               >
@@ -302,3 +331,7 @@
     {/if}
   </div>
 </div>
+
+{#if fileCtxMenu}
+  <ContextMenu items={fileCtxMenuItems} x={fileCtxMenu.x} y={fileCtxMenu.y} {dark} onClose={closeFileContextMenu} />
+{/if}
