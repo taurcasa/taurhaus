@@ -44,7 +44,7 @@ A desktop companion for developers running multiple AI coding sessions at once. 
    Then restart WSL: `wsl --shutdown`
 
 4. **At least one AI CLI tool** inside WSL:
-   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
+   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `curl -fsSL https://claude.ai/install.sh | bash`
    - [Codex](https://github.com/openai/codex): `npm install -g @openai/codex`
    - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli`
 
@@ -65,11 +65,11 @@ A desktop companion for developers running multiple AI coding sessions at once. 
    ```
 
 3. **At least one AI CLI tool**:
-   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
-   - [Codex](https://github.com/openai/codex): `npm install -g @openai/codex`
+   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `brew install --cask claude-code`
+   - [Codex](https://github.com/openai/codex): `brew install --cask codex`
    - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli`
 
-**Install**: Download the DMG from [Releases](../../releases) — choose `aarch64` for Apple Silicon (M1/M2/M3/M4) or `x64` for Intel Macs. Drag to Applications.
+**Install**: Download the DMG from [Releases](../../releases) — choose `universal` for any Mac, or `aarch64` (Apple Silicon) / `x64` (Intel) for a smaller download. Drag to Applications.
 
 ### First launch
 
