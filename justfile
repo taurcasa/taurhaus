@@ -62,6 +62,7 @@ build-linux:
 
 # Build the WSL daemon binary (Linux target)
 build-daemon:
+    @mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
     cd src-tauri && cargo build --release --bin taurhaus-daemon
 
 # Install daemon to ~/.local/bin/ (WSL)
@@ -91,6 +92,9 @@ install-daemon:
         echo "✓ Daemon stopped"
         WAS_RUNNING=true
     fi
+
+    # Ensure resource placeholder exists (Tauri build script validates it)
+    mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
 
     # Build
     echo "▸ Building daemon…"
@@ -180,6 +184,9 @@ build-macos: sync-macos
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
+    echo "▸ Creating daemon resource placeholder…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo ""
     echo "▸ Building daemon on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon'"
     echo ""
@@ -215,11 +222,14 @@ build-macos-intel: sync-macos
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
+    echo "▸ Creating daemon resource placeholder…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo ""
     echo "▸ Building daemon on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon'"
     echo ""
     echo "▸ Bundling daemon into resources…"
-    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    ssh {{mac_host}} "zsh -ilc 'cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
     echo ""
     echo "▸ Building Intel (x86_64) macOS app…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm run build && cargo tauri build --target x86_64-apple-darwin 2>&1'"
@@ -240,6 +250,9 @@ build-macos-universal: sync-macos
     set -euo pipefail
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
+    echo ""
+    echo "▸ Creating daemon resource placeholder…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
     echo ""
     echo "▸ Building daemon for arm64…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon --target aarch64-apple-darwin'"
