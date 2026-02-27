@@ -19,7 +19,6 @@
   import { themeTokens } from './lib/themeTokens.js'
 
   let dark = $state(false)
-  let preview = $state(false)
 
   // Code theme preferences (persisted in settings)
   let codeThemeLight = $state(DEFAULT_LIGHT_THEME)
@@ -480,24 +479,27 @@
     })
   }
 
-  // Dev-only: fullscreen preview simulates Tauri desktop experience
-  function togglePreview() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
-      preview = true
-    } else {
-      document.exitFullscreen()
-      preview = false
-    }
+  // Window controls (Tauri custom titlebar — decorations: false)
+  async function minimizeWindow() {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      await getCurrentWindow().minimize()
+    } catch { /* dev mode — no Tauri runtime */ }
   }
 
-  $effect(() => {
-    const handler = () => {
-      if (!document.fullscreenElement) preview = false
-    }
-    document.addEventListener('fullscreenchange', handler)
-    return () => document.removeEventListener('fullscreenchange', handler)
-  })
+  async function toggleMaximize() {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      await getCurrentWindow().toggleMaximize()
+    } catch { /* dev mode — no Tauri runtime */ }
+  }
+
+  async function closeWindow() {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      await getCurrentWindow().close()
+    } catch { /* dev mode — no Tauri runtime */ }
+  }
 
   // Cmd+K / Ctrl+K global search shortcut
   $effect(() => {
@@ -655,7 +657,7 @@
       <div class="flex-1 h-full" data-tauri-drag-region></div>
 
       <!-- Titlebar controls -->
-      <div class="flex items-center gap-0.5 pb-2 pr-3 shrink-0">
+      <div class="flex items-center gap-0.5 pb-2 pr-1 shrink-0">
         <button
           class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
             {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
@@ -666,10 +668,31 @@
             {dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
           onclick={() => dark = true}
         >Dark</button>
-        <button
-          class="ml-1.5 px-2 py-0.5 rounded text-[11px] font-medium text-brand-400/60 hover:text-brand-400 transition-colors"
-          onclick={togglePreview}
-        >{preview ? 'Exit' : 'Preview'}</button>
+
+        <!-- Window controls -->
+        <div class="flex items-center ml-2">
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+            onclick={minimizeWindow}
+            title="Minimize"
+          >
+            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+          </button>
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+            onclick={toggleMaximize}
+            title="Maximize"
+          >
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor"/></svg>
+          </button>
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-red-500/80 transition-colors"
+            onclick={closeWindow}
+            title="Close"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>
