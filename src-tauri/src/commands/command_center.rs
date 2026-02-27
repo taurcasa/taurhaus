@@ -10,7 +10,7 @@ use tauri::State;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::daemon::protocol::{self, LaunchMode};
-use crate::models::TerminalSettings;
+use crate::models::{CliCommandSettings, TerminalSettings};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
 use crate::session_scanner::ClaudeSession;
@@ -23,6 +23,21 @@ fn load_terminal_settings(db: &DbState) -> TerminalSettings {
         .and_then(|conn| crate::db::settings_queries::get_all_settings(&conn).ok())
         .map(|s| s.terminal)
         .unwrap_or_default()
+}
+
+/// Resolve the tool command from user settings for a given tool and mode.
+fn resolve_tool_command(cmds: &CliCommandSettings, tool: CliTool, mode: LaunchMode) -> String {
+    let tool_cmds = match tool {
+        CliTool::Claude => &cmds.claude,
+        CliTool::Codex => &cmds.codex,
+        CliTool::Gemini => &cmds.gemini,
+    };
+    let cmd = match mode {
+        LaunchMode::Continue => &tool_cmds.continue_cmd,
+        LaunchMode::Fresh => &tool_cmds.fresh,
+        LaunchMode::Resume => &tool_cmds.resume,
+    };
+    cmd.clone()
 }
 
 /// List all running Claude Code sessions.
@@ -133,6 +148,7 @@ pub fn launch_claude_session(
         if daemon.is_connected() {
             let id = "launch-session";
             let ts = load_terminal_settings(&db);
+            let tool_cmd = resolve_tool_command(&ts.cli_commands, tool, mode);
             let request = protocol::DaemonRequest::new(
                 id,
                 protocol::method::LAUNCH_SESSION,
@@ -141,6 +157,7 @@ pub fn launch_claude_session(
                     mode,
                     cli_tool: tool,
                     tmux_layout: ts.tmux_layout.clone(),
+                    command_override: Some(tool_cmd),
                 },
             );
             match daemon.send_status_request(&request) {
@@ -191,15 +208,18 @@ pub fn launch_claude_session(
     if let Ok(mut f) = log_file.0.lock() {
         let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
     }
+    let ts = load_terminal_settings(&db);
+    let tool_cmd = resolve_tool_command(&ts.cli_commands, tool, mode);
     let (session, window, pane) =
-        crate::session_scanner::control::launch_in_tmux(&linux_path, mode, tool)
+        crate::session_scanner::control::launch_in_tmux_with_layout(
+            &linux_path, mode, tool, &ts.tmux_layout, Some(&tool_cmd),
+        )
             .map_err(|e| format!("Failed to launch session: {e}"))?;
 
     // On macOS, also open the terminal emulator (direct launch doesn't go
     // through the daemon path which handles this).
     #[cfg(target_os = "macos")]
     {
-        let ts = load_terminal_settings(&db);
         let _ = crate::terminal::handle_terminal(
             crate::terminal::TerminalIntent::EnsureOpen {
                 distro: None,

@@ -54,7 +54,7 @@
         thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
         ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
         code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
-        terminal: { emulator: platform === 'macos' ? 'iterm2' : 'windows_terminal', custom_command: '', tmux_layout: 'new_window' },
+        terminal: { emulator: platform === 'macos' ? 'iterm2' : 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: structuredClone(CLI_DEFAULTS) },
       }
     } finally {
       loading = false
@@ -120,6 +120,46 @@
       .map(s => s.trim())
       .filter(s => s.length > 0)
     editingIgnore = false
+    saveSettings()
+  }
+
+  // Default CLI tool launch commands (must match Rust CliCommandSettings::default())
+  const CLI_DEFAULTS = {
+    claude: {
+      continue_cmd: 'claude --dangerously-skip-permissions --continue',
+      fresh: 'claude --dangerously-skip-permissions',
+      resume: 'claude --dangerously-skip-permissions --resume',
+    },
+    codex: {
+      continue_cmd: 'codex --yolo',
+      fresh: 'codex --yolo',
+      resume: 'codex resume --last --yolo',
+    },
+    gemini: {
+      continue_cmd: 'gemini --yolo --resume',
+      fresh: 'gemini --yolo',
+      resume: 'gemini --yolo --resume',
+    },
+  }
+
+  function ensureCliCommands() {
+    if (!settings.terminal) settings.terminal = { emulator: platform === 'macos' ? 'iterm2' : 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: structuredClone(CLI_DEFAULTS) }
+    if (!settings.terminal.cli_commands) settings.terminal.cli_commands = structuredClone(CLI_DEFAULTS)
+  }
+
+  function getCliCmd(tool, mode) {
+    return settings?.terminal?.cli_commands?.[tool]?.[mode] ?? CLI_DEFAULTS[tool][mode]
+  }
+
+  function setCliCmd(tool, mode, value) {
+    ensureCliCommands()
+    settings.terminal.cli_commands[tool][mode] = value
+    saveSettings()
+  }
+
+  function resetToolDefaults(tool) {
+    ensureCliCommands()
+    settings.terminal.cli_commands[tool] = structuredClone(CLI_DEFAULTS[tool])
     saveSettings()
   }
 
@@ -445,6 +485,66 @@
               </div>
             {/if}
           </div>
+        </section>
+
+        <!-- ═══ CLI TOOLS ═══ -->
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-cli-tools">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">CLI Tools</h2>
+          <p class="text-[13px] {textTertiary} mb-4">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
+
+          {#each [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI']] as [tool, label]}
+            <div class="mb-4 last:mb-0">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-[12px] font-medium {t.textBody}">{label}</h3>
+                <button
+                  class="text-[11px] {t.linkColor} transition-colors"
+                  onclick={() => resetToolDefaults(tool)}
+                  data-testid="cli-reset-{tool}"
+                >Reset</button>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center gap-3">
+                  <label for="cli-{tool}-continue" class="text-[12px] {t.textSecondary} w-20 shrink-0">Continue</label>
+                  <input
+                    id="cli-{tool}-continue"
+                    type="text"
+                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                    value={getCliCmd(tool, 'continue_cmd')}
+                    placeholder={CLI_DEFAULTS[tool].continue_cmd}
+                    onblur={(e) => setCliCmd(tool, 'continue_cmd', e.target.value)}
+                    data-testid="cli-{tool}-continue"
+                  />
+                </div>
+                <div class="flex items-center gap-3">
+                  <label for="cli-{tool}-fresh" class="text-[12px] {t.textSecondary} w-20 shrink-0">New session</label>
+                  <input
+                    id="cli-{tool}-fresh"
+                    type="text"
+                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                    value={getCliCmd(tool, 'fresh')}
+                    placeholder={CLI_DEFAULTS[tool].fresh}
+                    onblur={(e) => setCliCmd(tool, 'fresh', e.target.value)}
+                    data-testid="cli-{tool}-fresh"
+                  />
+                </div>
+                <div class="flex items-center gap-3">
+                  <label for="cli-{tool}-resume" class="text-[12px] {t.textSecondary} w-20 shrink-0">Resume</label>
+                  <input
+                    id="cli-{tool}-resume"
+                    type="text"
+                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                    value={getCliCmd(tool, 'resume')}
+                    placeholder={CLI_DEFAULTS[tool].resume}
+                    onblur={(e) => setCliCmd(tool, 'resume', e.target.value)}
+                    data-testid="cli-{tool}-resume"
+                  />
+                </div>
+              </div>
+              {#if tool !== 'gemini'}
+                <div class="mt-3 border-b {t.keyline}"></div>
+              {/if}
+            </div>
+          {/each}
         </section>
 
         <!-- ═══ SEARCH ═══ -->

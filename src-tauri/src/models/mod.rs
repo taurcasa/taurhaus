@@ -184,6 +184,47 @@ impl Default for CodeThemeSettings {
     }
 }
 
+/// Per-mode launch commands for a single CLI tool.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ToolCommands {
+    /// Command for "Continue" mode (resume latest session).
+    pub continue_cmd: String,
+    /// Command for "Fresh" mode (start new session).
+    pub fresh: String,
+    /// Command for "Resume" mode (pick a session to resume).
+    pub resume: String,
+}
+
+/// Per-tool launch command configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CliCommandSettings {
+    pub claude: ToolCommands,
+    pub codex: ToolCommands,
+    pub gemini: ToolCommands,
+}
+
+impl Default for CliCommandSettings {
+    fn default() -> Self {
+        Self {
+            claude: ToolCommands {
+                continue_cmd: "claude --dangerously-skip-permissions --continue".into(),
+                fresh: "claude --dangerously-skip-permissions".into(),
+                resume: "claude --dangerously-skip-permissions --resume".into(),
+            },
+            codex: ToolCommands {
+                continue_cmd: "codex --yolo".into(),
+                fresh: "codex --yolo".into(),
+                resume: "codex resume --last --yolo".into(),
+            },
+            gemini: ToolCommands {
+                continue_cmd: "gemini --yolo --resume".into(),
+                fresh: "gemini --yolo".into(),
+                resume: "gemini --yolo --resume".into(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TerminalSettings {
     /// Terminal emulator to use:
@@ -195,6 +236,9 @@ pub struct TerminalSettings {
     pub custom_command: String,
     /// Tmux layout strategy: "new_window" (default), "split", "per_project"
     pub tmux_layout: String,
+    /// Per-tool launch command configuration.
+    #[serde(default)]
+    pub cli_commands: CliCommandSettings,
 }
 
 impl Default for TerminalSettings {
@@ -203,6 +247,7 @@ impl Default for TerminalSettings {
             emulator: default_emulator().into(),
             custom_command: String::new(),
             tmux_layout: "new_window".into(),
+            cli_commands: CliCommandSettings::default(),
         }
     }
 }
@@ -566,5 +611,44 @@ mod tests {
         assert_eq!(t.active_days, 7);
         assert_eq!(t.recent_days, 30);
         assert_eq!(t.stale_days, 90);
+    }
+
+    #[test]
+    fn cli_command_defaults_match_hardcoded_values() {
+        let cmds = CliCommandSettings::default();
+        // Claude
+        assert_eq!(cmds.claude.continue_cmd, "claude --dangerously-skip-permissions --continue");
+        assert_eq!(cmds.claude.fresh, "claude --dangerously-skip-permissions");
+        assert_eq!(cmds.claude.resume, "claude --dangerously-skip-permissions --resume");
+        // Codex
+        assert_eq!(cmds.codex.continue_cmd, "codex --yolo");
+        assert_eq!(cmds.codex.fresh, "codex --yolo");
+        assert_eq!(cmds.codex.resume, "codex resume --last --yolo");
+        // Gemini
+        assert_eq!(cmds.gemini.continue_cmd, "gemini --yolo --resume");
+        assert_eq!(cmds.gemini.fresh, "gemini --yolo");
+        assert_eq!(cmds.gemini.resume, "gemini --yolo --resume");
+    }
+
+    #[test]
+    fn cli_command_settings_serialization_roundtrip() {
+        let cmds = CliCommandSettings::default();
+        let json = serde_json::to_string(&cmds).unwrap();
+        let back: CliCommandSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(cmds, back);
+    }
+
+    #[test]
+    fn terminal_settings_default_includes_cli_commands() {
+        let ts = TerminalSettings::default();
+        assert_eq!(ts.cli_commands, CliCommandSettings::default());
+    }
+
+    #[test]
+    fn terminal_settings_deserializes_without_cli_commands() {
+        // Backward compat: old settings JSON without cli_commands field
+        let json = r#"{"emulator":"iterm2","custom_command":"","tmux_layout":"new_window"}"#;
+        let ts: TerminalSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(ts.cli_commands, CliCommandSettings::default());
     }
 }

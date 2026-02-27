@@ -19,15 +19,16 @@ pub fn launch_in_tmux(
     mode: LaunchMode,
     tool: CliTool,
 ) -> Result<(String, String, String), String> {
-    launch_in_tmux_with_layout(project_path, mode, tool, "new_window")
+    launch_in_tmux_with_layout(project_path, mode, tool, "new_window", None)
 }
 
-/// Launch with explicit layout strategy.
+/// Launch with explicit layout strategy and optional command override.
 pub fn launch_in_tmux_with_layout(
     project_path: &str,
     mode: LaunchMode,
     tool: CliTool,
     layout: &str,
+    command_override: Option<&str>,
 ) -> Result<(String, String, String), String> {
     // Validate project path
     if !Path::new(project_path).is_dir() {
@@ -43,8 +44,11 @@ pub fn launch_in_tmux_with_layout(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "claude".to_string());
 
-    // Build the full command: cd to project, run tool, then drop into shell on exit.
-    let tool_cmd = build_launch_command(tool, mode);
+    // Build the full command: use override if provided, otherwise fall back to defaults.
+    let tool_cmd = match command_override {
+        Some(cmd) if !cmd.is_empty() => cmd.to_string(),
+        _ => build_launch_command(tool, mode),
+    };
     let escaped_path = shell_escape(project_path);
     let inner_cmd = format!("cd {escaped_path} && {tool_cmd}; exec \"$SHELL\"");
     let shell_cmd = format!("exec \"$SHELL\" -ic {}", shell_escape(&inner_cmd));

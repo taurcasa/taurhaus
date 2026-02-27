@@ -238,6 +238,10 @@ pub struct LaunchSessionParams {
     /// Defaults to "new_window" for backward compatibility.
     #[serde(default = "default_tmux_layout")]
     pub tmux_layout: String,
+    /// Custom command to execute instead of the default for this tool/mode.
+    /// Resolved from user settings on the app side. The daemon just executes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_override: Option<String>,
 }
 
 fn default_tmux_layout() -> String {
@@ -590,10 +594,26 @@ mod tests {
             mode: LaunchMode::Continue,
             cli_tool: crate::session_scanner::cli_tool::CliTool::Claude,
             tmux_layout: "new_window".to_string(),
+            command_override: None,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: LaunchSessionParams = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
+    }
+
+    #[test]
+    fn launch_session_params_with_command_override() {
+        let p = LaunchSessionParams {
+            project_path: "/proj".to_string(),
+            mode: LaunchMode::Fresh,
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Claude,
+            tmux_layout: "new_window".to_string(),
+            command_override: Some("my-custom-claude --flag".to_string()),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("command_override"));
+        let back: LaunchSessionParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.command_override, Some("my-custom-claude --flag".to_string()));
     }
 
     #[test]
@@ -602,6 +622,7 @@ mod tests {
         let json = r#"{"project_path":"/proj","mode":"fresh"}"#;
         let p: LaunchSessionParams = serde_json::from_str(json).unwrap();
         assert_eq!(p.cli_tool, crate::session_scanner::cli_tool::CliTool::Claude);
+        assert_eq!(p.command_override, None);
     }
 
     #[test]
