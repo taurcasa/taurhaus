@@ -17,6 +17,7 @@ src-tauri/src/platform/
   mod.rs          # cfg-based re-exports
   linux.rs        # LinuxProbe — /proc filesystem
   darwin.rs       # DarwinProbe — libproc + lsof
+  windows.rs      # No-op stubs (session scanning via WSL daemon)
   types.rs        # Shared types (ProcessInfo, ActivityState)
 ```
 
@@ -35,9 +36,16 @@ pub use linux::*;
 mod darwin;
 #[cfg(target_os = "macos")]
 pub use darwin::*;
+
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::*;
 ```
 
 No trait — just matching function signatures. The compiler ensures the API contract at build time. This is simpler than `dyn Trait` and has zero runtime cost.
+
+**Windows note**: On Windows, CLI tools run inside WSL2, not as native Windows processes. The daemon (a Linux binary in WSL) handles session scanning using `linux.rs`. The `windows.rs` stubs return `None`/empty — the app's direct `scan_sessions()` fallback compiles but produces empty results, which is correct behavior (the daemon path provides the real data).
 
 ---
 

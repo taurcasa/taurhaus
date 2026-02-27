@@ -15,3 +15,8 @@ pub use linux::*;
 mod darwin;
 #[cfg(target_os = "macos")]
 pub use darwin::*;
+
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::*;
