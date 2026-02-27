@@ -10,6 +10,7 @@ use tauri::State;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::daemon::protocol::{self, LaunchMode};
+use crate::errors::sanitize_error;
 use crate::models::{CliCommandSettings, TerminalSettings};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
@@ -646,7 +647,7 @@ pub fn get_commit_files(
     let provider = providers.resolve(&project_path);
     provider
         .commit_files(&project_path, &hash)
-        .map_err(|e| e.to_string())
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 /// Get diff hunks for a specific file in a specific commit.
@@ -662,7 +663,7 @@ pub fn get_commit_diff(
     let provider = providers.resolve(&project_path);
     provider
         .commit_diff(&project_path, &hash, &file_path)
-        .map_err(|e| e.to_string())
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 /// Get commits and files changed in a time range.
@@ -678,7 +679,7 @@ pub fn get_commits_in_range(
     let provider = providers.resolve(&project_path);
     let (commits, files) = provider
         .commits_in_range(&project_path, &after, &before)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| sanitize_error(&e.to_string()))?;
     Ok(crate::daemon::protocol::GitCommitsInRangeResult { commits, files })
 }
 

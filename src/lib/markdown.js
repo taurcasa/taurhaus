@@ -123,17 +123,24 @@ export async function renderMarkdown(source, theme = 'github-light') {
       raw = md.render(safeSource)
     }
 
+    // Shiki uses inline `style` on code spans for syntax coloring — the
+    // markdown pipeline includes Shiki output, so we must allow `style`.
+    // FORBID_TAGS blocks <style> elements (CSS injection) while keeping
+    // inline style= attributes.
     return DOMPurify.sanitize(raw, {
       ADD_TAGS: ['span'],
       ADD_ATTR: ['class', 'style', 'target', 'rel'],
+      FORBID_TAGS: ['style'],
     })
   } catch (err) {
-    // Shiki pipeline failed entirely — fall back to plain markdown-it
+    // Shiki pipeline failed entirely — fall back to plain markdown-it.
+    // No Shiki output here, so no inline styles needed.
     console.warn(`[markdown] Shiki pipeline failed, using plain fallback: ${err}`)
     const raw = getPlainMd().render(source)
     return DOMPurify.sanitize(raw, {
       ADD_TAGS: ['span'],
-      ADD_ATTR: ['class', 'style', 'target', 'rel'],
+      ADD_ATTR: ['class', 'target', 'rel'],
+      FORBID_TAGS: ['style'],
     })
   }
 }
@@ -201,8 +208,11 @@ export async function highlightCode(code, lang, theme = 'github-light') {
 
   const effectiveLang = lang || 'text'
   const html = highlighter.codeToHtml(code, { lang: effectiveLang, theme })
+  // Shiki uses inline style= for token colors — must keep `style` in ADD_ATTR.
+  // FORBID_TAGS blocks <style> elements while keeping inline style= attributes.
   return DOMPurify.sanitize(html, {
     ADD_TAGS: ['span'],
     ADD_ATTR: ['class', 'style'],
+    FORBID_TAGS: ['style'],
   })
 }

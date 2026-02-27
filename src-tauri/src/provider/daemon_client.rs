@@ -43,9 +43,17 @@ pub struct DaemonProvider {
     connected: AtomicBool,
     /// Timestamp of the last inline reconnection attempt (for rate limiting).
     last_reconnect_attempt: Mutex<Option<Instant>>,
+    /// Auth token read from the daemon's token file.
+    auth_token: Option<String>,
 }
 
 impl DaemonProvider {
+    /// Read the daemon's auth token from the well-known file path.
+    fn read_auth_token() -> Option<String> {
+        let path = crate::daemon::auth::token_path()?;
+        crate::daemon::auth::read_token(&path).ok()
+    }
+
     /// Create a new DaemonProvider connected to the given address.
     pub fn connect(addr: &str) -> Result<Self, AppError> {
         let stream = TcpStream::connect(addr).map_err(|e| {
@@ -62,6 +70,7 @@ impl DaemonProvider {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(true),
             last_reconnect_attempt: Mutex::new(None),
+            auth_token: Self::read_auth_token(),
         })
     }
 
@@ -76,6 +85,7 @@ impl DaemonProvider {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),
+            auth_token: Self::read_auth_token(),
         }
     }
 
@@ -241,7 +251,11 @@ impl DaemonProvider {
 
         stream.set_read_timeout(Some(timeout)).map_err(AppError::Io)?;
 
-        let json = serde_json::to_string(request).map_err(|e| {
+        // Attach auth token to the request
+        let mut authed_request = request.clone();
+        authed_request.auth = self.auth_token.clone();
+
+        let json = serde_json::to_string(&authed_request).map_err(|e| {
             AppError::InvalidPath(format!("Failed to serialize request: {e}"))
         })?;
         stream.write_all(json.as_bytes()).map_err(AppError::Io)?;
@@ -479,6 +493,7 @@ mod tests {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
+            auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
         std::thread::spawn(move || {
@@ -704,6 +719,7 @@ mod tests {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
+            auth_token: None,
         };
         let shutdown2_clone = shutdown2.clone();
         std::thread::spawn(move || {
@@ -730,6 +746,7 @@ mod tests {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),
+            auth_token: None,
         };
 
         // First attempt: should try (and fail, but that's fine)

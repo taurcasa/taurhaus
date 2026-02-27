@@ -19,10 +19,29 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
         .init();
 
+    // Generate auth token and write to well-known file
+    let auth_token = match taurhaus_lib::daemon::auth::token_path() {
+        Some(path) => match taurhaus_lib::daemon::auth::generate_and_write_token(&path) {
+            Ok(token) => {
+                tracing::info!(path = %path.display(), "Auth token written");
+                Some(token)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to write auth token, running without auth");
+                None
+            }
+        },
+        None => {
+            tracing::warn!("Could not determine data dir, running without auth");
+            None
+        }
+    };
+
     tracing::info!(
         port = args.port,
         bind = %args.bind_addr,
         idle_timeout = ?args.idle_timeout_secs,
+        auth = auth_token.is_some(),
         "taurhaus-daemon starting"
     );
 
@@ -30,6 +49,7 @@ fn main() {
         port: args.port,
         bind_addr: args.bind_addr,
         idle_timeout_secs: args.idle_timeout_secs,
+        auth_token,
     };
 
     let shutdown = Arc::new(AtomicBool::new(false));

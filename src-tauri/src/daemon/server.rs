@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -29,6 +29,9 @@ pub struct DaemonConfig {
     /// Auto-shutdown after this many seconds with no client activity.
     /// `None` disables idle timeout.
     pub idle_timeout_secs: Option<u64>,
+    /// Auth token. When `Some`, every request must include a matching `auth` field.
+    /// When `None`, authentication is disabled (for tests/backward compat).
+    pub auth_token: Option<String>,
 }
 
 impl Default for DaemonConfig {
@@ -37,6 +40,7 @@ impl Default for DaemonConfig {
             port: DEFAULT_PORT,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
+            auth_token: None,
         }
     }
 }
@@ -56,6 +60,7 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
 
     let start_time = Instant::now();
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
+    let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
 
     tracing::info!(port = config.port, "daemon listening");
 
@@ -67,8 +72,9 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
                 let shutdown_clone = shutdown.clone();
                 let start = start_time;
                 let activity = last_activity.clone();
+                let token = auth_token.clone();
                 std::thread::spawn(move || {
-                    if let Err(e) = handle_connection(stream, start, &shutdown_clone, &activity) {
+                    if let Err(e) = handle_connection(stream, start, &shutdown_clone, &activity, token.as_deref()) {
                         tracing::warn!(error = %e, "connection handler error");
                     }
                 });
@@ -102,34 +108,75 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
 /// - `Err(InvalidData)` — line exceeded `max_len` bytes
 /// - `Err(other)` — propagated I/O error (timeout, etc.)
 fn read_bounded_line(reader: &mut BufReader<TcpStream>, max_len: usize) -> std::io::Result<Option<String>> {
-    // BufReader::read_line is the simplest approach. It grows the buffer
-    // dynamically, but we check the length immediately after and reject.
-    // For a localhost-only daemon this is sufficient defense-in-depth.
-    let mut line = String::new();
-    let bytes_read = reader.read_line(&mut line)?;
+    use std::io::BufRead as _;
 
-    if bytes_read == 0 {
-        return Ok(None); // EOF
-    }
+    let mut line = Vec::new();
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            // EOF
+            return if line.is_empty() {
+                Ok(None)
+            } else {
+                // Partial line at EOF — try to return it
+                break;
+            };
+        }
 
-    if line.len() > max_len {
-        // Drain any remaining bytes up to the next newline to resync.
-        // (The read_line already consumed through the newline, so we're synced.)
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "request line too large",
-        ));
-    }
-
-    // Strip the trailing newline
-    if line.ends_with('\n') {
-        line.pop();
-        if line.ends_with('\r') {
-            line.pop();
+        if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+            let chunk = &available[..=pos];
+            if line.len() + chunk.len() > max_len {
+                reader.consume(pos + 1); // drain through the newline to resync
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "request line too large",
+                ));
+            }
+            line.extend_from_slice(chunk);
+            reader.consume(pos + 1);
+            break;
+        } else {
+            let len = available.len();
+            if line.len() + len > max_len {
+                reader.consume(len);
+                drain_until_newline(reader);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "request line too large",
+                ));
+            }
+            line.extend_from_slice(available);
+            reader.consume(len);
         }
     }
 
-    Ok(Some(line))
+    // Strip trailing \r\n
+    if line.last() == Some(&b'\n') { line.pop(); }
+    if line.last() == Some(&b'\r') { line.pop(); }
+
+    String::from_utf8(line)
+        .map(Some)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "request line is not valid UTF-8"))
+}
+
+/// Drain bytes until the next newline to resync the stream after an oversized line.
+fn drain_until_newline(reader: &mut BufReader<TcpStream>) {
+    use std::io::BufRead as _;
+
+    loop {
+        match reader.fill_buf() {
+            Ok([]) => break,
+            Ok(buf) => {
+                if let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                    reader.consume(pos + 1);
+                    break;
+                }
+                let len = buf.len();
+                reader.consume(len);
+            }
+            Err(_) => break,
+        }
+    }
 }
 
 /// Handle a single client connection: read NDJSON requests, dispatch, respond.
@@ -141,6 +188,7 @@ fn handle_connection(
     start_time: Instant,
     shutdown: &AtomicBool,
     last_activity: &AtomicU64,
+    auth_token: Option<&str>,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(1)))?;
@@ -190,6 +238,15 @@ fn handle_connection(
                 continue;
             }
         };
+
+        // Validate auth token if the server was started with one
+        if let Some(expected) = auth_token {
+            if let Err(msg) = crate::daemon::auth::validate_token(expected, request.auth.as_deref()) {
+                let resp = DaemonResponse::err(&request.id, "AUTH_FAILED", msg);
+                write_locked(&writer, &resp)?;
+                continue;
+            }
+        }
 
         let response = match request.method.as_str() {
             protocol::method::WATCH => {
@@ -781,6 +838,7 @@ mod tests {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
+            auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
         std::thread::spawn(move || {
@@ -1002,6 +1060,7 @@ mod tests {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: Some(1), // 1 second timeout
+            auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
@@ -1049,6 +1108,90 @@ mod tests {
         // Connection should still work for normal requests afterward
         let r = send_request(&mut stream, &mut reader, &DaemonRequest::ping("p1"));
         assert!(r.is_ok());
+
+        shutdown.store(true, Ordering::Relaxed);
+    }
+
+    // -----------------------------------------------------------------------
+    // Auth token tests
+    // -----------------------------------------------------------------------
+
+    fn start_authed_server(token: &str) -> (u16, Arc<AtomicBool>) {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let config = DaemonConfig {
+            port,
+            bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
+            auth_token: Some(token.to_string()),
+        };
+        let shutdown_clone = shutdown.clone();
+        std::thread::spawn(move || {
+            let _ = run(&config, shutdown_clone);
+        });
+
+        for _ in 0..40 {
+            if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+                return (port, shutdown);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("authed test server on port {port} did not start within 2s");
+    }
+
+    #[test]
+    fn server_rejects_missing_auth_token() {
+        let (port, shutdown) = start_authed_server("secret-token-123");
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        // Send request without auth
+        let req = DaemonRequest::ping("r1");
+        let resp = send_request(&mut stream, &mut reader, &req);
+
+        assert!(!resp.is_ok());
+        assert_eq!(resp.error.unwrap().code, "AUTH_FAILED");
+
+        shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn server_rejects_wrong_auth_token() {
+        let (port, shutdown) = start_authed_server("secret-token-123");
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        let mut req = DaemonRequest::ping("r1");
+        req.auth = Some("wrong-token".to_string());
+        let resp = send_request(&mut stream, &mut reader, &req);
+
+        assert!(!resp.is_ok());
+        assert_eq!(resp.error.unwrap().code, "AUTH_FAILED");
+
+        shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn server_accepts_correct_auth_token() {
+        let (port, shutdown) = start_authed_server("secret-token-123");
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        let mut req = DaemonRequest::ping("r1");
+        req.auth = Some("secret-token-123".to_string());
+        let resp = send_request(&mut stream, &mut reader, &req);
+
+        assert!(resp.is_ok());
+        assert_eq!(resp.id, "r1");
 
         shutdown.store(true, Ordering::Relaxed);
     }

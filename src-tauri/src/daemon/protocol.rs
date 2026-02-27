@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The app checks this on connect. If the daemon's protocol version is
 /// lower than what the app expects, it warns the user to rebuild the daemon.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -23,6 +23,10 @@ pub struct DaemonRequest {
     pub method: String,
     #[serde(default)]
     pub params: serde_json::Value,
+    /// Auth token for daemon authentication. Added in protocol v4.
+    /// Old clients without auth will send None (backward compatible).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<String>,
 }
 
 /// A response sent from the daemon to the Windows app.
@@ -314,7 +318,14 @@ impl DaemonRequest {
             id: id.into(),
             method: method.to_string(),
             params: serde_json::to_value(params).unwrap_or(serde_json::Value::Null),
+            auth: None,
         }
+    }
+
+    /// Create a request with an auth token attached.
+    pub fn with_auth(mut self, token: Option<String>) -> Self {
+        self.auth = token;
+        self
     }
 
     pub fn ping(id: impl Into<String>) -> Self {

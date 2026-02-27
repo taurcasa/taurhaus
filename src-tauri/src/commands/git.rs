@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::commands::projects::DbState;
 use crate::db::queries;
+use crate::errors::sanitize_error;
 use crate::models::{Commit, GitStatus};
 use crate::ProviderState;
 
@@ -26,7 +27,7 @@ pub fn get_recent_commits(
     let provider = providers.resolve(&path);
     provider
         .recent_commits(&path, limit.unwrap_or(10).min(500))
-        .map_err(|e| e.to_string())
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 #[tauri::command]
@@ -41,7 +42,7 @@ pub fn get_all_commits(
     let provider = providers.resolve(&path);
     provider
         .all_commits(&path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
-        .map_err(|e| e.to_string())
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 #[tauri::command]
@@ -52,5 +53,5 @@ pub fn get_git_status(
 ) -> Result<GitStatus, String> {
     let path = resolve_project_path(&db, &project_id)?;
     let provider = providers.resolve(&path);
-    provider.git_status(&path).map_err(|e| e.to_string())
+    provider.git_status(&path).map_err(|e| sanitize_error(&e.to_string()))
 }

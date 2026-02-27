@@ -5,6 +5,7 @@ use tauri::State;
 
 use crate::commands::projects::DbState;
 use crate::db::queries;
+use crate::errors::sanitize_error;
 use crate::models::{FileContent, FileTreeNode};
 use crate::ProviderState;
 
@@ -25,7 +26,7 @@ pub fn get_file_tree(
 ) -> Result<Vec<FileTreeNode>, String> {
     let path = resolve_project_path(&db, &project_id)?;
     let provider = providers.resolve(&path);
-    provider.file_tree(&path).map_err(|e| e.to_string())
+    provider.file_tree(&path).map_err(|e| sanitize_error(&e.to_string()))
 }
 
 #[tauri::command]
@@ -39,7 +40,7 @@ pub fn read_file(
     let provider = providers.resolve(&path);
     provider
         .read_file(&path, &relative_path)
-        .map_err(|e| e.to_string())
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 #[tauri::command]
@@ -61,7 +62,7 @@ pub fn get_readme(
         "get_readme: resolving provider"
     );
     let provider = providers.resolve(&path);
-    let result = provider.read_readme(&path).map_err(|e| e.to_string())?;
+    let result = provider.read_readme(&path).map_err(|e| sanitize_error(&e.to_string()))?;
     if let Some(ref content) = result {
         tracing::debug!(
             project_id,
@@ -89,7 +90,7 @@ pub fn read_project_asset(
     let provider = providers.resolve(&path);
     let bytes = provider
         .read_asset(&path, &relative_path)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| sanitize_error(&e.to_string()))?;
 
     let mime = mime_from_extension(&relative_path);
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);

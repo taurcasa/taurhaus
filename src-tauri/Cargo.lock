@@ -4401,6 +4401,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "pretty_assertions",
+ "rand 0.8.5",
  "rusqlite",
  "serde",
  "serde_json",

@@ -46,7 +46,10 @@ pub fn launch_in_tmux_with_layout(
 
     // Build the full command: use override if provided, otherwise fall back to defaults.
     let tool_cmd = match command_override {
-        Some(cmd) if !cmd.is_empty() => cmd.to_string(),
+        Some(cmd) if !cmd.is_empty() => {
+            validate_command_override(cmd)?;
+            cmd.to_string()
+        }
         _ => build_launch_command(tool, mode),
     };
     let escaped_path = shell_escape(project_path);
@@ -301,6 +304,31 @@ pub fn navigate_to_pane(
     Ok(())
 }
 
+/// Validate a user-supplied command override for safety.
+///
+/// Ensures the command starts with a known CLI tool name and contains no
+/// shell metacharacters that could enable command injection.
+fn validate_command_override(cmd: &str) -> Result<(), String> {
+    let first_token = cmd.split_whitespace().next().unwrap_or("");
+    let base_name = first_token.rsplit('/').next().unwrap_or(first_token);
+
+    const ALLOWED_TOOLS: &[&str] = &["claude", "codex", "gemini"];
+    if !ALLOWED_TOOLS.contains(&base_name) {
+        return Err(format!(
+            "Command override must start with claude/codex/gemini, got: {base_name}"
+        ));
+    }
+
+    const FORBIDDEN: &[char] = &[
+        ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\\', '\n', '\r',
+    ];
+    if let Some(c) = cmd.chars().find(|c| FORBIDDEN.contains(c)) {
+        return Err(format!("Command override contains forbidden character: {c:?}"));
+    }
+
+    Ok(())
+}
+
 /// Build the launch command string for a given tool and launch mode.
 pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
     match tool {
@@ -388,7 +416,7 @@ fn propagate_env_to_tmux() {
         if let Ok(val) = std::env::var(var) {
             if !val.is_empty() {
                 let _ = Command::new("tmux")
-                    .args(["set-environment", "-g", var, &val])
+                    .args(["set-environment", "-t", TMUX_SESSION_NAME, var, &val])
                     .output();
             }
         }
@@ -526,6 +554,39 @@ mod tests {
             build_launch_command(CliTool::Gemini, LaunchMode::Resume),
             "gemini --yolo --resume"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Command override validation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn validate_command_override_accepts_tool_commands() {
+        assert!(validate_command_override("claude --dangerously-skip-permissions").is_ok());
+        assert!(validate_command_override("codex --yolo").is_ok());
+        assert!(validate_command_override("gemini --yolo --resume").is_ok());
+    }
+
+    #[test]
+    fn validate_command_override_accepts_absolute_paths() {
+        assert!(validate_command_override("/usr/local/bin/claude --flag").is_ok());
+        assert!(validate_command_override("/home/user/.local/bin/codex --yolo").is_ok());
+    }
+
+    #[test]
+    fn validate_command_override_rejects_unknown_tools() {
+        assert!(validate_command_override("bash -c 'evil'").is_err());
+        assert!(validate_command_override("python3 script.py").is_err());
+        assert!(validate_command_override("rm -rf /").is_err());
+    }
+
+    #[test]
+    fn validate_command_override_rejects_shell_injection() {
+        assert!(validate_command_override("claude; rm -rf /").is_err());
+        assert!(validate_command_override("claude && evil").is_err());
+        assert!(validate_command_override("claude | cat /etc/passwd").is_err());
+        assert!(validate_command_override("claude $(whoami)").is_err());
+        assert!(validate_command_override("claude `id`").is_err());
     }
 
     #[test]

@@ -22,6 +22,8 @@ pub struct DaemonEventListener {
     /// Mapping from watched Linux path → project_id.
     path_to_project: HashMap<String, String>,
     next_id: u64,
+    /// Auth token read from the daemon's token file.
+    auth_token: Option<String>,
 }
 
 impl DaemonEventListener {
@@ -38,12 +40,17 @@ impl DaemonEventListener {
         })?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
+        // Read auth token from well-known file
+        let auth_token = crate::daemon::auth::token_path()
+            .and_then(|p| crate::daemon::auth::read_token(&p).ok());
+
         Ok(Self {
             stream,
             reader,
             event_tx,
             path_to_project: HashMap::new(),
             next_id: 1,
+            auth_token,
         })
     }
 
@@ -59,7 +66,8 @@ impl DaemonEventListener {
             protocol::PathParams {
                 path: linux_path.to_string(),
             },
-        );
+        )
+        .with_auth(self.auth_token.clone());
 
         let json = serde_json::to_string(&request).map_err(|e| {
             AppError::InvalidPath(format!("Serialize watch request failed: {e}"))
@@ -233,6 +241,7 @@ mod tests {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
+            auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
         std::thread::spawn(move || {

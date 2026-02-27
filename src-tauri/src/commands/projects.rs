@@ -5,6 +5,7 @@ use serde::Deserialize;
 use tauri::{Emitter, State};
 
 use crate::db::{queries, settings_queries};
+use crate::errors::sanitize_error;
 use crate::models::{ProjectDetail, ProjectSummary};
 use crate::services::project;
 use crate::{ProviderState, SearchState};
@@ -271,7 +272,7 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
         return Ok(Vec::new());
     }
 
-    let read_dir = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let read_dir = std::fs::read_dir(dir).map_err(|e| sanitize_error(&e.to_string()))?;
     let mut entries: Vec<DirectoryEntry> = Vec::new();
 
     for entry in read_dir {
