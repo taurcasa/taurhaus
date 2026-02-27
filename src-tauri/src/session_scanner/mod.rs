@@ -410,12 +410,22 @@ mod tests {
     // Hysteresis unit tests
     // -----------------------------------------------------------------------
 
+    /// Remove a single PID from the global state tracker.
+    /// Using `retain_state_trackers(&[])` in tests is racy because it clears
+    /// the ENTIRE map — concurrent tests lose their state mid-sequence.
+    fn remove_state_tracker(pid: u32) {
+        let mut guard = STATE_TRACKERS.lock().unwrap();
+        if let Some(map) = guard.as_mut() {
+            map.remove(&pid);
+        }
+    }
+
     #[test]
     fn hysteresis_first_observation_reports_raw() {
         // New PID → report whatever the raw state is
         assert_eq!(apply_hysteresis(900_001, SessionState::Idle), SessionState::Idle);
         // Clean up
-        retain_state_trackers(&[]);
+        remove_state_tracker(900_001);
     }
 
     #[test]
@@ -431,7 +441,7 @@ mod tests {
         // Back to idle → still idle (no change ever happened)
         assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
 
-        retain_state_trackers(&[]);
+        remove_state_tracker(pid);
     }
 
     #[test]
@@ -447,7 +457,7 @@ mod tests {
         // Second consecutive active → switch!
         assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Active);
 
-        retain_state_trackers(&[]);
+        remove_state_tracker(pid);
     }
 
     #[test]
@@ -467,7 +477,7 @@ mod tests {
         // Second consecutive idle → switch back
         assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
 
-        retain_state_trackers(&[]);
+        remove_state_tracker(pid);
     }
 
     #[test]
@@ -483,7 +493,7 @@ mod tests {
         assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
         assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
 
-        retain_state_trackers(&[]);
+        remove_state_tracker(pid);
     }
 
     #[test]
@@ -497,8 +507,9 @@ mod tests {
             assert!(guard.as_ref().unwrap().contains_key(&pid));
         }
 
-        // Retain only other PIDs
-        retain_state_trackers(&[1]);
+        // Remove only this test's PID (using remove_state_tracker to avoid
+        // wiping concurrent tests' state via retain_state_trackers).
+        remove_state_tracker(pid);
 
         // Should be gone
         {
