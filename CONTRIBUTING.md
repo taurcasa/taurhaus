@@ -17,7 +17,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ### Setup
 
 ```bash
-git clone https://github.com/stierma/taurhaus.git
+git clone https://github.com/taurcasa/taurhaus.git
 cd taurhaus
 npm install
 just dev  # Full Tauri dev mode with hot-reload
@@ -133,7 +133,7 @@ e2e/                    # WebdriverIO end-to-end tests
 
 - Check existing [issues](../../issues) before filing a new one
 - For architecture questions, see [ARCHITECTURE.md](ARCHITECTURE.md)
-- For detailed ADRs, see [docs/phase-4-architecture.md](docs/phase-4-architecture.md)
+- For technical deep-dives, see docs in the [docs/](docs/) directory
 
 ## Code of Conduct
 

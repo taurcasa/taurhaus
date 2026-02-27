@@ -2,6 +2,9 @@ node_modules/
 dist/
 .playwright-mcp/
 
+# Claude Code instructions (local dev only, not published)
+CLAUDE.md
+
 # Rust build artifacts
 src-tauri/target/
 target/

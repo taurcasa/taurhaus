@@ -58,7 +58,7 @@ Install whichever tools you use inside WSL:
 
 **Claude Code** (Anthropic):
 ```bash
-npm install -g @anthropic-ai/claude-code
+curl -fsSL https://claude.ai/install.sh | bash
 ```
 
 **Codex** (OpenAI):

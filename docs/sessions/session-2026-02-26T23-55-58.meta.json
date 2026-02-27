@@ -1,0 +1,14 @@
+{
+  "session_id": "d3d20cfa-0e56-4cd4-a684-bff45a71def9",
+  "ended_at": "2026-02-26T23:55:58Z",
+  "exit_reason": "manual_handoff",
+  "model": "claude-opus-4-6",
+  "tools_used": {},
+  "files_modified": [
+    "src-tauri/src/terminal.rs",
+    "src-tauri/src/commands/command_center.rs",
+    ".gitignore",
+    "docs/macos-provision.md"
+  ],
+  "tokens": {}
+}

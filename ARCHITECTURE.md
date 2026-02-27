@@ -1,6 +1,6 @@
 # Architecture
 
-A condensed overview for contributors. For the full 22 Architecture Decision Records, see [docs/phase-4-architecture.md](docs/phase-4-architecture.md).
+A condensed overview for contributors.
 
 ## System Overview
 
