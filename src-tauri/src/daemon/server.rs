@@ -55,7 +55,24 @@ fn epoch_secs() -> u64 {
 
 /// Run the daemon server. Blocks until `shutdown` is set to true or idle timeout elapses.
 pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
-    let listener = TcpListener::bind(format!("{}:{}", config.bind_addr, config.port))?;
+    // Use SO_REUSEADDR so we can rebind immediately after the previous daemon dies.
+    // Without this, TIME_WAIT sockets from the old daemon's TCP connections prevent
+    // binding for up to 30s on macOS, causing startup failures on app restart.
+    let listener = {
+        let addr: std::net::SocketAddr =
+            format!("{}:{}", config.bind_addr, config.port).parse()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let socket = socket2::Socket::new(
+            socket2::Domain::IPV4,
+            socket2::Type::STREAM,
+            Some(socket2::Protocol::TCP),
+        )?;
+        socket.set_reuse_address(true)?;
+        socket.bind(&addr.into())?;
+        socket.listen(128)?;
+        let listener: TcpListener = socket.into();
+        listener
+    };
     listener.set_nonblocking(true)?;
 
     let start_time = Instant::now();

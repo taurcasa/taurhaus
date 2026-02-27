@@ -265,8 +265,9 @@ pub fn run() {
             // auto-start and connect the daemon later.
             if wsl_distro.is_some() {
                 let health_handle = app.handle().clone();
+                let connected_at_startup = daemon_connected_at_startup;
                 std::thread::spawn(move || {
-                    daemon_health_check(health_handle);
+                    daemon_health_check(health_handle, connected_at_startup);
                 });
             }
 
@@ -1270,28 +1271,28 @@ fn respawn_daemon_watches(app: &tauri::AppHandle) {
 /// On disconnect: attempts restart and reconnection (max 3 attempts per session).
 /// Emits `daemon-status` events to the frontend for UI indicators.
 /// Works for both initially-connected and initially-disconnected providers.
-fn daemon_health_check(app: tauri::AppHandle) {
+fn daemon_health_check(app: tauri::AppHandle, connected_at_startup: bool) {
     use std::time::Duration;
 
     const CHECK_INTERVAL: Duration = Duration::from_secs(30);
     /// Shorter interval when daemon hasn't connected yet (first-time connect).
-    const FAST_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+    const FAST_CHECK_INTERVAL: Duration = Duration::from_secs(2);
     const MAX_RESTART_ATTEMPTS: u32 = 3;
 
     let mut consecutive_failures: u32 = 0;
     let mut restart_attempts: u32 = 0;
-    let mut ever_connected = false;
+    let mut ever_connected = connected_at_startup;
 
-    // Initial delay — let the app finish starting
-    std::thread::sleep(Duration::from_secs(5));
-
-    // Check if daemon was already connected at startup
-    {
-        let provider_state = app.state::<ProviderState>();
-        if let Some(ref daemon) = provider_state.daemon {
-            ever_connected = daemon.is_connected();
-        }
-    }
+    // Initial delay — let the app finish starting.
+    // Short delay when daemon wasn't connected: it was already spawned in setup(),
+    // just needs a moment to bind the port. Long delay when already connected:
+    // no urgency, just periodic health monitoring.
+    let initial_delay = if connected_at_startup {
+        Duration::from_secs(5)
+    } else {
+        Duration::from_secs(1)
+    };
+    std::thread::sleep(initial_delay);
 
     loop {
         // Use shorter interval while waiting for first connection
