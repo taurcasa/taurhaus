@@ -4,6 +4,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use ignore::gitignore::Gitignore;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 /// Classification of a filesystem event for taurhaus purposes.
@@ -94,6 +95,17 @@ pub enum EventClass {
     RegularFile,
 }
 
+/// Build a `Gitignore` matcher from a project's `.gitignore` file.
+///
+/// Returns a matcher that can test whether a path is ignored. If the
+/// `.gitignore` file doesn't exist or can't be parsed, returns a no-op
+/// matcher that ignores nothing.
+fn build_gitignore(project_root: &Path) -> Gitignore {
+    let gitignore_path = project_root.join(".gitignore");
+    let (gi, _err) = Gitignore::new(&gitignore_path);
+    gi
+}
+
 /// Manages file watchers for registered projects.
 pub struct ProjectWatcher {
     /// Map from project_id → (project_root, watcher_handle).
@@ -102,6 +114,8 @@ pub struct ProjectWatcher {
     event_tx: mpsc::Sender<WatchEvent>,
     /// Debounce state for git events per project.
     git_debounce: Arc<Mutex<HashMap<String, Instant>>>,
+    /// Per-project gitignore matchers, rebuilt when .gitignore changes.
+    gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
 }
 
 /// Duration to debounce git internal events (ADR-020).
@@ -116,6 +130,7 @@ impl ProjectWatcher {
                 watchers: HashMap::new(),
                 event_tx: tx,
                 git_debounce: Arc::new(Mutex::new(HashMap::new())),
+                gitignores: Arc::new(Mutex::new(HashMap::new())),
             },
             rx,
         )
@@ -127,15 +142,23 @@ impl ProjectWatcher {
         project_id: String,
         project_root: PathBuf,
     ) -> Result<(), notify::Error> {
+        // Build gitignore matcher for this project
+        {
+            let gi = build_gitignore(&project_root);
+            let mut gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
+            gis.insert(project_id.clone(), gi);
+        }
+
         let tx = self.event_tx.clone();
         let pid = project_id.clone();
         let root = project_root.clone();
         let debounce = self.git_debounce.clone();
+        let gitignores = self.gitignores.clone();
 
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    handle_notify_event(&tx, &pid, &root, &debounce, event);
+                    handle_notify_event(&tx, &pid, &root, &debounce, &gitignores, event);
                 }
             },
             Config::default().with_poll_interval(Duration::from_secs(2)),
@@ -151,6 +174,8 @@ impl ProjectWatcher {
         if let Some((root, mut watcher)) = self.watchers.remove(project_id) {
             let _ = watcher.unwatch(&root);
         }
+        let mut gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
+        gis.remove(project_id);
     }
 
     /// Stop all watchers.
@@ -181,6 +206,7 @@ fn handle_notify_event(
     project_id: &str,
     project_root: &Path,
     debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
     event: Event,
 ) {
     // Only care about create, modify, remove events
@@ -221,11 +247,25 @@ fn handle_notify_event(
                 }
             }
             EventClass::GitignoreChange => {
+                // Rebuild the gitignore matcher for this project
+                let gi = build_gitignore(project_root);
+                let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
+                gis.insert(project_id.to_string(), gi);
+
                 let _ = tx.send(WatchEvent::GitignoreChanged {
                     project_id: project_id.to_string(),
                 });
             }
             EventClass::RegularFile => {
+                // Skip gitignored files — they're build artifacts, runtime
+                // data, or generated output, not real user activity.
+                let gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(gi) = gis.get(project_id) {
+                    let is_dir = path.is_dir();
+                    if gi.matched_path_or_any_parents(path, is_dir).is_ignore() {
+                        continue;
+                    }
+                }
                 regular_paths.push(path.clone());
             }
         }
@@ -246,6 +286,10 @@ mod tests {
 
     fn root() -> PathBuf {
         PathBuf::from("/home/user/projects/taurhaus")
+    }
+
+    fn empty_gitignores() -> Arc<Mutex<HashMap<String, Gitignore>>> {
+        Arc::new(Mutex::new(HashMap::new()))
     }
 
     // --- classify_event tests ---
@@ -389,8 +433,9 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, event1.clone());
-        handle_notify_event(&tx, "p1", &root, &debounce, event1);
+        let gis = empty_gitignores();
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event1.clone());
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event1);
 
         // Should only receive one event (second is debounced)
         let first = rx.try_recv();
@@ -406,6 +451,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
+        let gis = empty_gitignores();
 
         let event = Event {
             kind: EventKind::Create(notify::event::CreateKind::File),
@@ -413,7 +459,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, event);
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -430,6 +476,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
+        let gis = empty_gitignores();
 
         let event = Event {
             kind: EventKind::Modify(notify::event::ModifyKind::Data(
@@ -439,7 +486,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, event);
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -456,6 +503,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
+        let gis = empty_gitignores();
 
         let event = Event {
             kind: EventKind::Access(notify::event::AccessKind::Read),
@@ -463,9 +511,82 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, event);
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
 
         assert!(rx.try_recv().is_err(), "Access events should be ignored");
+    }
+
+    #[test]
+    fn gitignored_files_are_filtered_from_events() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+
+        // Create a .gitignore that ignores output/ and *.log
+        std::fs::write(root.join(".gitignore"), "output/\n*.log\nqueue/*.db-wal\n").unwrap();
+        // Create the files so is_dir() works
+        std::fs::create_dir_all(root.join("output/images")).unwrap();
+        std::fs::write(root.join("output/images/test.png"), "").unwrap();
+        std::fs::write(root.join("server.log"), "").unwrap();
+        std::fs::create_dir_all(root.join("queue")).unwrap();
+        std::fs::write(root.join("queue/data.db-wal"), "").unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+
+        let (tx, rx) = mpsc::channel();
+        let debounce = Arc::new(Mutex::new(HashMap::new()));
+
+        // Build gitignore matcher for project "p1"
+        let gis = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let gi = build_gitignore(&root);
+            gis.lock().unwrap().insert("p1".to_string(), gi);
+        }
+
+        // Gitignored file should NOT produce an event
+        let event = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Any,
+            )),
+            paths: vec![root.join("output/images/test.png")],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        assert!(rx.try_recv().is_err(), "gitignored output/ file should not emit event");
+
+        // .log file should NOT produce an event
+        let event = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Any,
+            )),
+            paths: vec![root.join("server.log")],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        assert!(rx.try_recv().is_err(), "gitignored *.log file should not emit event");
+
+        // db-wal file should NOT produce an event
+        let event = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Any,
+            )),
+            paths: vec![root.join("queue/data.db-wal")],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        assert!(rx.try_recv().is_err(), "gitignored db-wal file should not emit event");
+
+        // Non-ignored file SHOULD produce an event
+        let event = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Any,
+            )),
+            paths: vec![root.join("src/main.rs")],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        let received = rx.try_recv();
+        assert!(received.is_ok(), "non-ignored src/main.rs should emit FileChanged");
+        assert!(matches!(received.unwrap(), WatchEvent::FileChanged { .. }));
     }
 
     #[test]
