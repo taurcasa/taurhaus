@@ -787,9 +787,15 @@ mod tests {
             let _ = run(&config, shutdown_clone);
         });
 
-        // Give the server a moment to start
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        (port, shutdown)
+        // Poll until the server is accepting connections (up to 2s).
+        // A fixed sleep was flaky under parallel test load.
+        for _ in 0..40 {
+            if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+                return (port, shutdown);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("test server on port {port} did not start within 2s");
     }
 
     fn send_request(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>, req: &DaemonRequest) -> DaemonResponse {
