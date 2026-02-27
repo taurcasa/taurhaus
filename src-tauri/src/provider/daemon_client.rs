@@ -49,9 +49,9 @@ pub struct DaemonProvider {
 
 impl DaemonProvider {
     /// Read the daemon's auth token from the well-known file path.
+    /// Falls back to reading via WSL on Windows.
     fn read_auth_token() -> Option<String> {
-        let path = crate::daemon::auth::token_path()?;
-        crate::daemon::auth::read_token(&path).ok()
+        crate::daemon::auth::read_auth_token()
     }
 
     /// Create a new DaemonProvider connected to the given address.

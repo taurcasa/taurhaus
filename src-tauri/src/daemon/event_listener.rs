@@ -40,9 +40,8 @@ impl DaemonEventListener {
         })?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
-        // Read auth token from well-known file
-        let auth_token = crate::daemon::auth::token_path()
-            .and_then(|p| crate::daemon::auth::read_token(&p).ok());
+        // Read auth token (falls back to WSL on Windows)
+        let auth_token = crate::daemon::auth::read_auth_token();
 
         Ok(Self {
             stream,

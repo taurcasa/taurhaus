@@ -48,6 +48,59 @@ pub fn read_token(path: &std::path::Path) -> io::Result<String> {
     Ok(content.trim().to_string())
 }
 
+/// Read the daemon's auth token, with cross-platform fallback.
+///
+/// On the same OS (macOS, Linux), `token_path()` points to the same file the
+/// daemon wrote. On Windows with a WSL daemon, the native path doesn't exist —
+/// fall back to reading via `wsl.exe` from the Linux filesystem.
+pub fn read_auth_token() -> Option<String> {
+    // Try native path first (works when daemon runs on same OS)
+    if let Some(path) = token_path() {
+        if let Ok(token) = read_token(&path) {
+            return Some(token);
+        }
+    }
+
+    // Fallback: read from WSL filesystem (Windows app + WSL daemon)
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(token) = read_token_via_wsl() {
+            return Some(token);
+        }
+    }
+
+    None
+}
+
+/// Read the daemon token from inside WSL via `wsl.exe`.
+///
+/// Runs: `wsl.exe -e sh -c 'cat "$HOME/.local/share/taurhaus/daemon.token"'`
+/// Uses `wsl_command()` from launcher to suppress console window flash.
+#[cfg(target_os = "windows")]
+fn read_token_via_wsl() -> Option<String> {
+    let output = crate::daemon::launcher::wsl_command()
+        .args([
+            "-e", "sh", "-c",
+            "cat \"$HOME/.local/share/taurhaus/daemon.token\" 2>/dev/null",
+        ])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let token = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    if token.is_empty() {
+        return None;
+    }
+
+    tracing::debug!("Read daemon auth token via WSL fallback");
+    Some(token)
+}
+
 /// Validate a provided token against the expected value.
 ///
 /// Uses constant-time comparison to prevent timing attacks.
