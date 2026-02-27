@@ -2,7 +2,7 @@
 name = "taurhaus"
 version = "0.3.2"
 description = "Desktop tool for AI project management"
-authors = ["Matthias Stier <stierms@gmail.com>"]
+authors = ["Matthias Stier <dev@taurcasa.dev>"]
 edition = "2021"
 license = "MIT"
 publish = false

@@ -6,7 +6,7 @@ If you discover a security vulnerability in taurhaus, please report it responsib
 
 **Do not** open a public GitHub issue for security vulnerabilities.
 
-Instead, please email: **stierms@gmail.com**
+Instead, please email: **dev@taurcasa.dev**
 
 Include:
 - Description of the vulnerability
@@ -47,4 +47,4 @@ The following are generally out of scope:
 
 ## Known Advisories
 
-See [docs/known-advisories.md](docs/known-advisories.md) for documented and accepted dependency advisories.
+Accepted dependency advisories are documented in `src-tauri/.cargo/audit.toml`.

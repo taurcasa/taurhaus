@@ -1,5 +1,5 @@
 # Cargo audit configuration
-# See docs/known-advisories.md for detailed rationale
+# Suppressed advisories with rationale inline
 
 [advisories]
 ignore = [
