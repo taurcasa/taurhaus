@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-02-27
+
+### Fixed
+- Daemon startup on macOS: `SO_REUSEADDR` prevents TIME_WAIT port conflict on app restart
+- Health check timing: faster recovery when daemon disconnected at startup (10s → 3s)
+- Daemon auth on reconnect: re-read token when daemon restarts with new token
+- Sidebar filter: replaced static div with functional input for project name filtering
+
 ## [0.3.3] - 2026-02-27
 
 ### Security
