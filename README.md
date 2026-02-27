@@ -74,14 +74,14 @@ A desktop companion for developers running multiple AI coding sessions at once. 
 ### First launch
 
 1. The setup wizard scans your home directory for project folders and registers them
-2. On Windows, the daemon installs automatically into WSL — no manual steps needed
+2. The daemon installs automatically — into WSL on Windows, or `~/.local/bin/` on macOS
 3. Right-click any project in the sidebar to launch a CLI tool session
 
 ## Architecture
 
 Tauri 2 desktop app — Svelte 5 frontend, Rust backend with SQLite, tantivy, and libgit2.
 
-On **Windows**, a lightweight daemon inside WSL2 handles process scanning, file watching, and tmux management. On **macOS**, the app inspects processes directly via libproc — no daemon needed.
+A lightweight companion daemon handles process scanning, file watching, and tmux management. On **Windows** it runs inside WSL2, on **macOS** it runs natively as a subprocess. Both communicate with the app over TCP using a JSON-line protocol.
 
 ![System Architecture](docs/system-architecture.jpg)
 

@@ -4,11 +4,28 @@ A condensed overview for contributors. For the full 22 Architecture Decision Rec
 
 ## System Overview
 
-taurhaus is a dual-process desktop application — a native Windows GUI backed by a lightweight Linux daemon running inside WSL2.
+taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, and search. A lightweight companion daemon handles process scanning, file watching, and tmux session management, communicating with the app over TCP (JSON-line protocol on localhost:9000).
+
+The daemon runs on both platforms — the only difference is where:
+
+- **Windows**: The daemon runs inside WSL2 (launched via `wsl.exe`), where it has access to `/proc` for process inspection and the Linux filesystem where AI tools run.
+- **macOS**: The daemon runs natively as a subprocess (launched from `~/.local/bin/taurhaus-daemon`), using `libproc` and `lsof` for process inspection instead of `/proc`.
 
 ![System Architecture](docs/system-architecture.jpg)
 
-**Why two processes?** The Windows exe provides the native GUI with embedded storage and git. The WSL2 daemon handles Linux-specific operations — process scanning via `/proc`, tmux control, and file watching inside WSL filesystems. They communicate over TCP on localhost using a JSON-line protocol.
+## Platform Abstraction
+
+The `platform/` module provides compile-time dispatch (`#[cfg(target_os)]`) between Linux and macOS implementations. Both platforms implement the same function signatures — the compiler enforces the API contract. The daemon binary is compiled per-platform with the correct implementation.
+
+| Function | Linux (daemon in WSL2) | macOS (native daemon) |
+|----------|--------------------|--------------------|
+| `process_cwd(pid)` | `/proc/PID/cwd` readlink | `proc_pidinfo` (libproc) |
+| `process_tty(pid)` | `/proc/PID/fd/0` readlink | `lsof -p PID -a -d 0` |
+| `process_rchar(pid)` | `/proc/PID/io` rchar field | `proc_pid_rusage` (libproc) |
+| `collect_socket_inodes(pid)` | `/proc/PID/fd` → socket inode extraction | `lsof -p PID -i TCP` |
+| `has_established_443(pid)` | `/proc/PID/net/tcp` socket state parsing | `lsof` ESTABLISHED filter |
+
+The session scanner (`session_scanner/`) and activity detector (`proc_io.rs`) are fully platform-agnostic — they call into the platform module and don't know which OS they're running on.
 
 ## Frontend (Svelte 5 + Tailwind v4)
 
@@ -29,12 +46,6 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `FirstRunWizard.svelte` | Onboarding flow: project discovery and registration |
 | `SplashScreen.svelte` | Startup splash with bootstrap chain progress |
 | `SessionHistory.svelte` | Session timeline with handoff summaries |
-| `MarkdownRenderer.svelte` | Markdown rendering with Shiki syntax highlighting |
-| `CodeViewer.svelte` | Syntax-highlighted file preview with line numbers |
-| `HoverCard.svelte` | Rich hover tooltips for session status |
-| `ContextMenu.svelte` | Right-click context menus (per-tool launch/stop) |
-| `AddProjectModal.svelte` | Manual project registration |
-| `DirectoryBrowser.svelte` | Directory tree for project path selection |
 
 **Key patterns:**
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`, `$props`) — no legacy stores
@@ -49,6 +60,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | Module | Purpose |
 |--------|---------|
 | `commands/` | Tauri IPC handlers — thin wrappers over domain modules |
+| `platform/` | Compile-time OS dispatch (linux.rs / darwin.rs) |
 | `db/` | SQLite connection, migrations, typed query functions |
 | `git/` | libgit2 wrappers for commits, diffs, blame, status |
 | `fs/` | File tree, content reading, asset serving, file watching |
@@ -56,8 +68,8 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `session/` | Session import, parsing, archival |
 | `session_scanner/` | CLI tool detection (process scanning, idle detection) |
 | `task_scanner/` | Task aggregation from Claude Code, Codex, Gemini |
-| `daemon/` | TCP client, daemon lifecycle, health monitoring |
-| `terminal/` | tmux session management, pane layout |
+| `daemon/` | TCP client + server, daemon lifecycle (Windows/WSL only) |
+| `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
 | `provider/` | CLI tool definitions and launch configuration |
 | `services/` | Cross-cutting application services |
@@ -88,19 +100,34 @@ Grouped by domain:
 
 ### Session Scanner
 
-Detects running CLI tool sessions (Claude Code, Codex, Gemini CLI) via:
+Detects running CLI tool sessions (Claude Code, Codex, Gemini CLI). The detection logic is platform-agnostic — it calls into the `platform/` module for OS-specific process inspection.
 
 | Tool | Detection | Activity Signal |
 |------|-----------|-----------------|
-| Claude Code | Process name + cwd | `/proc/PID/io` read bytes (IO hysteresis) |
+| Claude Code | Process name + cwd | IO read bytes — hysteresis (2 consecutive above-threshold polls) |
 | Codex | Process name + session file cwd | Session file mtime (10s threshold) |
-| Gemini CLI | Process name + SHA-256 path hash | TCP socket state to :443 |
+| Gemini CLI | Process name + SHA-256 path hash | TCP socket state to :443 (ESTABLISHED = active) |
 
 All detection uses 2-poll bidirectional hysteresis to prevent flickering.
 
+**Platform details:**
+- **Linux**: reads `/proc/PID/io` for IO bytes, `/proc/PID/fd` + `/proc/PID/net/tcp` for socket state
+- **macOS**: uses `proc_pid_rusage` (libproc) for IO bytes, `lsof` for socket state
+
+### Terminal Management
+
+The terminal module manages launching and focusing terminal emulators with the correct tmux session. Same decision tree on all platforms — only the emulator options differ.
+
+| Platform | Emulators | Default |
+|----------|-----------|---------|
+| Windows | Windows Terminal | `wt.exe -w taurhaus` |
+| macOS | iTerm2, Ghostty, Terminal.app | iTerm2 (auto-detect fallback) |
+
+macOS uses event-driven AppleScript to handle click-to-activate focus transitions reliably.
+
 ### Daemon Protocol
 
-JSON-line protocol over TCP (localhost:9000).
+JSON-line protocol over TCP (localhost:9000). Same protocol on both platforms — only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS).
 
 **Events (daemon → app):**
 - `file_changed` — watched file modified (triggers search re-index)
@@ -122,28 +149,30 @@ User clicks project
   → Rust reads SQLite (metadata) + libgit2 (commits) + filesystem (tree)
   → Frontend renders immediately
 
-File changes in WSL
+File changes detected
   → Daemon's file watcher detects change
-  → Sends file_changed / git_changed event over TCP
+  → Sends file_changed / git_changed event over TCP to app
   → App updates tantivy index + refreshes affected views
-  → Changes reflected within seconds
 
 CLI session detected
-  → Daemon scans /proc, finds tool process for a project
-  → Sends session_update to app
-  → Sidebar shows tool indicator icon (active/idle)
+  → Daemon's session scanner polls for tool processes
+  → Platform module inspects /proc (Linux) or libproc (macOS)
+  → App receives session_update, sidebar shows tool indicator (active/idle)
   → HoverCard shows full session details on hover
 ```
 
 ## Build System
 
-All builds use `just` recipes. The Windows exe is built **natively on Windows** via WSL2 interop — no cross-compilation.
+All builds use `just` recipes. Both Windows and macOS builds happen natively on their target platforms — no cross-compilation.
 
 ```bash
 just dev              # Tauri dev mode (hot-reload)
-just build-windows    # Sync to D:\, npm install, cargo build natively
+just build-windows    # Sync to D:\, npm install, cargo build natively via cmd.exe
+just build-macos      # Sync to Mac Mini, build ARM DMG via SSH
+just build-macos-intel # Build Intel (x86_64) DMG via SSH
 just check            # clippy + svelte-check + all tests
 just test             # All tests (Rust + frontend)
+just test-macos       # Run Rust tests on Mac Mini via SSH
 ```
 
 ## Key Decisions
@@ -159,3 +188,5 @@ just test             # All tests (Rust + frontend)
 | IPC | Tauri commands | Type-safe, async, built-in |
 | Task aggregation | Per-tool adapters | Each CLI tool stores tasks differently |
 | Daemon comms | JSON-line over TCP | Simple, debuggable, mirrored networking in WSL2 |
+| Platform dispatch | Compile-time `#[cfg]` | Zero runtime cost, compiler-enforced API contract |
+| Terminal mgmt | Per-platform emulator enum | Same decision tree, platform-specific activation |
