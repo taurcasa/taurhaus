@@ -561,9 +561,12 @@ mod tests {
         assert!(results.is_empty());
     }
 
-    // list_directory detects expandable (has subdirectories)
+    // All directories are marked expandable (lazy-check).
+    // Eagerly checking via nested read_dir is an N+1 penalty and on macOS
+    // it triggers TCC permission prompts for protected folders. Empty dirs
+    // show "No subdirectories found" when expanded — standard file browser UX.
     #[test]
-    fn list_directory_detects_expandable() {
+    fn list_directory_marks_all_dirs_expandable() {
         let parent = TempDir::new().unwrap();
         let child = parent.path().join("has-children");
         std::fs::create_dir(&child).unwrap();
@@ -579,7 +582,7 @@ mod tests {
         assert!(expandable.is_expandable);
 
         let empty = results.iter().find(|e| e.name == "empty").unwrap();
-        assert!(!empty.is_expandable);
+        assert!(empty.is_expandable); // lazy-check: all dirs expandable
     }
 
     // validate_project_path: nonexistent path
