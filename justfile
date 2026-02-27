@@ -215,6 +215,12 @@ build-macos-intel: sync-macos
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
+    echo "▸ Building daemon on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon'"
+    echo ""
+    echo "▸ Bundling daemon into resources…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo ""
     echo "▸ Building Intel (x86_64) macOS app…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm run build && cargo tauri build --target x86_64-apple-darwin 2>&1'"
     echo ""
@@ -226,16 +232,35 @@ build-macos-intel: sync-macos
     echo "✓ Intel macOS build complete — artifacts in builds/macos-x86_64/"
 
 # Build universal macOS binary (arm64 + x86_64) on remote Mac
+# The daemon is a [[bin]] target — Tauri's universal bundler expects it at
+# target/universal-apple-darwin/release/taurhaus-daemon, so we build both
+# architectures and lipo them together before running cargo tauri build.
 build-macos-universal: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
-    echo "▸ Building universal macOS binary (arm64 + x86_64)…"
+    echo "▸ Building daemon for arm64…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon --target aarch64-apple-darwin'"
+    echo ""
+    echo "▸ Building daemon for x86_64…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon --target x86_64-apple-darwin'"
+    echo ""
+    echo "▸ Creating universal daemon binary with lipo…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/target/universal-apple-darwin/release && lipo -create {{mac_dir}}/src-tauri/target/aarch64-apple-darwin/release/taurhaus-daemon {{mac_dir}}/src-tauri/target/x86_64-apple-darwin/release/taurhaus-daemon -output {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon && codesign --force --sign - {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon'"
+    echo ""
+    echo "▸ Bundling daemon into resources…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo ""
+    echo "▸ Building universal macOS app (arm64 + x86_64)…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && cargo tauri build --target universal-apple-darwin 2>&1'"
     echo ""
-    echo "✓ Universal macOS build complete"
+    echo "▸ Copying build artifacts locally…"
+    mkdir -p {{project}}/builds/macos-universal
+    scp {{mac_host}}:{{mac_dir}}/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg {{project}}/builds/macos-universal/
+    echo ""
+    echo "✓ Universal macOS build complete — artifacts in builds/macos-universal/"
 
 # ── Daemon Connectivity Tests ────────────────────────────────────────────────
 # Run these in order to verify the daemon chain step by step.
