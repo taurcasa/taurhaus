@@ -260,7 +260,7 @@
             {@const indicators = toolIndicators(projectSessions)}
             <button
               data-testid="project-item"
-              class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75
+              class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75 cursor-pointer
                 {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
               onclick={() => onSelectProject(project)}
               oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
