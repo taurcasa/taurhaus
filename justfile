@@ -192,7 +192,12 @@ build-macos: sync-macos
     echo "▸ Building macOS app (cargo tauri build)…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && cargo tauri build 2>&1'"
     echo ""
-    echo "✓ macOS build complete"
+    echo "▸ Copying build artifacts locally…"
+    mkdir -p {{project}}/builds/macos-aarch64
+    scp {{mac_host}}:{{mac_dir}}/src-tauri/target/release/bundle/dmg/*.dmg {{project}}/builds/macos-aarch64/
+    scp {{mac_host}}:{{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{project}}/builds/macos-aarch64/taurhaus-daemon-aarch64
+    echo ""
+    echo "✓ macOS build complete — artifacts in builds/macos-aarch64/"
 
 # Run macOS E2E test suite on remote Mac
 test-macos-e2e: sync-macos
@@ -202,6 +207,23 @@ test-macos-e2e: sync-macos
     ssh {{mac_host}} "zsh -ilc 'bash {{mac_dir}}/scripts/macos-e2e-test.sh'" 2>&1
     echo ""
     echo "✓ macOS E2E tests complete"
+
+# Build Intel (x86_64) macOS DMG on remote Mac
+build-macos-intel: sync-macos
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Installing frontend dependencies on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
+    echo ""
+    echo "▸ Building Intel (x86_64) macOS app…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm run build && cargo tauri build --target x86_64-apple-darwin 2>&1'"
+    echo ""
+    echo "▸ Copying build artifacts locally…"
+    mkdir -p {{project}}/builds/macos-x86_64
+    scp {{mac_host}}:{{mac_dir}}/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg {{project}}/builds/macos-x86_64/
+    scp {{mac_host}}:{{mac_dir}}/src-tauri/target/x86_64-apple-darwin/release/taurhaus-daemon {{project}}/builds/macos-x86_64/taurhaus-daemon-x86_64
+    echo ""
+    echo "✓ Intel macOS build complete — artifacts in builds/macos-x86_64/"
 
 # Build universal macOS binary (arm64 + x86_64) on remote Mac
 build-macos-universal: sync-macos
