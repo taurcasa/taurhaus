@@ -456,7 +456,7 @@ bump version:
     echo "  ✓ package.json"
 
     # Cargo.lock (regenerate to pick up version change)
-    cd src-tauri && cargo check --quiet 2>/dev/null
+    (cd src-tauri && cargo check --quiet 2>/dev/null)
     echo "  ✓ Cargo.lock"
 
     # CHANGELOG.md — add new section under [Unreleased] if not already present
