@@ -437,7 +437,7 @@ test-daemon-connectivity: test-daemon-local test-daemon-windows test-daemon-auto
 # The version is read from tauri.conf.json. Artifacts are matched by glob
 # from builds/ — if a platform dir is empty or missing, it's skipped.
 
-# Bump version in tauri.conf.json, Cargo.toml, and CHANGELOG.md
+# Bump version in all version-bearing files
 bump version:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -450,6 +450,14 @@ bump version:
     # Cargo.toml (first version = line in [package])
     sed -i '0,/^version = "[^"]*"/s//version = "{{version}}"/' src-tauri/Cargo.toml
     echo "  ✓ src-tauri/Cargo.toml"
+
+    # package.json
+    sed -i 's/"version": "[^"]*"/"version": "{{version}}"/' package.json
+    echo "  ✓ package.json"
+
+    # Cargo.lock (regenerate to pick up version change)
+    cd src-tauri && cargo check --quiet 2>/dev/null
+    echo "  ✓ Cargo.lock"
 
     # CHANGELOG.md — add new section under [Unreleased] if not already present
     if ! grep -q "## \[{{version}}\]" CHANGELOG.md; then
@@ -491,6 +499,11 @@ release:
         echo "✗ Tag $TAG already exists"
         exit 1
     fi
+
+    # Push to remote before creating release
+    echo "▸ Pushing to origin…"
+    git push origin main
+    echo ""
 
     # Collect artifacts
     ARTIFACTS=()
