@@ -43,10 +43,56 @@ test-frontend:
 test-watch:
     npm run test:watch
 
-# Run E2E tests (builds Tauri debug binary with embedded frontend, then tests via tauri-driver)
-# Set E2E_SKIP_BUILD=1 to skip the build step if you already have a fresh binary.
+# Build the Tauri debug binary for E2E tests.
+# IMPORTANT: Always use this (not raw `cargo build`) — Tauri needs --debug --no-bundle
+# for embedded asset serving. A plain `cargo build` produces a binary that tries to
+# connect to a dev server, resulting in a blank page.
+build-e2e:
+    npx tauri build --debug --no-bundle
+
+# Run E2E tests — Tier 1 only (no daemon required)
+# Builds automatically unless E2E_SKIP_BUILD=1 is set.
 test-e2e:
+    npx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+
+# Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
+test-e2e-full:
     npx wdio run e2e/wdio.conf.js
+
+# Run a single E2E spec file (requires prior `just build-e2e`)
+test-e2e-spec SPEC:
+    E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+
+# Run E2E tests on Windows (syncs, builds debug binary, runs tests natively)
+# Prerequisites: tauri-driver + msedgedriver installed on Windows
+test-e2e-windows: sync-windows
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Installing dependencies on Windows…"
+    cmd.exe /c "cd /d {{win_drive}} && npm install"
+    echo ""
+    echo "▸ Building debug binary on Windows…"
+    cmd.exe /c "cd /d {{win_drive}} && npx tauri build --debug --no-bundle"
+    echo ""
+    echo "▸ Running E2E tests on Windows…"
+    cmd.exe /c "cd /d {{win_drive}} && npx wdio run e2e/wdio.conf.js --exclude e2e/specs/daemon-integration.js"
+
+# Run E2E tests on macOS (syncs, builds debug binary, runs tests on remote Mac)
+# Prerequisites: tauri-driver + safaridriver available on Mac
+test-e2e-macos: sync-macos
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "▸ Installing dependencies on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
+    echo ""
+    echo "▸ Creating daemon resource placeholder…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo ""
+    echo "▸ Building debug binary on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && E2E_SKIP_BUILD=1 npx tauri build --debug --no-bundle 2>&1'"
+    echo ""
+    echo "▸ Running E2E tests on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --exclude e2e/specs/daemon-integration.js 2>&1'"
 
 # Reset database (delete SQLite file)
 db-reset:
