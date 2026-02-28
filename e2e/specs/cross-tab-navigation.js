@@ -33,8 +33,7 @@ describe('Cross-Tab Navigation', () => {
     it('clicking a commit row in Overview activates Git tab with commit selected', async function () {
       if (!mainApp) return this.skip()
 
-      // Pre-warm Git tab — first cold load through UNC can be slow on Windows.
-      // Without this, the test times out waiting for commits after cross-tab navigation.
+      // Pre-warm Git tab so commits are cached before the cross-tab test.
       await switchToTab('git')
       await browser.waitUntil(
         async () => {

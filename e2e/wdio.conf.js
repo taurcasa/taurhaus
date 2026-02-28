@@ -35,10 +35,7 @@ import { readdirSync } from 'node:fs'
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
 
-// Resolve the debug binary path based on platform
-const isWindows = process.platform === 'win32'
-const binaryName = isWindows ? 'taurhaus.exe' : 'taurhaus'
-const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', binaryName)
+const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')
 const wdioLogLevel = process.env.E2E_WDIO_LOG_LEVEL || 'error'
 
 // Spec groups by app layer. Each sub-array = one worker session = one app instance.

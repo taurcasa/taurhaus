@@ -253,8 +253,7 @@ describe('Overview Interactions', () => {
 
       // Project path is shown somewhere in the overview — look for a slash-containing text
       const bodyText = await browser.execute(() => document.body.innerText)
-      // Any absolute path indicator — '/' on Linux/Mac, '\' on Windows
-      const hasPath = /\/[^\s]+|[A-Z]:\\/i.test(bodyText)
+      const hasPath = /\/[^\s]+/.test(bodyText)
       expect(hasPath).toBe(true)
     })
   })

@@ -23,7 +23,6 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       // Wait for file tree loading to complete (skeleton disappears).
-      // First UNC load on Windows can take >10s due to WSL filesystem bridge.
       await browser.waitUntil(
         async () => {
           const loading = await $('[data-testid="filetree-loading"]')
@@ -32,22 +31,7 @@ describe('Files Workflow', () => {
         { ...WAIT_XLONG, timeoutMsg: 'File tree loading did not complete' }
       )
 
-      // On Windows, the first load may return empty if the backend hasn't
-      // fully indexed the project yet. Round-trip tabs to force a reload.
-      let items = await $$('[role="treeitem"]')
-      if (items.length === 0) {
-        await switchToTab('overview')
-        await switchToTab('files')
-        await browser.waitUntil(
-          async () => {
-            const retry = await $$('[role="treeitem"]')
-            return retry.length > 0
-          },
-          { ...WAIT_XLONG, timeoutMsg: 'File tree did not load items after retry' }
-        )
-        items = await $$('[role="treeitem"]')
-      }
-
+      const items = await $$('[role="treeitem"]')
       expect(items.length).toBeGreaterThan(0)
     })
 

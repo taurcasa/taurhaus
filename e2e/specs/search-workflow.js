@@ -6,7 +6,6 @@
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForFileContent, clickTestId, selectProjectByName } from '../helpers/navigation.js'
 import { openSearch, closeSearch, dismissSearch } from '../helpers/search.js'
-import { isWindows } from '../helpers/platform.js'
 import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, TIMEOUT_LONG, TIMEOUT_XLONG } from '../helpers/timing.js'
 
 /**
@@ -198,7 +197,7 @@ describe('Search Workflow', () => {
             (el) => el.textContent,
             container
           )
-          // Accept "No matches" OR still loading (backend may be slow on Windows)
+          // Accept "No matches" OR still loading
           return text.includes('No matches') || text.includes('Type to search') === false
         },
         { ...WAIT_MEDIUM, timeoutMsg: 'Search results container did not settle' }
@@ -214,16 +213,11 @@ describe('Search Workflow', () => {
     })
   })
 
-  // ── Cross-filesystem file loading ─────────────────────────────────────
-  // Regression: v0.3.7 backslash path bug — search index stored Windows-
-  // style paths (src\main.rs) that the Linux daemon couldn't resolve.
+  // ── Subdirectory file loading ─────────────────────────────────────────
   // These tests dynamically discover projects and files via IPC, then
   // search for a file IN A SUBDIRECTORY (not root-level like README)
-  // to exercise the path separator handling.
-  //
-  // On Windows: tests both WSL projects (\\wsl$\...) and Windows FS
-  // projects (D:\...) if available. On Linux/macOS: tests native paths.
-  describe('file loading (cross-filesystem)', () => {
+  // to exercise path handling in the search→navigate flow.
+  describe('file loading (subdirectory)', () => {
     // Dynamically discovered at runtime via IPC
     let discoveredProjects = []
 
@@ -237,18 +231,8 @@ describe('Search Workflow', () => {
 
       if (!projects || projects.length === 0) return
 
-      // On Windows, partition into WSL vs Windows-filesystem projects.
-      // On other platforms, all projects are native — just pick up to 2.
-      if (isWindows) {
-        const wslProject = projects.find(p => p.path.includes('\\\\wsl'))
-        const winProject = projects.find(p => /^[A-Z]:/i.test(p.path))
-        if (wslProject) discoveredProjects.push({ ...wslProject, fsType: 'WSL' })
-        if (winProject) discoveredProjects.push({ ...winProject, fsType: 'Windows' })
-      } else {
-        // Native filesystem — pick up to 2 different projects
-        discoveredProjects.push({ ...projects[0], fsType: 'native' })
-        if (projects.length > 1) discoveredProjects.push({ ...projects[1], fsType: 'native' })
-      }
+      discoveredProjects.push({ ...projects[0], fsType: 'native' })
+      if (projects.length > 1) discoveredProjects.push({ ...projects[1], fsType: 'native' })
 
       // For each project, discover candidate files in subdirectories via get_file_tree.
       // We collect multiple candidates because not all files in the tree are in the
@@ -319,43 +303,19 @@ describe('Search Workflow', () => {
         `File "${foundFileName}" did not load (${proj.fsType} project: ${proj.name})`
       )
 
-      // Core assertion: no "Error loading file" — this catches the backslash
-      // path bug where the search index stored Windows-style paths that the
-      // Linux daemon couldn't resolve.
+      // Core assertion: no "Error loading file"
       const mainText = await browser.execute(() =>
         document.querySelector('main')?.textContent || ''
       )
       expect(mainText).not.toContain('Error loading file')
     }
 
-    it('WSL project: search→navigate to subdirectory file loads without error', async function () {
+    it('search→navigate to subdirectory file loads without error', async function () {
       if (!mainApp) return this.skip()
 
-      const wslProject = discoveredProjects.find(p => p.fsType === 'WSL')
-      if (!wslProject?.subdirCandidates?.length) {
-        // On non-Windows, run with the first native project instead
-        const nativeProject = discoveredProjects.find(p => p.fsType === 'native' && p.subdirCandidates?.length)
-        if (!nativeProject) return this.skip()
-        await searchAndVerifyFile(nativeProject)
-        return
-      }
-
-      await searchAndVerifyFile(wslProject)
-    })
-
-    it('Windows FS project: search→navigate to subdirectory file loads without error', async function () {
-      if (!mainApp) return this.skip()
-
-      const winProject = discoveredProjects.find(p => p.fsType === 'Windows')
-      if (!winProject?.subdirCandidates?.length) {
-        // On non-Windows, run with the second native project instead
-        const natives = discoveredProjects.filter(p => p.fsType === 'native' && p.subdirCandidates?.length)
-        if (natives.length < 2) return this.skip()
-        await searchAndVerifyFile(natives[1])
-        return
-      }
-
-      await searchAndVerifyFile(winProject)
+      const proj = discoveredProjects.find(p => p.subdirCandidates?.length)
+      if (!proj) return this.skip()
+      await searchAndVerifyFile(proj)
     })
 
     it('cross-project search: navigates from one project to another', async function () {

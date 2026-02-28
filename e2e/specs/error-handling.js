@@ -9,7 +9,7 @@ import { waitForProjectsLoaded, switchToTab, clickTestId } from '../helpers/navi
 import { openManageProjects, closeModal, tryAddProjectPath } from '../helpers/modal.js'
 import { dismissSearch } from '../helpers/search.js'
 import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
-import { isWindows, MOD_KEY, NONEXISTENT_PATH, NON_GIT_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
+import { MOD_KEY, NONEXISTENT_PATH, NON_GIT_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 
 let mainApp = false
 
@@ -63,8 +63,7 @@ describe('Error Handling', () => {
 
     it('already-registered path shows duplicate error', async function () {
       if (!mainApp) return this.skip()
-      // On Windows, projects are stored with WSL paths — can't validate via Windows FS
-      if (isWindows) return this.skip()
+
 
       await openManageProjects()
       await tryAddProjectPath(TAURHAUS_PROJECT_PATH)
