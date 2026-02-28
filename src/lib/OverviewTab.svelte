@@ -185,6 +185,7 @@
         </div>
         {#if !showAllCommits}
           <button
+            data-testid="view-all-commits"
             class="mt-1 text-[11px] {t.textTertiary} hover:underline"
             onclick={handleViewAllCommits}
           >View all &rarr;</button>

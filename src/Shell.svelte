@@ -630,24 +630,28 @@
           <span class="px-3 py-1 text-[13px] font-medium {t.textPrimary}">Settings</span>
         {:else}
           <button
+            data-testid="tab-overview"
             class="px-3 py-1 text-[13px] transition-colors border-b-2
               {activeTab === 'overview' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('overview')}
           >Overview</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
+            data-testid="tab-files"
             class="px-3 py-1 text-[13px] transition-colors border-b-2
               {activeTab === 'files' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('files')}
           >Files</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
+            data-testid="tab-tasks"
             class="px-3 py-1 text-[13px] transition-colors border-b-2
               {activeTab === 'tasks' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('tasks')}
           >Tasks</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
+            data-testid="tab-git"
             class="px-3 py-1 text-[13px] transition-colors border-b-2
               {activeTab === 'git' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
             onclick={() => switchTab('git')}
@@ -666,11 +670,13 @@
       <!-- Titlebar controls -->
       <div class="flex items-center gap-0.5 pb-2 pr-1 shrink-0">
         <button
+          data-testid="theme-light"
           class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
             {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
           onclick={() => dark = false}
         >Light</button>
         <button
+          data-testid="theme-dark"
           class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
             {dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
           onclick={() => dark = true}

@@ -242,6 +242,7 @@
           class="text-white/30 hover:text-white/60 transition-colors"
           onclick={() => { filterQuery = '' }}
           aria-label="Clear filter"
+          data-testid="sidebar-filter-clear"
         >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
@@ -351,7 +352,7 @@
 
   <!-- Footer -->
   <div class="h-[44px] flex items-center justify-between px-4 border-t border-white/[0.06]">
-    <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Manage projects" onclick={onAddProject}>
+    <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Manage projects" data-testid="manage-projects-btn" onclick={onAddProject}>
       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
     </button>
     {#if daemonStatus && daemonStatus !== 'not_configured'}

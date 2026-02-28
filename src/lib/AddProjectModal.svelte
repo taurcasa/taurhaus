@@ -421,20 +421,20 @@
               <div class="flex items-center justify-center gap-3">
                 <button class="text-[12px] {t.linkColor} transition-colors" onclick={handleScan}>Try again</button>
                 <span class="{t.textTertiary}">·</span>
-                <button class="text-[12px] {t.linkColor} transition-colors" onclick={() => { scanError = null; manualMode = true }}>Browse manually</button>
+                <button class="text-[12px] {t.linkColor} transition-colors" onclick={() => { scanError = null; manualMode = true }} data-testid="enter-manual-mode">Browse manually</button>
               </div>
             </div>
 
           {:else if selectableProjects.length === 0 && discovered.length > 0}
             <div class="text-center py-4" data-testid="all-registered">
               <p class="text-[13px] {t.textSecondary}">All projects in ~/projects/ are already registered.</p>
-              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true }}>Browse manually</button>
+              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true }} data-testid="enter-manual-mode">Browse manually</button>
             </div>
 
           {:else if discovered.length === 0}
             <div class="text-center py-4" data-testid="empty-scan">
               <p class="text-[13px] {t.textSecondary}">No new projects found in ~/projects/.</p>
-              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true }}>Browse manually</button>
+              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true }} data-testid="enter-manual-mode">Browse manually</button>
             </div>
 
           {:else}
@@ -480,6 +480,7 @@
               <button
                 class="text-[12px] {t.linkColor} transition-colors"
                 onclick={() => { manualMode = true }}
+                data-testid="enter-manual-mode"
               >Enter path manually</button>
               {#if selectableProjects.length > 0}
                 <button
