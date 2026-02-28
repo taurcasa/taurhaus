@@ -130,11 +130,11 @@
   function mapResultToNavigation(result) {
     switch (result.entity_type) {
       case 'document':
-        return { tab: 'files', filePath: result.file_path }
+        return { tab: 'files', filePath: result.file_path, projectId: result.project_id }
       case 'session':
-        return { tab: 'overview', section: 'session' }
+        return { tab: 'overview', section: 'session', projectId: result.project_id }
       case 'commit':
-        return { tab: 'overview', section: 'commits' }
+        return { tab: 'overview', section: 'commits', projectId: result.project_id }
       default:
         return { tab: 'overview' }
     }

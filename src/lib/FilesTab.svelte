@@ -172,7 +172,7 @@
       }
     } catch (e) {
       const msg = String(e?.message || e || '')
-      console.error(`[file] error loading "${relativePath}": ${msg}`)
+      console.error(`[file] error loading "${relativePath}" (project=${selectedProject?.id}): ${msg}`)
       if (msg.includes('Binary file') || msg.includes('cannot be read as text')) {
         fileError = 'binary'
       } else if (msg.includes('too large')) {

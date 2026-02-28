@@ -585,13 +585,20 @@
     switchTab('files', { tab: 'files', file: resolved })
   }
 
-  function handleSearchNavigate(action) {
+  async function handleSearchNavigate(action) {
+    // Switch project if the result belongs to a different project
+    if (action.projectId && action.projectId !== selectedProject?.id) {
+      const targetProject = projects.find(p => p.id === action.projectId)
+      if (targetProject) {
+        await selectProject(targetProject)
+      }
+    }
+
     if (action.tab === 'files' && action.filePath) {
       filesNavTarget = { file: action.filePath }
       switchTab('files', { tab: 'files', file: action.filePath })
     } else if (action.tab === 'overview') {
       switchTab('overview')
-      // Scroll to section if specified (commits section)
     }
   }
 </script>
