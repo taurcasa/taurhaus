@@ -1,4 +1,5 @@
 # taurhaus development recipes
+# Single file by design — split into `import`s when this exceeds ~1200 lines.
 
 # Project paths
 project   := justfile_directory()

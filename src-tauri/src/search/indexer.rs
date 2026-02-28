@@ -245,7 +245,7 @@ pub fn index_project_files(
             .strip_prefix(project_root)
             .unwrap_or(path)
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         let title = path
             .file_name()
@@ -661,6 +661,26 @@ mod tests {
 
         assert_eq!(count, 2); // README.md + src/main.rs
         assert_eq!(index.doc_count().unwrap(), 2);
+    }
+
+    #[test]
+    fn index_project_files_stores_forward_slash_paths() {
+        // Regression: on Windows, strip_prefix produces backslash paths (src\main.rs).
+        // The daemon runs on Linux where backslashes are literal chars, not separators.
+        // Paths must be stored with forward slashes so they work cross-platform.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        index_project_files(&mut index, "p1", dir.path()).unwrap();
+        index.commit().unwrap();
+
+        let results = index.search("main", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        // Path must use forward slashes, not backslashes
+        assert_eq!(results[0].file_path, "src/main.rs");
+        assert!(!results[0].file_path.contains('\\'));
     }
 
     #[test]

@@ -179,6 +179,40 @@ describe('Search Workflow', () => {
     })
   })
 
+  describe('file loading', () => {
+    it('search result opens file without "Error loading" (path resolution)', async function () {
+      if (!mainApp) return this.skip()
+
+      await openSearch()
+
+      const input = await $('[data-testid="search-input"]')
+      await input.setValue('README')
+
+      await browser.waitUntil(
+        async () => (await $$('[data-testid="search-result"]')).length > 0,
+        { ...WAIT_MEDIUM, timeoutMsg: 'No results for file loading test' }
+      )
+
+      await clickTestId('search-result')
+
+      // Wait for overlay to close and file to load
+      await browser.waitUntil(
+        async () => !(await (await $('[data-testid="search-overlay"]')).isExisting()),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Overlay did not close' }
+      )
+
+      await waitForFileContent(TIMEOUT_LONG, 'File did not load after search navigation')
+
+      // Explicitly verify no "Error loading file" — this catches the backslash
+      // path bug where WSL project files fail because the search index stored
+      // Windows-style paths (src\main.rs) that the Linux daemon can't resolve.
+      const mainText = await browser.execute(() =>
+        document.querySelector('main')?.textContent || ''
+      )
+      expect(mainText).not.toContain('Error loading file')
+    })
+  })
+
   describe('keyboard navigation', () => {
     it('ArrowDown highlights first result', async function () {
       if (!mainApp) return this.skip()
