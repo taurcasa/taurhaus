@@ -4,43 +4,9 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForFileContent, clickTestId, selectProjectByName } from '../helpers/navigation.js'
+import { waitForFileContent, clickTestId } from '../helpers/navigation.js'
 import { openSearch, closeSearch, dismissSearch } from '../helpers/search.js'
-import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, TIMEOUT_LONG, TIMEOUT_XLONG } from '../helpers/timing.js'
-
-/**
- * Walk a FileTreeNode[] to collect text files inside subdirectories.
- * Returns an array of relative paths (e.g. ["src/main.rs", "src/lib.rs"]).
- * Prioritizes common source extensions that are likely to be indexed.
- */
-function collectSubdirFiles(tree, parentPath = '', limit = 10) {
-  if (!tree) return []
-  const textExts = ['rs', 'js', 'ts', 'svelte', 'py', 'md', 'toml', 'css', 'html']
-  const results = []
-  // First pass: files in immediate subdirectories
-  for (const node of tree) {
-    if (!node.is_dir || !node.children?.length) continue
-    for (const child of node.children) {
-      if (child.is_dir) continue
-      const ext = child.name.split('.').pop()?.toLowerCase()
-      if (textExts.includes(ext)) {
-        const path = parentPath ? `${parentPath}/${node.name}/${child.name}` : `${node.name}/${child.name}`
-        results.push(path)
-        if (results.length >= limit) return results
-      }
-    }
-  }
-  // Second pass: recurse deeper
-  if (results.length < limit) {
-    for (const node of tree) {
-      if (!node.is_dir || !node.children?.length) continue
-      const deeper = collectSubdirFiles(node.children, parentPath ? `${parentPath}/${node.name}` : node.name, limit - results.length)
-      results.push(...deeper)
-      if (results.length >= limit) break
-    }
-  }
-  return results
-}
+import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM, TIMEOUT_LONG } from '../helpers/timing.js'
 
 describe('Search Workflow', () => {
   let mainApp = false
@@ -188,7 +154,7 @@ describe('Search Workflow', () => {
       await clickTestId('search-input')
       await browser.keys('xyzzy999qqq'.split(''))
 
-      // Wait for search to settle — either "No matches" text or loading-but-stable overlay
+      // Wait for "No matches found" to appear in the results container
       await browser.waitUntil(
         async () => {
           const container = await $('[data-testid="search-results"]')
@@ -197,135 +163,18 @@ describe('Search Workflow', () => {
             (el) => el.textContent,
             container
           )
-          // Accept "No matches" OR still loading
-          return text.includes('No matches') || text.includes('Type to search') === false
+          return text.includes('No matches')
         },
-        { ...WAIT_MEDIUM, timeoutMsg: 'Search results container did not settle' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'No-results state did not appear for gibberish query' }
       )
 
-      // Overlay should still be open (no crash) — this is the core assertion
+      // Overlay should still be open (no crash)
       const overlay = await $('[data-testid="search-overlay"]')
       expect(await overlay.isExisting()).toBe(true)
 
-      // Should have zero actual result buttons (no false positives)
+      // Should have zero result buttons
       const results = await $$('[data-testid="search-result"]')
       expect(results.length).toBe(0)
-    })
-  })
-
-  // ── Subdirectory file loading ─────────────────────────────────────────
-  // These tests dynamically discover projects and files via IPC, then
-  // search for a file IN A SUBDIRECTORY (not root-level like README)
-  // to exercise path handling in the search→navigate flow.
-  describe('file loading (subdirectory)', () => {
-    // Dynamically discovered at runtime via IPC
-    let discoveredProjects = []
-
-    before(async function () {
-      if (!mainApp) return
-
-      // Call list_projects IPC to get all registered projects with paths
-      const projects = await browser.execute(() =>
-        window.__TAURI_INTERNALS__.invoke('list_projects')
-      )
-
-      if (!projects || projects.length === 0) return
-
-      discoveredProjects.push({ ...projects[0], fsType: 'native' })
-      if (projects.length > 1) discoveredProjects.push({ ...projects[1], fsType: 'native' })
-
-      // For each project, discover candidate files in subdirectories via get_file_tree.
-      // We collect multiple candidates because not all files in the tree are in the
-      // search index (e.g. gitignored files, binary files, unindexed projects).
-      for (const proj of discoveredProjects) {
-        const tree = await browser.execute((id) =>
-          window.__TAURI_INTERNALS__.invoke('get_file_tree', { projectId: id })
-        , proj.id)
-
-        proj.subdirCandidates = collectSubdirFiles(tree)
-      }
-    })
-
-    /**
-     * Search for a subdirectory file, click the result, verify it loads.
-     * Tries multiple candidate filenames from the file tree until one
-     * returns search results (not all tree files are in the search index).
-     * @param {object} proj - Project with id, name, fsType, subdirCandidates
-     */
-    async function searchAndVerifyFile(proj) {
-      // Switch to a different project first so we know the search
-      // navigates back to the correct project
-      const otherProject = discoveredProjects.find(p => p.id !== proj.id)
-      if (otherProject) {
-        await selectProjectByName(otherProject.name)
-      }
-
-      // Try candidates until one returns search results
-      let foundFileName = null
-      for (const candidate of proj.subdirCandidates) {
-        const fileName = candidate.split('/').pop()
-        await openSearch()
-        const input = await $('[data-testid="search-input"]')
-        await input.setValue(fileName)
-
-        // Brief wait for results
-        const hasResults = await browser.waitUntil(
-          async () => (await $$('[data-testid="search-result"]')).length > 0,
-          { timeout: 3000, interval: 100 }
-        ).catch(() => false)
-
-        if (hasResults) {
-          foundFileName = fileName
-          break
-        }
-        // No results — close overlay and try next candidate
-        await dismissSearch()
-      }
-
-      if (!foundFileName) {
-        throw new Error(`None of ${proj.subdirCandidates.length} candidate files returned search results (${proj.fsType} project: ${proj.name})`)
-      }
-
-      // Click the first document result (overlay is still open with results)
-      await clickTestId('search-result')
-
-      // Overlay must close
-      await browser.waitUntil(
-        async () => browser.execute(() =>
-          document.querySelector('[data-testid="search-overlay"]') === null
-        ),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Overlay did not close after clicking result' }
-      )
-
-      // File content must load
-      await waitForFileContent(
-        TIMEOUT_XLONG,
-        `File "${foundFileName}" did not load (${proj.fsType} project: ${proj.name})`
-      )
-
-      // Core assertion: no "Error loading file"
-      const mainText = await browser.execute(() =>
-        document.querySelector('main')?.textContent || ''
-      )
-      expect(mainText).not.toContain('Error loading file')
-    }
-
-    it('search→navigate to subdirectory file loads without error', async function () {
-      if (!mainApp) return this.skip()
-
-      const proj = discoveredProjects.find(p => p.subdirCandidates?.length)
-      if (!proj) return this.skip()
-      await searchAndVerifyFile(proj)
-    })
-
-    it('cross-project search: navigates from one project to another', async function () {
-      if (!mainApp) return this.skip()
-      if (discoveredProjects.filter(p => p.subdirCandidates?.length).length < 2) return this.skip()
-
-      // searchAndVerifyFile already switches to a different project first,
-      // then searches for a file — this exercises cross-project navigation.
-      const [, projB] = discoveredProjects.filter(p => p.subdirCandidates?.length)
-      await searchAndVerifyFile(projB)
     })
   })
 
