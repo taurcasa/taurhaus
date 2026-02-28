@@ -505,18 +505,17 @@ release:
     git push origin main
     echo ""
 
-    # Collect artifacts
+    # Collect artifacts (only matching current version)
     ARTIFACTS=()
-    for f in builds/macos-universal/*.dmg; do
+    for f in builds/macos-universal/taurhaus_${VERSION}_*.dmg; do
         [ -f "$f" ] && ARTIFACTS+=("$f")
     done
-    for f in builds/macos-aarch64/*.dmg; do
+    for f in builds/macos-aarch64/taurhaus_${VERSION}_*.dmg; do
         [ -f "$f" ] && ARTIFACTS+=("$f")
     done
-    for f in builds/macos-x86_64/*.dmg; do
+    for f in builds/macos-x86_64/taurhaus_${VERSION}_*.dmg; do
         [ -f "$f" ] && ARTIFACTS+=("$f")
     done
-    # Windows: NSIS installer lives in the Windows build dir (match current version only)
     WIN_NSIS="{{win_dir}}/src-tauri/target/release/bundle/nsis"
     for f in "$WIN_NSIS"/taurhaus_${VERSION}_*.exe; do
         [ -f "$f" ] && ARTIFACTS+=("$f")
