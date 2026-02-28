@@ -7,8 +7,10 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import {
   waitForProjectsLoaded,
   getCurrentProjectName,
+  clickTestId,
 } from '../helpers/navigation.js'
 import { openManageProjects, closeModal, tryAddProjectPath } from '../helpers/modal.js'
+import { PAUSE_CLICK_SETTLE, WAIT_SHORT } from '../helpers/timing.js'
 
 let mainApp = false
 
@@ -63,7 +65,7 @@ describe('Project Lifecycle', () => {
           const msg = await $('[data-testid="validation-message"], [data-testid="manual-error"]')
           return await msg.isExisting()
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Validation error did not appear for invalid path' }
+        { ...WAIT_SHORT, timeoutMsg: 'Validation error did not appear for invalid path' }
       )
     })
 
@@ -80,7 +82,7 @@ describe('Project Lifecycle', () => {
           const text = await browser.execute((el) => el.textContent, msg)
           return text.toLowerCase().includes('git')
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: '"Not a git repository" message did not appear' }
+        { ...WAIT_SHORT, timeoutMsg: '"Not a git repository" message did not appear' }
       )
     })
 
@@ -98,7 +100,7 @@ describe('Project Lifecycle', () => {
           const text = await browser.execute((el) => el.textContent, msg)
           return text.toLowerCase().includes('already') || text.toLowerCase().includes('registered')
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: '"Already registered" message did not appear' }
+        { ...WAIT_SHORT, timeoutMsg: '"Already registered" message did not appear' }
       )
     })
 
@@ -123,13 +125,13 @@ describe('Project Lifecycle', () => {
     before(async () => {
       // Ensure filter is clear before this suite
       const clearBtn = await $('[data-testid="sidebar-filter-clear"]')
-      if (await clearBtn.isExisting()) await clearBtn.click()
+      if (await clearBtn.isExisting()) await clickTestId('sidebar-filter-clear')
     })
 
     after(async () => {
       // Leave filter cleared after suite
       const clearBtn = await $('[data-testid="sidebar-filter-clear"]')
-      if (await clearBtn.isExisting()) await clearBtn.click()
+      if (await clearBtn.isExisting()) await clickTestId('sidebar-filter-clear')
     })
 
     it('typing in filter narrows project count', async function () {
@@ -148,7 +150,7 @@ describe('Project Lifecycle', () => {
           const projects = await $$('[data-testid="project-item"]')
           return projects.length < countBefore || projects.length === 1
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Filter did not narrow project count' }
+        { ...WAIT_SHORT, timeoutMsg: 'Filter did not narrow project count' }
       )
 
       const projectsAfter = await $$('[data-testid="project-item"]')
@@ -162,19 +164,16 @@ describe('Project Lifecycle', () => {
       await filter.waitForExist({ timeout: 5_000 })
       await filter.setValue('taurhaus')
 
-      // Wait for filter to take effect
-      await browser.pause(500)
-
       const clearBtn = await $('[data-testid="sidebar-filter-clear"]')
       await clearBtn.waitForExist({ timeout: 5_000 })
-      await clearBtn.click()
+      await clickTestId('sidebar-filter-clear')
 
       await browser.waitUntil(
         async () => {
           const projects = await $$('[data-testid="project-item"]')
           return projects.length > 0
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Projects did not return after clearing filter' }
+        { ...WAIT_SHORT, timeoutMsg: 'Projects did not return after clearing filter' }
       )
 
       const filterValue = await filter.getValue()
@@ -193,12 +192,12 @@ describe('Project Lifecycle', () => {
           const noMatches = await $('[data-testid="sidebar-no-matches"]')
           return await noMatches.isExisting()
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'sidebar-no-matches did not appear for gibberish query' }
+        { ...WAIT_SHORT, timeoutMsg: 'sidebar-no-matches did not appear for gibberish query' }
       )
 
       // Clear so subsequent tests are not affected
       const clearBtn = await $('[data-testid="sidebar-filter-clear"]')
-      if (await clearBtn.isExisting()) await clearBtn.click()
+      if (await clearBtn.isExisting()) await clickTestId('sidebar-filter-clear')
     })
   })
 
@@ -212,18 +211,18 @@ describe('Project Lifecycle', () => {
       if (projects.length < 2) return this.skip()
 
       const firstProject = projects[0]
-      await firstProject.click()
+      await browser.execute((el) => el.click(), firstProject)
       const firstProjectName = await getCurrentProjectName()
 
       const secondProject = projects[1]
-      await secondProject.click()
+      await browser.execute((el) => el.click(), secondProject)
 
       await browser.waitUntil(
         async () => {
           const name = await getCurrentProjectName()
           return name !== firstProjectName
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Project name in h1 did not change after switching' }
+        { ...WAIT_SHORT, timeoutMsg: 'Project name in h1 did not change after switching' }
       )
 
       const newName = await getCurrentProjectName()
@@ -237,11 +236,11 @@ describe('Project Lifecycle', () => {
       if (projects.length < 2) return this.skip()
 
       // Go to second
-      await projects[1].click()
-      await browser.pause(500)
+      await browser.execute((el) => el.click(), projects[1])
+      await browser.pause(PAUSE_CLICK_SETTLE)
 
       // Go back to first
-      await projects[0].click()
+      await browser.execute((el) => el.click(), projects[0])
 
       const firstName = await browser.execute(
         (el) => el.textContent,
@@ -253,7 +252,7 @@ describe('Project Lifecycle', () => {
           const name = await getCurrentProjectName()
           return firstName.includes(name) || name.includes(firstName.trim().split('\n')[0].trim())
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Did not switch back to first project' }
+        { ...WAIT_SHORT, timeoutMsg: 'Did not switch back to first project' }
       )
     })
   })

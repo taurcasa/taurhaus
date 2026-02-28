@@ -1,19 +1,24 @@
 /**
  * Modal helpers for E2E tests — open/close Manage Projects modal.
+ *
+ * PERF: Uses browser.execute() for clicks and condition checks to minimize
+ * WebDriver round-trips.
  */
+
+import { WAIT_MEDIUM, WAIT_LONG } from './timing.js'
 
 /**
  * Open the Manage Projects modal.
  */
 export async function openManageProjects() {
-  const btn = await $('[data-testid="manage-projects-btn"]')
-  await btn.click()
+  await browser.execute(() => {
+    document.querySelector('[data-testid="manage-projects-btn"]')?.click()
+  })
   await browser.waitUntil(
-    async () => {
-      const modal = await $('[data-testid="manage-projects-modal"]')
-      return await modal.isExisting()
-    },
-    { timeout: 5_000, interval: 300, timeoutMsg: 'Manage Projects modal did not open' }
+    async () => browser.execute(() =>
+      document.querySelector('[data-testid="manage-projects-modal"]') !== null
+    ),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Manage Projects modal did not open' }
   )
 }
 
@@ -21,14 +26,14 @@ export async function openManageProjects() {
  * Close the currently open modal.
  */
 export async function closeModal() {
-  const close = await $('[data-testid="modal-close"]')
-  await close.click()
+  await browser.execute(() => {
+    document.querySelector('[data-testid="modal-close"]')?.click()
+  })
   await browser.waitUntil(
-    async () => {
-      const modal = await $('[data-testid="manage-projects-modal"]')
-      return !(await modal.isExisting())
-    },
-    { timeout: 5_000, interval: 300, timeoutMsg: 'Modal did not close' }
+    async () => browser.execute(() =>
+      document.querySelector('[data-testid="manage-projects-modal"]') === null
+    ),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Modal did not close' }
   )
 }
 
@@ -39,35 +44,63 @@ export async function closeModal() {
  */
 export async function tryAddProjectPath(path) {
   // Check if manual-path-input is already visible (already in manual mode)
-  let input = await $('[data-testid="manual-path-input"]')
-  if (!(await input.isExisting())) {
+  const hasManualInput = await browser.execute(() =>
+    document.querySelector('[data-testid="manual-path-input"]') !== null
+  )
+
+  if (!hasManualInput) {
     // Step 1: Open the add section if not already open
-    const showAdd = await $('[data-testid="show-add-section"]')
-    if (await showAdd.isExisting()) {
-      await showAdd.click()
-    }
+    await browser.execute(() => {
+      document.querySelector('[data-testid="show-add-section"]')?.click()
+    })
 
     // Step 2: Wait for scan to complete, then switch to manual mode
     await browser.waitUntil(
-      async () => {
-        const manualBtn = await $('[data-testid="enter-manual-mode"]')
-        return await manualBtn.isExisting()
-      },
-      { timeout: 10_000, interval: 300, timeoutMsg: '"Enter path manually" button did not appear' }
+      async () => browser.execute(() =>
+        document.querySelector('[data-testid="enter-manual-mode"]') !== null
+      ),
+      { ...WAIT_LONG, timeoutMsg: '"Enter path manually" button did not appear' }
     )
-    const manualBtn = await $('[data-testid="enter-manual-mode"]')
-    await manualBtn.click()
+    await browser.execute(() => {
+      document.querySelector('[data-testid="enter-manual-mode"]')?.click()
+    })
 
-    input = await $('[data-testid="manual-path-input"]')
-    await input.waitForExist({ timeout: 5_000 })
+    // Wait for manual input to appear
+    await browser.waitUntil(
+      async () => browser.execute(() =>
+        document.querySelector('[data-testid="manual-path-input"]') !== null
+      ),
+      { ...WAIT_MEDIUM, timeoutMsg: 'Manual path input did not appear' }
+    )
   }
 
-  // Clear any previous value before setting new one
+  // Use WebDriver for input (setValue triggers proper Svelte bind:value updates)
+  const input = await $('[data-testid="manual-path-input"]')
   await input.clearValue()
   await input.setValue(path)
 
-  const addBtn = await $('[data-testid="manual-add-button"]')
-  await addBtn.click()
+  // Trigger blur to run validatePath (component validates onblur)
+  await browser.execute(() => {
+    const el = document.querySelector('[data-testid="manual-path-input"]')
+    if (el) el.dispatchEvent(new FocusEvent('blur', { bubbles: true }))
+  })
+
+  // Wait for validation to complete (validating spinner disappears)
+  await browser.waitUntil(
+    async () => browser.execute(() => {
+      // Validation done when: error message exists, validation message exists, or add button is enabled
+      return document.querySelector('[data-testid="manual-error"]') !== null ||
+        document.querySelector('[data-testid="validation-message"]') !== null ||
+        !document.querySelector('[data-testid="manual-add-button"]')?.disabled
+    }),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Path validation did not complete' }
+  )
+
+  // Click add button (will only work if path is valid — for invalid paths, validation message is already shown)
+  await browser.execute(() => {
+    const btn = document.querySelector('[data-testid="manual-add-button"]')
+    if (btn && !btn.disabled) btn.click()
+  })
 }
 
 /**
@@ -76,10 +109,10 @@ export async function tryAddProjectPath(path) {
  */
 export async function waitForModal(testid) {
   await browser.waitUntil(
-    async () => {
-      const modal = await $(`[data-testid="${testid}"]`)
-      return await modal.isExisting()
-    },
-    { timeout: 5_000, interval: 300, timeoutMsg: `Modal "${testid}" did not appear` }
+    async () => browser.execute(
+      (id) => document.querySelector(`[data-testid="${id}"]`) !== null,
+      testid
+    ),
+    { ...WAIT_MEDIUM, timeoutMsg: `Modal "${testid}" did not appear` }
   )
 }

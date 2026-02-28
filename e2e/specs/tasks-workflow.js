@@ -6,7 +6,8 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { switchToTab } from '../helpers/navigation.js'
+import { switchToTab, clickTestId } from '../helpers/navigation.js'
+import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG } from '../helpers/timing.js'
 
 describe('Tasks Workflow', () => {
   let mainApp = false
@@ -36,7 +37,7 @@ describe('Tasks Workflow', () => {
             columns.length > 0
           )
         },
-        { timeout: 15_000, interval: 500, timeoutMsg: 'Tasks loading did not complete within 15s' }
+        { ...WAIT_LONG, timeoutMsg: 'Tasks loading did not complete within timeout' }
       )
 
       // Record whether tasks exist for subsequent conditional tests
@@ -93,14 +94,14 @@ describe('Tasks Workflow', () => {
       if (!hasTasks) return this.skip()
 
       const rows = await $$('[data-testid="task-row"]')
-      await rows[0].click()
+      await browser.execute((el) => el.click(), rows[0])
 
       await browser.waitUntil(
         async () => {
           const panel = await $('[data-testid="task-detail-panel"]')
           return await panel.isExisting()
         },
-        { timeout: 6_000, interval: 300, timeoutMsg: 'task-detail-panel did not appear after click' }
+        { ...WAIT_SHORT, timeoutMsg: 'task-detail-panel did not appear after click' }
       )
 
       const panel = await $('[data-testid="task-detail-panel"]')
@@ -116,8 +117,8 @@ describe('Tasks Workflow', () => {
       if (!(await panel.isExisting())) {
         const rows = await $$('[data-testid="task-row"]')
         if (rows.length === 0) return this.skip()
-        await rows[0].click()
-        await panel.waitForExist({ timeout: 6_000 })
+        await browser.execute((el) => el.click(), rows[0])
+        await panel.waitForExist({ timeout: 3_000 })
       }
 
       // Wait for detail loading to complete
@@ -126,7 +127,7 @@ describe('Tasks Workflow', () => {
           const loading = await $('[data-testid="detail-loading"]')
           return !(await loading.isExisting())
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'Detail panel loading did not finish' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Detail panel loading did not finish' }
       )
 
       // Either sections or description element should be present
@@ -145,19 +146,18 @@ describe('Tasks Workflow', () => {
       if (!(await panel.isExisting())) {
         const rows = await $$('[data-testid="task-row"]')
         if (rows.length === 0) return this.skip()
-        await rows[0].click()
-        await panel.waitForExist({ timeout: 6_000 })
+        await browser.execute((el) => el.click(), rows[0])
+        await panel.waitForExist({ timeout: 3_000 })
       }
 
-      const closeBtn = await $('[data-testid="detail-close"]')
-      await closeBtn.click()
+      await clickTestId('detail-close')
 
       await browser.waitUntil(
         async () => {
           panel = await $('[data-testid="task-detail-panel"]')
           return !(await panel.isExisting())
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'task-detail-panel did not close after clicking detail-close' }
+        { ...WAIT_SHORT, timeoutMsg: 'task-detail-panel did not close after clicking detail-close' }
       )
 
       panel = await $('[data-testid="task-detail-panel"]')
@@ -172,14 +172,14 @@ describe('Tasks Workflow', () => {
       const historyTab = await $('[data-testid="sub-tab-history"]')
       if (!(await historyTab.isExisting())) return this.skip()
 
-      await historyTab.click()
+      await clickTestId('sub-tab-history')
 
       await browser.waitUntil(
         async () => {
           const content = await $('[data-testid="history-tab-content"]')
           return await content.isExisting()
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'history-tab-content did not appear after switching to history sub-tab' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'history-tab-content did not appear after switching to history sub-tab' }
       )
 
       const content = await $('[data-testid="history-tab-content"]')
@@ -192,7 +192,7 @@ describe('Tasks Workflow', () => {
       const activeTab = await $('[data-testid="sub-tab-active"]')
       if (!(await activeTab.isExisting())) return this.skip()
 
-      await activeTab.click()
+      await clickTestId('sub-tab-active')
 
       // Active view shows kanban columns or empty state — not history content
       await browser.waitUntil(
@@ -206,7 +206,7 @@ describe('Tasks Workflow', () => {
             !(await historyContent.isExisting())
           )
         },
-        { timeout: 6_000, interval: 300, timeoutMsg: 'Active sub-tab did not restore active view' }
+        { ...WAIT_SHORT, timeoutMsg: 'Active sub-tab did not restore active view' }
       )
 
       const historyContent = await $('[data-testid="history-tab-content"]')
@@ -226,8 +226,8 @@ describe('Tasks Workflow', () => {
       const historyTab = await $('[data-testid="sub-tab-history"]')
       if (!(await historyTab.isExisting())) return this.skip()
 
-      await historyTab.click()
-      await $('[data-testid="history-tab-content"]').waitForExist({ timeout: 8_000 })
+      await clickTestId('sub-tab-history')
+      await $('[data-testid="history-tab-content"]').waitForExist({ timeout: 5_000 })
 
       // Wait for history loading to resolve
       await browser.waitUntil(
@@ -235,7 +235,7 @@ describe('Tasks Workflow', () => {
           const loading = await $('[data-testid="history-loading"]')
           return !(await loading.isExisting())
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'History loading did not finish' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'History loading did not finish' }
       )
 
       const sessionHeaders = await $$('[data-testid="session-header"]')
@@ -245,7 +245,7 @@ describe('Tasks Workflow', () => {
 
       // Return to active sub-tab
       const activeTab = await $('[data-testid="sub-tab-active"]')
-      if (await activeTab.isExisting()) await activeTab.click()
+      if (await activeTab.isExisting()) await clickTestId('sub-tab-active')
     })
   })
 
@@ -254,7 +254,6 @@ describe('Tasks Workflow', () => {
       if (!mainApp) return this.skip()
 
       await switchToTab('overview')
-      await browser.pause(300)
       await switchToTab('tasks')
 
       // After round-trip, Tasks should show some content
@@ -271,7 +270,7 @@ describe('Tasks Workflow', () => {
             (await subTabs.isExisting())
           )
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'Tasks did not recover after tab round-trip' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Tasks did not recover after tab round-trip' }
       )
 
       const loading = await $('[data-testid="tasks-loading"]')

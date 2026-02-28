@@ -4,7 +4,9 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickTestId } from '../helpers/navigation.js'
 import { openSettings, closeSettings, ensureSettingsOpen, getSettingValue, setSettingValue } from '../helpers/settings.js'
+import { POLL_SLOW, TIMEOUT_LONG } from '../helpers/timing.js'
 
 describe('Settings Persistence', () => {
   let mainApp = false
@@ -96,9 +98,6 @@ describe('Settings Persistence', () => {
         const el = document.querySelector(`[data-testid="${testid}"]`)
         if (el) el.dispatchEvent(new Event('change', { bubbles: true }))
       }, 'threshold-active')
-
-      // Give the UI a moment to validate
-      await browser.pause(300)
 
       const after = await input.getValue()
       // Either the value was rejected (empty or original) or input type="number" strips non-numeric
@@ -318,7 +317,7 @@ describe('Settings Persistence', () => {
       const btn = await $('[data-testid="rebuild-index-btn"]')
       if (!(await btn.isExisting())) return this.skip()
 
-      await btn.click()
+      await clickTestId('rebuild-index-btn')
 
       // Wait for completion — either the button becomes re-enabled or text changes
       await browser.waitUntil(
@@ -328,7 +327,7 @@ describe('Settings Persistence', () => {
           const isEnabled = await btn.isEnabled()
           return isEnabled
         },
-        { timeout: 30_000, interval: 500, timeoutMsg: 'Rebuild index did not complete within 30s' }
+        { timeout: TIMEOUT_LONG, interval: POLL_SLOW, timeoutMsg: 'Rebuild index did not complete within timeout' }
       )
 
       // No error element should appear

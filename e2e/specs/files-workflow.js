@@ -5,6 +5,7 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { switchToTab, waitForTabContent, waitForFileContent } from '../helpers/navigation.js'
+import { WAIT_SHORT, WAIT_MEDIUM, TIMEOUT_LONG } from '../helpers/timing.js'
 
 let mainApp = false
 
@@ -26,7 +27,7 @@ describe('Files Workflow', () => {
           const items = await $$('[role="treeitem"]')
           return items.length > 0
         },
-        { timeout: 15_000, interval: 500, timeoutMsg: 'File tree did not load any items' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'File tree did not load any items' }
       )
 
       const items = await $$('[role="treeitem"]')
@@ -46,7 +47,7 @@ describe('Files Workflow', () => {
           const items = await $$('[role="treeitem"]')
           return items.length > 0
         },
-        { timeout: 15_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       // Check for a README in the tree first — skip if project has none
@@ -75,7 +76,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"]')).length > 0,
-        { timeout: 10_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       const items = await $$('[role="treeitem"]')
@@ -90,7 +91,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"]')).length > 0,
-        { timeout: 10_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       const items = await $$('[role="treeitem"]')
@@ -109,7 +110,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"]')).length > 0,
-        { timeout: 10_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       // Find a code file (.js or .rs)
@@ -124,10 +125,10 @@ describe('Files Workflow', () => {
       }
       if (!codeItem) return this.skip()
 
-      await codeItem.click()
+      await browser.execute((el) => el.click(), codeItem)
       await browser.waitUntil(
         async () => (await $('[data-testid="code-viewer"]')).isExisting(),
-        { timeout: 8_000, interval: 300, timeoutMsg: 'code-viewer did not appear after clicking code file' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'code-viewer did not appear after clicking code file' }
       )
 
       // Should contain highlighted <span> elements from Shiki
@@ -141,7 +142,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"]')).length > 0,
-        { timeout: 10_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       const items = await $$('[role="treeitem"]')
@@ -155,10 +156,10 @@ describe('Files Workflow', () => {
       }
       if (!mdItem) return this.skip()
 
-      await mdItem.click()
+      await browser.execute((el) => el.click(), mdItem)
       await browser.waitUntil(
         async () => (await $('[data-testid="markdown-content"]')).isExisting(),
-        { timeout: 8_000, interval: 300, timeoutMsg: 'markdown-content did not appear after clicking .md file' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'markdown-content did not appear after clicking .md file' }
       )
 
       // Rendered markdown should contain at least one heading or paragraph
@@ -182,8 +183,17 @@ describe('Files Workflow', () => {
       }
       if (!binaryItem) return this.skip()
 
-      await binaryItem.click()
-      await browser.pause(1_000)
+      await browser.execute((el) => el.click(), binaryItem)
+
+      // Wait briefly for content to respond
+      await browser.waitUntil(
+        async () => {
+          const cv = await $('[data-testid="code-viewer"]')
+          const mc = await $('[data-testid="markdown-content"]')
+          return (await cv.isExisting()) || (await mc.isExisting())
+        },
+        WAIT_SHORT
+      ).catch(() => {}) // Best-effort
 
       // Should show SOMETHING — image viewer, binary message, or code viewer
       const codeViewer = await $('[data-testid="code-viewer"]')
@@ -206,7 +216,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"][aria-expanded]')).length > 0,
-        { timeout: 10_000, interval: 500, timeoutMsg: 'No expandable directories found in file tree' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'No expandable directories found in file tree' }
       )
 
       const dirs = await $$('[role="treeitem"][aria-expanded]')
@@ -221,10 +231,10 @@ describe('Files Workflow', () => {
       }
       if (!collapsed) return this.skip()
 
-      await collapsed.click()
+      await browser.execute((el) => el.click(), collapsed)
       await browser.waitUntil(
         async () => (await collapsed.getAttribute('aria-expanded')) === 'true',
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Directory did not expand (aria-expanded stayed false)' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Directory did not expand (aria-expanded stayed false)' }
       )
 
       // Children should have appeared in the tree
@@ -237,7 +247,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"][aria-expanded]')).length > 0,
-        { timeout: 10_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       const dirs = await $$('[role="treeitem"][aria-expanded]')
@@ -255,19 +265,19 @@ describe('Files Workflow', () => {
       if (!expanded) {
         const collapsed = dirs[0]
         if (!collapsed) return this.skip()
-        await collapsed.click()
+        await browser.execute((el) => el.click(), collapsed)
         await browser.waitUntil(
           async () => (await collapsed.getAttribute('aria-expanded')) === 'true',
-          { timeout: 5_000, interval: 200 }
+          WAIT_MEDIUM
         )
         expanded = collapsed
       }
 
       const itemsBefore = (await $$('[role="treeitem"]')).length
-      await expanded.click()
+      await browser.execute((el) => el.click(), expanded)
       await browser.waitUntil(
         async () => (await expanded.getAttribute('aria-expanded')) === 'false',
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Directory did not collapse (aria-expanded stayed true)' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Directory did not collapse (aria-expanded stayed true)' }
       )
 
       // Children should have been removed
@@ -284,7 +294,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"]')).length > 0,
-        { timeout: 10_000, interval: 500 }
+        WAIT_MEDIUM
       )
 
       // Select a code file so we have a deterministic viewer state
@@ -299,8 +309,15 @@ describe('Files Workflow', () => {
       }
       if (!codeItem) return this.skip()
 
-      await codeItem.click()
-      await browser.pause(800)
+      await browser.execute((el) => el.click(), codeItem)
+      await browser.waitUntil(
+        async () => {
+          const cv = await $('[data-testid="code-viewer"]')
+          const mc = await $('[data-testid="markdown-content"]')
+          return (await cv.isExisting()) || (await mc.isExisting())
+        },
+        WAIT_SHORT
+      ).catch(() => {})
 
       // Record which viewer is showing
       const hadCodeViewer = await (await $('[data-testid="code-viewer"]')).isExisting()
@@ -313,7 +330,7 @@ describe('Files Workflow', () => {
       await switchToTab('files')
 
       // Same viewer should still be showing (position restored)
-      await waitForFileContent(10_000, 'File viewer did not persist after tab round-trip')
+      await waitForFileContent(TIMEOUT_LONG, 'File viewer did not persist after tab round-trip')
 
       if (hadCodeViewer) {
         const codeViewer = await $('[data-testid="code-viewer"]')
@@ -332,7 +349,7 @@ describe('Files Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[role="treeitem"]')).length > 0,
-        { timeout: 15_000, interval: 500, timeoutMsg: 'File tree did not render after tab round-trip' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'File tree did not render after tab round-trip' }
       )
 
       const items = await $$('[role="treeitem"]')

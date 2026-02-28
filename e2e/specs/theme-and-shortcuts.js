@@ -5,7 +5,12 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { switchToTab, waitForFileContent } from '../helpers/navigation.js'
+import { switchToTab, waitForFileContent, clickTestId } from '../helpers/navigation.js'
+import {
+  POLL_FAST,
+  WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM,
+  TIMEOUT_MEDIUM,
+} from '../helpers/timing.js'
 
 describe('Theme and Shortcuts', () => {
   let mainApp = false
@@ -15,9 +20,15 @@ describe('Theme and Shortcuts', () => {
     mainApp = await ensureMainApp()
   })
 
-  // Helper: check whether current theme is dark via the html.dark class
-  async function isDarkMode() {
-    return browser.execute(() => document.documentElement.classList.contains('dark'))
+  // Helper: wait for theme class to match expected state
+  async function waitForTheme(dark, timeout = 2_000) {
+    await browser.waitUntil(
+      async () => {
+        const isDark = await browser.execute(() => document.documentElement.classList.contains('dark'))
+        return isDark === dark
+      },
+      { timeout, interval: POLL_FAST }
+    )
   }
 
   describe('theme switching', () => {
@@ -27,10 +38,11 @@ describe('Theme and Shortcuts', () => {
       const lightBtn = await $('[data-testid="theme-light"]')
       if (!(await lightBtn.isExisting())) return this.skip()
 
-      await lightBtn.click()
-      await browser.pause(400)
+      await clickTestId('theme-light')
+      await waitForTheme(false)
 
-      expect(await isDarkMode()).toBe(false)
+      const isDark = await browser.execute(() => document.documentElement.classList.contains('dark'))
+      expect(isDark).toBe(false)
     })
 
     it('clicking Dark sets dark mode', async function () {
@@ -39,10 +51,11 @@ describe('Theme and Shortcuts', () => {
       const darkBtn = await $('[data-testid="theme-dark"]')
       if (!(await darkBtn.isExisting())) return this.skip()
 
-      await darkBtn.click()
-      await browser.pause(400)
+      await clickTestId('theme-dark')
+      await waitForTheme(true)
 
-      expect(await isDarkMode()).toBe(true)
+      const isDark = await browser.execute(() => document.documentElement.classList.contains('dark'))
+      expect(isDark).toBe(true)
     })
 
     it('clicking Light again restores light mode', async function () {
@@ -51,10 +64,11 @@ describe('Theme and Shortcuts', () => {
       const lightBtn = await $('[data-testid="theme-light"]')
       if (!(await lightBtn.isExisting())) return this.skip()
 
-      await lightBtn.click()
-      await browser.pause(400)
+      await clickTestId('theme-light')
+      await waitForTheme(false)
 
-      expect(await isDarkMode()).toBe(false)
+      const isDark = await browser.execute(() => document.documentElement.classList.contains('dark'))
+      expect(isDark).toBe(false)
     })
 
     it('theme persists across tab switches', async function () {
@@ -63,14 +77,14 @@ describe('Theme and Shortcuts', () => {
       // Switch to dark
       const darkBtn = await $('[data-testid="theme-dark"]')
       if (!(await darkBtn.isExisting())) return this.skip()
-      await darkBtn.click()
-      await browser.pause(400)
+      await clickTestId('theme-dark')
+      await waitForTheme(true)
 
       // Switch tab
       await switchToTab('git')
-      await browser.pause(300)
 
-      expect(await isDarkMode()).toBe(true)
+      const isDark = await browser.execute(() => document.documentElement.classList.contains('dark'))
+      expect(isDark).toBe(true)
 
       // Switch back to overview
       await switchToTab('overview')
@@ -83,13 +97,13 @@ describe('Theme and Shortcuts', () => {
       await switchToTab('files')
 
       try {
-        await waitForFileContent(10_000, 'File content did not load in Files tab')
+        await waitForFileContent(TIMEOUT_MEDIUM, 'File content did not load in Files tab')
       } catch {
         return this.skip()
       }
 
       // Verify theme class persists while viewing file content
-      const darkMode = await isDarkMode()
+      const darkMode = await browser.execute(() => document.documentElement.classList.contains('dark'))
       expect(typeof darkMode).toBe('boolean') // Just verify the class mechanism works
 
       // File content should be visible
@@ -110,7 +124,10 @@ describe('Theme and Shortcuts', () => {
       const existingOverlay = await $('[data-testid="search-overlay"]')
       if (await existingOverlay.isExisting()) {
         await browser.keys('Escape')
-        await browser.pause(300)
+        await browser.waitUntil(
+          async () => !(await (await $('[data-testid="search-overlay"]')).isExisting()),
+          WAIT_INSTANT
+        ).catch(() => {})
       }
 
       await browser.keys(['Control', 'k'])
@@ -120,7 +137,7 @@ describe('Theme and Shortcuts', () => {
           const overlay = await $('[data-testid="search-overlay"]')
           return await overlay.isExisting()
         },
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Search overlay did not open via Ctrl+K' }
+        { ...WAIT_SHORT, timeoutMsg: 'Search overlay did not open via Ctrl+K' }
       )
 
       const overlay = await $('[data-testid="search-overlay"]')
@@ -140,7 +157,7 @@ describe('Theme and Shortcuts', () => {
           const o = await $('[data-testid="search-overlay"]')
           return !(await o.isExisting())
         },
-        { timeout: 3_000, interval: 200, timeoutMsg: 'Search overlay did not close via Escape' }
+        { ...WAIT_INSTANT, timeoutMsg: 'Search overlay did not close via Escape' }
       )
 
       const overlayAfter = await $('[data-testid="search-overlay"]')
@@ -153,31 +170,31 @@ describe('Theme and Shortcuts', () => {
       const toggleBtn = await $('[data-testid="settings-toggle"]')
       if (!(await toggleBtn.isExisting())) return this.skip()
 
-      await toggleBtn.click()
+      await clickTestId('settings-toggle')
       await browser.waitUntil(
         async () => {
           const settingsView = await $('[data-testid="settings-view"]')
           return await settingsView.isExisting()
         },
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Settings did not open' }
+        { ...WAIT_SHORT, timeoutMsg: 'Settings did not open' }
       )
 
       await browser.keys('Escape')
-      await browser.pause(500)
 
-      // Settings should be gone — Overview tab visible again
-      const overviewTab = await $('[data-testid="tab-overview"]')
-      const settingsView = await $('[data-testid="settings-view"]')
+      // Wait for settings to close
+      const closed = await browser.waitUntil(
+        async () => !(await (await $('[data-testid="settings-view"]')).isExisting()),
+        WAIT_INSTANT
+      ).catch(() => false)
 
-      // Either Escape closed settings or it doesn't respond — both valid (skip if not implemented)
-      const settingsClosed = !(await settingsView.isExisting())
-      if (!settingsClosed) {
+      if (!closed) {
         // Close manually via back button
         const backBtn = await $('[data-testid="settings-back"]')
-        if (await backBtn.isExisting()) await backBtn.click()
+        if (await backBtn.isExisting()) await clickTestId('settings-back')
         return this.skip()
       }
 
+      const overviewTab = await $('[data-testid="tab-overview"]')
       expect(await overviewTab.isExisting()).toBe(true)
     })
   })
@@ -189,14 +206,12 @@ describe('Theme and Shortcuts', () => {
       // Look for any element containing the brand text
       const brand = await browser.waitUntil(
         async () => {
-          // Try data-testid first, then text match fallback
           const byTestid = await $('[data-testid="app-title"]')
           if (await byTestid.isExisting()) return byTestid
 
           const byText = await $('span=taurhaus')
           if (await byText.isExisting()) return byText
 
-          // Generic text search via execute
           const found = await browser.execute(() => {
             const els = Array.from(document.querySelectorAll('*'))
             return els.some(
@@ -207,7 +222,7 @@ describe('Theme and Shortcuts', () => {
           })
           return found ? true : null
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: '"taurhaus" text not found in app' }
+        { ...WAIT_SHORT, timeoutMsg: '"taurhaus" text not found in app' }
       )
 
       expect(brand).toBeTruthy()

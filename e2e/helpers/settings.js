@@ -1,19 +1,23 @@
 /**
  * Settings helpers for E2E tests — open/close settings, get/set values.
+ *
+ * PERF: Uses browser.execute() for clicks and condition checks.
  */
+
+import { WAIT_MEDIUM } from './timing.js'
 
 /**
  * Open settings view by clicking the settings toggle in the sidebar.
  */
 export async function openSettings() {
-  const toggle = await $('[data-testid="settings-toggle"]')
-  await toggle.click()
+  await browser.execute(() => {
+    document.querySelector('[data-testid="settings-toggle"]')?.click()
+  })
   await browser.waitUntil(
-    async () => {
-      const view = await $('[data-testid="settings-view"]')
-      return await view.isExisting()
-    },
-    { timeout: 5_000, interval: 300, timeoutMsg: 'Settings view did not open' }
+    async () => browser.execute(() =>
+      document.querySelector('[data-testid="settings-view"]') !== null
+    ),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Settings view did not open' }
   )
 }
 
@@ -21,14 +25,14 @@ export async function openSettings() {
  * Close settings view by clicking the back button.
  */
 export async function closeSettings() {
-  const back = await $('[data-testid="settings-back"]')
-  await back.click()
+  await browser.execute(() => {
+    document.querySelector('[data-testid="settings-back"]')?.click()
+  })
   await browser.waitUntil(
-    async () => {
-      const view = await $('[data-testid="settings-view"]')
-      return !(await view.isExisting())
-    },
-    { timeout: 5_000, interval: 300, timeoutMsg: 'Settings view did not close' }
+    async () => browser.execute(() =>
+      document.querySelector('[data-testid="settings-view"]') === null
+    ),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Settings view did not close' }
   )
 }
 
@@ -36,10 +40,10 @@ export async function closeSettings() {
  * Ensure settings view is open — opens it if not already visible.
  */
 export async function ensureSettingsOpen() {
-  const view = await $('[data-testid="settings-view"]')
-  if (!(await view.isExisting())) {
-    await openSettings()
-  }
+  const isOpen = await browser.execute(() =>
+    document.querySelector('[data-testid="settings-view"]') !== null
+  )
+  if (!isOpen) await openSettings()
 }
 
 /**
@@ -48,31 +52,37 @@ export async function ensureSettingsOpen() {
  * @returns {Promise<string>}
  */
 export async function getSettingValue(testid) {
-  const el = await $(`[data-testid="${testid}"]`)
-  const tagName = await el.getTagName()
-  if (tagName === 'select') {
-    return await el.getValue()
-  }
-  return await el.getValue()
+  return await browser.execute((id) => {
+    const el = document.querySelector(`[data-testid="${id}"]`)
+    return el ? el.value : ''
+  }, testid)
 }
 
 /**
- * Set a value on a settings input/select and trigger change.
+ * Set a value on a settings input/select and trigger save.
+ * For inputs: uses native value setter + blur (Settings.svelte saves on blur).
+ * For selects: uses WebDriver selectByAttribute (needs proper option selection).
  * @param {string} testid - The data-testid of the input/select
  * @param {string} value - The value to set
  */
 export async function setSettingValue(testid, value) {
-  const el = await $(`[data-testid="${testid}"]`)
-  const tagName = await el.getTagName()
+  const tagName = await browser.execute(
+    (id) => document.querySelector(`[data-testid="${id}"]`)?.tagName?.toLowerCase(),
+    testid
+  )
   if (tagName === 'select') {
+    const el = await $(`[data-testid="${testid}"]`)
     await el.selectByAttribute('value', value)
   } else {
-    await el.clearValue()
-    await el.setValue(value)
-    // Trigger blur to commit the change
-    await browser.execute((selector) => {
-      const input = document.querySelector(`[data-testid="${selector}"]`)
-      if (input) input.dispatchEvent(new Event('change', { bubbles: true }))
-    }, testid)
+    // Set value via native setter + dispatch input + blur (Svelte bindings + onblur handler)
+    await browser.execute((id, val) => {
+      const input = document.querySelector(`[data-testid="${id}"]`)
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+      setter.call(input, val)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      input.dispatchEvent(new FocusEvent('blur', { bubbles: true }))
+    }, testid, value)
   }
 }

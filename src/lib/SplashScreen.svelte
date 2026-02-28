@@ -177,6 +177,7 @@
           onclick={handleRetry}
         >Retry</button>
         <button
+          data-testid="continue-anyway-btn"
           class="px-4 py-1.5 text-[12px] font-medium text-white/40 hover:text-white/60 transition-colors"
           onclick={onContinue}
         >Continue anyway</button>

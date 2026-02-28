@@ -4,8 +4,9 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForFileContent } from '../helpers/navigation.js'
+import { waitForFileContent, clickTestId } from '../helpers/navigation.js'
 import { openSearch, closeSearch, dismissSearch } from '../helpers/search.js'
+import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM, TIMEOUT_LONG } from '../helpers/timing.js'
 
 describe('Search Workflow', () => {
   let mainApp = false
@@ -33,8 +34,7 @@ describe('Search Workflow', () => {
     it('search input is focused on open', async function () {
       if (!mainApp) return this.skip()
 
-      const overlay = await $('[data-testid="search-overlay"]')
-      if (!(await overlay.isExisting())) return this.skip()
+      await openSearch()
 
       const input = await $('[data-testid="search-input"]')
       expect(await input.isFocused()).toBe(true)
@@ -43,8 +43,7 @@ describe('Search Workflow', () => {
     it('Escape closes the overlay', async function () {
       if (!mainApp) return this.skip()
 
-      const overlay = await $('[data-testid="search-overlay"]')
-      if (!(await overlay.isExisting())) return this.skip()
+      await openSearch()
 
       await closeSearch()
 
@@ -59,7 +58,6 @@ describe('Search Workflow', () => {
       await openSearch()
       const input = await $('[data-testid="search-input"]')
       await input.setValue('stale query')
-      await browser.pause(500)
 
       await closeSearch()
       await openSearch()
@@ -104,7 +102,7 @@ describe('Search Workflow', () => {
           const results = await $$('[data-testid="search-result"]')
           return results.length > 0
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'Search results for "README" did not appear' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Search results for "README" did not appear' }
       )
 
       const results = await $$('[data-testid="search-result"]')
@@ -125,14 +123,14 @@ describe('Search Workflow', () => {
         await input.setValue('README')
         await browser.waitUntil(
           async () => (await $$('[data-testid="search-result"]')).length > 0,
-          { timeout: 8_000, interval: 300, timeoutMsg: 'No results to click' }
+          { ...WAIT_MEDIUM, timeoutMsg: 'No results to click' }
         )
       }
 
       const firstResult = await $('[data-testid="search-result"]')
       if (!(await firstResult.isExisting())) return this.skip()
 
-      await firstResult.click()
+      await clickTestId('search-result')
 
       // Overlay must close
       await browser.waitUntil(
@@ -140,11 +138,11 @@ describe('Search Workflow', () => {
           const o = await $('[data-testid="search-overlay"]')
           return !(await o.isExisting())
         },
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Overlay did not close after clicking result' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Overlay did not close after clicking result' }
       )
 
       // Files tab should now be active — look for file content
-      await waitForFileContent(10_000, 'File content did not load after clicking search result')
+      await waitForFileContent(TIMEOUT_LONG, 'File content did not load after clicking search result')
     })
 
     it('gibberish query shows no-results state', async function () {
@@ -153,8 +151,7 @@ describe('Search Workflow', () => {
       await openSearch()
 
       // Type gibberish using keyboard to ensure oninput fires
-      const input = await $('[data-testid="search-input"]')
-      await input.click()
+      await clickTestId('search-input')
       await browser.keys('xyzzy999qqq'.split(''))
 
       // Wait for "No matches found" to appear in the results container
@@ -168,7 +165,7 @@ describe('Search Workflow', () => {
           )
           return text.includes('No matches')
         },
-        { timeout: 8_000, interval: 400, timeoutMsg: 'No-results state did not appear for gibberish query' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'No-results state did not appear for gibberish query' }
       )
 
       // Overlay should still be open (no crash)
@@ -192,11 +189,10 @@ describe('Search Workflow', () => {
 
       await browser.waitUntil(
         async () => (await $$('[data-testid="search-result"]')).length > 0,
-        { timeout: 8_000, interval: 300, timeoutMsg: 'No results for ArrowDown test' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'No results for ArrowDown test' }
       )
 
       await browser.keys('ArrowDown')
-      await browser.pause(300)
 
       // First result should be highlighted via CSS class (bg-zinc-800 dark / bg-zinc-100 light)
       const results = await $$('[data-testid="search-result"]')
@@ -222,10 +218,9 @@ describe('Search Workflow', () => {
         await input.setValue('README')
         await browser.waitUntil(
           async () => (await $$('[data-testid="search-result"]')).length > 0,
-          { timeout: 8_000, interval: 300, timeoutMsg: 'No results for Enter test' }
+          { ...WAIT_MEDIUM, timeoutMsg: 'No results for Enter test' }
         )
         await browser.keys('ArrowDown')
-        await browser.pause(200)
       }
 
       await browser.keys('Enter')
@@ -236,11 +231,11 @@ describe('Search Workflow', () => {
           const o = await $('[data-testid="search-overlay"]')
           return !(await o.isExisting())
         },
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Overlay did not close after Enter' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Overlay did not close after Enter' }
       )
 
       // File content must load
-      await waitForFileContent(10_000, 'File did not load after Enter on result')
+      await waitForFileContent(TIMEOUT_LONG, 'File did not load after Enter on result')
     })
   })
 })

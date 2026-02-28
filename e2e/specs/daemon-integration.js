@@ -4,7 +4,8 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForProjectsLoaded, switchToTab } from '../helpers/navigation.js'
+import { waitForProjectsLoaded, switchToTab, clickTestId } from '../helpers/navigation.js'
+import { PAUSE_CLICK_SETTLE, WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 
 let mainApp = false
 let daemonConnected = false
@@ -17,11 +18,19 @@ describe('Daemon Integration', () => {
     if (mainApp) {
       await waitForProjectsLoaded()
 
-      // Check daemon status indicator
-      const status = await $('[data-testid="daemon-status"]')
-      if (await status.isExisting()) {
-        const text = await status.getText()
-        daemonConnected = text.toLowerCase().includes('connected')
+      // Check daemon connectivity via Tauri IPC. The UI auto-dismisses the
+      // "Connected" indicator after 3s, so we can't rely on the DOM element.
+      // Instead, call the get_daemon_status command through Tauri's internals.
+      try {
+        const result = await browser.executeAsync((done) => {
+          window.__TAURI_INTERNALS__
+            .invoke('get_daemon_status')
+            .then((s) => done(s && s.status ? s.status : null))
+            .catch(() => done(null))
+        })
+        daemonConnected = result === 'connected'
+      } catch {
+        daemonConnected = false
       }
     }
   })
@@ -29,14 +38,18 @@ describe('Daemon Integration', () => {
   // ─── Status ───────────────────────────────────────────────────────────────
 
   describe('status', () => {
-    it('daemon-status indicator shows "connected"', async function () {
+    it('daemon reports "connected" via IPC', async function () {
       if (!mainApp || !daemonConnected) return this.skip()
 
-      const status = await $('[data-testid="daemon-status"]')
-      expect(await status.isExisting()).toBe(true)
-
-      const text = (await status.getText()).toLowerCase()
-      expect(text).toContain('connected')
+      // Verify via IPC — the UI indicator auto-dismisses after 3s,
+      // so we test the actual connection state, not the transient DOM element.
+      const status = await browser.executeAsync((done) => {
+        window.__TAURI_INTERNALS__
+          .invoke('get_daemon_status')
+          .then((s) => done(s && s.status ? s.status : null))
+          .catch(() => done(null))
+      })
+      expect(status).toBe('connected')
     })
   })
 
@@ -73,11 +86,11 @@ describe('Daemon Integration', () => {
       const dismissBtn = await $('[data-testid="daemon-update-dismiss"]')
       expect(await dismissBtn.isExisting()).toBe(true)
 
-      await dismissBtn.click()
+      await clickTestId('daemon-update-dismiss')
 
       await browser.waitUntil(
         async () => !(await (await $('[data-testid="daemon-update-banner"]')).isExisting()),
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Daemon update banner did not dismiss' }
+        { ...WAIT_SHORT, timeoutMsg: 'Daemon update banner did not dismiss' }
       )
 
       expect(await banner.isExisting()).toBe(false)
@@ -95,8 +108,8 @@ describe('Daemon Integration', () => {
         const tabBtn = await $(`[data-testid="tab-${tabName}"]`)
         if (!(await tabBtn.isExisting())) continue
 
-        await tabBtn.click()
-        await browser.pause(500)
+        await clickTestId(`tab-${tabName}`)
+        await browser.pause(PAUSE_CLICK_SETTLE)
 
         // Tab button should still be present (no crash/redirect)
         expect(await tabBtn.isExisting()).toBe(true)
@@ -109,18 +122,18 @@ describe('Daemon Integration', () => {
       const toggle = await $('[data-testid="settings-toggle"]')
       if (!(await toggle.isExisting())) return this.skip()
 
-      await toggle.click()
+      await clickTestId('settings-toggle')
 
       await browser.waitUntil(
         async () => await (await $('[data-testid="settings-view"]')).isExisting(),
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Settings view did not open with daemon running' }
+        { ...WAIT_SHORT, timeoutMsg: 'Settings view did not open with daemon running' }
       )
 
       const settings = await $('[data-testid="settings-view"]')
       expect(await settings.isExisting()).toBe(true)
 
       // Close settings
-      await toggle.click()
+      await clickTestId('settings-toggle')
     })
 
     it('Overview tab loads content with daemon connected', async function () {
@@ -129,7 +142,7 @@ describe('Daemon Integration', () => {
       const overviewBtn = await $('[data-testid="tab-overview"]')
       if (!(await overviewBtn.isExisting())) return this.skip()
 
-      await overviewBtn.click()
+      await clickTestId('tab-overview')
 
       await browser.waitUntil(
         async () => {
@@ -137,7 +150,7 @@ describe('Daemon Integration', () => {
           const readme = await $('[data-testid="overview-readme"]')
           return (await quickActions.isExisting()) || (await readme.isExisting())
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'Overview content did not load with daemon running' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Overview content did not load with daemon running' }
       )
     })
 

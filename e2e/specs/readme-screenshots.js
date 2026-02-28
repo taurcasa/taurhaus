@@ -10,8 +10,25 @@
 
 import { resolve } from 'node:path'
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickTestId, fastClick } from '../helpers/navigation.js'
+import { POLL_FAST } from '../helpers/timing.js'
 
 const docsDir = resolve(import.meta.dirname, '..', '..', 'docs')
+
+// Wait for tab-specific content to render (replaces fixed pauses)
+async function waitForContent(selectors, timeout = 3_000) {
+  const sels = Array.isArray(selectors) ? selectors : [selectors]
+  await browser.waitUntil(
+    async () => {
+      for (const sel of sels) {
+        const el = await $(sel)
+        if (await el.isExisting()) return true
+      }
+      return false
+    },
+    { timeout, interval: POLL_FAST }
+  ).catch(() => {})
+}
 
 describe('README Screenshots', () => {
   before(async () => {
@@ -22,62 +39,60 @@ describe('README Screenshots', () => {
     await ensureMainApp()
 
     // Ensure dark mode
-    const darkBtn = await $('button=Dark')
+    const darkBtn = await $('[data-testid="theme-dark"]')
     if (await darkBtn.isExisting()) {
-      await darkBtn.click()
-      await browser.pause(500)
+      await clickTestId('theme-dark')
+      await browser.waitUntil(
+        async () => await browser.execute(() => document.documentElement.classList.contains('dark')),
+        { timeout: 1_000, interval: POLL_FAST }
+      )
     }
 
-    // Extra settle time for real data to load
-    await browser.pause(2_000)
+    // Wait for sidebar to settle
+    await waitForContent(['[data-testid="project-item"]'])
   })
 
   it('hero — Overview tab (ledger project)', async () => {
     // Navigate to "ledger" project for a clean README that isn't self-referential
-    // Use JS textContent because WebKit getText() doesn't return full text on truncated elements
     const sidebarItems = await $$('[data-testid="project-item"]')
     for (const item of sidebarItems) {
       const text = await browser.execute((el) => el.textContent, item)
       if (text && text.toLowerCase().includes('ledger')) {
         await item.scrollIntoView()
-        await browser.pause(300)
-        await item.click()
-        await browser.pause(2_000)
+        await browser.execute((el) => el.click(), item)
+        await waitForContent(['[data-testid="quick-actions"]', '[data-testid="overview-readme"]'])
         break
       }
     }
 
-    const overviewTab = await $('button=Overview')
-    await overviewTab.click()
-    await browser.pause(1_500)
+    await clickTestId('tab-overview')
+    await waitForContent(['[data-testid="quick-actions"]', '[data-testid="overview-readme"]'])
     await browser.saveScreenshot(resolve(docsDir, 'screenshot-overview.png'))
   })
 
   it('git — Git tab with diff', async () => {
-    const gitTab = await $('button=Git')
-    await gitTab.click()
-    await browser.pause(1_500)
+    await clickTestId('tab-git')
+    await waitForContent(['[data-testid="commit-row"]', '[data-testid="git-empty"]'])
 
     // Click the first commit to show the diff panel
     const firstCommit = await $('[data-testid="commit-row"]')
     if (await firstCommit.isExisting()) {
-      await firstCommit.click()
-      await browser.pause(1_500)
+      await clickTestId('commit-row')
+      await waitForContent(['[data-testid="commit-file"]'])
     }
 
     await browser.saveScreenshot(resolve(docsDir, 'screenshot-git.png'))
   })
 
   it('files — Files tab with code preview', async () => {
-    const filesTab = await $('button=Files')
-    await filesTab.click()
-    await browser.pause(1_500)
+    await clickTestId('tab-files')
+    await waitForContent(['[role="treeitem"]'])
 
     // Click a source file to show syntax highlighting
     const firstFile = await $('li[role="treeitem"]:not([aria-expanded])')
     if (await firstFile.isExisting()) {
-      await firstFile.click()
-      await browser.pause(1_500)
+      await fastClick('li[role="treeitem"]:not([aria-expanded])')
+      await waitForContent(['[data-testid="code-viewer"]', '[data-testid="markdown-content"]'])
     }
 
     await browser.saveScreenshot(resolve(docsDir, 'screenshot-files.png'))

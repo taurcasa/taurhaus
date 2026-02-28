@@ -5,9 +5,10 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForProjectsLoaded, switchToTab } from '../helpers/navigation.js'
+import { waitForProjectsLoaded, switchToTab, clickTestId } from '../helpers/navigation.js'
 import { openManageProjects, closeModal, tryAddProjectPath } from '../helpers/modal.js'
 import { dismissSearch } from '../helpers/search.js'
+import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 
 let mainApp = false
 
@@ -38,7 +39,7 @@ describe('Error Handling', () => {
           const err = await $('[data-testid="validation-message"], [data-testid="manual-error"]')
           return await err.isExisting()
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Validation error did not appear for invalid path' }
+        { ...WAIT_SHORT, timeoutMsg: 'Validation error did not appear for invalid path' }
       )
     })
 
@@ -55,7 +56,7 @@ describe('Error Handling', () => {
           const text = await browser.execute((el) => el.textContent, err)
           return text.toLowerCase().includes('git')
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: '"Not a git repository" message did not appear for /tmp' }
+        { ...WAIT_SHORT, timeoutMsg: '"Not a git repository" message did not appear for /tmp' }
       )
     })
 
@@ -73,7 +74,7 @@ describe('Error Handling', () => {
           const lower = text.toLowerCase()
           return lower.includes('already') || lower.includes('registered') || lower.includes('exists')
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Duplicate path error message did not appear' }
+        { ...WAIT_SHORT, timeoutMsg: 'Duplicate path error message did not appear' }
       )
     })
   })
@@ -89,51 +90,44 @@ describe('Error Handling', () => {
       if (!mainApp) return this.skip()
 
       // Open search overlay (Cmd+K / Ctrl+K)
-      await browser.keys(['Meta', 'k'])
-      await browser.pause(300)
+      await browser.keys(['Control', 'k'])
 
-      // Try Ctrl+K as alternative if Meta+K didn't work (Linux)
-      let overlay = await $('[data-testid="search-overlay"]')
-      if (!(await overlay.isExisting())) {
-        await browser.keys(['Control', 'k'])
-        await browser.pause(300)
-        overlay = await $('[data-testid="search-overlay"]')
-      }
-
-      if (!(await overlay.isExisting())) {
-        // Search overlay may not be keyboard-triggered — skip gracefully
+      const overlay = await $('[data-testid="search-overlay"]')
+      try {
+        await overlay.waitForExist({ timeout: 2_000 })
+      } catch {
         return this.skip()
       }
 
       // Overlay is open with empty query — verify it is stable (no crash/disappear)
       const input = await $('[data-testid="search-input"]')
       expect(await input.isExisting()).toBe(true)
-
-      // Wait a beat to ensure no spontaneous crash
-      await browser.pause(500)
       expect(await overlay.isExisting()).toBe(true)
     })
 
     it('typing gibberish in search does not crash — shows empty or no-results state', async function () {
       if (!mainApp) return this.skip()
 
-      await browser.keys(['Meta', 'k'])
-      await browser.pause(300)
+      await browser.keys(['Control', 'k'])
 
-      let overlay = await $('[data-testid="search-overlay"]')
-      if (!(await overlay.isExisting())) {
-        await browser.keys(['Control', 'k'])
-        await browser.pause(300)
-        overlay = await $('[data-testid="search-overlay"]')
+      const overlay = await $('[data-testid="search-overlay"]')
+      try {
+        await overlay.waitForExist({ timeout: 2_000 })
+      } catch {
+        return this.skip()
       }
-
-      if (!(await overlay.isExisting())) return this.skip()
 
       const input = await $('[data-testid="search-input"]')
       await input.setValue('zzz_no_match_gibberish_xyz_9999_!@#')
 
-      // Wait for any results (or lack of results) to settle
-      await browser.pause(800)
+      // Wait for search to process
+      await browser.waitUntil(
+        async () => {
+          const container = await $('[data-testid="search-results"]')
+          return await container.isExisting()
+        },
+        WAIT_SHORT
+      ).catch(() => {})
 
       // The overlay must still be present — no crash
       expect(await overlay.isExisting()).toBe(true)
@@ -156,10 +150,10 @@ describe('Error Handling', () => {
       // Open settings view
       const toggle = await $('[data-testid="settings-toggle"]')
       if (await toggle.isExisting()) {
-        await toggle.click()
+        await clickTestId('settings-toggle')
         await browser.waitUntil(
           async () => await (await $('[data-testid="settings-view"]')).isExisting(),
-          { timeout: 5_000, interval: 300, timeoutMsg: 'Settings view did not open' }
+          { ...WAIT_SHORT, timeoutMsg: 'Settings view did not open' }
         )
       }
     })
@@ -170,7 +164,7 @@ describe('Error Handling', () => {
       const settings = await $('[data-testid="settings-view"]')
       if (await settings.isExisting()) {
         const toggle = await $('[data-testid="settings-toggle"]')
-        if (await toggle.isExisting()) await toggle.click()
+        if (await toggle.isExisting()) await clickTestId('settings-toggle')
       }
     })
 
@@ -190,8 +184,6 @@ describe('Error Handling', () => {
       await threshold.clearValue()
       await threshold.setValue('abc')
       await browser.keys(['Tab']) // blur to trigger validation
-
-      await browser.pause(500)
 
       // The field should either: revert to the original value, show empty, or clamp
       const afterValue = await threshold.getValue()
@@ -221,8 +213,6 @@ describe('Error Handling', () => {
       await threshold.clearValue()
       await threshold.setValue('30')
       await browser.keys(['Tab'])
-
-      await browser.pause(500)
 
       const afterValue = await threshold.getValue()
       const afterNum = parseFloat(afterValue)

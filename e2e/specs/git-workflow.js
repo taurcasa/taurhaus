@@ -9,7 +9,9 @@ import {
   waitForProjectsLoaded,
   getCurrentProjectName,
   selectProjectByName,
+  clickTestId,
 } from '../helpers/navigation.js'
+import { POLL_FAST, WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 
 let mainApp = false
 
@@ -38,7 +40,7 @@ describe('Git Workflow', () => {
           const empty = await $('[data-testid="git-empty"]')
           return commits.length > 0 || (await empty.isExisting())
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'Commit list did not load' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Commit list did not load' }
       )
 
       const commits = await $$('[data-testid="commit-row"]')
@@ -59,14 +61,14 @@ describe('Git Workflow', () => {
       const commits = await $$('[data-testid="commit-row"]')
       if (commits.length === 0) return this.skip()
 
-      await commits[0].click()
+      await browser.execute((el) => el.click(), commits[0])
 
       await browser.waitUntil(
         async () => {
           const files = await $$('[data-testid="commit-file"]')
           return files.length > 0
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'Commit file list did not appear' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Commit file list did not appear' }
       )
 
       const commitFiles = await $$('[data-testid="commit-file"]')
@@ -79,10 +81,10 @@ describe('Git Workflow', () => {
       const commits = await $$('[data-testid="commit-row"]')
       if (commits.length === 0) return this.skip()
 
-      await commits[0].click()
-      await browser.pause(300)
+      await browser.execute((el) => el.click(), commits[0])
 
       const current = await $('[data-testid="commit-row"][aria-current="true"]')
+      await current.waitForExist({ timeout: 2_000 })
       expect(await current.isExisting()).toBe(true)
     })
 
@@ -92,8 +94,11 @@ describe('Git Workflow', () => {
       const commits = await $$('[data-testid="commit-row"]')
       if (commits.length === 0) return this.skip()
 
-      await commits[0].click()
-      await browser.pause(300)
+      await browser.execute((el) => el.click(), commits[0])
+      await browser.waitUntil(
+        async () => (await $('[data-testid="commit-row"][aria-current="true"]')).isExisting(),
+        WAIT_INSTANT
+      )
 
       // The selected commit row should contain a hash (7 hex chars) and a message
       const current = await $('[data-testid="commit-row"][aria-current="true"]')
@@ -114,13 +119,13 @@ describe('Git Workflow', () => {
       // Ensure a commit is selected with a file list visible
       const commits = await $$('[data-testid="commit-row"]')
       if (commits.length > 0) {
-        await commits[0].click()
+        await browser.execute((el) => el.click(), commits[0])
         await browser.waitUntil(
           async () => {
             const files = await $$('[data-testid="commit-file"]')
             return files.length > 0
           },
-          { timeout: 8_000, interval: 300 }
+          WAIT_MEDIUM
         )
       }
     })
@@ -131,7 +136,7 @@ describe('Git Workflow', () => {
       const commitFiles = await $$('[data-testid="commit-file"]')
       if (commitFiles.length === 0) return this.skip()
 
-      await commitFiles[0].click()
+      await browser.execute((el) => el.click(), commitFiles[0])
 
       // Wait for diff content (or diff-empty if binary/empty)
       await browser.waitUntil(
@@ -142,7 +147,7 @@ describe('Git Workflow', () => {
           const empty = await $('[data-testid="diff-empty"]')
           return (await content.isExisting()) || (await empty.isExisting())
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'Diff view did not appear after clicking file' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Diff view did not appear after clicking file' }
       )
 
       const diffView = await $('[data-testid="diff-view"]')
@@ -164,20 +169,20 @@ describe('Git Workflow', () => {
         // Open a diff first
         const commitFiles = await $$('[data-testid="commit-file"]')
         if (commitFiles.length === 0) return this.skip()
-        await commitFiles[0].click()
+        await browser.execute((el) => el.click(), commitFiles[0])
         await browser.waitUntil(
           async () => (await $('[data-testid="diff-view"]')).isExisting(),
-          { timeout: 8_000, interval: 300 }
+          WAIT_MEDIUM
         )
       }
 
       const backBtn = await $('[data-testid="back-to-files"]')
       await backBtn.waitForExist({ timeout: 5_000 })
-      await backBtn.click()
+      await clickTestId('back-to-files')
 
       await browser.waitUntil(
         async () => !(await (await $('[data-testid="diff-view"]')).isExisting()),
-        { timeout: 5_000, interval: 300, timeoutMsg: 'diff-view did not disappear after back button' }
+        { ...WAIT_SHORT, timeoutMsg: 'diff-view did not disappear after back button' }
       )
     })
 
@@ -187,10 +192,10 @@ describe('Git Workflow', () => {
       const commitFiles = await $$('[data-testid="commit-file"]')
       if (commitFiles.length === 0) return this.skip()
 
-      await commitFiles[0].click()
+      await browser.execute((el) => el.click(), commitFiles[0])
       await browser.waitUntil(
         async () => (await $('[data-testid="diff-view"]')).isExisting(),
-        { timeout: 8_000, interval: 300 }
+        WAIT_MEDIUM
       )
 
       const openFileBtn = await $('[data-testid="open-file-btn"]')
@@ -207,10 +212,10 @@ describe('Git Workflow', () => {
       const commits = await $$('[data-testid="commit-row"]')
       if (commits.length === 0) return this.skip()
 
-      await commits[0].click()
+      await browser.execute((el) => el.click(), commits[0])
       await browser.waitUntil(
         async () => (await $$('[data-testid="commit-file"]')).length > 0,
-        { timeout: 8_000, interval: 300 }
+        WAIT_MEDIUM
       )
 
       // File pills or modification indicators (A/M/D tags, colored badges, etc.)
@@ -253,7 +258,6 @@ describe('Git Workflow', () => {
       if (!mainApp) return this.skip()
 
       await switchToTab('overview')
-      await browser.pause(300)
       await switchToTab('git')
 
       const gitTab = await $('[data-testid="git-tab"]')
@@ -266,7 +270,7 @@ describe('Git Workflow', () => {
           const empty = await $('[data-testid="git-empty"]')
           return commits.length > 0 || (await empty.isExisting())
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'Git content did not render after tab round-trip' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Git content did not render after tab round-trip' }
       )
     })
 
@@ -289,7 +293,7 @@ describe('Git Workflow', () => {
       const overviewCommit = await $('[data-testid="overview-commit-row"]')
       if (!(await overviewCommit.isExisting())) return this.skip()
 
-      await overviewCommit.click()
+      await clickTestId('overview-commit-row')
 
       // Git tab should now be active
       await browser.waitUntil(
@@ -297,7 +301,7 @@ describe('Git Workflow', () => {
           const gitTab = await $('[data-testid="git-tab"]')
           return await gitTab.isExisting()
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Git tab did not activate after clicking overview-commit-row' }
+        { ...WAIT_SHORT, timeoutMsg: 'Git tab did not activate after clicking overview-commit-row' }
       )
 
       // A commit should be selected (aria-current)
@@ -306,7 +310,7 @@ describe('Git Workflow', () => {
           const current = await $('[data-testid="commit-row"][aria-current="true"]')
           return await current.isExisting()
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'No commit was selected in Git tab after cross-tab click' }
+        { ...WAIT_SHORT, timeoutMsg: 'No commit was selected in Git tab after cross-tab click' }
       )
     })
   })
@@ -325,15 +329,16 @@ describe('Git Workflow', () => {
       const commits = await $$('[data-testid="commit-row"]')
       if (commits.length === 0) return this.skip()
 
-      await commits[0].click()
+      await browser.execute((el) => el.click(), commits[0])
       await browser.waitUntil(
         async () => (await $('[data-testid="commit-row"][aria-current="true"]')).isExisting(),
-        { timeout: 5_000, interval: 300 }
+        WAIT_SHORT
       )
 
-      // Capture the selected commit's text for later verification
+      // Capture the selected commit's hash for later verification (not full text — relative times change)
       const selectedBefore = await $('[data-testid="commit-row"][aria-current="true"]')
       const selectedTextBefore = await browser.execute((el) => el.textContent, selectedBefore)
+      const hashBefore = selectedTextBefore.match(/[0-9a-f]{7}/i)?.[0]
 
       // Note which project we're on
       const firstProjectName = await getCurrentProjectName()
@@ -342,8 +347,7 @@ describe('Git Workflow', () => {
       for (const p of projects) {
         const name = await browser.execute((el) => el.textContent, p)
         if (!name.includes(firstProjectName)) {
-          await p.click()
-          await browser.pause(800)
+          await browser.execute((el) => el.click(), p)
           break
         }
       }
@@ -352,8 +356,7 @@ describe('Git Workflow', () => {
       for (const p of await $$('[data-testid="project-item"]')) {
         const name = await browser.execute((el) => el.textContent, p)
         if (name.includes(firstProjectName) || firstProjectName.includes(name.trim().split('\n')[0].trim())) {
-          await p.click()
-          await browser.pause(800)
+          await browser.execute((el) => el.click(), p)
           break
         }
       }
@@ -364,13 +367,15 @@ describe('Git Workflow', () => {
       // The previously selected commit should still be selected
       await browser.waitUntil(
         async () => (await $('[data-testid="commit-row"][aria-current="true"]')).isExisting(),
-        { timeout: 8_000, interval: 300, timeoutMsg: 'No commit selected after returning to project' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'No commit selected after returning to project' }
       )
 
       const selectedAfter = await $('[data-testid="commit-row"][aria-current="true"]')
       const selectedTextAfter = await browser.execute((el) => el.textContent, selectedAfter)
+      const hashAfter = selectedTextAfter.match(/[0-9a-f]{7}/i)?.[0]
 
-      expect(selectedTextAfter.trim()).toBe(selectedTextBefore.trim())
+      // Compare by commit hash — relative time text ("5m" → "6m") changes during test run
+      expect(hashAfter).toBe(hashBefore)
     })
   })
 })

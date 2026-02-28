@@ -6,7 +6,8 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { switchToTab } from '../helpers/navigation.js'
+import { switchToTab, clickTestId } from '../helpers/navigation.js'
+import { WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 
 describe('Overview Interactions', () => {
   let mainApp = false
@@ -62,7 +63,7 @@ describe('Overview Interactions', () => {
           const html = await browser.execute((el) => el.innerHTML, content)
           return html && html.trim().length > 0
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'README markdown-content did not populate' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'README markdown-content did not populate' }
       )
 
       const content = await $('[data-testid="markdown-content"]')
@@ -82,7 +83,7 @@ describe('Overview Interactions', () => {
           if (await loading.isExisting()) return false
           return true
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'Commits loading did not finish' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Commits loading did not finish' }
       )
 
       const rows = await $$('[data-testid="overview-commit-row"]')
@@ -101,7 +102,7 @@ describe('Overview Interactions', () => {
       const rows = await $$('[data-testid="overview-commit-row"]')
       if (rows.length === 0) return this.skip()
 
-      await rows[0].click()
+      await browser.execute((el) => el.click(), rows[0])
 
       // Git tab should become active
       await browser.waitUntil(
@@ -109,7 +110,7 @@ describe('Overview Interactions', () => {
           const gitTab = await $('[data-testid="git-tab"]')
           return await gitTab.isExisting()
         },
-        { timeout: 8_000, interval: 300, timeoutMsg: 'Git tab did not appear after commit click' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Git tab did not appear after commit click' }
       )
 
       // A commit row should be marked as selected/current
@@ -118,7 +119,7 @@ describe('Overview Interactions', () => {
           const selectedRow = await $('[data-testid="commit-row"][aria-current="true"]')
           return await selectedRow.isExisting()
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'No commit-row with aria-current="true" found' }
+        { ...WAIT_SHORT, timeoutMsg: 'No commit-row with aria-current="true" found' }
       )
 
       const selectedRow = await $('[data-testid="commit-row"][aria-current="true"]')
@@ -169,7 +170,7 @@ describe('Overview Interactions', () => {
           const loading = await $('[data-testid="relationships-loading"]')
           return !(await loading.isExisting())
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'Relationships loading did not finish' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Relationships loading did not finish' }
       )
 
       const rows = await $$('[data-testid="relationship-row"]')
@@ -195,7 +196,7 @@ describe('Overview Interactions', () => {
       const dismissBtn = await $('[data-testid="dismiss-relationship"]')
       if (!(await dismissBtn.isExisting())) return this.skip()
 
-      await dismissBtn.click()
+      await clickTestId('dismiss-relationship')
 
       // Row count should decrease by 1 (or section shows empty state)
       await browser.waitUntil(
@@ -204,7 +205,7 @@ describe('Overview Interactions', () => {
           const emptyState = await $('[data-testid="relationships-empty"], p=No connections detected yet.')
           return updatedRows.length < initialCount || (await emptyState.isExisting())
         },
-        { timeout: 5_000, interval: 300, timeoutMsg: 'Relationship row did not disappear after dismiss' }
+        { ...WAIT_SHORT, timeoutMsg: 'Relationship row did not disappear after dismiss' }
       )
 
       const updatedRows = await $$('[data-testid="relationship-row"]')
@@ -228,7 +229,7 @@ describe('Overview Interactions', () => {
           const loading = await $('[data-testid="sessions-loading"]')
           return !(await loading.isExisting())
         },
-        { timeout: 10_000, interval: 500, timeoutMsg: 'Sessions loading did not finish' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Sessions loading did not finish' }
       )
 
       // After loading, sessions-loading should be gone
