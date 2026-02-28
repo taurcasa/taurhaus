@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - Search→file navigation: normalize backslash paths at read time so stale search indexes work without manual reindex
 
+### Changed
+- E2E search tests: dynamic cross-filesystem discovery — tests WSL and Windows FS projects with subdirectory files instead of root-level README
+
 ## [0.3.7] - 2026-02-28
 
 ### Fixed
