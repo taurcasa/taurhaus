@@ -3,7 +3,8 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForProjectsLoaded, openContextMenu, dismissContextMenu } from '../helpers/navigation.js'
+import { waitForProjectsLoaded, openContextMenu, dismissContextMenu, fastClick, clickTestId } from '../helpers/navigation.js'
+import { WAIT_SHORT } from '../helpers/timing.js'
 
 let mainApp = false
 
@@ -67,18 +68,16 @@ describe('Context Menu', () => {
 
       await openContextMenu(projects[0])
 
-      // Click on main content area to dismiss
-      const main = await $('main')
-      if (await main.isExisting()) {
-        await main.click()
-      } else {
-        // Fallback: click far corner
-        await browser.execute(() => document.body.click())
-      }
+      // Dispatch mousedown on main content — the context menu's click-outside
+      // handler listens for mousedown, not click
+      await browser.execute(() => {
+        const target = document.querySelector('main') || document.body
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      })
 
       await browser.waitUntil(
         async () => !(await (await $('[data-testid="context-menu"]')).isExisting()),
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Context menu did not close after clicking outside' }
+        { ...WAIT_SHORT, timeoutMsg: 'Context menu did not close after clicking outside' }
       )
 
       const menu = await $('[data-testid="context-menu"]')
@@ -104,7 +103,7 @@ describe('Context Menu', () => {
         return this.skip()
       }
 
-      await copyItem.click()
+      await clickTestId('menu-item-copy-path')
 
       // Clipboard read may not be available in WebKit test environment — wrap in try/catch
       try {
@@ -149,11 +148,14 @@ describe('Context Menu', () => {
         return this.skip()
       }
 
-      await safeItem.click()
+      // Dispatch mousedown — the menu buttons use onmousedown, not onclick
+      await browser.execute((el) => {
+        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      }, safeItem)
 
       await browser.waitUntil(
         async () => !(await (await $('[data-testid="context-menu"]')).isExisting()),
-        { timeout: 5_000, interval: 200, timeoutMsg: 'Context menu did not close after clicking action' }
+        { ...WAIT_SHORT, timeoutMsg: 'Context menu did not close after clicking action' }
       )
 
       const menu = await $('[data-testid="context-menu"]')
