@@ -56,6 +56,9 @@ export const TIMEOUT_MEDIUM = 5_000
 /** Heavy operation — search index rebuild, tasks loading, initial app boot. */
 export const TIMEOUT_LONG = 10_000
 
+/** Extra-heavy operation — file tree over UNC, full index rebuild on Windows. */
+export const TIMEOUT_XLONG = 20_000
+
 /** First-launch only — wizard, initial indexing. */
 export const TIMEOUT_BOOT = 45_000
 
@@ -73,3 +76,6 @@ export const WAIT_MEDIUM = { timeout: TIMEOUT_MEDIUM, interval: POLL }
 
 /** For heavy operations (index rebuild, long loads). */
 export const WAIT_LONG = { timeout: TIMEOUT_LONG, interval: POLL_SLOW }
+
+/** For extra-heavy operations (first UNC file tree load, full index rebuild on Windows). */
+export const WAIT_XLONG = { timeout: TIMEOUT_XLONG, interval: POLL_SLOW }

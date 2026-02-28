@@ -6,6 +6,7 @@ import {
   PAUSE_BOOT, PAUSE_BOOT_ACTION, POLL_BOOT, POLL_WIZARD,
   TIMEOUT_BOOT,
 } from './helpers/timing.js'
+import { PROJECTS_DIR } from './helpers/platform.js'
 
 /**
  * Wait for the app to be ready — handles splash screen, wizard, or main shell.
@@ -94,7 +95,7 @@ export async function ensureMainApp() {
   // Step 3: Scan for projects
   const input = await $('[data-testid="wizard-step-3"] input[type="text"]')
   await input.waitForExist({ timeout: 5_000 })
-  await input.setValue('/home/mstie/projects')
+  await input.setValue(PROJECTS_DIR)
 
   const scanBtn = await $('[data-testid="scan-button"]')
   await scanBtn.click()

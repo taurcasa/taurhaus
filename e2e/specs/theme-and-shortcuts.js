@@ -11,6 +11,7 @@ import {
   WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM,
   TIMEOUT_MEDIUM,
 } from '../helpers/timing.js'
+import { MOD_KEY } from '../helpers/platform.js'
 
 describe('Theme and Shortcuts', () => {
   let mainApp = false
@@ -130,7 +131,7 @@ describe('Theme and Shortcuts', () => {
         ).catch(() => {})
       }
 
-      await browser.keys(['Control', 'k'])
+      await browser.keys([MOD_KEY, 'k'])
 
       await browser.waitUntil(
         async () => {

@@ -5,6 +5,7 @@
  */
 
 import { WAIT_SHORT, WAIT_MEDIUM } from './timing.js'
+import { MOD_KEY } from './platform.js'
 
 /**
  * Open the search overlay via Ctrl+K.
@@ -16,7 +17,7 @@ export async function openSearch() {
   )
   if (alreadyOpen) return
 
-  await browser.keys(['Control', 'k'])
+  await browser.keys([MOD_KEY, 'k'])
   await browser.waitUntil(
     async () => browser.execute(() =>
       document.querySelector('[data-testid="search-overlay"]') !== null

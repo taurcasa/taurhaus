@@ -19,6 +19,13 @@ export async function openSettings() {
     ),
     { ...WAIT_MEDIUM, timeoutMsg: 'Settings view did not open' }
   )
+  // Wait for settings data to load (sections render only after IPC completes)
+  await browser.waitUntil(
+    async () => browser.execute(() =>
+      document.querySelector('[data-testid="settings-scanning"]') !== null
+    ),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Settings content did not load (still showing skeleton)' }
+  )
 }
 
 /**

@@ -15,7 +15,8 @@ import {
   waitForFileContent,
   clickTestId,
 } from '../helpers/navigation.js'
-import { PAUSE_TICK, WAIT_SHORT, WAIT_MEDIUM, TIMEOUT_MEDIUM } from '../helpers/timing.js'
+import { PAUSE_TICK, WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG, TIMEOUT_MEDIUM } from '../helpers/timing.js'
+import { MOD_KEY } from '../helpers/platform.js'
 
 let mainApp = false
 
@@ -32,6 +33,17 @@ describe('Cross-Tab Navigation', () => {
     it('clicking a commit row in Overview activates Git tab with commit selected', async function () {
       if (!mainApp) return this.skip()
 
+      // Pre-warm Git tab — first cold load through UNC can be slow on Windows.
+      // Without this, the test times out waiting for commits after cross-tab navigation.
+      await switchToTab('git')
+      await browser.waitUntil(
+        async () => {
+          const rows = await $$('[data-testid="commit-row"]')
+          return rows.length > 0
+        },
+        { ...WAIT_XLONG }
+      ).catch(() => {})
+
       await switchToTab('overview')
 
       // Check for overview commit rows — skip if project has no commits displayed
@@ -44,12 +56,15 @@ describe('Cross-Tab Navigation', () => {
       await waitForTabActive('git', TIMEOUT_MEDIUM)
 
       // A commit-row should have aria-current="true" in the Git tab
+      // (commits already loaded from pre-warm above)
+
+      // A commit-row should have aria-current="true" in the Git tab
       await browser.waitUntil(
         async () => {
           const selected = await $('[data-testid="commit-row"][aria-current="true"]')
           return await selected.isExisting()
         },
-        { ...WAIT_SHORT, timeoutMsg: 'No commit-row was selected in Git tab after navigation' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'No commit-row was selected in Git tab after navigation' }
       )
     })
   })
@@ -238,7 +253,7 @@ describe('Cross-Tab Navigation', () => {
       if (!mainApp) return this.skip()
 
       // Open search overlay via Ctrl+K
-      await browser.keys(['Control', 'k'])
+      await browser.keys([MOD_KEY, 'k'])
 
       const searchOverlay = await $('[data-testid="search-overlay"]')
       try {

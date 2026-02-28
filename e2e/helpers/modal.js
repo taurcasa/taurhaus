@@ -5,7 +5,7 @@
  * WebDriver round-trips.
  */
 
-import { WAIT_MEDIUM, WAIT_LONG } from './timing.js'
+import { WAIT_MEDIUM, WAIT_XLONG } from './timing.js'
 
 /**
  * Open the Manage Projects modal.
@@ -59,7 +59,7 @@ export async function tryAddProjectPath(path) {
       async () => browser.execute(() =>
         document.querySelector('[data-testid="enter-manual-mode"]') !== null
       ),
-      { ...WAIT_LONG, timeoutMsg: '"Enter path manually" button did not appear' }
+      { ...WAIT_XLONG, timeoutMsg: '"Enter path manually" button did not appear' }
     )
     await browser.execute(() => {
       document.querySelector('[data-testid="enter-manual-mode"]')?.click()

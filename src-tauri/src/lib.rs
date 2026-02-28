@@ -326,10 +326,20 @@ pub fn run() {
                 process_watch_events(rx, handle);
             });
 
-            // Initialize search index
+            // Initialize search index — fall back to in-memory if the on-disk
+            // index is locked by another running instance.
             let index_dir = data_dir.join("search_index");
-            let search_index = search::indexer::SearchIndex::open(&index_dir)
-                .expect("failed to initialize search index");
+            let search_index = match search::indexer::SearchIndex::open(&index_dir) {
+                Ok(idx) => idx,
+                Err(e) => {
+                    tracing::warn!(
+                        "Search index unavailable (another instance running?): {e}. \
+                         Falling back to in-memory index."
+                    );
+                    search::indexer::SearchIndex::open_in_memory()
+                        .expect("failed to create in-memory search index")
+                }
+            };
             app.manage(SearchState(Mutex::new(search_index)));
 
             // Register local file watches for projects not covered by daemon.

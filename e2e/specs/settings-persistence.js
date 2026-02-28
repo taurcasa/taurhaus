@@ -6,7 +6,7 @@
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickTestId } from '../helpers/navigation.js'
 import { openSettings, closeSettings, ensureSettingsOpen, getSettingValue, setSettingValue } from '../helpers/settings.js'
-import { POLL_SLOW, TIMEOUT_LONG } from '../helpers/timing.js'
+import { POLL_SLOW, TIMEOUT_LONG, TIMEOUT_XLONG } from '../helpers/timing.js'
 
 describe('Settings Persistence', () => {
   let mainApp = false
@@ -327,7 +327,7 @@ describe('Settings Persistence', () => {
           const isEnabled = await btn.isEnabled()
           return isEnabled
         },
-        { timeout: TIMEOUT_LONG, interval: POLL_SLOW, timeoutMsg: 'Rebuild index did not complete within timeout' }
+        { timeout: 45_000, interval: POLL_SLOW, timeoutMsg: 'Rebuild index did not complete within timeout' }
       )
 
       // No error element should appear

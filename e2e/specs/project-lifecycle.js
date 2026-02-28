@@ -10,7 +10,8 @@ import {
   clickTestId,
 } from '../helpers/navigation.js'
 import { openManageProjects, closeModal, tryAddProjectPath } from '../helpers/modal.js'
-import { PAUSE_CLICK_SETTLE, WAIT_SHORT } from '../helpers/timing.js'
+import { PAUSE_CLICK_SETTLE, WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG } from '../helpers/timing.js'
+import { isWindows, NONEXISTENT_PATH, NON_GIT_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 
 let mainApp = false
 
@@ -42,14 +43,21 @@ describe('Project Lifecycle', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
+
+      // Wait for modal's project loading to finish (registered-list or no-projects appears)
+      await browser.waitUntil(
+        async () => {
+          const list = await $('[data-testid="registered-list"]')
+          const noProjects = await $('[data-testid="no-projects"]')
+          return (await list.isExisting()) || (await noProjects.isExisting())
+        },
+        { ...WAIT_LONG, timeoutMsg: 'Registered projects did not finish loading' }
+      )
+
+      const noProjects = await $('[data-testid="no-projects"]')
+      if (await noProjects.isExisting()) return this.skip()
+
       const list = await $('[data-testid="registered-list"]')
-      if (!(await list.isExisting())) {
-        // No registered-list means no-projects state or still loading — check for no-projects
-        const noProjects = await $('[data-testid="no-projects"]')
-        if (await noProjects.isExisting()) return this.skip()
-      }
-      await list.waitForExist({ timeout: 5_000 })
-      // Items in the list are child divs with remove buttons
       const items = await list.$$('[data-testid^="remove-"]')
       expect(items.length).toBeGreaterThan(0)
     })
@@ -58,7 +66,7 @@ describe('Project Lifecycle', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
-      await tryAddProjectPath('/nonexistent/path/12345')
+      await tryAddProjectPath(NONEXISTENT_PATH)
 
       await browser.waitUntil(
         async () => {
@@ -73,7 +81,7 @@ describe('Project Lifecycle', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
-      await tryAddProjectPath('/tmp')
+      await tryAddProjectPath(NON_GIT_DIR)
 
       await browser.waitUntil(
         async () => {
@@ -88,10 +96,13 @@ describe('Project Lifecycle', () => {
 
     it('manual path entry: already-registered path shows "Already registered" message', async function () {
       if (!mainApp) return this.skip()
+      // On Windows, projects are stored with WSL paths that can't be validated
+      // via Windows filesystem — the backend's is_dir() check fails first.
+      if (isWindows) return this.skip()
 
       // taurhaus itself is guaranteed to be registered (we ran the wizard with it)
       await openManageProjects()
-      await tryAddProjectPath('/home/mstie/projects/taurhaus')
+      await tryAddProjectPath(TAURHAUS_PROJECT_PATH)
 
       await browser.waitUntil(
         async () => {
@@ -222,7 +233,7 @@ describe('Project Lifecycle', () => {
           const name = await getCurrentProjectName()
           return name !== firstProjectName
         },
-        { ...WAIT_SHORT, timeoutMsg: 'Project name in h1 did not change after switching' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Project name in h1 did not change after switching' }
       )
 
       const newName = await getCurrentProjectName()

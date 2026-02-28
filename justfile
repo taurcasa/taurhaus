@@ -74,25 +74,11 @@ test-e2e-windows: sync-windows
     echo "▸ Building debug binary on Windows…"
     cmd.exe /c "cd /d {{win_drive}} && npx tauri build --debug --no-bundle"
     echo ""
+    echo "▸ Clearing app data for clean E2E state…"
+    cmd.exe /c "if exist \"%APPDATA%\\com.taurhaus.dev\" rmdir /s /q \"%APPDATA%\\com.taurhaus.dev\""
+    echo ""
     echo "▸ Running E2E tests on Windows…"
-    cmd.exe /c "cd /d {{win_drive}} && npx wdio run e2e/wdio.conf.js --exclude e2e/specs/daemon-integration.js"
-
-# Run E2E tests on macOS (syncs, builds debug binary, runs tests on remote Mac)
-# Prerequisites: tauri-driver + safaridriver available on Mac
-test-e2e-macos: sync-macos
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "▸ Installing dependencies on macOS…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
-    echo ""
-    echo "▸ Creating daemon resource placeholder…"
-    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
-    echo ""
-    echo "▸ Building debug binary on macOS…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && E2E_SKIP_BUILD=1 npx tauri build --debug --no-bundle 2>&1'"
-    echo ""
-    echo "▸ Running E2E tests on macOS…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --exclude e2e/specs/daemon-integration.js 2>&1'"
+    cmd.exe /c "cd /d {{win_drive}} && set E2E_SKIP_BUILD=1&& npx wdio run e2e/wdio.conf.js"
 
 # Reset database (delete SQLite file)
 db-reset:

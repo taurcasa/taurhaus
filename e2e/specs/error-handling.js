@@ -9,6 +9,7 @@ import { waitForProjectsLoaded, switchToTab, clickTestId } from '../helpers/navi
 import { openManageProjects, closeModal, tryAddProjectPath } from '../helpers/modal.js'
 import { dismissSearch } from '../helpers/search.js'
 import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
+import { isWindows, MOD_KEY, NONEXISTENT_PATH, NON_GIT_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 
 let mainApp = false
 
@@ -32,7 +33,7 @@ describe('Error Handling', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
-      await tryAddProjectPath('/nonexistent/path/xyz123')
+      await tryAddProjectPath(NONEXISTENT_PATH)
 
       await browser.waitUntil(
         async () => {
@@ -47,7 +48,7 @@ describe('Error Handling', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
-      await tryAddProjectPath('/tmp')
+      await tryAddProjectPath(NON_GIT_DIR)
 
       await browser.waitUntil(
         async () => {
@@ -56,15 +57,17 @@ describe('Error Handling', () => {
           const text = await browser.execute((el) => el.textContent, err)
           return text.toLowerCase().includes('git')
         },
-        { ...WAIT_SHORT, timeoutMsg: '"Not a git repository" message did not appear for /tmp' }
+        { ...WAIT_SHORT, timeoutMsg: '"Not a git repository" message did not appear for non-git dir' }
       )
     })
 
     it('already-registered path shows duplicate error', async function () {
       if (!mainApp) return this.skip()
+      // On Windows, projects are stored with WSL paths — can't validate via Windows FS
+      if (isWindows) return this.skip()
 
       await openManageProjects()
-      await tryAddProjectPath('/home/mstie/projects/taurhaus')
+      await tryAddProjectPath(TAURHAUS_PROJECT_PATH)
 
       await browser.waitUntil(
         async () => {
@@ -90,7 +93,7 @@ describe('Error Handling', () => {
       if (!mainApp) return this.skip()
 
       // Open search overlay (Cmd+K / Ctrl+K)
-      await browser.keys(['Control', 'k'])
+      await browser.keys([MOD_KEY, 'k'])
 
       const overlay = await $('[data-testid="search-overlay"]')
       try {
@@ -108,7 +111,7 @@ describe('Error Handling', () => {
     it('typing gibberish in search does not crash — shows empty or no-results state', async function () {
       if (!mainApp) return this.skip()
 
-      await browser.keys(['Control', 'k'])
+      await browser.keys([MOD_KEY, 'k'])
 
       const overlay = await $('[data-testid="search-overlay"]')
       try {
