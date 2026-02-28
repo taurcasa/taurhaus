@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-02-28
+
+### Added
+- Search button in titlebar — magnifying glass icon left of the theme toggle makes search discoverable without knowing Ctrl+K
+- Comprehensive E2E test suite — 138+ functional workflow tests replacing render-only checks, verified on both Linux and Windows
+
+### Fixed
+- Windows E2E: projects registered with WSL UNC paths for correct daemon provider routing
+- Tantivy search index lock crash when multiple app instances run concurrently — graceful fallback to in-memory index
+- Windows E2E: file tree first cold load through UNC bridge handled with skeleton wait + retry
+- Windows E2E: cross-tab Git navigation pre-warms commit list to avoid cold-load timeout
+
 ## [0.3.5] - 2026-02-28
 
 ### Fixed
