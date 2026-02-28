@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-02-28
+
+### Fixed
+- Search→file navigation: normalize backslash paths at read time so stale search indexes work without manual reindex
+
 ## [0.3.7] - 2026-02-28
 
 ### Fixed
