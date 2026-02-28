@@ -14,6 +14,30 @@ describe('Search overlay logic', () => {
     ipc = await import('./ipc.js')
   })
 
+  // --- Search button (titlebar icon) ---
+
+  it('search button toggles open state on click', () => {
+    let searchOpen = false
+    const toggle = () => { searchOpen = !searchOpen }
+
+    toggle() // first click opens
+    expect(searchOpen).toBe(true)
+
+    toggle() // second click closes
+    expect(searchOpen).toBe(false)
+  })
+
+  it('search button tooltip uses platform-appropriate shortcut', () => {
+    const makeTitle = (platform) =>
+      platform?.includes('Mac') ? 'Search (⌘K)' : 'Search (Ctrl+K)'
+
+    expect(makeTitle('MacIntel')).toBe('Search (⌘K)')
+    expect(makeTitle('MacARM')).toBe('Search (⌘K)')
+    expect(makeTitle('Win32')).toBe('Search (Ctrl+K)')
+    expect(makeTitle('Linux x86_64')).toBe('Search (Ctrl+K)')
+    expect(makeTitle(undefined)).toBe('Search (Ctrl+K)')
+  })
+
   // --- Keyboard shortcut ---
 
   it('Cmd+K / Ctrl+K should be detectable as search shortcut', () => {

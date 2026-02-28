@@ -670,6 +670,16 @@
       <!-- Titlebar controls -->
       <div class="flex items-center gap-0.5 pb-2 pr-1 shrink-0">
         <button
+          data-testid="search-btn"
+          class="w-7 h-7 flex items-center justify-center rounded text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors mr-1"
+          onclick={() => searchOpen = !searchOpen}
+          title={navigator.platform?.includes('Mac') ? 'Search (⌘K)' : 'Search (Ctrl+K)'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+        </button>
+        <button
           data-testid="theme-light"
           class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
             {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
