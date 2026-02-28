@@ -64,23 +64,6 @@ test-e2e-full:
 test-e2e-spec SPEC:
     E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
-# Run E2E tests on Windows (syncs, builds debug binary, runs tests natively)
-# Prerequisites: tauri-driver + msedgedriver installed on Windows
-test-e2e-windows: sync-windows
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "▸ Installing dependencies on Windows…"
-    cmd.exe /c "cd /d {{win_drive}} && npm install"
-    echo ""
-    echo "▸ Building debug binary on Windows…"
-    cmd.exe /c "cd /d {{win_drive}} && npx tauri build --debug --no-bundle"
-    echo ""
-    echo "▸ Clearing app data for clean E2E state…"
-    cmd.exe /c "if exist \"%APPDATA%\\com.taurhaus.dev\" rmdir /s /q \"%APPDATA%\\com.taurhaus.dev\""
-    echo ""
-    echo "▸ Running E2E tests on Windows…"
-    cmd.exe /c "cd /d {{win_drive}} && set E2E_SKIP_BUILD=1&& npx wdio run e2e/wdio.conf.js"
-
 # Reset database (delete SQLite file)
 db-reset:
     @echo "DB reset not yet configured — SQLite module pending"
