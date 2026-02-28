@@ -37,6 +37,10 @@ pub fn read_file(
     relative_path: String,
 ) -> Result<FileContent, String> {
     let path = resolve_project_path(&db, &project_id)?;
+    // Normalize backslashes — search index on Windows may store paths with
+    // backslashes (e.g. "tests\test_integration.py") that the Linux daemon
+    // can't resolve. Belt-and-suspenders with the indexer normalization.
+    let relative_path = relative_path.replace('\\', "/");
     let provider = providers.resolve(&path);
     provider
         .read_file(&path, &relative_path)
@@ -87,6 +91,7 @@ pub fn read_project_asset(
     relative_path: String,
 ) -> Result<String, String> {
     let path = resolve_project_path(&db, &project_id)?;
+    let relative_path = relative_path.replace('\\', "/");
     let provider = providers.resolve(&path);
     let bytes = provider
         .read_asset(&path, &relative_path)
