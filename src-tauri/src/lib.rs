@@ -177,79 +177,37 @@ pub fn run() {
             let db_path = data_dir.join("taurhaus.db");
             let conn = db::init_db(&db_path).expect("failed to initialize database");
 
-            // Bootstrap chain: daemon → tmux → connect.
-            // This happens synchronously (max ~10s worst case) while we still have
-            // direct conn access. The daemon auto-starts via wsl.exe if not running.
-            let (daemon_provider, wsl_distro, daemon_connected_at_startup) = {
-                let projects = db::queries::list_projects(&conn).unwrap_or_default();
-                // On macOS/Linux the daemon runs natively — no WSL distro needed.
-                // On Windows, extract distro from WSL project paths.
-                let distro = if daemon::launcher::is_native_daemon() {
-                    Some("native".to_string())
-                } else {
-                    projects
-                        .iter()
-                        .find_map(|p| provider::path::wsl_distro_from_path(&p.path))
-                };
-                let port = daemon::server::DEFAULT_PORT;
-                let daemon = daemon::launcher::try_connect_daemon(
-                    distro.as_deref(),
-                    port,
-                    &log_path,
-                );
-                let connected = daemon.is_some();
-                tracing::info!(
-                    daemon_connected = connected,
-                    distro = ?distro,
-                    "Daemon connection result at startup"
-                );
+            // Fast daemon probe: try connecting to an already-running daemon.
+            // This is instant for localhost (connection refused = immediate fail).
+            // We do NOT spawn or poll here — that moves to the background thread.
+            let projects = db::queries::list_projects(&conn).unwrap_or_default();
+            let wsl_distro = if daemon::launcher::is_native_daemon() {
+                Some("native".to_string())
+            } else {
+                projects
+                    .iter()
+                    .find_map(|p| provider::path::wsl_distro_from_path(&p.path))
+            };
 
-                // Check protocol version compatibility
-                if let Some(ref d) = daemon {
-                    let expected = daemon::protocol::PROTOCOL_VERSION;
-                    match d.ping_protocol_version() {
-                        Ok(v) if v < expected => {
-                            tracing::error!(
-                                daemon_version = v,
-                                expected = expected,
-                                "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
-                            );
-                        }
-                        Ok(v) => {
-                            tracing::info!(protocol_version = v, "Daemon protocol version OK");
-                        }
-                        Err(e) => {
-                            tracing::warn!(error = %e, "Could not check daemon protocol version");
-                        }
+            let port = daemon::server::DEFAULT_PORT;
+            let (daemon_provider, daemon_connected_at_startup) = if wsl_distro.is_some() {
+                let addr = format!("127.0.0.1:{port}");
+                match provider::daemon_client::DaemonProvider::connect(&addr) {
+                    Ok(provider) => {
+                        tracing::info!("Connected to existing daemon (fast path)");
+                        (Some(provider), true)
+                    }
+                    Err(_) => {
+                        tracing::info!(addr, "Daemon not running — will start in background");
+                        (Some(provider::daemon_client::DaemonProvider::new_disconnected(&addr)), false)
                     }
                 }
-
-                // Ensure our dedicated tmux session exists (idempotent, non-fatal).
-                // This also starts the tmux server if it's not running.
-                if let Some(ref d) = distro {
-                    daemon::launcher::ensure_tmux_session(d, &log_path);
-                }
-
-                // If we have WSL projects but the daemon didn't connect,
-                // create a disconnected provider so the health check can
-                // connect it later without requiring an app restart.
-                let provider = daemon.or_else(|| {
-                    distro.as_ref().map(|_| {
-                        let addr = format!("127.0.0.1:{port}");
-                        tracing::info!(
-                            addr,
-                            "Creating disconnected daemon provider for late-connect"
-                        );
-                        provider::daemon_client::DaemonProvider::new_disconnected(&addr)
-                    })
-                });
-
-                (provider, distro, connected)
+            } else {
+                (None, false)
             };
 
             app.manage(DbState(Mutex::new(conn)));
 
-            // Extract daemon addr before moving into managed state
             let daemon_addr = daemon_provider.as_ref().map(|d| d.addr().to_string());
 
             app.manage(ProviderState {
@@ -258,11 +216,77 @@ pub fn run() {
                 wsl_distro: wsl_distro.clone(),
             });
 
-            // Start daemon health check.
-            // On macOS/Linux: always runs (daemon is native).
-            // On Windows: runs when WSL projects exist.
-            // Runs even if daemon didn't connect at startup — it will
-            // auto-start and connect the daemon later.
+            // Background bootstrap: daemon spawn, tmux, protocol check, file watchers.
+            // Runs AFTER setup returns so the webview + splash screen render immediately.
+            {
+                let boot_handle = app.handle().clone();
+                let boot_distro = wsl_distro.clone();
+                let boot_log_path = log_path.clone();
+                let boot_connected = daemon_connected_at_startup;
+                let _boot_addr = daemon_addr.clone();
+
+                std::thread::spawn(move || {
+                    // If daemon wasn't running, spawn it and connect.
+                    if !boot_connected {
+                        if let Some(ref distro) = boot_distro {
+                            tracing::info!("Background bootstrap: starting daemon");
+                            let port = daemon::server::DEFAULT_PORT;
+
+                            // Spawn daemon process (fire-and-forget).
+                            if let Err(e) = daemon::launcher::try_restart_daemon(distro, port) {
+                                tracing::warn!(error = %e, "Failed to start daemon in background");
+                            } else {
+                                // Give the daemon a moment to bind the port, then reconnect.
+                                std::thread::sleep(std::time::Duration::from_secs(2));
+                                let provider_state = boot_handle.state::<ProviderState>();
+                                if let Some(ref daemon) = provider_state.daemon {
+                                    if daemon.reconnect().is_ok() {
+                                        tracing::info!("Background bootstrap: daemon connected");
+                                        respawn_daemon_watches(&boot_handle);
+                                        let _ = boot_handle.emit(
+                                            "daemon-status",
+                                            serde_json::json!({ "status": "connected" }),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Protocol version check (non-blocking, informational).
+                    {
+                        let provider_state = boot_handle.state::<ProviderState>();
+                        if let Some(ref daemon) = provider_state.daemon {
+                            if daemon.is_connected() {
+                                let expected = daemon::protocol::PROTOCOL_VERSION;
+                                match daemon.ping_protocol_version() {
+                                    Ok(v) if v < expected => {
+                                        tracing::error!(
+                                            daemon_version = v,
+                                            expected = expected,
+                                            "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
+                                        );
+                                    }
+                                    Ok(v) => {
+                                        tracing::info!(protocol_version = v, "Daemon protocol version OK");
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "Could not check daemon protocol version");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Ensure tmux session exists.
+                    if let Some(ref distro) = boot_distro {
+                        daemon::launcher::ensure_tmux_session(distro, &boot_log_path);
+                    }
+                });
+            }
+
+            // Start daemon health check (handles reconnection if background
+            // bootstrap didn't connect, plus ongoing monitoring).
             if wsl_distro.is_some() {
                 let health_handle = app.handle().clone();
                 let connected_at_startup = daemon_connected_at_startup;
