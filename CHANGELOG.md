@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Persist dark/light theme selection across app restarts
+- Remember window position and size across restarts (tauri-plugin-window-state)
+
+### Removed
+- Windows E2E test infrastructure (recipes, platform detection, cross-filesystem tests)
+
 ## [0.3.8] - 2026-02-28
 
 ### Fixed
