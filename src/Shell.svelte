@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession } from './lib/ipc.js'
   import { getSessionForProject } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
@@ -131,7 +131,7 @@
     switchTab('files', { tab: 'files', file: path, lineNumber })
   }
 
-  // Load code theme prefs from settings
+  // Load code theme prefs + dark mode from settings
   async function loadCodeThemeFromSettings() {
     try {
       const s = await getSettings()
@@ -139,9 +139,15 @@
         codeThemeLight = s.code_theme.light || DEFAULT_LIGHT_THEME
         codeThemeDark = s.code_theme.dark || DEFAULT_DARK_THEME
       }
+      dark = !!s.dark_mode
     } catch {
       // Keep defaults on error
     }
+  }
+
+  function setDarkMode(value) {
+    dark = value
+    getSettings().then(s => updateSettings({ ...s, dark_mode: value })).catch(() => {})
   }
 
   function handleCodeThemeChanged() {
@@ -683,13 +689,13 @@
           data-testid="theme-light"
           class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
             {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
-          onclick={() => dark = false}
+          onclick={() => setDarkMode(false)}
         >Light</button>
         <button
           data-testid="theme-dark"
           class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
             {dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
-          onclick={() => dark = true}
+          onclick={() => setDarkMode(true)}
         >Dark</button>
 
         <!-- Window controls -->

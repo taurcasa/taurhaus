@@ -48,6 +48,7 @@ const KEY_TERMINAL_EMULATOR: &str = "terminal.emulator";
 const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 const KEY_CLI_COMMANDS: &str = "terminal.cli_commands";
+const KEY_DARK_MODE: &str = "dark_mode";
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -103,6 +104,10 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         .and_then(|v| serde_json::from_str(&v).ok())
         .unwrap_or_default();
 
+    let dark_mode = get_setting(conn, KEY_DARK_MODE)?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(defaults.dark_mode);
+
     Ok(Settings {
         scan_directories,
         thresholds: ActivityThresholds {
@@ -126,6 +131,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             tmux_layout: terminal_tmux_layout,
             cli_commands,
         },
+        dark_mode,
     })
 }
 
@@ -173,6 +179,8 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
     let cli_commands_json = serde_json::to_string(&settings.terminal.cli_commands)
         .unwrap_or_else(|_| "{}".to_string());
     set_setting(conn, KEY_CLI_COMMANDS, &cli_commands_json)?;
+
+    set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
 
     Ok(())
 }
@@ -264,6 +272,7 @@ mod tests {
                 dark: "dracula".into(),
             },
             terminal: TerminalSettings::default(),
+            dark_mode: true,
         };
 
         save_settings(&conn, &settings).unwrap();
@@ -279,6 +288,7 @@ mod tests {
         assert!(!loaded.daemon.auto_start);
         assert_eq!(loaded.code_theme.light, "one-light");
         assert_eq!(loaded.code_theme.dark, "dracula");
+        assert!(loaded.dark_mode);
     }
 
     #[test]
@@ -310,6 +320,7 @@ mod tests {
             daemon: DaemonSettings::default(),
             code_theme: CodeThemeSettings::default(),
             terminal: TerminalSettings::default(),
+            dark_mode: false,
         };
         save_settings(&conn, &settings1).unwrap();
 
@@ -324,6 +335,7 @@ mod tests {
             code_theme: CodeThemeSettings::default(),
             daemon: DaemonSettings::default(),
             terminal: TerminalSettings::default(),
+            dark_mode: true,
         };
         save_settings(&conn, &settings2).unwrap();
 

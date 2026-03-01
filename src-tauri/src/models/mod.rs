@@ -278,6 +278,8 @@ pub struct Settings {
     pub code_theme: CodeThemeSettings,
     #[serde(default)]
     pub terminal: TerminalSettings,
+    #[serde(default)]
+    pub dark_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
