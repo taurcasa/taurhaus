@@ -497,8 +497,15 @@ describe('GitTab component', () => {
   // --- P11: Date group headers ---
 
   it('renders date group header for commits', async () => {
-    // All commits have timestamps within "today", should show "Today" header
-    getAllCommits.mockResolvedValue(makeCommits(3))
+    // Use local-noon timestamps to avoid midnight boundary flakes.
+    const todayNoon = new Date()
+    todayNoon.setHours(12, 0, 0, 0)
+    const todayTs = Math.floor(todayNoon.getTime() / 1000)
+    getAllCommits.mockResolvedValue([
+      { hash: 'ttt00001', message: 'A', body: null, author: 'Dev', date: '1h', timestamp: todayTs },
+      { hash: 'ttt00002', message: 'B', body: null, author: 'Dev', date: '2h', timestamp: todayTs - 60 },
+      { hash: 'ttt00003', message: 'C', body: null, author: 'Dev', date: '3h', timestamp: todayTs - 120 },
+    ])
 
     render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
     await waitFor(() => {
@@ -509,10 +516,27 @@ describe('GitTab component', () => {
   })
 
   it('renders separate date headers for commits on different days', async () => {
-    const now = Math.floor(Date.now() / 1000)
+    const todayNoon = new Date()
+    todayNoon.setHours(12, 0, 0, 0)
+    const yesterdayNoon = new Date(todayNoon)
+    yesterdayNoon.setDate(yesterdayNoon.getDate() - 1)
     const commits = [
-      { hash: 'aaa00001', message: 'Recent commit', body: null, author: 'Dev', date: '1h', timestamp: now - 3600 },
-      { hash: 'aaa00002', message: 'Yesterday commit', body: null, author: 'Dev', date: '1d', timestamp: now - 90000 },
+      {
+        hash: 'aaa00001',
+        message: 'Recent commit',
+        body: null,
+        author: 'Dev',
+        date: '1h',
+        timestamp: Math.floor(todayNoon.getTime() / 1000),
+      },
+      {
+        hash: 'aaa00002',
+        message: 'Yesterday commit',
+        body: null,
+        author: 'Dev',
+        date: '1d',
+        timestamp: Math.floor(yesterdayNoon.getTime() / 1000),
+      },
     ]
     getAllCommits.mockResolvedValue(commits)
 

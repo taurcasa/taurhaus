@@ -23,7 +23,7 @@
   let treeChildren = $state({})   // { path: [{name, path, isExpandable}] }
   let treeExpanded = $state(new Set())
   let treeLoading = $state(new Set())
-  let treeRoot = $state(initialPath)
+  let treeRoot = $state('~')
   let showDrives = $state(false)
   let systemRoots = $state([])
 
@@ -127,6 +127,7 @@
   // Init once on mount (not $effect — initTree writes reactive state it also reads,
   // which would cause an infinite re-trigger loop)
   onMount(() => {
+    treeRoot = initialPath
     initTree()
   })
 </script>
