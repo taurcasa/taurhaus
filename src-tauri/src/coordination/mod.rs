@@ -2,6 +2,9 @@
 
 //! Coordination subsystem scaffolding.
 
+pub mod audit;
+pub mod backend;
+pub mod delivery;
 pub mod domain;
 pub mod errors;
 pub mod health;
