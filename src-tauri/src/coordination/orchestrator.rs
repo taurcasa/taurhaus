@@ -870,4 +870,62 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn invalid_team_name_is_rejected_for_create() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut orchestrator = new_orchestrator(&tmp);
+
+        let err = orchestrator
+            .create_team("bad/name", None)
+            .expect_err("path separators must be rejected");
+        match err {
+            CoordinationError::Validation(message) => assert!(message.contains("must not contain")),
+            other => panic!("expected validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_member_name_is_rejected_for_add_member() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut orchestrator = new_orchestrator(&tmp);
+        let team_name = "architecture-final";
+
+        orchestrator
+            .create_team(team_name, None)
+            .expect("create should succeed");
+
+        let err = orchestrator
+            .add_member(team_name, sample_member("bad/member", CliTool::Codex))
+            .expect_err("invalid member name should fail");
+        match err {
+            CoordinationError::Validation(message) => assert!(message.contains("path separators")),
+            other => panic!("expected validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deliver_to_nonexistent_team_fails_without_delivery_audit_events() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut orchestrator = new_orchestrator(&tmp);
+
+        let err = orchestrator
+            .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                member_name: "codex-reviewer".to_string(),
+                team_name: "missing-team".to_string(),
+                message: "status?".to_string(),
+            }))
+            .expect_err("delivery should fail");
+        assert_not_found(err);
+
+        let event_types: Vec<&str> = orchestrator
+            .drain_audit_log()
+            .into_iter()
+            .map(|event| event.event_type())
+            .collect();
+        assert!(
+            event_types.is_empty(),
+            "no delivery audit event should be emitted before team lookup succeeds"
+        );
+    }
 }

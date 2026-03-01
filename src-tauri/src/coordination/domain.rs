@@ -72,6 +72,7 @@ pub enum HealthState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn team_serde_round_trip() {
@@ -134,5 +135,36 @@ mod tests {
         let decoded: MemberRuntimeState =
             serde_json::from_value(encoded).expect("runtime should deserialize");
         assert_eq!(decoded, runtime);
+    }
+
+    #[test]
+    fn member_role_serializes_as_snake_case() {
+        let encoded = serde_json::to_string(&MemberRole::Lead).expect("serialize role");
+        assert_eq!(encoded, "\"lead\"");
+    }
+
+    #[test]
+    fn health_state_serializes_as_snake_case() {
+        let encoded = serde_json::to_string(&HealthState::SessionDead).expect("serialize health");
+        assert_eq!(encoded, "\"session_dead\"");
+    }
+
+    #[test]
+    fn runtime_state_allows_optional_fields_to_be_none() {
+        let raw = json!({
+            "pane_id": null,
+            "health": "awaiting_read",
+            "delivery_lease": null,
+            "attached_at": null,
+            "last_seen_at": null
+        });
+
+        let decoded: MemberRuntimeState =
+            serde_json::from_value(raw).expect("deserialize runtime state");
+        assert_eq!(decoded.pane_id, None);
+        assert_eq!(decoded.delivery_lease, None);
+        assert_eq!(decoded.attached_at, None);
+        assert_eq!(decoded.last_seen_at, None);
+        assert_eq!(decoded.health, HealthState::AwaitingRead);
     }
 }

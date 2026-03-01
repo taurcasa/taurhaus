@@ -1,5 +1,3 @@
-#![cfg(feature = "mesh-bridged-backend")]
-
 //! Coordination IPC commands for team management (M0 surface).
 
 use serde::{Deserialize, Serialize};
@@ -91,5 +89,43 @@ mod tests {
         let json = serde_json::to_string(&value).expect("serialize team status");
         let decoded: TeamStatus = serde_json::from_str(&json).expect("deserialize team status");
         assert_eq!(decoded, value);
+    }
+
+    #[test]
+    fn create_team_rejects_empty_or_whitespace_name() {
+        let err = coordination_create_team("".to_string()).expect_err("empty should fail");
+        assert!(err.contains("team_name"));
+
+        let err =
+            coordination_create_team("   \n\t  ".to_string()).expect_err("whitespace should fail");
+        assert!(err.contains("team_name"));
+    }
+
+    #[test]
+    fn member_commands_validate_all_required_fields() {
+        let err = coordination_disband_team("   ".to_string()).expect_err("blank team should fail");
+        assert!(err.contains("team_name"));
+
+        let err = coordination_add_member("team".to_string(), "".to_string(), "mesh".to_string())
+            .expect_err("empty member should fail");
+        assert!(err.contains("member_name"));
+
+        let err = coordination_add_member("team".to_string(), "alice".to_string(), "".to_string())
+            .expect_err("empty backend should fail");
+        assert!(err.contains("backend_kind"));
+
+        let err = coordination_remove_member("".to_string(), "alice".to_string())
+            .expect_err("empty team should fail");
+        assert!(err.contains("team_name"));
+
+        let err = coordination_remove_member("team".to_string(), "  ".to_string())
+            .expect_err("whitespace member should fail");
+        assert!(err.contains("member_name"));
+    }
+
+    #[test]
+    fn get_team_status_validates_non_empty_team_name() {
+        let err = coordination_get_team_status(" ".to_string()).expect_err("whitespace invalid");
+        assert!(err.contains("team_name"));
     }
 }

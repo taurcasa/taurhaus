@@ -142,3 +142,116 @@ impl CoordinationBackend for FakeBackend {
         Ok(TeardownResult { success: true })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::coordination::domain::{Member, MemberRole};
+    use crate::coordination::requests::{
+        LaunchPermissions, OperatorNoticeDelivery, TeardownMode,
+    };
+    use crate::session_scanner::cli_tool::CliTool;
+
+    fn sample_member(name: &str) -> Member {
+        Member {
+            name: name.to_string(),
+            role: MemberRole::Agent,
+            instructions: None,
+            project_path: PathBuf::from("/tmp/taurhaus"),
+            cli_tool: CliTool::Codex,
+        }
+    }
+
+    #[test]
+    fn trait_contract_methods_increment_counts() {
+        let backend = FakeBackend::default();
+
+        let _ = backend
+            .launch(LaunchRequest {
+                member: sample_member("alice"),
+                team_name: "architecture-final".to_string(),
+                pane_target: None,
+                permissions: LaunchPermissions::Standard,
+            })
+            .expect("launch");
+
+        let _ = backend
+            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+                message: "status?".to_string(),
+            }))
+            .expect("deliver");
+
+        let _ = backend
+            .probe(ProbeRequest {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+            })
+            .expect("probe");
+
+        let _ = backend
+            .teardown(TeardownRequest {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+                mode: TeardownMode::Graceful,
+            })
+            .expect("teardown");
+
+        assert_eq!(backend.call_counts(), (1, 1, 1, 1));
+    }
+
+    #[test]
+    fn programmed_delivery_failure_can_be_set_and_cleared() {
+        let backend = FakeBackend::default();
+
+        backend.set_deliver_error(CoordinationError::Backend(
+            "simulated delivery failure".to_string(),
+        ));
+        let err = backend
+            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+                message: "status?".to_string(),
+            }))
+            .expect_err("delivery should fail");
+        match err {
+            CoordinationError::Backend(message) => {
+                assert!(message.contains("simulated delivery failure"))
+            }
+            other => panic!("expected backend error, got {other:?}"),
+        }
+
+        backend.clear_deliver_error();
+        let result = backend
+            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+                message: "status?".to_string(),
+            }))
+            .expect("delivery should recover");
+        assert!(result.delivered);
+    }
+
+    #[test]
+    fn programmed_io_failure_is_returned_as_io_error() {
+        let backend = FakeBackend::default();
+        backend.set_deliver_error(CoordinationError::Io(std::io::Error::other(
+            "disk exploded",
+        )));
+
+        let err = backend
+            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+                message: "status?".to_string(),
+            }))
+            .expect_err("delivery should fail");
+        match err {
+            CoordinationError::Io(inner) => assert_eq!(inner.kind(), std::io::ErrorKind::Other),
+            other => panic!("expected io error, got {other:?}"),
+        }
+    }
+}

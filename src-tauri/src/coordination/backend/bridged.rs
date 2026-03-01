@@ -214,7 +214,7 @@ impl CoordinationBackend for MeshBridgedBackend {
                 &req.member_name,
             ])?;
 
-            return Ok(ProbeResult {
+            Ok(ProbeResult {
                 alive: out.success,
                 health: if out.success {
                     crate::coordination::domain::HealthState::Healthy
@@ -226,7 +226,7 @@ impl CoordinationBackend for MeshBridgedBackend {
                 } else {
                     crate::coordination::requests::ProbeEvidence::None
                 },
-            });
+            })
         }
 
         #[cfg(not(feature = "mesh-bridged-backend"))]

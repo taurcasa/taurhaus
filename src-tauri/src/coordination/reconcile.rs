@@ -200,5 +200,87 @@ mod tests {
         let events = reconciler.reconcile(); // no filesystem changes
         assert!(events.is_empty());
     }
-}
 
+    #[test]
+    fn member_removal_detected_on_reconcile() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut reconciler = Reconciler::new(tmp.path().to_path_buf(), Duration::from_secs(30));
+
+        fs::create_dir_all(tmp.path().join("architecture-final")).expect("create team dir");
+        write_runtime_file(tmp.path(), "architecture-final", "alice");
+        write_runtime_file(tmp.path(), "architecture-final", "bob");
+        let _ = reconciler.reconcile();
+
+        fs::remove_file(
+            tmp.path()
+                .join("architecture-final")
+                .join("runtime")
+                .join("alice.json"),
+        )
+        .expect("remove member runtime");
+
+        let events = reconciler.reconcile();
+        assert_eq!(
+            events,
+            vec![CoordinationEvent::MemberRuntimeChanged {
+                team_name: "architecture-final".to_string(),
+                member_name: "alice".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn reconcile_handles_simultaneous_adds_and_removes_across_teams() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut reconciler = Reconciler::new(tmp.path().to_path_buf(), Duration::from_secs(30));
+
+        fs::create_dir_all(tmp.path().join("team-a")).expect("create team a");
+        fs::create_dir_all(tmp.path().join("team-b")).expect("create team b");
+        write_runtime_file(tmp.path(), "team-a", "old-a");
+        write_runtime_file(tmp.path(), "team-b", "old-b");
+        let _ = reconciler.reconcile();
+
+        fs::remove_file(tmp.path().join("team-a").join("runtime").join("old-a.json"))
+            .expect("remove old-a");
+        write_runtime_file(tmp.path(), "team-a", "new-a");
+        fs::remove_file(tmp.path().join("team-b").join("runtime").join("old-b.json"))
+            .expect("remove old-b");
+        write_runtime_file(tmp.path(), "team-b", "new-b");
+
+        let mut events = reconciler.reconcile();
+        events.sort_by_key(|event| match event {
+            CoordinationEvent::MemberRuntimeChanged {
+                team_name,
+                member_name,
+            } => format!("{team_name}:{member_name}"),
+            CoordinationEvent::TeamConfigChanged { team_name } => format!("{team_name}:team"),
+            CoordinationEvent::InboxMessage {
+                team_name,
+                member_name,
+            } => format!("{team_name}:{member_name}"),
+            CoordinationEvent::TaskFileChanged { team_name } => format!("{team_name}:task"),
+        });
+
+        assert_eq!(
+            events,
+            vec![
+                CoordinationEvent::MemberRuntimeChanged {
+                    team_name: "team-a".to_string(),
+                    member_name: "new-a".to_string()
+                },
+                CoordinationEvent::MemberRuntimeChanged {
+                    team_name: "team-a".to_string(),
+                    member_name: "old-a".to_string()
+                },
+                CoordinationEvent::MemberRuntimeChanged {
+                    team_name: "team-b".to_string(),
+                    member_name: "new-b".to_string()
+                },
+                CoordinationEvent::MemberRuntimeChanged {
+                    team_name: "team-b".to_string(),
+                    member_name: "old-b".to_string()
+                },
+            ]
+        );
+    }
+}

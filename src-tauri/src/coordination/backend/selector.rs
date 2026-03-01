@@ -7,19 +7,10 @@ use crate::session_scanner::cli_tool::CliTool;
 ///
 /// For M0: forced MeshBridged for all tools. The auto-detect path exists
 /// for post-M0 when ClaudeNative becomes available.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct BackendSelector {
     pub override_kind: Option<BackendKind>,
     pub force_mesh: bool,
-}
-
-impl Default for BackendSelector {
-    fn default() -> Self {
-        Self {
-            override_kind: None,
-            force_mesh: false,
-        }
-    }
 }
 
 impl BackendSelector {
@@ -73,5 +64,14 @@ mod tests {
             force_mesh: true,
         };
         assert_eq!(selector.select(CliTool::Codex), BackendKind::ClaudeNative);
+    }
+
+    #[test]
+    fn override_can_force_mesh_for_claude_tool() {
+        let selector = BackendSelector {
+            override_kind: Some(BackendKind::MeshBridged),
+            force_mesh: false,
+        };
+        assert_eq!(selector.select(CliTool::Claude), BackendKind::MeshBridged);
     }
 }

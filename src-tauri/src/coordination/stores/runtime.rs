@@ -253,7 +253,7 @@ fn parse_runtime_record(
 }
 
 fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {
-    latest_activity(record).map_or(true, |ts| ts <= cutoff)
+    latest_activity(record).is_none_or(|ts| ts <= cutoff)
 }
 
 fn latest_activity(record: &MemberRuntimeRecord) -> Option<DateTime<Utc>> {
@@ -609,5 +609,36 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "valid-agent");
         assert_eq!(results[0].1, valid);
+    }
+
+    #[test]
+    fn load_missing_runtime_returns_not_found() {
+        let tmp = TempDir::new().expect("tempdir");
+        let err =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "ghost").expect_err("missing runtime");
+        match err {
+            CoordinationError::NotFound(message) => assert!(message.contains("ghost")),
+            other => panic!("expected not found, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn list_errors_when_runtime_path_is_file() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "architecture-final";
+        let runtime_path = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(team_dir(tmp.path(), team_name)).expect("create team dir");
+        fs::write(&runtime_path, "not a dir").expect("write file");
+
+        let err = MemberRuntimeStore::list(tmp.path(), team_name).expect_err("path is file");
+        match err {
+            CoordinationError::Io(io) => {
+                assert!(
+                    io.kind() == std::io::ErrorKind::NotADirectory
+                        || io.kind() == std::io::ErrorKind::Other
+                );
+            }
+            other => panic!("expected io error, got {other:?}"),
+        }
     }
 }

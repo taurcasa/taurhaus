@@ -79,4 +79,52 @@ mod tests {
             other => panic!("expected store error variant, got {other:?}"),
         }
     }
+
+    #[test]
+    fn all_variants_have_expected_display_strings() {
+        let validation = CoordinationError::Validation("bad input".to_string());
+        let io = CoordinationError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "denied",
+        ));
+        let backend = CoordinationError::Backend("mesh down".to_string());
+        let not_found = CoordinationError::NotFound("missing".to_string());
+        let conflict = CoordinationError::Conflict("duplicate".to_string());
+        let store = CoordinationError::StoreError("db".to_string());
+
+        assert_eq!(validation.to_string(), "Validation error: bad input");
+        assert!(io.to_string().starts_with("IO error: "));
+        assert_eq!(backend.to_string(), "Backend error: mesh down");
+        assert_eq!(not_found.to_string(), "Not found: missing");
+        assert_eq!(conflict.to_string(), "Conflict: duplicate");
+        assert_eq!(store.to_string(), "Store error: db");
+    }
+
+    #[test]
+    fn app_error_mapping_covers_all_variants() {
+        match CoordinationError::from(AppError::NotFound("x".to_string())) {
+            CoordinationError::NotFound(msg) => assert_eq!(msg, "x"),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::InvalidPath("bad".to_string())) {
+            CoordinationError::Validation(msg) => assert_eq!(msg, "bad"),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::ParseError("bad".to_string())) {
+            CoordinationError::Validation(msg) => assert_eq!(msg, "bad"),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::Io(std::io::Error::other("boom"))) {
+            CoordinationError::Io(err) => assert_eq!(err.kind(), std::io::ErrorKind::Other),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::Git(git2::Error::from_str("git failed"))) {
+            CoordinationError::Backend(msg) => assert!(msg.contains("git failed")),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::SearchError("search failed".to_string())) {
+            CoordinationError::Backend(msg) => assert_eq!(msg, "search failed"),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+    }
 }

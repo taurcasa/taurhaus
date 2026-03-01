@@ -155,5 +155,32 @@ mod tests {
         let actions = consumer.drain();
         assert_eq!(actions.len(), 2);
     }
-}
 
+    #[test]
+    fn task_file_event_maps_to_refresh_task_action() {
+        let consumer = consumer_with_events(vec![CoordinationEvent::TaskFileChanged {
+            team_name: "arch".to_string(),
+        }]);
+        assert_eq!(
+            consumer.try_process_one(),
+            Some(ConsumerAction::RefreshTaskState {
+                team_name: "arch".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn closed_channel_process_one_returns_none() {
+        let (tx, rx) = mpsc::channel::<CoordinationEvent>();
+        drop(tx);
+        let consumer = EventConsumer::new(rx, PathBuf::from("/tmp/teams"));
+        assert_eq!(consumer.process_one(), None);
+    }
+
+    #[test]
+    fn teams_dir_accessor_returns_configured_path() {
+        let (_tx, rx) = mpsc::channel::<CoordinationEvent>();
+        let consumer = EventConsumer::new(rx, PathBuf::from("/tmp/teams"));
+        assert_eq!(consumer.teams_dir(), &PathBuf::from("/tmp/teams"));
+    }
+}

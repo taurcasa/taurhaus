@@ -466,4 +466,32 @@ mod tests {
         assert_eq!(config.members[1].role, MemberRole::Agent);
         assert_eq!(config.members[1].cli_tool, CliTool::Codex);
     }
+
+    #[test]
+    fn load_missing_config_returns_not_found() {
+        let tmp = TempDir::new().expect("tempdir");
+        let err = TeamConfigStore::load(tmp.path(), "missing-team").expect_err("missing team");
+        match err {
+            CoordinationError::NotFound(message) => assert!(message.contains("missing-team")),
+            other => panic!("expected not found, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn list_returns_io_error_when_teams_dir_is_not_a_directory() {
+        let tmp = TempDir::new().expect("tempdir");
+        let file_path = tmp.path().join("not-a-dir");
+        fs::write(&file_path, "x").expect("write file");
+
+        let err = TeamConfigStore::list(&file_path).expect_err("file path should error");
+        match err {
+            CoordinationError::Io(io) => {
+                assert!(
+                    io.kind() == std::io::ErrorKind::NotADirectory
+                        || io.kind() == std::io::ErrorKind::Other
+                );
+            }
+            other => panic!("expected io error, got {other:?}"),
+        }
+    }
 }

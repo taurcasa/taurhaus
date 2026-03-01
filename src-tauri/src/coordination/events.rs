@@ -186,4 +186,46 @@ mod tests {
 
         assert_eq!(event, None);
     }
+
+    #[test]
+    fn nested_runtime_path_does_not_match() {
+        let (producer, _rx) = producer_with_temp_channel();
+        let path = Path::new("/tmp/teams/architecture-final/runtime/nested/bob.json");
+        assert_eq!(producer.classify(path), None);
+    }
+
+    #[test]
+    fn non_json_task_file_does_not_match() {
+        let (producer, _rx) = producer_with_temp_channel();
+        let path = Path::new("/tmp/teams/architecture-final/tasks/task-001.md");
+        assert_eq!(producer.classify(path), None);
+    }
+
+    #[test]
+    fn produce_sends_classified_event() {
+        let (producer, rx) = producer_with_temp_channel();
+        let path = Path::new("/tmp/teams/architecture-final/config.json");
+
+        producer.produce(path).expect("send event");
+        let event = rx.recv().expect("event in channel");
+        assert_eq!(
+            event,
+            CoordinationEvent::TeamConfigChanged {
+                team_name: "architecture-final".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn special_char_member_name_is_preserved() {
+        let (producer, _rx) = producer_with_temp_channel();
+        let path = Path::new("/tmp/teams/architecture-final/inbox-codex.reviewer_1.json");
+        assert_eq!(
+            producer.classify(path),
+            Some(CoordinationEvent::InboxMessage {
+                team_name: "architecture-final".to_string(),
+                member_name: "codex.reviewer_1".to_string(),
+            })
+        );
+    }
 }

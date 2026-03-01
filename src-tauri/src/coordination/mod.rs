@@ -1,5 +1,3 @@
-#![cfg(feature = "mesh-bridged-backend")]
-
 //! Coordination subsystem scaffolding.
 
 pub mod audit;
