@@ -22,6 +22,9 @@ pub mod claude_code;
 pub mod daemon;
 pub mod provider;
 
+#[cfg(feature = "mesh-bridged-backend")]
+pub mod coordination;
+
 pub mod session_scanner;
 
 pub mod task_scanner;
@@ -501,6 +504,18 @@ pub fn run() {
             commands::command_center::get_commit_files,
             commands::command_center::get_commit_diff,
             commands::command_center::get_commits_in_range,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_create_team,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_disband_team,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_add_member,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_remove_member,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_list_teams,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_get_team_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
@@ -579,10 +594,7 @@ fn process_watch_events(
             match event {
                 WatchEvent::FileChanged { project_id, paths } => {
                     self.activity_projects.insert(project_id.clone());
-                    self.file_paths
-                        .entry(project_id)
-                        .or_default()
-                        .extend(paths);
+                    self.file_paths.entry(project_id).or_default().extend(paths);
                 }
                 WatchEvent::GitChanged { project_id } => {
                     self.activity_projects.insert(project_id.clone());
@@ -631,7 +643,7 @@ fn process_watch_events(
                         batch.accumulate(event);
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => break,   // quiet window or ceiling
+                Err(RecvTimeoutError::Timeout) => break, // quiet window or ceiling
                 Err(RecvTimeoutError::Disconnected) => break, // channel closed
             }
         }
@@ -701,11 +713,14 @@ fn process_watch_events(
             };
             match search::indexer::reindex_commits(&mut index, project_id, path, 50) {
                 Ok(count) if count > 0 => {
-                    let _ = app.emit("search-index-updated", serde_json::json!({
-                        "project_id": project_id,
-                        "reason": "git_changed",
-                        "docs_updated": count,
-                    }));
+                    let _ = app.emit(
+                        "search-index-updated",
+                        serde_json::json!({
+                            "project_id": project_id,
+                            "reason": "git_changed",
+                            "docs_updated": count,
+                        }),
+                    );
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "Failed to reindex commits on git change");
@@ -735,15 +750,17 @@ fn process_watch_events(
                         Ok(i) => i,
                         Err(_) => continue,
                     };
-                    match search::indexer::index_session(
-                        &mut index, project_id, &session_id, &conn,
-                    ) {
+                    match search::indexer::index_session(&mut index, project_id, &session_id, &conn)
+                    {
                         Ok(true) => {
-                            let _ = app.emit("search-index-updated", serde_json::json!({
-                                "project_id": project_id,
-                                "reason": "session_imported",
-                                "docs_updated": 1,
-                            }));
+                            let _ = app.emit(
+                                "search-index-updated",
+                                serde_json::json!({
+                                    "project_id": project_id,
+                                    "reason": "session_imported",
+                                    "docs_updated": 1,
+                                }),
+                            );
                         }
                         Err(e) => {
                             tracing::warn!(error = %e, "Failed to index imported session");
@@ -769,8 +786,10 @@ fn process_watch_events(
             unique.sort();
             unique.dedup();
 
-            let path_strs: Vec<String> =
-                unique.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            let path_strs: Vec<String> = unique
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
             let _ = app.emit(
                 "project-files-changed",
                 serde_json::json!({
@@ -792,8 +811,7 @@ fn process_watch_events(
             };
             let mut updated = 0;
             for path in &unique {
-                match search::indexer::update_file(&mut index, project_id, project_root, path)
-                {
+                match search::indexer::update_file(&mut index, project_id, project_root, path) {
                     Ok(true) => updated += 1,
                     Err(e) => {
                         tracing::warn!(
@@ -807,17 +825,23 @@ fn process_watch_events(
             }
             drop(index);
             if updated > 0 {
-                let _ = app.emit("search-index-updated", serde_json::json!({
-                    "project_id": project_id,
-                    "reason": "file_changed",
-                    "docs_updated": updated,
-                }));
+                let _ = app.emit(
+                    "search-index-updated",
+                    serde_json::json!({
+                        "project_id": project_id,
+                        "reason": "file_changed",
+                        "docs_updated": updated,
+                    }),
+                );
             }
         }
 
         // ── Gitignore changes ───────────────────────────────────────
         for project_id in &batch.gitignore_projects {
-            tracing::info!(project_id, "gitignore changed — watch rebuild not yet implemented");
+            tracing::info!(
+                project_id,
+                "gitignore changed — watch rebuild not yet implemented"
+            );
         }
     }
 }
@@ -933,7 +957,10 @@ fn startup_search_index(app: &tauri::AppHandle) {
 
         let doc_count = index.doc_count().unwrap_or(0);
         if doc_count > 0 {
-            tracing::info!(doc_count, "Search index already populated, skipping rebuild");
+            tracing::info!(
+                doc_count,
+                "Search index already populated, skipping rebuild"
+            );
             return;
         }
         // search lock dropped here
@@ -1039,10 +1066,7 @@ fn startup_task_scan(app: &tauri::AppHandle) {
 /// signals for 2 seconds. After the debounce window closes, scans all projects'
 /// tasks and persists to SQLite. This ensures rapid task file changes (e.g.,
 /// Claude creating 4 tasks at once) result in only one scan.
-fn task_scan_loop(
-    rx: std::sync::mpsc::Receiver<()>,
-    app: tauri::AppHandle,
-) {
+fn task_scan_loop(rx: std::sync::mpsc::Receiver<()>, app: tauri::AppHandle) {
     use std::time::{Duration, Instant};
     const DEBOUNCE: Duration = Duration::from_secs(2);
 
@@ -1090,18 +1114,16 @@ fn sync_all_project_tasks(app: &tauri::AppHandle) {
     let mut total_tasks = 0;
     for project in &projects {
         // Scan tasks from files (daemon or local)
-        let scan_result = commands::command_center::scan_tasks_from_files(
-            &provider_state,
-            &project.path,
-        );
+        let scan_result =
+            commands::command_center::scan_tasks_from_files(&provider_state, &project.path);
 
         if scan_result.tasks.is_empty() {
             continue;
         }
 
         // Normalize path for DB storage
-        let normalized_path = provider::path::to_linux(&project.path)
-            .unwrap_or_else(|| project.path.clone());
+        let normalized_path =
+            provider::path::to_linux(&project.path).unwrap_or_else(|| project.path.clone());
 
         // Persist to SQLite (brief DB lock per project)
         {
@@ -1109,11 +1131,7 @@ fn sync_all_project_tasks(app: &tauri::AppHandle) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            commands::command_center::persist_task_scan(
-                &conn,
-                &normalized_path,
-                &scan_result,
-            );
+            commands::command_center::persist_task_scan(&conn, &normalized_path, &scan_result);
         }
 
         total_tasks += scan_result.tasks.len();
@@ -1161,16 +1179,14 @@ fn start_daemon_watches(
     wsl_distro: Option<String>,
     projects: Vec<models::Project>,
 ) {
-    let mut listener = match daemon::event_listener::DaemonEventListener::connect(
-        &daemon_addr,
-        event_tx,
-    ) {
-        Ok(l) => l,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to connect daemon event listener");
-            return;
-        }
-    };
+    let mut listener =
+        match daemon::event_listener::DaemonEventListener::connect(&daemon_addr, event_tx) {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to connect daemon event listener");
+                return;
+            }
+        };
 
     // Register watches for all WSL projects
     let mut count = 0;
@@ -1276,17 +1292,13 @@ fn respawn_daemon_watches(app: &tauri::AppHandle) {
         let all_projects = db::queries::list_projects(&conn).unwrap_or_default();
         for project in &all_projects {
             let root = if provider::path::is_wsl_path(&project.path) {
-                provider::path::wsl_unc_to_linux(&project.path)
-                    .map(std::path::PathBuf::from)
+                provider::path::wsl_unc_to_linux(&project.path).map(std::path::PathBuf::from)
             } else {
                 Some(std::path::PathBuf::from(&project.path))
             };
             if let Some(root) = root {
-                match services::session_import::scan_and_import_sessions(
-                    &conn,
-                    &project.id,
-                    &root,
-                ) {
+                match services::session_import::scan_and_import_sessions(&conn, &project.id, &root)
+                {
                     Ok(imported) if !imported.is_empty() => {
                         tracing::info!(
                             project = project.name,
@@ -1372,10 +1384,7 @@ fn daemon_health_check(app: tauri::AppHandle, connected_at_startup: bool) {
                 tracing::warn!(
                     "Max daemon restart attempts reached ({MAX_RESTART_ATTEMPTS}), giving up"
                 );
-                let _ = app.emit(
-                    "daemon-status",
-                    serde_json::json!({ "status": "failed" }),
-                );
+                let _ = app.emit("daemon-status", serde_json::json!({ "status": "failed" }));
                 return;
             }
 

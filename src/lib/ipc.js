@@ -467,6 +467,43 @@ export function getProjectActivity(projectPath) {
   }))
 }
 
+// ---------------------------------------------------------------------------
+// Coordination IPC functions
+// ---------------------------------------------------------------------------
+
+/** Create a new coordination team. */
+export function coordinationCreateTeam(teamName) {
+  return invokeOrMock('coordination_create_team', { teamName }, () => undefined)
+}
+
+/** Disband a coordination team. */
+export function coordinationDisbandTeam(teamName) {
+  return invokeOrMock('coordination_disband_team', { teamName }, () => undefined)
+}
+
+/** Add a member to an existing coordination team. */
+export function coordinationAddMember(teamName, memberName, backendKind) {
+  return invokeOrMock('coordination_add_member', { teamName, memberName, backendKind }, () => undefined)
+}
+
+/** Remove a member from an existing coordination team. */
+export function coordinationRemoveMember(teamName, memberName) {
+  return invokeOrMock('coordination_remove_member', { teamName, memberName }, () => undefined)
+}
+
+/** List all known coordination teams. */
+export function coordinationListTeams() {
+  return invokeOrMock('coordination_list_teams', undefined, () => [])
+}
+
+/** Get current team status (member list and runtime state summary). */
+export function coordinationGetTeamStatus(teamName) {
+  return invokeOrMock('coordination_get_team_status', { teamName }, () => ({
+    teamName,
+    members: [],
+  }))
+}
+
 export function getDaemonStatus() {
   return invokeOrMock('get_daemon_status', undefined, () => ({
     status: 'connected',
