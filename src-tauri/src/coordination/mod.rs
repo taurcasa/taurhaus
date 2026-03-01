@@ -6,3 +6,4 @@ pub mod domain;
 pub mod errors;
 pub mod health;
 pub mod requests;
+pub mod stores;

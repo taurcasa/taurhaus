@@ -8,6 +8,10 @@ license = "MIT"
 publish = false
 default-run = "taurhaus"
 
+[features]
+default = ["mesh-bridged-backend"]
+mesh-bridged-backend = []
+
 [lib]
 name = "taurhaus_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
@@ -50,6 +54,7 @@ hex = "0.4"
 base64 = "0.22"
 ctrlc = "3"
 socket2 = { version = "0.5", features = ["all"] }
+fs2 = "0.4.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libproc = "0.14"
