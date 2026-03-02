@@ -1,4 +1,7 @@
 use std::path::PathBuf;
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 use chrono::Utc;
 
@@ -6,9 +9,11 @@ use crate::commands::coordination_types::{
     AddAgentReport, AddAgentRequest, AgentSetupConfig, InitializeReport, InitializeTeamRequest,
     StepProgress, StepStatus,
 };
+use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
@@ -22,10 +27,10 @@ impl CoordinationOrchestrator {
     /// 1. validate_configuration
     /// 2. create_team
     /// 3. add_lead
-    /// 4. create_panes (stubbed)
-    /// 5. launch_sessions (stubbed)
-    /// 6. join_mesh (stubbed)
-    /// 7. start_daemons (stubbed)
+    /// 4. create_panes
+    /// 5. launch_sessions
+    /// 6. join_mesh
+    /// 7. start_daemons
     /// 8. send_onboarding (render + deliver)
     pub fn initialize_team(
         &mut self,
@@ -91,7 +96,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded("add_lead", "lead added", &mut succeeded_steps, &mut steps);
 
-        if let Err(err) = self.create_panes_stub(request) {
+        if let Err(err) = self.create_panes(request) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -108,7 +113,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.launch_sessions_stub(request) {
+        if let Err(err) = self.launch_sessions(request) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -125,7 +130,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.join_mesh_stub(request) {
+        if let Err(err) = self.join_mesh(request) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -137,7 +142,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded("join_mesh", "mesh joined", &mut succeeded_steps, &mut steps);
 
-        if let Err(err) = self.start_daemons_stub(request) {
+        if let Err(err) = self.start_daemons(request) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -355,54 +360,127 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn create_panes_stub(
+    fn create_panes(&mut self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+        if cfg!(test) {
+            return self.create_panes_test_stub(request);
+        }
+
+        for agent in &request.agents {
+            let member = member_from_agent_setup(agent, MemberRole::Agent)?;
+            self.add_member(&request.team_name, member.clone())?;
+            let pane_id = self.create_aitx_pane(&agent.project_id)?;
+
+            let mut runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
+            runtime.pane_id = Some(pane_id);
+            runtime.attached_at = Some(Utc::now());
+            runtime.health = HealthState::Healthy;
+            MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &member.name, &runtime)?;
+        }
+        Ok(())
+    }
+
+    fn create_panes_test_stub(
         &mut self,
         request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
         for (idx, agent) in request.agents.iter().enumerate() {
             let member = member_from_agent_setup(agent, MemberRole::Agent)?;
             self.add_member(&request.team_name, member.clone())?;
-
-            if let Ok(mut runtime) =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)
-            {
-                runtime.pane_id = Some(format!("%{}", idx + 1));
-                runtime.attached_at = Some(Utc::now());
-                runtime.health = HealthState::Healthy;
-                MemberRuntimeStore::save(
-                    &self.teams_dir,
-                    &request.team_name,
-                    &member.name,
-                    &runtime,
-                )?;
-            }
+            let mut runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
+            runtime.pane_id = Some(format!("%{}", idx + 1));
+            runtime.attached_at = Some(Utc::now());
+            runtime.health = HealthState::Healthy;
+            MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &member.name, &runtime)?;
         }
         Ok(())
     }
 
-    fn launch_sessions_stub(
-        &self,
-        _request: &InitializeTeamRequest,
-    ) -> Result<(), CoordinationError> {
+    fn launch_sessions(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+        if cfg!(test) {
+            return Ok(());
+        }
+        for agent in &request.agents {
+            let runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
+            let pane_id = runtime.pane_id.ok_or_else(|| {
+                CoordinationError::Backend(format!(
+                    "missing pane id for member '{}' in team '{}'",
+                    agent.name, request.team_name
+                ))
+            })?;
+            let launch_cmd = build_cli_launch_command(agent)?;
+            run_aitx(&["send", pane_id.as_str(), launch_cmd.as_str()])?;
+            thread::sleep(Duration::from_secs(1));
+        }
         Ok(())
     }
 
-    fn join_mesh_stub(&self, _request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+    fn join_mesh(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+        if cfg!(test) {
+            return Ok(());
+        }
+        for agent in &request.agents {
+            run_mesh(&[
+                "join",
+                "--team",
+                &request.team_name,
+                "--name",
+                &agent.name,
+                "--cwd",
+                &agent.project_id,
+            ])?;
+        }
         Ok(())
     }
 
-    fn start_daemons_stub(
-        &self,
-        _request: &InitializeTeamRequest,
-    ) -> Result<(), CoordinationError> {
+    fn start_daemons(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+        if cfg!(test) {
+            return Ok(());
+        }
+        for agent in &request.agents {
+            let runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
+            let pane_id = runtime.pane_id.ok_or_else(|| {
+                CoordinationError::Backend(format!(
+                    "missing pane id for member '{}' in team '{}'",
+                    agent.name, request.team_name
+                ))
+            })?;
+            let pid = spawn_mesh_daemon(&pane_id, &request.team_name, &agent.name)?;
+            tracing::info!(
+                team = %request.team_name,
+                member = %agent.name,
+                pane_id = %pane_id,
+                pid = pid,
+                "mesh daemon started"
+            );
+        }
         Ok(())
     }
 
     fn send_onboarding_messages(
         &mut self,
-        _request: &InitializeTeamRequest,
+        request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
-        // Stubbed: onboarding delivery requires mesh join (not yet implemented).
+        for agent in &request.agents {
+            let cli_tool = parse_cli_tool(&agent.cli_tool)?;
+            if cli_tool == CliTool::Claude {
+                continue;
+            }
+
+            let onboarding = DeliveryRenderer::render_onboarding(
+                &request.team_name,
+                &agent.name,
+                &request.lead.name,
+            );
+            self.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                member_name: agent.name.clone(),
+                team_name: request.team_name.clone(),
+                message: onboarding,
+            }))?;
+        }
         Ok(())
     }
 
@@ -458,9 +536,31 @@ impl CoordinationOrchestrator {
 
     fn send_onboarding_for_agent(
         &self,
-        _request: &AddAgentRequest,
+        request: &AddAgentRequest,
     ) -> Result<(), CoordinationError> {
-        // Stubbed: onboarding delivery requires mesh join (not yet implemented).
+        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
+        if cli_tool == CliTool::Claude {
+            return Ok(());
+        }
+        let team = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+        let lead_name = team
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string());
+
+        let onboarding = DeliveryRenderer::render_onboarding(
+            &request.team_name,
+            &request.agent.name,
+            &lead_name,
+        );
+        self.backend
+            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                member_name: request.agent.name.clone(),
+                team_name: request.team_name.clone(),
+                message: onboarding,
+            }))?;
         Ok(())
     }
 
@@ -541,6 +641,196 @@ fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
         other => Err(CoordinationError::Validation(format!(
             "unsupported cli tool '{other}'"
         ))),
+    }
+}
+
+fn build_cli_launch_command(agent: &AgentSetupConfig) -> Result<String, CoordinationError> {
+    let cli_tool = parse_cli_tool(&agent.cli_tool)?;
+    let command = match cli_tool {
+        CliTool::Codex => {
+            if agent.model.trim().is_empty() {
+                "codex --yolo".to_string()
+            } else {
+                format!("codex --yolo -m {}", agent.model.trim())
+            }
+        }
+        CliTool::Gemini => "gemini --yolo".to_string(),
+        CliTool::Claude => "claude --dangerously-skip-permissions".to_string(),
+    };
+    Ok(command)
+}
+
+#[derive(Debug, Clone)]
+struct CommandInvocation {
+    program: String,
+    args: Vec<String>,
+}
+
+fn resolve_wsl_home_for_coordination() -> Option<String> {
+    let output = wsl_command_for_coordination()
+        .args(["--", "sh", "-c", "echo $HOME"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if home.is_empty() {
+        None
+    } else {
+        Some(home)
+    }
+}
+
+fn mesh_binary_path() -> Option<String> {
+    if cfg!(target_os = "windows") {
+        resolve_wsl_home_for_coordination().map(|home| format!("{home}/.local/bin/mesh"))
+    } else {
+        dirs::home_dir().map(|home| home.join(".local/bin/mesh").to_string_lossy().to_string())
+    }
+}
+
+fn command_invocation(program: &str, args: &[String]) -> CommandInvocation {
+    if cfg!(target_os = "windows") {
+        let mut invocation_args = vec!["-e".to_string(), program.to_string()];
+        invocation_args.extend(args.iter().cloned());
+        CommandInvocation {
+            program: "wsl".to_string(),
+            args: invocation_args,
+        }
+    } else {
+        CommandInvocation {
+            program: program.to_string(),
+            args: args.to_vec(),
+        }
+    }
+}
+
+fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
+    let mesh_path = mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
+    let args = args
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
+    command_invocation(&mesh_path, &args)
+}
+
+fn aitx_command_invocation(args: &[&str]) -> CommandInvocation {
+    let args = args
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
+    command_invocation("aitx", &args)
+}
+
+fn wsl_command_for_coordination() -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new("wsl");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+fn run_system_command(
+    invocation: &CommandInvocation,
+) -> Result<std::process::Output, CoordinationError> {
+    let output = if invocation.program == "wsl" {
+        let mut cmd = wsl_command_for_coordination();
+        cmd.args(&invocation.args).output()
+    } else {
+        Command::new(&invocation.program)
+            .args(&invocation.args)
+            .output()
+    };
+    output.map_err(CoordinationError::Io)
+}
+
+fn spawn_system_command(
+    invocation: &CommandInvocation,
+) -> Result<std::process::Child, CoordinationError> {
+    let child = if invocation.program == "wsl" {
+        let mut cmd = wsl_command_for_coordination();
+        cmd.args(&invocation.args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    } else {
+        Command::new(&invocation.program)
+            .args(&invocation.args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    };
+    child.map_err(CoordinationError::Io)
+}
+
+fn run_mesh(args: &[&str]) -> Result<String, CoordinationError> {
+    let invocation = mesh_command_invocation(args);
+    let output = run_system_command(&invocation)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(CoordinationError::Backend(format!(
+            "mesh command failed ({} {}): {}",
+            invocation.program,
+            invocation.args.join(" "),
+            stderr
+        )))
+    }
+}
+
+fn run_aitx(args: &[&str]) -> Result<String, CoordinationError> {
+    let invocation = aitx_command_invocation(args);
+    let output = run_system_command(&invocation)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(CoordinationError::Backend(format!(
+            "aitx command failed ({} {}): {}",
+            invocation.program,
+            invocation.args.join(" "),
+            stderr
+        )))
+    }
+}
+
+fn spawn_mesh_daemon(
+    pane_id: &str,
+    team_name: &str,
+    agent_name: &str,
+) -> Result<u32, CoordinationError> {
+    let invocation = mesh_command_invocation(&[
+        "daemon", "--pane", pane_id, "--team", team_name, "--name", agent_name,
+    ]);
+    let child = spawn_system_command(&invocation)?;
+    Ok(child.id())
+}
+
+impl CoordinationOrchestrator {
+    fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError> {
+        let stdout = run_aitx(&["new", "--path", project_id])?;
+        let pane = stdout
+            .split_whitespace()
+            .find(|token| !token.trim().is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| {
+                CoordinationError::Backend(
+                    "aitx new returned empty output; expected pane identifier".to_string(),
+                )
+            })?;
+        Ok(pane)
     }
 }
 
