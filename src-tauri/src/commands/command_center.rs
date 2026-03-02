@@ -19,11 +19,20 @@ use crate::ProviderState;
 
 /// Load terminal settings from the database, falling back to defaults on error.
 fn load_terminal_settings(db: &DbState) -> TerminalSettings {
-    db.0.lock()
-        .ok()
-        .and_then(|conn| crate::db::settings_queries::get_all_settings(&conn).ok())
-        .map(|s| s.terminal)
-        .unwrap_or_default()
+    let conn = match db.0.lock() {
+        Ok(conn) => conn,
+        Err(e) => {
+            tracing::warn!(error = %e, "Settings DB lock poisoned, using default terminal settings");
+            return TerminalSettings::default();
+        }
+    };
+    match crate::db::settings_queries::get_all_settings(&conn) {
+        Ok(settings) => settings.terminal,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to load settings, using default terminal settings");
+            TerminalSettings::default()
+        }
+    }
 }
 
 /// Resolve the tool command from user settings for a given tool and mode.
@@ -66,10 +75,7 @@ pub fn list_claude_sessions(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    let mut sessions: Vec<ClaudeSession> = response
-                        .result
-                        .and_then(|v| serde_json::from_value(v).ok())
-                        .unwrap_or_default();
+                    let mut sessions = decode_daemon_session_list(response.result)?;
 
                     // On Windows, convert Linux paths from the daemon to Windows paths
                     // so the frontend can match sessions to projects (stored as Windows paths).
@@ -168,10 +174,7 @@ pub fn launch_claude_session(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    let result: protocol::LaunchSessionResult = response
-                        .result
-                        .and_then(|v| serde_json::from_value(v).ok())
-                        .ok_or("Invalid launch result from daemon")?;
+                    let result = decode_daemon_launch_result(response.result)?;
 
                     if let Ok(mut f) = log_file.0.lock() {
                         let _ = writeln!(
@@ -831,10 +834,16 @@ pub(crate) fn scan_tasks_from_files(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    if let Some(result) =
-                        response.result.and_then(|v| serde_json::from_value(v).ok())
-                    {
-                        return result;
+                    if let Some(result_payload) = response.result {
+                        match serde_json::from_value(result_payload) {
+                            Ok(result) => return result,
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "Failed to deserialize task scan from daemon"
+                                );
+                            }
+                        }
                     }
                 }
                 Ok(response) => {
@@ -857,9 +866,32 @@ pub(crate) fn scan_tasks_from_files(
     crate::task_scanner::get_tasks_for_project(project_path, &project_sessions)
 }
 
+fn decode_daemon_session_list(
+    payload: Option<serde_json::Value>,
+) -> Result<Vec<ClaudeSession>, String> {
+    match payload {
+        Some(value) => serde_json::from_value(value).map_err(|e| {
+            tracing::warn!(error = %e, "Failed to deserialize session list from daemon");
+            format!("Session list decode error: {e}")
+        }),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn decode_daemon_launch_result(
+    payload: Option<serde_json::Value>,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let value = payload.ok_or_else(|| "Invalid launch result from daemon".to_string())?;
+    serde_json::from_value(value).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to deserialize launch result from daemon");
+        format!("Invalid launch result from daemon: {e}")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     #[test]
     fn launch_mode_deserializes_from_frontend_string() {
@@ -878,5 +910,174 @@ mod tests {
     fn launch_mode_rejects_invalid_string() {
         let result: Result<LaunchMode, _> = serde_json::from_str("\"invalid\"");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn daemon_session_decode_invalid_payload_returns_err() {
+        let payload = Some(serde_json::json!({
+            "not": "a session list"
+        }));
+        let result = decode_daemon_session_list(payload);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn daemon_session_decode_missing_payload_returns_empty() {
+        let result = decode_daemon_session_list(None).expect("missing payload should be empty");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn daemon_session_decode_valid_multiple_sessions_round_trip() {
+        let payload = Some(serde_json::json!([
+            {
+                "pid": 1234,
+                "project_path": "/tmp/project-a",
+                "tty": "/dev/pts/1",
+                "args": "claude --continue",
+                "cli_tool": "claude",
+                "tmux_session": "taurhaus",
+                "tmux_window": "1",
+                "tmux_pane": "%1",
+                "tmux_window_name": "a",
+                "state": "active",
+                "session_id": "sess-a",
+                "jsonl_path": "/tmp/a.jsonl"
+            },
+            {
+                "pid": 5678,
+                "project_path": "/tmp/project-b",
+                "tty": "/dev/pts/2",
+                "args": "codex --yolo",
+                "cli_tool": "codex",
+                "tmux_session": null,
+                "tmux_window": null,
+                "tmux_pane": null,
+                "tmux_window_name": null,
+                "state": "idle",
+                "session_id": null,
+                "jsonl_path": null
+            }
+        ]));
+        let sessions = decode_daemon_session_list(payload).expect("valid session payload");
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].project_path, "/tmp/project-a");
+        assert_eq!(sessions[1].project_path, "/tmp/project-b");
+    }
+
+    #[test]
+    fn daemon_session_decode_empty_array_returns_empty() {
+        let sessions =
+            decode_daemon_session_list(Some(serde_json::json!([]))).expect("empty array is valid");
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn daemon_launch_decode_valid_payload_round_trip() {
+        let payload = Some(serde_json::json!({
+            "tmux_session": "taurhaus",
+            "tmux_window": "1",
+            "tmux_pane": "%2"
+        }));
+        let result = decode_daemon_launch_result(payload).expect("valid launch payload");
+        assert_eq!(result.tmux_session.as_deref(), Some("taurhaus"));
+        assert_eq!(result.tmux_window, "1");
+        assert_eq!(result.tmux_pane, "%2");
+    }
+
+    #[test]
+    fn daemon_launch_decode_invalid_payload_returns_err() {
+        let payload = Some(serde_json::json!({
+            "unexpected": "shape"
+        }));
+        let err = decode_daemon_launch_result(payload).expect_err("invalid payload should error");
+        assert!(err.contains("Invalid launch result from daemon"));
+    }
+
+    #[test]
+    fn daemon_launch_decode_missing_payload_returns_err() {
+        let err = decode_daemon_launch_result(None).expect_err("missing payload should error");
+        assert_eq!(err, "Invalid launch result from daemon");
+    }
+
+    #[test]
+    fn resolve_tool_command_defaults_cover_all_tool_mode_pairs() {
+        let cmds = CliCommandSettings::default();
+        let tools = [CliTool::Claude, CliTool::Codex, CliTool::Gemini];
+        let modes = [LaunchMode::Continue, LaunchMode::Fresh, LaunchMode::Resume];
+
+        for tool in tools {
+            for mode in modes {
+                let command = resolve_tool_command(&cmds, tool, mode);
+                assert!(
+                    !command.trim().is_empty(),
+                    "command must be non-empty for {tool:?}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_tool_command_default_values_match_expected() {
+        let cmds = CliCommandSettings::default();
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Claude, LaunchMode::Continue),
+            "claude --dangerously-skip-permissions --continue"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Claude, LaunchMode::Fresh),
+            "claude --dangerously-skip-permissions"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Claude, LaunchMode::Resume),
+            "claude --dangerously-skip-permissions --resume"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Codex, LaunchMode::Continue),
+            "codex --yolo"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Codex, LaunchMode::Fresh),
+            "codex --yolo"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Codex, LaunchMode::Resume),
+            "codex resume --last --yolo"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Gemini, LaunchMode::Continue),
+            "gemini --yolo --resume"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Gemini, LaunchMode::Fresh),
+            "gemini --yolo"
+        );
+        assert_eq!(
+            resolve_tool_command(&cmds, CliTool::Gemini, LaunchMode::Resume),
+            "gemini --yolo --resume"
+        );
+    }
+
+    #[test]
+    fn load_terminal_settings_returns_default_when_settings_query_fails() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let db = DbState(Mutex::new(conn));
+
+        let settings = load_terminal_settings(&db);
+        assert_eq!(settings, TerminalSettings::default());
+    }
+
+    #[test]
+    fn load_terminal_settings_returns_default_on_poisoned_lock() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let db = DbState(Mutex::new(conn));
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = db.0.lock().unwrap();
+            panic!("intentional poison");
+        }));
+
+        let settings = load_terminal_settings(&db);
+        assert_eq!(settings, TerminalSettings::default());
     }
 }

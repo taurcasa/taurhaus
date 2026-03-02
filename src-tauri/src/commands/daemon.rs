@@ -170,15 +170,14 @@ fn detect_default_distro() -> Result<Option<String>, String> {
         return Ok(None);
     }
 
-    // wsl -l -q output on Windows uses UTF-16LE with null bytes between chars.
-    // Try UTF-8 first, then try cleaning null bytes.
-    let raw = String::from_utf8_lossy(&output.stdout);
-    let first_line = raw
-        .lines()
-        .map(|l| l.replace('\0', "").trim().to_string())
-        .find(|l| !l.is_empty());
+    Ok(parse_distro_from_wsl_output(&output.stdout))
+}
 
-    Ok(first_line)
+fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(raw);
+    text.lines()
+        .map(|l| l.replace('\0', "").trim().to_string())
+        .find(|l| !l.is_empty())
 }
 
 /// Check whether the daemon binary is installed and compare versions.
@@ -610,6 +609,21 @@ mod tests {
     }
 
     #[test]
+    fn semver_comparison_prerelease_and_malformed_edges() {
+        // Falls back to string comparison when strict x.y.z parsing fails.
+        assert!(!semver_less_than("0.3.2-alpha", "0.3.2"));
+        assert!(semver_less_than("0.3.2", "0.3.2-alpha"));
+
+        assert!(!semver_less_than("abc", "abc"));
+        assert!(semver_less_than("abc", "abd"));
+        assert!(semver_less_than("", "0.0.0"));
+        assert!(!semver_less_than("", ""));
+        assert!(semver_less_than("1.2", "1.2.3"));
+        assert!(semver_less_than("1.2.3.4", "2.0.0"));
+        assert!(!semver_less_than("1.2.3", "1.2.3"));
+    }
+
+    #[test]
     fn windows_path_translation() {
         let win = std::path::PathBuf::from(
             "C:\\Users\\mstie\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon",
@@ -621,9 +635,63 @@ mod tests {
     }
 
     #[test]
+    fn windows_path_translation_edge_cases() {
+        let d_drive = std::path::PathBuf::from("D:\\Work\\Agent Mesh\\taurhaus-daemon");
+        assert_eq!(
+            windows_to_wsl_path(&d_drive).unwrap(),
+            "/mnt/d/Work/Agent Mesh/taurhaus-daemon"
+        );
+
+        let e_drive = std::path::PathBuf::from("e:\\Users\\foo\\bar baz\\daemon.exe");
+        assert_eq!(
+            windows_to_wsl_path(&e_drive).unwrap(),
+            "/mnt/e/Users/foo/bar baz/daemon.exe"
+        );
+
+        let unc = std::path::PathBuf::from("\\\\server\\share\\daemon.exe");
+        assert_eq!(
+            windows_to_wsl_path(&unc).unwrap(),
+            "\\\\server\\share\\daemon.exe"
+        );
+    }
+
+    #[test]
     fn unix_path_passthrough() {
         let unix = std::path::PathBuf::from("/home/mstie/.local/bin/taurhaus-daemon");
         let result = windows_to_wsl_path(&unix).unwrap();
         assert_eq!(result, "/home/mstie/.local/bin/taurhaus-daemon");
+    }
+
+    #[test]
+    fn parse_distro_from_wsl_output_handles_utf8() {
+        let raw = b"Ubuntu\n";
+        assert_eq!(
+            parse_distro_from_wsl_output(raw),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_distro_from_wsl_output_handles_utf16le_null_bytes() {
+        let raw = b"U\0b\0u\0n\0t\0u\0\n\0";
+        assert_eq!(
+            parse_distro_from_wsl_output(raw),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_distro_from_wsl_output_empty_and_whitespace() {
+        assert_eq!(parse_distro_from_wsl_output(b""), None);
+        assert_eq!(parse_distro_from_wsl_output(b"   \n\t\n"), None);
+    }
+
+    #[test]
+    fn parse_distro_from_wsl_output_returns_first_non_empty_line() {
+        let raw = b"\nUbuntu-22.04\nDebian\n";
+        assert_eq!(
+            parse_distro_from_wsl_output(raw),
+            Some("Ubuntu-22.04".to_string())
+        );
     }
 }
