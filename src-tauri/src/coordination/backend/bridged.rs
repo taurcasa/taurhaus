@@ -103,12 +103,17 @@ fn resolve_wsl_home_for_coordination() -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if home.is_empty() {
-        None
-    } else {
-        Some(home)
-    }
+    parse_wsl_unix_path_from_stdout(&output.stdout)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn parse_wsl_unix_path_from_stdout(stdout: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(stdout);
+    text.lines()
+        .map(str::trim)
+        .rev()
+        .find(|line| !line.is_empty() && line.starts_with('/'))
+        .map(ToString::to_string)
 }
 
 /// Build a command invocation to check whether a binary exists.
@@ -585,6 +590,33 @@ mod tests {
                     stderr: String::new(),
                 }))
         }
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn parse_wsl_unix_path_from_stdout_handles_clean_output() {
+        let stdout = b"/home/mstie\n";
+        assert_eq!(
+            parse_wsl_unix_path_from_stdout(stdout),
+            Some("/home/mstie".to_string())
+        );
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn parse_wsl_unix_path_from_stdout_ignores_banner_noise() {
+        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie\n";
+        assert_eq!(
+            parse_wsl_unix_path_from_stdout(stdout),
+            Some("/home/mstie".to_string())
+        );
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn parse_wsl_unix_path_from_stdout_returns_none_without_path() {
+        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nNo path here\n";
+        assert_eq!(parse_wsl_unix_path_from_stdout(stdout), None);
     }
 
     #[cfg(feature = "mesh-bridged-backend")]
