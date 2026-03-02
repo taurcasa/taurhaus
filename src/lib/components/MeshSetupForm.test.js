@@ -240,7 +240,7 @@ describe('MeshSetupForm', () => {
     expect(onInitialize).toHaveBeenCalledWith({
       teamName: 'taurhaus-team',
       teamDescription: null,
-      leadMode: 'attach_existing',
+      leadMode: 'launch_new',
       lead: {
         name: 'team-lead',
         cliTool: 'claude',
@@ -285,7 +285,7 @@ describe('MeshSetupForm', () => {
       expect.objectContaining({
         teamName: 'taurhaus-team',
         teamDescription: null,
-        leadMode: 'attach_existing',
+        leadMode: 'launch_new',
         lead: expect.objectContaining({
           name: 'team-lead',
           cliTool: 'claude',

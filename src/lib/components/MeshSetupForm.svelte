@@ -173,7 +173,7 @@
     oninitialize({
       teamName: teamName.trim() || inferTeamName(projectPath),
       teamDescription: teamDescription.trim() || null,
-      leadMode: 'attach_existing',
+      leadMode: 'launch_new',
       lead: {
         name: leadName,
         cliTool: 'claude',
