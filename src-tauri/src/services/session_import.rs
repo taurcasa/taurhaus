@@ -214,9 +214,7 @@ Session notes here.
         let path = write_handoff(dir.path(), "session-test.md", VALID_HANDOFF);
 
         // Write companion sidecar
-        let sidecar_path = dir
-            .path()
-            .join("docs/sessions/session-test.meta.json");
+        let sidecar_path = dir.path().join("docs/sessions/session-test.meta.json");
         std::fs::write(
             &sidecar_path,
             r#"{"session_id":"test-session-001","duration_minutes":120,"model":"claude-opus-4-6"}"#,
@@ -272,7 +270,11 @@ Body text.
             &VALID_HANDOFF.replace("test-session-001", "sess-2"),
         );
         // Non-session file should be skipped
-        write_handoff(dir.path(), "notes.md", "---\ndate: today\nsummary: not a session\n---\n");
+        write_handoff(
+            dir.path(),
+            "notes.md",
+            "---\ndate: today\nsummary: not a session\n---\n",
+        );
 
         let imported = scan_and_import_sessions(&conn, "p1", dir.path()).unwrap();
         assert_eq!(imported.len(), 2);

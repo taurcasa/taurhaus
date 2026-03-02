@@ -139,7 +139,13 @@ mod tests {
 
         let names: Vec<&str> = results.iter().map(|d| d.name.as_str()).collect();
         assert!(names.contains(&"project-a"));
-        assert!(results.iter().find(|d| d.name == "project-a").unwrap().has_git);
+        assert!(
+            results
+                .iter()
+                .find(|d| d.name == "project-a")
+                .unwrap()
+                .has_git
+        );
     }
 
     // AC1b: Discovers git repos at depth 2
@@ -160,7 +166,10 @@ mod tests {
         let results = scan_directory(root.path(), 1).unwrap();
 
         let names: Vec<&str> = results.iter().map(|d| d.name.as_str()).collect();
-        assert!(!names.contains(&"nested-project"), "Should not find depth-2 project at depth 1");
+        assert!(
+            !names.contains(&"nested-project"),
+            "Should not find depth-2 project at depth 1"
+        );
     }
 
     // AC2: Skips hidden directories

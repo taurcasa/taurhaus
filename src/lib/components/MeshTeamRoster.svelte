@@ -1,5 +1,5 @@
 <script>
-  import { rowTintClass } from '../sessionIndicator.js'
+  import { themeTokens } from '../themeTokens.js'
 
   let {
     teamName = '',
@@ -10,19 +10,31 @@
     refreshNonce = 0,
   } = $props()
 
-  const keyline = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const textPrimary = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textMuted = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const subtleButton = $derived(
+  const t = $derived(themeTokens(dark))
+  const actionBase = 'rounded-md px-2 py-1 text-[11px] transition-colors'
+  const actionBrand = `${actionBase} text-brand-500 hover:text-brand-400 hover:bg-brand-500/10`
+  const actionDanger = `${actionBase} text-danger-500/70 hover:text-danger-500 hover:bg-danger-500/10`
+  const rowButtonTone = $derived(
     dark
-      ? 'border-zinc-700 text-zinc-300 hover:border-zinc-600 hover:text-zinc-200'
-      : 'border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900'
+      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70'
+      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
+  )
+  const leadBadgeClass = $derived(
+    dark
+      ? 'border border-zinc-600 text-zinc-400 bg-transparent font-mono'
+      : 'border border-zinc-300 text-zinc-500 bg-transparent font-mono'
   )
 
   let members = $state([])
   let loading = $state(false)
   let errorMessage = $state('')
   let reonboarding = $state(new Set())
+  const activeCount = $derived.by(
+    () => members.filter((member) => statusToState(member.sessionStatus) === 'active').length
+  )
+  const idleCount = $derived.by(
+    () => members.filter((member) => statusToState(member.sessionStatus) === 'idle').length
+  )
 
   function statusToState(status) {
     const normalized = String(status || '').toLowerCase()
@@ -44,30 +56,18 @@
     }
   }
 
-  function statusGlyph(status) {
-    return statusToState(status) === 'offline' ? '○' : '●'
-  }
-
-  function statusLabel(status) {
+  function statusDotColor(status) {
     const state = statusToState(status)
-    if (state === 'active') return 'Active'
-    if (state === 'idle') return 'Idle'
-    return 'Offline'
+    if (state === 'active') return 'bg-success-400'
+    if (state === 'idle') return 'bg-warning-400'
+    return dark ? 'bg-zinc-600' : 'bg-zinc-300'
   }
 
-  function statusClass(status) {
-    const state = statusToState(status)
-    if (state === 'active') return 'text-success-500'
-    if (state === 'idle') return 'text-warning-500'
-    return dark ? 'text-zinc-500' : 'text-zinc-400'
-  }
-
-  function roleIndicator(role) {
-    return role === 'lead' ? '★' : '◦'
-  }
-
-  function roleLabel(role) {
-    return role === 'lead' ? 'Lead' : 'Member'
+  function toolLabel(tool) {
+    if (tool === 'claude') return 'Claude'
+    if (tool === 'codex') return 'Codex'
+    if (tool === 'gemini') return 'Gemini'
+    return tool || 'Unknown'
   }
 
   async function refreshRoster() {
@@ -130,21 +130,23 @@
 </script>
 
 <section class="space-y-3" data-testid="mesh-team-roster">
-  <header class="flex items-start justify-between gap-3 pb-2 border-b {keyline}">
+  <header class="flex items-center justify-between gap-3 pb-3 border-b {t.keyline}">
     <div>
-      <h2 class="text-base font-semibold {textPrimary}" data-testid="mesh-runtime-title">Team: {teamName}</h2>
-      <p class="text-xs {textMuted}" data-testid="mesh-runtime-placeholder">Live roster refreshes every 5 seconds.</p>
+      <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-runtime-title">{teamName}</h2>
+      <p class="text-[11px] {t.textMuted}" data-testid="mesh-runtime-placeholder">
+        {members.length} member{members.length !== 1 ? 's' : ''} · {activeCount} active · {idleCount} idle · refresh 5s
+      </p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1.5">
       <button
-        class="rounded-md border px-2.5 py-1 text-xs {subtleButton}"
+        class={actionBrand}
         onclick={onAddAgent}
         data-testid="mesh-add-agent-button"
       >
-        + Add Agent
+        + Agent
       </button>
       <button
-        class="rounded-md border border-danger-400/50 px-2.5 py-1 text-xs text-danger-500 hover:border-danger-500 hover:text-danger-600"
+        class={actionDanger}
         onclick={onDisband}
         data-testid="mesh-disband-button"
       >
@@ -154,66 +156,66 @@
   </header>
 
   {#if errorMessage}
-    <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600" data-testid="mesh-roster-error">
+    <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600/95" data-testid="mesh-roster-error">
       {errorMessage}
     </div>
   {/if}
 
   {#if loading && members.length === 0}
-    <p class="text-xs {textMuted}" data-testid="mesh-roster-loading">Loading roster...</p>
+    <p class="text-xs {t.textMuted}" data-testid="mesh-roster-loading">Loading roster...</p>
   {:else if members.length === 0}
-    <p class="text-xs {textMuted}" data-testid="mesh-roster-empty">No members found.</p>
+    <p class="text-xs {t.textMuted}" data-testid="mesh-roster-empty">No members found.</p>
   {:else}
-    <div class="divide-y {keyline} border-y {keyline}">
+    <div class="space-y-0.5">
+      <div class="grid grid-cols-[10px_minmax(0,1fr)_minmax(0,180px)_120px] items-center h-5 -mx-2 px-2 text-[10px] uppercase tracking-[0.06em] {t.textMuted}">
+        <span>Status</span>
+        <span>Name</span>
+        <span>Tool · Model</span>
+        <span class="text-right">Actions</span>
+      </div>
       {#each members as member}
         <article
-          class={`py-2 px-1 ${rowTintClass({ state: statusToState(member.sessionStatus) })}`}
+          class="grid grid-cols-[10px_minmax(0,1fr)_minmax(0,180px)_120px] items-center gap-2 h-[30px] -mx-2 px-2 rounded {dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50'} group"
           data-testid={`mesh-roster-card-${member.name}`}
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 space-y-1">
-              <p class="text-sm font-medium truncate {textPrimary}">
-                <span data-testid={`mesh-role-indicator-${member.name}`}>{roleIndicator(member.role)}</span>
-                {' '}
-                <span>{member.name}</span>
-                <span class="ml-2 text-[11px] font-normal {textMuted}">{roleLabel(member.role)}</span>
-              </p>
+          <span
+            class={`w-1.5 h-1.5 shrink-0 rounded-full ${statusDotColor(member.sessionStatus)}`}
+            data-testid={`mesh-status-dot-${member.name}`}
+          ></span>
 
-              <p class="text-xs {textMuted}" data-testid={`mesh-member-meta-${member.name}`}>
-                {member.cliTool || 'Unknown'} · {member.model || 'default'} · {member.projectId || 'project'}
-              </p>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="text-[13px] truncate min-w-0 {t.textPrimary}" data-testid={`mesh-role-indicator-${member.name}`}>
+              {member.name}
+            </span>
+            {#if member.role === 'lead'}
+              <span class="text-[9px] uppercase tracking-[0.06em] px-1 py-0.5 rounded {leadBadgeClass}">lead</span>
+            {/if}
+          </div>
 
-              {#if member.description}
-                <p class="text-xs {textMuted} truncate">{member.description}</p>
-              {/if}
-            </div>
+          <span class="text-[11px] truncate {t.textMuted}" data-testid={`mesh-member-meta-${member.name}`}>
+            {toolLabel(member.cliTool)}{member.model ? ` · ${member.model}` : ''}
+          </span>
 
-            <div class="shrink-0 text-right space-y-1">
-              <p class={`text-xs font-semibold ${statusClass(member.sessionStatus)}`} data-testid={`mesh-status-dot-${member.name}`}>
-                {statusGlyph(member.sessionStatus)} {statusLabel(member.sessionStatus)}
-              </p>
-
-              <div class="flex items-center justify-end gap-1.5">
-                <button
-                  class="rounded-md border border-brand-500/50 px-2 py-1 text-[11px] text-brand-500 hover:border-brand-500 hover:text-brand-400 disabled:cursor-not-allowed disabled:opacity-50"
-                  onclick={() => onFocusPane(member.paneId)}
-                  disabled={!member.paneId}
-                  data-testid={`mesh-focus-pane-${member.name}`}
-                >
-                  Focus Pane
-                </button>
-                {#if member.role !== 'lead'}
-                  <button
-                    class="rounded-md border px-2 py-1 text-[11px] {subtleButton} disabled:cursor-not-allowed disabled:opacity-50"
-                    onclick={() => handleReonboard(member.name)}
-                    disabled={reonboarding.has(member.name)}
-                    data-testid={`mesh-reonboard-${member.name}`}
-                  >
-                    Re-onboard
-                  </button>
-                {/if}
-              </div>
-            </div>
+          <div class="flex justify-end items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+            {#if member.paneId}
+              <button
+                class="rounded px-1.5 py-0.5 text-[10px] text-brand-500 hover:text-brand-400 hover:bg-brand-500/10"
+                onclick={() => onFocusPane(member.paneId)}
+                data-testid={`mesh-focus-pane-${member.name}`}
+              >
+                Focus
+              </button>
+            {/if}
+            {#if member.role !== 'lead'}
+              <button
+                class="rounded px-1.5 py-0.5 text-[10px] {rowButtonTone} disabled:opacity-50"
+                onclick={() => handleReonboard(member.name)}
+                disabled={reonboarding.has(member.name)}
+                data-testid={`mesh-reonboard-${member.name}`}
+              >
+                Re-onboard
+              </button>
+            {/if}
           </div>
         </article>
       {/each}

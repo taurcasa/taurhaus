@@ -22,7 +22,10 @@ fn extract_subject_and_body(raw: &str) -> (String, Option<String>) {
 /// Get recent commits from a git repository, newest first.
 pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     let mut revwalk = repo.revwalk().map_err(git_err)?;
@@ -65,7 +68,10 @@ pub fn get_all_commits(
     offset: usize,
 ) -> Result<Vec<Commit>, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     let mut revwalk = repo.revwalk().map_err(git_err)?;
@@ -157,7 +163,10 @@ pub fn get_commits_in_range(
     before: DateTime<Utc>,
 ) -> Result<Vec<Commit>, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     let mut revwalk = repo.revwalk().map_err(git_err)?;
@@ -209,7 +218,10 @@ pub fn get_files_changed_in_range(
     before: DateTime<Utc>,
 ) -> Result<Vec<String>, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     let mut revwalk = repo.revwalk().map_err(git_err)?;
@@ -235,10 +247,7 @@ pub fn get_files_changed_in_range(
 
         if ts <= before_ts {
             let tree = commit.tree().map_err(git_err)?;
-            let parent_tree = commit
-                .parent(0)
-                .ok()
-                .and_then(|p| p.tree().ok());
+            let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
 
             let diff = repo
                 .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
@@ -268,7 +277,10 @@ pub fn get_files_changed_in_range(
 /// For the initial commit (no parent), diffs against an empty tree.
 pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<CommitFile>, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     // Resolve partial hash to full OID
@@ -331,7 +343,10 @@ pub fn get_commit_diff(
     file_path: &str,
 ) -> Result<Vec<DiffHunk>, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     let oid = repo
@@ -513,7 +528,10 @@ mod tests {
 
         let commits = get_recent_commits(dir.path(), 1).unwrap();
         assert_eq!(commits[0].message, "Subject");
-        assert_eq!(commits[0].body, Some("Body paragraph\nMore details".to_string()));
+        assert_eq!(
+            commits[0].body,
+            Some("Body paragraph\nMore details".to_string())
+        );
     }
 
     #[test]
@@ -556,9 +574,7 @@ mod tests {
         let file_path = dir.join(filename);
         std::fs::write(&file_path, format!("content of {filename}")).unwrap();
         let mut index = repo.index().unwrap();
-        index
-            .add_path(Path::new(filename))
-            .unwrap();
+        index.add_path(Path::new(filename)).unwrap();
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
@@ -762,7 +778,8 @@ mod tests {
         let sig = Signature::now("Test User", "test@example.com").unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "Initial with files", &tree, &[]).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial with files", &tree, &[])
+            .unwrap();
 
         let commits = get_recent_commits(dir.path(), 1).unwrap();
         let files = get_commit_files(dir.path(), &commits[0].hash).unwrap();
@@ -803,7 +820,10 @@ mod tests {
         let hunks = get_commit_diff(dir.path(), &commits[0].hash, "file.txt").unwrap();
         assert!(!hunks.is_empty());
         // Should have mixed origins (context, add, delete)
-        let origins: Vec<char> = hunks.iter().flat_map(|h| h.lines.iter().map(|l| l.origin)).collect();
+        let origins: Vec<char> = hunks
+            .iter()
+            .flat_map(|h| h.lines.iter().map(|l| l.origin))
+            .collect();
         assert!(origins.contains(&'+') || origins.contains(&'-'));
     }
 

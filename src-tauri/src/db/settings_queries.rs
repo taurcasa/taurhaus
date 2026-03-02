@@ -5,15 +5,16 @@
 
 use rusqlite::Connection;
 
-use crate::models::{ActivityThresholds, CliCommandSettings, CodeThemeSettings, DaemonSettings, Settings, TerminalSettings};
+use crate::models::{
+    ActivityThresholds, CliCommandSettings, CodeThemeSettings, DaemonSettings, Settings,
+    TerminalSettings,
+};
 
 /// Get a single setting value by key.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT value FROM settings WHERE key = ?1",
-        [key],
-        |row| row.get(0),
-    )
+    conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+        row.get(0)
+    })
     .optional()
 }
 
@@ -78,27 +79,26 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.daemon.port);
 
-    let daemon_path = get_setting(conn, KEY_DAEMON_PATH)?
-        .unwrap_or(defaults.daemon.path);
+    let daemon_path = get_setting(conn, KEY_DAEMON_PATH)?.unwrap_or(defaults.daemon.path);
 
     let daemon_auto_start = get_setting(conn, KEY_DAEMON_AUTO_START)?
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.daemon.auto_start);
 
-    let code_theme_light = get_setting(conn, KEY_CODE_THEME_LIGHT)?
-        .unwrap_or(defaults.code_theme.light);
+    let code_theme_light =
+        get_setting(conn, KEY_CODE_THEME_LIGHT)?.unwrap_or(defaults.code_theme.light);
 
-    let code_theme_dark = get_setting(conn, KEY_CODE_THEME_DARK)?
-        .unwrap_or(defaults.code_theme.dark);
+    let code_theme_dark =
+        get_setting(conn, KEY_CODE_THEME_DARK)?.unwrap_or(defaults.code_theme.dark);
 
-    let terminal_emulator = get_setting(conn, KEY_TERMINAL_EMULATOR)?
-        .unwrap_or(defaults.terminal.emulator);
+    let terminal_emulator =
+        get_setting(conn, KEY_TERMINAL_EMULATOR)?.unwrap_or(defaults.terminal.emulator);
 
-    let terminal_custom_command = get_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND)?
-        .unwrap_or(defaults.terminal.custom_command);
+    let terminal_custom_command =
+        get_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND)?.unwrap_or(defaults.terminal.custom_command);
 
-    let terminal_tmux_layout = get_setting(conn, KEY_TERMINAL_TMUX_LAYOUT)?
-        .unwrap_or(defaults.terminal.tmux_layout);
+    let terminal_tmux_layout =
+        get_setting(conn, KEY_TERMINAL_TMUX_LAYOUT)?.unwrap_or(defaults.terminal.tmux_layout);
 
     let cli_commands: CliCommandSettings = get_setting(conn, KEY_CLI_COMMANDS)?
         .and_then(|v| serde_json::from_str(&v).ok())
@@ -173,11 +173,19 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
     set_setting(conn, KEY_CODE_THEME_DARK, &settings.code_theme.dark)?;
 
     set_setting(conn, KEY_TERMINAL_EMULATOR, &settings.terminal.emulator)?;
-    set_setting(conn, KEY_TERMINAL_CUSTOM_COMMAND, &settings.terminal.custom_command)?;
-    set_setting(conn, KEY_TERMINAL_TMUX_LAYOUT, &settings.terminal.tmux_layout)?;
+    set_setting(
+        conn,
+        KEY_TERMINAL_CUSTOM_COMMAND,
+        &settings.terminal.custom_command,
+    )?;
+    set_setting(
+        conn,
+        KEY_TERMINAL_TMUX_LAYOUT,
+        &settings.terminal.tmux_layout,
+    )?;
 
-    let cli_commands_json = serde_json::to_string(&settings.terminal.cli_commands)
-        .unwrap_or_else(|_| "{}".to_string());
+    let cli_commands_json =
+        serde_json::to_string(&settings.terminal.cli_commands).unwrap_or_else(|_| "{}".to_string());
     set_setting(conn, KEY_CLI_COMMANDS, &cli_commands_json)?;
 
     set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
@@ -243,9 +251,18 @@ mod tests {
         let (conn, _tmp) = test_db();
         let settings = get_all_settings(&conn).unwrap();
         let defaults = Settings::default();
-        assert_eq!(settings.thresholds.active_days, defaults.thresholds.active_days);
-        assert_eq!(settings.thresholds.recent_days, defaults.thresholds.recent_days);
-        assert_eq!(settings.thresholds.stale_days, defaults.thresholds.stale_days);
+        assert_eq!(
+            settings.thresholds.active_days,
+            defaults.thresholds.active_days
+        );
+        assert_eq!(
+            settings.thresholds.recent_days,
+            defaults.thresholds.recent_days
+        );
+        assert_eq!(
+            settings.thresholds.stale_days,
+            defaults.thresholds.stale_days
+        );
         assert!(settings.scan_directories.is_empty());
         assert!(settings.ignore_patterns.is_empty());
     }

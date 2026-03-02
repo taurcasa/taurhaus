@@ -1,6 +1,7 @@
 //! Integration tests for initialize/add-agent/disband workflows.
 
 #![cfg(feature = "mesh-bridged-backend")]
+#![allow(dead_code)]
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -149,7 +150,11 @@ fn hot_add_agent_to_running_team() {
     let status = state
         .with_orchestrator(|orchestrator| orchestrator.get_team_status(team_name))
         .expect("status should exist");
-    assert!(status.config.members.iter().any(|member| member.name == "qa-dev"));
+    assert!(status
+        .config
+        .members
+        .iter()
+        .any(|member| member.name == "qa-dev"));
 }
 
 #[test]

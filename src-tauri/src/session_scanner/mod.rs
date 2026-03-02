@@ -104,10 +104,13 @@ fn apply_hysteresis(pid: u32, raw: SessionState) -> SessionState {
         }
     };
 
-    map.insert(pid, StateTracker {
-        reported: result,
-        prev_raw: raw,
-    });
+    map.insert(
+        pid,
+        StateTracker {
+            reported: result,
+            prev_raw: raw,
+        },
+    );
 
     result
 }
@@ -283,7 +286,9 @@ mod tests {
             tmux_window_name: Some("foo".to_string()),
             state: SessionState::Active,
             session_id: Some("abc-123".to_string()),
-            jsonl_path: Some("/home/user/.claude/projects/-home-user-projects-foo/abc-123.jsonl".to_string()),
+            jsonl_path: Some(
+                "/home/user/.claude/projects/-home-user-projects-foo/abc-123.jsonl".to_string(),
+            ),
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -360,7 +365,9 @@ mod tests {
                 idle::IdleResult {
                     state: SessionState::Active,
                     session_id: Some("sess-aaa".to_string()),
-                    jsonl_path: Some("/home/user/.claude/projects/proj-a/sess-aaa.jsonl".to_string()),
+                    jsonl_path: Some(
+                        "/home/user/.claude/projects/proj-a/sess-aaa.jsonl".to_string(),
+                    ),
                 }
             } else {
                 idle::IdleResult {
@@ -375,7 +382,10 @@ mod tests {
         assert_eq!(sessions.len(), 2);
 
         // Find sessions by PID (order may vary due to descending PID sort)
-        let a = sessions.iter().find(|s| s.pid == 100).expect("proj-a session");
+        let a = sessions
+            .iter()
+            .find(|s| s.pid == 100)
+            .expect("proj-a session");
         assert_eq!(a.project_path, "/home/user/proj-a");
         assert_eq!(a.cli_tool, CliTool::Claude);
         assert_eq!(a.tmux_session.as_deref(), Some("main"));
@@ -383,7 +393,10 @@ mod tests {
         assert_eq!(a.state, SessionState::Active);
         assert_eq!(a.session_id.as_deref(), Some("sess-aaa"));
 
-        let b = sessions.iter().find(|s| s.pid == 200).expect("proj-b session");
+        let b = sessions
+            .iter()
+            .find(|s| s.pid == 200)
+            .expect("proj-b session");
         assert_eq!(b.project_path, "/home/user/proj-b");
         assert_eq!(b.cli_tool, CliTool::Claude);
         assert!(b.tmux_session.is_none());
@@ -394,15 +407,11 @@ mod tests {
 
     #[test]
     fn scan_sessions_empty_when_no_processes() {
-        let sessions = scan_sessions_with(
-            &|| vec![],
-            &|| HashMap::new(),
-            &|_| idle::IdleResult {
-                state: SessionState::Active,
-                session_id: None,
-                jsonl_path: None,
-            },
-        );
+        let sessions = scan_sessions_with(&|| vec![], &|| HashMap::new(), &|_| idle::IdleResult {
+            state: SessionState::Active,
+            session_id: None,
+            jsonl_path: None,
+        });
         assert!(sessions.is_empty());
     }
 
@@ -423,7 +432,10 @@ mod tests {
     #[test]
     fn hysteresis_first_observation_reports_raw() {
         // New PID → report whatever the raw state is
-        assert_eq!(apply_hysteresis(900_001, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(900_001, SessionState::Idle),
+            SessionState::Idle
+        );
         // Clean up
         remove_state_tracker(900_001);
     }
@@ -433,13 +445,22 @@ mod tests {
         let pid = 900_002;
 
         // Establish baseline: idle
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         // Single active reading → still reports idle (held)
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Idle
+        );
 
         // Back to idle → still idle (no change ever happened)
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         remove_state_tracker(pid);
     }
@@ -449,13 +470,22 @@ mod tests {
         let pid = 900_003;
 
         // Baseline: idle
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         // First active reading → held
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Idle
+        );
 
         // Second consecutive active → switch!
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Active);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Active
+        );
 
         remove_state_tracker(pid);
     }
@@ -465,17 +495,32 @@ mod tests {
         let pid = 900_004;
 
         // Start idle
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         // Switch to active (2 consecutive)
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Active);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Idle
+        );
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Active
+        );
 
         // Now try to go back to idle — single reading is held
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Active);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Active
+        );
 
         // Second consecutive idle → switch back
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         remove_state_tracker(pid);
     }
@@ -485,13 +530,28 @@ mod tests {
         let pid = 900_005;
 
         // Baseline: idle
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         // Alternating: active, idle, active, idle → never switches
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
-        assert_eq!(apply_hysteresis(pid, SessionState::Active), SessionState::Idle);
-        assert_eq!(apply_hysteresis(pid, SessionState::Idle), SessionState::Idle);
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Idle
+        );
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Active),
+            SessionState::Idle
+        );
+        assert_eq!(
+            apply_hysteresis(pid, SessionState::Idle),
+            SessionState::Idle
+        );
 
         remove_state_tracker(pid);
     }
@@ -563,7 +623,11 @@ mod tests {
         };
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
-        assert_eq!(sessions.len(), 1, "should deduplicate same-TTY same-tool processes");
+        assert_eq!(
+            sessions.len(),
+            1,
+            "should deduplicate same-TTY same-tool processes"
+        );
         assert_eq!(sessions[0].cli_tool, CliTool::Codex);
         assert_eq!(sessions[0].tmux_pane.as_deref(), Some("%5"));
         // Higher PID (native binary) wins over lower PID (shim)

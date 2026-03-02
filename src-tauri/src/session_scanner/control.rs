@@ -260,7 +260,13 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
 /// Get the current command running in a tmux pane.
 fn pane_current_command(pane: &str) -> Option<String> {
     Command::new("tmux")
-        .args(["display-message", "-p", "-t", pane, "#{pane_current_command}"])
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            pane,
+            "#{pane_current_command}",
+        ])
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -323,7 +329,9 @@ fn validate_command_override(cmd: &str) -> Result<(), String> {
         ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\\', '\n', '\r',
     ];
     if let Some(c) = cmd.chars().find(|c| FORBIDDEN.contains(c)) {
-        return Err(format!("Command override contains forbidden character: {c:?}"));
+        return Err(format!(
+            "Command override contains forbidden character: {c:?}"
+        ));
     }
 
     Ok(())
@@ -333,13 +341,9 @@ fn validate_command_override(cmd: &str) -> Result<(), String> {
 pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
     match tool {
         CliTool::Claude => match mode {
-            LaunchMode::Continue => {
-                "claude --dangerously-skip-permissions --continue".to_string()
-            }
+            LaunchMode::Continue => "claude --dangerously-skip-permissions --continue".to_string(),
             LaunchMode::Fresh => "claude --dangerously-skip-permissions".to_string(),
-            LaunchMode::Resume => {
-                "claude --dangerously-skip-permissions --resume".to_string()
-            }
+            LaunchMode::Resume => "claude --dangerously-skip-permissions --resume".to_string(),
         },
         CliTool::Codex => match mode {
             LaunchMode::Continue => "codex --yolo".to_string(),
@@ -591,7 +595,11 @@ mod tests {
 
     #[test]
     fn launch_rejects_nonexistent_path() {
-        let result = launch_in_tmux("/nonexistent/path/12345", LaunchMode::Continue, CliTool::Claude);
+        let result = launch_in_tmux(
+            "/nonexistent/path/12345",
+            LaunchMode::Continue,
+            CliTool::Claude,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
     }
@@ -646,14 +654,8 @@ mod tests {
             shell_escape("/tmp/foo; echo pwned"),
             "'/tmp/foo; echo pwned'"
         );
-        assert_eq!(
-            shell_escape("/tmp/foo$(rm -rf /)"),
-            "'/tmp/foo$(rm -rf /)'"
-        );
-        assert_eq!(
-            shell_escape("/tmp/foo`id`bar"),
-            "'/tmp/foo`id`bar'"
-        );
+        assert_eq!(shell_escape("/tmp/foo$(rm -rf /)"), "'/tmp/foo$(rm -rf /)'");
+        assert_eq!(shell_escape("/tmp/foo`id`bar"), "'/tmp/foo`id`bar'");
     }
 
     #[test]

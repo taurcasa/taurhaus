@@ -230,8 +230,14 @@ mod tests {
         std::fs::write(&jsonl_path, content).unwrap();
 
         let (start, end) = session_time_range_from_file(&jsonl_path).unwrap();
-        assert_eq!(start.to_rfc3339_opts(chrono::SecondsFormat::Millis, true), "2026-02-22T03:59:01.775Z");
-        assert_eq!(end.to_rfc3339_opts(chrono::SecondsFormat::Millis, true), "2026-02-22T04:05:30.500Z");
+        assert_eq!(
+            start.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "2026-02-22T03:59:01.775Z"
+        );
+        assert_eq!(
+            end.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "2026-02-22T04:05:30.500Z"
+        );
     }
 
     #[test]
@@ -287,8 +293,14 @@ mod tests {
         std::fs::write(&jsonl_path, &content).unwrap();
 
         let (start, end) = session_time_range_from_file(&jsonl_path).unwrap();
-        assert_eq!(start.to_rfc3339_opts(chrono::SecondsFormat::Millis, true), "2026-01-01T00:00:00.000Z");
-        assert_eq!(end.to_rfc3339_opts(chrono::SecondsFormat::Millis, true), "2026-01-01T23:59:59.000Z");
+        assert_eq!(
+            start.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "2026-01-01T00:00:00.000Z"
+        );
+        assert_eq!(
+            end.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "2026-01-01T23:59:59.000Z"
+        );
     }
 
     // Integration test: verify against real Claude Code data if available

@@ -82,10 +82,13 @@ pub fn is_process_active_hysteresis(pid: u32) -> bool {
         None => (false, false),
     };
 
-    map.insert(pid, IoState {
-        prev_rchar: current,
-        was_active: active_now,
-    });
+    map.insert(
+        pid,
+        IoState {
+            prev_rchar: current,
+            was_active: active_now,
+        },
+    );
 
     confirmed
 }
@@ -146,7 +149,13 @@ mod tests {
         let mut map: HashMap<u32, IoState> = HashMap::new();
         let pid = 888_888u32;
 
-        map.insert(pid, IoState { prev_rchar: 1000, was_active: false });
+        map.insert(
+            pid,
+            IoState {
+                prev_rchar: 1000,
+                was_active: false,
+            },
+        );
 
         // Poll 2: large delta but previous was_active=false → not confirmed
         let state = map.get(&pid).unwrap();
@@ -156,7 +165,13 @@ mod tests {
         assert!(active_now);
         assert!(!confirmed);
 
-        map.insert(pid, IoState { prev_rchar: 2000, was_active: active_now });
+        map.insert(
+            pid,
+            IoState {
+                prev_rchar: 2000,
+                was_active: active_now,
+            },
+        );
 
         // Poll 3: still large delta AND previous was_active=true → confirmed
         let state = map.get(&pid).unwrap();
@@ -172,13 +187,25 @@ mod tests {
         let mut map: HashMap<u32, IoState> = HashMap::new();
         let pid = 888_889u32;
 
-        map.insert(pid, IoState { prev_rchar: 1000, was_active: false });
+        map.insert(
+            pid,
+            IoState {
+                prev_rchar: 1000,
+                was_active: false,
+            },
+        );
 
         let state = map.get(&pid).unwrap();
         let active_now = 2000u64.saturating_sub(state.prev_rchar) >= ACTIVE_IO_THRESHOLD;
         let confirmed = active_now && state.was_active;
         assert!(!confirmed);
-        map.insert(pid, IoState { prev_rchar: 2000, was_active: active_now });
+        map.insert(
+            pid,
+            IoState {
+                prev_rchar: 2000,
+                was_active: active_now,
+            },
+        );
 
         let state = map.get(&pid).unwrap();
         let active_now = 2010u64.saturating_sub(state.prev_rchar) >= ACTIVE_IO_THRESHOLD;

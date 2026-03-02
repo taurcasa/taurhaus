@@ -84,9 +84,15 @@ mod tests {
 
     #[test]
     fn cli_tool_serializes_lowercase() {
-        assert_eq!(serde_json::to_string(&CliTool::Claude).unwrap(), "\"claude\"");
+        assert_eq!(
+            serde_json::to_string(&CliTool::Claude).unwrap(),
+            "\"claude\""
+        );
         assert_eq!(serde_json::to_string(&CliTool::Codex).unwrap(), "\"codex\"");
-        assert_eq!(serde_json::to_string(&CliTool::Gemini).unwrap(), "\"gemini\"");
+        assert_eq!(
+            serde_json::to_string(&CliTool::Gemini).unwrap(),
+            "\"gemini\""
+        );
     }
 
     #[test]

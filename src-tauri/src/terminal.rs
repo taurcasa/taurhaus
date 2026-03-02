@@ -86,7 +86,12 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
     }
 
     // Step 2: Not running. FocusOnly → nothing to do.
-    let TerminalIntent::EnsureOpen { distro, tmux_session, emulator, custom_command } = intent
+    let TerminalIntent::EnsureOpen {
+        distro,
+        tmux_session,
+        emulator,
+        custom_command,
+    } = intent
     else {
         return Ok(());
     };
@@ -117,8 +122,14 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
 
     args.extend([
         "--".into(),
-        "wsl.exe".into(), "-d".into(), distro, "--".into(),
-        "tmux".into(), "attach-session".into(), "-t".into(), tmux_session,
+        "wsl.exe".into(),
+        "-d".into(),
+        distro,
+        "--".into(),
+        "tmux".into(),
+        "attach-session".into(),
+        "-t".into(),
+        tmux_session,
     ]);
 
     std::process::Command::new("wt.exe")
@@ -292,12 +303,18 @@ impl MacEmulator {
     fn from_setting(pref: &str) -> Self {
         match pref {
             "iterm2" => {
-                if is_app_installed("iTerm") { Self::ITerm2 }
-                else { Self::auto_detect() }
+                if is_app_installed("iTerm") {
+                    Self::ITerm2
+                } else {
+                    Self::auto_detect()
+                }
             }
             "ghostty" => {
-                if is_app_installed("Ghostty") { Self::Ghostty }
-                else { Self::auto_detect() }
+                if is_app_installed("Ghostty") {
+                    Self::Ghostty
+                } else {
+                    Self::auto_detect()
+                }
             }
             "terminal_app" => Self::TerminalApp,
             _ => Self::auto_detect(),
@@ -306,9 +323,13 @@ impl MacEmulator {
 
     /// Auto-detect best available emulator: iTerm2 > Ghostty > Terminal.app.
     fn auto_detect() -> Self {
-        if is_app_installed("iTerm") { Self::ITerm2 }
-        else if is_app_installed("Ghostty") { Self::Ghostty }
-        else { Self::TerminalApp }
+        if is_app_installed("iTerm") {
+            Self::ITerm2
+        } else if is_app_installed("Ghostty") {
+            Self::Ghostty
+        } else {
+            Self::TerminalApp
+        }
     }
 
     /// The macOS application name used in AppleScript and process checks.
@@ -477,7 +498,11 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
                 return resolved.activate();
             }
             // Fallback: activate any running terminal.
-            for candidate in &[MacEmulator::ITerm2, MacEmulator::Ghostty, MacEmulator::TerminalApp] {
+            for candidate in &[
+                MacEmulator::ITerm2,
+                MacEmulator::Ghostty,
+                MacEmulator::TerminalApp,
+            ] {
                 if candidate.is_running() {
                     return candidate.activate();
                 }
@@ -485,7 +510,12 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
             Ok(()) // Nothing running, nothing to focus
         }
 
-        TerminalIntent::EnsureOpen { tmux_session, emulator, custom_command, .. } => {
+        TerminalIntent::EnsureOpen {
+            tmux_session,
+            emulator,
+            custom_command,
+            ..
+        } => {
             // Custom command: run it directly, no further logic.
             if emulator == "custom" && !custom_command.trim().is_empty() {
                 let cmd = custom_command.replace("{tmux_session}", &tmux_session);
@@ -508,7 +538,10 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
             // If the preferred emulator is already running AND tmux has a
             // client attached, just bring it to front. No new tab/window.
             if resolved.is_running() && tmux_session_has_client(&tmux_session) {
-                tracing::debug!(?resolved, "Preferred emulator running with tmux client, activating");
+                tracing::debug!(
+                    ?resolved,
+                    "Preferred emulator running with tmux client, activating"
+                );
                 return resolved.activate();
             }
 

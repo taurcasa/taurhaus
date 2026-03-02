@@ -132,10 +132,7 @@ impl DaemonProvider {
     ///
     /// Unlike the trait methods, this returns the raw DaemonResponse so callers
     /// can inspect version/uptime without deserializing a specific type.
-    pub fn send_status_request(
-        &self,
-        request: &DaemonRequest,
-    ) -> Result<DaemonResponse, AppError> {
+    pub fn send_status_request(&self, request: &DaemonRequest) -> Result<DaemonResponse, AppError> {
         self.send_request(request, PING_TIMEOUT)
     }
 
@@ -175,7 +172,10 @@ impl DaemonProvider {
     pub fn try_reconnect(&self) -> bool {
         // Rate-limit: skip if we attempted recently
         {
-            let guard = self.last_reconnect_attempt.lock().unwrap_or_else(|e| e.into_inner());
+            let guard = self
+                .last_reconnect_attempt
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             if let Some(last) = *guard {
                 if last.elapsed() < RECONNECT_COOLDOWN {
                     return false;
@@ -185,7 +185,10 @@ impl DaemonProvider {
 
         // Record this attempt
         {
-            let mut guard = self.last_reconnect_attempt.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self
+                .last_reconnect_attempt
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             *guard = Some(Instant::now());
         }
 
@@ -242,9 +245,10 @@ impl DaemonProvider {
         request: &DaemonRequest,
         timeout: Duration,
     ) -> Result<DaemonResponse, AppError> {
-        let mut conn_guard = self.conn.lock().map_err(|_| {
-            AppError::InvalidPath("Daemon connection lock poisoned".to_string())
-        })?;
+        let mut conn_guard = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::InvalidPath("Daemon connection lock poisoned".to_string()))?;
 
         let conn = conn_guard.as_mut().ok_or_else(|| {
             AppError::Io(std::io::Error::new(
@@ -256,17 +260,20 @@ impl DaemonProvider {
         let stream = &mut conn.stream;
         let reader = &mut conn.reader;
 
-        stream.set_read_timeout(Some(timeout)).map_err(AppError::Io)?;
+        stream
+            .set_read_timeout(Some(timeout))
+            .map_err(AppError::Io)?;
 
         // Attach auth token to the request
         let mut authed_request = request.clone();
-        authed_request.auth = self.auth_token.lock()
+        authed_request.auth = self
+            .auth_token
+            .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
-        let json = serde_json::to_string(&authed_request).map_err(|e| {
-            AppError::InvalidPath(format!("Failed to serialize request: {e}"))
-        })?;
+        let json = serde_json::to_string(&authed_request)
+            .map_err(|e| AppError::InvalidPath(format!("Failed to serialize request: {e}")))?;
         stream.write_all(json.as_bytes()).map_err(AppError::Io)?;
         stream.write_all(b"\n").map_err(AppError::Io)?;
         stream.flush().map_err(AppError::Io)?;
@@ -274,9 +281,8 @@ impl DaemonProvider {
         let mut line = String::new();
         reader.read_line(&mut line).map_err(AppError::Io)?;
 
-        let response: DaemonResponse = serde_json::from_str(&line).map_err(|e| {
-            AppError::InvalidPath(format!("Failed to parse daemon response: {e}"))
-        })?;
+        let response: DaemonResponse = serde_json::from_str(&line)
+            .map_err(|e| AppError::InvalidPath(format!("Failed to parse daemon response: {e}")))?;
 
         Ok(response)
     }
@@ -304,9 +310,8 @@ impl DaemonProvider {
         // Non-nullable types will still produce a deserialization error.
         let result = response.result.unwrap_or(serde_json::Value::Null);
 
-        serde_json::from_value(result).map_err(|e| {
-            AppError::InvalidPath(format!("Failed to deserialize daemon result: {e}"))
-        })
+        serde_json::from_value(result)
+            .map_err(|e| AppError::InvalidPath(format!("Failed to deserialize daemon result: {e}")))
     }
 }
 
@@ -388,11 +393,7 @@ impl ProjectProvider for DaemonProvider {
         Ok((result.commits, result.files))
     }
 
-    fn commit_files(
-        &self,
-        project_path: &str,
-        hash: &str,
-    ) -> Result<Vec<CommitFile>, AppError> {
+    fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError> {
         let path = Self::translate_path(project_path);
         let result: protocol::GitCommitFilesResult = self.call(
             protocol::method::GIT_COMMIT_FILES,
@@ -433,11 +434,7 @@ impl ProjectProvider for DaemonProvider {
         )
     }
 
-    fn read_file(
-        &self,
-        project_path: &str,
-        relative_path: &str,
-    ) -> Result<FileContent, AppError> {
+    fn read_file(&self, project_path: &str, relative_path: &str) -> Result<FileContent, AppError> {
         let path = Self::translate_path(project_path);
         self.call(
             protocol::method::READ_FILE,

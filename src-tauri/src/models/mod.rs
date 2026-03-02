@@ -37,7 +37,11 @@ impl Default for ActivityThresholds {
 impl ActivityState {
     /// Compute the activity state for a given `last_activity_at` timestamp.
     /// If `last_activity_at` is `None` or unparseable, returns `Dormant`.
-    pub fn compute(last_activity_at: Option<&str>, thresholds: &ActivityThresholds, now: DateTime<Utc>) -> Self {
+    pub fn compute(
+        last_activity_at: Option<&str>,
+        thresholds: &ActivityThresholds,
+        now: DateTime<Utc>,
+    ) -> Self {
         let ts = match last_activity_at.and_then(|s| s.parse::<DateTime<Utc>>().ok()) {
             Some(t) => t,
             None => return ActivityState::Dormant,
@@ -93,12 +97,20 @@ pub struct ProjectSummary {
 impl ProjectSummary {
     /// Build a `ProjectSummary` from a database `Project` row.
     /// Git fields come from cached columns (may be None if not yet scanned).
-    pub fn from_project(project: &Project, thresholds: &ActivityThresholds, now: DateTime<Utc>) -> Self {
+    pub fn from_project(
+        project: &Project,
+        thresholds: &ActivityThresholds,
+        now: DateTime<Utc>,
+    ) -> Self {
         Self {
             id: project.id.clone(),
             name: project.name.clone(),
             path: project.path.clone(),
-            activity_state: ActivityState::compute(project.last_activity_at.as_deref(), thresholds, now),
+            activity_state: ActivityState::compute(
+                project.last_activity_at.as_deref(),
+                thresholds,
+                now,
+            ),
             last_activity_at: project.last_activity_at.clone(),
             branch: project.cached_branch.clone(),
             is_dirty: project.cached_is_dirty,
@@ -619,9 +631,15 @@ mod tests {
     fn cli_command_defaults_match_hardcoded_values() {
         let cmds = CliCommandSettings::default();
         // Claude
-        assert_eq!(cmds.claude.continue_cmd, "claude --dangerously-skip-permissions --continue");
+        assert_eq!(
+            cmds.claude.continue_cmd,
+            "claude --dangerously-skip-permissions --continue"
+        );
         assert_eq!(cmds.claude.fresh, "claude --dangerously-skip-permissions");
-        assert_eq!(cmds.claude.resume, "claude --dangerously-skip-permissions --resume");
+        assert_eq!(
+            cmds.claude.resume,
+            "claude --dangerously-skip-permissions --resume"
+        );
         // Codex
         assert_eq!(cmds.codex.continue_cmd, "codex --yolo");
         assert_eq!(cmds.codex.fresh, "codex --yolo");

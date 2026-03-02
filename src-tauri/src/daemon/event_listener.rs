@@ -28,10 +28,7 @@ pub struct DaemonEventListener {
 
 impl DaemonEventListener {
     /// Connect to the daemon for event listening.
-    pub fn connect(
-        addr: &str,
-        event_tx: mpsc::Sender<WatchEvent>,
-    ) -> Result<Self, AppError> {
+    pub fn connect(addr: &str, event_tx: mpsc::Sender<WatchEvent>) -> Result<Self, AppError> {
         let stream = TcpStream::connect(addr).map_err(|e| {
             AppError::Io(std::io::Error::new(
                 e.kind(),
@@ -68,10 +65,11 @@ impl DaemonEventListener {
         )
         .with_auth(self.auth_token.clone());
 
-        let json = serde_json::to_string(&request).map_err(|e| {
-            AppError::InvalidPath(format!("Serialize watch request failed: {e}"))
-        })?;
-        self.stream.write_all(json.as_bytes()).map_err(AppError::Io)?;
+        let json = serde_json::to_string(&request)
+            .map_err(|e| AppError::InvalidPath(format!("Serialize watch request failed: {e}")))?;
+        self.stream
+            .write_all(json.as_bytes())
+            .map_err(AppError::Io)?;
         self.stream.write_all(b"\n").map_err(AppError::Io)?;
         self.stream.flush().map_err(AppError::Io)?;
 
@@ -123,9 +121,7 @@ impl DaemonEventListener {
     /// Call this on a background thread after all `watch()` calls are done.
     /// Events are forwarded to the `event_tx` channel as `WatchEvent`s.
     pub fn run(mut self) {
-        let _ = self
-            .stream
-            .set_read_timeout(Some(Duration::from_secs(5)));
+        let _ = self.stream.set_read_timeout(Some(Duration::from_secs(5)));
 
         let mut line = String::new();
         loop {
@@ -169,9 +165,7 @@ impl DaemonEventListener {
     }
 
     fn handle_event(&self, event: protocol::DaemonEvent) {
-        if let Some(watch_event) =
-            convert_daemon_event(event, &self.path_to_project)
-        {
+        if let Some(watch_event) = convert_daemon_event(event, &self.path_to_project) {
             let _ = self.event_tx.send(watch_event);
         }
     }
@@ -187,28 +181,24 @@ fn convert_daemon_event(
 ) -> Option<WatchEvent> {
     match event.event.as_str() {
         protocol::event::GIT_CHANGED => {
-            let data: protocol::GitChangedData =
-                serde_json::from_value(event.data).ok()?;
+            let data: protocol::GitChangedData = serde_json::from_value(event.data).ok()?;
             let project_id = path_to_project.get(&data.path)?;
             Some(WatchEvent::GitChanged {
                 project_id: project_id.clone(),
             })
         }
         protocol::event::FILE_CHANGED => {
-            let data: protocol::FileChangedData =
-                serde_json::from_value(event.data).ok()?;
+            let data: protocol::FileChangedData = serde_json::from_value(event.data).ok()?;
             let project_id = path_to_project.get(&data.path)?;
             let project_root = PathBuf::from(&data.path);
-            let paths: Vec<PathBuf> =
-                data.files.iter().map(|f| project_root.join(f)).collect();
+            let paths: Vec<PathBuf> = data.files.iter().map(|f| project_root.join(f)).collect();
             Some(WatchEvent::FileChanged {
                 project_id: project_id.clone(),
                 paths,
             })
         }
         protocol::event::SESSION_FILE_CREATED => {
-            let data: protocol::SessionFileCreatedData =
-                serde_json::from_value(event.data).ok()?;
+            let data: protocol::SessionFileCreatedData = serde_json::from_value(event.data).ok()?;
             let project_id = path_to_project.get(&data.path)?;
             let full_path = PathBuf::from(&data.path).join(&data.file);
             Some(WatchEvent::SessionFileCreated {
@@ -256,8 +246,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let (tx, _rx) = mpsc::channel();
 
-        let mut listener =
-            DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
         let result = listener.watch("p1", dir.path().to_str().unwrap());
         assert!(result.is_ok());
 
@@ -269,8 +258,7 @@ mod tests {
         let (port, shutdown) = start_daemon();
         let (tx, _rx) = mpsc::channel();
 
-        let mut listener =
-            DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
         let result = listener.watch("p1", "/nonexistent/path/that/does/not/exist");
         assert!(result.is_err());
 
@@ -283,11 +271,8 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let (tx, rx) = mpsc::channel();
 
-        let mut listener =
-            DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
-        listener
-            .watch("p1", dir.path().to_str().unwrap())
-            .unwrap();
+        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        listener.watch("p1", dir.path().to_str().unwrap()).unwrap();
 
         // Start the event loop on a background thread
         let listener_handle = std::thread::spawn(move || {
@@ -335,11 +320,8 @@ mod tests {
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main").unwrap();
 
         let (tx, rx) = mpsc::channel();
-        let mut listener =
-            DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
-        listener
-            .watch("p1", dir.path().to_str().unwrap())
-            .unwrap();
+        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        listener.watch("p1", dir.path().to_str().unwrap()).unwrap();
 
         let listener_handle = std::thread::spawn(move || {
             listener.run();

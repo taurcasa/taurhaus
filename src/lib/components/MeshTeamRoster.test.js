@@ -55,25 +55,29 @@ describe('MeshTeamRoster', () => {
   it('renders team name in header', async () => {
     render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: architecture-final')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
   })
 
-  it('renders lead with star and members without', async () => {
+  it('renders member names with role indicator for lead', async () => {
     render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-role-indicator-team-lead')).toHaveTextContent('★')
+      expect(screen.getByTestId('mesh-role-indicator-team-lead')).toHaveTextContent('team-lead')
     })
-    expect(screen.getByTestId('mesh-role-indicator-frontend-dev')).toHaveTextContent('◦')
+    expect(screen.getByTestId('mesh-role-indicator-frontend-dev')).toHaveTextContent('frontend-dev')
   })
 
-  it('shows correct status dots per session_status', async () => {
+  it('shows status dots with correct colors per session_status', async () => {
     render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-status-dot-team-lead')).toHaveTextContent('● Active')
+      const activeDot = screen.getByTestId('mesh-status-dot-team-lead')
+      expect(activeDot).toBeInTheDocument()
+      expect(activeDot.className).toContain('bg-success-400')
     })
-    expect(screen.getByTestId('mesh-status-dot-frontend-dev')).toHaveTextContent('● Idle')
-    expect(screen.getByTestId('mesh-status-dot-docs-writer')).toHaveTextContent('○ Offline')
+    const idleDot = screen.getByTestId('mesh-status-dot-frontend-dev')
+    expect(idleDot.className).toContain('bg-warning-400')
+    const offlineDot = screen.getByTestId('mesh-status-dot-docs-writer')
+    expect(offlineDot.className).toContain('bg-zinc-')
   })
 
   it('focus pane button calls onFocusPane with pane_id', async () => {

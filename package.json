@@ -12,6 +12,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "npm run check",
+    "typecheck": "npm run check",
     "check": "svelte-check"
   },
   "devDependencies": {

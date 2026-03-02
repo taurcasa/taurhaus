@@ -31,10 +31,7 @@ pub fn list_sessions(
 }
 
 #[tauri::command]
-pub fn get_session(
-    db: State<'_, DbState>,
-    session_id: String,
-) -> Result<SessionDetail, String> {
+pub fn get_session(db: State<'_, DbState>, session_id: String) -> Result<SessionDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     session_queries::get_session(&conn, &session_id)
         .map_err(|e| e.to_string())?

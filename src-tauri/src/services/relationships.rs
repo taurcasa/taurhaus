@@ -168,7 +168,11 @@ pub fn detect_all_relationships(
     let mut detected = Vec::new();
 
     detected.extend(detect_cargo_dependencies(project_root, all_projects));
-    detected.extend(detect_claude_md_references(project_root, project_id, all_projects));
+    detected.extend(detect_claude_md_references(
+        project_root,
+        project_id,
+        all_projects,
+    ));
     detected.extend(detect_session_mentions(conn, project_id, all_projects));
 
     detected
@@ -205,7 +209,8 @@ pub fn sync_relationships(
         })
         .collect();
 
-    let removed = relationship_queries::remove_stale_auto_relationships(conn, project_id, &current)?;
+    let removed =
+        relationship_queries::remove_stale_auto_relationships(conn, project_id, &current)?;
 
     Ok((upserted, removed))
 }
@@ -327,7 +332,10 @@ unknown = {{ path = "{}" }}
         let detected = detect_claude_md_references(dir.path(), "p1", &projects);
         assert_eq!(detected.len(), 2);
 
-        let targets: Vec<&str> = detected.iter().map(|d| d.target_project_id.as_str()).collect();
+        let targets: Vec<&str> = detected
+            .iter()
+            .map(|d| d.target_project_id.as_str())
+            .collect();
         assert!(targets.contains(&"p2"));
         assert!(targets.contains(&"p3"));
     }
@@ -477,7 +485,12 @@ unknown = {{ path = "{}" }}
         let (upserted, removed) = sync_relationships(&conn, "p1", &detected).unwrap();
         assert_eq!(upserted, 2);
         assert_eq!(removed, 0);
-        assert_eq!(relationship_queries::list_relationships(&conn, "p1").unwrap().len(), 2);
+        assert_eq!(
+            relationship_queries::list_relationships(&conn, "p1")
+                .unwrap()
+                .len(),
+            2
+        );
 
         // Second scan: only p2 detected (p3 is stale)
         let detected = vec![DetectedRelationship {
@@ -489,7 +502,12 @@ unknown = {{ path = "{}" }}
         let (upserted, removed) = sync_relationships(&conn, "p1", &detected).unwrap();
         assert_eq!(upserted, 1);
         assert_eq!(removed, 1);
-        assert_eq!(relationship_queries::list_relationships(&conn, "p1").unwrap().len(), 1);
+        assert_eq!(
+            relationship_queries::list_relationships(&conn, "p1")
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     // AC4b: detect_all combines all sources
@@ -499,11 +517,7 @@ unknown = {{ path = "{}" }}
         let (conn, _tmp) = test_db();
 
         // Set up a CLAUDE.md mentioning taurui
-        std::fs::write(
-            dir.path().join("CLAUDE.md"),
-            "Uses taurui design patterns.",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("CLAUDE.md"), "Uses taurui design patterns.").unwrap();
 
         let p1 = make_project("p1", "taurhaus", dir.path().to_str().unwrap());
         let p2 = make_project("p2", "taurui", "/projects/taurui");

@@ -177,7 +177,7 @@ describe('Mesh vertical slice smoke', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: taurhaus-team')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
     })
     await waitFor(() => {
       expect(screen.getByTestId('mesh-roster-card-frontend-dev')).toBeInTheDocument()
@@ -237,7 +237,7 @@ describe('Mesh vertical slice smoke', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: taurhaus-team')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
     })
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
@@ -252,6 +252,6 @@ describe('Mesh vertical slice smoke', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-error')).toHaveTextContent('hot-add failed')
     })
-    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: taurhaus-team')
+    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
   })
 })

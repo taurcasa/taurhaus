@@ -1,5 +1,6 @@
 <script>
   import { coordinationInitializeTeam, onCoordinationStepProgress } from '../ipc.js'
+  import { themeTokens } from '../themeTokens.js'
 
   let {
     dark = false,
@@ -19,14 +20,13 @@
     'send_onboarding',
   ]
 
-  const keyline = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const textPrimary = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textMuted = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
+  const t = $derived(themeTokens(dark))
   const subtleButton = $derived(
     dark
-      ? 'border-zinc-700 text-zinc-300 hover:border-zinc-600 hover:text-zinc-200'
-      : 'border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900'
+      ? 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
   )
+  const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
 
   let steps = $state([])
   let activeTeamName = $state('')
@@ -129,10 +129,17 @@
   }
 
   function statusClass(status) {
-    if (status === 'running') return 'text-brand-500 animate-pulse'
+    if (status === 'running') return 'text-brand-500 animate-[pulse_1.2s_ease-in-out_infinite]'
     if (status === 'succeeded') return 'text-success-500'
     if (status === 'failed') return 'text-danger-500'
     return dark ? 'text-zinc-500' : 'text-zinc-400'
+  }
+
+  function rowClass(status) {
+    if (status === 'running') return dark ? 'bg-brand-500/10' : 'bg-brand-50'
+    if (status === 'succeeded') return dark ? 'bg-success-500/10' : 'bg-success-50'
+    if (status === 'failed') return dark ? 'bg-danger-500/10' : 'bg-danger-50'
+    return ''
   }
 
   function handleProgressEvent(event) {
@@ -176,34 +183,29 @@
 </script>
 
 <section class="space-y-3" data-testid="mesh-init-progress">
-  <header class="pb-2 border-b {keyline}">
-    <h2 class="text-base font-semibold {textPrimary}">Initializing Team{activeTeamName ? `: ${activeTeamName}` : ''}</h2>
-    <p class="mt-1 text-xs {textMuted}">Per-step progress updates appear here in real time.</p>
+  <header class="pb-3 border-b {t.keyline}">
+    <h2 class="text-sm font-semibold {t.textPrimary}">Initializing{activeTeamName ? ` ${activeTeamName}` : ''}...</h2>
   </header>
 
-  <div class="divide-y {keyline} border-y {keyline}">
+  <div class="space-y-0.5">
     {#each steps as entry}
-      <div class="py-2" data-testid={`mesh-init-step-${entry.step}`}>
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class={`text-sm font-semibold ${statusClass(entry.status)}`} data-testid={`mesh-init-icon-${entry.step}`}>
-              {statusGlyph(entry.status)}
-            </span>
-            <span class="text-sm truncate {textPrimary}">{prettyStep(entry.step)}</span>
-          </div>
-          <span class={`text-[11px] font-semibold uppercase tracking-[0.06em] ${statusClass(entry.status)}`} data-testid={`mesh-init-status-${entry.step}`}>
-            {entry.status}
-          </span>
-        </div>
-        {#if entry.message}
-          <p class="mt-1 pl-5 text-xs {textMuted}">{entry.message}</p>
-        {/if}
+      <div class="flex items-center gap-2 h-[28px] -mx-2 px-2 rounded transition-colors {rowClass(entry.status)}" data-testid={`mesh-init-step-${entry.step}`}>
+        <span class={`text-xs ${statusClass(entry.status)}`} data-testid={`mesh-init-icon-${entry.step}`}>
+          {statusGlyph(entry.status)}
+        </span>
+        <span class="text-[13px] truncate min-w-0 {t.textPrimary}">{prettyStep(entry.step)}</span>
+        <span class={`ml-auto text-[10px] shrink-0 ${statusClass(entry.status)}`} data-testid={`mesh-init-status-${entry.step}`}>
+          {entry.status}
+        </span>
       </div>
+      {#if entry.message}
+        <p class="ml-5 -mt-0.5 mb-1 text-[11px] {t.textMuted}">{entry.message}</p>
+      {/if}
     {/each}
   </div>
 
   {#if failed}
-    <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600" data-testid="mesh-init-failure">
+    <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600/95" data-testid="mesh-init-failure">
       <p class="font-semibold">Initialization failed{failedStep ? ` at ${prettyStep(failedStep)}` : ''}.</p>
       {#if errorMessage}
         <p class="mt-1">{errorMessage}</p>
@@ -212,7 +214,7 @@
   {/if}
 
   {#if succeeded}
-    <div class="border-l-2 border-success-400 pl-3 py-1 text-xs text-success-600" data-testid="mesh-init-success">
+    <div class="border-l-2 border-success-400 pl-3 py-1 text-xs text-success-600/95" data-testid="mesh-init-success">
       Team initialized!
     </div>
   {/if}
@@ -220,7 +222,7 @@
   <div class="flex justify-end gap-2">
     {#if failed}
       <button
-        class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+        class={primaryCta}
         onclick={handleRetry}
         disabled={running}
         data-testid="mesh-init-retry-button"
@@ -228,18 +230,18 @@
         Retry
       </button>
       <button
-        class="rounded-md border px-3 py-1.5 text-xs {subtleButton} disabled:cursor-not-allowed disabled:opacity-50"
+        class="rounded-md px-3 py-1.5 text-xs {subtleButton} disabled:cursor-not-allowed disabled:opacity-50"
         onclick={onback}
         disabled={running}
         data-testid="mesh-init-back-button"
       >
-        Back to Setup
+        Back
       </button>
     {/if}
 
     {#if succeeded}
       <button
-        class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+        class={primaryCta}
         onclick={() => onsuccess({ teamName: activeTeamName })}
         data-testid="mesh-init-runtime-button"
       >

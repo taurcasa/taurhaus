@@ -153,10 +153,11 @@ pub fn update_cached_git_status(
 
 /// Check if a project is registered at the given path.
 pub fn project_exists_at_path(conn: &Connection, path: &str) -> Result<bool, rusqlite::Error> {
-    let count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM projects WHERE path = ?1", [path], |row| {
-            row.get(0)
-        })?;
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM projects WHERE path = ?1",
+        [path],
+        |row| row.get(0),
+    )?;
     Ok(count > 0)
 }
 
@@ -195,7 +196,9 @@ mod tests {
         let project = make_project("p1", "taurhaus", "/home/user/taurhaus");
 
         insert_project(&conn, &project).unwrap();
-        let fetched = get_project(&conn, "p1").unwrap().expect("project should exist");
+        let fetched = get_project(&conn, "p1")
+            .unwrap()
+            .expect("project should exist");
 
         assert_eq!(fetched.id, "p1");
         assert_eq!(fetched.name, "taurhaus");
@@ -223,7 +226,10 @@ mod tests {
         let fetched = get_project(&conn, "p2").unwrap().unwrap();
 
         assert_eq!(fetched.description, Some("A cool project".into()));
-        assert_eq!(fetched.last_activity_at, Some("2025-06-01T12:00:00Z".into()));
+        assert_eq!(
+            fetched.last_activity_at,
+            Some("2025-06-01T12:00:00Z".into())
+        );
         assert_eq!(fetched.hero_preference, Some("session".into()));
         assert_eq!(fetched.created_at, "2025-01-01T00:00:00Z");
         assert_eq!(fetched.updated_at, "2025-03-15T08:00:00Z");
@@ -306,7 +312,10 @@ mod tests {
         insert_project(&conn, &project).unwrap();
 
         let before = get_project(&conn, "p1").unwrap().unwrap();
-        assert_eq!(before.last_activity_at, Some("2020-01-01T00:00:00+00:00".into()));
+        assert_eq!(
+            before.last_activity_at,
+            Some("2020-01-01T00:00:00+00:00".into())
+        );
 
         let touched = touch_project_activity(&conn, "p1").unwrap();
         assert!(touched);
@@ -360,7 +369,10 @@ mod tests {
 
         insert_project(&conn, &p1).unwrap();
         let result = insert_project(&conn, &p2);
-        assert!(result.is_err(), "Should fail with unique constraint on path");
+        assert!(
+            result.is_err(),
+            "Should fail with unique constraint on path"
+        );
     }
 
     #[test]

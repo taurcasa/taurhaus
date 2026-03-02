@@ -205,7 +205,8 @@ mod tests {
 
     #[test]
     fn invalid_checkbox_formats_ignored() {
-        let content = "- [] Missing space\n- [y] Wrong letter\n- [x]No space after bracket\n- [ ] Valid\n";
+        let content =
+            "- [] Missing space\n- [y] Wrong letter\n- [x]No space after bracket\n- [ ] Valid\n";
         let tasks = parse_checkboxes(content);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Valid");

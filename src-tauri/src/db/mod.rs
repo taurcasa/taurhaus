@@ -46,7 +46,17 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
 
-        assert_eq!(tables, vec!["projects", "relationships", "session_activity", "sessions", "settings", "tasks"]);
+        assert_eq!(
+            tables,
+            vec![
+                "projects",
+                "relationships",
+                "session_activity",
+                "sessions",
+                "settings",
+                "tasks"
+            ]
+        );
     }
 
     #[test]

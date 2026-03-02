@@ -7,9 +7,7 @@ use uuid::Uuid;
 use crate::db::queries;
 use crate::errors::AppError;
 
-use crate::models::{
-    ActivityState, ActivityThresholds, Project, ProjectDetail, ProjectSummary,
-};
+use crate::models::{ActivityState, ActivityThresholds, Project, ProjectDetail, ProjectSummary};
 
 /// Register a new project from a filesystem path.
 /// Validates that the path exists and contains a `.git` directory.
@@ -106,7 +104,8 @@ pub fn update_project(
     description: Option<Option<&str>>,
     hero_preference: Option<Option<&str>>,
 ) -> Result<(), AppError> {
-    let changed = queries::update_project(conn, id, name, None, description, None, hero_preference)?;
+    let changed =
+        queries::update_project(conn, id, name, None, description, None, hero_preference)?;
     if !changed {
         return Err(AppError::NotFound(format!("Project not found: {id}")));
     }
@@ -185,7 +184,13 @@ mod tests {
         let (conn, _db) = test_db();
         let dir = temp_project_dir();
 
-        let detail = register_project(&conn, dir.path().to_str().unwrap(), None, &default_thresholds()).unwrap();
+        let detail = register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            None,
+            &default_thresholds(),
+        )
+        .unwrap();
 
         assert!(!detail.id.is_empty());
         assert_eq!(detail.path, dir.path().to_str().unwrap());
@@ -198,9 +203,21 @@ mod tests {
     fn register_project_uses_dir_name() {
         let (conn, _db) = test_db();
         let dir = temp_project_dir();
-        let expected_name = dir.path().file_name().unwrap().to_str().unwrap().to_string();
+        let expected_name = dir
+            .path()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
-        let detail = register_project(&conn, dir.path().to_str().unwrap(), None, &default_thresholds()).unwrap();
+        let detail = register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            None,
+            &default_thresholds(),
+        )
+        .unwrap();
         assert_eq!(detail.name, expected_name);
     }
 
@@ -210,8 +227,13 @@ mod tests {
         let (conn, _db) = test_db();
         let dir = temp_project_dir();
 
-        let detail =
-            register_project(&conn, dir.path().to_str().unwrap(), Some("my-project"), &default_thresholds()).unwrap();
+        let detail = register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            Some("my-project"),
+            &default_thresholds(),
+        )
+        .unwrap();
         assert_eq!(detail.name, "my-project");
     }
 
@@ -219,7 +241,12 @@ mod tests {
     #[test]
     fn register_project_nonexistent_path() {
         let (conn, _db) = test_db();
-        let result = register_project(&conn, "/nonexistent/path/to/nowhere", None, &default_thresholds());
+        let result = register_project(
+            &conn,
+            "/nonexistent/path/to/nowhere",
+            None,
+            &default_thresholds(),
+        );
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -252,8 +279,20 @@ mod tests {
         let dir1 = temp_project_dir();
         let dir2 = temp_project_dir();
 
-        register_project(&conn, dir1.path().to_str().unwrap(), Some("project-1"), &default_thresholds()).unwrap();
-        register_project(&conn, dir2.path().to_str().unwrap(), Some("project-2"), &default_thresholds()).unwrap();
+        register_project(
+            &conn,
+            dir1.path().to_str().unwrap(),
+            Some("project-1"),
+            &default_thresholds(),
+        )
+        .unwrap();
+        register_project(
+            &conn,
+            dir2.path().to_str().unwrap(),
+            Some("project-2"),
+            &default_thresholds(),
+        )
+        .unwrap();
 
         let projects = list_projects(&conn, &default_thresholds()).unwrap();
         assert_eq!(projects.len(), 2);
@@ -276,7 +315,13 @@ mod tests {
         let (conn, _db) = test_db();
         let dir = temp_project_dir();
 
-        let created = register_project(&conn, dir.path().to_str().unwrap(), Some("test"), &default_thresholds()).unwrap();
+        let created = register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            Some("test"),
+            &default_thresholds(),
+        )
+        .unwrap();
         let fetched = get_project(&conn, &created.id, &default_thresholds()).unwrap();
 
         assert_eq!(fetched.id, created.id);
@@ -303,8 +348,13 @@ mod tests {
         let (conn, _db) = test_db();
         let dir = temp_project_dir();
 
-        let created =
-            register_project(&conn, dir.path().to_str().unwrap(), Some("original"), &default_thresholds()).unwrap();
+        let created = register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            Some("original"),
+            &default_thresholds(),
+        )
+        .unwrap();
 
         update_project(
             &conn,
@@ -328,7 +378,13 @@ mod tests {
         let (conn, _db) = test_db();
         let dir = temp_project_dir();
 
-        let created = register_project(&conn, dir.path().to_str().unwrap(), None, &default_thresholds()).unwrap();
+        let created = register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            None,
+            &default_thresholds(),
+        )
+        .unwrap();
         remove_project(&conn, &created.id).unwrap();
 
         let result = get_project(&conn, &created.id, &default_thresholds());
@@ -341,7 +397,8 @@ mod tests {
         let (conn, _db) = test_db();
 
         // InvalidPath
-        let err = register_project(&conn, "/no/such/path", None, &default_thresholds()).unwrap_err();
+        let err =
+            register_project(&conn, "/no/such/path", None, &default_thresholds()).unwrap_err();
         assert!(matches!(err, AppError::InvalidPath(_)));
 
         // NotFound

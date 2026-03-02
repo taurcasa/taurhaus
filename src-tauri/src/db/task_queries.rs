@@ -133,7 +133,9 @@ pub fn archive_or_delete_stale_tasks(
         });
     }
 
-    let placeholders: Vec<String> = (0..active_ids.len()).map(|i| format!("?{}", i + 3)).collect();
+    let placeholders: Vec<String> = (0..active_ids.len())
+        .map(|i| format!("?{}", i + 3))
+        .collect();
     let not_in = placeholders.join(", ");
 
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
@@ -299,8 +301,16 @@ mod tests {
         let (conn, _tmp) = test_db();
 
         upsert_task(&conn, &make_task("claude", "1", "Claude task", "pending")).unwrap();
-        upsert_task(&conn, &make_task("codex", "codex-0", "Codex task", "in_progress")).unwrap();
-        upsert_task(&conn, &make_task("gemini", "todo-1", "Gemini task", "completed")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("codex", "codex-0", "Codex task", "in_progress"),
+        )
+        .unwrap();
+        upsert_task(
+            &conn,
+            &make_task("gemini", "todo-1", "Gemini task", "completed"),
+        )
+        .unwrap();
 
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(tasks.len(), 3);
@@ -350,7 +360,11 @@ mod tests {
         let (conn, _tmp) = test_db();
 
         upsert_task(&conn, &make_task("claude", "1", "Claude task", "pending")).unwrap();
-        upsert_task(&conn, &make_task("codex", "codex-0", "Codex task", "pending")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("codex", "codex-0", "Codex task", "pending"),
+        )
+        .unwrap();
 
         let deleted = delete_tasks_for_source(&conn, "/projects/foo", "codex").unwrap();
         assert_eq!(deleted, 1);
@@ -386,7 +400,10 @@ mod tests {
         upsert_task(&conn, &task).unwrap();
 
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
-        assert_eq!(tasks[0].description.as_deref(), Some("A detailed description"));
+        assert_eq!(
+            tasks[0].description.as_deref(),
+            Some("A detailed description")
+        );
         assert_eq!(tasks[0].active_form.as_deref(), Some("Implementing..."));
         assert_eq!(tasks[0].owner.as_deref(), Some("agent-1"));
         assert_eq!(tasks[0].session_id.as_deref(), Some("sess-abc-123"));
@@ -421,7 +438,11 @@ mod tests {
     fn stale_completed_task_is_archived_not_deleted() {
         let (conn, _tmp) = test_db();
 
-        upsert_task(&conn, &make_task("claude", "1", "Active task", "in_progress")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("claude", "1", "Active task", "in_progress"),
+        )
+        .unwrap();
         upsert_task(&conn, &make_task("claude", "2", "Done task", "completed")).unwrap();
 
         // Scan returns only task 1 — task 2 (completed) should be archived
@@ -480,7 +501,11 @@ mod tests {
         let (conn, _tmp) = test_db();
 
         upsert_task(&conn, &make_task("claude", "1", "Claude task", "pending")).unwrap();
-        upsert_task(&conn, &make_task("codex", "codex-0", "Codex task", "pending")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("codex", "codex-0", "Codex task", "pending"),
+        )
+        .unwrap();
 
         let result =
             archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
@@ -536,13 +561,11 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "2", "Active", "in_progress")).unwrap();
 
         // First archive
-        let r1 =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
+        let r1 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
         assert_eq!(r1.archived, 1);
 
         // Second call — task 1 is already archived, should not re-archive
-        let r2 =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
+        let r2 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
         assert_eq!(r2.archived, 0);
     }
 
@@ -620,7 +643,11 @@ mod tests {
         let (conn, _tmp) = test_db();
 
         // Task with no session_id (e.g., Gemini/Codex source)
-        upsert_task(&conn, &make_task("gemini", "todo-1", "Gemini task", "completed")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("gemini", "todo-1", "Gemini task", "completed"),
+        )
+        .unwrap();
 
         // Task with session_id
         let mut t2 = make_task("claude", "1", "Claude task", "completed");
@@ -691,8 +718,16 @@ mod tests {
         let (conn, _tmp) = test_db();
 
         upsert_task(&conn, &make_task("claude", "1", "Claude done", "completed")).unwrap();
-        upsert_task(&conn, &make_task("codex", "codex-0", "Codex done", "completed")).unwrap();
-        upsert_task(&conn, &make_task("gemini", "todo-1", "Gemini done", "completed")).unwrap();
+        upsert_task(
+            &conn,
+            &make_task("codex", "codex-0", "Codex done", "completed"),
+        )
+        .unwrap();
+        upsert_task(
+            &conn,
+            &make_task("gemini", "todo-1", "Gemini done", "completed"),
+        )
+        .unwrap();
 
         // Keep one active per source
         upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();

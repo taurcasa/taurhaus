@@ -56,10 +56,7 @@ pub fn list_all_relationships(
 
 /// Dismiss a relationship (soft delete). Returns true if a row was updated.
 pub fn dismiss_relationship(conn: &Connection, id: &str) -> Result<bool, rusqlite::Error> {
-    let changed = conn.execute(
-        "UPDATE relationships SET dismissed = 1 WHERE id = ?1",
-        [id],
-    )?;
+    let changed = conn.execute("UPDATE relationships SET dismissed = 1 WHERE id = ?1", [id])?;
     Ok(changed > 0)
 }
 
@@ -388,11 +385,7 @@ mod tests {
         insert_relationship(&conn, &make_relationship("r2", "p1", "p3", "references")).unwrap();
 
         // Current scan only found (p1, p2, depends_on) — so r2 is stale
-        let current = vec![(
-            "p1".to_string(),
-            "p2".to_string(),
-            "depends_on".to_string(),
-        )];
+        let current = vec![("p1".to_string(), "p2".to_string(), "depends_on".to_string())];
 
         let removed = remove_stale_auto_relationships(&conn, "p1", &current).unwrap();
         assert_eq!(removed, 1);

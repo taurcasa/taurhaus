@@ -57,9 +57,8 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
     let request = protocol::DaemonRequest::ping(id);
     match daemon.send_status_request(&request) {
         Ok(response) if response.is_ok() => {
-            let ping: Option<PingResult> = response
-                .result
-                .and_then(|v| serde_json::from_value(v).ok());
+            let ping: Option<PingResult> =
+                response.result.and_then(|v| serde_json::from_value(v).ok());
             Ok(DaemonStatus {
                 status: "connected".to_string(),
                 version: ping.as_ref().map(|p| p.version.clone()),
@@ -88,16 +87,13 @@ pub fn start_daemon(
     provider: State<'_, ProviderState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    let distro = provider
-        .wsl_distro
-        .as_deref()
-        .ok_or_else(|| {
-            if crate::daemon::launcher::is_native_daemon() {
-                "No daemon configuration available".to_string()
-            } else {
-                "No WSL distro configured".to_string()
-            }
-        })?;
+    let distro = provider.wsl_distro.as_deref().ok_or_else(|| {
+        if crate::daemon::launcher::is_native_daemon() {
+            "No daemon configuration available".to_string()
+        } else {
+            "No WSL distro configured".to_string()
+        }
+    })?;
 
     let port = DEFAULT_PORT;
 
@@ -136,7 +132,8 @@ pub fn stop_daemon(
 
     // Send shutdown command
     let id = "manual-shutdown";
-    let request = protocol::DaemonRequest::new(id, protocol::method::SHUTDOWN, serde_json::Value::Null);
+    let request =
+        protocol::DaemonRequest::new(id, protocol::method::SHUTDOWN, serde_json::Value::Null);
     match daemon.send_status_request(&request) {
         Ok(response) if response.is_ok() => {
             let _ = app.emit(
@@ -201,8 +198,7 @@ pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
 
 /// Native daemon check (macOS/Linux): just stat the binary and run --version.
 fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
-    let home = dirs::home_dir()
-        .ok_or("Could not determine home directory")?;
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let binary = home.join(".local/bin/taurhaus-daemon");
 
     if !binary.exists() {
@@ -309,7 +305,14 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
 
     // Step 3: Check if binary exists
     let exists = wsl_command()
-        .args(["-d", &distro, "--", "test", "-f", "$HOME/.local/bin/taurhaus-daemon"])
+        .args([
+            "-d",
+            &distro,
+            "--",
+            "test",
+            "-f",
+            "$HOME/.local/bin/taurhaus-daemon",
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -330,7 +333,13 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
 
     // Step 4: Get installed version
     let version_output = wsl_command()
-        .args(["-d", &distro, "--", "$HOME/.local/bin/taurhaus-daemon", "--version"])
+        .args([
+            "-d",
+            &distro,
+            "--",
+            "$HOME/.local/bin/taurhaus-daemon",
+            "--version",
+        ])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output();
@@ -389,8 +398,7 @@ pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
 
 /// Install daemon natively (macOS/Linux): copy binary + chmod + verify.
 fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<String, String> {
-    let home = dirs::home_dir()
-        .ok_or("Could not determine home directory")?;
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
     let target_path = target_dir.join("taurhaus-daemon");
 
@@ -447,21 +455,18 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<String, Str
             let version = raw.trim();
             Ok(format!("Daemon installed successfully: {version}"))
         }
-        Ok(_) => {
-            Err("Daemon was copied but --version check failed. The binary may be corrupted.".to_string())
-        }
-        Err(e) => {
-            Err(format!("Daemon was copied but verification failed: {e}"))
-        }
+        Ok(_) => Err(
+            "Daemon was copied but --version check failed. The binary may be corrupted."
+                .to_string(),
+        ),
+        Err(e) => Err(format!("Daemon was copied but verification failed: {e}")),
     }
 }
 
 /// Install daemon via WSL (Windows): copy into WSL distro + chmod + verify.
 fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String> {
-    let distro = detect_default_distro()?
-        .ok_or("No WSL distro configured")?;
-    validate_wsl_distro(&distro)
-        .map_err(|e| format!("Invalid distro: {e}"))?;
+    let distro = detect_default_distro()?.ok_or("No WSL distro configured")?;
+    validate_wsl_distro(&distro).map_err(|e| format!("Invalid distro: {e}"))?;
 
     // Translate Windows path to WSL-accessible /mnt/... path.
     let wsl_source_path = windows_to_wsl_path(bundled_binary)?;
@@ -483,8 +488,12 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
     // Copy binary
     let cp = wsl_command()
         .args([
-            "-d", &distro, "--",
-            "cp", &wsl_source_path, "$HOME/.local/bin/taurhaus-daemon",
+            "-d",
+            &distro,
+            "--",
+            "cp",
+            &wsl_source_path,
+            "$HOME/.local/bin/taurhaus-daemon",
         ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -499,7 +508,14 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
 
     // Set executable permissions
     let chmod = wsl_command()
-        .args(["-d", &distro, "--", "chmod", "+x", "$HOME/.local/bin/taurhaus-daemon"])
+        .args([
+            "-d",
+            &distro,
+            "--",
+            "chmod",
+            "+x",
+            "$HOME/.local/bin/taurhaus-daemon",
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -513,7 +529,13 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
 
     // Verify installation
     let verify = wsl_command()
-        .args(["-d", &distro, "--", "$HOME/.local/bin/taurhaus-daemon", "--version"])
+        .args([
+            "-d",
+            &distro,
+            "--",
+            "$HOME/.local/bin/taurhaus-daemon",
+            "--version",
+        ])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output();
@@ -524,12 +546,11 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
             let version = raw.trim();
             Ok(format!("Daemon installed successfully: {version}"))
         }
-        Ok(_) => {
-            Err("Daemon was copied but --version check failed. The binary may be corrupted.".to_string())
-        }
-        Err(e) => {
-            Err(format!("Daemon was copied but verification failed: {e}"))
-        }
+        Ok(_) => Err(
+            "Daemon was copied but --version check failed. The binary may be corrupted."
+                .to_string(),
+        ),
+        Err(e) => Err(format!("Daemon was copied but verification failed: {e}")),
     }
 }
 
@@ -590,7 +611,9 @@ mod tests {
 
     #[test]
     fn windows_path_translation() {
-        let win = std::path::PathBuf::from("C:\\Users\\mstie\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon");
+        let win = std::path::PathBuf::from(
+            "C:\\Users\\mstie\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon",
+        );
         // On Linux this is still a valid PathBuf, just treated as a single component
         // The function checks for drive letter pattern
         let result = windows_to_wsl_path(&win);

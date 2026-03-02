@@ -116,10 +116,7 @@ fn parse_args() -> Args {
             }
             "--bind" | "-b" => {
                 i += 1;
-                args.bind_addr = raw
-                    .get(i)
-                    .cloned()
-                    .expect("--bind requires an address");
+                args.bind_addr = raw.get(i).cloned().expect("--bind requires an address");
             }
             "--idle-timeout" => {
                 i += 1;
@@ -164,7 +161,9 @@ fn print_help() {
     eprintln!("Options:");
     eprintln!("  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT})");
     eprintln!("  -b, --bind <ADDR>          Bind address (default: 127.0.0.1)");
-    eprintln!("      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)");
+    eprintln!(
+        "      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)"
+    );
     eprintln!("  -v, --verbose              Enable debug logging");
     eprintln!("  -V, --version              Print version and exit");
     eprintln!("  -h, --help                 Show this help");

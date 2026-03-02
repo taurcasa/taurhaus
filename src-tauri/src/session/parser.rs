@@ -56,9 +56,8 @@ struct RawFrontmatter {
 pub fn parse_handoff(content: &str) -> Result<ParsedSession, AppError> {
     let (frontmatter_str, body) = extract_frontmatter(content)?;
 
-    let raw: RawFrontmatter = serde_yaml::from_str(&frontmatter_str).map_err(|e| {
-        AppError::ParseError(format!("Invalid YAML frontmatter: {e}"))
-    })?;
+    let raw: RawFrontmatter = serde_yaml::from_str(&frontmatter_str)
+        .map_err(|e| AppError::ParseError(format!("Invalid YAML frontmatter: {e}")))?;
 
     Ok(ParsedSession {
         date: raw.date,
@@ -105,9 +104,8 @@ pub fn parse_meta_sidecar(path: &Path) -> Result<SessionMeta, AppError> {
         )));
     }
     let content = std::fs::read_to_string(path)?;
-    let meta: SessionMeta = serde_json::from_str(&content).map_err(|e| {
-        AppError::ParseError(format!("Invalid session meta JSON: {e}"))
-    })?;
+    let meta: SessionMeta = serde_json::from_str(&content)
+        .map_err(|e| AppError::ParseError(format!("Invalid session meta JSON: {e}")))?;
     Ok(meta)
 }
 

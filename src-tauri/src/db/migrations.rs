@@ -3,11 +3,7 @@ use rusqlite::Connection;
 /// Embedded SQL migration files.  Each entry is `(version, name, sql)`.
 /// New migrations are appended — never modify existing ones.
 const MIGRATIONS: &[(i64, &str, &str)] = &[
-    (
-        1,
-        "initial",
-        include_str!("migrations/001_initial.sql"),
-    ),
+    (1, "initial", include_str!("migrations/001_initial.sql")),
     (
         2,
         "session_file_path_unique",
@@ -28,11 +24,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "session_activity",
         include_str!("migrations/005_session_activity.sql"),
     ),
-    (
-        6,
-        "tasks",
-        include_str!("migrations/006_tasks.sql"),
-    ),
+    (6, "tasks", include_str!("migrations/006_tasks.sql")),
     (
         7,
         "task_archived_at",
@@ -80,13 +72,20 @@ mod tests {
         let versions: Vec<i64> = MIGRATIONS.iter().map(|(v, _, _)| *v).collect();
         let mut sorted = versions.clone();
         sorted.sort();
-        assert_eq!(versions, sorted, "Migrations must be in ascending version order");
+        assert_eq!(
+            versions, sorted,
+            "Migrations must be in ascending version order"
+        );
     }
 
     #[test]
     fn all_migrations_have_unique_versions() {
         let mut versions: Vec<i64> = MIGRATIONS.iter().map(|(v, _, _)| *v).collect();
         versions.dedup();
-        assert_eq!(versions.len(), MIGRATIONS.len(), "Migration versions must be unique");
+        assert_eq!(
+            versions.len(),
+            MIGRATIONS.len(),
+            "Migration versions must be unique"
+        );
     }
 }

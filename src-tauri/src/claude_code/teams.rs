@@ -71,21 +71,19 @@ pub fn list_teams(teams_dir: &Path) -> Result<Vec<TeamConfig>, AppError> {
         }
 
         match std::fs::read_to_string(&config_path) {
-            Ok(content) => {
-                match serde_json::from_str::<TeamConfig>(&content) {
-                    Ok(mut config) => {
-                        config.name = team_name;
-                        teams.push(config);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            path = %config_path.display(),
-                            error = %e,
-                            "Failed to parse team config"
-                        );
-                    }
+            Ok(content) => match serde_json::from_str::<TeamConfig>(&content) {
+                Ok(mut config) => {
+                    config.name = team_name;
+                    teams.push(config);
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %config_path.display(),
+                        error = %e,
+                        "Failed to parse team config"
+                    );
+                }
+            },
             Err(e) => {
                 tracing::warn!(
                     path = %config_path.display(),
@@ -139,11 +137,7 @@ mod tests {
         // Create team beta
         let beta_dir = dir.path().join("beta");
         std::fs::create_dir_all(&beta_dir).unwrap();
-        std::fs::write(
-            beta_dir.join("config.json"),
-            r#"{"members": []}"#,
-        )
-        .unwrap();
+        std::fs::write(beta_dir.join("config.json"), r#"{"members": []}"#).unwrap();
 
         let teams = list_teams(dir.path()).unwrap();
         assert_eq!(teams.len(), 2);

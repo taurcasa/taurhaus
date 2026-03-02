@@ -173,7 +173,9 @@ mod tests {
         let session = make_session("s1", "p1", "2026-02-17");
         insert_session(&conn, &session).unwrap();
 
-        let fetched = get_session(&conn, "s1").unwrap().expect("session should exist");
+        let fetched = get_session(&conn, "s1")
+            .unwrap()
+            .expect("session should exist");
         assert_eq!(fetched.id, "s1");
         assert_eq!(fetched.project_id, "p1");
         assert_eq!(fetched.date, "2026-02-17");
@@ -240,7 +242,11 @@ mod tests {
         seed_project(&conn, "p1");
 
         for i in 1..=5 {
-            insert_session(&conn, &make_session(&format!("s{i}"), "p1", &format!("2026-02-{i:02}"))).unwrap();
+            insert_session(
+                &conn,
+                &make_session(&format!("s{i}"), "p1", &format!("2026-02-{i:02}")),
+            )
+            .unwrap();
         }
 
         // Newest first

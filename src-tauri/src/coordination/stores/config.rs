@@ -148,11 +148,12 @@ impl TeamConfigStore {
 
         let target_path = config_path(teams_dir, team_name);
         let tmp_path = team_dir.join(CONFIG_TMP_FILENAME);
-        let payload = serde_json::to_string_pretty(&mesh_compatible_wire(&normalized)).map_err(|err| {
-            CoordinationError::StoreError(format!(
-                "failed to serialize team config for '{team_name}': {err}"
-            ))
-        })?;
+        let payload =
+            serde_json::to_string_pretty(&mesh_compatible_wire(&normalized)).map_err(|err| {
+                CoordinationError::StoreError(format!(
+                    "failed to serialize team config for '{team_name}': {err}"
+                ))
+            })?;
 
         if let Err(err) = fs::write(&tmp_path, payload) {
             return Err(CoordinationError::Io(err));

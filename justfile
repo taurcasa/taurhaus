@@ -21,13 +21,21 @@ dev:
     npm run dev:tauri
 
 # Run all checks (quality gate)
-check: lint test
+check: fmt lint typecheck test
     @echo "All checks passed."
+
+# Enforce Rust formatting.
+fmt:
+    cd src-tauri && cargo fmt --check
 
 # Lint everything
 lint:
     cd src-tauri && cargo clippy --all-targets -- -D warnings
-    npm run check
+    npm run lint
+
+# Typecheck frontend code
+typecheck:
+    npm run typecheck
 
 # Run all tests
 test: test-rust test-frontend

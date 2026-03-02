@@ -26,7 +26,9 @@ pub fn get_file_tree(
 ) -> Result<Vec<FileTreeNode>, String> {
     let path = resolve_project_path(&db, &project_id)?;
     let provider = providers.resolve(&path);
-    provider.file_tree(&path).map_err(|e| sanitize_error(&e.to_string()))
+    provider
+        .file_tree(&path)
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 #[tauri::command]
@@ -66,7 +68,9 @@ pub fn get_readme(
         "get_readme: resolving provider"
     );
     let provider = providers.resolve(&path);
-    let result = provider.read_readme(&path).map_err(|e| sanitize_error(&e.to_string()))?;
+    let result = provider
+        .read_readme(&path)
+        .map_err(|e| sanitize_error(&e.to_string()))?;
     if let Some(ref content) = result {
         tracing::debug!(
             project_id,

@@ -412,13 +412,11 @@ fn coordination_reonboard_impl(
                 &lead_name,
             );
 
-            orchestrator.deliver_message(DeliveryRequest::OperatorNotice(
-                OperatorNoticeDelivery {
-                    member_name: request.member_name.clone(),
-                    team_name: request.team_name.clone(),
-                    message,
-                },
-            ))
+            orchestrator.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                member_name: request.member_name.clone(),
+                team_name: request.team_name.clone(),
+                message,
+            }))
         })
         .map_err(map_coordination_error)
 }

@@ -127,8 +127,7 @@ pub fn to_linux(path: &str) -> Option<String> {
 ///
 /// Falls back to WSL UNC if the path isn't a `/mnt/<drive>/` mount.
 pub fn to_windows(path: &str, distro: &str) -> String {
-    linux_mount_to_windows(path)
-        .unwrap_or_else(|| linux_to_wsl_unc(path, distro))
+    linux_mount_to_windows(path).unwrap_or_else(|| linux_to_wsl_unc(path, distro))
 }
 
 /// Strip the WSL UNC prefix, returning the rest starting with the distro name.
@@ -203,10 +202,7 @@ mod tests {
 
     #[test]
     fn distro_root_returns_slash() {
-        assert_eq!(
-            wsl_unc_to_linux(r"\\wsl$\Ubuntu\"),
-            Some("/".to_string())
-        );
+        assert_eq!(wsl_unc_to_linux(r"\\wsl$\Ubuntu\"), Some("/".to_string()));
     }
 
     #[test]
@@ -271,10 +267,7 @@ mod tests {
 
     #[test]
     fn converts_root_to_unc() {
-        assert_eq!(
-            linux_to_wsl_unc("/", "Ubuntu"),
-            r"\\wsl.localhost\Ubuntu\"
-        );
+        assert_eq!(linux_to_wsl_unc("/", "Ubuntu"), r"\\wsl.localhost\Ubuntu\");
     }
 
     // -- round-trip --
@@ -313,7 +306,7 @@ mod tests {
         assert!(!is_windows_drive_path("/home/user"));
         assert!(!is_windows_drive_path(r"\\wsl$\Ubuntu\home"));
         assert!(!is_windows_drive_path(""));
-        assert!(!is_windows_drive_path("D:"));  // no separator after colon
+        assert!(!is_windows_drive_path("D:")); // no separator after colon
         assert!(!is_windows_drive_path("1:\\bad")); // digit, not letter
     }
 
@@ -369,16 +362,13 @@ mod tests {
 
     #[test]
     fn mount_bare_drive() {
-        assert_eq!(
-            linux_mount_to_windows("/mnt/d"),
-            Some("D:".to_string())
-        );
+        assert_eq!(linux_mount_to_windows("/mnt/d"), Some("D:".to_string()));
     }
 
     #[test]
     fn mount_rejects_non_mount_paths() {
         assert_eq!(linux_mount_to_windows("/home/user"), None);
-        assert_eq!(linux_mount_to_windows("/mnt/"), None);      // no drive letter
+        assert_eq!(linux_mount_to_windows("/mnt/"), None); // no drive letter
         assert_eq!(linux_mount_to_windows("/mnt/dd/foo"), None); // multi-char
     }
 

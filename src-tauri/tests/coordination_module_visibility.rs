@@ -32,11 +32,10 @@ fn coordination_modules_are_visible_from_crate_root() {
             created_at,
         },
     );
-    let _orchestrator =
-        taurhaus_lib::coordination::orchestrator::CoordinationOrchestrator::new(
-            PathBuf::from("/tmp/taurhaus"),
-            Arc::new(taurhaus_lib::coordination::backend::MeshBridgedBackend::default()),
-        );
+    let _orchestrator = taurhaus_lib::coordination::orchestrator::CoordinationOrchestrator::new(
+        PathBuf::from("/tmp/taurhaus"),
+        Arc::new(taurhaus_lib::coordination::backend::MeshBridgedBackend::default()),
+    );
     let _selector = taurhaus_lib::coordination::backend::selector::BackendSelector::default()
         .select(taurhaus_lib::session_scanner::cli_tool::CliTool::Codex);
     let _launch_req = taurhaus_lib::coordination::requests::LaunchRequest {

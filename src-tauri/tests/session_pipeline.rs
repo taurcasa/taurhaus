@@ -39,7 +39,11 @@ fn seed_project(conn: &rusqlite::Connection, id: &str, path: &str) {
     queries::insert_project(conn, &project).unwrap();
 }
 
-fn write_hook_handoff(project_dir: &std::path::Path, filename: &str, content: &str) -> std::path::PathBuf {
+fn write_hook_handoff(
+    project_dir: &std::path::Path,
+    filename: &str,
+    content: &str,
+) -> std::path::PathBuf {
     let sessions_dir = project_dir.join("docs").join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
     let path = sessions_dir.join(filename);
@@ -47,7 +51,11 @@ fn write_hook_handoff(project_dir: &std::path::Path, filename: &str, content: &s
     path
 }
 
-fn write_hook_sidecar(project_dir: &std::path::Path, filename: &str, content: &str) -> std::path::PathBuf {
+fn write_hook_sidecar(
+    project_dir: &std::path::Path,
+    filename: &str,
+    content: &str,
+) -> std::path::PathBuf {
     let sessions_dir = project_dir.join("docs").join("sessions");
     let path = sessions_dir.join(filename);
     std::fs::write(&path, content).unwrap();
@@ -104,11 +112,20 @@ fn full_pipeline_handoff_to_search() {
     seed_project(&conn, "p1", project_dir.path().to_str().unwrap());
 
     // 1. Write hook-format files
-    write_hook_handoff(project_dir.path(), "session-2026-02-17T14-30-45.md", HOOK_HANDOFF);
-    write_hook_sidecar(project_dir.path(), "session-2026-02-17T14-30-45.meta.json", HOOK_SIDECAR);
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-17T14-30-45.md",
+        HOOK_HANDOFF,
+    );
+    write_hook_sidecar(
+        project_dir.path(),
+        "session-2026-02-17T14-30-45.meta.json",
+        HOOK_SIDECAR,
+    );
 
     // 2. Import via scan
-    let imported = session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
+    let imported =
+        session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
     assert_eq!(imported.len(), 1);
     assert_eq!(imported[0], "hook-session-001");
 
@@ -124,8 +141,11 @@ fn full_pipeline_handoff_to_search() {
     // 4. Verify metadata includes sidecar data
     assert!(session.metadata.is_object());
     let meta = session.metadata.as_object().unwrap();
-    assert!(meta.contains_key("_sidecar") || meta.contains_key("duration_minutes"),
-        "Metadata should contain sidecar data: {:?}", meta);
+    assert!(
+        meta.contains_key("_sidecar") || meta.contains_key("duration_minutes"),
+        "Metadata should contain sidecar data: {:?}",
+        meta
+    );
 
     // 5. Index in tantivy and search
     let mut index = SearchIndex::open_in_memory().unwrap();
@@ -257,12 +277,25 @@ next_steps:
 ---
 "#;
 
-    write_hook_handoff(project_dir.path(), "session-2026-02-15T10-00-00.md", handoff_a);
-    write_hook_handoff(project_dir.path(), "session-2026-02-16T14-00-00.md", handoff_b);
-    write_hook_handoff(project_dir.path(), "session-2026-02-17T09-00-00.md", handoff_c);
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-15T10-00-00.md",
+        handoff_a,
+    );
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-16T14-00-00.md",
+        handoff_b,
+    );
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-17T09-00-00.md",
+        handoff_c,
+    );
 
     // Import all
-    let imported = session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
+    let imported =
+        session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
     assert_eq!(imported.len(), 3);
 
     // List sessions
@@ -298,7 +331,11 @@ fn malformed_handoff_skipped_gracefully() {
     seed_project(&conn, "p1", project_dir.path().to_str().unwrap());
 
     // Valid handoff
-    write_hook_handoff(project_dir.path(), "session-2026-02-17T10-00-00.md", HOOK_HANDOFF);
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-17T10-00-00.md",
+        HOOK_HANDOFF,
+    );
 
     // Malformed handoff (no YAML frontmatter)
     write_hook_handoff(
@@ -316,11 +353,20 @@ next_steps:
   - Do more work
 ---
 "#;
-    write_hook_handoff(project_dir.path(), "session-2026-02-17T12-00-00.md", second_valid);
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-17T12-00-00.md",
+        second_valid,
+    );
 
     // Import — malformed should be skipped, both valid imported
-    let imported = session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
-    assert_eq!(imported.len(), 2, "Should import 2 valid handoffs, skip 1 malformed");
+    let imported =
+        session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
+    assert_eq!(
+        imported.len(),
+        2,
+        "Should import 2 valid handoffs, skip 1 malformed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +379,11 @@ fn duplicate_import_deduplication() {
     let project_dir = TempDir::new().unwrap();
     seed_project(&conn, "p1", project_dir.path().to_str().unwrap());
 
-    write_hook_handoff(project_dir.path(), "session-2026-02-17T14-30-45.md", HOOK_HANDOFF);
+    write_hook_handoff(
+        project_dir.path(),
+        "session-2026-02-17T14-30-45.md",
+        HOOK_HANDOFF,
+    );
 
     // First import
     let first = session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
@@ -341,9 +391,16 @@ fn duplicate_import_deduplication() {
 
     // Second import — should be deduplicated
     let second = session_import::scan_and_import_sessions(&conn, "p1", project_dir.path()).unwrap();
-    assert!(second.is_empty(), "Second scan should skip already-imported sessions");
+    assert!(
+        second.is_empty(),
+        "Second scan should skip already-imported sessions"
+    );
 
     // Verify only one session in DB
     let sessions = session_queries::list_sessions(&conn, "p1", 100, 0).unwrap();
-    assert_eq!(sessions.len(), 1, "Should have exactly 1 session, not duplicates");
+    assert_eq!(
+        sessions.len(),
+        1,
+        "Should have exactly 1 session, not duplicates"
+    );
 }

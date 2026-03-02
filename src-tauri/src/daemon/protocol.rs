@@ -375,9 +375,13 @@ mod tests {
 
     #[test]
     fn request_serialization_roundtrip() {
-        let req = DaemonRequest::new("r1", method::GIT_STATUS, PathParams {
-            path: "/home/user/projects/foo".to_string(),
-        });
+        let req = DaemonRequest::new(
+            "r1",
+            method::GIT_STATUS,
+            PathParams {
+                path: "/home/user/projects/foo".to_string(),
+            },
+        );
         let json = serde_json::to_string(&req).unwrap();
         let back: DaemonRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req, back);
@@ -385,9 +389,13 @@ mod tests {
 
     #[test]
     fn request_serializes_to_expected_json() {
-        let req = DaemonRequest::new("r1", method::GIT_STATUS, PathParams {
-            path: "/home/user/foo".to_string(),
-        });
+        let req = DaemonRequest::new(
+            "r1",
+            method::GIT_STATUS,
+            PathParams {
+                path: "/home/user/foo".to_string(),
+            },
+        );
         let v: serde_json::Value = serde_json::to_value(&req).unwrap();
         assert_eq!(v["id"], "r1");
         assert_eq!(v["method"], "git_status");
@@ -396,12 +404,15 @@ mod tests {
 
     #[test]
     fn response_ok_roundtrip() {
-        let resp = DaemonResponse::ok("r1", GitStatus {
-            branch: Some("main".to_string()),
-            is_dirty: false,
-            ahead: 0,
-            behind: 0,
-        });
+        let resp = DaemonResponse::ok(
+            "r1",
+            GitStatus {
+                branch: Some("main".to_string()),
+                is_dirty: false,
+                ahead: 0,
+                behind: 0,
+            },
+        );
         let json = serde_json::to_string(&resp).unwrap();
         let back: DaemonResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(resp, back);
@@ -433,9 +444,12 @@ mod tests {
 
     #[test]
     fn event_roundtrip() {
-        let evt = DaemonEvent::new(event::GIT_CHANGED, GitChangedData {
-            path: "/home/user/foo".to_string(),
-        });
+        let evt = DaemonEvent::new(
+            event::GIT_CHANGED,
+            GitChangedData {
+                path: "/home/user/foo".to_string(),
+            },
+        );
         let json = serde_json::to_string(&evt).unwrap();
         let back: DaemonEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(evt, back);
@@ -515,9 +529,14 @@ mod tests {
 
     #[test]
     fn response_result_can_hold_commits() {
-        let commits = vec![
-            Commit { hash: "abc12345".into(), message: "Initial".into(), body: None, author: "Me".into(), date: "2h".into(), timestamp: 1740000000 },
-        ];
+        let commits = vec![Commit {
+            hash: "abc12345".into(),
+            message: "Initial".into(),
+            body: None,
+            author: "Me".into(),
+            date: "2h".into(),
+            timestamp: 1740000000,
+        }];
         let resp = DaemonResponse::ok("r1", &commits);
         let result = resp.result.unwrap();
         let back: Vec<Commit> = serde_json::from_value(result).unwrap();
@@ -526,9 +545,12 @@ mod tests {
 
     #[test]
     fn response_result_can_hold_file_tree() {
-        let tree = vec![
-            FileTreeNode { name: "src".into(), path: "src".into(), is_dir: true, children: vec![] },
-        ];
+        let tree = vec![FileTreeNode {
+            name: "src".into(),
+            path: "src".into(),
+            is_dir: true,
+            children: vec![],
+        }];
         let resp = DaemonResponse::ok("r1", &tree);
         let result = resp.result.unwrap();
         let back: Vec<FileTreeNode> = serde_json::from_value(result).unwrap();
@@ -566,7 +588,9 @@ mod tests {
 
     #[test]
     fn latest_commit_time_result_with_value() {
-        let r = LatestCommitTimeResult { timestamp: Some("2025-06-15T12:00:00Z".to_string()) };
+        let r = LatestCommitTimeResult {
+            timestamp: Some("2025-06-15T12:00:00Z".to_string()),
+        };
         let json = serde_json::to_string(&r).unwrap();
         let back: LatestCommitTimeResult = serde_json::from_str(&json).unwrap();
         assert_eq!(r, back);
@@ -583,7 +607,10 @@ mod tests {
     #[test]
     fn scan_sessions_result_roundtrip() {
         let r = ScanSessionsResult {
-            paths: vec!["/foo/.claude/handoffs/a.md".into(), "/foo/.claude/handoffs/b.md".into()],
+            paths: vec![
+                "/foo/.claude/handoffs/a.md".into(),
+                "/foo/.claude/handoffs/b.md".into(),
+            ],
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: ScanSessionsResult = serde_json::from_str(&json).unwrap();
@@ -624,7 +651,10 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("command_override"));
         let back: LaunchSessionParams = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.command_override, Some("my-custom-claude --flag".to_string()));
+        assert_eq!(
+            back.command_override,
+            Some("my-custom-claude --flag".to_string())
+        );
     }
 
     #[test]
@@ -632,7 +662,10 @@ mod tests {
         // Old daemon protocol without cli_tool field should default to Claude
         let json = r#"{"project_path":"/proj","mode":"fresh"}"#;
         let p: LaunchSessionParams = serde_json::from_str(json).unwrap();
-        assert_eq!(p.cli_tool, crate::session_scanner::cli_tool::CliTool::Claude);
+        assert_eq!(
+            p.cli_tool,
+            crate::session_scanner::cli_tool::CliTool::Claude
+        );
         assert_eq!(p.command_override, None);
     }
 
@@ -672,7 +705,10 @@ mod tests {
     fn stop_session_params_defaults_to_claude() {
         let json = r#"{"tmux_pane":"%3"}"#;
         let p: StopSessionParams = serde_json::from_str(json).unwrap();
-        assert_eq!(p.cli_tool, crate::session_scanner::cli_tool::CliTool::Claude);
+        assert_eq!(
+            p.cli_tool,
+            crate::session_scanner::cli_tool::CliTool::Claude
+        );
     }
 
     #[test]

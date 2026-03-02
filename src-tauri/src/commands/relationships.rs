@@ -14,10 +14,7 @@ pub fn get_relationships(
 }
 
 #[tauri::command]
-pub fn dismiss_relationship(
-    db: State<'_, DbState>,
-    relationship_id: String,
-) -> Result<(), String> {
+pub fn dismiss_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     relationship_queries::dismiss_relationship(&conn, &relationship_id)
         .map_err(|e| e.to_string())?;
@@ -50,10 +47,7 @@ pub fn create_relationship(
 }
 
 #[tauri::command]
-pub fn remove_relationship(
-    db: State<'_, DbState>,
-    relationship_id: String,
-) -> Result<(), String> {
+pub fn remove_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     relationship_queries::remove_relationship(&conn, &relationship_id)
         .map_err(|e| e.to_string())?;

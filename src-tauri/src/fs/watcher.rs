@@ -15,10 +15,7 @@ pub enum WatchEvent {
     GitChanged { project_id: String },
 
     /// A new session handoff file appeared in docs/sessions/.
-    SessionFileCreated {
-        project_id: String,
-        path: PathBuf,
-    },
+    SessionFileCreated { project_id: String, path: PathBuf },
 
     /// A text file was created/modified/removed.
     FileChanged {
@@ -38,7 +35,8 @@ pub fn classify_event(project_root: &Path, event_path: &Path) -> Option<EventCla
 
     // Git internal files we care about
     if rel_str.starts_with(".git/") || rel_str.starts_with(".git\\") {
-        let git_relative = rel_str.strip_prefix(".git/")
+        let git_relative = rel_str
+            .strip_prefix(".git/")
             .or_else(|| rel_str.strip_prefix(".git\\"))
             .unwrap_or("");
 
@@ -77,8 +75,8 @@ pub fn classify_event(project_root: &Path, event_path: &Path) -> Option<EventCla
     for component in relative.components() {
         let name = component.as_os_str().to_string_lossy();
         match name.as_ref() {
-            "node_modules" | "target" | "dist" | ".cache" | "__pycache__"
-            | ".playwright-mcp" | ".next" | ".nuxt" | ".svelte-kit" => return None,
+            "node_modules" | "target" | "dist" | ".cache" | "__pycache__" | ".playwright-mcp"
+            | ".next" | ".nuxt" | ".svelte-kit" => return None,
             _ => {}
         }
     }
@@ -227,9 +225,9 @@ fn handle_notify_event(
                 // Debounce: only emit if enough time has passed
                 let mut state = debounce.lock().unwrap();
                 let now = Instant::now();
-                let should_emit = state
-                    .get(project_id)
-                    .is_none_or(|last| now.duration_since(*last) >= Duration::from_secs(GIT_DEBOUNCE_SECS));
+                let should_emit = state.get(project_id).is_none_or(|last| {
+                    now.duration_since(*last) >= Duration::from_secs(GIT_DEBOUNCE_SECS)
+                });
 
                 if should_emit {
                     state.insert(project_id.to_string(), now);
@@ -297,19 +295,28 @@ mod tests {
     #[test]
     fn classify_git_head() {
         let path = root().join(".git/HEAD");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::GitInternal));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::GitInternal)
+        );
     }
 
     #[test]
     fn classify_git_index() {
         let path = root().join(".git/index");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::GitInternal));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::GitInternal)
+        );
     }
 
     #[test]
     fn classify_git_refs_heads() {
         let path = root().join(".git/refs/heads/main");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::GitInternal));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::GitInternal)
+        );
     }
 
     #[test]
@@ -327,50 +334,74 @@ mod tests {
     #[test]
     fn classify_session_file() {
         let path = root().join("docs/sessions/session-2026-02-17T14-30-45.md");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::SessionFile));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::SessionFile)
+        );
     }
 
     #[test]
     fn classify_session_meta_json_is_regular() {
         // .meta.json is not a session handoff file — it's a regular file
         let path = root().join("docs/sessions/session-2026-02-17T14-30-45.meta.json");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::RegularFile));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::RegularFile)
+        );
     }
 
     #[test]
     fn classify_non_session_md_in_sessions_dir() {
         let path = root().join("docs/sessions/notes.md");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::RegularFile));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::RegularFile)
+        );
     }
 
     #[test]
     fn classify_gitignore() {
         let path = root().join(".gitignore");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::GitignoreChange));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::GitignoreChange)
+        );
     }
 
     #[test]
     fn classify_nested_gitignore() {
         let path = root().join("src/.gitignore");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::GitignoreChange));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::GitignoreChange)
+        );
     }
 
     #[test]
     fn classify_taurhausignore() {
         let path = root().join(".taurhausignore");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::GitignoreChange));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::GitignoreChange)
+        );
     }
 
     #[test]
     fn classify_regular_rust_file() {
         let path = root().join("src/main.rs");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::RegularFile));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::RegularFile)
+        );
     }
 
     #[test]
     fn classify_regular_nested_file() {
         let path = root().join("src/db/queries.rs");
-        assert_eq!(classify_event(&root(), &path), Some(EventClass::RegularFile));
+        assert_eq!(
+            classify_event(&root(), &path),
+            Some(EventClass::RegularFile)
+        );
     }
 
     #[test]
@@ -419,8 +450,7 @@ mod tests {
 
     #[test]
     fn git_debounce_suppresses_rapid_events() {
-        let debounce: Arc<Mutex<HashMap<String, Instant>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let debounce: Arc<Mutex<HashMap<String, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
         let (tx, rx) = mpsc::channel();
         let root = root();
 
@@ -551,7 +581,10 @@ mod tests {
             attrs: Default::default(),
         };
         handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
-        assert!(rx.try_recv().is_err(), "gitignored output/ file should not emit event");
+        assert!(
+            rx.try_recv().is_err(),
+            "gitignored output/ file should not emit event"
+        );
 
         // .log file should NOT produce an event
         let event = Event {
@@ -562,7 +595,10 @@ mod tests {
             attrs: Default::default(),
         };
         handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
-        assert!(rx.try_recv().is_err(), "gitignored *.log file should not emit event");
+        assert!(
+            rx.try_recv().is_err(),
+            "gitignored *.log file should not emit event"
+        );
 
         // db-wal file should NOT produce an event
         let event = Event {
@@ -573,7 +609,10 @@ mod tests {
             attrs: Default::default(),
         };
         handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
-        assert!(rx.try_recv().is_err(), "gitignored db-wal file should not emit event");
+        assert!(
+            rx.try_recv().is_err(),
+            "gitignored db-wal file should not emit event"
+        );
 
         // Non-ignored file SHOULD produce an event
         let event = Event {
@@ -585,7 +624,10 @@ mod tests {
         };
         handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
         let received = rx.try_recv();
-        assert!(received.is_ok(), "non-ignored src/main.rs should emit FileChanged");
+        assert!(
+            received.is_ok(),
+            "non-ignored src/main.rs should emit FileChanged"
+        );
         assert!(matches!(received.unwrap(), WatchEvent::FileChanged { .. }));
     }
 

@@ -54,25 +54,22 @@ impl SearchIndex {
 
         let (schema, fields) = build_schema();
 
-        let dir = tantivy::directory::MmapDirectory::open(index_dir).map_err(|e| {
-            AppError::SearchError(format!("Failed to open index directory: {e}"))
-        })?;
+        let dir = tantivy::directory::MmapDirectory::open(index_dir)
+            .map_err(|e| AppError::SearchError(format!("Failed to open index directory: {e}")))?;
 
-        let index = if Index::exists(&dir).map_err(|e| {
-            AppError::SearchError(format!("Failed to check index existence: {e}"))
-        })? {
-            Index::open(dir).map_err(|e| {
-                AppError::SearchError(format!("Failed to open existing index: {e}"))
-            })?
+        let index = if Index::exists(&dir)
+            .map_err(|e| AppError::SearchError(format!("Failed to check index existence: {e}")))?
+        {
+            Index::open(dir)
+                .map_err(|e| AppError::SearchError(format!("Failed to open existing index: {e}")))?
         } else {
-            Index::create(dir, schema.clone(), Default::default()).map_err(|e| {
-                AppError::SearchError(format!("Failed to create index: {e}"))
-            })?
+            Index::create(dir, schema.clone(), Default::default())
+                .map_err(|e| AppError::SearchError(format!("Failed to create index: {e}")))?
         };
 
-        let writer = index.writer(WRITER_HEAP_SIZE).map_err(|e| {
-            AppError::SearchError(format!("Failed to create index writer: {e}"))
-        })?;
+        let writer = index
+            .writer(WRITER_HEAP_SIZE)
+            .map_err(|e| AppError::SearchError(format!("Failed to create index writer: {e}")))?;
 
         Ok(Self {
             index,
@@ -88,9 +85,9 @@ impl SearchIndex {
 
         let index = Index::create_in_ram(schema.clone());
 
-        let writer = index.writer(WRITER_HEAP_SIZE).map_err(|e| {
-            AppError::SearchError(format!("Failed to create index writer: {e}"))
-        })?;
+        let writer = index
+            .writer(WRITER_HEAP_SIZE)
+            .map_err(|e| AppError::SearchError(format!("Failed to create index writer: {e}")))?;
 
         Ok(Self {
             index,
@@ -116,9 +113,9 @@ impl SearchIndex {
         doc.add_text(self.fields.title, title);
         doc.add_text(self.fields.content, content);
 
-        self.writer.add_document(doc).map_err(|e| {
-            AppError::SearchError(format!("Failed to add document: {e}"))
-        })?;
+        self.writer
+            .add_document(doc)
+            .map_err(|e| AppError::SearchError(format!("Failed to add document: {e}")))?;
         Ok(())
     }
 
@@ -136,17 +133,17 @@ impl SearchIndex {
 
     /// Commit all pending changes to the index.
     pub fn commit(&mut self) -> Result<(), AppError> {
-        self.writer.commit().map_err(|e| {
-            AppError::SearchError(format!("Failed to commit index: {e}"))
-        })?;
+        self.writer
+            .commit()
+            .map_err(|e| AppError::SearchError(format!("Failed to commit index: {e}")))?;
         Ok(())
     }
 
     /// Clear the entire index (delete all documents).
     pub fn clear(&mut self) -> Result<(), AppError> {
-        self.writer.delete_all_documents().map_err(|e| {
-            AppError::SearchError(format!("Failed to clear index: {e}"))
-        })?;
+        self.writer
+            .delete_all_documents()
+            .map_err(|e| AppError::SearchError(format!("Failed to clear index: {e}")))?;
         self.commit()
     }
 
@@ -157,9 +154,10 @@ impl SearchIndex {
 
     /// Count the total number of documents in the index.
     pub fn doc_count(&self) -> Result<u64, AppError> {
-        let reader = self.index.reader().map_err(|e| {
-            AppError::SearchError(format!("Failed to create reader: {e}"))
-        })?;
+        let reader = self
+            .index
+            .reader()
+            .map_err(|e| AppError::SearchError(format!("Failed to create reader: {e}")))?;
         let searcher = reader.searcher();
         let total: u64 = searcher
             .segment_readers()
@@ -192,10 +190,41 @@ const MAX_INDEX_FILE_SIZE: u64 = 1024 * 1024;
 
 /// Extensions considered as text files for indexing.
 const TEXT_EXTENSIONS: &[&str] = &[
-    "md", "txt", "rs", "js", "ts", "svelte", "html", "css", "json", "toml",
-    "yaml", "yml", "xml", "sql", "sh", "bash", "zsh", "py", "rb", "go",
-    "java", "kt", "c", "cpp", "h", "hpp", "lua", "vim", "conf", "cfg",
-    "ini", "env", "lock", "gitignore", "editorconfig",
+    "md",
+    "txt",
+    "rs",
+    "js",
+    "ts",
+    "svelte",
+    "html",
+    "css",
+    "json",
+    "toml",
+    "yaml",
+    "yml",
+    "xml",
+    "sql",
+    "sh",
+    "bash",
+    "zsh",
+    "py",
+    "rb",
+    "go",
+    "java",
+    "kt",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "lua",
+    "vim",
+    "conf",
+    "cfg",
+    "ini",
+    "env",
+    "lock",
+    "gitignore",
+    "editorconfig",
 ];
 
 /// Check whether a file should be indexed based on extension.
@@ -361,7 +390,8 @@ pub fn rebuild_all(
             continue;
         }
 
-        let (files, sessions, commits) = build_project_index(index, &project.id, project_root, conn)?;
+        let (files, sessions, commits) =
+            build_project_index(index, &project.id, project_root, conn)?;
         total += files + sessions + commits;
         tracing::info!(
             project = project.name,
@@ -552,7 +582,13 @@ mod tests {
             .add_document("p1", "document", "README.md", "README", "# Hello World")
             .unwrap();
         index
-            .add_document("p1", "session", "session-1.md", "Phase 5A", "Scaffolding complete")
+            .add_document(
+                "p1",
+                "session",
+                "session-1.md",
+                "Phase 5A",
+                "Scaffolding complete",
+            )
             .unwrap();
         index.commit().unwrap();
 
@@ -599,8 +635,12 @@ mod tests {
     fn clear_removes_all() {
         let mut index = SearchIndex::open_in_memory().unwrap();
 
-        index.add_document("p1", "document", "a.md", "A", "Content A").unwrap();
-        index.add_document("p2", "document", "b.md", "B", "Content B").unwrap();
+        index
+            .add_document("p1", "document", "a.md", "A", "Content A")
+            .unwrap();
+        index
+            .add_document("p2", "document", "b.md", "B", "Content B")
+            .unwrap();
         index.commit().unwrap();
         assert_eq!(index.doc_count().unwrap(), 2);
 
@@ -624,9 +664,15 @@ mod tests {
     fn add_all_entity_types() {
         let mut index = SearchIndex::open_in_memory().unwrap();
 
-        index.add_document("p1", "document", "README.md", "README", "docs").unwrap();
-        index.add_document("p1", "session", "s1", "Phase 5A", "scaffold done").unwrap();
-        index.add_document("p1", "commit", "abc123", "Add feature", "commit msg").unwrap();
+        index
+            .add_document("p1", "document", "README.md", "README", "docs")
+            .unwrap();
+        index
+            .add_document("p1", "session", "s1", "Phase 5A", "scaffold done")
+            .unwrap();
+        index
+            .add_document("p1", "commit", "abc123", "Add feature", "commit msg")
+            .unwrap();
         index.commit().unwrap();
 
         assert_eq!(index.doc_count().unwrap(), 3);

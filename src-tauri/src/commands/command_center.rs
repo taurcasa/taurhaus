@@ -80,11 +80,10 @@ pub fn list_claude_sessions(
                         if let Some(ref distro) = provider.wsl_distro {
                             for session in &mut sessions {
                                 if session.project_path.starts_with('/') {
-                                    session.project_path =
-                                        crate::provider::path::to_windows(
-                                            &session.project_path,
-                                            distro,
-                                        );
+                                    session.project_path = crate::provider::path::to_windows(
+                                        &session.project_path,
+                                        distro,
+                                    );
                                 }
                             }
                         }
@@ -104,7 +103,10 @@ pub fn list_claude_sessions(
 
     // Fall back to direct scan (works on Linux where ps/tmux are available)
     let fallback = crate::session_scanner::scan_sessions();
-    tracing::debug!(count = fallback.len(), "list_claude_sessions: fallback scan");
+    tracing::debug!(
+        count = fallback.len(),
+        "list_claude_sessions: fallback scan"
+    );
     Ok(fallback)
 }
 
@@ -137,11 +139,14 @@ pub fn launch_claude_session(
     };
 
     // Convert Windows path to Linux path if needed (WSL UNC or drive path)
-    let linux_path = crate::provider::path::to_linux(&project_path)
-        .unwrap_or_else(|| project_path.clone());
+    let linux_path =
+        crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
     if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] launch: db_path={project_path} linux_path={linux_path}");
+        let _ = writeln!(
+            f,
+            "[cmd-center] launch: db_path={project_path} linux_path={linux_path}"
+        );
     }
 
     // Try daemon first
@@ -169,7 +174,11 @@ pub fn launch_claude_session(
                         .ok_or("Invalid launch result from daemon")?;
 
                     if let Ok(mut f) = log_file.0.lock() {
-                        let _ = writeln!(f, "[cmd-center] launch SUCCESS via daemon: window={} pane={}", result.tmux_window, result.tmux_pane);
+                        let _ = writeln!(
+                            f,
+                            "[cmd-center] launch SUCCESS via daemon: window={} pane={}",
+                            result.tmux_window, result.tmux_pane
+                        );
                     }
 
                     // Open or focus Windows Terminal after successful launch
@@ -211,24 +220,25 @@ pub fn launch_claude_session(
     }
     let ts = load_terminal_settings(&db);
     let tool_cmd = resolve_tool_command(&ts.cli_commands, tool, mode);
-    let (session, window, pane) =
-        crate::session_scanner::control::launch_in_tmux_with_layout(
-            &linux_path, mode, tool, &ts.tmux_layout, Some(&tool_cmd),
-        )
-            .map_err(|e| format!("Failed to launch session: {e}"))?;
+    let (session, window, pane) = crate::session_scanner::control::launch_in_tmux_with_layout(
+        &linux_path,
+        mode,
+        tool,
+        &ts.tmux_layout,
+        Some(&tool_cmd),
+    )
+    .map_err(|e| format!("Failed to launch session: {e}"))?;
 
     // On macOS, also open the terminal emulator (direct launch doesn't go
     // through the daemon path which handles this).
     #[cfg(target_os = "macos")]
     {
-        let _ = crate::terminal::handle_terminal(
-            crate::terminal::TerminalIntent::EnsureOpen {
-                distro: None,
-                tmux_session: session.clone(),
-                emulator: ts.emulator,
-                custom_command: ts.custom_command,
-            },
-        );
+        let _ = crate::terminal::handle_terminal(crate::terminal::TerminalIntent::EnsureOpen {
+            distro: None,
+            tmux_session: session.clone(),
+            emulator: ts.emulator,
+            custom_command: ts.custom_command,
+        });
     }
 
     Ok(protocol::LaunchSessionResult {
@@ -350,12 +360,8 @@ pub fn navigate_to_session(
     }
 
     // Fall back to direct navigate (Linux dev)
-    crate::session_scanner::control::navigate_to_pane(
-        &tmux_session,
-        &tmux_window,
-        &tmux_pane,
-    )
-    .map_err(|e| format!("Failed to navigate: {e}"))
+    crate::session_scanner::control::navigate_to_pane(&tmux_session, &tmux_window, &tmux_pane)
+        .map_err(|e| format!("Failed to navigate: {e}"))
 }
 
 /// Record a completed CLI session's activity stats for historical tracking.
@@ -403,17 +409,15 @@ pub fn get_project_tasks(
     db: State<'_, DbState>,
     project_path: String,
 ) -> Result<crate::task_scanner::TaskResult, String> {
-    let normalized_path = crate::provider::path::to_linux(&project_path)
-        .unwrap_or_else(|| project_path.clone());
+    let normalized_path =
+        crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let db_tasks = crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path)
         .map_err(|e| e.to_string())?;
 
-    let tasks: Vec<crate::task_scanner::UnifiedTask> = db_tasks
-        .into_iter()
-        .map(persisted_to_unified)
-        .collect();
+    let tasks: Vec<crate::task_scanner::UnifiedTask> =
+        db_tasks.into_iter().map(persisted_to_unified).collect();
 
     Ok(crate::task_scanner::TaskResult {
         tasks,
@@ -429,8 +433,8 @@ pub fn get_task_detail(
     task_id: String,
     source: String,
 ) -> Result<crate::task_scanner::TaskDetail, String> {
-    let normalized_path = crate::provider::path::to_linux(&project_path)
-        .unwrap_or_else(|| project_path.clone());
+    let normalized_path =
+        crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
     // Find the task in DB
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -480,8 +484,8 @@ fn enrich_from_session(
                 ended_at: end.to_rfc3339(),
             };
 
-            let commits = crate::git::commits::get_commits_in_range(path, start, end)
-                .unwrap_or_default();
+            let commits =
+                crate::git::commits::get_commits_in_range(path, start, end).unwrap_or_default();
 
             let files = crate::git::commits::get_files_changed_in_range(path, start, end)
                 .unwrap_or_default();
@@ -502,14 +506,13 @@ pub fn get_archived_sessions(
     providers: State<'_, ProviderState>,
     project_path: String,
 ) -> Result<crate::task_scanner::ArchivedSessionsResult, String> {
-    let normalized_path = crate::provider::path::to_linux(&project_path)
-        .unwrap_or_else(|| project_path.clone());
+    let normalized_path =
+        crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
     let provider = providers.resolve(&project_path);
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let db_tasks =
-        crate::db::task_queries::get_archived_tasks_for_project(&conn, &normalized_path)
-            .map_err(|e| e.to_string())?;
+    let db_tasks = crate::db::task_queries::get_archived_tasks_for_project(&conn, &normalized_path)
+        .map_err(|e| e.to_string())?;
 
     if db_tasks.is_empty() {
         return Ok(crate::task_scanner::ArchivedSessionsResult {
@@ -524,7 +527,10 @@ pub fn get_archived_sessions(
         Vec<crate::db::task_queries::PersistedTask>,
     > = std::collections::BTreeMap::new();
     for t in db_tasks {
-        let session_key = t.session_id.clone().unwrap_or_else(|| "ungrouped".to_string());
+        let session_key = t
+            .session_id
+            .clone()
+            .unwrap_or_else(|| "ungrouped".to_string());
         groups.entry(session_key).or_default().push(t);
     }
 
@@ -535,13 +541,11 @@ pub fn get_archived_sessions(
 
     // Sort reverse-chronological: sessions with started_at first (newest first),
     // then ungrouped/unresolved at the end
-    sessions.sort_by(|a, b| {
-        match (&b.started_at, &a.started_at) {
-            (Some(b_start), Some(a_start)) => b_start.cmp(a_start),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        }
+    sessions.sort_by(|a, b| match (&b.started_at, &a.started_at) {
+        (Some(b_start), Some(a_start)) => b_start.cmp(a_start),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
     });
 
     Ok(crate::task_scanner::ArchivedSessionsResult {
@@ -557,8 +561,11 @@ fn build_archived_session(
     provider: &dyn crate::provider::ProjectProvider,
     project_path: &str,
 ) -> crate::task_scanner::ArchivedSession {
-    let tasks: Vec<crate::task_scanner::UnifiedTask> =
-        raw_tasks.iter().cloned().map(persisted_to_unified).collect();
+    let tasks: Vec<crate::task_scanner::UnifiedTask> = raw_tasks
+        .iter()
+        .cloned()
+        .map(persisted_to_unified)
+        .collect();
 
     let sources = unique_sources(&tasks);
     let (started_at, ended_at, duration_ms) = time_range_from_tasks(raw_tasks);
@@ -611,8 +618,16 @@ fn build_archived_session(
 fn time_range_from_tasks(
     tasks: &[crate::db::task_queries::PersistedTask],
 ) -> (Option<String>, Option<String>, Option<i64>) {
-    let started_at = tasks.iter().map(|t| t.first_seen_at.as_str()).min().map(String::from);
-    let ended_at = tasks.iter().map(|t| t.updated_at.as_str()).max().map(String::from);
+    let started_at = tasks
+        .iter()
+        .map(|t| t.first_seen_at.as_str())
+        .min()
+        .map(String::from);
+    let ended_at = tasks
+        .iter()
+        .map(|t| t.updated_at.as_str())
+        .max()
+        .map(String::from);
 
     let duration_ms = started_at
         .as_deref()
@@ -684,7 +699,9 @@ pub fn get_commits_in_range(
 }
 
 /// Convert a persisted DB task row to a UnifiedTask.
-fn persisted_to_unified(t: crate::db::task_queries::PersistedTask) -> crate::task_scanner::UnifiedTask {
+fn persisted_to_unified(
+    t: crate::db::task_queries::PersistedTask,
+) -> crate::task_scanner::UnifiedTask {
     crate::task_scanner::UnifiedTask {
         id: t.source_task_id,
         subject: t.subject,
@@ -814,9 +831,8 @@ pub(crate) fn scan_tasks_from_files(
             );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
-                    if let Some(result) = response
-                        .result
-                        .and_then(|v| serde_json::from_value(v).ok())
+                    if let Some(result) =
+                        response.result.and_then(|v| serde_json::from_value(v).ok())
                     {
                         return result;
                     }

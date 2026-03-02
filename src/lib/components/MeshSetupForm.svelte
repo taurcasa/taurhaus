@@ -1,4 +1,6 @@
 <script>
+  import { themeTokens } from '../themeTokens.js'
+
   let {
     dark = false,
     projectPath = '',
@@ -7,19 +9,27 @@
     oninitialize = () => {},
   } = $props()
 
-  const keyline = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const textPrimary = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textMuted = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const inputBg = $derived(
+  const t = $derived(themeTokens(dark))
+  const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
+  const fieldTone = $derived(
     dark
-      ? 'bg-zinc-900/70 border-zinc-800 text-zinc-100 placeholder:text-zinc-600'
-      : 'bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
+      ? 'border-zinc-700/80 text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500'
+      : 'border-zinc-300 text-zinc-900 placeholder:text-zinc-400 focus:border-brand-500'
   )
-  const subtleButton = $derived(
+  const fixedFieldTone = $derived(
+    dark ? 'border-zinc-700/80 text-zinc-100' : 'border-zinc-300 text-zinc-900'
+  )
+  const quickAddButton = $derived(
     dark
-      ? 'border-zinc-700 text-zinc-300 hover:border-zinc-600 hover:text-zinc-200'
-      : 'border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900'
+      ? 'rounded-md border border-dashed border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 hover:border-brand-500/60 hover:text-brand-300 hover:bg-brand-500/10'
+      : 'rounded-md border border-dashed border-zinc-300 px-2 py-1 text-[11px] text-zinc-600 hover:border-brand-500/60 hover:text-brand-700 hover:bg-brand-500/10'
   )
+  const actionBase = 'rounded-md px-2 py-1 text-[11px] transition-colors'
+  const actionBrand = `${actionBase} text-brand-500 hover:text-brand-400 hover:bg-brand-500/10`
+  const actionDanger = `${actionBase} text-danger-500/70 hover:text-danger-500 hover:bg-danger-500/10`
+  const formFieldBase =
+    'w-full bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none'
+  const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
 
   const toolOptions = [
     { value: 'claude', label: 'Claude', icon: 'C' },
@@ -191,9 +201,9 @@
 </script>
 
 <section class="space-y-4" data-testid="mesh-setup-form">
-  <header class="space-y-1 pb-2 border-b {keyline}">
-    <h2 class="text-base font-semibold {textPrimary}" data-testid="mesh-setup-title">Mesh Team Setup</h2>
-    <p class="text-sm {textMuted}" data-testid="mesh-setup-description">
+  <header class="space-y-1 pb-3 border-b {t.keyline}">
+    <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-setup-title">Mesh Team Setup</h2>
+    <p class="text-xs {t.textMuted}" data-testid="mesh-setup-description">
       Define agents, assign projects and tools, initialize once, then coordinate in CLI.
     </p>
   </header>
@@ -212,20 +222,23 @@
   {/if}
 
   <div class="space-y-3 pt-1" data-testid="mesh-team-basics">
-    <h3 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textMuted}">Team Basics</h3>
+    <div class="flex items-center gap-2">
+      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
+      <h3 class="text-[11px] uppercase {t.textMuted}">Team Basics</h3>
+    </div>
     <div class="grid grid-cols-1 gap-2">
-      <label class="space-y-1 text-xs {textMuted}">
+      <label class="space-y-1 text-xs {t.textMuted}">
         <span>Team name</span>
         <input
-          class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+          class="{formFieldBase} {fieldTone}"
           bind:value={teamName}
           data-testid="mesh-team-name-input"
         />
       </label>
-      <label class="space-y-1 text-xs {textMuted}">
+      <label class="space-y-1 text-xs {t.textMuted}">
         <span>Team description</span>
         <textarea
-          class="w-full min-h-[68px] rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+          class="w-full min-h-[68px] bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
           bind:value={teamDescription}
           data-testid="mesh-team-description-input"
         ></textarea>
@@ -233,23 +246,26 @@
     </div>
   </div>
 
-  <div class="pt-3 border-t {keyline} space-y-3" data-testid="mesh-lead-card">
-    <h3 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textMuted}">Team Lead</h3>
+  <div class="pt-4 space-y-3" data-testid="mesh-lead-card">
+    <div class="flex items-center gap-2">
+      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
+      <h3 class="text-[11px] uppercase {t.textMuted}">Team Lead</h3>
+    </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-      <label class="space-y-1 text-xs {textMuted}">
+      <label class="space-y-1 text-xs {t.textMuted}">
         <span>Name</span>
         <input
-          class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+          class="{formFieldBase} {fieldTone}"
           bind:value={leadName}
           data-testid="mesh-lead-name-input"
         />
       </label>
 
-      <div class="space-y-1 text-xs {textMuted}">
+      <div class="space-y-1 text-xs {t.textMuted}">
         <span>CLI tool</span>
         <div
-          class="w-full rounded-md border px-2.5 py-1.5 text-sm font-medium {inputBg}"
+          class="w-full border-b rounded-none px-1 py-1.5 text-sm font-medium {fixedFieldTone}"
           data-testid="mesh-lead-tool-fixed"
         >
           Claude
@@ -257,10 +273,10 @@
       </div>
     </div>
 
-    <label class="block space-y-1 text-xs {textMuted}">
+    <label class="block space-y-1 text-xs {t.textMuted}">
       <span>Model</span>
       <select
-        class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+        class="{formFieldBase} {fieldTone} {selectScheme}"
         bind:value={leadModel}
         data-testid="mesh-lead-model-select"
       >
@@ -270,7 +286,7 @@
       </select>
     </label>
 
-    <fieldset class="space-y-1.5 text-xs {textMuted}">
+    <fieldset class="space-y-1.5 text-xs {t.textMuted}">
       <legend class="mb-0.5">Session mode</legend>
       <div class="flex items-center gap-4">
         <label class="inline-flex items-center gap-2">
@@ -306,28 +322,32 @@
     {/if}
   </div>
 
-  <div class="pt-3 border-t {keyline} space-y-3" data-testid="mesh-agent-section">
+  <div class="pt-4 space-y-3" data-testid="mesh-agent-section">
     <div class="flex items-center justify-between gap-2">
-      <h3 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textMuted}">Agents</h3>
+      <div class="flex items-center gap-2">
+        <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
+        <h3 class="text-[11px] uppercase {t.textMuted}">Agents</h3>
+      </div>
       <button
-        class="rounded-md border border-brand-500/50 px-2.5 py-1 text-xs text-brand-500 hover:border-brand-500 hover:text-brand-400"
+        class={actionBrand}
         type="button"
         onclick={() => addAgent()}
         data-testid="mesh-add-agent-button"
       >
-        Add Agent
+        + Agent
       </button>
     </div>
 
-    <div class="flex flex-wrap gap-1.5" data-testid="mesh-quick-add-roles">
+    <div class="flex flex-wrap items-center gap-1.5" data-testid="mesh-quick-add-roles">
+      <span class="text-[11px] {t.textMuted}">Quick add:</span>
       {#each quickRoles as role}
         <button
           type="button"
-          class="rounded-md border px-2 py-1 text-xs {subtleButton}"
+          class={quickAddButton}
           onclick={() => quickAdd(role)}
           data-testid={`mesh-quick-add-${role.label.toLowerCase()}`}
         >
-          {role.label}
+          + {role.label}
         </button>
       {/each}
     </div>
@@ -338,14 +358,14 @@
       </p>
     {/if}
 
-    <div class="divide-y {keyline} border-y {keyline}">
+    <div class="space-y-1">
       {#each agents as agent, index (agent.id)}
-        <article class="py-3 space-y-2" data-testid="mesh-agent-card">
+        <article class="py-3 space-y-2.5 rounded-md -mx-2 px-2 {dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50'}" data-testid="mesh-agent-card">
           <div class="flex items-center justify-between gap-2">
-            <h4 class="text-xs font-semibold {textPrimary}">Agent {index + 1}</h4>
+            <span class="text-[11px] {t.textMuted}">Agent {index + 1}</span>
             <button
               type="button"
-              class="rounded-md border border-danger-400/40 px-2 py-1 text-[11px] text-danger-500 hover:border-danger-500 disabled:opacity-50"
+              class="{actionDanger} disabled:opacity-50"
               onclick={() => removeAgent(index)}
               disabled={agents.length <= 1}
               data-testid={`mesh-agent-remove-button-${index}`}
@@ -355,20 +375,20 @@
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <label class="space-y-1 text-xs {textMuted}">
+            <label class="space-y-1 text-xs {t.textMuted}">
               <span>Name</span>
               <input
-                class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                class="{formFieldBase} {fieldTone}"
                 value={agent.name}
                 oninput={(event) => updateAgent(index, { name: event.currentTarget.value })}
                 data-testid={`mesh-agent-name-input-${index}`}
               />
             </label>
 
-            <label class="space-y-1 text-xs {textMuted}">
+            <label class="space-y-1 text-xs {t.textMuted}">
               <span>CLI tool</span>
               <select
-                class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                class="{formFieldBase} {fieldTone} {selectScheme}"
                 value={agent.cliTool}
                 onchange={(event) => updateAgentTool(index, event.currentTarget.value)}
                 data-testid={`mesh-agent-tool-select-${index}`}
@@ -379,10 +399,10 @@
               </select>
             </label>
 
-            <label class="space-y-1 text-xs {textMuted}">
+            <label class="space-y-1 text-xs {t.textMuted}">
               <span>Model</span>
               <select
-                class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                class="{formFieldBase} {fieldTone} {selectScheme}"
                 value={agent.model}
                 onchange={(event) => updateAgent(index, { model: event.currentTarget.value })}
                 data-testid={`mesh-agent-model-select-${index}`}
@@ -393,10 +413,10 @@
               </select>
             </label>
 
-            <label class="space-y-1 text-xs {textMuted}">
+            <label class="space-y-1 text-xs {t.textMuted}">
               <span>Target project</span>
               <select
-                class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                class="{formFieldBase} {fieldTone} {selectScheme}"
                 value={agent.projectId}
                 onchange={(event) => updateAgent(index, { projectId: event.currentTarget.value })}
                 data-testid={`mesh-agent-project-select-${index}`}
@@ -409,10 +429,10 @@
             </label>
           </div>
 
-          <label class="space-y-1 text-xs {textMuted}">
+          <label class="space-y-1 text-xs {t.textMuted}">
             <span>Description</span>
             <input
-              class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+              class="{formFieldBase} {fieldTone}"
               value={agent.description}
               oninput={(event) => updateAgent(index, { description: event.currentTarget.value })}
               data-testid={`mesh-agent-description-input-${index}`}
@@ -423,16 +443,19 @@
     </div>
   </div>
 
-  <div class="pt-3 border-t {keyline} space-y-1.5" data-testid="mesh-review-panel">
-    <h3 class="text-[11px] font-semibold uppercase tracking-[0.06em] {textMuted}">Review</h3>
-    <p class="text-xs {textMuted}">Team: <span class="{textPrimary} font-medium">{teamName || '—'}</span></p>
-    <p class="text-xs {textMuted}">Lead: <span class="{textPrimary} font-medium">{leadName || '—'}</span> ({leadModel})</p>
-    <p class="text-xs {textMuted}">Agents: <span class="{textPrimary} font-medium">{agents.length}</span></p>
+  <div class="pt-4 space-y-1.5" data-testid="mesh-review-panel">
+    <div class="flex items-center gap-2">
+      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
+      <h3 class="text-[11px] uppercase {t.textMuted}">Review</h3>
+    </div>
+    <p class="text-xs {t.textMuted}">Team: <span class="{t.textPrimary} font-medium">{teamName || '—'}</span></p>
+    <p class="text-xs {t.textMuted}">Lead: <span class="{t.textPrimary} font-medium">{leadName || '—'}</span> ({leadModel})</p>
+    <p class="text-xs {t.textMuted}">Agents: <span class="{t.textPrimary} font-medium">{agents.length}</span></p>
   </div>
 
   <div class="flex justify-end">
     <button
-      class="inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+      class={primaryCta}
       type="button"
       onclick={submitInitialize}
       disabled={!canInitialize}

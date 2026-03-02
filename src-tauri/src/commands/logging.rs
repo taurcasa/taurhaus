@@ -5,11 +5,7 @@ use std::sync::Mutex;
 pub struct LogFileState(pub Mutex<std::fs::File>);
 
 #[tauri::command]
-pub fn frontend_log(
-    level: String,
-    message: String,
-    log_file: tauri::State<LogFileState>,
-) {
+pub fn frontend_log(level: String, message: String, log_file: tauri::State<LogFileState>) {
     let timestamp = chrono::Local::now().format("%H:%M:%S%.3f");
     let tag = match level.as_str() {
         "error" => "ERR",

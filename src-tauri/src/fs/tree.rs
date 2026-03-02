@@ -75,9 +75,7 @@ fn build_node(project_root: &Path, path: &Path) -> Result<FileTreeNode, AppError
             .build();
 
         for entry in walker {
-            let entry = entry.map_err(|e| {
-                AppError::Io(std::io::Error::other(e))
-            })?;
+            let entry = entry.map_err(|e| AppError::Io(std::io::Error::other(e)))?;
             let child_path = entry.path();
             if child_path == path {
                 continue;
@@ -105,12 +103,10 @@ fn build_node(project_root: &Path, path: &Path) -> Result<FileTreeNode, AppError
 
 /// Sort: directories first, then files, both alphabetical (case-insensitive).
 fn sort_tree(nodes: &mut [FileTreeNode]) {
-    nodes.sort_by(|a, b| {
-        match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    nodes.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 }
 

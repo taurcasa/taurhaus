@@ -53,5 +53,7 @@ pub fn get_git_status(
 ) -> Result<GitStatus, String> {
     let path = resolve_project_path(&db, &project_id)?;
     let provider = providers.resolve(&path);
-    provider.git_status(&path).map_err(|e| sanitize_error(&e.to_string()))
+    provider
+        .git_status(&path)
+        .map_err(|e| sanitize_error(&e.to_string()))
 }

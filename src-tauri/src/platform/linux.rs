@@ -161,7 +161,10 @@ mod tests {
         let pid = std::process::id();
         let rchar = process_rchar(pid);
         assert!(rchar.is_some(), "Should be able to read our own IO stats");
-        assert!(rchar.unwrap() > 0, "rchar should be > 0 for a running process");
+        assert!(
+            rchar.unwrap() > 0,
+            "rchar should be > 0 for a running process"
+        );
     }
 
     #[test]

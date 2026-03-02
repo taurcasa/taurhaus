@@ -80,7 +80,9 @@ pub fn read_auth_token() -> Option<String> {
 fn read_token_via_wsl() -> Option<String> {
     let output = crate::daemon::launcher::wsl_command()
         .args([
-            "-e", "sh", "-c",
+            "-e",
+            "sh",
+            "-c",
             "cat \"$HOME/.local/share/taurhaus/daemon.token\" 2>/dev/null",
         ])
         .stdin(std::process::Stdio::null())

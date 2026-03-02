@@ -49,10 +49,7 @@ pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, Stri
 }
 
 #[tauri::command]
-pub fn get_project(
-    db: State<'_, DbState>,
-    project_id: String,
-) -> Result<ProjectDetail, String> {
+pub fn get_project(db: State<'_, DbState>, project_id: String) -> Result<ProjectDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
     project::get_project(&conn, &project_id, &settings.thresholds).map_err(|e| e.to_string())
@@ -230,7 +227,11 @@ fn reseed_activity_for_project(
             }
         }
         Ok(None) => {
-            tracing::warn!(project_id, project_path, "reseed: no commits found, keeping registration time");
+            tracing::warn!(
+                project_id,
+                project_path,
+                "reseed: no commits found, keeping registration time"
+            );
         }
         Err(e) => {
             tracing::warn!(project_id, project_path, error = %e, "reseed: git query failed, keeping registration time");
@@ -513,7 +514,13 @@ mod tests {
         let conn = _db_state.0.lock().unwrap();
 
         let thresholds = ActivityThresholds::default();
-        project::register_project(&conn, dir.path().to_str().unwrap(), Some("test"), &thresholds).unwrap();
+        project::register_project(
+            &conn,
+            dir.path().to_str().unwrap(),
+            Some("test"),
+            &thresholds,
+        )
+        .unwrap();
         let count = crate::db::queries::project_count(&conn).unwrap();
         assert!(count > 0);
     }
@@ -527,8 +534,10 @@ mod tests {
         let conn = _db_state.0.lock().unwrap();
 
         let thresholds = ActivityThresholds::default();
-        let d1 = project::register_project(&conn, dir1.path().to_str().unwrap(), None, &thresholds).unwrap();
-        let d2 = project::register_project(&conn, dir2.path().to_str().unwrap(), None, &thresholds).unwrap();
+        let d1 = project::register_project(&conn, dir1.path().to_str().unwrap(), None, &thresholds)
+            .unwrap();
+        let d2 = project::register_project(&conn, dir2.path().to_str().unwrap(), None, &thresholds)
+            .unwrap();
 
         assert!(!d1.id.is_empty());
         assert!(!d2.id.is_empty());

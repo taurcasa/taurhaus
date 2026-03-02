@@ -59,9 +59,9 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
     // daemon dies. Linux does not need this for our listener pattern, and enabling
     // it there can permit duplicate listeners on the same port.
     let listener = {
-        let addr: std::net::SocketAddr =
-            format!("{}:{}", config.bind_addr, config.port).parse()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let addr: std::net::SocketAddr = format!("{}:{}", config.bind_addr, config.port)
+            .parse()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         let socket = socket2::Socket::new(
             socket2::Domain::IPV4,
             socket2::Type::STREAM,
@@ -92,7 +92,13 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
                 let activity = last_activity.clone();
                 let token = auth_token.clone();
                 std::thread::spawn(move || {
-                    if let Err(e) = handle_connection(stream, start, &shutdown_clone, &activity, token.as_deref()) {
+                    if let Err(e) = handle_connection(
+                        stream,
+                        start,
+                        &shutdown_clone,
+                        &activity,
+                        token.as_deref(),
+                    ) {
                         tracing::warn!(error = %e, "connection handler error");
                     }
                 });
@@ -125,7 +131,10 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
 /// - `Ok(None)` — EOF (client disconnected)
 /// - `Err(InvalidData)` — line exceeded `max_len` bytes
 /// - `Err(other)` — propagated I/O error (timeout, etc.)
-fn read_bounded_line(reader: &mut BufReader<TcpStream>, max_len: usize) -> std::io::Result<Option<String>> {
+fn read_bounded_line(
+    reader: &mut BufReader<TcpStream>,
+    max_len: usize,
+) -> std::io::Result<Option<String>> {
     use std::io::BufRead as _;
 
     let mut line = Vec::new();
@@ -169,12 +178,19 @@ fn read_bounded_line(reader: &mut BufReader<TcpStream>, max_len: usize) -> std::
     }
 
     // Strip trailing \r\n
-    if line.last() == Some(&b'\n') { line.pop(); }
-    if line.last() == Some(&b'\r') { line.pop(); }
+    if line.last() == Some(&b'\n') {
+        line.pop();
+    }
+    if line.last() == Some(&b'\r') {
+        line.pop();
+    }
 
-    String::from_utf8(line)
-        .map(Some)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "request line is not valid UTF-8"))
+    String::from_utf8(line).map(Some).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "request line is not valid UTF-8",
+        )
+    })
 }
 
 /// Drain bytes until the next newline to resync the stream after an oversized line.
@@ -215,8 +231,7 @@ fn handle_connection(
     let writer = Arc::new(Mutex::new(stream));
     let provider = LocalProvider;
     let mut active_watches: HashMap<String, RecommendedWatcher> = HashMap::new();
-    let git_debounce: Arc<Mutex<HashMap<String, Instant>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let git_debounce: Arc<Mutex<HashMap<String, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -226,8 +241,9 @@ fn handle_connection(
         let line = match read_bounded_line(&mut reader, MAX_REQUEST_LINE_LEN) {
             Ok(Some(l)) => l,
             Ok(None) => break, // EOF — client disconnected
-            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut
-                || e.kind() == std::io::ErrorKind::WouldBlock =>
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::WouldBlock =>
             {
                 continue;
             }
@@ -259,7 +275,8 @@ fn handle_connection(
 
         // Validate auth token if the server was started with one
         if let Some(expected) = auth_token {
-            if let Err(msg) = crate::daemon::auth::validate_token(expected, request.auth.as_deref()) {
+            if let Err(msg) = crate::daemon::auth::validate_token(expected, request.auth.as_deref())
+            {
                 let resp = DaemonResponse::err(&request.id, "AUTH_FAILED", msg);
                 write_locked(&writer, &resp)?;
                 continue;
@@ -267,15 +284,13 @@ fn handle_connection(
         }
 
         let response = match request.method.as_str() {
-            protocol::method::WATCH => {
-                handle_watch(
-                    &request.id,
-                    &request.params,
-                    &writer,
-                    &mut active_watches,
-                    &git_debounce,
-                )
-            }
+            protocol::method::WATCH => handle_watch(
+                &request.id,
+                &request.params,
+                &writer,
+                &mut active_watches,
+                &git_debounce,
+            ),
             protocol::method::UNWATCH => {
                 handle_unwatch(&request.id, &request.params, &mut active_watches)
             }
@@ -298,10 +313,7 @@ fn handle_connection(
 }
 
 /// Write a NDJSON response through a shared (locked) writer.
-fn write_locked(
-    writer: &Arc<Mutex<TcpStream>>,
-    response: &DaemonResponse,
-) -> std::io::Result<()> {
+fn write_locked(writer: &Arc<Mutex<TcpStream>>, response: &DaemonResponse) -> std::io::Result<()> {
     let mut w = writer
         .lock()
         .map_err(|_| std::io::Error::other("Writer lock poisoned"))?;
@@ -310,9 +322,7 @@ fn write_locked(
 
 /// Write a single NDJSON response line.
 fn write_response(writer: &mut TcpStream, response: &DaemonResponse) -> std::io::Result<()> {
-    let json = serde_json::to_string(response).map_err(|e| {
-        std::io::Error::other(e)
-    })?;
+    let json = serde_json::to_string(response).map_err(std::io::Error::other)?;
     writer.write_all(json.as_bytes())?;
     writer.write_all(b"\n")?;
     writer.flush()
@@ -353,15 +363,9 @@ fn dispatch(
         protocol::method::SCAN_SESSIONS => {
             handle_scan_sessions(&request.id, &request.params, provider)
         }
-        protocol::method::LIST_CLAUDE_SESSIONS => {
-            handle_list_claude_sessions(&request.id)
-        }
-        protocol::method::LAUNCH_SESSION => {
-            handle_launch_session(&request.id, &request.params)
-        }
-        protocol::method::STOP_SESSION => {
-            handle_stop_session(&request.id, &request.params)
-        }
+        protocol::method::LIST_CLAUDE_SESSIONS => handle_list_claude_sessions(&request.id),
+        protocol::method::LAUNCH_SESSION => handle_launch_session(&request.id, &request.params),
+        protocol::method::STOP_SESSION => handle_stop_session(&request.id, &request.params),
         protocol::method::NAVIGATE_TO_SESSION => {
             handle_navigate_to_session(&request.id, &request.params)
         }
@@ -463,10 +467,9 @@ fn handle_git_commits_in_range(
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
     match provider.commits_in_range(&params.path, &params.after, &params.before) {
-        Ok((commits, files)) => DaemonResponse::ok(
-            id,
-            protocol::GitCommitsInRangeResult { commits, files },
-        ),
+        Ok((commits, files)) => {
+            DaemonResponse::ok(id, protocol::GitCommitsInRangeResult { commits, files })
+        }
         Err(e) => DaemonResponse::err(id, "GIT_ERROR", e.to_string()),
     }
 }
@@ -557,10 +560,7 @@ fn handle_read_asset(
     };
     match provider.read_asset(&params.path, &params.relative) {
         Ok(bytes) => {
-            let data = base64::Engine::encode(
-                &base64::engine::general_purpose::STANDARD,
-                &bytes,
-            );
+            let data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
             DaemonResponse::ok(id, protocol::ReadAssetResult { data })
         }
         Err(e) => DaemonResponse::err(id, "FS_ERROR", e.to_string()),
@@ -580,7 +580,10 @@ fn handle_scan_sessions(
         Ok(paths) => DaemonResponse::ok(
             id,
             protocol::ScanSessionsResult {
-                paths: paths.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+                paths: paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect(),
             },
         ),
         Err(e) => DaemonResponse::err(id, "FS_ERROR", e.to_string()),
@@ -601,7 +604,13 @@ fn handle_launch_session(id: &str, params: &serde_json::Value) -> DaemonResponse
         Ok(p) => p,
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
-    match crate::session_scanner::control::launch_in_tmux_with_layout(&params.project_path, params.mode, params.cli_tool, &params.tmux_layout, params.command_override.as_deref()) {
+    match crate::session_scanner::control::launch_in_tmux_with_layout(
+        &params.project_path,
+        params.mode,
+        params.cli_tool,
+        &params.tmux_layout,
+        params.command_override.as_deref(),
+    ) {
         Ok((session, window, pane)) => DaemonResponse::ok(
             id,
             protocol::LaunchSessionResult {
@@ -657,8 +666,7 @@ fn handle_get_project_tasks(id: &str, params: &serde_json::Value) -> DaemonRespo
         .filter(|s| s.project_path == params.path)
         .collect();
 
-    let result =
-        crate::task_scanner::get_tasks_for_project(&params.path, &project_sessions);
+    let result = crate::task_scanner::get_tasks_for_project(&params.path, &project_sessions);
     DaemonResponse::ok(id, result)
 }
 
@@ -784,12 +792,9 @@ fn forward_watch_event(
                 // Debounce: only emit if enough time has passed
                 if let Ok(mut state) = debounce.lock() {
                     let now = Instant::now();
-                    let should_emit = state
-                        .get(project_path)
-                        .is_none_or(|last| {
-                            now.duration_since(*last)
-                                >= Duration::from_secs(WATCH_GIT_DEBOUNCE_SECS)
-                        });
+                    let should_emit = state.get(project_path).is_none_or(|last| {
+                        now.duration_since(*last) >= Duration::from_secs(WATCH_GIT_DEBOUNCE_SECS)
+                    });
 
                     if should_emit {
                         state.insert(project_path.to_string(), now);
@@ -874,7 +879,11 @@ mod tests {
         panic!("test server on port {port} did not start within 2s");
     }
 
-    fn send_request(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>, req: &DaemonRequest) -> DaemonResponse {
+    fn send_request(
+        stream: &mut TcpStream,
+        reader: &mut BufReader<TcpStream>,
+        req: &DaemonRequest,
+    ) -> DaemonResponse {
         let json = serde_json::to_string(req).unwrap();
         stream.write_all(json.as_bytes()).unwrap();
         stream.write_all(b"\n").unwrap();
@@ -890,7 +899,9 @@ mod tests {
         let (port, shutdown) = start_test_server();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let req = DaemonRequest::ping("r1");
@@ -899,8 +910,7 @@ mod tests {
         assert!(resp.is_ok());
         assert_eq!(resp.id, "r1");
 
-        let result: protocol::PingResult =
-            serde_json::from_value(resp.result.unwrap()).unwrap();
+        let result: protocol::PingResult = serde_json::from_value(resp.result.unwrap()).unwrap();
         assert_eq!(result.version, env!("CARGO_PKG_VERSION"));
 
         shutdown.store(true, Ordering::Relaxed);
@@ -911,7 +921,9 @@ mod tests {
         let (port, shutdown) = start_test_server();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let req = DaemonRequest::new("r1", "nonexistent_method", serde_json::Value::Null);
@@ -932,7 +944,9 @@ mod tests {
         let _repo = git2::Repository::init(dir.path()).unwrap();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let req = DaemonRequest::new(
@@ -960,7 +974,9 @@ mod tests {
         std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let req = DaemonRequest::new(
@@ -988,7 +1004,9 @@ mod tests {
         std::fs::write(dir.path().join("test.rs"), "fn main() {}").unwrap();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let req = DaemonRequest::new(
@@ -1014,7 +1032,9 @@ mod tests {
         let (port, shutdown) = start_test_server();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         // Send two pings
@@ -1034,7 +1054,9 @@ mod tests {
         let (port, shutdown) = start_test_server();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         // Send malformed JSON
@@ -1055,7 +1077,9 @@ mod tests {
         let (port, shutdown) = start_test_server();
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let req = DaemonRequest::new("s1", protocol::method::SHUTDOWN, serde_json::Value::Null);
@@ -1081,9 +1105,7 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || {
-            run(&config, shutdown_clone)
-        });
+        let handle = std::thread::spawn(move || run(&config, shutdown_clone));
 
         // Wait for the server to start, then let it idle for >1s
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1165,7 +1187,9 @@ mod tests {
         let (port, shutdown) = start_authed_server("secret-token-123");
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         // Send request without auth
@@ -1183,7 +1207,9 @@ mod tests {
         let (port, shutdown) = start_authed_server("secret-token-123");
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let mut req = DaemonRequest::ping("r1");
@@ -1201,7 +1227,9 @@ mod tests {
         let (port, shutdown) = start_authed_server("secret-token-123");
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
 
         let mut req = DaemonRequest::ping("r1");

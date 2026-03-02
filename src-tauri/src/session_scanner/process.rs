@@ -141,21 +141,21 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
 
         // Codex via node shim: `node /path/to/bin/codex`
         // or via package path: `node .../@openai/codex/...`
-        if second == "codex" || second.ends_with("/codex")
-            || second.contains("@openai/codex")
-        {
+        if second == "codex" || second.ends_with("/codex") || second.contains("@openai/codex") {
             return Some(CliTool::Codex);
         }
 
         // Claude via node: `node /path/to/claude` or `node .../claude-code/...`
-        if second == "claude" || second.ends_with("/claude")
+        if second == "claude"
+            || second.ends_with("/claude")
             || second.contains("@anthropic-ai/claude-code")
         {
             return Some(CliTool::Claude);
         }
 
         // Gemini via node: `node /path/to/gemini` or `node .../@google/gemini-cli/...`
-        if second == "gemini" || second.ends_with("/gemini")
+        if second == "gemini"
+            || second.ends_with("/gemini")
             || second.contains("@google/gemini-cli")
         {
             return Some(CliTool::Gemini);
@@ -288,11 +288,23 @@ mod tests {
     #[test]
     fn detect_claude_processes() {
         assert_eq!(detect_cli_tool("claude"), Some(CliTool::Claude));
-        assert_eq!(detect_cli_tool("claude --dangerously-skip-permissions"), Some(CliTool::Claude));
+        assert_eq!(
+            detect_cli_tool("claude --dangerously-skip-permissions"),
+            Some(CliTool::Claude)
+        );
         assert_eq!(detect_cli_tool("claude --continue"), Some(CliTool::Claude));
-        assert_eq!(detect_cli_tool("/home/user/.local/bin/claude"), Some(CliTool::Claude));
-        assert_eq!(detect_cli_tool("/home/user/.local/bin/claude --resume"), Some(CliTool::Claude));
-        assert_eq!(detect_cli_tool("node /usr/local/bin/claude"), Some(CliTool::Claude));
+        assert_eq!(
+            detect_cli_tool("/home/user/.local/bin/claude"),
+            Some(CliTool::Claude)
+        );
+        assert_eq!(
+            detect_cli_tool("/home/user/.local/bin/claude --resume"),
+            Some(CliTool::Claude)
+        );
+        assert_eq!(
+            detect_cli_tool("node /usr/local/bin/claude"),
+            Some(CliTool::Claude)
+        );
         assert_eq!(
             detect_cli_tool("node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js"),
             Some(CliTool::Claude)
@@ -308,11 +320,19 @@ mod tests {
         assert_eq!(detect_cli_tool("codex --full-auto"), Some(CliTool::Codex));
         assert_eq!(detect_cli_tool("codex"), Some(CliTool::Codex));
         assert_eq!(detect_cli_tool("codex --yolo"), Some(CliTool::Codex));
-        assert_eq!(detect_cli_tool("/usr/local/bin/codex --full-auto"), Some(CliTool::Codex));
-        assert_eq!(detect_cli_tool("/home/user/.cargo/bin/codex resume --last"), Some(CliTool::Codex));
+        assert_eq!(
+            detect_cli_tool("/usr/local/bin/codex --full-auto"),
+            Some(CliTool::Codex)
+        );
+        assert_eq!(
+            detect_cli_tool("/home/user/.cargo/bin/codex resume --last"),
+            Some(CliTool::Codex)
+        );
         // Real fnm shim path (observed from live ps output)
         assert_eq!(
-            detect_cli_tool("node /run/user/1000/fnm_multishells/587700_1771710301602/bin/codex --yolo"),
+            detect_cli_tool(
+                "node /run/user/1000/fnm_multishells/587700_1771710301602/bin/codex --yolo"
+            ),
             Some(CliTool::Codex)
         );
         // Real native binary path (observed from live ps output)
@@ -334,10 +354,15 @@ mod tests {
         );
         assert_eq!(detect_cli_tool("gemini --sandbox"), Some(CliTool::Gemini));
         assert_eq!(detect_cli_tool("gemini --yolo"), Some(CliTool::Gemini));
-        assert_eq!(detect_cli_tool("/usr/local/bin/gemini --resume"), Some(CliTool::Gemini));
+        assert_eq!(
+            detect_cli_tool("/usr/local/bin/gemini --resume"),
+            Some(CliTool::Gemini)
+        );
         // Real fnm shim path (observed from live ps output)
         assert_eq!(
-            detect_cli_tool("node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
+            detect_cli_tool(
+                "node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"
+            ),
             Some(CliTool::Gemini)
         );
         // Real node-launched via full path (observed from live ps output)
@@ -370,8 +395,21 @@ mod tests {
  5000 vim";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], (1000, "claude --continue".to_string(), CliTool::Claude));
-        assert_eq!(result[1], (2000, "codex --full-auto".to_string(), CliTool::Codex));
-        assert_eq!(result[2], (3000, "node /path/@google/gemini-cli/dist/cli.mjs".to_string(), CliTool::Gemini));
+        assert_eq!(
+            result[0],
+            (1000, "claude --continue".to_string(), CliTool::Claude)
+        );
+        assert_eq!(
+            result[1],
+            (2000, "codex --full-auto".to_string(), CliTool::Codex)
+        );
+        assert_eq!(
+            result[2],
+            (
+                3000,
+                "node /path/@google/gemini-cli/dist/cli.mjs".to_string(),
+                CliTool::Gemini
+            )
+        );
     }
 }

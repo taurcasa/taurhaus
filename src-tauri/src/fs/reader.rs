@@ -34,12 +34,12 @@ pub fn read_file(project_root: &Path, relative_path: &str) -> Result<FileContent
 
     // Canonicalize both paths and verify the file is inside the project root.
     // This catches symlink escapes and other resolution tricks.
-    let canonical = full_path.canonicalize().map_err(|_| {
-        AppError::NotFound(format!("Cannot resolve path: {relative_path}"))
-    })?;
-    let canonical_root = project_root.canonicalize().map_err(|_| {
-        AppError::InvalidPath("Cannot resolve project root".to_string())
-    })?;
+    let canonical = full_path
+        .canonicalize()
+        .map_err(|_| AppError::NotFound(format!("Cannot resolve path: {relative_path}")))?;
+    let canonical_root = project_root
+        .canonicalize()
+        .map_err(|_| AppError::InvalidPath("Cannot resolve project root".to_string()))?;
     if !canonical.starts_with(&canonical_root) {
         return Err(AppError::InvalidPath(
             "Path resolves outside project directory".to_string(),

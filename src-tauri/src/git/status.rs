@@ -8,7 +8,10 @@ use crate::models::GitStatus;
 /// Get the current git status of a repository.
 pub fn get_status(repo_path: &Path) -> Result<GitStatus, AppError> {
     let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!("Not a git repository: {}: {e}", repo_path.display()))
+        AppError::InvalidPath(format!(
+            "Not a git repository: {}: {e}",
+            repo_path.display()
+        ))
     })?;
 
     let branch = get_branch_name(&repo);
@@ -41,8 +44,7 @@ fn get_branch_name(repo: &Repository) -> Option<String> {
 /// Check if the working tree has any modifications.
 fn check_dirty(repo: &Repository) -> bool {
     let mut opts = git2::StatusOptions::new();
-    opts.include_untracked(true)
-        .recurse_untracked_dirs(false);
+    opts.include_untracked(true).recurse_untracked_dirs(false);
 
     repo.statuses(Some(&mut opts))
         .map(|statuses| !statuses.is_empty())
@@ -88,7 +90,10 @@ mod tests {
         // Branch name depends on git/libgit2 defaults (main or master)
         assert!(status.branch.is_some());
         let branch = status.branch.unwrap();
-        assert!(branch == "main" || branch == "master", "branch was: {branch}");
+        assert!(
+            branch == "main" || branch == "master",
+            "branch was: {branch}"
+        );
         assert!(!status.is_dirty);
     }
 

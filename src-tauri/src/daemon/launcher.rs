@@ -114,37 +114,63 @@ pub fn try_connect_daemon(
         }
     }
 
-    blog(log_path, &format!(
-        "Checking for daemon on port {port} ({})",
-        if is_native_daemon() { "native".to_string() } else { format!("distro: {distro}") }
-    ));
+    blog(
+        log_path,
+        &format!(
+            "Checking for daemon on port {port} ({})",
+            if is_native_daemon() {
+                "native".to_string()
+            } else {
+                format!("distro: {distro}")
+            }
+        ),
+    );
 
     // Try connecting to an already-running daemon.
     if let Some(provider) = try_connect(port) {
-        blog(log_path, &format!("Connected to existing daemon on port {port}"));
+        blog(
+            log_path,
+            &format!("Connected to existing daemon on port {port}"),
+        );
         return Some(provider);
     }
 
     // Daemon not running — try to auto-start it.
-    blog(log_path, &format!(
-        "Daemon not reachable, attempting auto-start {}",
-        if is_native_daemon() { "(native)" } else { "via wsl.exe" }
-    ));
+    blog(
+        log_path,
+        &format!(
+            "Daemon not reachable, attempting auto-start {}",
+            if is_native_daemon() {
+                "(native)"
+            } else {
+                "via wsl.exe"
+            }
+        ),
+    );
     match try_start_daemon(distro, port, log_path) {
         Ok(()) => {
-            blog(log_path, &format!("Daemon spawned, polling for connectivity (up to {STARTUP_TIMEOUT:?})"));
+            blog(
+                log_path,
+                &format!("Daemon spawned, polling for connectivity (up to {STARTUP_TIMEOUT:?})"),
+            );
             if let Some(provider) = poll_until_reachable(port, STARTUP_TIMEOUT) {
                 blog(log_path, "Connected to auto-started daemon");
                 return Some(provider);
             }
-            bwarn(log_path, "Daemon process started but not reachable within timeout");
+            bwarn(
+                log_path,
+                "Daemon process started but not reachable within timeout",
+            );
         }
         Err(e) => {
             bwarn(log_path, &format!("Failed to auto-start daemon: {e}"));
         }
     }
 
-    bwarn(log_path, "Daemon not available — will use local provider fallback");
+    bwarn(
+        log_path,
+        "Daemon not available — will use local provider fallback",
+    );
     None
 }
 
@@ -218,7 +244,10 @@ fn try_start_daemon_native(
     log_path: &Path,
 ) -> Result<(), std::io::Error> {
     // Verify the daemon binary exists.
-    blog(log_path, &format!("Checking daemon binary exists at {binary_path}"));
+    blog(
+        log_path,
+        &format!("Checking daemon binary exists at {binary_path}"),
+    );
     let path = Path::new(binary_path);
     if !path.exists() {
         let msg = format!(
@@ -228,9 +257,10 @@ fn try_start_daemon_native(
         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg));
     }
 
-    blog(log_path, &format!(
-        "Spawning: {binary_path} --port {port} (native daemon)"
-    ));
+    blog(
+        log_path,
+        &format!("Spawning: {binary_path} --port {port} (native daemon)"),
+    );
 
     let child = std::process::Command::new(binary_path)
         .args(["--port", &port.to_string()])
@@ -259,7 +289,10 @@ fn try_start_daemon_wsl(
     log_path: &Path,
 ) -> Result<(), std::io::Error> {
     // Verify the daemon binary exists inside WSL.
-    blog(log_path, &format!("Checking daemon binary exists at {binary_path}"));
+    blog(
+        log_path,
+        &format!("Checking daemon binary exists at {binary_path}"),
+    );
     let check = wsl_command()
         .args(["-d", distro, "--", "test", "-x", binary_path])
         .stdin(std::process::Stdio::null())
@@ -269,7 +302,8 @@ fn try_start_daemon_wsl(
 
     match check {
         Ok(output) if !output.status.success() => {
-            let msg = format!("taurhaus-daemon not found at {binary_path}. Run: just install-daemon");
+            let msg =
+                format!("taurhaus-daemon not found at {binary_path}. Run: just install-daemon");
             bwarn(log_path, &msg);
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg));
         }
@@ -293,9 +327,12 @@ fn try_start_daemon_wsl(
     //
     // The wsl.exe process is lightweight (~1MB RSS) and exits automatically
     // when the daemon terminates.
-    blog(log_path, &format!(
-        "Spawning: wsl -d {distro} -- taurhaus-daemon --port {port} (long-lived wsl.exe child)"
-    ));
+    blog(
+        log_path,
+        &format!(
+            "Spawning: wsl -d {distro} -- taurhaus-daemon --port {port} (long-lived wsl.exe child)"
+        ),
+    );
 
     let child = wsl_command()
         .args(["-d", distro, "--", binary_path, "--port", &port.to_string()])
@@ -352,7 +389,10 @@ pub fn ensure_tmux_session(distro: &str, log_path: &Path) {
 }
 
 fn ensure_tmux_session_native(session_name: &str, log_path: &Path) {
-    blog(log_path, &format!("Ensuring tmux session '{session_name}' exists (native)"));
+    blog(
+        log_path,
+        &format!("Ensuring tmux session '{session_name}' exists (native)"),
+    );
 
     let check = std::process::Command::new("tmux")
         .args(["has-session", "-t", session_name])
@@ -363,7 +403,10 @@ fn ensure_tmux_session_native(session_name: &str, log_path: &Path) {
 
     if let Ok(output) = &check {
         if output.status.success() {
-            blog(log_path, &format!("tmux session '{session_name}' already exists"));
+            blog(
+                log_path,
+                &format!("tmux session '{session_name}' already exists"),
+            );
             return;
         }
     }
@@ -380,7 +423,10 @@ fn ensure_tmux_session_native(session_name: &str, log_path: &Path) {
             blog(log_path, &format!("Created tmux session '{session_name}'"));
         }
         Ok(output) => {
-            bwarn(log_path, &format!("tmux new-session exited with status {:?}", output.status));
+            bwarn(
+                log_path,
+                &format!("tmux new-session exited with status {:?}", output.status),
+            );
         }
         Err(e) => {
             bwarn(log_path, &format!("Failed to create tmux session: {e}"));
@@ -394,10 +440,21 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
         return;
     }
 
-    blog(log_path, &format!("Ensuring tmux session '{session_name}' exists"));
+    blog(
+        log_path,
+        &format!("Ensuring tmux session '{session_name}' exists"),
+    );
 
     let check = wsl_command()
-        .args(["-d", distro, "--", "tmux", "has-session", "-t", session_name])
+        .args([
+            "-d",
+            distro,
+            "--",
+            "tmux",
+            "has-session",
+            "-t",
+            session_name,
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -405,13 +462,25 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
 
     if let Ok(output) = &check {
         if output.status.success() {
-            blog(log_path, &format!("tmux session '{session_name}' already exists"));
+            blog(
+                log_path,
+                &format!("tmux session '{session_name}' already exists"),
+            );
             return;
         }
     }
 
     let result = wsl_command()
-        .args(["-d", distro, "--", "tmux", "new-session", "-d", "-s", session_name])
+        .args([
+            "-d",
+            distro,
+            "--",
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            session_name,
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -422,10 +491,16 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
             blog(log_path, &format!("Created tmux session '{session_name}'"));
         }
         Ok(output) => {
-            bwarn(log_path, &format!("tmux new-session exited with status {:?}", output.status));
+            bwarn(
+                log_path,
+                &format!("tmux new-session exited with status {:?}", output.status),
+            );
         }
         Err(e) => {
-            bwarn(log_path, &format!("Failed to create tmux session via wsl.exe: {e}"));
+            bwarn(
+                log_path,
+                &format!("Failed to create tmux session via wsl.exe: {e}"),
+            );
         }
     }
 }
@@ -491,7 +566,11 @@ mod tests {
 
         // On native platforms, distro is ignored — daemon connects directly.
         // On Windows/Linux-in-WSL, we'd need a valid distro.
-        let distro = if is_native_daemon() { None } else { Some("Ubuntu") };
+        let distro = if is_native_daemon() {
+            None
+        } else {
+            Some("Ubuntu")
+        };
         let result = try_connect_daemon(distro, port, &test_log_path());
         assert!(result.is_some());
 
@@ -528,7 +607,10 @@ mod tests {
         });
 
         let result = poll_until_reachable(port, Duration::from_secs(3));
-        assert!(result.is_some(), "Should connect to daemon that started after a delay");
+        assert!(
+            result.is_some(),
+            "Should connect to daemon that started after a delay"
+        );
 
         shutdown.store(true, Ordering::Relaxed);
     }
@@ -542,7 +624,10 @@ mod tests {
         let start = Instant::now();
         let result = poll_until_reachable(port, Duration::from_secs(1));
         assert!(result.is_none(), "Should timeout when no daemon starts");
-        assert!(start.elapsed() >= Duration::from_secs(1), "Should wait full timeout");
+        assert!(
+            start.elapsed() >= Duration::from_secs(1),
+            "Should wait full timeout"
+        );
     }
 
     #[test]
@@ -622,7 +707,10 @@ mod tests {
 
         // Key assertion: None distro doesn't cause early return on native.
         let result = try_connect_daemon(None, port, &test_log_path());
-        assert!(result.is_some(), "None distro should still connect on native platforms");
+        assert!(
+            result.is_some(),
+            "None distro should still connect on native platforms"
+        );
 
         shutdown.store(true, Ordering::Relaxed);
     }

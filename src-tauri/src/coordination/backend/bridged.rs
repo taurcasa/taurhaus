@@ -310,9 +310,10 @@ impl MeshBridgedBackend {
             }
 
             let stderr = out.stderr;
-            let missing_sender = stderr
-                .to_ascii_lowercase()
-                .contains(&format!("agent '{}' not found", sender_name.to_ascii_lowercase()));
+            let missing_sender = stderr.to_ascii_lowercase().contains(&format!(
+                "agent '{}' not found",
+                sender_name.to_ascii_lowercase()
+            ));
             last_stderr = stderr;
 
             // Retry with a known in-team fallback sender only when the previous sender
@@ -699,7 +700,9 @@ mod tests {
     fn preflight_tmux_missing_returns_blocking_error() {
         let lookup = MockBinaryLookup::with_available(&["mesh", "codex"]);
         let report = preflight_check_with_lookup(&[], &lookup);
-        assert!(report.blocking_errors.contains(&TMUX_MISSING_ERROR.to_string()));
+        assert!(report
+            .blocking_errors
+            .contains(&TMUX_MISSING_ERROR.to_string()));
         assert!(!report.can_initialize());
     }
 

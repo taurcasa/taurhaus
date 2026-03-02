@@ -1,10 +1,10 @@
 use serde::Serialize;
 use tauri::State;
 
+use super::projects::DbState;
 use crate::search::indexer;
 use crate::search::query::SearchResult;
 use crate::SearchState;
-use super::projects::DbState;
 
 /// Index status returned to the frontend.
 #[derive(Debug, Clone, Serialize)]
@@ -25,9 +25,7 @@ pub fn search(
 }
 
 #[tauri::command]
-pub fn get_index_status(
-    search_state: State<'_, SearchState>,
-) -> Result<IndexStatus, String> {
+pub fn get_index_status(search_state: State<'_, SearchState>) -> Result<IndexStatus, String> {
     let index = search_state.0.lock().map_err(|e| e.to_string())?;
     let doc_count = index.doc_count().map_err(|e| e.to_string())?;
     Ok(IndexStatus {

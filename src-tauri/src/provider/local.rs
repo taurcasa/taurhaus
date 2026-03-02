@@ -20,11 +20,7 @@ impl ProjectProvider for LocalProvider {
         status::get_status(Path::new(project_path))
     }
 
-    fn recent_commits(
-        &self,
-        project_path: &str,
-        limit: usize,
-    ) -> Result<Vec<Commit>, AppError> {
+    fn recent_commits(&self, project_path: &str, limit: usize) -> Result<Vec<Commit>, AppError> {
         commits::get_recent_commits(Path::new(project_path), limit)
     }
 
@@ -37,10 +33,7 @@ impl ProjectProvider for LocalProvider {
         commits::get_all_commits(Path::new(project_path), limit, offset)
     }
 
-    fn latest_commit_time(
-        &self,
-        project_path: &str,
-    ) -> Result<Option<DateTime<Utc>>, AppError> {
+    fn latest_commit_time(&self, project_path: &str) -> Result<Option<DateTime<Utc>>, AppError> {
         Ok(commits::get_latest_commit_time(Path::new(project_path)))
     }
 
@@ -62,11 +55,7 @@ impl ProjectProvider for LocalProvider {
         Ok((range_commits, files))
     }
 
-    fn commit_files(
-        &self,
-        project_path: &str,
-        hash: &str,
-    ) -> Result<Vec<CommitFile>, AppError> {
+    fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError> {
         commits::get_commit_files(Path::new(project_path), hash)
     }
 
@@ -83,11 +72,7 @@ impl ProjectProvider for LocalProvider {
         tree::build_file_tree(Path::new(project_path))
     }
 
-    fn read_file(
-        &self,
-        project_path: &str,
-        relative_path: &str,
-    ) -> Result<FileContent, AppError> {
+    fn read_file(&self, project_path: &str, relative_path: &str) -> Result<FileContent, AppError> {
         reader::read_file(Path::new(project_path), relative_path)
     }
 
@@ -100,20 +85,19 @@ impl ProjectProvider for LocalProvider {
         let full_path = root.join(relative_path);
 
         // Security: ensure resolved path is within the project directory
-        let canonical_root = root.canonicalize().map_err(|e| {
-            AppError::InvalidPath(format!("Cannot resolve project root: {e}"))
-        })?;
-        let canonical_file = full_path.canonicalize().map_err(|e| {
-            AppError::NotFound(format!("Asset not found: {relative_path} ({e})"))
-        })?;
+        let canonical_root = root
+            .canonicalize()
+            .map_err(|e| AppError::InvalidPath(format!("Cannot resolve project root: {e}")))?;
+        let canonical_file = full_path
+            .canonicalize()
+            .map_err(|e| AppError::NotFound(format!("Asset not found: {relative_path} ({e})")))?;
         if !canonical_file.starts_with(&canonical_root) {
             return Err(AppError::InvalidPath(
                 "Access denied: path traversal detected".to_string(),
             ));
         }
 
-        std::fs::read(&canonical_file)
-            .map_err(AppError::Io)
+        std::fs::read(&canonical_file).map_err(AppError::Io)
     }
 
     fn scan_session_files(&self, project_path: &str) -> Result<Vec<PathBuf>, AppError> {

@@ -22,11 +22,7 @@ pub trait ProjectProvider: Send + Sync {
 
     fn git_status(&self, project_path: &str) -> Result<GitStatus, AppError>;
 
-    fn recent_commits(
-        &self,
-        project_path: &str,
-        limit: usize,
-    ) -> Result<Vec<Commit>, AppError>;
+    fn recent_commits(&self, project_path: &str, limit: usize) -> Result<Vec<Commit>, AppError>;
 
     fn all_commits(
         &self,
@@ -35,10 +31,7 @@ pub trait ProjectProvider: Send + Sync {
         offset: usize,
     ) -> Result<Vec<Commit>, AppError>;
 
-    fn latest_commit_time(
-        &self,
-        project_path: &str,
-    ) -> Result<Option<DateTime<Utc>>, AppError>;
+    fn latest_commit_time(&self, project_path: &str) -> Result<Option<DateTime<Utc>>, AppError>;
 
     /// Get commits and files changed within a time range (RFC 3339 strings).
     fn commits_in_range(
@@ -49,11 +42,7 @@ pub trait ProjectProvider: Send + Sync {
     ) -> Result<(Vec<Commit>, Vec<String>), AppError>;
 
     /// Get files changed by a specific commit (identified by hash prefix).
-    fn commit_files(
-        &self,
-        project_path: &str,
-        hash: &str,
-    ) -> Result<Vec<CommitFile>, AppError>;
+    fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError>;
 
     /// Get diff hunks for a specific file in a specific commit.
     fn commit_diff(
@@ -67,11 +56,7 @@ pub trait ProjectProvider: Send + Sync {
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError>;
 
-    fn read_file(
-        &self,
-        project_path: &str,
-        relative_path: &str,
-    ) -> Result<FileContent, AppError>;
+    fn read_file(&self, project_path: &str, relative_path: &str) -> Result<FileContent, AppError>;
 
     fn read_readme(&self, project_path: &str) -> Result<Option<FileContent>, AppError>;
 
@@ -96,7 +81,10 @@ pub fn provider_for<'a>(
         if let Some(d) = daemon {
             return d;
         }
-        tracing::warn!(path = project_path, "WSL path but no daemon — falling back to local I/O (slow)");
+        tracing::warn!(
+            path = project_path,
+            "WSL path but no daemon — falling back to local I/O (slow)"
+        );
     }
     local
 }
@@ -122,29 +110,59 @@ mod tests {
                 behind: 0,
             })
         }
-        fn recent_commits(&self, _: &str, _: usize) -> Result<Vec<Commit>, crate::errors::AppError> {
+        fn recent_commits(
+            &self,
+            _: &str,
+            _: usize,
+        ) -> Result<Vec<Commit>, crate::errors::AppError> {
             Ok(vec![])
         }
-        fn all_commits(&self, _: &str, _: usize, _: usize) -> Result<Vec<Commit>, crate::errors::AppError> {
+        fn all_commits(
+            &self,
+            _: &str,
+            _: usize,
+            _: usize,
+        ) -> Result<Vec<Commit>, crate::errors::AppError> {
             Ok(vec![])
         }
-        fn latest_commit_time(&self, _: &str) -> Result<Option<DateTime<Utc>>, crate::errors::AppError> {
+        fn latest_commit_time(
+            &self,
+            _: &str,
+        ) -> Result<Option<DateTime<Utc>>, crate::errors::AppError> {
             Ok(None)
         }
-        fn commits_in_range(&self, _: &str, _: &str, _: &str) -> Result<(Vec<Commit>, Vec<String>), crate::errors::AppError> {
+        fn commits_in_range(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(Vec<Commit>, Vec<String>), crate::errors::AppError> {
             Ok((vec![], vec![]))
         }
-        fn commit_files(&self, _: &str, _: &str) -> Result<Vec<CommitFile>, crate::errors::AppError> {
+        fn commit_files(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Vec<CommitFile>, crate::errors::AppError> {
             Ok(vec![])
         }
-        fn commit_diff(&self, _: &str, _: &str, _: &str) -> Result<Vec<DiffHunk>, crate::errors::AppError> {
+        fn commit_diff(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<Vec<DiffHunk>, crate::errors::AppError> {
             Ok(vec![])
         }
         fn file_tree(&self, _: &str) -> Result<Vec<FileTreeNode>, crate::errors::AppError> {
             Ok(vec![])
         }
         fn read_file(&self, _: &str, _: &str) -> Result<FileContent, crate::errors::AppError> {
-            Ok(FileContent { path: String::new(), content: String::new(), language: None })
+            Ok(FileContent {
+                path: String::new(),
+                content: String::new(),
+                language: None,
+            })
         }
         fn read_readme(&self, _: &str) -> Result<Option<FileContent>, crate::errors::AppError> {
             Ok(None)
@@ -188,7 +206,11 @@ mod tests {
     fn routes_wsl_localhost_path_to_daemon() {
         let local = StubProvider { name: "local" };
         let daemon = StubProvider { name: "daemon" };
-        let provider = provider_for(r"\\wsl.localhost\Ubuntu\home\user\app", &local, Some(&daemon));
+        let provider = provider_for(
+            r"\\wsl.localhost\Ubuntu\home\user\app",
+            &local,
+            Some(&daemon),
+        );
         let status = provider.git_status("").unwrap();
         assert_eq!(status.branch.as_deref(), Some("daemon"));
     }

@@ -61,12 +61,10 @@ pub fn read_memory_files(memory_dir: &Path) -> Result<Vec<MemoryFile>, AppError>
     }
 
     // Sort: MEMORY.md first, then alphabetical
-    files.sort_by(|a, b| {
-        match (a.is_main, b.is_main) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.path.cmp(&b.path),
-        }
+    files.sort_by(|a, b| match (a.is_main, b.is_main) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.path.cmp(&b.path),
     });
 
     Ok(files)

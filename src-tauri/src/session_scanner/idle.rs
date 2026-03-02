@@ -198,12 +198,7 @@ fn scan_latest_file(dir: &Path, extension: &str) -> Option<PathBuf> {
     fs::read_dir(dir)
         .ok()?
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext == extension)
-        })
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == extension))
         .max_by_key(|entry| {
             entry
                 .metadata()
@@ -503,18 +498,15 @@ fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> IdleResult {
 fn codex_result_from_file(path: &Path) -> IdleResult {
     // Extract session ID from filename: "rollout-2026-02-21T17-25-42-UUID.jsonl"
     // The UUID is the last segment of the stem after the timestamp portion.
-    let session_id = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .map(|stem| {
-            // Find the UUID portion: everything after "rollout-YYYY-MM-DDTHH-MM-SS-"
-            // "rollout-" (8) + "YYYY-MM-DDTHH-MM-SS" (19) + "-" (1) = 28
-            if stem.len() > 28 && stem.starts_with("rollout-") {
-                stem[28..].to_string()
-            } else {
-                stem.to_string()
-            }
-        });
+    let session_id = path.file_stem().and_then(|s| s.to_str()).map(|stem| {
+        // Find the UUID portion: everything after "rollout-YYYY-MM-DDTHH-MM-SS-"
+        // "rollout-" (8) + "YYYY-MM-DDTHH-MM-SS" (19) + "-" (1) = 28
+        if stem.len() > 28 && stem.starts_with("rollout-") {
+            stem[28..].to_string()
+        } else {
+            stem.to_string()
+        }
+    });
 
     let file_path = path.to_string_lossy().to_string();
 
@@ -568,11 +560,7 @@ fn codex_find_session_for_project(project_path: &str, sessions_dir: &Path) -> Op
             .into_iter()
             .flatten()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "jsonl")
-            })
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
             .collect();
 
         // Sort by mtime descending — check newest first for faster matching
@@ -695,7 +683,10 @@ mod tests {
     #[test]
     fn classify_mtime_active() {
         let recent = SystemTime::now() - Duration::from_secs(2);
-        assert_eq!(classify_mtime(recent, ACTIVE_THRESHOLD), SessionState::Active);
+        assert_eq!(
+            classify_mtime(recent, ACTIVE_THRESHOLD),
+            SessionState::Active
+        );
     }
 
     #[test]
@@ -715,7 +706,10 @@ mod tests {
         // 7 seconds: idle with default threshold, still active with Codex threshold
         let mid = SystemTime::now() - Duration::from_secs(7);
         assert_eq!(classify_mtime(mid, ACTIVE_THRESHOLD), SessionState::Idle);
-        assert_eq!(classify_mtime(mid, CODEX_ACTIVE_THRESHOLD), SessionState::Active);
+        assert_eq!(
+            classify_mtime(mid, CODEX_ACTIVE_THRESHOLD),
+            SessionState::Active
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1213,9 +1207,18 @@ mod tests {
     fn live_codex_resolver_finds_session() {
         let resolver = resolver_for(CliTool::Codex);
         let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
-        println!("Codex: state={:?}, session_id={:?}, path={:?}", result.state, result.session_id, result.jsonl_path);
-        assert!(result.jsonl_path.is_some(), "Codex resolver should find a session file");
-        assert!(result.session_id.is_some(), "Codex resolver should extract session ID");
+        println!(
+            "Codex: state={:?}, session_id={:?}, path={:?}",
+            result.state, result.session_id, result.jsonl_path
+        );
+        assert!(
+            result.jsonl_path.is_some(),
+            "Codex resolver should find a session file"
+        );
+        assert!(
+            result.session_id.is_some(),
+            "Codex resolver should extract session ID"
+        );
     }
 
     #[test]
@@ -1223,9 +1226,18 @@ mod tests {
     fn live_gemini_resolver_finds_session() {
         let resolver = resolver_for(CliTool::Gemini);
         let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
-        println!("Gemini: state={:?}, session_id={:?}, path={:?}", result.state, result.session_id, result.jsonl_path);
-        assert!(result.jsonl_path.is_some(), "Gemini resolver should find a session file");
-        assert!(result.session_id.is_some(), "Gemini resolver should extract session ID");
+        println!(
+            "Gemini: state={:?}, session_id={:?}, path={:?}",
+            result.state, result.session_id, result.jsonl_path
+        );
+        assert!(
+            result.jsonl_path.is_some(),
+            "Gemini resolver should find a session file"
+        );
+        assert!(
+            result.session_id.is_some(),
+            "Gemini resolver should extract session ID"
+        );
     }
 
     #[test]
@@ -1233,8 +1245,17 @@ mod tests {
     fn live_claude_resolver_finds_session() {
         let resolver = resolver_for(CliTool::Claude);
         let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
-        println!("Claude: state={:?}, session_id={:?}, path={:?}", result.state, result.session_id, result.jsonl_path);
-        assert!(result.jsonl_path.is_some(), "Claude resolver should find a session file");
-        assert!(result.session_id.is_some(), "Claude resolver should extract session ID");
+        println!(
+            "Claude: state={:?}, session_id={:?}, path={:?}",
+            result.state, result.session_id, result.jsonl_path
+        );
+        assert!(
+            result.jsonl_path.is_some(),
+            "Claude resolver should find a session file"
+        );
+        assert!(
+            result.session_id.is_some(),
+            "Claude resolver should extract session ID"
+        );
     }
 }

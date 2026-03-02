@@ -114,18 +114,9 @@ fn get_tasks_offline_in(
     let mut session_ids: Vec<(String, std::time::SystemTime)> = fs::read_dir(&project_dir)
         .map_err(|e| format!("Failed to read project dir: {e}"))?
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext == "jsonl")
-        })
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
         .filter_map(|entry| {
-            let session_id = entry
-                .path()
-                .file_stem()?
-                .to_str()?
-                .to_string();
+            let session_id = entry.path().file_stem()?.to_str()?.to_string();
             let mtime = entry.metadata().ok()?.modified().ok()?;
             Some((session_id, mtime))
         })
@@ -273,7 +264,10 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "1");
         assert_eq!(tasks[0].subject, "Implement feature X");
-        assert_eq!(tasks[0].description.as_deref(), Some("A longer description"));
+        assert_eq!(
+            tasks[0].description.as_deref(),
+            Some("A longer description")
+        );
         assert_eq!(
             tasks[0].active_form.as_deref(),
             Some("Implementing feature X")
@@ -468,7 +462,11 @@ mod tests {
         let big_path = task_dir.join("1.json");
         let mut f = File::create(&big_path).unwrap();
         let padding = " ".repeat(1_100_000);
-        write!(f, r#"{{"id":"1","subject":"Big","status":"pending","description":"{padding}"}}"#).unwrap();
+        write!(
+            f,
+            r#"{{"id":"1","subject":"Big","status":"pending","description":"{padding}"}}"#
+        )
+        .unwrap();
         f.sync_all().unwrap();
 
         // Also a normal-sized file

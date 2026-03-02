@@ -30,17 +30,18 @@ impl SearchIndex {
             return Ok(vec![]);
         }
 
-        let reader = self.index().reader().map_err(|e| {
-            AppError::SearchError(format!("Failed to create reader: {e}"))
-        })?;
+        let reader = self
+            .index()
+            .reader()
+            .map_err(|e| AppError::SearchError(format!("Failed to create reader: {e}")))?;
         let searcher = reader.searcher();
 
         let query_parser =
             QueryParser::for_index(self.index(), vec![self.fields.title, self.fields.content]);
 
-        let parsed_query = query_parser.parse_query(trimmed).map_err(|e| {
-            AppError::SearchError(format!("Failed to parse query: {e}"))
-        })?;
+        let parsed_query = query_parser
+            .parse_query(trimmed)
+            .map_err(|e| AppError::SearchError(format!("Failed to parse query: {e}")))?;
 
         let top_docs = searcher
             .search(&parsed_query, &TopDocs::with_limit(limit))
@@ -54,9 +55,9 @@ impl SearchIndex {
         let mut results = Vec::with_capacity(top_docs.len());
 
         for (score, doc_address) in top_docs {
-            let doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
-                AppError::SearchError(format!("Failed to retrieve document: {e}"))
-            })?;
+            let doc: TantivyDocument = searcher
+                .doc(doc_address)
+                .map_err(|e| AppError::SearchError(format!("Failed to retrieve document: {e}")))?;
 
             let project_id = field_text(&doc, self.fields.project_id);
             let entity_type = field_text(&doc, self.fields.entity_type);

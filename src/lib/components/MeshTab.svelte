@@ -8,6 +8,7 @@
   import MeshInitProgress from './MeshInitProgress.svelte'
   import MeshAvailabilityGate from './MeshAvailabilityGate.svelte'
   import MeshTeamRoster from './MeshTeamRoster.svelte'
+  import { themeTokens } from '../themeTokens.js'
 
   let {
     dark = false,
@@ -18,20 +19,21 @@
     onFocusPane: onFocusPaneProp = () => {},
   } = $props()
 
-  const panelBg = $derived(dark ? 'bg-zinc-950' : 'bg-white')
-  const keyline = $derived(dark ? 'border-zinc-800' : 'border-zinc-200')
-  const textPrimary = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const textMuted = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const inputBg = $derived(
+  const t = $derived(themeTokens(dark))
+  const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
+  const fieldTone = $derived(
     dark
-      ? 'bg-zinc-900/70 border-zinc-800 text-zinc-100 placeholder:text-zinc-600'
-      : 'bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
+      ? 'border-zinc-700/80 text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500'
+      : 'border-zinc-300 text-zinc-900 placeholder:text-zinc-400 focus:border-brand-500'
   )
-  const subtleButton = $derived(
+  const neutralGhost = $derived(
     dark
-      ? 'border-zinc-700 text-zinc-300 hover:border-zinc-600 hover:text-zinc-200'
-      : 'border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900'
+      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70'
+      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
   )
+  const formFieldBase =
+    'w-full bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none'
+  const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
 
   let mode = $state('setup')
   let teamName = $state('')
@@ -229,19 +231,19 @@
   })
 </script>
 
-<section class="flex-1 min-h-0 overflow-y-auto {panelBg}" data-testid="mesh-tab">
-  <div class="max-w-4xl px-5 pt-4 pb-6 space-y-4">
+<section class="flex-1 min-h-0 overflow-y-auto {t.mainBg}" data-testid="mesh-tab">
+  <div class="max-w-3xl px-7 pt-4 pb-6 space-y-4">
     {#if loading}
-      <p class="text-sm {textMuted}" data-testid="mesh-loading">Checking Mesh team state...</p>
+      <p class="text-sm {t.textMuted}" data-testid="mesh-loading">Checking Mesh team state...</p>
     {:else}
       {#if errorMessage}
-        <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600" data-testid="mesh-error">
+        <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600/95" data-testid="mesh-error">
           {errorMessage}
         </div>
       {/if}
 
       {#if runtimeMessage}
-        <div class="border-l-2 border-success-400 pl-3 py-1 text-xs text-success-600" data-testid="mesh-runtime-message">
+        <div class="border-l-2 border-success-400 pl-3 py-1 text-xs text-success-600/95" data-testid="mesh-runtime-message">
           {runtimeMessage}
         </div>
       {/if}
@@ -250,18 +252,21 @@
         {#snippet children(agentWarnings)}
           {#if mode === 'runtime'}
             {#if showAddAgentForm}
-              <section class="pt-2 border-t {keyline} space-y-3" data-testid="mesh-add-agent-form">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.06em] {textMuted}">Add Agent</p>
+              <section class="pt-4 border-t {t.keyline} space-y-3" data-testid="mesh-add-agent-form">
+                <div class="flex items-center gap-2">
+                  <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
+                  <p class="text-[11px] uppercase {t.textMuted}">Add Agent</p>
+                </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <input
-                    class="rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                    class="{formFieldBase} {fieldTone}"
                     placeholder="Agent name"
                     bind:value={addAgentName}
                     data-testid="mesh-add-agent-name-input"
                   />
                   <select
-                    class="rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                    class="{formFieldBase} {fieldTone} {selectScheme}"
                     value={addAgentTool}
                     onchange={(event) => updateAddAgentTool(event.currentTarget.value)}
                     data-testid="mesh-add-agent-tool-select"
@@ -271,7 +276,7 @@
                     <option value="gemini">Gemini</option>
                   </select>
                   <select
-                    class="rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                    class="{formFieldBase} {fieldTone} {selectScheme}"
                     bind:value={addAgentModel}
                     data-testid="mesh-add-agent-model-select"
                   >
@@ -280,7 +285,7 @@
                     {/each}
                   </select>
                   <select
-                    class="rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                    class="{formFieldBase} {fieldTone} {selectScheme}"
                     bind:value={addAgentProjectId}
                     data-testid="mesh-add-agent-project-select"
                   >
@@ -292,7 +297,7 @@
                 </div>
 
                 <input
-                  class="w-full rounded-md border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 {inputBg}"
+                  class="{formFieldBase} {fieldTone}"
                   placeholder="Description (optional)"
                   bind:value={addAgentDescription}
                   data-testid="mesh-add-agent-description-input"
@@ -304,7 +309,7 @@
 
                 <div class="flex justify-end gap-2">
                   <button
-                    class="rounded-md border px-3 py-1.5 text-xs {subtleButton}"
+                    class="rounded-md px-2 py-1 text-[11px] transition-colors {neutralGhost}"
                     onclick={() => {
                       showAddAgentForm = false
                       addAgentError = ''
@@ -315,7 +320,7 @@
                     Cancel
                   </button>
                   <button
-                    class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    class={primaryCta}
                     onclick={submitAddAgent}
                     disabled={!canSubmitAddAgent}
                     data-testid="mesh-add-agent-submit"
@@ -327,14 +332,14 @@
             {/if}
 
             {#if addAgentProgress}
-              <section class="pt-2 border-t {keyline} space-y-1.5" data-testid="mesh-add-agent-progress">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.06em] {textMuted}">
-                  Add Agent Progress: {addAgentProgress.status}
+              <section class="pt-2 border-t {t.keyline} space-y-1.5" data-testid="mesh-add-agent-progress">
+                <p class="text-[11px] uppercase {t.textMuted}">
+                  Adding agent... {addAgentProgress.status}
                 </p>
                 {#if addAgentProgress.report?.steps?.length}
                   <ul class="space-y-1">
                     {#each addAgentProgress.report.steps as progress}
-                      <li class="text-xs {textMuted}" data-testid={`mesh-add-agent-step-${progress.step}`}>
+                      <li class="text-xs {t.textMuted}" data-testid={`mesh-add-agent-step-${progress.step}`}>
                         {progress.step}: {progress.status}
                       </li>
                     {/each}

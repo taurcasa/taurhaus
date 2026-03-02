@@ -113,11 +113,7 @@ fn find_codex_session_for_project(project_path: &str, sessions_dir: &Path) -> Op
             .into_iter()
             .flatten()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "jsonl")
-            })
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
             .collect();
 
         // Sort by mtime descending
@@ -383,10 +379,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let plan1 = make_update_plan_line(&[("Old task", "open")]);
-        let plan2 = make_update_plan_line(&[
-            ("Old task", "completed"),
-            ("New task", "in-progress"),
-        ]);
+        let plan2 =
+            make_update_plan_line(&[("Old task", "completed"), ("New task", "in-progress")]);
 
         let path = write_codex_session(
             tmp.path(),
@@ -448,8 +442,12 @@ mod tests {
             ("Completed task", "completed"),
         ]);
 
-        let path =
-            write_codex_session(tmp.path(), "session.jsonl", "/home/user/project", &[&plan_line]);
+        let path = write_codex_session(
+            tmp.path(),
+            "session.jsonl",
+            "/home/user/project",
+            &[&plan_line],
+        );
 
         let tasks = parse_update_plan(&path).unwrap();
         assert_eq!(tasks[0].status, TaskStatus::Completed); // done
@@ -478,8 +476,7 @@ mod tests {
             &[&plan_line],
         );
 
-        let tasks =
-            get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
+        let tasks = get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Offline task");
     }
@@ -503,8 +500,7 @@ mod tests {
             &[&plan_line],
         );
 
-        let tasks =
-            get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
+        let tasks = get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
         assert!(tasks.is_empty());
     }
 

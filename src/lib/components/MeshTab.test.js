@@ -109,7 +109,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: architecture-final')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
     expect(screen.getByTestId('mesh-runtime-placeholder')).toBeInTheDocument()
   })
@@ -131,7 +131,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: architecture-final')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
     await view.rerender({
@@ -160,7 +160,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: architecture-final')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
@@ -199,7 +199,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: architecture-final')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
@@ -225,7 +225,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('Team: architecture-final')
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
