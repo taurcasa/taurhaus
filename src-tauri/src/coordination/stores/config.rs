@@ -14,6 +14,10 @@ use crate::session_scanner::cli_tool::CliTool;
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
 
+fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+}
+
 /// Team configuration document persisted at `teams/<team>/config.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamConfig {
@@ -155,11 +159,24 @@ impl TeamConfigStore {
                 ))
             })?;
 
-        if let Err(err) = fs::write(&tmp_path, payload) {
+        if let Err(err) = fs::write(&tmp_path, &payload) {
             return Err(CoordinationError::Io(err));
         }
 
         if let Err(err) = fs::rename(&tmp_path, &target_path) {
+            if is_windows_unsupported_rename_error(&err) {
+                tracing::warn!(
+                    team_name = team_name,
+                    target = %target_path.display(),
+                    "atomic rename is unsupported for this Windows path; falling back to direct write"
+                );
+                if let Err(write_err) = fs::write(&target_path, &payload) {
+                    let _ = fs::remove_file(&tmp_path);
+                    return Err(CoordinationError::Io(write_err));
+                }
+                let _ = fs::remove_file(&tmp_path);
+                return Ok(());
+            }
             // Best-effort cleanup for failed atomic swap.
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
@@ -484,6 +501,21 @@ mod tests {
                 cli_tool: CliTool::Claude,
             }],
         }
+    }
+
+    #[test]
+    fn unsupported_rename_error_detection_is_platform_aware() {
+        let err = std::io::Error::from_raw_os_error(1);
+        assert_eq!(
+            is_windows_unsupported_rename_error(&err),
+            cfg!(target_os = "windows")
+        );
+    }
+
+    #[test]
+    fn non_unsupported_rename_error_is_rejected() {
+        let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(!is_windows_unsupported_rename_error(&err));
     }
 
     #[test]

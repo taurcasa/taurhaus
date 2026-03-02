@@ -9,6 +9,10 @@ use crate::coordination::errors::CoordinationError;
 
 const LOCK_FILENAME: &str = ".lock";
 
+fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
+    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+}
+
 /// Acquire an exclusive advisory lock on a team directory.
 ///
 /// The lock is held for the lifetime of the returned `File`.
@@ -19,7 +23,17 @@ pub fn acquire_team_lock(teams_dir: &Path, team_name: &str) -> Result<File, Coor
 
     let lock_path = team_dir.join(LOCK_FILENAME);
     let file = File::create(&lock_path).map_err(CoordinationError::Io)?;
-    file.lock_exclusive().map_err(CoordinationError::Io)?;
+    match file.lock_exclusive() {
+        Ok(()) => {}
+        Err(err) if is_windows_unsupported_lock_error(&err) => {
+            tracing::warn!(
+                team_name = team_name,
+                lock_path = %lock_path.display(),
+                "advisory file locks are unsupported for this Windows path; continuing without lock"
+            );
+        }
+        Err(err) => return Err(CoordinationError::Io(err)),
+    }
     Ok(file)
 }
 
@@ -31,6 +45,21 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn unsupported_lock_error_detection_is_platform_aware() {
+        let err = std::io::Error::from_raw_os_error(1);
+        assert_eq!(
+            is_windows_unsupported_lock_error(&err),
+            cfg!(target_os = "windows")
+        );
+    }
+
+    #[test]
+    fn non_unsupported_lock_error_is_rejected() {
+        let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(!is_windows_unsupported_lock_error(&err));
+    }
 
     #[test]
     fn lock_is_exclusive() {
