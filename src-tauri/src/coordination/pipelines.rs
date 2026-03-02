@@ -499,8 +499,6 @@ impl CoordinationOrchestrator {
                 &request.team_name,
                 "--name",
                 &agent.name,
-                "--cwd",
-                &agent.project_id,
             ])?;
         }
         Ok(())
@@ -635,8 +633,6 @@ impl CoordinationOrchestrator {
             &request.team_name,
             "--name",
             &request.agent.name,
-            "--cwd",
-            &request.agent.project_id,
         ])?;
         runtime_state.mesh_joined = true;
         Ok(())
