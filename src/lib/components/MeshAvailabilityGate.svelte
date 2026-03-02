@@ -28,7 +28,7 @@
         {
           name: 'codex-check',
           cliTool: 'codex',
-          model: 'gpt-5.3',
+          model: 'gpt-5.3-codex',
           projectId,
           description: null,
         },

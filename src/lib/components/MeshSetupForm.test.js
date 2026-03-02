@@ -252,7 +252,7 @@ describe('MeshSetupForm', () => {
         {
           name: 'taurhaus-dev',
           cliTool: 'codex',
-          model: 'gpt-5.3',
+          model: 'gpt-5.3-codex',
           projectId: '/projects/taurhaus',
           description: null,
         },
@@ -296,7 +296,7 @@ describe('MeshSetupForm', () => {
           expect.objectContaining({
             name: 'frontend-dev',
             cliTool: 'codex',
-            model: 'gpt-5.3',
+            model: 'gpt-5.3-codex',
             projectId: 'proj-web',
           }),
         ],

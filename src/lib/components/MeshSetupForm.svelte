@@ -20,7 +20,7 @@
 
   const modelOptionsByTool = {
     claude: ['opus', 'sonnet', 'haiku'],
-    codex: ['gpt-5.3', 'gpt-5-mini'],
+    codex: ['gpt-5.3-codex', 'gpt-5-mini'],
     gemini: ['gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 
