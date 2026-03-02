@@ -14,6 +14,7 @@ import {
   MOCK_SEARCH_RESULTS, MOCK_RELATIONSHIPS, MOCK_SETTINGS,
   MOCK_CLAUDE_SESSIONS,
 } from './mockData.js'
+import { listen } from '@tauri-apps/api/event'
 
 /** Check whether we're running inside a Tauri webview. */
 export function isTauri() {
@@ -478,7 +479,12 @@ export function coordinationCreateTeam(teamName) {
 
 /** Disband a coordination team. */
 export function coordinationDisbandTeam(teamName) {
-  return invokeOrMock('coordination_disband_team', { teamName }, () => undefined)
+  return invokeOrMock('coordination_disband_team', { teamName }, () => ({
+    teamName,
+    disbanded: true,
+    alreadyDisbanded: false,
+    message: 'team disbanded',
+  }))
 }
 
 /** Add a member to an existing coordination team. */
@@ -502,6 +508,109 @@ export function coordinationGetTeamStatus(teamName) {
     teamName,
     members: [],
   }))
+}
+
+/** Initialize a team with lead/agent setup configuration. */
+export function coordinationInitializeTeam(request) {
+  return invokeOrMock('coordination_initialize_team', { request }, () => ({
+    teamName: request?.teamName ?? '',
+    succeededSteps: [
+      'validate_configuration',
+      'create_team',
+      'create_panes',
+      'launch_sessions',
+      'join_mesh',
+      'start_daemons',
+      'send_onboarding',
+    ],
+    failedStep: null,
+    retryable: false,
+    message: 'team initialized',
+    steps: [
+      { step: 'validate_configuration', status: 'succeeded', message: 'request validated' },
+      { step: 'create_team', status: 'succeeded', message: 'team created' },
+      { step: 'send_onboarding', status: 'succeeded', message: 'onboarding messages sent' },
+    ],
+  }))
+}
+
+/** Hot-add one agent to an existing team. */
+export function coordinationAddAgent(request) {
+  return invokeOrMock('coordination_add_agent', { request }, () => ({
+    teamName: request?.teamName ?? '',
+    memberName: request?.agent?.name ?? '',
+    succeededSteps: ['validate', 'create_pane', 'launch_session', 'join_mesh', 'start_daemon', 'send_onboarding', 'update_roster'],
+    failedStep: null,
+    retryable: false,
+    message: 'agent added',
+    steps: [
+      { step: 'validate', status: 'succeeded', message: 'request validated' },
+      { step: 'update_roster', status: 'succeeded', message: 'team roster updated' },
+    ],
+  }))
+}
+
+/** Re-send onboarding guidance to an existing team member. */
+export function coordinationReonboard(teamName, memberName) {
+  return invokeOrMock(
+    'coordination_reonboard',
+    { request: { teamName, memberName } },
+    () => ({ delivered: true, method: 'tmux_injection' })
+  )
+}
+
+/** Return mesh/tmux feature availability for UI gating. */
+export function coordinationGetFeatureAvailability() {
+  return invokeOrMock('coordination_get_feature_availability', undefined, () => ({
+    canInitialize: true,
+    meshAvailable: true,
+    tmuxAvailable: true,
+    blockingErrors: [],
+  }))
+}
+
+/** Run preflight checks before team initialization. */
+export function coordinationPreflightCheck(request) {
+  return invokeOrMock('coordination_preflight_check', { request }, () => ({
+    canInitialize: true,
+    blockingErrors: [],
+    agentWarnings: [],
+  }))
+}
+
+/** Get live roster/runtime status for a running team. */
+export function coordinationGetLiveTeamStatus(teamName) {
+  return invokeOrMock('coordination_get_live_team_status', { teamName }, () => ({
+    teamName,
+    leadName: 'team-lead',
+    members: [
+      {
+        name: 'team-lead',
+        role: 'lead',
+        cliTool: 'claude',
+        model: 'opus',
+        projectId: 'proj-core',
+        description: 'Own orchestration',
+        sessionStatus: 'active',
+        paneId: '%1',
+      },
+      {
+        name: 'frontend-dev',
+        role: 'member',
+        cliTool: 'codex',
+        model: 'gpt-5.3',
+        projectId: 'proj-web',
+        description: 'UI implementation',
+        sessionStatus: 'idle',
+        paneId: '%2',
+      },
+    ],
+  }))
+}
+
+/** Subscribe to orchestrator step progress events from the backend. */
+export function onCoordinationStepProgress(callback) {
+  return listen('coordination-step-progress', callback)
 }
 
 export function getDaemonStatus() {

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::{HealthState, Member};
+use crate::session_scanner::cli_tool::CliTool;
 
 /// Launch-time policy controls for a member session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,6 +125,138 @@ pub struct TeardownResult {
     pub success: bool,
 }
 
+/// Team-lead startup mode for initialization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeadMode {
+    AttachExisting,
+    LaunchNew,
+}
+
+/// Agent role in a live team roster.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRole {
+    Lead,
+    Member,
+}
+
+/// Runtime session status shown in the live team roster.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionStatus {
+    Starting,
+    Active,
+    Idle,
+    Offline,
+}
+
+/// Operation kind used by streamed step-progress events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    InitializeTeam,
+    AddAgent,
+    ReOnboard,
+}
+
+/// Status for a single step in a long-running operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepStatus {
+    Pending,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+/// Progress metadata for one operation step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepProgress {
+    pub step: String,
+    pub status: StepStatus,
+    pub message: Option<String>,
+}
+
+/// Shared agent definition for initialize/hot-add requests.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentDefinition {
+    pub name: String,
+    pub cli_tool: CliTool,
+    pub model: String,
+    pub project_id: String,
+    pub description: Option<String>,
+}
+
+/// Domain contract for full team initialization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InitializeTeam {
+    pub team_name: String,
+    pub team_description: Option<String>,
+    pub lead_mode: LeadMode,
+    pub lead: AgentDefinition,
+    pub agents: Vec<AgentDefinition>,
+}
+
+/// Domain contract for adding a member to a running team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AddAgent {
+    pub team_name: String,
+    pub agent: AgentDefinition,
+}
+
+/// Shared report fields for initialize/hot-add flows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InitializeResult {
+    pub team_name: String,
+    pub succeeded_steps: Vec<String>,
+    pub failed_step: Option<String>,
+    pub retryable: bool,
+    pub message: String,
+    pub steps: Vec<StepProgress>,
+}
+
+/// Result contract for adding one agent to a running team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AddAgentResult {
+    pub team_name: String,
+    pub member_name: String,
+    pub succeeded_steps: Vec<String>,
+    pub failed_step: Option<String>,
+    pub retryable: bool,
+    pub message: String,
+    pub steps: Vec<StepProgress>,
+}
+
+/// Live roster row rendered by the frontend mesh view.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveAgent {
+    pub name: String,
+    pub role: AgentRole,
+    pub cli_tool: CliTool,
+    pub model: String,
+    pub project_id: String,
+    pub description: Option<String>,
+    pub session_status: SessionStatus,
+    pub pane_id: Option<String>,
+}
+
+/// Live team payload returned to frontend for runtime view.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveTeamStatus {
+    pub team_name: String,
+    pub lead_name: String,
+    pub members: Vec<LiveAgent>,
+}
+
+/// Streamed progress event payload emitted during long operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepProgressEvent {
+    pub team_name: String,
+    pub operation: OperationKind,
+    pub progress: StepProgress,
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -165,5 +298,151 @@ mod tests {
         let decoded: DeliveryRequest =
             serde_json::from_value(encoded).expect("request should deserialize");
         assert_eq!(decoded, req);
+    }
+
+    #[test]
+    fn initialize_contract_round_trip() {
+        let req = InitializeTeam {
+            team_name: "architecture-final".to_string(),
+            team_description: Some("Cross-project team".to_string()),
+            lead_mode: LeadMode::AttachExisting,
+            lead: AgentDefinition {
+                name: "team-lead".to_string(),
+                cli_tool: CliTool::Claude,
+                model: "opus".to_string(),
+                project_id: "proj-core".to_string(),
+                description: Some("Lead".to_string()),
+            },
+            agents: vec![AgentDefinition {
+                name: "frontend-dev".to_string(),
+                cli_tool: CliTool::Codex,
+                model: "gpt-5.3".to_string(),
+                project_id: "proj-web".to_string(),
+                description: None,
+            }],
+        };
+
+        let json = serde_json::to_string(&req).expect("serialize initialize contract");
+        let decoded: InitializeTeam =
+            serde_json::from_str(&json).expect("deserialize initialize contract");
+        assert_eq!(decoded, req);
+    }
+
+    #[test]
+    fn add_agent_request_round_trip() {
+        let req = AddAgent {
+            team_name: "architecture-final".to_string(),
+            agent: AgentDefinition {
+                name: "backend-dev".to_string(),
+                cli_tool: CliTool::Codex,
+                model: "gpt-5.3".to_string(),
+                project_id: "proj-api".to_string(),
+                description: Some("Own API work".to_string()),
+            },
+        };
+
+        let json = serde_json::to_string(&req).expect("serialize add-agent request");
+        let decoded: AddAgent = serde_json::from_str(&json).expect("deserialize add-agent request");
+        assert_eq!(decoded, req);
+    }
+
+    #[test]
+    fn initialize_and_add_agent_reports_round_trip() {
+        let init_report = InitializeResult {
+            team_name: "architecture-final".to_string(),
+            succeeded_steps: vec![
+                "validate_configuration".to_string(),
+                "create_team".to_string(),
+            ],
+            failed_step: Some("launch_sessions".to_string()),
+            retryable: true,
+            message: "one launch failed".to_string(),
+            steps: vec![
+                StepProgress {
+                    step: "create_team".to_string(),
+                    status: StepStatus::Succeeded,
+                    message: None,
+                },
+                StepProgress {
+                    step: "launch_sessions".to_string(),
+                    status: StepStatus::Failed,
+                    message: Some("codex missing".to_string()),
+                },
+            ],
+        };
+        let init_json = serde_json::to_string(&init_report).expect("serialize init report");
+        let init_decoded: InitializeResult =
+            serde_json::from_str(&init_json).expect("deserialize init report");
+        assert_eq!(init_decoded, init_report);
+
+        let add_report = AddAgentResult {
+            team_name: "architecture-final".to_string(),
+            member_name: "backend-dev".to_string(),
+            succeeded_steps: vec![
+                "create_pane".to_string(),
+                "launch_session".to_string(),
+                "join_mesh".to_string(),
+            ],
+            failed_step: None,
+            retryable: false,
+            message: "added".to_string(),
+            steps: vec![StepProgress {
+                step: "join_mesh".to_string(),
+                status: StepStatus::Succeeded,
+                message: Some("ok".to_string()),
+            }],
+        };
+        let add_json = serde_json::to_string(&add_report).expect("serialize add report");
+        let add_decoded: AddAgentResult =
+            serde_json::from_str(&add_json).expect("deserialize add report");
+        assert_eq!(add_decoded, add_report);
+    }
+
+    #[test]
+    fn live_team_status_and_progress_event_round_trip() {
+        let status = LiveTeamStatus {
+            team_name: "architecture-final".to_string(),
+            lead_name: "team-lead".to_string(),
+            members: vec![
+                LiveAgent {
+                    name: "team-lead".to_string(),
+                    role: AgentRole::Lead,
+                    cli_tool: CliTool::Claude,
+                    model: "opus".to_string(),
+                    project_id: "proj-core".to_string(),
+                    description: Some("Lead".to_string()),
+                    session_status: SessionStatus::Active,
+                    pane_id: Some("%1".to_string()),
+                },
+                LiveAgent {
+                    name: "frontend-dev".to_string(),
+                    role: AgentRole::Member,
+                    cli_tool: CliTool::Codex,
+                    model: "gpt-5.3".to_string(),
+                    project_id: "proj-web".to_string(),
+                    description: None,
+                    session_status: SessionStatus::Idle,
+                    pane_id: Some("%2".to_string()),
+                },
+            ],
+        };
+        let status_json = serde_json::to_string(&status).expect("serialize live team");
+        let status_decoded: LiveTeamStatus =
+            serde_json::from_str(&status_json).expect("deserialize live team");
+        assert_eq!(status_decoded, status);
+
+        let event = StepProgressEvent {
+            team_name: "architecture-final".to_string(),
+            operation: OperationKind::AddAgent,
+            progress: StepProgress {
+                step: "send_onboarding".to_string(),
+                status: StepStatus::Running,
+                message: Some("sending".to_string()),
+            },
+        };
+        let event_json = serde_json::to_string(&event).expect("serialize event");
+        let event_decoded: StepProgressEvent =
+            serde_json::from_str(&event_json).expect("deserialize event");
+        assert_eq!(event_decoded, event);
     }
 }

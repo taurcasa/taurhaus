@@ -50,7 +50,10 @@ mod tests {
         });
 
         let result = handle.join().expect("thread should not panic");
-        assert!(result.is_err(), "second exclusive lock should fail with try_lock");
+        assert!(
+            result.is_err(),
+            "second exclusive lock should fail with try_lock"
+        );
     }
 
     #[test]
@@ -64,8 +67,8 @@ mod tests {
                 acquire_team_lock(&teams_dir, team_name).expect("first lock should succeed");
         }
         // Lock dropped, second acquisition should succeed.
-        let _lock =
-            acquire_team_lock(&teams_dir, team_name).expect("second lock should succeed after drop");
+        let _lock = acquire_team_lock(&teams_dir, team_name)
+            .expect("second lock should succeed after drop");
     }
 
     #[test]

@@ -220,6 +220,9 @@ pub fn run() {
                 wsl_distro: wsl_distro.clone(),
             });
 
+            #[cfg(feature = "mesh-bridged-backend")]
+            app.manage(coordination::state::CoordinationState::for_app_startup());
+
             // Background bootstrap: daemon spawn, tmux, protocol check, file watchers.
             // Runs AFTER setup returns so the webview + splash screen render immediately.
             {
@@ -516,6 +519,18 @@ pub fn run() {
             commands::coordination::coordination_list_teams,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_team_status,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_initialize_team,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_add_agent,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_reonboard,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_get_live_team_status,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_preflight_check,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_get_feature_availability,
         ])
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");

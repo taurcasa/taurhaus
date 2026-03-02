@@ -343,10 +343,16 @@ mod tests {
         record.last_seen_at = Some(ts("2026-03-01T21:06:30Z"));
 
         let cutoff = ts("2026-03-01T21:06:00Z");
-        assert!(!is_stale(&record, cutoff), "fresh heartbeat should keep record");
+        assert!(
+            !is_stale(&record, cutoff),
+            "fresh heartbeat should keep record"
+        );
 
         let cutoff_late = ts("2026-03-01T21:08:00Z");
-        assert!(is_stale(&record, cutoff_late), "record should become stale after cutoff");
+        assert!(
+            is_stale(&record, cutoff_late),
+            "record should become stale after cutoff"
+        );
     }
 
     #[test]
@@ -368,10 +374,8 @@ mod tests {
             ..sample_record("fresh-agent")
         };
 
-        MemberRuntimeStore::save(teams_dir, team_name, "stale-agent", &stale)
-            .expect("save stale");
-        MemberRuntimeStore::save(teams_dir, team_name, "fresh-agent", &fresh)
-            .expect("save fresh");
+        MemberRuntimeStore::save(teams_dir, team_name, "stale-agent", &stale).expect("save stale");
+        MemberRuntimeStore::save(teams_dir, team_name, "fresh-agent", &fresh).expect("save fresh");
 
         let removed = MemberRuntimeStore::cleanup_stale(
             teams_dir,
@@ -477,8 +481,13 @@ mod tests {
         let team_name = "architecture-final";
         let member_name = "codex-reviewer";
 
-        MemberRuntimeStore::save(teams_dir, team_name, member_name, &sample_record(member_name))
-            .expect("save");
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("save");
         MemberRuntimeStore::delete(teams_dir, team_name, member_name).expect("first delete");
         MemberRuntimeStore::delete(teams_dir, team_name, member_name)
             .expect("second delete should not error");
@@ -614,8 +623,8 @@ mod tests {
     #[test]
     fn load_missing_runtime_returns_not_found() {
         let tmp = TempDir::new().expect("tempdir");
-        let err =
-            MemberRuntimeStore::load(tmp.path(), "architecture-final", "ghost").expect_err("missing runtime");
+        let err = MemberRuntimeStore::load(tmp.path(), "architecture-final", "ghost")
+            .expect_err("missing runtime");
         match err {
             CoordinationError::NotFound(message) => assert!(message.contains("ghost")),
             other => panic!("expected not found, got {other:?}"),

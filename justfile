@@ -60,9 +60,10 @@ test-e2e:
 test-e2e-full:
     npx wdio run e2e/wdio.conf.js
 
-# Run a single E2E spec file (requires prior `just build-e2e`)
+# Run a single E2E spec file.
+# Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
 test-e2e-spec SPEC:
-    E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+    npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
 # Reset database (delete SQLite file)
 db-reset:
@@ -117,9 +118,11 @@ install-daemon:
     cd src-tauri && cargo build --release --bin "$DAEMON_BIN"
     cd ..
 
-    # Install
+    # Install (atomic swap avoids "Text file busy" when replacing a running binary)
     mkdir -p "$INSTALL_DIR"
-    cp "src-tauri/target/release/$DAEMON_BIN" "$INSTALL_DIR/"
+    TMP_BIN="$INSTALL_DIR/.${DAEMON_BIN}.new"
+    install -m 755 "src-tauri/target/release/$DAEMON_BIN" "$TMP_BIN"
+    mv -f "$TMP_BIN" "$INSTALL_DIR/$DAEMON_BIN"
     echo "✓ Installed $DAEMON_BIN to $INSTALL_DIR/"
 
     # Restart if it was running before

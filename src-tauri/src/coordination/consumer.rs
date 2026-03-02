@@ -8,10 +8,20 @@ use crate::coordination::events::CoordinationEvent;
 /// Action produced by the consumer for the orchestrator to execute.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConsumerAction {
-    RefreshTeamConfig { team_name: String },
-    RefreshMemberRuntime { team_name: String, member_name: String },
-    DeliverInboxMessage { team_name: String, member_name: String },
-    RefreshTaskState { team_name: String },
+    RefreshTeamConfig {
+        team_name: String,
+    },
+    RefreshMemberRuntime {
+        team_name: String,
+        member_name: String,
+    },
+    DeliverInboxMessage {
+        team_name: String,
+        member_name: String,
+    },
+    RefreshTaskState {
+        team_name: String,
+    },
 }
 
 /// Maps CoordinationEvents from a channel into ConsumerActions.
@@ -23,7 +33,10 @@ pub struct EventConsumer {
 
 impl EventConsumer {
     pub fn new(receiver: mpsc::Receiver<CoordinationEvent>, teams_dir: PathBuf) -> Self {
-        Self { receiver, teams_dir }
+        Self {
+            receiver,
+            teams_dir,
+        }
     }
 
     pub fn teams_dir(&self) -> &PathBuf {

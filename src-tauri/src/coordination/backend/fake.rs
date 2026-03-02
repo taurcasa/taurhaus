@@ -149,9 +149,7 @@ mod tests {
 
     use super::*;
     use crate::coordination::domain::{Member, MemberRole};
-    use crate::coordination::requests::{
-        LaunchPermissions, OperatorNoticeDelivery, TeardownMode,
-    };
+    use crate::coordination::requests::{LaunchPermissions, OperatorNoticeDelivery, TeardownMode};
     use crate::session_scanner::cli_tool::CliTool;
 
     fn sample_member(name: &str) -> Member {

@@ -4,10 +4,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(),
+}))
 
 describe('ipc module', () => {
   let ipc
   let tauriCore
+  let tauriEvent
 
   beforeEach(async () => {
     vi.resetModules()
@@ -15,6 +19,7 @@ describe('ipc module', () => {
     delete window.__TAURI_INTERNALS__
     // Re-import after reset so each test gets fresh state
     tauriCore = await import('@tauri-apps/api/core')
+    tauriEvent = await import('@tauri-apps/api/event')
     ipc = await import('./ipc.js')
   })
 
@@ -817,6 +822,136 @@ describe('ipc module', () => {
       expect(tauriCore.invoke).toHaveBeenCalledWith('install_daemon')
       expect(result).toContain('0.3.2')
       delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Coordination IPC wrappers (frontend-only task surface)
+  // -----------------------------------------------------------------------
+
+  describe('coordination wrappers', () => {
+    it('coordinationInitializeTeam calls invoke with request in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const request = { teamName: 'arch', lead: { name: 'team-lead' }, agents: [] }
+      const report = { teamName: 'arch', succeededSteps: [], failedStep: null, retryable: false, message: 'ok', steps: [] }
+      tauriCore.invoke.mockResolvedValue(report)
+
+      const result = await ipc.coordinationInitializeTeam(request)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_initialize_team', { request })
+      expect(result).toEqual(report)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationInitializeTeam returns deterministic mock shape', async () => {
+      const result = await ipc.coordinationInitializeTeam({
+        teamName: 'arch',
+        lead: { name: 'team-lead' },
+        agents: [],
+      })
+      expect(result.teamName).toBe('arch')
+      expect(Array.isArray(result.succeededSteps)).toBe(true)
+      expect(Array.isArray(result.steps)).toBe(true)
+      expect(result).toHaveProperty('retryable')
+    })
+
+    it('coordinationAddAgent calls invoke with request and returns mock report shape', async () => {
+      const request = { teamName: 'arch', agent: { name: 'bob' } }
+      const mockModeResult = await ipc.coordinationAddAgent(request)
+      expect(mockModeResult.teamName).toBe('arch')
+      expect(mockModeResult.memberName).toBe('bob')
+      expect(Array.isArray(mockModeResult.succeededSteps)).toBe(true)
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+      await ipc.coordinationAddAgent(request)
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_add_agent', { request })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationReonboard calls invoke with named args and returns delivery mock', async () => {
+      const mockModeResult = await ipc.coordinationReonboard('arch', 'bob')
+      expect(mockModeResult).toEqual({ delivered: true, method: 'tmux_injection' })
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ delivered: true, method: 'tmux_injection' })
+      await ipc.coordinationReonboard('arch', 'bob')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_reonboard', {
+        request: { teamName: 'arch', memberName: 'bob' },
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationGetFeatureAvailability calls invoke and returns deterministic mock shape', async () => {
+      const mockModeResult = await ipc.coordinationGetFeatureAvailability()
+      expect(mockModeResult).toEqual({
+        canInitialize: true,
+        meshAvailable: true,
+        tmuxAvailable: true,
+        blockingErrors: [],
+      })
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        canInitialize: false,
+        meshAvailable: false,
+        tmuxAvailable: true,
+        blockingErrors: ['Mesh CLI not found'],
+      })
+      await ipc.coordinationGetFeatureAvailability()
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_feature_availability')
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationPreflightCheck calls invoke and returns deterministic mock shape', async () => {
+      const request = { teamName: 'arch', lead: { name: 'lead' }, agents: [] }
+      const mockModeResult = await ipc.coordinationPreflightCheck(request)
+      expect(mockModeResult).toEqual({
+        canInitialize: true,
+        blockingErrors: [],
+        agentWarnings: [],
+      })
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ canInitialize: false, blockingErrors: ['x'], agentWarnings: [] })
+      await ipc.coordinationPreflightCheck(request)
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_preflight_check', { request })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationGetLiveTeamStatus calls invoke and returns realistic mock shape', async () => {
+      const mockModeResult = await ipc.coordinationGetLiveTeamStatus('arch')
+      expect(mockModeResult.teamName).toBe('arch')
+      expect(mockModeResult).toHaveProperty('leadName')
+      expect(Array.isArray(mockModeResult.members)).toBe(true)
+      expect(mockModeResult.members[0]).toHaveProperty('sessionStatus')
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ teamName: 'arch', leadName: 'lead', members: [] })
+      await ipc.coordinationGetLiveTeamStatus('arch')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_live_team_status', { teamName: 'arch' })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationDisbandTeam returns structured mock response', async () => {
+      const result = await ipc.coordinationDisbandTeam('arch')
+      expect(result).toEqual({
+        teamName: 'arch',
+        disbanded: true,
+        alreadyDisbanded: false,
+        message: 'team disbanded',
+      })
+    })
+
+    it('onCoordinationStepProgress listens to coordination-step-progress', async () => {
+      const callback = vi.fn()
+      const unlisten = vi.fn()
+      tauriEvent.listen.mockResolvedValue(unlisten)
+
+      const returned = await ipc.onCoordinationStepProgress(callback)
+
+      expect(tauriEvent.listen).toHaveBeenCalledWith('coordination-step-progress', callback)
+      expect(returned).toBe(unlisten)
     })
   })
 })

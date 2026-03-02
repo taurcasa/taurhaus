@@ -9,6 +9,38 @@ use crate::coordination::requests::{
 pub struct DeliveryRenderer;
 
 impl DeliveryRenderer {
+    /// Render a deterministic onboarding template for non-Claude agents.
+    pub fn render_onboarding(team_name: &str, member_name: &str, lead_name: &str) -> String {
+        format!(
+            concat!(
+                "[taurhaus] onboarding\n",
+                "Identity:\n",
+                "You are \"{member_name}\" on team \"{team_name}\". Your team lead is \"{lead_name}\".\n",
+                "\n",
+                "Read loop:\n",
+                "mesh read --unread --mark-read --team {team_name} --name {member_name}\n",
+                "\n",
+                "Reply:\n",
+                "mesh send {{recipient}} \"{{msg}}\" --team {team_name} --name {member_name} --summary \"brief\"\n",
+                "\n",
+                "Tasks:\n",
+                "mesh task list/get/update --team {team_name} --name {member_name}\n",
+                "mesh task list --team {team_name} --name {member_name}\n",
+                "mesh task get <id> --team {team_name} --name {member_name}\n",
+                "mesh task update <id> --status completed --team {team_name} --name {member_name}\n",
+                "\n",
+                "Work contract:\n",
+                "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+                "\n",
+                "Escalation:\n",
+                "If blocked, send blocker details to {lead_name} immediately. Do not stall silently."
+            ),
+            team_name = team_name,
+            member_name = member_name,
+            lead_name = lead_name
+        )
+    }
+
     /// Render an OperatorNotice into a tmux-injectable string.
     pub fn render_operator_notice(payload: &OperatorNoticeDelivery) -> String {
         format!(
@@ -123,5 +155,59 @@ mod tests {
             "[taurhaus] operator_notice from team-c: notice"
         );
     }
-}
 
+    #[test]
+    fn render_onboarding_includes_required_commands_with_substitution() {
+        let rendered = DeliveryRenderer::render_onboarding(
+            "architecture-final",
+            "codex-reviewer",
+            "team-lead",
+        );
+
+        assert!(rendered.contains("You are \"codex-reviewer\" on team \"architecture-final\"."));
+        assert!(rendered.contains(
+            "mesh read --unread --mark-read --team architecture-final --name codex-reviewer"
+        ));
+        assert!(rendered.contains(
+            "mesh send {recipient} \"{msg}\" --team architecture-final --name codex-reviewer --summary \"brief\""
+        ));
+        assert!(rendered
+            .contains("mesh task list/get/update --team architecture-final --name codex-reviewer"));
+        assert!(rendered.contains("If blocked, send blocker details to team-lead immediately."));
+    }
+
+    #[test]
+    fn render_onboarding_snapshot_format() {
+        let rendered = DeliveryRenderer::render_onboarding(
+            "architecture-final",
+            "codex-reviewer",
+            "team-lead",
+        );
+
+        let expected = concat!(
+            "[taurhaus] onboarding\n",
+            "Identity:\n",
+            "You are \"codex-reviewer\" on team \"architecture-final\". Your team lead is \"team-lead\".\n",
+            "\n",
+            "Read loop:\n",
+            "mesh read --unread --mark-read --team architecture-final --name codex-reviewer\n",
+            "\n",
+            "Reply:\n",
+            "mesh send {recipient} \"{msg}\" --team architecture-final --name codex-reviewer --summary \"brief\"\n",
+            "\n",
+            "Tasks:\n",
+            "mesh task list/get/update --team architecture-final --name codex-reviewer\n",
+            "mesh task list --team architecture-final --name codex-reviewer\n",
+            "mesh task get <id> --team architecture-final --name codex-reviewer\n",
+            "mesh task update <id> --status completed --team architecture-final --name codex-reviewer\n",
+            "\n",
+            "Work contract:\n",
+            "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+            "\n",
+            "Escalation:\n",
+            "If blocked, send blocker details to team-lead immediately. Do not stall silently."
+        );
+
+        assert_eq!(rendered, expected);
+    }
+}

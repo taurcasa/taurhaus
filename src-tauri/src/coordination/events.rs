@@ -6,10 +6,20 @@ use std::sync::mpsc::{SendError, Sender};
 /// Typed coordination event produced from filesystem changes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoordinationEvent {
-    TeamConfigChanged { team_name: String },
-    MemberRuntimeChanged { team_name: String, member_name: String },
-    InboxMessage { team_name: String, member_name: String },
-    TaskFileChanged { team_name: String },
+    TeamConfigChanged {
+        team_name: String,
+    },
+    MemberRuntimeChanged {
+        team_name: String,
+        member_name: String,
+    },
+    InboxMessage {
+        team_name: String,
+        member_name: String,
+    },
+    TaskFileChanged {
+        team_name: String,
+    },
 }
 
 impl CoordinationEvent {
@@ -103,7 +113,9 @@ impl EventProducer {
 }
 
 fn json_stem(file_name: &str) -> Option<&str> {
-    file_name.strip_suffix(".json").filter(|stem| !stem.is_empty())
+    file_name
+        .strip_suffix(".json")
+        .filter(|stem| !stem.is_empty())
 }
 
 #[cfg(test)]
@@ -114,10 +126,7 @@ mod tests {
 
     fn producer_with_temp_channel() -> (EventProducer, mpsc::Receiver<CoordinationEvent>) {
         let (tx, rx) = mpsc::channel();
-        (
-            EventProducer::new(PathBuf::from("/tmp/teams"), tx),
-            rx,
-        )
+        (EventProducer::new(PathBuf::from("/tmp/teams"), tx), rx)
     }
 
     #[test]

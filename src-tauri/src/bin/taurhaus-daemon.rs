@@ -19,6 +19,24 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
         .init();
 
+    // Prevent auth-token desync:
+    // if another daemon instance already owns the port, don't rotate token.
+    // A failed duplicate start used to overwrite daemon.token before bind,
+    // which broke clients talking to the still-running daemon.
+    let bind_probe = match std::net::TcpListener::bind((args.bind_addr.as_str(), args.port)) {
+        Ok(listener) => listener,
+        Err(e) => {
+            tracing::warn!(
+                port = args.port,
+                bind = %args.bind_addr,
+                error = %e,
+                "Port already in use; refusing to rotate daemon auth token"
+            );
+            std::process::exit(1);
+        }
+    };
+    drop(bind_probe);
+
     // Generate auth token and write to well-known file
     let auth_token = match taurhaus_lib::daemon::auth::token_path() {
         Some(path) => match taurhaus_lib::daemon::auth::generate_and_write_token(&path) {

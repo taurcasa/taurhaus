@@ -11,4 +11,5 @@ pub mod health;
 pub mod orchestrator;
 pub mod reconcile;
 pub mod requests;
+pub mod state;
 pub mod stores;

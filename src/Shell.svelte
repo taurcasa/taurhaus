@@ -5,6 +5,7 @@
   import { anyPathMatches } from './lib/fileChange.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
+  import MeshTab from './lib/components/MeshTab.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
   import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
@@ -657,6 +658,13 @@
           >Tasks</button>
           <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
           <button
+            data-testid="tab-mesh"
+            class="px-3 py-1 text-[13px] transition-colors border-b-2
+              {activeTab === 'mesh' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
+            onclick={() => switchTab('mesh')}
+          >Mesh</button>
+          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
+          <button
             data-testid="tab-git"
             class="px-3 py-1 text-[13px] transition-colors border-b-2
               {activeTab === 'git' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
@@ -826,6 +834,17 @@
         {/if}
       </div>
 
+      <!-- ═══ MESH TAB ═══ -->
+      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'mesh'}>
+        {#if visitedTabs.has('mesh')}
+          <MeshTab
+            {dark}
+            projectPath={selectedProject.path}
+            availableProjects={projects}
+          />
+        {/if}
+      </div>
+
       <!-- ═══ GIT TAB ═══ -->
       <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'git'}>
         {#if visitedTabs.has('git')}
@@ -871,4 +890,3 @@
 
 </div>
 {/if}
-

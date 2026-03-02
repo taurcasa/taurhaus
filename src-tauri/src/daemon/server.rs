@@ -55,9 +55,9 @@ fn epoch_secs() -> u64 {
 
 /// Run the daemon server. Blocks until `shutdown` is set to true or idle timeout elapses.
 pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
-    // Use SO_REUSEADDR so we can rebind immediately after the previous daemon dies.
-    // Without this, TIME_WAIT sockets from the old daemon's TCP connections prevent
-    // binding for up to 30s on macOS, causing startup failures on app restart.
+    // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
+    // daemon dies. Linux does not need this for our listener pattern, and enabling
+    // it there can permit duplicate listeners on the same port.
     let listener = {
         let addr: std::net::SocketAddr =
             format!("{}:{}", config.bind_addr, config.port).parse()
@@ -67,6 +67,7 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
             socket2::Type::STREAM,
             Some(socket2::Protocol::TCP),
         )?;
+        #[cfg(target_os = "macos")]
         socket.set_reuse_address(true)?;
         socket.bind(&addr.into())?;
         socket.listen(128)?;
