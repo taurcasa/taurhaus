@@ -14,12 +14,10 @@ use crate::coordination::audit::{
 use crate::coordination::backend::{BackendKind, CoordinationBackend};
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::pipelines::{
-    is_process_running_by_pid, kill_aitx_pane, terminate_process_by_pid,
-};
 use crate::coordination::requests::{
     DeliveryMethod, DeliveryRequest, DeliveryResult, TeardownMode, TeardownRequest,
 };
+use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
     DiscoveredTeam, MemberRuntimeRecord, MemberRuntimeStore, TeamConfig, TeamConfigStore,
 };
@@ -60,6 +58,7 @@ pub struct CoordinationOrchestrator {
     pub(crate) teams_dir: PathBuf,
     pub(crate) audit_log: Vec<AuditEvent>,
     pub(crate) backend: Arc<dyn CoordinationBackend>,
+    pub(crate) runtime: Arc<dyn CoordinationRuntime>,
 }
 
 impl std::fmt::Debug for CoordinationOrchestrator {
@@ -74,10 +73,19 @@ impl std::fmt::Debug for CoordinationOrchestrator {
 
 impl CoordinationOrchestrator {
     pub fn new(teams_dir: PathBuf, backend: Arc<dyn CoordinationBackend>) -> Self {
+        Self::new_with_runtime(teams_dir, backend, Arc::new(SystemCoordinationRuntime))
+    }
+
+    pub fn new_with_runtime(
+        teams_dir: PathBuf,
+        backend: Arc<dyn CoordinationBackend>,
+        runtime: Arc<dyn CoordinationRuntime>,
+    ) -> Self {
         Self {
             teams_dir,
             audit_log: Vec::new(),
             backend,
+            runtime,
         }
     }
 
@@ -160,7 +168,11 @@ impl CoordinationOrchestrator {
             .iter()
             .filter(|member| member.role != MemberRole::Lead)
         {
-            self.teardown_member_resources_best_effort(name, &member.name, runtime_by_member.get(&member.name));
+            self.teardown_member_resources_best_effort(
+                name,
+                &member.name,
+                runtime_by_member.get(&member.name),
+            );
         }
 
         TeamConfigStore::delete(&self.teams_dir, name)?;
@@ -330,7 +342,8 @@ impl CoordinationOrchestrator {
                     "orphan runtime record found during startup reconciliation"
                 );
                 self.teardown_member_resources_best_effort(team_name, &member_name, Some(&runtime));
-                if let Err(err) = MemberRuntimeStore::delete(&self.teams_dir, team_name, &member_name)
+                if let Err(err) =
+                    MemberRuntimeStore::delete(&self.teams_dir, team_name, &member_name)
                 {
                     tracing::warn!(
                         team = %team_name,
@@ -346,7 +359,7 @@ impl CoordinationOrchestrator {
                 continue;
             };
 
-            match is_process_running_by_pid(pid) {
+            match self.runtime.is_process_running_by_pid(pid) {
                 Ok(true) => {}
                 Ok(false) => {
                     runtime.daemon_pid = None;
@@ -381,7 +394,7 @@ impl CoordinationOrchestrator {
         runtime: Option<&MemberRuntimeRecord>,
     ) {
         if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
-            if let Err(err) = terminate_process_by_pid(pid) {
+            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
                 tracing::warn!(
                     team = %team_name,
                     member = %member_name,
@@ -406,7 +419,7 @@ impl CoordinationOrchestrator {
         }
 
         if let Some(pane_id) = runtime.and_then(|record| record.pane_id.as_deref()) {
-            if let Err(err) = kill_aitx_pane(pane_id) {
+            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
                 tracing::warn!(
                     team = %team_name,
                     member = %member_name,

@@ -441,13 +441,26 @@ impl MeshBridgedBackend {
         &self,
         payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        let mut sender_candidates = vec![self.coordinator_name.as_str()];
-        if self.coordinator_name != FALLBACK_OPERATOR_NAME {
-            sender_candidates.push(FALLBACK_OPERATOR_NAME);
+        fn push_unique_sender(candidates: &mut Vec<String>, sender: &str) {
+            if sender.trim().is_empty() {
+                return;
+            }
+            if candidates.iter().any(|candidate| candidate == sender) {
+                return;
+            }
+            candidates.push(sender.to_string());
         }
 
+        let mut sender_candidates = Vec::new();
+        if let Some(sender_name) = payload.sender_name.as_deref() {
+            push_unique_sender(&mut sender_candidates, sender_name.trim());
+        }
+        push_unique_sender(&mut sender_candidates, self.coordinator_name.as_str());
+        push_unique_sender(&mut sender_candidates, FALLBACK_OPERATOR_NAME);
+        push_unique_sender(&mut sender_candidates, payload.member_name.as_str());
+
         let mut last_stderr = String::new();
-        for sender_name in sender_candidates {
+        for sender_name in &sender_candidates {
             let out = self.run_mesh(&[
                 "send",
                 &payload.member_name,
@@ -455,7 +468,7 @@ impl MeshBridgedBackend {
                 "--team",
                 &payload.team_name,
                 "--name",
-                sender_name,
+                sender_name.as_str(),
                 "--summary",
                 NOTICE_SUMMARY,
             ])?;
@@ -467,17 +480,7 @@ impl MeshBridgedBackend {
             }
 
             let stderr = out.stderr;
-            let missing_sender = stderr.to_ascii_lowercase().contains(&format!(
-                "agent '{}' not found",
-                sender_name.to_ascii_lowercase()
-            ));
             last_stderr = stderr;
-
-            // Retry with a known in-team fallback sender only when the previous sender
-            // specifically failed lookup.
-            if !missing_sender {
-                break;
-            }
         }
 
         Err(CoordinationError::Backend(format!(
@@ -655,7 +658,8 @@ mod tests {
     #[cfg(feature = "mesh-bridged-backend")]
     #[test]
     fn parse_wsl_unix_path_from_stdout_ignores_banner_noise() {
-        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie\n";
+        let stdout =
+            b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie\n";
         assert_eq!(
             parse_wsl_unix_path_from_stdout(stdout),
             Some("/home/mstie".to_string())
@@ -785,6 +789,7 @@ mod tests {
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
+                sender_name: None,
             }))
             .expect("delivery should succeed");
 
@@ -831,8 +836,69 @@ mod tests {
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
+                sender_name: None,
             }))
             .expect("delivery should succeed after fallback retry");
+
+        assert!(result.delivered);
+        assert_eq!(
+            result.method,
+            crate::coordination::requests::DeliveryMethod::TmuxInjection
+        );
+        assert_eq!(
+            runner.calls(),
+            vec![
+                vec![
+                    "send",
+                    "codex-reviewer",
+                    "check in",
+                    "--team",
+                    "architecture-final",
+                    "--name",
+                    COORDINATOR_AGENT_NAME,
+                    "--summary",
+                    NOTICE_SUMMARY
+                ],
+                vec![
+                    "send",
+                    "codex-reviewer",
+                    "check in",
+                    "--team",
+                    "architecture-final",
+                    "--name",
+                    FALLBACK_OPERATOR_NAME,
+                    "--summary",
+                    NOTICE_SUMMARY
+                ]
+            ]
+        );
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn operator_notice_retries_with_fallback_sender_when_team_lookup_fails() {
+        let runner = MockRunner::with_outcomes(vec![
+            MeshCommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "error: team 'architecture-final' not found".to_string(),
+            },
+            MeshCommandOutput {
+                success: true,
+                stdout: "sent".to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let backend = MeshBridgedBackend::with_runner(runner.clone());
+
+        let result = backend
+            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                member_name: "codex-reviewer".to_string(),
+                team_name: "architecture-final".to_string(),
+                message: "check in".to_string(),
+                sender_name: None,
+            }))
+            .expect("delivery should succeed after retry");
 
         assert!(result.delivered);
         assert_eq!(
@@ -884,6 +950,7 @@ mod tests {
                     member_name: "fake-agent".to_string(),
                     team_name: "architecture-final".to_string(),
                     message: "hello".to_string(),
+                    sender_name: None,
                 }));
             assert!(delivered.is_ok());
 
@@ -983,7 +1050,9 @@ mod tests {
         assert_eq!(report.agent_warnings.len(), 1);
         assert_eq!(report.agent_warnings[0].agent_name, "frontend-dev");
         assert_eq!(report.agent_warnings[0].cli_tool, "codex");
-        assert!(report.agent_warnings[0].message.contains("Codex CLI not found"));
+        assert!(report.agent_warnings[0]
+            .message
+            .contains("Codex CLI not found"));
         assert!(report.can_initialize());
     }
 
@@ -1000,7 +1069,9 @@ mod tests {
         assert!(report.blocking_errors.is_empty());
         assert_eq!(report.agent_warnings.len(), 1);
         assert_eq!(report.agent_warnings[0].agent_name, "qa");
-        assert!(report.agent_warnings[0].message.contains("Unsupported CLI tool"));
+        assert!(report.agent_warnings[0]
+            .message
+            .contains("Unsupported CLI tool"));
     }
 
     #[test]

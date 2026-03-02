@@ -10,6 +10,7 @@ use crate::commands::coordination_types::{
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::MemberRole;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+use crate::coordination::runtime::RecordingCoordinationRuntime;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore};
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
@@ -23,14 +24,22 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
 }
 
 fn new_orchestrator(tmp: &TempDir) -> CoordinationOrchestrator {
-    CoordinationOrchestrator::new(tmp.path().to_path_buf(), Arc::new(FakeBackend::default()))
+    CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    )
 }
 
 fn new_orchestrator_with_backend(
     tmp: &TempDir,
     backend: Arc<dyn CoordinationBackend>,
 ) -> CoordinationOrchestrator {
-    CoordinationOrchestrator::new(tmp.path().to_path_buf(), backend)
+    CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        Arc::new(RecordingCoordinationRuntime::default()),
+    )
 }
 
 fn initialize_request(team_name: &str) -> InitializeTeamRequest {
@@ -351,8 +360,7 @@ fn remove_member_tears_down_runtime_resources() {
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
     runtime.pane_id = Some("%9".to_string());
     runtime.daemon_pid = Some(u32::MAX);
-    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime)
-        .expect("runtime saved");
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime).expect("runtime saved");
 
     orchestrator
         .remove_member(team_name, member_name, Some("cleanup".to_string()))
@@ -382,8 +390,7 @@ fn startup_reconcile_clears_stale_daemon_pid() {
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
     runtime.daemon_pid = Some(u32::MAX);
     runtime.health = HealthState::Healthy;
-    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime)
-        .expect("runtime saved");
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime).expect("runtime saved");
 
     orchestrator
         .reconcile_runtime_state_on_startup()
@@ -496,6 +503,7 @@ fn deliver_operator_notice_succeeds() {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
+            sender_name: None,
         }))
         .expect("delivery should succeed");
     assert!(result.delivered);
@@ -531,6 +539,7 @@ fn deliver_to_nonexistent_member_fails() {
             member_name: "missing-member".to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
+            sender_name: None,
         }))
         .expect_err("delivery should fail");
     assert_not_found(err);
@@ -559,6 +568,7 @@ fn deliver_updates_runtime_last_seen() {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
+            sender_name: None,
         }))
         .expect("delivery should succeed");
 
@@ -591,6 +601,7 @@ fn deliver_backend_failure_emits_failed_event() {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
+            sender_name: None,
         }))
         .expect_err("delivery should fail");
     match err {
@@ -731,6 +742,7 @@ fn all_mutations_emit_events() {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "check status".to_string(),
+            sender_name: None,
         }))
         .expect("delivery should succeed");
     orchestrator.record_lease_claimed(team_name, member_name, 4242, "inst-1");
@@ -805,6 +817,7 @@ fn deliver_to_nonexistent_team_fails_without_delivery_audit_events() {
             member_name: "codex-reviewer".to_string(),
             team_name: "missing-team".to_string(),
             message: "status?".to_string(),
+            sender_name: None,
         }))
         .expect_err("delivery should fail");
     assert_not_found(err);

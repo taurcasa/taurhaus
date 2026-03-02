@@ -52,6 +52,8 @@ pub struct OperatorNoticeDelivery {
     pub member_name: String,
     pub team_name: String,
     pub message: String,
+    #[serde(default)]
+    pub sender_name: Option<String>,
 }
 
 /// Typed delivery request variants.
@@ -292,6 +294,7 @@ mod tests {
             member_name: "agent-1".to_string(),
             team_name: "architecture-final".to_string(),
             message: "Check your inbox".to_string(),
+            sender_name: Some("team-lead".to_string()),
         });
 
         let encoded = serde_json::to_value(&req).expect("request should serialize");

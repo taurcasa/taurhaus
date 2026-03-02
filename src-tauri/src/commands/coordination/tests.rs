@@ -5,6 +5,7 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
+use crate::coordination::runtime::RecordingCoordinationRuntime;
 use crate::coordination::state::CoordinationState;
 
 #[derive(Debug, Default)]
@@ -27,10 +28,11 @@ impl BinaryLookup for MockBinaryLookup {
 }
 
 fn test_state(teams_dir: PathBuf) -> CoordinationState {
-    CoordinationState::with_components(
+    CoordinationState::with_components_and_runtime(
         teams_dir,
         BackendSelector::m0(),
         Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     )
 }
 
@@ -227,7 +229,9 @@ fn preflight_agent_tool_missing_returns_warning() {
     assert_eq!(report.agent_warnings.len(), 1);
     assert_eq!(report.agent_warnings[0].agent_name, "frontend-dev");
     assert_eq!(report.agent_warnings[0].cli_tool, "codex");
-    assert!(report.agent_warnings[0].message.contains("Codex CLI not found"));
+    assert!(report.agent_warnings[0]
+        .message
+        .contains("Codex CLI not found"));
 }
 
 #[test]

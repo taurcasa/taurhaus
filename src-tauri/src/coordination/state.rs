@@ -8,16 +8,19 @@ use crate::coordination::backend::{
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::session_scanner::cli_tool::CliTool;
 
 type BackendFactory =
     dyn Fn(BackendKind) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> + Send + Sync;
+type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
 
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
     teams_dir: PathBuf,
     backend_selector: BackendSelector,
     backend_factory: Arc<BackendFactory>,
+    runtime_factory: Arc<RuntimeFactory>,
     orchestrator: Mutex<Option<CoordinationOrchestrator>>,
 }
 
@@ -38,10 +41,11 @@ impl std::fmt::Debug for CoordinationState {
 impl CoordinationState {
     /// Build default app state without performing backend checks at startup.
     pub fn for_app_startup() -> Self {
-        Self::with_components(
+        Self::with_components_and_runtime(
             default_teams_dir(),
             BackendSelector::m0(),
             Arc::new(default_backend_factory),
+            Arc::new(default_runtime_factory),
         )
     }
 
@@ -51,10 +55,26 @@ impl CoordinationState {
         backend_selector: BackendSelector,
         backend_factory: Arc<BackendFactory>,
     ) -> Self {
+        Self::with_components_and_runtime(
+            teams_dir,
+            backend_selector,
+            backend_factory,
+            Arc::new(default_runtime_factory),
+        )
+    }
+
+    /// Build state with explicit backend + runtime dependencies (used by tests).
+    pub fn with_components_and_runtime(
+        teams_dir: PathBuf,
+        backend_selector: BackendSelector,
+        backend_factory: Arc<BackendFactory>,
+        runtime_factory: Arc<RuntimeFactory>,
+    ) -> Self {
         Self {
             teams_dir,
             backend_selector,
             backend_factory,
+            runtime_factory,
             orchestrator: Mutex::new(None),
         }
     }
@@ -83,7 +103,9 @@ impl CoordinationState {
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select(CliTool::Codex);
         let backend = (self.backend_factory)(kind)?;
-        let mut orchestrator = CoordinationOrchestrator::new(self.teams_dir.clone(), backend);
+        let runtime = (self.runtime_factory)();
+        let mut orchestrator =
+            CoordinationOrchestrator::new_with_runtime(self.teams_dir.clone(), backend, runtime);
         if let Err(err) = orchestrator.reconcile_runtime_state_on_startup() {
             tracing::warn!(
                 error = %err,
@@ -103,6 +125,10 @@ fn default_backend_factory(
         BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend),
     };
     Ok(backend)
+}
+
+fn default_runtime_factory() -> Arc<dyn CoordinationRuntime> {
+    Arc::new(SystemCoordinationRuntime)
 }
 
 fn default_teams_dir() -> PathBuf {

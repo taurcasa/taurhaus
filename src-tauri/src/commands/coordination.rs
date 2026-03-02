@@ -236,6 +236,7 @@ fn coordination_reonboard_impl(
                 member_name: request.member_name.clone(),
                 team_name: request.team_name.clone(),
                 message,
+                sender_name: Some(lead_name),
             }))
         })
         .map_err(map_coordination_error)

@@ -12,6 +12,10 @@ mod errors {
     pub use taurhaus_lib::errors::*;
 }
 
+mod models {
+    pub use taurhaus_lib::models::*;
+}
+
 mod session_scanner {
     pub mod cli_tool {
         use serde::{Deserialize, Serialize};
@@ -34,6 +38,43 @@ mod session_scanner {
             }
         }
     }
+
+    pub mod control {
+        use crate::models::CliCommandSettings;
+
+        use super::cli_tool::CliTool;
+
+        pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
+            let first_token = cmd.split_whitespace().next().unwrap_or("");
+            let base_name = first_token.rsplit('/').next().unwrap_or(first_token);
+            const ALLOWED_TOOLS: &[&str] = &["claude", "codex", "gemini"];
+            if !ALLOWED_TOOLS.contains(&base_name) {
+                return Err(format!(
+                    "Command override must start with claude/codex/gemini, got: {base_name}"
+                ));
+            }
+            Ok(())
+        }
+
+        pub fn build_team_launch_command(
+            cmds: &CliCommandSettings,
+            tool: CliTool,
+            model: &str,
+        ) -> String {
+            match tool {
+                CliTool::Claude => cmds.claude.fresh.clone(),
+                CliTool::Gemini => cmds.gemini.fresh.clone(),
+                CliTool::Codex => {
+                    let base = cmds.codex.fresh.clone();
+                    let model = model.trim();
+                    if model.is_empty() || base.contains("-m ") || base.contains("--model") {
+                        return base;
+                    }
+                    format!("{base} -m '{model}'")
+                }
+            }
+        }
+    }
 }
 
 #[path = "../src/commands/coordination.rs"]
@@ -44,6 +85,22 @@ pub mod commands_coordination_types;
 mod commands {
     pub use crate::commands_coordination as coordination;
     pub use crate::commands_coordination_types as coordination_types;
+
+    pub mod projects {
+        use std::sync::{Arc, Mutex};
+
+        pub struct DbState(pub Arc<Mutex<rusqlite::Connection>>);
+    }
+
+    pub mod terminal_settings {
+        use crate::models::CliCommandSettings;
+
+        use super::projects::DbState;
+
+        pub fn load_cli_commands(_db: &DbState) -> CliCommandSettings {
+            CliCommandSettings::default()
+        }
+    }
 }
 
 #[path = "../src/coordination/mod.rs"]
@@ -51,14 +108,16 @@ mod coordination;
 
 use commands::coordination::{AddAgentRequest, AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
+use coordination::runtime::RecordingCoordinationRuntime;
 use coordination::state::CoordinationState;
 use coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 
 fn test_state(teams_dir: PathBuf) -> CoordinationState {
-    CoordinationState::with_components(
+    CoordinationState::with_components_and_runtime(
         teams_dir,
         BackendSelector::m0(),
         Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     )
 }
 

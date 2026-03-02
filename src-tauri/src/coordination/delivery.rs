@@ -85,6 +85,7 @@ mod tests {
             member_name: "codex-reviewer".to_string(),
             team_name: "architecture-final".to_string(),
             message: "Please report status".to_string(),
+            sender_name: None,
         };
 
         let rendered = DeliveryRenderer::render_operator_notice(&payload);
@@ -140,6 +141,7 @@ mod tests {
             member_name: "member-c".to_string(),
             team_name: "team-c".to_string(),
             message: "notice".to_string(),
+            sender_name: None,
         });
 
         assert_eq!(
