@@ -67,7 +67,7 @@
       return { id: project, label: project }
     }
     if (project && typeof project === 'object') {
-      const id = project.id || project.path || project.name || ''
+      const id = project.path || project.id || project.name || ''
       const label = project.name || project.path || project.id || 'Unnamed project'
       return { id, label }
     }
@@ -175,7 +175,7 @@
   async function handleRuntimeDisband() {
     if (!teamName || disbanding) return
     const confirmed = window.confirm(
-      `Disband team "${teamName}"? This only removes mesh state and preserves active sessions.`
+      `Disband team "${teamName}"? This will remove mesh state and stop active agent sessions (panes, daemons, and mesh membership).`
     )
     if (!confirmed) return
     disbanding = true
@@ -184,7 +184,7 @@
       mode = 'setup'
       runtimeMessage = result?.alreadyDisbanded
         ? 'Team was already disbanded.'
-        : 'Team disbanded. Existing sessions remain running.'
+        : 'Team disbanded and active sessions were stopped.'
       teamName = ''
       showInitProgress = false
       showAddAgentForm = false

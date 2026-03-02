@@ -10,6 +10,7 @@ use crate::commands::coordination_types::{
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::MemberRole;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore};
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {
@@ -243,6 +244,27 @@ fn disband_is_idempotent_and_does_not_invoke_backend_controls() {
 }
 
 #[test]
+fn disband_tears_down_non_lead_members() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
+    let team_name = "architecture-final";
+    create_running_team(&mut orchestrator, team_name);
+
+    let result = orchestrator
+        .disband_team(team_name, Some("cleanup".to_string()))
+        .expect("disband should succeed");
+    assert!(result.disbanded);
+    assert!(!result.already_disbanded);
+    assert_eq!(
+        fake.call_counts(),
+        (0, 0, 0, 1),
+        "disband should call backend teardown once for one non-lead member"
+    );
+}
+
+#[test]
 fn add_member_then_get_status() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);
@@ -307,6 +329,109 @@ fn remove_member_cleans_runtime() {
         .expect("status should load");
     assert!(status.config.members.is_empty());
     assert!(status.members_runtime.is_empty());
+}
+
+#[test]
+fn remove_member_tears_down_runtime_resources() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
+    runtime.pane_id = Some("%9".to_string());
+    runtime.daemon_pid = Some(u32::MAX);
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime)
+        .expect("runtime saved");
+
+    orchestrator
+        .remove_member(team_name, member_name, Some("cleanup".to_string()))
+        .expect("remove should succeed");
+    assert_eq!(
+        fake.call_counts(),
+        (0, 0, 0, 1),
+        "remove_member should invoke backend teardown"
+    );
+}
+
+#[test]
+fn startup_reconcile_clears_stale_daemon_pid() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
+    runtime.daemon_pid = Some(u32::MAX);
+    runtime.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime)
+        .expect("runtime saved");
+
+    orchestrator
+        .reconcile_runtime_state_on_startup()
+        .expect("startup reconcile should succeed");
+
+    let updated =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime reloaded");
+    assert_eq!(updated.daemon_pid, None);
+    assert_eq!(updated.health, HealthState::SessionDead);
+}
+
+#[test]
+fn startup_reconcile_removes_orphan_runtime_records() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
+    let team_name = "architecture-final";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+
+    let orphan_runtime = MemberRuntimeRecord {
+        schema_version: 1,
+        member_name: "orphan-agent".to_string(),
+        pane_id: Some("%7".to_string()),
+        daemon_pid: None,
+        health: HealthState::SessionDead,
+        delivery_lease: None,
+        attached_at: None,
+        last_seen_at: None,
+    };
+    MemberRuntimeStore::save(tmp.path(), team_name, "orphan-agent", &orphan_runtime)
+        .expect("orphan runtime saved");
+
+    orchestrator
+        .reconcile_runtime_state_on_startup()
+        .expect("startup reconcile should succeed");
+
+    let err = MemberRuntimeStore::load(tmp.path(), team_name, "orphan-agent")
+        .expect_err("orphan runtime should be deleted");
+    assert_not_found(err);
+    assert_eq!(
+        fake.call_counts(),
+        (0, 0, 0, 1),
+        "orphan runtime reconcile should attempt backend teardown"
+    );
 }
 
 #[test]
@@ -775,6 +900,29 @@ fn initialize_team_agent_addition_failure_is_partial() {
 }
 
 #[test]
+fn initialize_failure_send_onboarding_triggers_disband_teardown() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    fake.set_deliver_error(CoordinationError::Backend(
+        "simulated onboarding failure".to_string(),
+    ));
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
+    let request = initialize_request("architecture-final-init-cleanup");
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+    assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+    assert!(!tmp.path().join("architecture-final-init-cleanup").exists());
+    assert_eq!(
+        fake.call_counts(),
+        (0, 1, 0, 2),
+        "initialize cleanup should tear down both non-lead members"
+    );
+}
+
+#[test]
 fn initialize_team_steps_are_ordered() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);
@@ -876,7 +1024,7 @@ fn add_agent_mid_flow_failure_preserves_existing_team_state() {
     fake.set_deliver_error(CoordinationError::Backend(
         "simulated onboarding failure".to_string(),
     ));
-    let backend: Arc<dyn CoordinationBackend> = fake;
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
     let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
     let team_name = "architecture-final-hot-add";
     create_running_team(&mut orchestrator, team_name);
@@ -907,6 +1055,11 @@ fn add_agent_mid_flow_failure_preserves_existing_team_state() {
         .collect::<Vec<_>>();
     assert_eq!(before, after, "existing team roster should be unchanged");
     assert!(!after.contains(&"new-agent".to_string()));
+    assert_eq!(
+        fake.call_counts(),
+        (0, 1, 0, 1),
+        "failed hot-add should roll back mesh membership"
+    );
 }
 
 #[test]

@@ -13,7 +13,9 @@ use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+use crate::coordination::requests::{
+    DeliveryRequest, OperatorNoticeDelivery, TeardownMode, TeardownRequest,
+};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
@@ -193,6 +195,66 @@ impl CoordinationOrchestrator {
         );
     }
 
+    fn cleanup_add_agent_failure(
+        &mut self,
+        request: &AddAgentRequest,
+        runtime_state: &PendingRuntimeState,
+    ) {
+        if let Some(pid) = runtime_state.daemon_pid {
+            if let Err(err) = terminate_process_by_pid(pid) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.agent.name,
+                    pid = pid,
+                    error = %err,
+                    "hot-add rollback: failed to stop daemon process"
+                );
+            }
+        }
+
+        if runtime_state.mesh_joined {
+            if let Err(err) = self.backend.teardown(TeardownRequest {
+                member_name: request.agent.name.clone(),
+                team_name: request.team_name.clone(),
+                mode: TeardownMode::Graceful,
+            }) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.agent.name,
+                    error = %err,
+                    "hot-add rollback: failed to leave mesh"
+                );
+            }
+        }
+
+        if let Some(pane_id) = runtime_state.pane_id.as_deref() {
+            if let Err(err) = kill_aitx_pane(pane_id) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.agent.name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "hot-add rollback: failed to kill pane"
+                );
+            }
+        }
+
+        if runtime_state.member_added {
+            if let Err(err) = self.remove_member(
+                &request.team_name,
+                &request.agent.name,
+                Some("hot-add rollback after pipeline failure".to_string()),
+            ) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.agent.name,
+                    error = %err,
+                    "hot-add rollback: failed to remove member from roster"
+                );
+            }
+        }
+    }
+
     /// Hot-add a single agent to an already running team.
     ///
     /// Pipeline steps:
@@ -209,6 +271,7 @@ impl CoordinationOrchestrator {
     ) -> Result<AddAgentReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
+        let mut runtime_state = PendingRuntimeState::default();
 
         if let Err(err) = self.validate_add_agent_request(request) {
             return Ok(failed_add_agent_report(
@@ -227,7 +290,8 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.create_pane_for_agent_stub(request) {
+        if let Err(err) = self.create_pane_for_agent(request, &mut runtime_state) {
+            self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
                 &request.agent.name,
@@ -244,7 +308,8 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.launch_session_for_agent_stub(request) {
+        if let Err(err) = self.launch_session_for_agent(request, &runtime_state) {
+            self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
                 &request.agent.name,
@@ -261,7 +326,8 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.join_mesh_for_agent_stub(request) {
+        if let Err(err) = self.join_mesh_for_agent(request, &mut runtime_state) {
+            self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
                 &request.agent.name,
@@ -273,7 +339,8 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded("join_mesh", "mesh joined", &mut succeeded_steps, &mut steps);
 
-        if let Err(err) = self.start_daemon_for_agent_stub(request) {
+        if let Err(err) = self.start_daemon_for_agent(request, &mut runtime_state) {
+            self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
                 &request.agent.name,
@@ -291,6 +358,7 @@ impl CoordinationOrchestrator {
         );
 
         if let Err(err) = self.send_onboarding_for_agent(request) {
+            self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
                 &request.agent.name,
@@ -307,7 +375,8 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.update_roster_with_agent(request) {
+        if let Err(err) = self.update_roster_with_agent(request, &mut runtime_state) {
+            self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
                 &request.agent.name,
@@ -373,6 +442,7 @@ impl CoordinationOrchestrator {
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
             runtime.pane_id = Some(pane_id);
+            runtime.daemon_pid = None;
             runtime.attached_at = Some(Utc::now());
             runtime.health = HealthState::Healthy;
             MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &member.name, &runtime)?;
@@ -390,6 +460,7 @@ impl CoordinationOrchestrator {
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
             runtime.pane_id = Some(format!("%{}", idx + 1));
+            runtime.daemon_pid = None;
             runtime.attached_at = Some(Utc::now());
             runtime.health = HealthState::Healthy;
             MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &member.name, &runtime)?;
@@ -440,15 +511,17 @@ impl CoordinationOrchestrator {
             return Ok(());
         }
         for agent in &request.agents {
-            let runtime =
+            let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
-            let pane_id = runtime.pane_id.ok_or_else(|| {
+            let pane_id = runtime.pane_id.clone().ok_or_else(|| {
                 CoordinationError::Backend(format!(
                     "missing pane id for member '{}' in team '{}'",
                     agent.name, request.team_name
                 ))
             })?;
             let pid = spawn_mesh_daemon(&pane_id, &request.team_name, &agent.name)?;
+            runtime.daemon_pid = Some(pid);
+            MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &agent.name, &runtime)?;
             tracing::info!(
                 team = %request.team_name,
                 member = %agent.name,
@@ -506,31 +579,94 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn create_pane_for_agent_stub(
+    fn create_pane_for_agent(
         &self,
         request: &AddAgentRequest,
+        runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
-        let _ = parse_cli_tool(&request.agent.cli_tool)?;
+        if cfg!(test) {
+            runtime_state.pane_id = Some("%hot-add-1".to_string());
+            runtime_state.attached_at = Some(Utc::now());
+            runtime_state.health = Some(HealthState::Healthy);
+            return Ok(());
+        }
+
+        let pane_id = self.create_aitx_pane(&request.agent.project_id)?;
+        runtime_state.pane_id = Some(pane_id);
+        runtime_state.attached_at = Some(Utc::now());
+        runtime_state.health = Some(HealthState::Healthy);
         Ok(())
     }
 
-    fn launch_session_for_agent_stub(
-        &self,
-        _request: &AddAgentRequest,
-    ) -> Result<(), CoordinationError> {
-        Ok(())
-    }
-
-    fn join_mesh_for_agent_stub(&self, request: &AddAgentRequest) -> Result<(), CoordinationError> {
-        let _ = parse_cli_tool(&request.agent.cli_tool)?;
-        Ok(())
-    }
-
-    fn start_daemon_for_agent_stub(
+    fn launch_session_for_agent(
         &self,
         request: &AddAgentRequest,
+        runtime_state: &PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
-        let _ = parse_cli_tool(&request.agent.cli_tool)?;
+        if cfg!(test) {
+            return Ok(());
+        }
+
+        let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
+            CoordinationError::Backend(format!(
+                "missing pane id for member '{}' in team '{}'",
+                request.agent.name, request.team_name
+            ))
+        })?;
+        let launch_cmd = build_cli_launch_command(&request.agent)?;
+        run_aitx(&["send", pane_id, launch_cmd.as_str()])?;
+        thread::sleep(Duration::from_secs(1));
+        Ok(())
+    }
+
+    fn join_mesh_for_agent(
+        &self,
+        request: &AddAgentRequest,
+        runtime_state: &mut PendingRuntimeState,
+    ) -> Result<(), CoordinationError> {
+        if cfg!(test) {
+            runtime_state.mesh_joined = true;
+            return Ok(());
+        }
+
+        run_mesh(&[
+            "join",
+            "--team",
+            &request.team_name,
+            "--name",
+            &request.agent.name,
+            "--cwd",
+            &request.agent.project_id,
+        ])?;
+        runtime_state.mesh_joined = true;
+        Ok(())
+    }
+
+    fn start_daemon_for_agent(
+        &self,
+        request: &AddAgentRequest,
+        runtime_state: &mut PendingRuntimeState,
+    ) -> Result<(), CoordinationError> {
+        if cfg!(test) {
+            runtime_state.daemon_pid = None;
+            return Ok(());
+        }
+
+        let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
+            CoordinationError::Backend(format!(
+                "missing pane id for member '{}' in team '{}'",
+                request.agent.name, request.team_name
+            ))
+        })?;
+        let pid = spawn_mesh_daemon(pane_id, &request.team_name, &request.agent.name)?;
+        runtime_state.daemon_pid = Some(pid);
+        tracing::info!(
+            team = %request.team_name,
+            member = %request.agent.name,
+            pane_id = %pane_id,
+            pid = pid,
+            "mesh daemon started"
+        );
         Ok(())
     }
 
@@ -567,10 +703,36 @@ impl CoordinationOrchestrator {
     fn update_roster_with_agent(
         &mut self,
         request: &AddAgentRequest,
+        runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
         let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
-        self.add_member(&request.team_name, member)
+        self.add_member(&request.team_name, member)?;
+        runtime_state.member_added = true;
+
+        let mut runtime =
+            MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)?;
+        runtime.pane_id = runtime_state.pane_id.clone();
+        runtime.daemon_pid = runtime_state.daemon_pid;
+        runtime.attached_at = runtime_state.attached_at;
+        runtime.health = runtime_state.health.unwrap_or(HealthState::SessionDead);
+        MemberRuntimeStore::save(
+            &self.teams_dir,
+            &request.team_name,
+            &request.agent.name,
+            &runtime,
+        )?;
+        Ok(())
     }
+}
+
+#[derive(Debug, Default, Clone)]
+struct PendingRuntimeState {
+    pane_id: Option<String>,
+    daemon_pid: Option<u32>,
+    attached_at: Option<chrono::DateTime<Utc>>,
+    health: Option<HealthState>,
+    mesh_joined: bool,
+    member_added: bool,
 }
 
 fn mark_step_succeeded(
@@ -684,11 +846,41 @@ fn resolve_wsl_home_for_coordination() -> Option<String> {
     }
 }
 
+fn resolve_wsl_binary_path(binary_name: &str) -> Option<String> {
+    if !cfg!(target_os = "windows") {
+        return None;
+    }
+    let cmd = format!("command -v {binary_name}");
+    let output = wsl_command_for_coordination()
+        .args(["--", "bash", "-ilc", &cmd])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path)
+    }
+}
+
 fn mesh_binary_path() -> Option<String> {
     if cfg!(target_os = "windows") {
         resolve_wsl_home_for_coordination().map(|home| format!("{home}/.local/bin/mesh"))
     } else {
         dirs::home_dir().map(|home| home.join(".local/bin/mesh").to_string_lossy().to_string())
+    }
+}
+
+fn aitx_binary_path() -> Option<String> {
+    if cfg!(target_os = "windows") {
+        resolve_wsl_binary_path("aitx")
+    } else {
+        None
     }
 }
 
@@ -718,11 +910,12 @@ fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
 }
 
 fn aitx_command_invocation(args: &[&str]) -> CommandInvocation {
+    let aitx_path = aitx_binary_path().unwrap_or_else(|| "aitx".to_string());
     let args = args
         .iter()
         .map(|arg| (*arg).to_string())
         .collect::<Vec<_>>();
-    command_invocation("aitx", &args)
+    command_invocation(&aitx_path, &args)
 }
 
 fn wsl_command_for_coordination() -> Command {
@@ -806,6 +999,100 @@ fn run_aitx(args: &[&str]) -> Result<String, CoordinationError> {
     }
 }
 
+pub(crate) fn kill_aitx_pane(pane_id: &str) -> Result<(), CoordinationError> {
+    run_aitx(&["kill", pane_id]).map(|_| ())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn validate_unix_pid(pid: u32) -> Result<String, CoordinationError> {
+    if pid == 0 || pid > i32::MAX as u32 {
+        return Err(CoordinationError::Validation(format!(
+            "pid out of Unix kill range: {pid}"
+        )));
+    }
+    Ok(pid.to_string())
+}
+
+pub(crate) fn terminate_process_by_pid(pid: u32) -> Result<(), CoordinationError> {
+    #[cfg(target_os = "windows")]
+    let pid_arg = pid.to_string();
+    #[cfg(not(target_os = "windows"))]
+    let pid_arg = validate_unix_pid(pid)?;
+
+    #[cfg(target_os = "windows")]
+    let invocation = CommandInvocation {
+        program: "taskkill".to_string(),
+        args: vec!["/PID".to_string(), pid_arg, "/F".to_string()],
+    };
+    #[cfg(not(target_os = "windows"))]
+    let invocation = CommandInvocation {
+        program: "kill".to_string(),
+        args: vec!["-TERM".to_string(), pid_arg],
+    };
+
+    let output = run_system_command(&invocation)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(CoordinationError::Backend(format!(
+            "process kill failed ({} {}): {}",
+            invocation.program,
+            invocation.args.join(" "),
+            stderr
+        )))
+    }
+}
+
+pub(crate) fn is_process_running_by_pid(pid: u32) -> Result<bool, CoordinationError> {
+    #[cfg(target_os = "windows")]
+    let pid_arg = pid.to_string();
+    #[cfg(not(target_os = "windows"))]
+    if pid == 0 || pid > i32::MAX as u32 {
+        return Ok(false);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let pid_arg = pid.to_string();
+
+    #[cfg(target_os = "windows")]
+    let invocation = CommandInvocation {
+        program: "tasklist".to_string(),
+        args: vec!["/FI".to_string(), format!("PID eq {pid_arg}")],
+    };
+    #[cfg(not(target_os = "windows"))]
+    let invocation = CommandInvocation {
+        program: "kill".to_string(),
+        args: vec!["-0".to_string(), pid_arg.clone()],
+    };
+
+    let output = run_system_command(&invocation)?;
+    #[cfg(target_os = "windows")]
+    {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(CoordinationError::Backend(format!(
+                "pid check failed ({} {}): {}",
+                invocation.program,
+                invocation.args.join(" "),
+                stderr
+            )));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.contains(&pid_arg))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if output.status.success() {
+            return Ok(true);
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+        if stderr.contains("operation not permitted") {
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
 fn spawn_mesh_daemon(
     pane_id: &str,
     team_name: &str,
@@ -847,4 +1134,36 @@ fn member_from_agent_setup(
         project_path: PathBuf::from(&setup.project_id),
         cli_tool: parse_cli_tool(&setup.cli_tool)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn unix_pid_validation_accepts_normal_pid() {
+        assert_eq!(validate_unix_pid(12345).unwrap(), "12345");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn unix_pid_validation_rejects_zero() {
+        let err = validate_unix_pid(0).expect_err("pid 0 should be rejected");
+        assert!(matches!(err, CoordinationError::Validation(_)));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn unix_pid_validation_rejects_values_above_i32_max() {
+        let err = validate_unix_pid(u32::MAX).expect_err("out-of-range pid should be rejected");
+        assert!(matches!(err, CoordinationError::Validation(_)));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn is_process_running_returns_false_for_out_of_range_pid() {
+        assert!(!is_process_running_by_pid(u32::MAX).unwrap());
+        assert!(!is_process_running_by_pid(0).unwrap());
+    }
 }

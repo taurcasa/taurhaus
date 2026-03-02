@@ -1,5 +1,6 @@
 //! Coordination orchestrator service.
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -11,9 +12,14 @@ use crate::coordination::audit::{
     TeamDisbandedEvent,
 };
 use crate::coordination::backend::{BackendKind, CoordinationBackend};
-use crate::coordination::domain::{HealthState, Member, Team};
+use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::requests::{DeliveryMethod, DeliveryRequest, DeliveryResult};
+use crate::coordination::pipelines::{
+    is_process_running_by_pid, kill_aitx_pane, terminate_process_by_pid,
+};
+use crate::coordination::requests::{
+    DeliveryMethod, DeliveryRequest, DeliveryResult, TeardownMode, TeardownRequest,
+};
 use crate::coordination::stores::{
     DiscoveredTeam, MemberRuntimeRecord, MemberRuntimeStore, TeamConfig, TeamConfigStore,
 };
@@ -125,8 +131,8 @@ impl CoordinationOrchestrator {
         reason: Option<String>,
     ) -> Result<DisbandTeamResult, CoordinationError> {
         validate_team_name(name)?;
-        match TeamConfigStore::load(&self.teams_dir, name) {
-            Ok(_) => {}
+        let config = match TeamConfigStore::load(&self.teams_dir, name) {
+            Ok(config) => config,
             Err(CoordinationError::NotFound(_)) => {
                 return Ok(DisbandTeamResult {
                     team_name: name.to_string(),
@@ -135,7 +141,28 @@ impl CoordinationOrchestrator {
                 });
             }
             Err(err) => return Err(err),
+        };
+
+        let runtime_by_member = match MemberRuntimeStore::load_all(&self.teams_dir, name) {
+            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
+            Err(err) => {
+                tracing::warn!(
+                    team = %name,
+                    error = %err,
+                    "failed to load runtime records during disband teardown"
+                );
+                HashMap::new()
+            }
+        };
+
+        for member in config
+            .members
+            .iter()
+            .filter(|member| member.role != MemberRole::Lead)
+        {
+            self.teardown_member_resources_best_effort(name, &member.name, runtime_by_member.get(&member.name));
         }
+
         TeamConfigStore::delete(&self.teams_dir, name)?;
 
         self.audit_log
@@ -175,6 +202,7 @@ impl CoordinationOrchestrator {
             schema_version: 1,
             member_name: member.name.clone(),
             pane_id: None,
+            daemon_pid: None,
             health: HealthState::SessionDead,
             delivery_lease: None,
             attached_at: None,
@@ -213,6 +241,22 @@ impl CoordinationOrchestrator {
             )));
         }
 
+        let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) {
+            Ok(record) => Some(record),
+            Err(CoordinationError::NotFound(_)) => None,
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    error = %err,
+                    "failed to load runtime record for remove_member teardown"
+                );
+                None
+            }
+        };
+
+        self.teardown_member_resources_best_effort(team_name, member_name, runtime.as_ref());
+
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
         MemberRuntimeStore::delete(&self.teams_dir, team_name, member_name)?;
 
@@ -223,6 +267,15 @@ impl CoordinationOrchestrator {
                 reason,
                 removed_at: Utc::now(),
             }));
+        Ok(())
+    }
+
+    /// Best-effort startup reconciliation for stale runtime process metadata.
+    pub fn reconcile_runtime_state_on_startup(&mut self) -> Result<(), CoordinationError> {
+        let team_names = TeamConfigStore::list(&self.teams_dir)?;
+        for team_name in team_names {
+            self.reconcile_team_runtime_state(&team_name)?;
+        }
         Ok(())
     }
 
@@ -258,6 +311,111 @@ impl CoordinationOrchestrator {
             config,
             members_runtime,
         })
+    }
+
+    fn reconcile_team_runtime_state(&self, team_name: &str) -> Result<(), CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let member_names = config
+            .members
+            .iter()
+            .map(|member| member.name.clone())
+            .collect::<HashSet<_>>();
+        let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
+
+        for (member_name, mut runtime) in runtime_records {
+            if !member_names.contains(&member_name) {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    "orphan runtime record found during startup reconciliation"
+                );
+                self.teardown_member_resources_best_effort(team_name, &member_name, Some(&runtime));
+                if let Err(err) = MemberRuntimeStore::delete(&self.teams_dir, team_name, &member_name)
+                {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        error = %err,
+                        "failed to delete orphan runtime record during startup reconciliation"
+                    );
+                }
+                continue;
+            }
+
+            let Some(pid) = runtime.daemon_pid else {
+                continue;
+            };
+
+            match is_process_running_by_pid(pid) {
+                Ok(true) => {}
+                Ok(false) => {
+                    runtime.daemon_pid = None;
+                    runtime.health = HealthState::SessionDead;
+                    MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+                    tracing::info!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        "cleared stale daemon pid during startup reconciliation"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        error = %err,
+                        "failed to verify daemon pid during startup reconciliation"
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn teardown_member_resources_best_effort(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        runtime: Option<&MemberRuntimeRecord>,
+    ) {
+        if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
+            if let Err(err) = terminate_process_by_pid(pid) {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pid = pid,
+                    error = %err,
+                    "failed to terminate daemon during teardown"
+                );
+            }
+        }
+
+        if let Err(err) = self.backend.teardown(TeardownRequest {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            mode: TeardownMode::Graceful,
+        }) {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                error = %err,
+                "failed to leave mesh during teardown"
+            );
+        }
+
+        if let Some(pane_id) = runtime.and_then(|record| record.pane_id.as_deref()) {
+            if let Err(err) = kill_aitx_pane(pane_id) {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "failed to kill pane during teardown"
+                );
+            }
+        }
     }
 
     /// Drain buffered audit events and clear the in-memory log.

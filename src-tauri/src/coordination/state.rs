@@ -83,10 +83,15 @@ impl CoordinationState {
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select(CliTool::Codex);
         let backend = (self.backend_factory)(kind)?;
-        Ok(CoordinationOrchestrator::new(
-            self.teams_dir.clone(),
-            backend,
-        ))
+        let mut orchestrator = CoordinationOrchestrator::new(self.teams_dir.clone(), backend);
+        if let Err(err) = orchestrator.reconcile_runtime_state_on_startup() {
+            tracing::warn!(
+                error = %err,
+                teams_dir = %self.teams_dir.display(),
+                "startup runtime reconciliation failed"
+            );
+        }
+        Ok(orchestrator)
     }
 }
 

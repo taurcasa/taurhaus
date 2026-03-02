@@ -37,7 +37,7 @@
       return { id: project, label: projectBasename(project) }
     }
     if (project && typeof project === 'object') {
-      const id = project.id || project.path || project.name || ''
+      const id = project.path || project.id || project.name || ''
       const label = project.name || projectBasename(project.path || project.id) || 'Unnamed'
       return { id, label }
     }
