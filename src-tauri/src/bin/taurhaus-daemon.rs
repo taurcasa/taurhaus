@@ -37,21 +37,12 @@ fn main() {
     };
     drop(bind_probe);
 
-    // Generate auth token and write to well-known file
-    let auth_token = match taurhaus_lib::daemon::auth::token_path() {
-        Some(path) => match taurhaus_lib::daemon::auth::generate_and_write_token(&path) {
-            Ok(token) => {
-                tracing::info!(path = %path.display(), "Auth token written");
-                Some(token)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to write auth token, running without auth");
-                None
-            }
-        },
-        None => {
-            tracing::warn!("Could not determine data dir, running without auth");
-            None
+    let auth_token = match resolve_auth_token(args.no_auth) {
+        Ok(token) => token,
+        Err(message) => {
+            tracing::error!("{message}");
+            eprintln!("{message}");
+            std::process::exit(1);
         }
     };
 
@@ -93,6 +84,7 @@ struct Args {
     bind_addr: String,
     idle_timeout_secs: Option<u64>,
     verbose: bool,
+    no_auth: bool,
 }
 
 fn parse_args() -> Args {
@@ -101,6 +93,7 @@ fn parse_args() -> Args {
         bind_addr: "127.0.0.1".to_string(),
         idle_timeout_secs: Some(600),
         verbose: false,
+        no_auth: false,
     };
 
     let raw: Vec<String> = std::env::args().collect();
@@ -128,6 +121,17 @@ fn parse_args() -> Args {
             }
             "--verbose" | "-v" => {
                 args.verbose = true;
+            }
+            "--no-auth" => {
+                #[cfg(not(debug_assertions))]
+                {
+                    eprintln!("--no-auth is only supported in debug builds");
+                    std::process::exit(1);
+                }
+                #[cfg(debug_assertions)]
+                {
+                    args.no_auth = true;
+                }
             }
             "--version" | "-V" => {
                 println!("taurhaus-daemon {VERSION}");
@@ -164,7 +168,74 @@ fn print_help() {
     eprintln!(
         "      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)"
     );
+    eprintln!("      --no-auth              Disable auth token (debug builds only)");
     eprintln!("  -v, --verbose              Enable debug logging");
     eprintln!("  -V, --version              Print version and exit");
     eprintln!("  -h, --help                 Show this help");
+}
+
+fn resolve_auth_token(no_auth: bool) -> Result<Option<String>, String> {
+    resolve_auth_token_with(
+        no_auth,
+        taurhaus_lib::daemon::auth::token_path,
+        taurhaus_lib::daemon::auth::generate_and_write_token,
+    )
+}
+
+fn resolve_auth_token_with<P, G>(
+    no_auth: bool,
+    token_path_fn: P,
+    generate_token_fn: G,
+) -> Result<Option<String>, String>
+where
+    P: FnOnce() -> Option<std::path::PathBuf>,
+    G: FnOnce(&std::path::Path) -> std::io::Result<String>,
+{
+    if no_auth {
+        tracing::warn!("Authentication disabled via --no-auth");
+        return Ok(None);
+    }
+
+    let path = token_path_fn()
+        .ok_or_else(|| "Could not determine data dir for daemon auth token".to_string())?;
+    let token = generate_token_fn(&path).map_err(|error| {
+        format!(
+            "Failed to write daemon auth token at {}: {}",
+            path.display(),
+            error
+        )
+    })?;
+    tracing::info!(path = %path.display(), "Auth token written");
+    Ok(Some(token))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::resolve_auth_token_with;
+
+    #[test]
+    fn refuses_to_start_without_auth_unless_no_auth_flag() {
+        let failed = resolve_auth_token_with(false, || None, |_| Ok("ignored".to_string()));
+        assert!(failed.is_err());
+
+        let insecure = resolve_auth_token_with(
+            true,
+            || None,
+            |_| Err(io::Error::other("should not be called")),
+        )
+        .expect("--no-auth should permit insecure mode");
+        assert_eq!(insecure, None);
+    }
+
+    #[test]
+    fn auth_setup_fails_when_token_write_fails() {
+        let failed = resolve_auth_token_with(
+            false,
+            || Some(std::path::PathBuf::from("/tmp/daemon.token")),
+            |_| Err(io::Error::other("disk full")),
+        );
+        assert!(failed.is_err());
+    }
 }
