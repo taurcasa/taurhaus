@@ -8,6 +8,7 @@ pub mod domain;
 pub mod errors;
 pub mod events;
 pub mod health;
+pub mod mesh_cli;
 pub mod orchestrator;
 pub mod pipelines;
 pub mod reconcile;

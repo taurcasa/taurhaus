@@ -8,6 +8,8 @@ use std::sync::Arc;
 
 use super::{BackendCapabilities, BackendKind, CoordinationBackend};
 use crate::coordination::errors::CoordinationError;
+#[cfg(feature = "mesh-bridged-backend")]
+use crate::coordination::mesh_cli::{self, CommandInvocation};
 use crate::coordination::requests::{
     DeliveryRequest, DeliveryResult, LaunchRequest, LaunchResult, OperatorNoticeDelivery,
     ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
@@ -71,51 +73,6 @@ pub trait BinaryLookup: Send + Sync {
     fn is_available(&self, binary_name: &str) -> bool;
 }
 
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CommandInvocation {
-    program: String,
-    args: Vec<String>,
-}
-
-/// Known install path for the mesh CLI binary (`~/.local/bin/mesh`).
-/// Matches the daemon install convention — installed by `just install-mesh`,
-/// looked up by full path rather than PATH discovery.
-#[cfg(feature = "mesh-bridged-backend")]
-fn mesh_binary_path() -> Option<String> {
-    if cfg!(target_os = "windows") {
-        // Resolve WSL $HOME to build the Linux path.
-        resolve_wsl_home_for_coordination().map(|home| format!("{home}/.local/bin/mesh"))
-    } else {
-        dirs::home_dir().map(|home| home.join(".local/bin/mesh").to_string_lossy().to_string())
-    }
-}
-
-/// Resolve the WSL user's home directory (coordination module helper).
-#[cfg(feature = "mesh-bridged-backend")]
-fn resolve_wsl_home_for_coordination() -> Option<String> {
-    let output = wsl_command_for_coordination()
-        .args(["--", "sh", "-c", "echo $HOME"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    parse_wsl_unix_path_from_stdout(&output.stdout)
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn parse_wsl_unix_path_from_stdout(stdout: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(stdout);
-    text.lines()
-        .map(str::trim)
-        .rev()
-        .find(|line| !line.is_empty() && line.starts_with('/'))
-        .map(ToString::to_string)
-}
-
 /// Build a command invocation to check whether a binary exists.
 ///
 /// For `mesh`: checks the known install path directly (`test -x`).
@@ -124,7 +81,7 @@ fn parse_wsl_unix_path_from_stdout(stdout: &[u8]) -> Option<String> {
 fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
     // Mesh uses known-path check — same pattern as the daemon.
     if binary_name == "mesh" {
-        if let Some(mesh_path) = mesh_binary_path() {
+        if let Some(mesh_path) = mesh_cli::mesh_binary_path() {
             return if cfg!(target_os = "windows") {
                 CommandInvocation {
                     program: "wsl".into(),
@@ -159,46 +116,19 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
 /// on PATH discovery — matches the daemon execution pattern.
 #[cfg(feature = "mesh-bridged-backend")]
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
-    let mesh_path = mesh_binary_path().unwrap_or_else(|| "mesh".into());
-
-    if cfg!(target_os = "windows") {
-        let mut invocation_args = vec!["-e".into(), mesh_path];
-        invocation_args.extend(args.iter().map(|arg| (*arg).to_string()));
-        CommandInvocation {
-            program: "wsl".into(),
-            args: invocation_args,
-        }
-    } else {
-        CommandInvocation {
-            program: mesh_path,
-            args: args.iter().map(|arg| (*arg).to_string()).collect(),
-        }
-    }
+    mesh_cli::mesh_command_invocation(args)
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
 fn run_system_command(invocation: &CommandInvocation) -> std::io::Result<std::process::Output> {
     if invocation.program == "wsl" {
-        let mut cmd = wsl_command_for_coordination();
+        let mut cmd = mesh_cli::wsl_command_for_coordination();
         cmd.args(&invocation.args).output()
     } else {
         Command::new(&invocation.program)
             .args(&invocation.args)
             .output()
     }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn wsl_command_for_coordination() -> Command {
-    #[allow(unused_mut)]
-    let mut cmd = Command::new("wsl");
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -650,7 +580,7 @@ mod tests {
     fn parse_wsl_unix_path_from_stdout_handles_clean_output() {
         let stdout = b"/home/mstie\n";
         assert_eq!(
-            parse_wsl_unix_path_from_stdout(stdout),
+            mesh_cli::parse_wsl_unix_path_from_stdout(stdout),
             Some("/home/mstie".to_string())
         );
     }
@@ -661,7 +591,7 @@ mod tests {
         let stdout =
             b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie\n";
         assert_eq!(
-            parse_wsl_unix_path_from_stdout(stdout),
+            mesh_cli::parse_wsl_unix_path_from_stdout(stdout),
             Some("/home/mstie".to_string())
         );
     }
@@ -670,7 +600,7 @@ mod tests {
     #[test]
     fn parse_wsl_unix_path_from_stdout_returns_none_without_path() {
         let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nNo path here\n";
-        assert_eq!(parse_wsl_unix_path_from_stdout(stdout), None);
+        assert_eq!(mesh_cli::parse_wsl_unix_path_from_stdout(stdout), None);
     }
 
     #[cfg(feature = "mesh-bridged-backend")]

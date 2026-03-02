@@ -10,6 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::mesh_cli::{self, CommandInvocation};
 
 pub trait CoordinationRuntime: Send + Sync {
     fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError>;
@@ -293,111 +294,16 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
     }
 }
 
-#[derive(Debug, Clone)]
-struct CommandInvocation {
-    program: String,
-    args: Vec<String>,
-}
-
-fn resolve_wsl_home_for_coordination() -> Option<String> {
-    let output = wsl_command_for_coordination()
-        .args(["--", "sh", "-c", "echo $HOME"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    parse_wsl_unix_path_from_stdout(&output.stdout)
-}
-
-fn resolve_wsl_binary_path(binary_name: &str) -> Option<String> {
-    if !cfg!(target_os = "windows") {
-        return None;
-    }
-
-    if !binary_name
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-    {
-        return None;
-    }
-
-    if let Some(home) = resolve_wsl_home_for_coordination() {
-        let candidate = format!("{home}/.local/bin/{binary_name}");
-        let check = wsl_command_for_coordination()
-            .args(["--", "test", "-x", &candidate])
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .output()
-            .ok()?;
-        if check.status.success() {
-            return Some(candidate);
-        }
-    }
-
-    let cmd = format!("command -v {binary_name}");
-    let output = wsl_command_for_coordination()
-        .args(["--", "sh", "-c", &cmd])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    parse_wsl_unix_path_from_stdout(&output.stdout)
-}
-
-fn parse_wsl_unix_path_from_stdout(stdout: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(stdout);
-    text.lines()
-        .map(str::trim)
-        .rev()
-        .find(|line| !line.is_empty() && line.starts_with('/'))
-        .map(ToString::to_string)
-}
-
-fn mesh_binary_path() -> Option<String> {
-    if cfg!(target_os = "windows") {
-        resolve_wsl_home_for_coordination().map(|home| format!("{home}/.local/bin/mesh"))
-    } else {
-        dirs::home_dir().map(|home| home.join(".local/bin/mesh").to_string_lossy().to_string())
-    }
-}
-
 fn aitx_binary_path() -> Option<String> {
     if cfg!(target_os = "windows") {
-        resolve_wsl_binary_path("aitx")
+        mesh_cli::resolve_wsl_binary_path("aitx")
     } else {
         None
     }
 }
 
-fn command_invocation(program: &str, args: &[String]) -> CommandInvocation {
-    if cfg!(target_os = "windows") {
-        let mut invocation_args = vec!["-e".to_string(), program.to_string()];
-        invocation_args.extend(args.iter().cloned());
-        CommandInvocation {
-            program: "wsl".to_string(),
-            args: invocation_args,
-        }
-    } else {
-        CommandInvocation {
-            program: program.to_string(),
-            args: args.to_vec(),
-        }
-    }
-}
-
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
-    let mesh_path = mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
-    let args = args
-        .iter()
-        .map(|arg| (*arg).to_string())
-        .collect::<Vec<_>>();
-    command_invocation(&mesh_path, &args)
+    mesh_cli::mesh_command_invocation(args)
 }
 
 fn aitx_command_invocation(args: &[&str]) -> CommandInvocation {
@@ -406,30 +312,18 @@ fn aitx_command_invocation(args: &[&str]) -> CommandInvocation {
         .iter()
         .map(|arg| (*arg).to_string())
         .collect::<Vec<_>>();
-    command_invocation(&aitx_path, &args)
+    mesh_cli::command_invocation(&aitx_path, &args)
 }
 
 fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
-    command_invocation("tmux", args)
-}
-
-fn wsl_command_for_coordination() -> Command {
-    #[allow(unused_mut)]
-    let mut cmd = Command::new("wsl");
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
+    mesh_cli::command_invocation("tmux", args)
 }
 
 fn run_system_command(
     invocation: &CommandInvocation,
 ) -> Result<std::process::Output, CoordinationError> {
     let output = if invocation.program == "wsl" {
-        let mut cmd = wsl_command_for_coordination();
+        let mut cmd = mesh_cli::wsl_command_for_coordination();
         cmd.args(&invocation.args).output()
     } else {
         Command::new(&invocation.program)
@@ -443,7 +337,7 @@ fn spawn_system_command(
     invocation: &CommandInvocation,
 ) -> Result<std::process::Child, CoordinationError> {
     let child = if invocation.program == "wsl" {
-        let mut cmd = wsl_command_for_coordination();
+        let mut cmd = mesh_cli::wsl_command_for_coordination();
         cmd.args(&invocation.args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -541,30 +435,6 @@ mod tests {
     #[test]
     fn tmux_target_wraps_numeric_index() {
         assert_eq!(tmux_target_for_pane("3"), ":.3");
-    }
-
-    #[test]
-    fn parse_wsl_unix_path_from_stdout_handles_clean_output() {
-        let stdout = b"/home/mstie\n";
-        assert_eq!(
-            parse_wsl_unix_path_from_stdout(stdout),
-            Some("/home/mstie".to_string())
-        );
-    }
-
-    #[test]
-    fn parse_wsl_unix_path_from_stdout_ignores_banner_noise() {
-        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie/.local/bin/aitx\n";
-        assert_eq!(
-            parse_wsl_unix_path_from_stdout(stdout),
-            Some("/home/mstie/.local/bin/aitx".to_string())
-        );
-    }
-
-    #[test]
-    fn parse_wsl_unix_path_from_stdout_returns_none_without_path() {
-        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nNo path here\n";
-        assert_eq!(parse_wsl_unix_path_from_stdout(stdout), None);
     }
 
     #[cfg(not(target_os = "windows"))]

@@ -7,6 +7,7 @@ use crate::coordination::backend::{
     BackendKind, BackendSelector, ClaudeNativeBackend, CoordinationBackend, MeshBridgedBackend,
 };
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::mesh_cli;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::session_scanner::cli_tool::CliTool;
@@ -132,6 +133,9 @@ fn default_runtime_factory() -> Arc<dyn CoordinationRuntime> {
 }
 
 fn default_teams_dir() -> PathBuf {
+    if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
+        return path;
+    }
     let base = dirs::home_dir().unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"));
     base.join(".claude").join("teams")
 }
