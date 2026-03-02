@@ -38,9 +38,12 @@ mod session_scanner {
 
 #[path = "../src/commands/coordination.rs"]
 pub mod commands_coordination;
+#[path = "../src/commands/coordination_types.rs"]
+pub mod commands_coordination_types;
 
 mod commands {
     pub use crate::commands_coordination as coordination;
+    pub use crate::commands_coordination_types as coordination_types;
 }
 
 #[path = "../src/coordination/mod.rs"]

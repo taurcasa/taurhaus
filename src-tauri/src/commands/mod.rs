@@ -1,6 +1,8 @@
 pub mod command_center;
 #[cfg(feature = "mesh-bridged-backend")]
 pub mod coordination;
+#[cfg(feature = "mesh-bridged-backend")]
+pub mod coordination_types;
 pub mod daemon;
 pub mod files;
 pub mod git;
