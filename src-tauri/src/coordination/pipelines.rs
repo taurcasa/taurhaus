@@ -834,21 +834,38 @@ fn resolve_wsl_home_for_coordination() -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if home.is_empty() {
-        None
-    } else {
-        Some(home)
-    }
+    parse_wsl_unix_path_from_stdout(&output.stdout)
 }
 
 fn resolve_wsl_binary_path(binary_name: &str) -> Option<String> {
     if !cfg!(target_os = "windows") {
         return None;
     }
+
+    if !binary_name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return None;
+    }
+
+    // Prefer the known install location under ~/.local/bin when available.
+    if let Some(home) = resolve_wsl_home_for_coordination() {
+        let candidate = format!("{home}/.local/bin/{binary_name}");
+        let check = wsl_command_for_coordination()
+            .args(["--", "test", "-x", &candidate])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        if check.status.success() {
+            return Some(candidate);
+        }
+    }
+
     let cmd = format!("command -v {binary_name}");
     let output = wsl_command_for_coordination()
-        .args(["--", "bash", "-ilc", &cmd])
+        .args(["--", "sh", "-c", &cmd])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()
@@ -856,12 +873,16 @@ fn resolve_wsl_binary_path(binary_name: &str) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() {
-        None
-    } else {
-        Some(path)
-    }
+    parse_wsl_unix_path_from_stdout(&output.stdout)
+}
+
+fn parse_wsl_unix_path_from_stdout(stdout: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(stdout);
+    text.lines()
+        .map(str::trim)
+        .rev()
+        .find(|line| !line.is_empty() && line.starts_with('/'))
+        .map(ToString::to_string)
 }
 
 fn mesh_binary_path() -> Option<String> {
@@ -1135,6 +1156,30 @@ fn member_from_agent_setup(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_wsl_unix_path_from_stdout_handles_clean_output() {
+        let stdout = b"/home/mstie\n";
+        assert_eq!(
+            parse_wsl_unix_path_from_stdout(stdout),
+            Some("/home/mstie".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_wsl_unix_path_from_stdout_ignores_banner_noise() {
+        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie/.local/bin/aitx\n";
+        assert_eq!(
+            parse_wsl_unix_path_from_stdout(stdout),
+            Some("/home/mstie/.local/bin/aitx".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_wsl_unix_path_from_stdout_returns_none_without_path() {
+        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nNo path here\n";
+        assert_eq!(parse_wsl_unix_path_from_stdout(stdout), None);
+    }
 
     #[cfg(not(target_os = "windows"))]
     #[test]
