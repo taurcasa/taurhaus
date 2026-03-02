@@ -11,25 +11,6 @@
 
   const t = $derived(themeTokens(dark))
   const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
-  const fieldTone = $derived(
-    dark
-      ? 'border-zinc-700/80 text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500'
-      : 'border-zinc-300 text-zinc-900 placeholder:text-zinc-400 focus:border-brand-500'
-  )
-  const fixedFieldTone = $derived(
-    dark ? 'border-zinc-700/80 text-zinc-100' : 'border-zinc-300 text-zinc-900'
-  )
-  const quickAddButton = $derived(
-    dark
-      ? 'rounded-md border border-dashed border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 hover:border-brand-500/60 hover:text-brand-300 hover:bg-brand-500/10'
-      : 'rounded-md border border-dashed border-zinc-300 px-2 py-1 text-[11px] text-zinc-600 hover:border-brand-500/60 hover:text-brand-700 hover:bg-brand-500/10'
-  )
-  const actionBase = 'rounded-md px-2 py-1 text-[11px] transition-colors'
-  const actionBrand = `${actionBase} text-brand-500 hover:text-brand-400 hover:bg-brand-500/10`
-  const actionDanger = `${actionBase} text-danger-500/70 hover:text-danger-500 hover:bg-danger-500/10`
-  const formFieldBase =
-    'w-full bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none'
-  const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
 
   const toolOptions = [
     { value: 'claude', label: 'Claude' },
@@ -43,58 +24,64 @@
     gemini: ['gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 
+  function projectBasename(path) {
+    return String(path || '').split(/[\\/]+/).filter(Boolean).at(-1) || 'project'
+  }
+
   function inferTeamName(path) {
-    const name = String(path || '').split('/').filter(Boolean).at(-1) || 'project'
-    return `${name}-team`
+    return `${projectBasename(path)}-team`
   }
 
   function normalizeProjectOption(project) {
     if (typeof project === 'string') {
-      return { id: project, label: project }
+      return { id: project, label: projectBasename(project) }
     }
     if (project && typeof project === 'object') {
       const id = project.id || project.path || project.name || ''
-      const label = project.name || project.path || project.id || 'Unnamed project'
+      const label = project.name || projectBasename(project.path || project.id) || 'Unnamed'
       return { id, label }
     }
     return { id: '', label: '' }
   }
 
   const projectOptions = $derived(
-    (availableProjects ?? []).map(normalizeProjectOption).filter((project) => project.id)
+    (availableProjects ?? []).map(normalizeProjectOption).filter((p) => p.id)
   )
+
+  const projectName = $derived(projectBasename(projectPath))
 
   const warnings = $derived.by(() => {
     return (preflightWarnings ?? [])
-      .map((warning) => {
-        if (typeof warning === 'string') {
-          return { id: warning, tool: '', message: warning }
-        }
-        return {
-          id: warning?.agentName ?? warning?.agent_name ?? warning?.message ?? 'warning',
-          tool: warning?.cliTool ?? warning?.cli_tool ?? '',
-          message: warning?.message ?? String(warning ?? ''),
-        }
+      .map((w) => {
+        if (typeof w === 'string') return { id: w, message: w }
+        return { id: w?.agentName ?? w?.message ?? 'w', message: w?.message ?? String(w ?? '') }
       })
-      .filter((warning) => warning.message)
+      .filter((w) => w.message)
+  })
+
+  const warningText = $derived.by(() => {
+    if (warnings.length === 0) return ''
+    if (warnings.length === 1) return softenWarningMessage(warnings[0].message)
+    return 'Some tools may need installation. You can still start \u2014 agents will report issues.'
   })
 
   let nextAgentId = 1
   let teamName = $state('')
   let teamDescription = $state('')
-  let leadName = $state('team-lead')
-  let leadModel = $state('opus')
-  let leadSessionMode = $state('use_current')
   let onboardingDismissed = $state(false)
+  let showCustomize = $state(false)
+
+  const leadName = 'team-lead'
+  const leadModel = 'opus'
 
   function defaultAgentProjectId() {
-    if (projectOptions.length === 1) {
-      return projectOptions[0].id
-    }
+    const match = projectOptions.find((p) => p.id === projectPath)
+    if (match) return match.id
+    if (projectOptions.length === 1) return projectOptions[0].id
     return ''
   }
 
-  function blankAgent() {
+  function defaultAgent() {
     return {
       id: nextAgentId++,
       name: '',
@@ -105,7 +92,7 @@
     }
   }
 
-  let agents = $state([blankAgent()])
+  let agents = $state([defaultAgent()])
 
   $effect(() => {
     if (!teamName.trim()) {
@@ -124,102 +111,38 @@
   }
 
   function updateAgent(index, patch) {
-    agents = agents.map((agent, agentIndex) => {
-      if (agentIndex !== index) return agent
-      return { ...agent, ...patch }
-    })
+    agents = agents.map((a, i) => (i !== index ? a : { ...a, ...patch }))
   }
 
   function updateAgentTool(index, tool) {
-    const models = modelsForTool(tool)
-    updateAgent(index, { cliTool: tool, model: models[0] ?? '' })
+    updateAgent(index, { cliTool: tool, model: modelsForTool(tool)[0] ?? '' })
   }
 
-  function addAgent(prefill = {}) {
-    const defaults = blankAgent()
-    agents = [
-      ...agents,
-      {
-        ...defaults,
-        ...prefill,
-        model: prefill.cliTool ? modelsForTool(prefill.cliTool)[0] : defaults.model,
-      },
-    ]
+  function addAgent() {
+    agents = [...agents, defaultAgent()]
   }
 
   function removeAgent(index) {
     if (agents.length <= 1) return
-    agents = agents.filter((_, agentIndex) => agentIndex !== index)
+    agents = agents.filter((_, i) => i !== index)
   }
 
-  const quickRoles = [
-    { label: 'Frontend', name: 'frontend-dev', description: 'Owns UI implementation' },
-    { label: 'Backend', name: 'backend-dev', description: 'Owns API and services' },
-    { label: 'QA', name: 'qa-engineer', description: 'Owns validation and test coverage' },
-    { label: 'Docs', name: 'docs-writer', description: 'Owns documentation and handoff notes' },
-  ]
-
-  function quickAdd(role) {
-    addAgent({
-      name: role.name,
-      description: role.description,
-    })
-  }
-
-  const duplicateNames = $derived.by(() => {
-    const counts = new Map()
-    const names = [leadName, ...agents.map((agent) => agent.name)]
-      .map((name) => name.trim().toLowerCase())
-      .filter(Boolean)
-    for (const name of names) {
-      counts.set(name, (counts.get(name) ?? 0) + 1)
+  function softenWarningMessage(message) {
+    const normalized = String(message || '').trim()
+    if (!normalized) return 'Some setup checks need attention.'
+    const friendly = {
+      mesh_daemon_not_running: 'Mesh daemon is not running. Agents may need one extra retry.',
+      mesh_binary_not_found: 'Mesh CLI is not installed. Install it before starting.',
+      tmux_missing: 'tmux is unavailable. Install tmux to run team sessions.',
     }
-    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name))
-  })
-
-  const leadNameDuplicate = $derived(duplicateNames.has(leadName.trim().toLowerCase()))
-  const hasDuplicateNames = $derived(duplicateNames.size > 0)
-  const reviewAgents = $derived.by(() => {
-    return agents
-      .map((agent, index) => {
-        const toolLabel =
-          toolOptions.find((toolOption) => toolOption.value === agent.cliTool)?.label ?? agent.cliTool
-        return `${agent.name.trim() || `agent-${index + 1}`} (${toolLabel})`
-      })
-      .join(', ')
-  })
-  const hasMissingRequired = $derived.by(() => {
-    if (!teamName.trim() || !leadName.trim()) return true
-    if (agents.length === 0) return true
-    return agents.some(
-      (agent) =>
-        !agent.name.trim() || !agent.cliTool.trim() || !agent.model.trim() || !agent.projectId.trim()
-    )
-  })
-  const canInitialize = $derived(!hasDuplicateNames && !hasMissingRequired)
-
-  function submitInitialize() {
-    if (!canInitialize) return
-    const payload = {
-      teamName: teamName.trim(),
-      teamDescription: teamDescription.trim() || null,
-      leadMode: leadSessionMode === 'launch_new' ? 'launch_new' : 'attach_existing',
-      lead: {
-        name: leadName.trim(),
-        cliTool: 'claude',
-        model: leadModel,
-        projectId: projectPath,
-        description: 'Team lead',
-      },
-      agents: agents.map((agent) => ({
-        name: agent.name.trim(),
-        cliTool: agent.cliTool,
-        model: agent.model,
-        projectId: agent.projectId,
-        description: agent.description.trim() || null,
-      })),
-    }
-    oninitialize(payload)
+    const key = normalized.toLowerCase()
+    if (friendly[key]) return friendly[key]
+    return normalized
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b[A-Z][A-Z0-9_/-]{2,}\b/g, (tok) => tok.toLowerCase())
+      .replace(/\s+/g, ' ')
+      .replace(/^./, (c) => c.toUpperCase())
+      .trim()
   }
 
   function dismissOnboarding() {
@@ -229,333 +152,255 @@
     } catch {}
   }
 
-  function quickStart() {
-    const projectName = String(projectPath || '')
-      .split('/')
+  const duplicateNames = $derived.by(() => {
+    const counts = new Map()
+    const names = [leadName, ...agents.map((a) => a.name)]
+      .map((n) => n.trim().toLowerCase())
       .filter(Boolean)
-      .at(-1) || 'project'
-    const payload = {
-      teamName: `${projectName}-team`,
-      teamDescription: null,
+    for (const name of names) {
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name))
+  })
+
+  const hasDuplicateNames = $derived(duplicateNames.size > 0)
+
+  function agentDisplayName(agent, index) {
+    return agent.name.trim() || `${projectName}-dev${agents.length > 1 ? `-${index + 1}` : ''}`
+  }
+
+  function startTeam() {
+    oninitialize({
+      teamName: teamName.trim() || inferTeamName(projectPath),
+      teamDescription: teamDescription.trim() || null,
       leadMode: 'attach_existing',
       lead: {
-        name: 'team-lead',
+        name: leadName,
         cliTool: 'claude',
-        model: 'opus',
+        model: leadModel,
         projectId: projectPath,
         description: 'Team lead',
       },
-      agents: [
-        {
-          name: `${projectName}-dev`,
-          cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: projectPath,
-          description: 'Development agent',
-        },
-      ],
-    }
-    oninitialize(payload)
+      agents: agents.map((agent, i) => ({
+        name: agentDisplayName(agent, i),
+        cliTool: agent.cliTool,
+        model: agent.model,
+        projectId: agent.projectId || projectPath,
+        description: agent.description.trim() || null,
+      })),
+    })
   }
+
+  // Inline select style — custom chevron, pill-like appearance
+  const chevronSvg = $derived(
+    dark
+      ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M3 4l2 2 2-2' fill='none' stroke='%2371717a' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
+      : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M3 4l2 2 2-2' fill='none' stroke='%2352525b' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
+  )
+  const inlineSelect = $derived(
+    dark
+      ? `appearance-none bg-zinc-800/80 text-xs text-zinc-300 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
+      : `appearance-none bg-zinc-200/80 text-xs text-zinc-700 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
+  )
 </script>
 
-<section class="space-y-4" data-testid="mesh-setup-form">
-  <header class="space-y-1 pb-3 border-b {t.keyline}">
-    <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-setup-title">Mesh Team Setup</h2>
+<section class="space-y-3" data-testid="mesh-setup-form">
+  <header class="space-y-0.5">
+    <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-setup-title">
+      Start a team
+    </h2>
     <p class="text-xs {t.textMuted}" data-testid="mesh-setup-description">
-      Define agents, assign projects and tools, initialize once, then coordinate in CLI.
+      Launch AI agents to work on <span class="font-medium {t.textSecondary}">{projectName}</span>
     </p>
   </header>
 
-  {#if warnings.length > 0}
-    <div class="space-y-1.5" data-testid="mesh-setup-warnings">
-      {#each warnings as warning (warning.id)}
-        <p class="text-xs text-warning-600">
-          {#if warning.tool}
-            <span class="uppercase tracking-[0.06em] text-[10px] mr-1">{warning.tool}</span>
-          {/if}
-          {warning.message}
-        </p>
-      {/each}
-    </div>
-  {/if}
-
   {#if !onboardingDismissed}
     <div
-      class="relative rounded-md px-3 py-2.5 text-xs space-y-0.5 {dark ? 'bg-brand-500/10 text-brand-200' : 'bg-brand-50 text-brand-800'}"
+      class="relative flex items-start gap-2 rounded-md px-3 py-2 text-[11px] leading-relaxed {dark ? 'bg-white/[0.03] text-zinc-500' : 'bg-zinc-50 text-zinc-500 border border-zinc-200'}"
       data-testid="mesh-onboarding-banner"
     >
+      <span class="shrink-0 mt-px {dark ? 'text-brand-400/70' : 'text-brand-600'}">ℹ</span>
+      <p>Mesh coordinates multiple AI agents on your project. Each agent runs in its own terminal session.</p>
       <button
-        class="absolute top-2 right-2 text-[10px] opacity-60 hover:opacity-100"
+        class="shrink-0 ml-auto p-1 rounded {dark ? 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]' : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'} transition-colors"
+        type="button"
         onclick={dismissOnboarding}
+        aria-label="Dismiss onboarding"
         data-testid="mesh-onboarding-dismiss"
       >
-        ✕
+        <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
       </button>
-      <p class="font-medium">What is Mesh?</p>
-      <p class="{dark ? 'text-brand-300/80' : 'text-brand-700/80'}">
-        Mesh coordinates multiple AI agents across your projects. Define a team below, click
-        Initialize, then each agent works in its own terminal session.
-      </p>
     </div>
   {/if}
 
-  <div class="space-y-3 pt-1" data-testid="mesh-team-basics">
-    <div class="flex items-center gap-2">
-      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
-      <h3 class="text-[11px] uppercase {t.textMuted}">Team Basics</h3>
-    </div>
-    <div class="grid grid-cols-1 gap-2">
-      <label class="space-y-1 text-xs {t.textMuted}">
-        <span>Team name</span>
-        <input
-          class="{formFieldBase} {fieldTone}"
-          bind:value={teamName}
-          data-testid="mesh-team-name-input"
-        />
-      </label>
-      <label class="space-y-1 text-xs {t.textMuted}">
-        <span>Team description</span>
-        <input
-          class="{formFieldBase} {fieldTone}"
-          placeholder="Optional — describe the team's purpose"
-          bind:value={teamDescription}
-          data-testid="mesh-team-description-input"
-        />
-      </label>
-    </div>
-  </div>
-
-  <div class="pt-4 space-y-3" data-testid="mesh-lead-card">
-    <div class="flex items-center gap-2">
-      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
-      <h3 class="text-[11px] uppercase {t.textMuted}">Team Lead</h3>
+  <div
+    class="rounded-lg border {dark ? 'border-zinc-700/60 bg-white/[0.02]' : 'border-zinc-300 bg-white shadow-sm'}"
+    data-testid="mesh-roster-preview"
+  >
+    <div class="px-3 py-1.5 border-b {dark ? 'border-zinc-700/40' : 'border-zinc-200'}">
+      <span class="text-xs font-medium {dark ? 'text-zinc-400' : 'text-zinc-600'}">
+        Your team
+      </span>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-      <label class="space-y-1 text-xs {t.textMuted}">
-        <span>Name</span>
-        <input
-          class="{formFieldBase} {fieldTone}"
-          bind:value={leadName}
-          data-testid="mesh-lead-name-input"
-        />
-      </label>
-
-      <div class="space-y-1 text-xs {t.textMuted}">
-        <span>CLI tool</span>
-        <div
-          class="w-full border-b rounded-none px-1 py-1.5 text-sm font-medium {fixedFieldTone}"
-          data-testid="mesh-lead-tool-fixed"
-        >
-          Claude
-        </div>
-      </div>
-    </div>
-
-    <label class="block space-y-1 text-xs {t.textMuted}">
-      <span>Model</span>
-      <select
-        class="{formFieldBase} {fieldTone} {selectScheme}"
-        bind:value={leadModel}
-        data-testid="mesh-lead-model-select"
+    <div class="px-3 py-1">
+      <div
+        class="flex items-center gap-2 py-2.5 {dark ? 'hover:bg-white/[0.02]' : 'hover:bg-zinc-50/50'} transition-colors rounded-sm"
       >
-        {#each modelOptionsByTool.claude as model}
-          <option value={model}>{model}</option>
-        {/each}
-      </select>
-    </label>
-
-    <fieldset class="space-y-1.5 text-xs {t.textMuted}">
-      <legend class="mb-0.5">Session mode</legend>
-      <div class="flex items-center gap-4">
-        <label class="inline-flex items-center gap-2">
-          <input
-            type="radio"
-            name="lead-session-mode"
-            value="use_current"
-            bind:group={leadSessionMode}
-            data-testid="mesh-lead-session-use-current"
-          />
-          Use current session
-        </label>
-        <label class="inline-flex items-center gap-2">
-          <input
-            type="radio"
-            name="lead-session-mode"
-            value="launch_new"
-            bind:group={leadSessionMode}
-            data-testid="mesh-lead-session-launch-new"
-          />
-          Launch new session
-        </label>
+        <svg class="h-3.5 w-3.5 text-brand-500 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="m8 2 1.6 3.3 3.6.5-2.6 2.5.6 3.5L8 10.1 4.8 11.8l.6-3.5L2.8 5.8l3.6-.5L8 2Z" fill="currentColor" />
+        </svg>
+        <span class="text-xs font-medium {t.textPrimary}">You</span>
+        <span class="text-xs {dark ? 'text-zinc-400' : 'text-zinc-600'}">Claude · {leadModel}</span>
+        <span
+          class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded {dark ? 'bg-white/[0.06] text-zinc-400' : 'bg-zinc-100 text-zinc-500'}"
+        >Lead</span>
       </div>
-    </fieldset>
 
-    {#if !leadName.trim()}
-      <p class="text-xs text-danger-500" data-testid="mesh-lead-required-error">Lead name is required.</p>
-    {/if}
-    {#if leadNameDuplicate}
-      <p class="text-xs text-danger-500" data-testid="mesh-lead-duplicate-error">
-        Lead name must be unique across the team.
-      </p>
-    {/if}
-  </div>
-
-  <div class="pt-4 space-y-3" data-testid="mesh-agent-section">
-    <div class="flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
-        <h3 class="text-[11px] uppercase {t.textMuted}">Agents</h3>
-      </div>
-      <button
-        class={actionBrand}
-        type="button"
-        onclick={() => addAgent()}
-        data-testid="mesh-add-agent-button"
-      >
-        + Agent
-      </button>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-1.5" data-testid="mesh-quick-add-roles">
-      <span class="text-[11px] {t.textMuted}">Quick add:</span>
-      {#each quickRoles as role}
-        <button
-          type="button"
-          class={quickAddButton}
-          title={role.description}
-          onclick={() => quickAdd(role)}
-          data-testid={`mesh-quick-add-${role.label.toLowerCase()}`}
-        >
-          {role.label}
-        </button>
-      {/each}
-    </div>
-
-    {#if hasDuplicateNames}
-      <p class="text-xs text-danger-500" data-testid="mesh-duplicate-name-error">
-        Duplicate member names detected. Each lead/agent name must be unique.
-      </p>
-    {/if}
-
-    <div class="space-y-1">
       {#each agents as agent, index (agent.id)}
-        <article class="py-3 space-y-2.5 rounded-md -mx-2 px-2 {index > 0 ? `border-t ${t.keyline}` : ''} {dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50'}" data-testid="mesh-agent-card">
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-[11px] {t.textMuted}">Agent {index + 1}</span>
+        <div
+          class="flex items-center gap-2 py-2.5 border-t {dark ? 'border-zinc-700/30 hover:bg-white/[0.02]' : 'border-zinc-200/60 hover:bg-zinc-50/50'} transition-colors rounded-sm"
+          data-testid="mesh-agent-card"
+        >
+          <svg class="h-3.5 w-3.5 text-zinc-400 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="4.5" stroke="currentColor" stroke-width="1.2" />
+            <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+          </svg>
+          <input
+            class="w-28 {dark ? 'bg-zinc-800/50 placeholder:text-zinc-500' : 'bg-zinc-100 placeholder:text-zinc-400'} text-xs font-medium {t.textPrimary} rounded px-1.5 py-1 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none"
+            value={agent.name}
+            placeholder={agentDisplayName(agent, index)}
+            oninput={(e) => updateAgent(index, { name: e.currentTarget.value })}
+            data-testid={`mesh-agent-name-input-${index}`}
+          />
+          <select
+            class={inlineSelect}
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 4px center"
+            value={agent.cliTool}
+            onchange={(e) => updateAgentTool(index, e.currentTarget.value)}
+            data-testid={`mesh-agent-tool-select-${index}`}
+          >
+            {#each toolOptions as tool}
+              <option value={tool.value}>{tool.label}</option>
+            {/each}
+          </select>
+          <select
+            class={inlineSelect}
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 4px center"
+            value={agent.model}
+            onchange={(e) => updateAgent(index, { model: e.currentTarget.value })}
+            data-testid={`mesh-agent-model-select-${index}`}
+          >
+            {#each modelsForTool(agent.cliTool) as model}
+              <option value={model}>{model}</option>
+            {/each}
+          </select>
+          <select
+            class={inlineSelect}
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 4px center"
+            value={agent.projectId}
+            onchange={(e) => updateAgent(index, { projectId: e.currentTarget.value })}
+            data-testid={`mesh-agent-project-select-${index}`}
+          >
+            <option value="">Select project</option>
+            {#each projectOptions as p}
+              <option value={p.id}>{p.label}</option>
+            {/each}
+          </select>
+          {#if agents.length > 1}
             <button
+              class="shrink-0 ml-auto p-1 rounded {dark ? 'text-zinc-500 hover:text-danger-400 hover:bg-danger-500/10' : 'text-zinc-400 hover:text-danger-500 hover:bg-danger-50'} transition-colors"
               type="button"
-              class="{actionDanger} disabled:opacity-50"
               onclick={() => removeAgent(index)}
-              disabled={agents.length <= 1}
+              aria-label={`Remove agent ${index + 1}`}
               data-testid={`mesh-agent-remove-button-${index}`}
             >
-              Remove
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
             </button>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <label class="space-y-1 text-xs {t.textMuted}">
-              <span>Name</span>
-              <input
-                class="{formFieldBase} {fieldTone}"
-                value={agent.name}
-                oninput={(event) => updateAgent(index, { name: event.currentTarget.value })}
-                data-testid={`mesh-agent-name-input-${index}`}
-              />
-            </label>
-
-            <label class="space-y-1 text-xs {t.textMuted}">
-              <span>CLI tool</span>
-              <select
-                class="{formFieldBase} {fieldTone} {selectScheme}"
-                value={agent.cliTool}
-                onchange={(event) => updateAgentTool(index, event.currentTarget.value)}
-                data-testid={`mesh-agent-tool-select-${index}`}
-              >
-                {#each toolOptions as tool}
-                  <option value={tool.value}>{tool.label}</option>
-                {/each}
-              </select>
-            </label>
-
-            <label class="space-y-1 text-xs {t.textMuted}">
-              <span>Model</span>
-              <select
-                class="{formFieldBase} {fieldTone} {selectScheme}"
-                value={agent.model}
-                onchange={(event) => updateAgent(index, { model: event.currentTarget.value })}
-                data-testid={`mesh-agent-model-select-${index}`}
-              >
-                {#each modelsForTool(agent.cliTool) as model}
-                  <option value={model}>{model}</option>
-                {/each}
-              </select>
-            </label>
-
-            <label class="space-y-1 text-xs {t.textMuted}">
-              <span>Target project</span>
-              <select
-                class="{formFieldBase} {fieldTone} {selectScheme}"
-                value={agent.projectId}
-                onchange={(event) => updateAgent(index, { projectId: event.currentTarget.value })}
-                data-testid={`mesh-agent-project-select-${index}`}
-              >
-                <option value="">Select project</option>
-                {#each projectOptions as project}
-                  <option value={project.id}>{project.label}</option>
-                {/each}
-              </select>
-            </label>
-          </div>
-
-          <label class="space-y-1 text-xs {t.textMuted}">
-            <span>Description</span>
-            <input
-              class="{formFieldBase} {fieldTone}"
-              value={agent.description}
-              oninput={(event) => updateAgent(index, { description: event.currentTarget.value })}
-              data-testid={`mesh-agent-description-input-${index}`}
-            />
-          </label>
-        </article>
+          {/if}
+        </div>
       {/each}
+
+      <div class="py-1.5 border-t {dark ? 'border-zinc-700/30' : 'border-zinc-200/60'}">
+        <button
+          class="text-xs rounded px-2 py-1 -mx-1 {dark ? 'text-zinc-500 hover:text-brand-400 hover:bg-white/[0.03]' : 'text-zinc-400 hover:text-brand-600 hover:bg-zinc-50'} transition-colors"
+          type="button"
+          onclick={addAgent}
+          data-testid="mesh-add-agent-button"
+        >+ Add agent</button>
+      </div>
     </div>
   </div>
 
-  <div class="pt-4 space-y-1.5" data-testid="mesh-review-panel">
-    <div class="flex items-center gap-2">
-      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
-      <h3 class="text-[11px] uppercase {t.textMuted}">Review</h3>
-    </div>
-    <p class="text-xs {t.textMuted}">Team: <span class="{t.textPrimary} font-medium">{teamName || '—'}</span></p>
-    <p class="text-xs {t.textMuted}">
-      Lead: <span class="{t.textPrimary} font-medium">{leadName || '—'}</span> · Claude ({leadModel})
+  {#if hasDuplicateNames}
+    <p class="text-xs text-danger-500" data-testid="mesh-duplicate-name-error">
+      Duplicate member names. Each name must be unique.
     </p>
-    <p class="text-xs {t.textMuted}">Agents: <span class="{t.textPrimary} font-medium">{agents.length}</span></p>
-    <p class="text-xs {t.textMuted}" data-testid="mesh-review-agents-detail">
-      Members: <span class="{t.textPrimary} font-medium">{reviewAgents || '—'}</span>
-    </p>
-  </div>
+  {/if}
 
-  <div class="flex justify-end gap-2">
-    <button
-      class="h-8 inline-flex items-center rounded-md px-3 text-xs font-medium transition-colors {dark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}"
-      type="button"
-      onclick={quickStart}
-      data-testid="mesh-quick-start-button"
-    >
-      Quick Start
-    </button>
-    <button
-      class={primaryCta}
-      type="button"
-      onclick={submitInitialize}
-      disabled={!canInitialize}
-      data-testid="mesh-create-team-button"
-    >
-      Initialize Team
-    </button>
+  {#if warningText}
+    <p
+      class="text-xs {dark ? 'text-warning-300/70' : 'text-warning-700/70'}"
+      data-testid="mesh-setup-warnings"
+    >⚠ {warningText}</p>
+  {/if}
+
+  <div class="space-y-2.5">
+    {#if showCustomize}
+      <div class="space-y-2" data-testid="mesh-team-basics">
+        <div class="flex items-center gap-3">
+          <span class="text-xs {t.textMuted} w-20 shrink-0">Team name</span>
+          <input
+            class="flex-1 text-xs {t.textPrimary} {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} rounded px-1.5 py-1 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none"
+            bind:value={teamName}
+            data-testid="mesh-team-name-input"
+          />
+          <button
+            class="text-xs rounded px-2 py-1 border {dark ? 'border-zinc-700/60 text-brand-400 hover:bg-white/[0.03]' : 'border-zinc-300 text-brand-600 hover:bg-zinc-50'} transition-colors shrink-0"
+            type="button"
+            onclick={() => { showCustomize = false }}
+            data-testid="mesh-advanced-toggle"
+          >Done</button>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs {t.textMuted} w-20 shrink-0">Description</span>
+          <input
+            class="flex-1 text-xs {t.textPrimary} {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} rounded px-1.5 py-1 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none"
+            placeholder="Optional — describe the team's purpose"
+            bind:value={teamDescription}
+            data-testid="mesh-team-description-input"
+          />
+        </div>
+      </div>
+    {:else}
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] {dark ? t.textMuted : 'text-zinc-600'}">{teamName || inferTeamName(projectPath)}</span>
+        <button
+          class="text-xs rounded px-2 py-1 border {dark ? 'border-zinc-700/60 text-brand-400 hover:bg-white/[0.03]' : 'border-zinc-300 text-brand-600 hover:bg-zinc-50'} transition-colors"
+          type="button"
+          onclick={() => { showCustomize = true }}
+          data-testid="mesh-advanced-toggle"
+        >Customize…</button>
+      </div>
+    {/if}
+
+    <div class="flex justify-end">
+      <button
+        class="h-8 inline-flex items-center rounded-md bg-brand-600 px-4 text-xs font-medium text-white hover:bg-brand-500 transition-colors"
+        type="button"
+        onclick={startTeam}
+        data-testid="mesh-create-team-button"
+      >Start Team</button>
+    </div>
   </div>
 </section>
