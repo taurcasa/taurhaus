@@ -258,14 +258,64 @@ pub fn availability_check_with_lookup<L: BinaryLookup + ?Sized>(lookup: &L) -> A
 
 /// Run environment preflight checks using an injected lookup (test-friendly).
 pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
-    _agents: &[PreflightAgent],
+    agents: &[PreflightAgent],
     lookup: &L,
 ) -> PreflightReport {
     let blocking_errors = availability_check_with_lookup(lookup).blocking_errors;
+    let mut agent_warnings = Vec::new();
+
+    for agent in agents {
+        let normalized_tool = agent.cli_tool.trim().to_ascii_lowercase();
+        let required_binary = required_binary_for_cli_tool(normalized_tool.as_str());
+        match required_binary {
+            Some(binary) => {
+                if !lookup.is_available(binary) {
+                    agent_warnings.push(AgentPreflightWarning {
+                        agent_name: agent.agent_name.clone(),
+                        cli_tool: agent.cli_tool.clone(),
+                        message: format!(
+                            "{} CLI not found for agent '{}'. Install it or choose a different tool.",
+                            cli_tool_label(binary),
+                            agent.agent_name
+                        ),
+                    });
+                }
+            }
+            None => {
+                agent_warnings.push(AgentPreflightWarning {
+                    agent_name: agent.agent_name.clone(),
+                    cli_tool: agent.cli_tool.clone(),
+                    message: format!(
+                        "Unsupported CLI tool '{}' for agent '{}'. Choose claude, codex, or gemini.",
+                        agent.cli_tool,
+                        agent.agent_name
+                    ),
+                });
+            }
+        }
+    }
 
     PreflightReport {
         blocking_errors,
-        agent_warnings: Vec::new(),
+        agent_warnings,
+    }
+}
+
+fn required_binary_for_cli_tool(cli_tool: &str) -> Option<&'static str> {
+    match cli_tool {
+        "claude" | "claude_native" => Some("claude"),
+        "codex" | "mesh" | "mesh_bridged" => Some("codex"),
+        "gemini" => Some("gemini"),
+        _ => None,
+    }
+}
+
+fn cli_tool_label(binary_name: &str) -> &'static str {
+    match binary_name {
+        "claude" => "Claude",
+        "codex" => "Codex",
+        "gemini" => "Gemini",
+        _ => "CLI tool",
     }
 }
 
@@ -919,7 +969,7 @@ mod tests {
     }
 
     #[test]
-    fn preflight_agent_tool_missing_returns_no_warnings() {
+    fn preflight_agent_tool_missing_returns_warning() {
         let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude"]);
         let report = preflight_check_with_lookup(
             &[PreflightAgent {
@@ -930,8 +980,27 @@ mod tests {
         );
 
         assert!(report.blocking_errors.is_empty());
-        assert!(report.agent_warnings.is_empty());
+        assert_eq!(report.agent_warnings.len(), 1);
+        assert_eq!(report.agent_warnings[0].agent_name, "frontend-dev");
+        assert_eq!(report.agent_warnings[0].cli_tool, "codex");
+        assert!(report.agent_warnings[0].message.contains("Codex CLI not found"));
         assert!(report.can_initialize());
+    }
+
+    #[test]
+    fn preflight_unknown_tool_returns_warning() {
+        let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "codex"]);
+        let report = preflight_check_with_lookup(
+            &[PreflightAgent {
+                agent_name: "qa".to_string(),
+                cli_tool: "unknown-tool".to_string(),
+            }],
+            &lookup,
+        );
+        assert!(report.blocking_errors.is_empty());
+        assert_eq!(report.agent_warnings.len(), 1);
+        assert_eq!(report.agent_warnings[0].agent_name, "qa");
+        assert!(report.agent_warnings[0].message.contains("Unsupported CLI tool"));
     }
 
     #[test]
@@ -953,7 +1022,15 @@ mod tests {
 
         assert_eq!(report.blocking_errors.len(), 1);
         assert_eq!(report.blocking_errors[0], MESH_MISSING_ERROR);
-        assert!(report.agent_warnings.is_empty());
+        assert_eq!(report.agent_warnings.len(), 2);
+        assert!(report
+            .agent_warnings
+            .iter()
+            .any(|w| w.agent_name == "team-lead" && w.message.contains("Claude CLI not found")));
+        assert!(report
+            .agent_warnings
+            .iter()
+            .any(|w| w.agent_name == "frontend-dev" && w.message.contains("Codex CLI not found")));
         assert!(!report.can_initialize());
     }
 }

@@ -218,13 +218,16 @@ fn preflight_tmux_missing_returns_blocking_error() {
 }
 
 #[test]
-fn preflight_agent_tool_missing_returns_no_warnings() {
+fn preflight_agent_tool_missing_returns_warning() {
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "gemini"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
         .expect("preflight should succeed");
     assert!(report.can_initialize);
     assert!(report.blocking_errors.is_empty());
-    assert!(report.agent_warnings.is_empty());
+    assert_eq!(report.agent_warnings.len(), 1);
+    assert_eq!(report.agent_warnings[0].agent_name, "frontend-dev");
+    assert_eq!(report.agent_warnings[0].cli_tool, "codex");
+    assert!(report.agent_warnings[0].message.contains("Codex CLI not found"));
 }
 
 #[test]
@@ -234,7 +237,15 @@ fn preflight_multiple_issues_reports_all() {
         .expect("preflight should succeed");
     assert!(!report.can_initialize);
     assert_eq!(report.blocking_errors.len(), 2);
-    assert!(report.agent_warnings.is_empty());
+    assert_eq!(report.agent_warnings.len(), 2);
+    assert!(report
+        .agent_warnings
+        .iter()
+        .any(|w| w.agent_name == "team-lead" && w.message.contains("Claude CLI not found")));
+    assert!(report
+        .agent_warnings
+        .iter()
+        .any(|w| w.agent_name == "reviewer" && w.message.contains("Gemini CLI not found")));
 }
 
 #[test]
