@@ -84,8 +84,10 @@ async function ensureSetupMode() {
     window.confirm = () => true
   })
 
-  const disbandBtn = await $('[data-testid="mesh-disband-button"]')
-  if (await disbandBtn.isExisting()) {
+  const overflowBtn = await $('[data-testid="mesh-overflow-menu-button"]')
+  if (await overflowBtn.isExisting()) {
+    await overflowBtn.click()
+    const disbandBtn = await $('[data-testid="mesh-disband-button"]')
     await disbandBtn.click()
     await browser.waitUntil(
       async () => {
@@ -304,6 +306,7 @@ describe('Mesh Workflow', () => {
         window.confirm = () => true
       })
 
+      await clickTestId('mesh-overflow-menu-button')
       await clickTestId('mesh-disband-button')
 
       await browser.waitUntil(
