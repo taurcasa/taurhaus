@@ -74,37 +74,98 @@ pub trait BinaryLookup: Send + Sync {
 #[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CommandInvocation {
-    program: &'static str,
+    program: String,
     args: Vec<String>,
 }
 
+/// Known install path for the mesh CLI binary (`~/.local/bin/mesh`).
+/// Matches the daemon install convention — installed by `just install-mesh`,
+/// looked up by full path rather than PATH discovery.
+#[cfg(feature = "mesh-bridged-backend")]
+fn mesh_binary_path() -> Option<String> {
+    if cfg!(target_os = "windows") {
+        // Resolve WSL $HOME to build the Linux path.
+        resolve_wsl_home_for_coordination().map(|home| format!("{home}/.local/bin/mesh"))
+    } else {
+        dirs::home_dir().map(|home| home.join(".local/bin/mesh").to_string_lossy().to_string())
+    }
+}
+
+/// Resolve the WSL user's home directory (coordination module helper).
+#[cfg(feature = "mesh-bridged-backend")]
+fn resolve_wsl_home_for_coordination() -> Option<String> {
+    let output = wsl_command_for_coordination()
+        .args(["--", "sh", "-c", "echo $HOME"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if home.is_empty() {
+        None
+    } else {
+        Some(home)
+    }
+}
+
+/// Build a command invocation to check whether a binary exists.
+///
+/// For `mesh`: checks the known install path directly (`test -x`).
+/// For everything else: uses `which` (system PATH discovery).
 #[cfg(feature = "mesh-bridged-backend")]
 fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
+    // Mesh uses known-path check — same pattern as the daemon.
+    if binary_name == "mesh" {
+        if let Some(mesh_path) = mesh_binary_path() {
+            return if cfg!(target_os = "windows") {
+                CommandInvocation {
+                    program: "wsl".into(),
+                    args: vec!["-e".into(), "test".into(), "-x".into(), mesh_path],
+                }
+            } else {
+                CommandInvocation {
+                    program: "test".into(),
+                    args: vec!["-x".into(), mesh_path],
+                }
+            };
+        }
+    }
+
+    // Fallback: PATH-based lookup for tmux, claude, codex, gemini, etc.
     if cfg!(target_os = "windows") {
         CommandInvocation {
-            program: "wsl",
-            args: vec!["-e".to_string(), "which".to_string(), binary_name.to_string()],
+            program: "wsl".into(),
+            args: vec!["-e".into(), "which".into(), binary_name.into()],
         }
     } else {
         CommandInvocation {
-            program: "which",
-            args: vec![binary_name.to_string()],
+            program: "which".into(),
+            args: vec![binary_name.into()],
         }
     }
 }
 
+/// Build a command invocation to run the mesh CLI.
+///
+/// Uses the known install path (`~/.local/bin/mesh`) rather than relying
+/// on PATH discovery — matches the daemon execution pattern.
 #[cfg(feature = "mesh-bridged-backend")]
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
+    let mesh_path = mesh_binary_path().unwrap_or_else(|| "mesh".into());
+
     if cfg!(target_os = "windows") {
-        let mut invocation_args = vec!["-e".to_string(), "mesh".to_string()];
+        let mut invocation_args = vec!["-e".into(), mesh_path];
         invocation_args.extend(args.iter().map(|arg| (*arg).to_string()));
         CommandInvocation {
-            program: "wsl",
+            program: "wsl".into(),
             args: invocation_args,
         }
     } else {
         CommandInvocation {
-            program: "mesh",
+            program: mesh_path,
             args: args.iter().map(|arg| (*arg).to_string()).collect(),
         }
     }
@@ -116,7 +177,7 @@ fn run_system_command(invocation: &CommandInvocation) -> std::io::Result<std::pr
         let mut cmd = wsl_command_for_coordination();
         cmd.args(&invocation.args).output()
     } else {
-        Command::new(invocation.program)
+        Command::new(&invocation.program)
             .args(&invocation.args)
             .output()
     }
@@ -192,34 +253,14 @@ pub fn availability_check_with_lookup<L: BinaryLookup + ?Sized>(lookup: &L) -> A
 
 /// Run environment preflight checks using an injected lookup (test-friendly).
 pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
-    agents: &[PreflightAgent],
+    _agents: &[PreflightAgent],
     lookup: &L,
 ) -> PreflightReport {
     let blocking_errors = availability_check_with_lookup(lookup).blocking_errors;
-    let mut agent_warnings = Vec::new();
-
-    for agent in agents {
-        let (binary_name, cli_label) = match agent.cli_tool.trim().to_ascii_lowercase().as_str() {
-            "claude" | "claude_native" => ("claude", "Claude"),
-            "codex" | "mesh" | "mesh_bridged" => ("codex", "Codex"),
-            "gemini" => ("gemini", "Gemini"),
-            _ => continue,
-        };
-        if !lookup.is_available(binary_name) {
-            agent_warnings.push(AgentPreflightWarning {
-                agent_name: agent.agent_name.clone(),
-                cli_tool: binary_name.to_string(),
-                message: format!(
-                    "{cli_label} CLI not found - agent '{}' cannot be launched.",
-                    agent.agent_name
-                ),
-            });
-        }
-    }
 
     PreflightReport {
         blocking_errors,
-        agent_warnings,
+        agent_warnings: Vec::new(),
     }
 }
 
@@ -548,28 +589,58 @@ mod tests {
 
     #[cfg(feature = "mesh-bridged-backend")]
     #[test]
-    fn binary_lookup_invocation_routes_by_platform() {
+    fn binary_lookup_mesh_uses_known_path() {
         let invocation = binary_lookup_invocation("mesh");
+        let expected_path = dirs::home_dir()
+            .unwrap()
+            .join(".local/bin/mesh")
+            .to_string_lossy()
+            .to_string();
 
         if cfg!(target_os = "windows") {
             assert_eq!(invocation.program, "wsl");
-            assert_eq!(invocation.args, vec!["-e", "which", "mesh"]);
+            assert!(invocation.args.contains(&"test".to_string()));
+            assert!(invocation.args.contains(&"-x".to_string()));
         } else {
-            assert_eq!(invocation.program, "which");
-            assert_eq!(invocation.args, vec!["mesh"]);
+            // Known-path: `test -x ~/.local/bin/mesh`
+            assert_eq!(invocation.program, "test");
+            assert_eq!(invocation.args, vec!["-x", &expected_path]);
         }
     }
 
     #[cfg(feature = "mesh-bridged-backend")]
     #[test]
-    fn mesh_command_invocation_routes_by_platform() {
-        let invocation = mesh_command_invocation(&["read", "--unread"]);
+    fn binary_lookup_other_uses_which() {
+        let invocation = binary_lookup_invocation("tmux");
 
         if cfg!(target_os = "windows") {
             assert_eq!(invocation.program, "wsl");
-            assert_eq!(invocation.args, vec!["-e", "mesh", "read", "--unread"]);
+            assert_eq!(invocation.args, vec!["-e", "which", "tmux"]);
         } else {
-            assert_eq!(invocation.program, "mesh");
+            assert_eq!(invocation.program, "which");
+            assert_eq!(invocation.args, vec!["tmux"]);
+        }
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn mesh_command_invocation_uses_known_path() {
+        let invocation = mesh_command_invocation(&["read", "--unread"]);
+        let expected_path = dirs::home_dir()
+            .unwrap()
+            .join(".local/bin/mesh")
+            .to_string_lossy()
+            .to_string();
+
+        if cfg!(target_os = "windows") {
+            assert_eq!(invocation.program, "wsl");
+            assert_eq!(invocation.args[0], "-e");
+            // Second arg should be the full mesh path, not just "mesh"
+            assert!(invocation.args[1].ends_with("/.local/bin/mesh"));
+            assert_eq!(invocation.args[2], "read");
+            assert_eq!(invocation.args[3], "--unread");
+        } else {
+            assert_eq!(invocation.program, expected_path);
             assert_eq!(invocation.args, vec!["read", "--unread"]);
         }
     }
@@ -816,7 +887,7 @@ mod tests {
     }
 
     #[test]
-    fn preflight_agent_tool_missing_returns_warning_without_blocking() {
+    fn preflight_agent_tool_missing_returns_no_warnings() {
         let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude"]);
         let report = preflight_check_with_lookup(
             &[PreflightAgent {
@@ -827,11 +898,7 @@ mod tests {
         );
 
         assert!(report.blocking_errors.is_empty());
-        assert_eq!(report.agent_warnings.len(), 1);
-        assert_eq!(
-            report.agent_warnings[0].message,
-            "Codex CLI not found - agent 'frontend-dev' cannot be launched."
-        );
+        assert!(report.agent_warnings.is_empty());
         assert!(report.can_initialize());
     }
 
@@ -854,13 +921,7 @@ mod tests {
 
         assert_eq!(report.blocking_errors.len(), 1);
         assert_eq!(report.blocking_errors[0], MESH_MISSING_ERROR);
-        assert_eq!(report.agent_warnings.len(), 2);
-        assert!(report.agent_warnings.iter().any(|warning| {
-            warning.message == "Claude CLI not found - agent 'team-lead' cannot be launched."
-        }));
-        assert!(report.agent_warnings.iter().any(|warning| {
-            warning.message == "Codex CLI not found - agent 'frontend-dev' cannot be launched."
-        }));
+        assert!(report.agent_warnings.is_empty());
         assert!(!report.can_initialize());
     }
 }

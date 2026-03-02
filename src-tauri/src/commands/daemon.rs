@@ -638,10 +638,7 @@ mod tests {
         );
 
         let unc = std::path::PathBuf::from("\\\\server\\share\\daemon.exe");
-        assert_eq!(
-            canonical_linux_path(&unc),
-            "\\\\server\\share\\daemon.exe"
-        );
+        assert_eq!(canonical_linux_path(&unc), "\\\\server\\share\\daemon.exe");
     }
 
     #[test]
