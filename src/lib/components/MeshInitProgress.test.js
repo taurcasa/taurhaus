@@ -42,6 +42,9 @@ describe('MeshInitProgress', () => {
       expect(screen.getByTestId('mesh-init-progress')).toBeInTheDocument()
     })
     expect(screen.getByTestId('mesh-init-icon-validate_configuration')).toHaveTextContent('○')
+    expect(screen.getByTestId('mesh-init-step-validate_configuration')).toHaveTextContent(
+      'Validating configuration'
+    )
   })
 
   it('updates step status on progress event', async () => {

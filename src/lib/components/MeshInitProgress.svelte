@@ -19,6 +19,15 @@
     'start_daemons',
     'send_onboarding',
   ]
+  const stepLabels = {
+    validate_configuration: 'Validating configuration',
+    create_team: 'Creating team',
+    create_panes: 'Opening terminal panes',
+    launch_sessions: 'Launching agent sessions',
+    join_mesh: 'Connecting agents to mesh',
+    start_daemons: 'Starting coordination daemons',
+    send_onboarding: 'Sending agent instructions',
+  }
 
   const t = $derived(themeTokens(dark))
   const subtleButton = $derived(
@@ -46,10 +55,13 @@
   }
 
   function prettyStep(step) {
-    return step
-      .split('_')
-      .map((part) => part[0]?.toUpperCase() + part.slice(1))
-      .join(' ')
+    return (
+      stepLabels[step] ??
+      step
+        .split('_')
+        .map((part) => part[0]?.toUpperCase() + part.slice(1))
+        .join(' ')
+    )
   }
 
   function stepIndex(step) {

@@ -85,6 +85,7 @@
   let leadName = $state('team-lead')
   let leadModel = $state('opus')
   let leadSessionMode = $state('use_current')
+  let onboardingDismissed = $state(false)
 
   function defaultAgentProjectId() {
     if (projectOptions.length === 1) {
@@ -110,6 +111,12 @@
     if (!teamName.trim()) {
       teamName = inferTeamName(projectPath)
     }
+  })
+
+  $effect(() => {
+    try {
+      onboardingDismissed = localStorage.getItem('mesh-onboarding-dismissed') === 'true'
+    } catch {}
   })
 
   function modelsForTool(tool) {
@@ -214,6 +221,42 @@
     }
     oninitialize(payload)
   }
+
+  function dismissOnboarding() {
+    onboardingDismissed = true
+    try {
+      localStorage.setItem('mesh-onboarding-dismissed', 'true')
+    } catch {}
+  }
+
+  function quickStart() {
+    const projectName = String(projectPath || '')
+      .split('/')
+      .filter(Boolean)
+      .at(-1) || 'project'
+    const payload = {
+      teamName: `${projectName}-team`,
+      teamDescription: null,
+      leadMode: 'attach_existing',
+      lead: {
+        name: 'team-lead',
+        cliTool: 'claude',
+        model: 'opus',
+        projectId: projectPath,
+        description: 'Team lead',
+      },
+      agents: [
+        {
+          name: `${projectName}-dev`,
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: projectPath,
+          description: 'Development agent',
+        },
+      ],
+    }
+    oninitialize(payload)
+  }
 </script>
 
 <section class="space-y-4" data-testid="mesh-setup-form">
@@ -234,6 +277,26 @@
           {warning.message}
         </p>
       {/each}
+    </div>
+  {/if}
+
+  {#if !onboardingDismissed}
+    <div
+      class="relative rounded-md px-3 py-2.5 text-xs space-y-0.5 {dark ? 'bg-brand-500/10 text-brand-200' : 'bg-brand-50 text-brand-800'}"
+      data-testid="mesh-onboarding-banner"
+    >
+      <button
+        class="absolute top-2 right-2 text-[10px] opacity-60 hover:opacity-100"
+        onclick={dismissOnboarding}
+        data-testid="mesh-onboarding-dismiss"
+      >
+        ✕
+      </button>
+      <p class="font-medium">What is Mesh?</p>
+      <p class="{dark ? 'text-brand-300/80' : 'text-brand-700/80'}">
+        Mesh coordinates multiple AI agents across your projects. Define a team below, click
+        Initialize, then each agent works in its own terminal session.
+      </p>
     </div>
   {/if}
 
@@ -476,7 +539,15 @@
     </p>
   </div>
 
-  <div class="flex justify-end">
+  <div class="flex justify-end gap-2">
+    <button
+      class="h-8 inline-flex items-center rounded-md px-3 text-xs font-medium transition-colors {dark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}"
+      type="button"
+      onclick={quickStart}
+      data-testid="mesh-quick-start-button"
+    >
+      Quick Start
+    </button>
     <button
       class={primaryCta}
       type="button"

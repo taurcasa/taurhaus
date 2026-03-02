@@ -7,13 +7,14 @@
     onAddAgent = () => {},
     onDisband = () => {},
     onFocusPane = () => {},
+    disbanding = false,
     refreshNonce = 0,
   } = $props()
 
   const t = $derived(themeTokens(dark))
   const actionBase = 'rounded-md px-2 py-1 text-[11px] transition-colors'
   const actionBrand = `${actionBase} text-brand-500 hover:text-brand-400 hover:bg-brand-500/10`
-  const actionDanger = `${actionBase} text-danger-500/70 hover:text-danger-500 hover:bg-danger-500/10`
+  const actionDanger = `${actionBase} text-danger-500/70 hover:text-danger-500 hover:bg-danger-500/10 disabled:opacity-60 disabled:cursor-not-allowed`
   const rowActionTone = $derived(
     dark
       ? 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70 hover:border-zinc-500 disabled:opacity-50'
@@ -165,9 +166,10 @@
       <button
         class={actionDanger}
         onclick={onDisband}
+        disabled={disbanding}
         data-testid="mesh-disband-button"
       >
-        Disband
+        {disbanding ? 'Disbanding...' : 'Disband'}
       </button>
     </div>
   </header>

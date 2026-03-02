@@ -52,6 +52,9 @@
   let addAgentProjectId = $state('')
   let addAgentDescription = $state('')
   let rosterRefreshNonce = $state(0)
+  let disbanding = $state(false)
+  let runtimeMessageTimer = null
+  let errorMessageTimer = null
 
   const modelOptionsByTool = {
     claude: ['opus', 'sonnet', 'haiku'],
@@ -170,11 +173,12 @@
   }
 
   async function handleRuntimeDisband() {
-    if (!teamName) return
+    if (!teamName || disbanding) return
     const confirmed = window.confirm(
       `Disband team "${teamName}"? This only removes mesh state and preserves active sessions.`
     )
     if (!confirmed) return
+    disbanding = true
     try {
       const result = await coordinationDisbandTeam(teamName)
       mode = 'setup'
@@ -189,8 +193,32 @@
       onDisbandProp(result)
     } catch (err) {
       errorMessage = err?.message || 'Failed to disband team.'
+    } finally {
+      disbanding = false
     }
   }
+
+  $effect(() => {
+    if (runtimeMessageTimer) clearTimeout(runtimeMessageTimer)
+    if (!runtimeMessage) return
+    runtimeMessageTimer = setTimeout(() => {
+      runtimeMessage = ''
+    }, 5000)
+    return () => {
+      if (runtimeMessageTimer) clearTimeout(runtimeMessageTimer)
+    }
+  })
+
+  $effect(() => {
+    if (errorMessageTimer) clearTimeout(errorMessageTimer)
+    if (!errorMessage) return
+    errorMessageTimer = setTimeout(() => {
+      errorMessage = ''
+    }, 8000)
+    return () => {
+      if (errorMessageTimer) clearTimeout(errorMessageTimer)
+    }
+  })
 
   $effect(() => {
     const currentProjectPath = projectPath
@@ -202,6 +230,7 @@
     showAddAgentForm = false
     addAgentProgress = null
     addAgentError = ''
+    disbanding = false
     teamName = ''
     mode = 'setup'
 
@@ -237,145 +266,192 @@
       <p class="text-sm {t.textMuted}" data-testid="mesh-loading">Checking Mesh team state...</p>
     {:else}
       {#if errorMessage}
-        <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600/95" data-testid="mesh-error">
-          {errorMessage}
+        <div class="relative overflow-hidden border-l-2 border-danger-400 pl-3 pr-2 py-1 text-xs text-danger-600/95 flex items-center justify-between gap-2" data-testid="mesh-error">
+          <span class="min-w-0">{errorMessage}</span>
+          <button
+            class="text-xs opacity-60 hover:opacity-100 ml-2"
+            onclick={() => {
+              errorMessage = ''
+            }}
+            data-testid="mesh-dismiss-error-message"
+          >
+            ✕
+          </button>
+          <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-danger-400/50 animate-[shrink_8s_linear_forwards]" style="width: 100%"></div>
         </div>
       {/if}
 
       {#if runtimeMessage}
-        <div class="border-l-2 border-success-400 pl-3 py-1 text-xs text-success-600/95" data-testid="mesh-runtime-message">
-          {runtimeMessage}
+        <div class="relative overflow-hidden border-l-2 border-success-400 pl-3 pr-2 py-1 text-xs text-success-600/95 flex items-center justify-between gap-2" data-testid="mesh-runtime-message">
+          <span class="min-w-0">{runtimeMessage}</span>
+          <button
+            class="text-xs opacity-60 hover:opacity-100 ml-2"
+            onclick={() => {
+              runtimeMessage = ''
+            }}
+            data-testid="mesh-dismiss-runtime-message"
+          >
+            ✕
+          </button>
+          <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-success-400/50 animate-[shrink_5s_linear_forwards]" style="width: 100%"></div>
         </div>
       {/if}
 
       <MeshAvailabilityGate {dark} {projectPath}>
         {#snippet children(agentWarnings)}
-          {#if mode === 'runtime'}
-            {#if showAddAgentForm}
-              <section class="pt-4 border-t {t.keyline} space-y-3" data-testid="mesh-add-agent-form">
-                <div class="flex items-center gap-2">
-                  <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
-                  <p class="text-[11px] uppercase {t.textMuted}">Add Agent</p>
-                </div>
+          {#key mode}
+            <div class="animate-[meshfade_180ms_ease-out]">
+              {#if mode === 'runtime'}
+                {#if showAddAgentForm}
+                  <section class="pt-4 border-t {t.keyline} space-y-3" data-testid="mesh-add-agent-form">
+                    <div class="flex items-center gap-2">
+                      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
+                      <p class="text-[11px] uppercase {t.textMuted}">Add Agent</p>
+                    </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input
-                    class="{formFieldBase} {fieldTone}"
-                    placeholder="Agent name"
-                    bind:value={addAgentName}
-                    data-testid="mesh-add-agent-name-input"
-                  />
-                  <select
-                    class="{formFieldBase} {fieldTone} {selectScheme}"
-                    value={addAgentTool}
-                    onchange={(event) => updateAddAgentTool(event.currentTarget.value)}
-                    data-testid="mesh-add-agent-tool-select"
-                  >
-                    <option value="claude">Claude</option>
-                    <option value="codex">Codex</option>
-                    <option value="gemini">Gemini</option>
-                  </select>
-                  <select
-                    class="{formFieldBase} {fieldTone} {selectScheme}"
-                    bind:value={addAgentModel}
-                    data-testid="mesh-add-agent-model-select"
-                  >
-                    {#each modelsForTool(addAgentTool) as model}
-                      <option value={model}>{model}</option>
-                    {/each}
-                  </select>
-                  <select
-                    class="{formFieldBase} {fieldTone} {selectScheme}"
-                    bind:value={addAgentProjectId}
-                    data-testid="mesh-add-agent-project-select"
-                  >
-                    <option value="">Select project</option>
-                    {#each projectOptions as project}
-                      <option value={project.id}>{project.label}</option>
-                    {/each}
-                  </select>
-                </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <input
+                        class="{formFieldBase} {fieldTone}"
+                        placeholder="Agent name"
+                        bind:value={addAgentName}
+                        data-testid="mesh-add-agent-name-input"
+                      />
+                      <select
+                        class="{formFieldBase} {fieldTone} {selectScheme}"
+                        value={addAgentTool}
+                        onchange={(event) => updateAddAgentTool(event.currentTarget.value)}
+                        data-testid="mesh-add-agent-tool-select"
+                      >
+                        <option value="claude">Claude</option>
+                        <option value="codex">Codex</option>
+                        <option value="gemini">Gemini</option>
+                      </select>
+                      <select
+                        class="{formFieldBase} {fieldTone} {selectScheme}"
+                        bind:value={addAgentModel}
+                        data-testid="mesh-add-agent-model-select"
+                      >
+                        {#each modelsForTool(addAgentTool) as model}
+                          <option value={model}>{model}</option>
+                        {/each}
+                      </select>
+                      <select
+                        class="{formFieldBase} {fieldTone} {selectScheme}"
+                        bind:value={addAgentProjectId}
+                        data-testid="mesh-add-agent-project-select"
+                      >
+                        <option value="">Select project</option>
+                        {#each projectOptions as project}
+                          <option value={project.id}>{project.label}</option>
+                        {/each}
+                      </select>
+                    </div>
 
-                <input
-                  class="{formFieldBase} {fieldTone}"
-                  placeholder="Description (optional)"
-                  bind:value={addAgentDescription}
-                  data-testid="mesh-add-agent-description-input"
+                    <input
+                      class="{formFieldBase} {fieldTone}"
+                      placeholder="Description (optional)"
+                      bind:value={addAgentDescription}
+                      data-testid="mesh-add-agent-description-input"
+                    />
+
+                    {#if addAgentError}
+                      <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentError}</p>
+                    {/if}
+
+                    <div class="flex justify-end gap-2">
+                      <button
+                        class="rounded-md px-2 py-1 text-[11px] transition-colors {neutralGhost}"
+                        onclick={() => {
+                          showAddAgentForm = false
+                          addAgentError = ''
+                        }}
+                        disabled={addAgentSubmitting}
+                        data-testid="mesh-add-agent-cancel"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        class={primaryCta}
+                        onclick={submitAddAgent}
+                        disabled={!canSubmitAddAgent}
+                        data-testid="mesh-add-agent-submit"
+                      >
+                        <span class={addAgentSubmitting ? 'animate-pulse' : ''}>
+                          {addAgentSubmitting ? 'Adding...' : 'Add Agent'}
+                        </span>
+                      </button>
+                    </div>
+                  </section>
+                {/if}
+
+                {#if addAgentProgress}
+                  <section class="pt-2 border-t {t.keyline} space-y-1.5" data-testid="mesh-add-agent-progress">
+                    <p class="text-[11px] uppercase {t.textMuted}">
+                      Adding agent... {addAgentProgress.status}
+                    </p>
+                    {#if addAgentProgress.report?.steps?.length}
+                      <ul class="space-y-1">
+                        {#each addAgentProgress.report.steps as progress}
+                          <li class="text-xs {t.textMuted}" data-testid={`mesh-add-agent-step-${progress.step}`}>
+                            {progress.step}: {progress.status}
+                          </li>
+                        {/each}
+                      </ul>
+                    {/if}
+                  </section>
+                {/if}
+
+                <MeshTeamRoster
+                  {dark}
+                  {teamName}
+                  refreshNonce={rosterRefreshNonce}
+                  {disbanding}
+                  onAddAgent={openAddAgentForm}
+                  onDisband={handleRuntimeDisband}
+                  onFocusPane={onFocusPaneProp}
                 />
-
-                {#if addAgentError}
-                  <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentError}</p>
+              {:else}
+                {#if showInitProgress}
+                  <MeshInitProgress
+                    {dark}
+                    request={initializeRequest}
+                    onsuccess={handleProgressSuccess}
+                    onback={handleProgressBack}
+                  />
+                {:else}
+                  <MeshSetupForm
+                    {dark}
+                    {projectPath}
+                    {availableProjects}
+                    preflightWarnings={agentWarnings}
+                    oninitialize={handleInitialize}
+                  />
                 {/if}
-
-                <div class="flex justify-end gap-2">
-                  <button
-                    class="rounded-md px-2 py-1 text-[11px] transition-colors {neutralGhost}"
-                    onclick={() => {
-                      showAddAgentForm = false
-                      addAgentError = ''
-                    }}
-                    disabled={addAgentSubmitting}
-                    data-testid="mesh-add-agent-cancel"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    class={primaryCta}
-                    onclick={submitAddAgent}
-                    disabled={!canSubmitAddAgent}
-                    data-testid="mesh-add-agent-submit"
-                  >
-                    Add Agent
-                  </button>
-                </div>
-              </section>
-            {/if}
-
-            {#if addAgentProgress}
-              <section class="pt-2 border-t {t.keyline} space-y-1.5" data-testid="mesh-add-agent-progress">
-                <p class="text-[11px] uppercase {t.textMuted}">
-                  Adding agent... {addAgentProgress.status}
-                </p>
-                {#if addAgentProgress.report?.steps?.length}
-                  <ul class="space-y-1">
-                    {#each addAgentProgress.report.steps as progress}
-                      <li class="text-xs {t.textMuted}" data-testid={`mesh-add-agent-step-${progress.step}`}>
-                        {progress.step}: {progress.status}
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-              </section>
-            {/if}
-
-            <MeshTeamRoster
-              {dark}
-              {teamName}
-              refreshNonce={rosterRefreshNonce}
-              onAddAgent={openAddAgentForm}
-              onDisband={handleRuntimeDisband}
-              onFocusPane={onFocusPaneProp}
-            />
-          {:else}
-            {#if showInitProgress}
-              <MeshInitProgress
-                {dark}
-                request={initializeRequest}
-                onsuccess={handleProgressSuccess}
-                onback={handleProgressBack}
-              />
-            {:else}
-              <MeshSetupForm
-                {dark}
-                {projectPath}
-                {availableProjects}
-                preflightWarnings={agentWarnings}
-                oninitialize={handleInitialize}
-              />
-            {/if}
-          {/if}
+              {/if}
+            </div>
+          {/key}
         {/snippet}
       </MeshAvailabilityGate>
     {/if}
   </div>
 </section>
+
+<style>
+  @keyframes shrink {
+    from {
+      width: 100%;
+    }
+    to {
+      width: 0%;
+    }
+  }
+
+  @keyframes meshfade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+</style>

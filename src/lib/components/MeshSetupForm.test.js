@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
@@ -9,6 +9,10 @@ describe('MeshSetupForm', () => {
     { id: 'proj-web', name: 'Web UI' },
     { id: 'proj-api', name: 'API Service' },
   ]
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
 
   it('renders lead card with Claude fixed', async () => {
     render(MeshSetupForm, {
@@ -37,6 +41,24 @@ describe('MeshSetupForm', () => {
     expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(1)
     await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
     expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(2)
+  })
+
+  it('renders onboarding banner and allows dismissing it', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    expect(screen.getByTestId('mesh-onboarding-banner')).toBeInTheDocument()
+    await fireEvent.click(screen.getByTestId('mesh-onboarding-dismiss'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('mesh-onboarding-banner')).not.toBeInTheDocument()
+    })
+    expect(localStorage.getItem('mesh-onboarding-dismissed')).toBe('true')
   })
 
   it('shows plain tool labels without icon prefixes', async () => {
@@ -162,6 +184,43 @@ describe('MeshSetupForm', () => {
     })
 
     expect(screen.getByTestId('mesh-create-team-button')).toBeDisabled()
+  })
+
+  it('quick start emits expected minimal payload', async () => {
+    const onInitialize = vi.fn()
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+        oninitialize: onInitialize,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-quick-start-button'))
+
+    expect(onInitialize).toHaveBeenCalledTimes(1)
+    expect(onInitialize).toHaveBeenCalledWith({
+      teamName: 'taurhaus-team',
+      teamDescription: null,
+      leadMode: 'attach_existing',
+      lead: {
+        name: 'team-lead',
+        cliTool: 'claude',
+        model: 'opus',
+        projectId: '/projects/taurhaus',
+        description: 'Team lead',
+      },
+      agents: [
+        {
+          name: 'taurhaus-dev',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: '/projects/taurhaus',
+          description: 'Development agent',
+        },
+      ],
+    })
   })
 
   it('initialize emits correct payload shape', async () => {
