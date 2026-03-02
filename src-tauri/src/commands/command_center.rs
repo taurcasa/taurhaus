@@ -4,43 +4,12 @@ use tauri::State;
 
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
+use crate::commands::terminal_settings::load_terminal_settings;
 use crate::daemon::protocol::{self, LaunchMode};
-use crate::models::{CliCommandSettings, TerminalSettings};
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::control::TMUX_SESSION_NAME;
+use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
 use crate::session_scanner::ClaudeSession;
 use crate::ProviderState;
-
-fn load_terminal_settings(db: &DbState) -> TerminalSettings {
-    let conn = match db.0.lock() {
-        Ok(conn) => conn,
-        Err(e) => {
-            tracing::warn!(error = %e, "Settings DB lock poisoned, using default terminal settings");
-            return TerminalSettings::default();
-        }
-    };
-    match crate::db::settings_queries::get_all_settings(&conn) {
-        Ok(settings) => settings.terminal,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to load settings, using default terminal settings");
-            TerminalSettings::default()
-        }
-    }
-}
-
-fn resolve_tool_command(cmds: &CliCommandSettings, tool: CliTool, mode: LaunchMode) -> String {
-    let tool_cmds = match tool {
-        CliTool::Claude => &cmds.claude,
-        CliTool::Codex => &cmds.codex,
-        CliTool::Gemini => &cmds.gemini,
-    };
-    let cmd = match mode {
-        LaunchMode::Continue => &tool_cmds.continue_cmd,
-        LaunchMode::Fresh => &tool_cmds.fresh,
-        LaunchMode::Resume => &tool_cmds.resume,
-    };
-    cmd.clone()
-}
 
 #[tauri::command]
 pub fn list_claude_sessions(
@@ -132,7 +101,7 @@ pub fn launch_claude_session(
         if daemon.is_connected() {
             let id = "launch-session";
             let ts = load_terminal_settings(&db);
-            let tool_cmd = resolve_tool_command(&ts.cli_commands, tool, mode);
+            let tool_cmd = resolve_configured_tool_command(&ts.cli_commands, tool, mode);
             let request = protocol::DaemonRequest::new(
                 id,
                 protocol::method::LAUNCH_SESSION,
@@ -192,7 +161,7 @@ pub fn launch_claude_session(
         let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
     }
     let ts = load_terminal_settings(&db);
-    let tool_cmd = resolve_tool_command(&ts.cli_commands, tool, mode);
+    let tool_cmd = resolve_configured_tool_command(&ts.cli_commands, tool, mode);
     let (session, window, pane) = crate::session_scanner::control::launch_in_tmux_with_layout(
         &linux_path,
         mode,
@@ -435,10 +404,10 @@ mod tests {
 
     #[test]
     fn resolve_tool_command_defaults_are_non_empty_and_match_expected_values() {
-        let cmds = CliCommandSettings::default();
+        let cmds = crate::models::CliCommandSettings::default();
         for tool in [CliTool::Claude, CliTool::Codex, CliTool::Gemini] {
             for mode in [LaunchMode::Continue, LaunchMode::Fresh, LaunchMode::Resume] {
-                let command = resolve_tool_command(&cmds, tool, mode);
+                let command = resolve_configured_tool_command(&cmds, tool, mode);
                 assert!(
                     !command.trim().is_empty(),
                     "command must be non-empty for {tool:?}/{mode:?}"
@@ -480,14 +449,20 @@ mod tests {
                 "gemini --yolo --resume",
             ),
         ] {
-            assert_eq!(resolve_tool_command(&cmds, tool, mode), expected);
+            assert_eq!(
+                resolve_configured_tool_command(&cmds, tool, mode),
+                expected
+            );
         }
     }
 
     #[test]
     fn load_terminal_settings_returns_default_on_query_and_lock_errors() {
         let db = DbState(Mutex::new(rusqlite::Connection::open_in_memory().unwrap()));
-        assert_eq!(load_terminal_settings(&db), TerminalSettings::default());
+        assert_eq!(
+            load_terminal_settings(&db),
+            crate::models::TerminalSettings::default()
+        );
 
         let poisoned = DbState(Mutex::new(rusqlite::Connection::open_in_memory().unwrap()));
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -496,7 +471,7 @@ mod tests {
         }));
         assert_eq!(
             load_terminal_settings(&poisoned),
-            TerminalSettings::default()
+            crate::models::TerminalSettings::default()
         );
     }
 }

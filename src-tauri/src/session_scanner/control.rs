@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::daemon::protocol::LaunchMode;
+use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{self, CliTool};
 
 /// Launch a CLI tool session in tmux using the configured layout strategy.
@@ -314,7 +315,7 @@ pub fn navigate_to_pane(
 ///
 /// Ensures the command starts with a known CLI tool name and contains no
 /// shell metacharacters that could enable command injection.
-fn validate_command_override(cmd: &str) -> Result<(), String> {
+pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
     let first_token = cmd.split_whitespace().next().unwrap_or("");
     let base_name = first_token.rsplit('/').next().unwrap_or(first_token);
 
@@ -335,6 +336,62 @@ fn validate_command_override(cmd: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Resolve a launch command using configured per-tool/per-mode settings.
+pub fn resolve_configured_tool_command(
+    cmds: &CliCommandSettings,
+    tool: CliTool,
+    mode: LaunchMode,
+) -> String {
+    let tool_cmds = match tool {
+        CliTool::Claude => &cmds.claude,
+        CliTool::Codex => &cmds.codex,
+        CliTool::Gemini => &cmds.gemini,
+    };
+    let cmd = match mode {
+        LaunchMode::Continue => &tool_cmds.continue_cmd,
+        LaunchMode::Fresh => &tool_cmds.fresh,
+        LaunchMode::Resume => &tool_cmds.resume,
+    };
+    cmd.clone()
+}
+
+fn codex_command_has_model_arg(command: &str) -> bool {
+    let mut tokens = command.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if token == "-m" {
+            return true;
+        }
+        if token.starts_with("--model") {
+            return true;
+        }
+        // consume next token for "-m <value>" cases already handled above
+        if token == "--model" {
+            let _ = tokens.next();
+            return true;
+        }
+    }
+    false
+}
+
+/// Build the command used for team-agent launch (fresh mode + optional model).
+pub fn build_team_launch_command(
+    cmds: &CliCommandSettings,
+    tool: CliTool,
+    model: &str,
+) -> String {
+    let base = resolve_configured_tool_command(cmds, tool, LaunchMode::Fresh);
+    if tool != CliTool::Codex {
+        return base;
+    }
+
+    let model = model.trim();
+    if model.is_empty() || codex_command_has_model_arg(&base) {
+        return base;
+    }
+
+    format!("{base} -m {}", shell_escape(model))
 }
 
 /// Build the launch command string for a given tool and launch mode.
@@ -591,6 +648,35 @@ mod tests {
         assert!(validate_command_override("claude | cat /etc/passwd").is_err());
         assert!(validate_command_override("claude $(whoami)").is_err());
         assert!(validate_command_override("claude `id`").is_err());
+    }
+
+    #[test]
+    fn resolve_configured_tool_command_uses_settings_values() {
+        let mut cmds = crate::models::CliCommandSettings::default();
+        cmds.codex.fresh = "codex --yolo --sandbox workspace-write".to_string();
+        assert_eq!(
+            resolve_configured_tool_command(&cmds, CliTool::Codex, LaunchMode::Fresh),
+            "codex --yolo --sandbox workspace-write"
+        );
+    }
+
+    #[test]
+    fn build_team_launch_command_for_codex_appends_model_when_missing() {
+        let cmds = crate::models::CliCommandSettings::default();
+        assert_eq!(
+            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3"),
+            "codex --yolo -m 'gpt-5.3'"
+        );
+    }
+
+    #[test]
+    fn build_team_launch_command_for_codex_keeps_existing_model_flag() {
+        let mut cmds = crate::models::CliCommandSettings::default();
+        cmds.codex.fresh = "codex --yolo --model gpt-6".to_string();
+        assert_eq!(
+            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3"),
+            "codex --yolo --model gpt-6"
+        );
     }
 
     #[test]

@@ -20,7 +20,9 @@ use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
 };
+use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::control::{build_team_launch_command, validate_command_override};
 
 impl CoordinationOrchestrator {
     /// Initialize a team via the high-level multi-step pipeline.
@@ -37,6 +39,14 @@ impl CoordinationOrchestrator {
     pub fn initialize_team(
         &mut self,
         request: &InitializeTeamRequest,
+    ) -> Result<InitializeReport, CoordinationError> {
+        self.initialize_team_with_cli_commands(request, &CliCommandSettings::default())
+    }
+
+    pub fn initialize_team_with_cli_commands(
+        &mut self,
+        request: &InitializeTeamRequest,
+        cli_commands: &CliCommandSettings,
     ) -> Result<InitializeReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
@@ -115,7 +125,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.launch_sessions(request) {
+        if let Err(err) = self.launch_sessions(request, cli_commands) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -269,6 +279,14 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &AddAgentRequest,
     ) -> Result<AddAgentReport, CoordinationError> {
+        self.add_agent_to_team_with_cli_commands(request, &CliCommandSettings::default())
+    }
+
+    pub fn add_agent_to_team_with_cli_commands(
+        &mut self,
+        request: &AddAgentRequest,
+        cli_commands: &CliCommandSettings,
+    ) -> Result<AddAgentReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
         let mut runtime_state = PendingRuntimeState::default();
@@ -308,7 +326,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.launch_session_for_agent(request, &runtime_state) {
+        if let Err(err) = self.launch_session_for_agent(request, &runtime_state, cli_commands) {
             self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
@@ -468,7 +486,11 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn launch_sessions(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+    fn launch_sessions(
+        &self,
+        request: &InitializeTeamRequest,
+        cli_commands: &CliCommandSettings,
+    ) -> Result<(), CoordinationError> {
         if cfg!(test) {
             return Ok(());
         }
@@ -481,9 +503,7 @@ impl CoordinationOrchestrator {
                     agent.name, request.team_name
                 ))
             })?;
-            let launch_cmd = build_cli_launch_command(agent)?;
-            run_aitx(&["send", pane_id.as_str(), launch_cmd.as_str()])?;
-            thread::sleep(Duration::from_secs(1));
+            self.launch_agent_in_pane(&pane_id, agent, cli_commands)?;
         }
         Ok(())
     }
@@ -600,6 +620,7 @@ impl CoordinationOrchestrator {
         &self,
         request: &AddAgentRequest,
         runtime_state: &PendingRuntimeState,
+        cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
         if cfg!(test) {
             return Ok(());
@@ -611,8 +632,18 @@ impl CoordinationOrchestrator {
                 request.agent.name, request.team_name
             ))
         })?;
-        let launch_cmd = build_cli_launch_command(&request.agent)?;
-        run_aitx(&["send", pane_id, launch_cmd.as_str()])?;
+        self.launch_agent_in_pane(pane_id, &request.agent, cli_commands)?;
+        Ok(())
+    }
+
+    fn launch_agent_in_pane(
+        &self,
+        pane_id: &str,
+        agent: &AgentSetupConfig,
+        cli_commands: &CliCommandSettings,
+    ) -> Result<(), CoordinationError> {
+        let launch_cmd = build_cli_launch_command(agent, cli_commands)?;
+        send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())?;
         thread::sleep(Duration::from_secs(1));
         Ok(())
     }
@@ -802,19 +833,19 @@ fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
     }
 }
 
-fn build_cli_launch_command(agent: &AgentSetupConfig) -> Result<String, CoordinationError> {
+fn build_cli_launch_command(
+    agent: &AgentSetupConfig,
+    cli_commands: &CliCommandSettings,
+) -> Result<String, CoordinationError> {
     let cli_tool = parse_cli_tool(&agent.cli_tool)?;
-    let command = match cli_tool {
-        CliTool::Codex => {
-            if agent.model.trim().is_empty() {
-                "codex --yolo".to_string()
-            } else {
-                format!("codex --yolo -m {}", agent.model.trim())
-            }
-        }
-        CliTool::Gemini => "gemini --yolo".to_string(),
-        CliTool::Claude => "claude --dangerously-skip-permissions".to_string(),
-    };
+    let command = build_team_launch_command(cli_commands, cli_tool, &agent.model);
+    if command.trim().is_empty() {
+        return Err(CoordinationError::Validation(format!(
+            "configured launch command is empty for '{}'",
+            agent.cli_tool
+        )));
+    }
+    validate_command_override(&command).map_err(CoordinationError::Validation)?;
     Ok(command)
 }
 
@@ -935,6 +966,10 @@ fn aitx_command_invocation(args: &[&str]) -> CommandInvocation {
     command_invocation(&aitx_path, &args)
 }
 
+fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
+    command_invocation("tmux", args)
+}
+
 fn wsl_command_for_coordination() -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new("wsl");
@@ -1016,8 +1051,56 @@ fn run_aitx(args: &[&str]) -> Result<String, CoordinationError> {
     }
 }
 
+fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
+    let invocation = tmux_command_invocation(args);
+    let output = run_system_command(&invocation)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(CoordinationError::Backend(format!(
+            "tmux command failed ({} {}): {}",
+            invocation.program,
+            invocation.args.join(" "),
+            stderr
+        )))
+    }
+}
+
+fn tmux_target_for_pane(pane_id: &str) -> String {
+    if pane_id.starts_with('%') {
+        pane_id.to_string()
+    } else {
+        format!(":.{pane_id}")
+    }
+}
+
+fn send_tmux_keys_with_enter(pane_id: &str, keys: &str) -> Result<(), CoordinationError> {
+    let target = tmux_target_for_pane(pane_id);
+    run_tmux(&[
+        "send-keys".to_string(),
+        "-t".to_string(),
+        target.clone(),
+        keys.to_string(),
+    ])?;
+    thread::sleep(Duration::from_millis(200));
+    run_tmux(&[
+        "send-keys".to_string(),
+        "-t".to_string(),
+        target,
+        "Enter".to_string(),
+    ])?;
+    Ok(())
+}
+
 pub(crate) fn kill_aitx_pane(pane_id: &str) -> Result<(), CoordinationError> {
-    run_aitx(&["kill", pane_id]).map(|_| ())
+    run_tmux(&[
+        "kill-pane".to_string(),
+        "-t".to_string(),
+        tmux_target_for_pane(pane_id),
+    ])
+    .map(|_| ())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1156,6 +1239,49 @@ fn member_from_agent_setup(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tmux_target_uses_pane_id_when_present() {
+        assert_eq!(tmux_target_for_pane("%12"), "%12");
+    }
+
+    #[test]
+    fn tmux_target_wraps_numeric_index() {
+        assert_eq!(tmux_target_for_pane("3"), ":.3");
+    }
+
+    #[test]
+    fn build_cli_launch_command_uses_configured_fresh_command() {
+        let mut cmds = crate::models::CliCommandSettings::default();
+        cmds.gemini.fresh = "gemini --yolo --sandbox read-only".to_string();
+        let agent = AgentSetupConfig {
+            name: "reviewer".to_string(),
+            cli_tool: "gemini".to_string(),
+            model: "gemini-2.5-pro".to_string(),
+            project_id: "/tmp/project".to_string(),
+            description: None,
+        };
+        assert_eq!(
+            build_cli_launch_command(&agent, &cmds).expect("command"),
+            "gemini --yolo --sandbox read-only"
+        );
+    }
+
+    #[test]
+    fn build_cli_launch_command_for_codex_appends_model_when_missing() {
+        let cmds = crate::models::CliCommandSettings::default();
+        let agent = AgentSetupConfig {
+            name: "builder".to_string(),
+            cli_tool: "codex".to_string(),
+            model: "gpt-5.3".to_string(),
+            project_id: "/tmp/project".to_string(),
+            description: None,
+        };
+        assert_eq!(
+            build_cli_launch_command(&agent, &cmds).expect("command"),
+            "codex --yolo -m 'gpt-5.3'"
+        );
+    }
 
     #[test]
     fn parse_wsl_unix_path_from_stdout_handles_clean_output() {

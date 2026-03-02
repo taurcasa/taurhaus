@@ -13,3 +13,4 @@ pub mod search;
 pub mod sessions;
 pub mod settings;
 pub mod tasks;
+pub mod terminal_settings;

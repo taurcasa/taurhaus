@@ -263,8 +263,13 @@ fn initialize_ipc_delegates_to_orchestrator_and_returns_report_shape() {
     let state = test_state(tmp.path().to_path_buf());
     let request = sample_preflight_request();
 
-    let report = coordination_initialize_team_with_emitter(&state, request, |_| {})
-        .expect("initialize should return a report");
+    let report = coordination_initialize_team_with_emitter(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize should return a report");
 
     assert_eq!(report.team_name, "architecture-final");
     assert!(report.failed_step.is_none());
@@ -279,9 +284,14 @@ fn initialize_progress_events_are_emitted_in_step_order() {
     let request = sample_preflight_request();
 
     let mut emitted = Vec::new();
-    let report = coordination_initialize_team_with_emitter(&state, request, |event| {
-        emitted.push(event.clone());
-    })
+    let report = coordination_initialize_team_with_emitter(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        |event| {
+            emitted.push(event.clone());
+        },
+    )
     .expect("initialize should return a report");
 
     assert_eq!(emitted.len(), report.steps.len() * 2);
@@ -303,8 +313,13 @@ fn initialize_error_case_returns_structured_failed_step_report() {
     let mut request = sample_preflight_request();
     request.agents[0].name = request.lead.name.clone(); // duplicate name -> validation step failure
 
-    let report = coordination_initialize_team_with_emitter(&state, request, |_| {})
-        .expect("initialize should return structured failure report");
+    let report = coordination_initialize_team_with_emitter(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize should return structured failure report");
     assert_eq!(
         report.failed_step.as_deref(),
         Some("validate_configuration")
@@ -342,6 +357,7 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
     let report = coordination_add_agent_with_emitter(
         &state,
         sample_add_agent_request("arch", "bob"),
+        &crate::models::CliCommandSettings::default(),
         |event| emitted.push(event.clone()),
     )
     .expect("add-agent should return report");
@@ -362,8 +378,13 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
 fn reonboard_succeeds_for_existing_member() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_with_emitter(&state, sample_preflight_request(), |_| {})
-        .expect("initialize");
+    coordination_initialize_team_with_emitter(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize");
 
     let result = coordination_reonboard_impl(
         &state,
@@ -607,8 +628,13 @@ fn list_teams_includes_lead_project_anchor() {
     let state = test_state(tmp.path().to_path_buf());
 
     let request = sample_preflight_request();
-    coordination_initialize_team_with_emitter(&state, request, |_| {})
-        .expect("initialize should succeed");
+    coordination_initialize_team_with_emitter(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize should succeed");
 
     let discovery = coordination_list_teams_impl(&state).expect("list");
     assert_eq!(discovery.teams.len(), 1);

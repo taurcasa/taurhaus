@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 
 pub use crate::commands::coordination_types::*;
+use crate::commands::projects::DbState;
+use crate::commands::terminal_settings::load_cli_commands;
 use crate::coordination::backend::bridged::{
     availability_check, preflight_check, AvailabilityReport as BackendAvailabilityReport,
     PreflightAgent, PreflightReport as BackendPreflightReport,
@@ -19,15 +21,18 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{DeliveryRequest, DeliveryResult, OperatorNoticeDelivery};
 use crate::coordination::state::CoordinationState;
+use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
 #[tauri::command]
 pub fn coordination_initialize_team(
     app: AppHandle,
+    db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: InitializeTeamRequest,
 ) -> Result<InitializeReport, String> {
-    coordination_initialize_team_with_emitter(state.inner(), request, |event| {
+    let cli_commands = load_cli_commands(&db);
+    coordination_initialize_team_with_emitter(state.inner(), request, &cli_commands, |event| {
         let _ = app.emit("coordination-step-progress", event);
     })
 }
@@ -35,10 +40,12 @@ pub fn coordination_initialize_team(
 #[tauri::command]
 pub fn coordination_add_agent(
     app: AppHandle,
+    db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: AddAgentRequest,
 ) -> Result<AddAgentReport, String> {
-    coordination_add_agent_with_emitter(state.inner(), request, |event| {
+    let cli_commands = load_cli_commands(&db);
+    coordination_add_agent_with_emitter(state.inner(), request, &cli_commands, |event| {
         let _ = app.emit("coordination-step-progress", event);
     })
 }
@@ -121,53 +128,69 @@ pub fn coordination_get_feature_availability() -> Result<FeatureAvailabilityRepo
     Ok(coordination_get_feature_availability_impl())
 }
 
-fn coordination_initialize_team_impl(
+fn coordination_initialize_team_impl_with_cli_commands(
     state: &CoordinationState,
     request: InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
 ) -> Result<InitializeReport, String> {
     state
-        .with_orchestrator(|orchestrator| orchestrator.initialize_team(&request))
+        .with_orchestrator(|orchestrator| {
+            orchestrator.initialize_team_with_cli_commands(&request, cli_commands)
+        })
         .map_err(map_coordination_error)
 }
 
 fn coordination_initialize_team_with_emitter<E>(
     state: &CoordinationState,
     request: InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
     mut emit: E,
 ) -> Result<InitializeReport, String>
 where
     E: FnMut(&StepProgressEvent),
 {
     validate_initialize_request_fields(&request)?;
-    let report = coordination_initialize_team_impl(state, request)?;
+    let report = coordination_initialize_team_impl_with_cli_commands(state, request, cli_commands)?;
     for event in initialize_progress_events(&report) {
         emit(&event);
     }
     Ok(report)
 }
 
+#[cfg(test)]
 fn coordination_add_agent_impl(
     state: &CoordinationState,
     request: AddAgentRequest,
+) -> Result<AddAgentReport, String> {
+    coordination_add_agent_impl_with_cli_commands(state, request, &CliCommandSettings::default())
+}
+
+fn coordination_add_agent_impl_with_cli_commands(
+    state: &CoordinationState,
+    request: AddAgentRequest,
+    cli_commands: &CliCommandSettings,
 ) -> Result<AddAgentReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("agent.name", &request.agent.name)?;
     validate_non_empty("agent.project_id", &request.agent.project_id)?;
     validate_non_empty("agent.cli_tool", &request.agent.cli_tool)?;
     state
-        .with_orchestrator(|orchestrator| orchestrator.add_agent_to_team(&request))
+        .with_orchestrator(|orchestrator| {
+            orchestrator.add_agent_to_team_with_cli_commands(&request, cli_commands)
+        })
         .map_err(map_coordination_error)
 }
 
 fn coordination_add_agent_with_emitter<E>(
     state: &CoordinationState,
     request: AddAgentRequest,
+    cli_commands: &CliCommandSettings,
     mut emit: E,
 ) -> Result<AddAgentReport, String>
 where
     E: FnMut(&StepProgressEvent),
 {
-    let report = coordination_add_agent_impl(state, request)?;
+    let report = coordination_add_agent_impl_with_cli_commands(state, request, cli_commands)?;
     for event in add_agent_progress_events(&report) {
         emit(&event);
     }
