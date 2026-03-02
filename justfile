@@ -145,6 +145,32 @@ install-daemon:
         fi
     fi
 
+# Install mesh CLI to ~/.local/bin/ (WSL)
+# Builds from ~/projects/mesh and installs alongside the daemon.
+install-mesh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    MESH_PROJECT="$HOME/projects/mesh"
+    INSTALL_DIR="$HOME/.local/bin"
+    MESH_BIN="mesh"
+
+    if [ ! -d "$MESH_PROJECT" ]; then
+        echo "✗ Mesh project not found at $MESH_PROJECT"
+        exit 1
+    fi
+
+    echo "▸ Building mesh…"
+    cd "$MESH_PROJECT" && cargo build --release
+    cd -
+
+    mkdir -p "$INSTALL_DIR"
+    TMP_BIN="$INSTALL_DIR/.${MESH_BIN}.new"
+    install -m 755 "$MESH_PROJECT/target/release/$MESH_BIN" "$TMP_BIN"
+    mv -f "$TMP_BIN" "$INSTALL_DIR/$MESH_BIN"
+    echo "✓ Installed $MESH_BIN to $INSTALL_DIR/"
+    "$INSTALL_DIR/$MESH_BIN" --version 2>/dev/null || "$INSTALL_DIR/$MESH_BIN" --help 2>&1 | head -1
+
 # Run the daemon in foreground (for development)
 run-daemon:
     cd src-tauri && cargo run --bin taurhaus-daemon -- --verbose
