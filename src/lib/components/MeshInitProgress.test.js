@@ -82,6 +82,33 @@ describe('MeshInitProgress', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-init-icon-validate_configuration')).toHaveTextContent('●')
     })
+    expect(screen.getByTestId('mesh-init-desc-validate_configuration')).toHaveTextContent(
+      'Checking team name, agent tools, and project assignments'
+    )
+  })
+
+  it('shows elapsed seconds while initialization is running', async () => {
+    vi.useFakeTimers()
+    const pending = deferred()
+    coordinationInitializeTeam.mockReturnValueOnce(pending.promise)
+
+    render(MeshInitProgress, {
+      props: {
+        dark: false,
+        request: { teamName: 'arch-team' },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-elapsed')).toHaveTextContent('Elapsed: 0s')
+    })
+
+    vi.advanceTimersByTime(2000)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-elapsed')).toHaveTextContent('Elapsed: 2s')
+    })
+    vi.useRealTimers()
   })
 
   it('shows success state when all steps succeed', async () => {
@@ -132,6 +159,7 @@ describe('MeshInitProgress', () => {
       expect(screen.getByTestId('mesh-init-failure')).toBeInTheDocument()
     })
     expect(screen.getByTestId('mesh-init-retry-button')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-init-failure-details')).toBeInTheDocument()
   })
 
   it('retry button triggers re-initialization', async () => {

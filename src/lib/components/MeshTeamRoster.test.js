@@ -76,6 +76,7 @@ describe('MeshTeamRoster', () => {
       const activeBadge = screen.getByTestId('mesh-status-badge-team-lead')
       expect(activeBadge).toHaveTextContent('Active')
       expect(activeBadge.className).toContain('text-success-')
+      expect(activeBadge.className).toContain('activepulse')
     })
     const idleBadge = screen.getByTestId('mesh-status-badge-frontend-dev')
     expect(idleBadge).toHaveTextContent('Idle')
@@ -92,6 +93,10 @@ describe('MeshTeamRoster', () => {
         'Codex · gpt-5.3 · taurhaus-web'
       )
     })
+    expect(screen.getByTestId('mesh-member-tool-icon-frontend-dev')).toHaveAttribute(
+      'viewBox',
+      '0 0 16 16'
+    )
     expect(screen.getByTestId('mesh-member-description-frontend-dev')).toHaveTextContent(
       'UI implementation'
     )
@@ -104,6 +109,14 @@ describe('MeshTeamRoster', () => {
       expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toBeVisible()
       expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeVisible()
     })
+    expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toHaveAttribute(
+      'title',
+      "Jump to this agent's terminal pane"
+    )
+    expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toHaveAttribute(
+      'title',
+      'Re-send setup instructions to this agent'
+    )
   })
 
   it('focus pane button calls onFocusPane with pane_id', async () => {
@@ -123,9 +136,21 @@ describe('MeshTeamRoster', () => {
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
-  it('disband button calls onDisband', async () => {
+  it('manual refresh button triggers an immediate roster fetch', async () => {
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
+    await waitFor(() => {
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+    })
+    await fireEvent.click(screen.getByTestId('mesh-roster-refresh'))
+    await waitFor(() => {
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('disband button in overflow menu calls onDisband', async () => {
     const onDisband = vi.fn()
     render(MeshTeamRoster, { props: { teamName: 'architecture-final', onDisband } })
+    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
     expect(onDisband).toHaveBeenCalledTimes(1)
   })
@@ -139,5 +164,22 @@ describe('MeshTeamRoster', () => {
     await waitFor(() => {
       expect(coordinationReonboard).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
     })
+  })
+
+  it('shows transient sent feedback after re-onboard succeeds', async () => {
+    vi.useFakeTimers()
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-reonboard-frontend-dev'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-reonboard-sent-frontend-dev')).toHaveTextContent('Sent!')
+    })
+    vi.advanceTimersByTime(2100)
+    await waitFor(() => {
+      expect(screen.queryByTestId('mesh-reonboard-sent-frontend-dev')).not.toBeInTheDocument()
+    })
+    vi.useRealTimers()
   })
 })

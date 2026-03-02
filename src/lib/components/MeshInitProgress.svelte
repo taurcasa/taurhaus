@@ -28,6 +28,15 @@
     start_daemons: 'Starting coordination daemons',
     send_onboarding: 'Sending agent instructions',
   }
+  const stepDescriptions = {
+    validate_configuration: 'Checking team name, agent tools, and project assignments',
+    create_team: 'Writing team config to ~/.claude/teams/',
+    create_panes: 'Creating tmux panes for each agent',
+    launch_sessions: 'Starting CLI tools in each pane',
+    join_mesh: 'Registering agents with mesh protocol',
+    start_daemons: 'Launching file watchers for each agent inbox',
+    send_onboarding: 'Delivering initial instructions to each agent',
+  }
 
   const t = $derived(themeTokens(dark))
   const subtleButton = $derived(
@@ -45,6 +54,10 @@
   let failedStep = $state('')
   let errorMessage = $state('')
   let lastRequest = $state(null)
+  let elapsedSeconds = $state(0)
+  let elapsedTimer = null
+  const succeededSteps = $derived.by(() => steps.filter((entry) => entry.status === 'succeeded'))
+  const failedEntry = $derived.by(() => steps.find((entry) => entry.status === 'failed') ?? null)
 
   function resetSteps() {
     steps = stepsOrder.map((step) => ({
@@ -174,6 +187,17 @@
   })
 
   $effect(() => {
+    if (!running) return
+    elapsedSeconds = 0
+    elapsedTimer = setInterval(() => {
+      elapsedSeconds += 1
+    }, 1000)
+    return () => {
+      if (elapsedTimer) clearInterval(elapsedTimer)
+    }
+  })
+
+  $effect(() => {
     let cancelled = false
     let unlisten = null
     onCoordinationStepProgress((event) => {
@@ -196,7 +220,12 @@
 
 <section class="space-y-3" data-testid="mesh-init-progress">
   <header class="pb-3 border-b {t.keyline}">
-    <h2 class="text-sm font-semibold {t.textPrimary}">Initializing{activeTeamName ? ` ${activeTeamName}` : ''}...</h2>
+    <div class="flex items-center">
+      <h2 class="text-sm font-semibold {t.textPrimary}">Initializing{activeTeamName ? ` ${activeTeamName}` : ''}...</h2>
+      {#if running}
+        <span class="text-[11px] {t.textMuted} ml-2" data-testid="mesh-init-elapsed">Elapsed: {elapsedSeconds}s</span>
+      {/if}
+    </div>
   </header>
 
   <div class="space-y-0.5">
@@ -210,6 +239,11 @@
           {entry.status}
         </span>
       </div>
+      {#if entry.status === 'running' && stepDescriptions[entry.step]}
+        <p class="ml-5 -mt-0.5 mb-1 text-[10px] {t.textMuted}" data-testid={`mesh-init-desc-${entry.step}`}>
+          {stepDescriptions[entry.step]}
+        </p>
+      {/if}
       {#if entry.message}
         <p class="ml-5 -mt-0.5 mb-1 text-[11px] {t.textMuted}">{entry.message}</p>
       {/if}
@@ -219,9 +253,31 @@
   {#if failed}
     <div class="border-l-2 border-danger-400 pl-3 py-1 text-xs text-danger-600/95" data-testid="mesh-init-failure">
       <p class="font-semibold">Initialization failed{failedStep ? ` at ${prettyStep(failedStep)}` : ''}.</p>
+      {#if succeededSteps.length}
+        <p class="mt-1 text-[11px]">
+          Succeeded: {succeededSteps.map((entry) => prettyStep(entry.step)).join(', ')}
+        </p>
+      {/if}
+      {#if failedEntry}
+        <p class="mt-1 text-[11px]">Failed: {prettyStep(failedEntry.step)}</p>
+      {/if}
       {#if errorMessage}
         <p class="mt-1">{errorMessage}</p>
       {/if}
+      <details class="mt-2 text-[11px]" data-testid="mesh-init-failure-details">
+        <summary class="cursor-pointer font-medium">What went wrong?</summary>
+        <div class="mt-1 space-y-1">
+          {#if failedEntry?.message}
+            <p>{failedEntry.message}</p>
+          {/if}
+          {#if errorMessage}
+            <p>{errorMessage}</p>
+          {/if}
+          {#if !failedEntry?.message && !errorMessage}
+            <p>No additional failure details were provided by the backend.</p>
+          {/if}
+        </div>
+      </details>
     </div>
   {/if}
 

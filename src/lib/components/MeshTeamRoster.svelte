@@ -1,4 +1,5 @@
 <script>
+  import { toolIcon as sessionToolIcon } from '../sessionIndicator.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -25,6 +26,8 @@
   let loading = $state(false)
   let errorMessage = $state('')
   let reonboarding = $state(new Set())
+  let reonboardSent = $state(new Set())
+  let showOverflowMenu = $state(false)
   const activeCount = $derived.by(
     () => members.filter((member) => statusToState(member.sessionStatus) === 'active').length
   )
@@ -40,15 +43,18 @@
   }
 
   function normalizeMember(member) {
+    const cliTool = member?.cliTool ?? member?.cli_tool ?? ''
     return {
       name: member?.name ?? '',
       role: member?.role ?? 'member',
-      cliTool: member?.cliTool ?? member?.cli_tool ?? '',
+      cliTool,
       model: member?.model ?? '',
       projectId: member?.projectId ?? member?.project_id ?? '',
       description: member?.description ?? null,
       sessionStatus: String(member?.sessionStatus ?? member?.session_status ?? 'offline').toLowerCase(),
       paneId: member?.paneId ?? member?.pane_id ?? null,
+      toolLabel: toolLabel(cliTool),
+      toolIcon: sessionToolIcon({ cli_tool: cliTool }),
     }
   }
 
@@ -63,8 +69,8 @@
     const state = statusToState(status)
     if (state === 'active') {
       return dark
-        ? 'border border-success-500/40 bg-success-500/10 text-success-300'
-        : 'border border-success-300 bg-success-100 text-success-700'
+        ? 'border border-success-500/40 bg-success-500/10 text-success-300 animate-[activepulse_2s_ease-in-out_infinite]'
+        : 'border border-success-300 bg-success-100 text-success-700 animate-[activepulse_2s_ease-in-out_infinite]'
     }
     if (state === 'idle') {
       return dark
@@ -82,10 +88,6 @@
     if (normalized === 'codex') return 'Codex'
     if (normalized === 'gemini') return 'Gemini'
     return tool || 'Unknown'
-  }
-
-  function memberMetaLine(member) {
-    return `${toolLabel(member.cliTool)} · ${member.model || 'n/a'} · ${member.projectId || 'n/a'}`
   }
 
   async function refreshRoster() {
@@ -116,6 +118,12 @@
     reonboarding = new Set([...reonboarding, memberName])
     try {
       await reonboard(teamName, memberName)
+      reonboardSent = new Set([...reonboardSent, memberName])
+      setTimeout(() => {
+        const next = new Set(reonboardSent)
+        next.delete(memberName)
+        reonboardSent = next
+      }, 2000)
     } finally {
       const next = new Set(reonboarding)
       next.delete(memberName)
@@ -151,26 +159,58 @@
   <header class="flex items-center justify-between gap-3 pb-3 border-b {t.keyline}">
     <div>
       <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-runtime-title">{teamName}</h2>
-      <p class="text-[11px] {t.textMuted}" data-testid="mesh-runtime-placeholder">
-        {members.length} member{members.length !== 1 ? 's' : ''} · {activeCount} active · {idleCount} idle · refresh 5s
-      </p>
+      <div class="flex items-center gap-1.5">
+        <p class="text-[11px] {t.textMuted}" data-testid="mesh-runtime-placeholder">
+          {members.length} member{members.length !== 1 ? 's' : ''} · {activeCount} active · {idleCount} idle · refresh 5s
+        </p>
+        <button
+          class="text-[10px] {t.textMuted} hover:text-brand-500"
+          onclick={() => {
+            void refreshRoster()
+          }}
+          data-testid="mesh-roster-refresh"
+          title="Refresh now"
+        >
+          ↻
+        </button>
+      </div>
     </div>
     <div class="flex items-center gap-1.5">
       <button
         class={actionBrand}
-        onclick={onAddAgent}
+        onclick={() => {
+          showOverflowMenu = false
+          onAddAgent()
+        }}
         data-testid="mesh-add-agent-button"
       >
         + Agent
       </button>
-      <button
-        class={actionDanger}
-        onclick={onDisband}
-        disabled={disbanding}
-        data-testid="mesh-disband-button"
-      >
-        {disbanding ? 'Disbanding...' : 'Disband'}
-      </button>
+      <div class="relative">
+        <button
+          class="rounded-md px-1.5 py-1 text-[11px] {t.textMuted} hover:text-zinc-200 hover:bg-zinc-800/70"
+          onclick={() => {
+            showOverflowMenu = !showOverflowMenu
+          }}
+          data-testid="mesh-overflow-menu-button"
+        >
+          ⋯
+        </button>
+        {#if showOverflowMenu}
+          <div class="absolute right-0 top-full mt-1 rounded-md shadow-lg border {dark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'} py-1 z-10 min-w-[120px]">
+            <button
+              class={actionDanger}
+              onclick={() => {
+                onDisband()
+              }}
+              disabled={disbanding}
+              data-testid="mesh-disband-button"
+            >
+              {disbanding ? 'Disbanding...' : 'Disband team'}
+            </button>
+          </div>
+        {/if}
+      </div>
     </div>
   </header>
 
@@ -199,12 +239,27 @@
               >
                 {statusLabel(member.sessionStatus)}
               </span>
-              <span class="text-[13px] truncate min-w-0 {t.textPrimary}" data-testid={`mesh-role-indicator-${member.name}`}>
+              <span class="text-[13px] font-semibold truncate min-w-0 {t.textPrimary}" data-testid={`mesh-role-indicator-${member.name}`}>
                 {member.role === 'lead' ? `★ ${member.name}` : member.name}
               </span>
             </div>
             <p class="text-[11px] truncate {t.textMuted}" data-testid={`mesh-member-meta-${member.name}`}>
-              {memberMetaLine(member)}
+              <span class="inline-flex items-center gap-1">
+                <svg
+                  class="h-3 w-3 shrink-0"
+                  viewBox={member.toolIcon.viewBox}
+                  fill="currentColor"
+                  aria-hidden="true"
+                  data-testid={`mesh-member-tool-icon-${member.name}`}
+                >
+                  <path d={member.toolIcon.path}></path>
+                </svg>
+                <span>{member.toolLabel}</span>
+              </span>
+              {' · '}
+              {member.model || 'n/a'}
+              {' · '}
+              {member.projectId || 'n/a'}
             </p>
             {#if member.description}
               <p class="text-[10px] truncate {t.textMuted}" data-testid={`mesh-member-description-${member.name}`}>
@@ -218,6 +273,7 @@
               <button
                 class={rowActionTone}
                 onclick={() => onFocusPane(member.paneId)}
+                title="Jump to this agent's terminal pane"
                 data-testid={`mesh-focus-pane-${member.name}`}
               >
                 Focus
@@ -228,10 +284,16 @@
                 class={rowActionTone}
                 onclick={() => handleReonboard(member.name)}
                 disabled={reonboarding.has(member.name)}
+                title="Re-send setup instructions to this agent"
                 data-testid={`mesh-reonboard-${member.name}`}
               >
                 Re-onboard
               </button>
+              {#if reonboardSent.has(member.name)}
+                <span class="text-[10px] text-success-400 animate-[meshfade_2s_ease-out_forwards]" data-testid={`mesh-reonboard-sent-${member.name}`}>
+                  Sent!
+                </span>
+              {/if}
             {/if}
           </div>
         </article>
@@ -239,3 +301,24 @@
     </div>
   {/if}
 </section>
+
+<style>
+  @keyframes activepulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  @keyframes meshfade {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+</style>

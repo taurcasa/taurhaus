@@ -215,6 +215,7 @@ describe('Mesh flow smoke', () => {
       expect(screen.getByTestId('mesh-roster-card-backend-dev')).toBeInTheDocument()
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
     await waitFor(() => {
       expect(globalThis.confirm).toHaveBeenCalled()

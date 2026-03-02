@@ -262,6 +262,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
     expect(globalThis.confirm).toHaveBeenCalled()
 
@@ -289,6 +290,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-disband-button')).toHaveTextContent('Disbanding...')
@@ -324,6 +326,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
 
     expect(coordinationDisbandTeam).not.toHaveBeenCalled()
