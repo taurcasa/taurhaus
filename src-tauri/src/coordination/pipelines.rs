@@ -6,11 +6,9 @@ use crate::commands::coordination_types::{
     AddAgentReport, AddAgentRequest, AgentSetupConfig, InitializeReport, InitializeTeamRequest,
     StepProgress, StepStatus,
 };
-use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
@@ -71,16 +69,18 @@ impl CoordinationOrchestrator {
         let lead_member = match member_from_agent_setup(&request.lead, MemberRole::Lead) {
             Ok(member) => member,
             Err(err) => {
+                self.cleanup_initialize_failure(&request.team_name);
                 return Ok(failed_initialize_report(
                     &request.team_name,
                     "add_lead",
                     err,
                     succeeded_steps,
                     &mut steps,
-                ))
+                ));
             }
         };
         if let Err(err) = self.add_member(&request.team_name, lead_member) {
+            self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
                 "add_lead",
@@ -92,6 +92,7 @@ impl CoordinationOrchestrator {
         mark_step_succeeded("add_lead", "lead added", &mut succeeded_steps, &mut steps);
 
         if let Err(err) = self.create_panes_stub(request) {
+            self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
                 "create_panes",
@@ -108,6 +109,7 @@ impl CoordinationOrchestrator {
         );
 
         if let Err(err) = self.launch_sessions_stub(request) {
+            self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
                 "launch_sessions",
@@ -124,6 +126,7 @@ impl CoordinationOrchestrator {
         );
 
         if let Err(err) = self.join_mesh_stub(request) {
+            self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
                 "join_mesh",
@@ -135,6 +138,7 @@ impl CoordinationOrchestrator {
         mark_step_succeeded("join_mesh", "mesh joined", &mut succeeded_steps, &mut steps);
 
         if let Err(err) = self.start_daemons_stub(request) {
+            self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
                 "start_daemons",
@@ -151,6 +155,7 @@ impl CoordinationOrchestrator {
         );
 
         if let Err(err) = self.send_onboarding_messages(request) {
+            self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
                 "send_onboarding",
@@ -174,6 +179,13 @@ impl CoordinationOrchestrator {
             message: "team initialized".to_string(),
             steps,
         })
+    }
+
+    fn cleanup_initialize_failure(&mut self, team_name: &str) {
+        let _ = self.disband_team(
+            team_name,
+            Some("initialization failed — cleaning up".to_string()),
+        );
     }
 
     /// Hot-add a single agent to an already running team.
@@ -388,25 +400,9 @@ impl CoordinationOrchestrator {
 
     fn send_onboarding_messages(
         &mut self,
-        request: &InitializeTeamRequest,
+        _request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
-        for agent in &request.agents {
-            let cli_tool = parse_cli_tool(&agent.cli_tool)?;
-            if cli_tool == CliTool::Claude {
-                continue;
-            }
-
-            let onboarding = DeliveryRenderer::render_onboarding(
-                &request.team_name,
-                &agent.name,
-                &request.lead.name,
-            );
-            self.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
-                member_name: agent.name.clone(),
-                team_name: request.team_name.clone(),
-                message: onboarding,
-            }))?;
-        }
+        // Stubbed: onboarding delivery requires mesh join (not yet implemented).
         Ok(())
     }
 
@@ -462,31 +458,9 @@ impl CoordinationOrchestrator {
 
     fn send_onboarding_for_agent(
         &self,
-        request: &AddAgentRequest,
+        _request: &AddAgentRequest,
     ) -> Result<(), CoordinationError> {
-        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
-        if cli_tool == CliTool::Claude {
-            return Ok(());
-        }
-        let team = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
-        let lead_name = team
-            .members
-            .iter()
-            .find(|member| member.role == MemberRole::Lead)
-            .map(|member| member.name.clone())
-            .unwrap_or_else(|| "team-lead".to_string());
-
-        let onboarding = DeliveryRenderer::render_onboarding(
-            &request.team_name,
-            &request.agent.name,
-            &lead_name,
-        );
-        self.backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
-                member_name: request.agent.name.clone(),
-                team_name: request.team_name.clone(),
-                message: onboarding,
-            }))?;
+        // Stubbed: onboarding delivery requires mesh join (not yet implemented).
         Ok(())
     }
 
