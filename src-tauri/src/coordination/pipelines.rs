@@ -4,7 +4,7 @@ use chrono::Utc;
 
 use crate::commands::coordination_types::{
     AddAgentReport, AddAgentRequest, AgentSetupConfig, InitializeReport, InitializeTeamRequest,
-    StepProgress, StepStatus,
+    LeadMode, StepProgress, StepStatus,
 };
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
@@ -445,6 +445,22 @@ impl CoordinationOrchestrator {
     }
 
     fn create_panes(&mut self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+        if request.lead_mode == LeadMode::LaunchNew {
+            let pane_id = self.runtime.create_aitx_pane(&request.lead.project_id)?;
+            let mut runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
+            runtime.pane_id = Some(pane_id);
+            runtime.daemon_pid = None;
+            runtime.attached_at = Some(Utc::now());
+            runtime.health = HealthState::Healthy;
+            MemberRuntimeStore::save(
+                &self.teams_dir,
+                &request.team_name,
+                &request.lead.name,
+                &runtime,
+            )?;
+        }
+
         for agent in &request.agents {
             let member = member_from_agent_setup(agent, MemberRole::Agent)?;
             self.add_member(&request.team_name, member.clone())?;
@@ -466,6 +482,18 @@ impl CoordinationOrchestrator {
         request: &InitializeTeamRequest,
         cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
+        if request.lead_mode == LeadMode::LaunchNew {
+            let runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
+            let pane_id = runtime.pane_id.ok_or_else(|| {
+                CoordinationError::Backend(format!(
+                    "missing pane id for member '{}' in team '{}'",
+                    request.lead.name, request.team_name
+                ))
+            })?;
+            self.launch_agent_in_pane(&pane_id, &request.lead, cli_commands)?;
+        }
+
         for agent in &request.agents {
             let runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
@@ -490,6 +518,34 @@ impl CoordinationOrchestrator {
     }
 
     fn start_daemons(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+        if request.lead_mode == LeadMode::LaunchNew {
+            let mut runtime =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
+            let pane_id = runtime.pane_id.clone().ok_or_else(|| {
+                CoordinationError::Backend(format!(
+                    "missing pane id for member '{}' in team '{}'",
+                    request.lead.name, request.team_name
+                ))
+            })?;
+            let pid =
+                self.runtime
+                    .spawn_mesh_daemon(&pane_id, &request.team_name, &request.lead.name)?;
+            runtime.daemon_pid = Some(pid);
+            MemberRuntimeStore::save(
+                &self.teams_dir,
+                &request.team_name,
+                &request.lead.name,
+                &runtime,
+            )?;
+            tracing::info!(
+                team = %request.team_name,
+                member = %request.lead.name,
+                pane_id = %pane_id,
+                pid = pid,
+                "mesh daemon started"
+            );
+        }
+
         for agent in &request.agents {
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;

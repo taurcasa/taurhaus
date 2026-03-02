@@ -858,6 +858,49 @@ fn initialize_team_full_success_path() {
             "send_onboarding",
         ]
     );
+
+    let lead_runtime = MemberRuntimeStore::load(
+        tmp.path(),
+        "architecture-final-init",
+        "team-lead",
+    )
+    .expect("lead runtime should exist");
+    assert!(
+        lead_runtime.pane_id.is_some(),
+        "lead pane should be created when lead_mode=launch_new"
+    );
+    assert!(
+        lead_runtime.daemon_pid.is_some(),
+        "lead daemon should start when lead_mode=launch_new"
+    );
+}
+
+#[test]
+fn initialize_team_attach_existing_skips_lead_launch() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(&tmp);
+    let mut request = initialize_request("architecture-final-attach-existing");
+    request.lead_mode = LeadMode::AttachExisting;
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+    assert!(report.failed_step.is_none());
+
+    let lead_runtime = MemberRuntimeStore::load(
+        tmp.path(),
+        "architecture-final-attach-existing",
+        "team-lead",
+    )
+    .expect("lead runtime should exist");
+    assert!(
+        lead_runtime.pane_id.is_none(),
+        "lead pane should remain unset when lead_mode=attach_existing"
+    );
+    assert!(
+        lead_runtime.daemon_pid.is_none(),
+        "lead daemon should remain unset when lead_mode=attach_existing"
+    );
 }
 
 #[test]

@@ -12,6 +12,9 @@ use std::time::Duration;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
 
+const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
+const TMUX_POST_ENTER_DELAY: Duration = Duration::from_secs(1);
+
 pub trait CoordinationRuntime: Send + Sync {
     fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError>;
     fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str)
@@ -55,16 +58,18 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "send-keys".to_string(),
             "-t".to_string(),
             target.clone(),
+            "-l".to_string(),
             keys.to_string(),
         ])?;
-        thread::sleep(Duration::from_millis(200));
+        // Give tmux enough time to flush typed text before sending Enter.
+        thread::sleep(TMUX_TEXT_TO_ENTER_DELAY);
         run_tmux(&[
             "send-keys".to_string(),
             "-t".to_string(),
             target,
             "Enter".to_string(),
         ])?;
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(TMUX_POST_ENTER_DELAY);
         Ok(())
     }
 
