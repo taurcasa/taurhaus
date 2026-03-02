@@ -165,6 +165,10 @@ describe('MeshTab', () => {
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
     expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    const toolLabels = Array.from(
+      screen.getByTestId('mesh-add-agent-tool-select').querySelectorAll('option')
+    ).map((option) => option.textContent)
+    expect(toolLabels).toEqual(['Claude', 'Codex', 'Gemini'])
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'backend-dev' },
     })

@@ -604,6 +604,16 @@ export function coordinationGetLiveTeamStatus(teamName) {
         sessionStatus: 'idle',
         paneId: '%2',
       },
+      {
+        name: 'qa-reviewer',
+        role: 'member',
+        cliTool: 'gemini',
+        model: 'gemini-2.5-pro',
+        projectId: 'proj-core',
+        description: 'Test coverage and code review',
+        sessionStatus: 'active',
+        paneId: '%3',
+      },
     ],
   }))
 }

@@ -18,27 +18,30 @@ const sampleRoster = {
     {
       name: 'team-lead',
       role: 'lead',
-      cliTool: 'Claude',
+      cliTool: 'claude',
       model: 'opus',
       projectId: 'taurhaus',
+      description: 'Own orchestration',
       sessionStatus: 'active',
       paneId: '%1',
     },
     {
       name: 'frontend-dev',
       role: 'member',
-      cliTool: 'Codex',
+      cliTool: 'codex',
       model: 'gpt-5.3',
       projectId: 'taurhaus-web',
+      description: 'UI implementation',
       sessionStatus: 'idle',
       paneId: '%2',
     },
     {
       name: 'docs-writer',
       role: 'member',
-      cliTool: 'Gemini',
+      cliTool: 'gemini',
       model: 'gemini-2.5-pro',
       projectId: 'taurhaus-docs',
+      description: null,
       sessionStatus: 'offline',
       paneId: null,
     },
@@ -59,25 +62,48 @@ describe('MeshTeamRoster', () => {
     })
   })
 
-  it('renders member names with role indicator for lead', async () => {
+  it('renders member names with star indicator for lead', async () => {
     render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-role-indicator-team-lead')).toHaveTextContent('team-lead')
+      expect(screen.getByTestId('mesh-role-indicator-team-lead')).toHaveTextContent('★ team-lead')
     })
     expect(screen.getByTestId('mesh-role-indicator-frontend-dev')).toHaveTextContent('frontend-dev')
   })
 
-  it('shows status dots with correct colors per session_status', async () => {
+  it('shows status badges with correct text labels and tones', async () => {
     render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
     await waitFor(() => {
-      const activeDot = screen.getByTestId('mesh-status-dot-team-lead')
-      expect(activeDot).toBeInTheDocument()
-      expect(activeDot.className).toContain('bg-success-400')
+      const activeBadge = screen.getByTestId('mesh-status-badge-team-lead')
+      expect(activeBadge).toHaveTextContent('Active')
+      expect(activeBadge.className).toContain('text-success-')
     })
-    const idleDot = screen.getByTestId('mesh-status-dot-frontend-dev')
-    expect(idleDot.className).toContain('bg-warning-400')
-    const offlineDot = screen.getByTestId('mesh-status-dot-docs-writer')
-    expect(offlineDot.className).toContain('bg-zinc-')
+    const idleBadge = screen.getByTestId('mesh-status-badge-frontend-dev')
+    expect(idleBadge).toHaveTextContent('Idle')
+    expect(idleBadge.className).toContain('text-warning-')
+    const offlineBadge = screen.getByTestId('mesh-status-badge-docs-writer')
+    expect(offlineBadge).toHaveTextContent('Offline')
+    expect(offlineBadge.className).toContain('text-zinc-')
+  })
+
+  it('renders tool, model, project metadata and optional description', async () => {
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-member-meta-frontend-dev')).toHaveTextContent(
+        'Codex · gpt-5.3 · taurhaus-web'
+      )
+    })
+    expect(screen.getByTestId('mesh-member-description-frontend-dev')).toHaveTextContent(
+      'UI implementation'
+    )
+    expect(screen.queryByTestId('mesh-member-description-docs-writer')).not.toBeInTheDocument()
+  })
+
+  it('shows action buttons without hover gating', async () => {
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toBeVisible()
+      expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeVisible()
+    })
   })
 
   it('focus pane button calls onFocusPane with pane_id', async () => {

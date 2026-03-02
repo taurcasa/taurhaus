@@ -39,6 +39,97 @@ describe('MeshSetupForm', () => {
     expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(2)
   })
 
+  it('shows plain tool labels without icon prefixes', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    const select = screen.getByTestId('mesh-agent-tool-select-0')
+    const labels = Array.from(select.querySelectorAll('option')).map((option) => option.textContent)
+    expect(labels).toEqual(['Claude', 'Codex', 'Gemini'])
+  })
+
+  it('uses a single-line input for team description', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    const description = screen.getByTestId('mesh-team-description-input')
+    expect(description.tagName).toBe('INPUT')
+    expect(description).toHaveAttribute('placeholder', "Optional — describe the team's purpose")
+  })
+
+  it('auto-selects project only when exactly one project exists', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects: [{ id: 'proj-only', name: 'Only Project' }],
+      },
+    })
+
+    expect(screen.getByTestId('mesh-agent-project-select-0')).toHaveValue('proj-only')
+
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
+    expect(screen.getByTestId('mesh-agent-project-select-1')).toHaveValue('proj-only')
+  })
+
+  it('renders separator border on agent cards after the first', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
+    const cards = screen.getAllByTestId('mesh-agent-card')
+    expect(cards[0].className).not.toContain('border-t')
+    expect(cards[1].className).toContain('border-t')
+  })
+
+  it('quick-add buttons use compact labels and tooltip descriptions', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    const frontendQuickAdd = screen.getByTestId('mesh-quick-add-frontend')
+    expect(frontendQuickAdd).toHaveTextContent(/^Frontend$/)
+    expect(frontendQuickAdd).toHaveAttribute('title', 'Owns UI implementation')
+  })
+
+  it('review panel lists agent names with selected tools', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await fireEvent.input(screen.getByTestId('mesh-agent-name-input-0'), {
+      target: { value: 'frontend-dev' },
+    })
+    await fireEvent.change(screen.getByTestId('mesh-agent-tool-select-0'), {
+      target: { value: 'gemini' },
+    })
+
+    expect(screen.getByTestId('mesh-review-agents-detail')).toHaveTextContent('frontend-dev (Gemini)')
+  })
+
   it('duplicate name shows inline error', async () => {
     render(MeshSetupForm, {
       props: {

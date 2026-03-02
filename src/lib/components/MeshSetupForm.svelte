@@ -32,9 +32,9 @@
   const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
 
   const toolOptions = [
-    { value: 'claude', label: 'Claude', icon: 'C' },
-    { value: 'codex', label: 'Codex', icon: 'CX' },
-    { value: 'gemini', label: 'Gemini', icon: 'G' },
+    { value: 'claude', label: 'Claude' },
+    { value: 'codex', label: 'Codex' },
+    { value: 'gemini', label: 'Gemini' },
   ]
 
   const modelOptionsByTool = {
@@ -86,13 +86,20 @@
   let leadModel = $state('opus')
   let leadSessionMode = $state('use_current')
 
+  function defaultAgentProjectId() {
+    if (projectOptions.length === 1) {
+      return projectOptions[0].id
+    }
+    return ''
+  }
+
   function blankAgent() {
     return {
       id: nextAgentId++,
       name: '',
       cliTool: 'codex',
       model: modelOptionsByTool.codex[0],
-      projectId: projectOptions[0]?.id ?? '',
+      projectId: defaultAgentProjectId(),
       description: '',
     }
   }
@@ -165,6 +172,15 @@
 
   const leadNameDuplicate = $derived(duplicateNames.has(leadName.trim().toLowerCase()))
   const hasDuplicateNames = $derived(duplicateNames.size > 0)
+  const reviewAgents = $derived.by(() => {
+    return agents
+      .map((agent, index) => {
+        const toolLabel =
+          toolOptions.find((toolOption) => toolOption.value === agent.cliTool)?.label ?? agent.cliTool
+        return `${agent.name.trim() || `agent-${index + 1}`} (${toolLabel})`
+      })
+      .join(', ')
+  })
   const hasMissingRequired = $derived.by(() => {
     if (!teamName.trim() || !leadName.trim()) return true
     if (agents.length === 0) return true
@@ -237,11 +253,12 @@
       </label>
       <label class="space-y-1 text-xs {t.textMuted}">
         <span>Team description</span>
-        <textarea
-          class="w-full min-h-[68px] bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
+        <input
+          class="{formFieldBase} {fieldTone}"
+          placeholder="Optional — describe the team's purpose"
           bind:value={teamDescription}
           data-testid="mesh-team-description-input"
-        ></textarea>
+        />
       </label>
     </div>
   </div>
@@ -344,10 +361,11 @@
         <button
           type="button"
           class={quickAddButton}
+          title={role.description}
           onclick={() => quickAdd(role)}
           data-testid={`mesh-quick-add-${role.label.toLowerCase()}`}
         >
-          + {role.label}
+          {role.label}
         </button>
       {/each}
     </div>
@@ -360,7 +378,7 @@
 
     <div class="space-y-1">
       {#each agents as agent, index (agent.id)}
-        <article class="py-3 space-y-2.5 rounded-md -mx-2 px-2 {dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50'}" data-testid="mesh-agent-card">
+        <article class="py-3 space-y-2.5 rounded-md -mx-2 px-2 {index > 0 ? `border-t ${t.keyline}` : ''} {dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50'}" data-testid="mesh-agent-card">
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] {t.textMuted}">Agent {index + 1}</span>
             <button
@@ -394,7 +412,7 @@
                 data-testid={`mesh-agent-tool-select-${index}`}
               >
                 {#each toolOptions as tool}
-                  <option value={tool.value}>{tool.icon} {tool.label}</option>
+                  <option value={tool.value}>{tool.label}</option>
                 {/each}
               </select>
             </label>
@@ -449,8 +467,13 @@
       <h3 class="text-[11px] uppercase {t.textMuted}">Review</h3>
     </div>
     <p class="text-xs {t.textMuted}">Team: <span class="{t.textPrimary} font-medium">{teamName || '—'}</span></p>
-    <p class="text-xs {t.textMuted}">Lead: <span class="{t.textPrimary} font-medium">{leadName || '—'}</span> ({leadModel})</p>
+    <p class="text-xs {t.textMuted}">
+      Lead: <span class="{t.textPrimary} font-medium">{leadName || '—'}</span> · Claude ({leadModel})
+    </p>
     <p class="text-xs {t.textMuted}">Agents: <span class="{t.textPrimary} font-medium">{agents.length}</span></p>
+    <p class="text-xs {t.textMuted}" data-testid="mesh-review-agents-detail">
+      Members: <span class="{t.textPrimary} font-medium">{reviewAgents || '—'}</span>
+    </p>
   </div>
 
   <div class="flex justify-end">

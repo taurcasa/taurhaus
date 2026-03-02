@@ -14,15 +14,10 @@
   const actionBase = 'rounded-md px-2 py-1 text-[11px] transition-colors'
   const actionBrand = `${actionBase} text-brand-500 hover:text-brand-400 hover:bg-brand-500/10`
   const actionDanger = `${actionBase} text-danger-500/70 hover:text-danger-500 hover:bg-danger-500/10`
-  const rowButtonTone = $derived(
+  const rowActionTone = $derived(
     dark
-      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70'
-      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
-  )
-  const leadBadgeClass = $derived(
-    dark
-      ? 'border border-zinc-600 text-zinc-400 bg-transparent font-mono'
-      : 'border border-zinc-300 text-zinc-500 bg-transparent font-mono'
+      ? 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70 hover:border-zinc-500 disabled:opacity-50'
+      : 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 hover:border-zinc-400 disabled:opacity-50'
   )
 
   let members = $state([])
@@ -56,18 +51,40 @@
     }
   }
 
-  function statusDotColor(status) {
+  function statusLabel(status) {
     const state = statusToState(status)
-    if (state === 'active') return 'bg-success-400'
-    if (state === 'idle') return 'bg-warning-400'
-    return dark ? 'bg-zinc-600' : 'bg-zinc-300'
+    if (state === 'active') return 'Active'
+    if (state === 'idle') return 'Idle'
+    return 'Offline'
+  }
+
+  function statusBadgeClass(status) {
+    const state = statusToState(status)
+    if (state === 'active') {
+      return dark
+        ? 'border border-success-500/40 bg-success-500/10 text-success-300'
+        : 'border border-success-300 bg-success-100 text-success-700'
+    }
+    if (state === 'idle') {
+      return dark
+        ? 'border border-warning-500/40 bg-warning-500/10 text-warning-300'
+        : 'border border-warning-300 bg-warning-100 text-warning-700'
+    }
+    return dark
+      ? 'border border-zinc-600 bg-zinc-800 text-zinc-300'
+      : 'border border-zinc-300 bg-zinc-100 text-zinc-600'
   }
 
   function toolLabel(tool) {
-    if (tool === 'claude') return 'Claude'
-    if (tool === 'codex') return 'Codex'
-    if (tool === 'gemini') return 'Gemini'
+    const normalized = String(tool || '').toLowerCase()
+    if (normalized === 'claude') return 'Claude'
+    if (normalized === 'codex') return 'Codex'
+    if (normalized === 'gemini') return 'Gemini'
     return tool || 'Unknown'
+  }
+
+  function memberMetaLine(member) {
+    return `${toolLabel(member.cliTool)} · ${member.model || 'n/a'} · ${member.projectId || 'n/a'}`
   }
 
   async function refreshRoster() {
@@ -166,40 +183,38 @@
   {:else if members.length === 0}
     <p class="text-xs {t.textMuted}" data-testid="mesh-roster-empty">No members found.</p>
   {:else}
-    <div class="space-y-0.5">
-      <div class="grid grid-cols-[10px_minmax(0,1fr)_minmax(0,180px)_120px] items-center h-5 -mx-2 px-2 text-[10px] uppercase tracking-[0.06em] {t.textMuted}">
-        <span>Status</span>
-        <span>Name</span>
-        <span>Tool · Model</span>
-        <span class="text-right">Actions</span>
-      </div>
-      {#each members as member}
+    <div>
+      {#each members as member, index}
         <article
-          class="grid grid-cols-[10px_minmax(0,1fr)_minmax(0,180px)_120px] items-center gap-2 h-[30px] -mx-2 px-2 rounded {dark ? 'hover:bg-zinc-900' : 'hover:bg-zinc-50'} group"
+          class={`flex items-start justify-between gap-3 py-2 ${index < members.length - 1 ? `border-b ${t.keyline}` : ''}`}
           data-testid={`mesh-roster-card-${member.name}`}
         >
-          <span
-            class={`w-1.5 h-1.5 shrink-0 rounded-full ${statusDotColor(member.sessionStatus)}`}
-            data-testid={`mesh-status-dot-${member.name}`}
-          ></span>
-
-          <div class="flex items-center gap-1.5 min-w-0">
-            <span class="text-[13px] truncate min-w-0 {t.textPrimary}" data-testid={`mesh-role-indicator-${member.name}`}>
-              {member.name}
-            </span>
-            {#if member.role === 'lead'}
-              <span class="text-[9px] uppercase tracking-[0.06em] px-1 py-0.5 rounded {leadBadgeClass}">lead</span>
+          <div class="min-w-0 space-y-0.5">
+            <div class="flex items-center gap-2 min-w-0">
+              <span
+                class={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${statusBadgeClass(member.sessionStatus)}`}
+                data-testid={`mesh-status-badge-${member.name}`}
+              >
+                {statusLabel(member.sessionStatus)}
+              </span>
+              <span class="text-[13px] truncate min-w-0 {t.textPrimary}" data-testid={`mesh-role-indicator-${member.name}`}>
+                {member.role === 'lead' ? `★ ${member.name}` : member.name}
+              </span>
+            </div>
+            <p class="text-[11px] truncate {t.textMuted}" data-testid={`mesh-member-meta-${member.name}`}>
+              {memberMetaLine(member)}
+            </p>
+            {#if member.description}
+              <p class="text-[10px] truncate {t.textMuted}" data-testid={`mesh-member-description-${member.name}`}>
+                {member.description}
+              </p>
             {/if}
           </div>
 
-          <span class="text-[11px] truncate {t.textMuted}" data-testid={`mesh-member-meta-${member.name}`}>
-            {toolLabel(member.cliTool)}{member.model ? ` · ${member.model}` : ''}
-          </span>
-
-          <div class="flex justify-end items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <div class="flex shrink-0 justify-end items-center gap-1">
             {#if member.paneId}
               <button
-                class="rounded px-1.5 py-0.5 text-[10px] text-brand-500 hover:text-brand-400 hover:bg-brand-500/10"
+                class={rowActionTone}
                 onclick={() => onFocusPane(member.paneId)}
                 data-testid={`mesh-focus-pane-${member.name}`}
               >
@@ -208,7 +223,7 @@
             {/if}
             {#if member.role !== 'lead'}
               <button
-                class="rounded px-1.5 py-0.5 text-[10px] {rowButtonTone} disabled:opacity-50"
+                class={rowActionTone}
                 onclick={() => handleReonboard(member.name)}
                 disabled={reonboarding.has(member.name)}
                 data-testid={`mesh-reonboard-${member.name}`}
