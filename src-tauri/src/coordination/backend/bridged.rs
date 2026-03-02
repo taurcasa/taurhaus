@@ -72,15 +72,78 @@ pub trait BinaryLookup: Send + Sync {
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CommandInvocation {
+    program: &'static str,
+    args: Vec<String>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
+    if cfg!(target_os = "windows") {
+        CommandInvocation {
+            program: "wsl",
+            args: vec!["-e".to_string(), "which".to_string(), binary_name.to_string()],
+        }
+    } else {
+        CommandInvocation {
+            program: "which",
+            args: vec![binary_name.to_string()],
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
+    if cfg!(target_os = "windows") {
+        let mut invocation_args = vec!["-e".to_string(), "mesh".to_string()];
+        invocation_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        CommandInvocation {
+            program: "wsl",
+            args: invocation_args,
+        }
+    } else {
+        CommandInvocation {
+            program: "mesh",
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_system_command(invocation: &CommandInvocation) -> std::io::Result<std::process::Output> {
+    if invocation.program == "wsl" {
+        let mut cmd = wsl_command_for_coordination();
+        cmd.args(&invocation.args).output()
+    } else {
+        Command::new(invocation.program)
+            .args(&invocation.args)
+            .output()
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn wsl_command_for_coordination() -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new("wsl");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Default)]
 struct SystemBinaryLookup;
 
 #[cfg(feature = "mesh-bridged-backend")]
 impl BinaryLookup for SystemBinaryLookup {
     fn is_available(&self, binary_name: &str) -> bool {
-        Command::new("which")
-            .arg(binary_name)
-            .output()
+        let invocation = binary_lookup_invocation(binary_name);
+        run_system_command(&invocation)
             .map(|out| out.status.success())
             .unwrap_or(false)
     }
@@ -180,10 +243,8 @@ struct SystemMeshCommandRunner;
 #[cfg(feature = "mesh-bridged-backend")]
 impl MeshCommandRunner for SystemMeshCommandRunner {
     fn run(&self, args: &[&str]) -> Result<MeshCommandOutput, CoordinationError> {
-        let output = Command::new("mesh")
-            .args(args)
-            .output()
-            .map_err(CoordinationError::Io)?;
+        let invocation = mesh_command_invocation(args);
+        let output = run_system_command(&invocation).map_err(CoordinationError::Io)?;
 
         Ok(MeshCommandOutput {
             success: output.status.success(),
@@ -482,6 +543,34 @@ mod tests {
                     stdout: String::new(),
                     stderr: String::new(),
                 }))
+        }
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn binary_lookup_invocation_routes_by_platform() {
+        let invocation = binary_lookup_invocation("mesh");
+
+        if cfg!(target_os = "windows") {
+            assert_eq!(invocation.program, "wsl");
+            assert_eq!(invocation.args, vec!["-e", "which", "mesh"]);
+        } else {
+            assert_eq!(invocation.program, "which");
+            assert_eq!(invocation.args, vec!["mesh"]);
+        }
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn mesh_command_invocation_routes_by_platform() {
+        let invocation = mesh_command_invocation(&["read", "--unread"]);
+
+        if cfg!(target_os = "windows") {
+            assert_eq!(invocation.program, "wsl");
+            assert_eq!(invocation.args, vec!["-e", "mesh", "read", "--unread"]);
+        } else {
+            assert_eq!(invocation.program, "mesh");
+            assert_eq!(invocation.args, vec!["read", "--unread"]);
         }
     }
 

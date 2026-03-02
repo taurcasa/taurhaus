@@ -467,8 +467,10 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
     let distro = detect_default_distro()?.ok_or("No WSL distro configured")?;
     validate_wsl_distro(&distro).map_err(|e| format!("Invalid distro: {e}"))?;
 
-    // Translate Windows path to WSL-accessible /mnt/... path.
-    let wsl_source_path = windows_to_wsl_path(bundled_binary)?;
+    // Translate Windows/WSL paths to Linux where possible; keep native paths.
+    let bundled_binary_str = bundled_binary.to_string_lossy();
+    let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
+        .unwrap_or_else(|| bundled_binary_str.to_string());
 
     // Create target directory
     let mkdir = wsl_command()
@@ -553,24 +555,6 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
     }
 }
 
-/// Translate a Windows path to a WSL-accessible `/mnt/...` path.
-///
-/// On actual Windows: `C:\Users\foo\bar` → `/mnt/c/Users/foo/bar`
-/// On Linux (dev mode): returns the path as-is since it's already accessible.
-fn windows_to_wsl_path(path: &std::path::Path) -> Result<String, String> {
-    let path_str = path.to_string_lossy();
-
-    // Check if it looks like a Windows path (drive letter)
-    if path_str.len() >= 3 && path_str.as_bytes()[1] == b':' {
-        let drive = (path_str.as_bytes()[0] as char).to_ascii_lowercase();
-        let rest = &path_str[2..].replace('\\', "/");
-        Ok(format!("/mnt/{drive}{rest}"))
-    } else {
-        // Already a Unix path (dev mode on Linux)
-        Ok(path_str.to_string())
-    }
-}
-
 /// Simple semver less-than comparison.
 ///
 /// Compares major.minor.patch numerically. Returns true if `a` < `b`.
@@ -597,6 +581,11 @@ fn semver_less_than(a: &str, b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn canonical_linux_path(path: &std::path::Path) -> String {
+        let path_str = path.to_string_lossy();
+        crate::provider::path::to_linux(&path_str).unwrap_or_else(|| path_str.to_string())
+    }
 
     #[test]
     fn semver_comparison() {
@@ -628,29 +617,29 @@ mod tests {
         let win = std::path::PathBuf::from(
             "C:\\Users\\mstie\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon",
         );
-        // On Linux this is still a valid PathBuf, just treated as a single component
-        // The function checks for drive letter pattern
-        let result = windows_to_wsl_path(&win);
-        assert!(result.is_ok());
+        assert_eq!(
+            canonical_linux_path(&win),
+            "/mnt/c/Users/mstie/AppData/Local/com.taurhaus.dev/resources/taurhaus-daemon"
+        );
     }
 
     #[test]
     fn windows_path_translation_edge_cases() {
         let d_drive = std::path::PathBuf::from("D:\\Work\\Agent Mesh\\taurhaus-daemon");
         assert_eq!(
-            windows_to_wsl_path(&d_drive).unwrap(),
+            canonical_linux_path(&d_drive),
             "/mnt/d/Work/Agent Mesh/taurhaus-daemon"
         );
 
         let e_drive = std::path::PathBuf::from("e:\\Users\\foo\\bar baz\\daemon.exe");
         assert_eq!(
-            windows_to_wsl_path(&e_drive).unwrap(),
+            canonical_linux_path(&e_drive),
             "/mnt/e/Users/foo/bar baz/daemon.exe"
         );
 
         let unc = std::path::PathBuf::from("\\\\server\\share\\daemon.exe");
         assert_eq!(
-            windows_to_wsl_path(&unc).unwrap(),
+            canonical_linux_path(&unc),
             "\\\\server\\share\\daemon.exe"
         );
     }
@@ -658,7 +647,7 @@ mod tests {
     #[test]
     fn unix_path_passthrough() {
         let unix = std::path::PathBuf::from("/home/mstie/.local/bin/taurhaus-daemon");
-        let result = windows_to_wsl_path(&unix).unwrap();
+        let result = canonical_linux_path(&unix);
         assert_eq!(result, "/home/mstie/.local/bin/taurhaus-daemon");
     }
 
