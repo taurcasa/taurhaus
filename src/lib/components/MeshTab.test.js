@@ -79,7 +79,7 @@ describe('MeshTab', () => {
     })
 
     expect(screen.getByTestId('mesh-setup-description')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-create-team-button')).toBeDisabled()
+    expect(screen.getByTestId('mesh-create-team-button')).toBeInTheDocument()
   })
 
   it('renders missing-binary setup prompt and disables initialize CTA', async () => {

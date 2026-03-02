@@ -99,6 +99,20 @@ async function ensureSetupMode() {
   }
 }
 
+async function openCustomize() {
+  const advancedToggle = await $('[data-testid="mesh-advanced-toggle"]')
+  if (!(await advancedToggle.isExisting())) return
+
+  const teamNameInput = await $('[data-testid="mesh-team-name-input"]')
+  if (await teamNameInput.isExisting()) return
+
+  await advancedToggle.click()
+  await browser.waitUntil(
+    async () => await (await $('[data-testid="mesh-team-name-input"]')).isExisting(),
+    { ...WAIT_SHORT, timeoutMsg: 'Customize fields did not appear' }
+  )
+}
+
 describe('Mesh Workflow', () => {
   before(async () => {
     await waitForAppReady()
@@ -193,6 +207,7 @@ describe('Mesh Workflow', () => {
 
       await openMeshTab()
       await ensureSetupMode()
+      await openCustomize()
 
       const setupTitle = await $('[data-testid="mesh-setup-title"]')
       const teamNameInput = await $('[data-testid="mesh-team-name-input"]')
@@ -209,6 +224,7 @@ describe('Mesh Workflow', () => {
 
       await openMeshTab()
       await ensureSetupMode()
+      await openCustomize()
 
       const setupTitle = await $('[data-testid="mesh-setup-title"]')
       if (!(await setupTitle.isExisting())) throw new Error('Mesh setup form not available in Tier 2 run')

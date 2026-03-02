@@ -138,6 +138,11 @@ describe('Mesh flow smoke', () => {
       expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-advanced-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-team-basics')).toBeInTheDocument()
+    })
+
     await fireEvent.input(screen.getByTestId('mesh-agent-name-input-0'), {
       target: { value: 'frontend-dev' },
     })

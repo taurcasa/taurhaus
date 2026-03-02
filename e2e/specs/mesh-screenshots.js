@@ -77,9 +77,25 @@ async function ensureSetupMode() {
   }
 }
 
+async function openAdvancedSetup() {
+  const advancedToggle = await $('[data-testid="mesh-advanced-toggle"]')
+  if (!(await advancedToggle.isExisting())) return
+
+  const teamNameInput = await $('[data-testid="mesh-team-name-input"]')
+  if (await teamNameInput.isExisting()) return
+
+  await advancedToggle.click()
+  await browser.waitUntil(
+    async () => await (await $('[data-testid="mesh-team-name-input"]')).isExisting(),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Advanced setup fields did not appear' }
+  )
+}
+
 async function initializeRuntimeForScreenshot() {
   const setupTitle = await $('[data-testid="mesh-setup-title"]')
   if (!(await setupTitle.isExisting())) return false
+
+  await openAdvancedSetup()
 
   const teamName = `mesh-shot-${uniqueSuffix}`
   const firstAgentName = `mesh-shot-agent-a-${uniqueSuffix}`
