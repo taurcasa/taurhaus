@@ -556,7 +556,6 @@ fn map_feature_availability_report(report: BackendAvailabilityReport) -> Feature
     }
 }
 
-
 #[cfg(test)]
 #[path = "coordination/tests.rs"]
 mod tests;

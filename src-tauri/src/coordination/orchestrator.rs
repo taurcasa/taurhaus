@@ -383,7 +383,6 @@ impl CoordinationOrchestrator {
                 reclaimed_at: Utc::now(),
             }));
     }
-
 }
 
 fn infer_backend_kind(tool: CliTool) -> BackendKind {
@@ -422,7 +421,6 @@ fn discovered_team_to_status(team: DiscoveredTeam) -> DiscoveredTeamStatus {
         lead_project_path: team.lead_project_path,
     }
 }
-
 
 #[cfg(test)]
 mod tests;

@@ -2,13 +2,13 @@
 // git_init.rs with a scoped #[allow]. Any new `unsafe` block will fail compilation.
 #![deny(unsafe_code)]
 
+mod bootstrap;
 mod commands;
 mod config;
-mod bootstrap;
 mod daemon_lifecycle;
-mod event_processor;
 pub mod db;
 pub mod errors;
+mod event_processor;
 pub mod models;
 pub mod services;
 
@@ -543,4 +543,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running taurhaus");
 }
-

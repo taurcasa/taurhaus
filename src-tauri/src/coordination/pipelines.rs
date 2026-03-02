@@ -12,7 +12,9 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
-use crate::coordination::validation::{validate_member_name, validate_non_empty, validate_team_name};
+use crate::coordination::validation::{
+    validate_member_name, validate_non_empty, validate_team_name,
+};
 use crate::session_scanner::cli_tool::CliTool;
 
 impl CoordinationOrchestrator {

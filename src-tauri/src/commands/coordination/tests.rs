@@ -133,8 +133,7 @@ fn disband_team_response_serialization_round_trip() {
 fn create_team_rejects_empty_or_whitespace_name() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    let err =
-        coordination_create_team_impl(&state, "".to_string()).expect_err("empty should fail");
+    let err = coordination_create_team_impl(&state, "".to_string()).expect_err("empty should fail");
     assert!(err.contains("team_name"));
 
     let err = coordination_create_team_impl(&state, "   \n\t  ".to_string())
@@ -181,15 +180,14 @@ fn member_commands_validate_all_required_fields() {
 fn get_team_status_validates_non_empty_team_name() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    let err = coordination_get_team_status_impl(&state, " ".to_string())
-        .expect_err("whitespace invalid");
+    let err =
+        coordination_get_team_status_impl(&state, " ".to_string()).expect_err("whitespace invalid");
     assert!(err.contains("team_name"));
 }
 
 #[test]
 fn preflight_all_tools_present_returns_clean_report() {
-    let lookup =
-        MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "codex", "gemini"]);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "codex", "gemini"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
         .expect("preflight should succeed");
     assert!(report.can_initialize);
@@ -572,9 +570,8 @@ fn remove_member_error_mapping_not_found() {
     let state = test_state(tmp.path().to_path_buf());
 
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
-    let err =
-        coordination_remove_member_impl(&state, "arch".to_string(), "missing".to_string())
-            .expect_err("missing member");
+    let err = coordination_remove_member_impl(&state, "arch".to_string(), "missing".to_string())
+        .expect_err("missing member");
     assert!(err.contains("Not found"));
 }
 
@@ -672,8 +669,8 @@ fn get_team_status_error_mapping_not_found() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
 
-    let err = coordination_get_team_status_impl(&state, "missing".to_string())
-        .expect_err("missing team");
+    let err =
+        coordination_get_team_status_impl(&state, "missing".to_string()).expect_err("missing team");
     assert!(err.contains("Not found"));
 }
 
@@ -740,8 +737,7 @@ fn initialize_report_round_trip_includes_required_fields() {
     };
 
     let json = serde_json::to_string(&value).expect("serialize init report");
-    let decoded: InitializeReport =
-        serde_json::from_str(&json).expect("deserialize init report");
+    let decoded: InitializeReport = serde_json::from_str(&json).expect("deserialize init report");
     assert_eq!(decoded, value);
     assert_eq!(decoded.failed_step, Some("launch_sessions".to_string()));
     assert!(decoded.retryable);

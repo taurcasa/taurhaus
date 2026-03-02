@@ -397,8 +397,12 @@ mod tests {
     #[test]
     fn daemon_session_decode_handles_missing_invalid_and_valid_payloads() {
         assert!(decode_daemon_session_list(None).unwrap().is_empty());
-        assert!(decode_daemon_session_list(Some(serde_json::json!({"not": "a session list"}))).is_err());
-        assert!(decode_daemon_session_list(Some(serde_json::json!([]))).unwrap().is_empty());
+        assert!(
+            decode_daemon_session_list(Some(serde_json::json!({"not": "a session list"}))).is_err()
+        );
+        assert!(decode_daemon_session_list(Some(serde_json::json!([])))
+            .unwrap()
+            .is_empty());
 
         let payload = Some(serde_json::json!([
             {"pid": 1234, "project_path": "/tmp/project-a", "tty": "/dev/pts/1", "args": "claude --continue", "cli_tool": "claude", "tmux_session": "taurhaus", "tmux_window": "1", "tmux_pane": "%1", "tmux_window_name": "a", "state": "active", "session_id": "sess-a", "jsonl_path": "/tmp/a.jsonl"},
@@ -412,7 +416,9 @@ mod tests {
 
     #[test]
     fn daemon_launch_decode_handles_missing_invalid_and_valid_payloads() {
-        let payload = Some(serde_json::json!({"tmux_session": "taurhaus", "tmux_window": "1", "tmux_pane": "%2"}));
+        let payload = Some(
+            serde_json::json!({"tmux_session": "taurhaus", "tmux_window": "1", "tmux_pane": "%2"}),
+        );
         let result = decode_daemon_launch_result(payload).expect("valid launch payload");
         assert_eq!(result.tmux_session.as_deref(), Some("taurhaus"));
         assert_eq!(result.tmux_window, "1");
@@ -457,10 +463,22 @@ mod tests {
             ),
             (CliTool::Codex, LaunchMode::Continue, "codex --yolo"),
             (CliTool::Codex, LaunchMode::Fresh, "codex --yolo"),
-            (CliTool::Codex, LaunchMode::Resume, "codex resume --last --yolo"),
-            (CliTool::Gemini, LaunchMode::Continue, "gemini --yolo --resume"),
+            (
+                CliTool::Codex,
+                LaunchMode::Resume,
+                "codex resume --last --yolo",
+            ),
+            (
+                CliTool::Gemini,
+                LaunchMode::Continue,
+                "gemini --yolo --resume",
+            ),
             (CliTool::Gemini, LaunchMode::Fresh, "gemini --yolo"),
-            (CliTool::Gemini, LaunchMode::Resume, "gemini --yolo --resume"),
+            (
+                CliTool::Gemini,
+                LaunchMode::Resume,
+                "gemini --yolo --resume",
+            ),
         ] {
             assert_eq!(resolve_tool_command(&cmds, tool, mode), expected);
         }
@@ -476,6 +494,9 @@ mod tests {
             let _guard = poisoned.0.lock().unwrap();
             panic!("intentional poison");
         }));
-        assert_eq!(load_terminal_settings(&poisoned), TerminalSettings::default());
+        assert_eq!(
+            load_terminal_settings(&poisoned),
+            TerminalSettings::default()
+        );
     }
 }

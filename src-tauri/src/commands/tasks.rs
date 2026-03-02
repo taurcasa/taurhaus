@@ -96,8 +96,8 @@ fn enrich_from_session(
                 ended_at: end.to_rfc3339(),
             };
 
-            let commits = crate::git::commits::get_commits_in_range(path, start, end)
-                .unwrap_or_default();
+            let commits =
+                crate::git::commits::get_commits_in_range(path, start, end).unwrap_or_default();
 
             let files = crate::git::commits::get_files_changed_in_range(path, start, end)
                 .unwrap_or_default();
@@ -432,8 +432,8 @@ pub(crate) fn scan_tasks_from_files(
         }
 
         if daemon.is_connected() {
-            let linux_path =
-                crate::provider::path::to_linux(project_path).unwrap_or_else(|| project_path.to_string());
+            let linux_path = crate::provider::path::to_linux(project_path)
+                .unwrap_or_else(|| project_path.to_string());
 
             let id = "scan-project-tasks";
             let request = crate::daemon::protocol::DaemonRequest::new(
