@@ -176,12 +176,19 @@ pub fn try_connect_daemon(
 
 /// Try to restart the daemon process (called by health check on disconnect).
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
+    try_restart_daemon_with(distro, port, try_start_daemon)
+}
+
+fn try_restart_daemon_with<F>(distro: &str, port: u16, starter: F) -> Result<(), std::io::Error>
+where
+    F: FnOnce(&str, u16, &Path) -> Result<(), std::io::Error>,
+{
     if !is_native_daemon() {
         validate_wsl_distro(distro).map_err(std::io::Error::other)?;
     }
     tracing::info!(port, distro, "Attempting daemon restart");
     let log_path = health_check_log_path();
-    try_start_daemon(distro, port, &log_path)
+    starter(distro, port, &log_path)
 }
 
 /// Resolve the daemon binary path.
@@ -531,6 +538,51 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    struct TestDaemon {
+        shutdown: Arc<AtomicBool>,
+        _heavy_guard: crate::test_support::HeavyTestGuard,
+        handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
+    }
+
+    impl Drop for TestDaemon {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Relaxed);
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn reserve_free_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        port
+    }
+
+    fn spawn_test_daemon(port: u16, startup_delay: Duration) -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let config = crate::daemon::server::DaemonConfig {
+            port,
+            bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
+            auth_token: None,
+        };
+        let shutdown_clone = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            if startup_delay > Duration::ZERO {
+                std::thread::sleep(startup_delay);
+            }
+            crate::daemon::server::run(&config, shutdown_clone)
+        });
+        TestDaemon {
+            shutdown,
+            _heavy_guard: heavy_guard,
+            handle: Some(handle),
+        }
+    }
+
     fn test_log_path() -> PathBuf {
         std::env::temp_dir().join("taurhaus-test.log")
     }
@@ -547,21 +599,8 @@ mod tests {
 
     #[test]
     fn connects_to_running_daemon() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
-        let config = crate::daemon::server::DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        };
-        let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            let _ = crate::daemon::server::run(&config, shutdown_clone);
-        });
+        let port = reserve_free_port();
+        let daemon = spawn_test_daemon(port, Duration::ZERO);
         std::thread::sleep(Duration::from_millis(100));
 
         // On native platforms, distro is ignored — daemon connects directly.
@@ -574,7 +613,7 @@ mod tests {
         let result = try_connect_daemon(distro, port, &test_log_path());
         assert!(result.is_some());
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -589,22 +628,8 @@ mod tests {
 
     #[test]
     fn poll_until_reachable_succeeds_when_daemon_starts() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
-        let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(300));
-            let config = crate::daemon::server::DaemonConfig {
-                port,
-                bind_addr: "127.0.0.1".to_string(),
-                idle_timeout_secs: None,
-                auth_token: None,
-            };
-            let _ = crate::daemon::server::run(&config, shutdown_clone);
-        });
+        let port = reserve_free_port();
+        let daemon = spawn_test_daemon(port, Duration::from_millis(300));
 
         let result = poll_until_reachable(port, Duration::from_secs(3));
         assert!(
@@ -612,7 +637,7 @@ mod tests {
             "Should connect to daemon that started after a delay"
         );
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -688,21 +713,8 @@ mod tests {
             return; // Only relevant on macOS/Linux
         }
 
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
-        let config = crate::daemon::server::DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        };
-        let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            let _ = crate::daemon::server::run(&config, shutdown_clone);
-        });
+        let port = reserve_free_port();
+        let daemon = spawn_test_daemon(port, Duration::ZERO);
         std::thread::sleep(Duration::from_millis(100));
 
         // Key assertion: None distro doesn't cause early return on native.
@@ -712,7 +724,7 @@ mod tests {
             "None distro should still connect on native platforms"
         );
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -720,19 +732,21 @@ mod tests {
         // On native platforms, try_restart_daemon should NOT validate
         // the distro string against WSL name rules.
         if is_native_daemon() {
-            // "native" isn't a real WSL distro, but on native platforms
-            // the validation is skipped entirely — only the spawn matters.
-            // This won't actually spawn (binary doesn't exist in tests),
-            // but it shouldn't error on distro validation.
-            let result = try_restart_daemon("native", 0);
-            // Should fail with "not found" (binary missing), NOT with
-            // "invalid WSL distro" — because validation is skipped.
-            if let Err(e) = result {
-                assert!(
-                    !e.to_string().contains("invalid"),
-                    "Should not fail on distro validation, got: {e}"
-                );
-            }
+            let mut starter_called = false;
+            let result = try_restart_daemon_with("native", 0, |distro, port, _log_path| {
+                starter_called = true;
+                assert_eq!(distro, "native");
+                assert_eq!(port, 0);
+                Err(std::io::Error::other("simulated starter error"))
+            });
+
+            assert!(starter_called, "starter should be called on native");
+            assert!(result.is_err(), "mocked starter error should propagate");
+            let err = result.err().unwrap().to_string();
+            assert!(
+                !err.contains("invalid"),
+                "Should not fail on distro validation, got: {err}"
+            );
         }
     }
 

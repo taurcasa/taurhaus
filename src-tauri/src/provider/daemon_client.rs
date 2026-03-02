@@ -488,13 +488,25 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    /// Start a test daemon server and return port + shutdown handle.
-    fn start_daemon() -> (u16, Arc<AtomicBool>) {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+    struct TestDaemon {
+        port: u16,
+        shutdown: Arc<AtomicBool>,
+        _heavy_guard: crate::test_support::HeavyTestGuard,
+        handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
+    }
 
+    impl Drop for TestDaemon {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Relaxed);
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn start_daemon_on_port(port: u16) -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let shutdown = Arc::new(AtomicBool::new(false));
         let config = DaemonConfig {
             port,
             bind_addr: "127.0.0.1".to_string(),
@@ -502,11 +514,24 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            let _ = crate::daemon::server::run(&config, shutdown_clone);
+        let handle = std::thread::spawn(move || {
+            crate::daemon::server::run(&config, shutdown_clone)
         });
         std::thread::sleep(Duration::from_millis(100));
-        (port, shutdown)
+        TestDaemon {
+            port,
+            shutdown,
+            _heavy_guard: heavy_guard,
+            handle: Some(handle),
+        }
+    }
+
+    /// Start a test daemon server with an ephemeral port.
+    fn start_daemon() -> TestDaemon {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        start_daemon_on_port(port)
     }
 
     fn init_test_repo(dir: &std::path::Path) {
@@ -524,127 +549,127 @@ mod tests {
 
     #[test]
     fn daemon_provider_ping_via_git_status() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         init_test_repo(dir.path());
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let status = provider.git_status(path).unwrap();
 
         assert!(status.branch.is_some());
         assert!(!status.is_dirty);
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_recent_commits() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         init_test_repo(dir.path());
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let commits = provider.recent_commits(path, 10).unwrap();
 
         assert_eq!(commits.len(), 1);
         assert_eq!(commits[0].message, "Initial commit");
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_file_tree() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let tree = provider.file_tree(path).unwrap();
 
         let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
         assert!(names.contains(&"hello.txt"));
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_read_file() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("main.rs"), "fn main() {}").unwrap();
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let content = provider.read_file(path, "main.rs").unwrap();
 
         assert_eq!(content.content, "fn main() {}");
         assert_eq!(content.language, Some("rust".to_string()));
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_read_readme() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("README.md"), "# Hello").unwrap();
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let readme = provider.read_readme(path).unwrap();
 
         assert!(readme.is_some());
         assert_eq!(readme.unwrap().content, "# Hello");
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_read_asset() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         let data = vec![0x89, 0x50, 0x4e, 0x47]; // PNG magic bytes
         std::fs::write(dir.path().join("icon.png"), &data).unwrap();
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let bytes = provider.read_asset(path, "icon.png").unwrap();
 
         assert_eq!(bytes, data);
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_scan_sessions() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         let handoffs = dir.path().join(".claude").join("handoffs");
         std::fs::create_dir_all(&handoffs).unwrap();
         std::fs::write(handoffs.join("session.md"), "# Session").unwrap();
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let path = dir.path().to_str().unwrap();
         let files = provider.scan_session_files(path).unwrap();
 
         assert_eq!(files.len(), 1);
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn daemon_provider_handles_errors() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
 
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         let result = provider.git_status("/nonexistent/path");
 
         assert!(result.is_err());
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -674,23 +699,23 @@ mod tests {
 
     #[test]
     fn is_connected_true_initially() {
-        let (port, shutdown) = start_daemon();
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let daemon = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         assert!(provider.is_connected());
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn marks_disconnected_on_daemon_crash() {
-        let (port, shutdown) = start_daemon();
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let daemon = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
 
         // Verify connection works
         assert!(provider.ping().is_ok());
         assert!(provider.is_connected());
 
         // Kill the daemon — handler has 1s read timeout before noticing shutdown
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
         std::thread::sleep(Duration::from_millis(1500));
 
         // The first ping after shutdown may still succeed (handler processes it
@@ -705,12 +730,13 @@ mod tests {
 
     #[test]
     fn reconnect_after_daemon_restart() {
-        let (port, shutdown) = start_daemon();
-        let provider = DaemonProvider::connect(&format!("127.0.0.1:{port}")).unwrap();
+        let daemon = start_daemon();
+        let port = daemon.port;
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         assert!(provider.ping().is_ok());
 
         // Kill daemon — wait for handler to exit
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
         std::thread::sleep(Duration::from_millis(1500));
         let _ = provider.ping();
         if provider.is_connected() {
@@ -718,27 +744,17 @@ mod tests {
             let _ = provider.ping();
         }
         assert!(!provider.is_connected());
+        drop(daemon);
 
         // Start a new daemon on the same port
-        let shutdown2 = Arc::new(AtomicBool::new(false));
-        let config = DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        };
-        let shutdown2_clone = shutdown2.clone();
-        std::thread::spawn(move || {
-            let _ = crate::daemon::server::run(&config, shutdown2_clone);
-        });
-        std::thread::sleep(Duration::from_millis(200));
+        let daemon2 = start_daemon_on_port(port);
 
         // Reconnect should succeed
         assert!(provider.reconnect().is_ok());
         assert!(provider.is_connected());
         assert!(provider.ping().is_ok());
 
-        shutdown2.store(true, Ordering::Relaxed);
+        daemon2.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]

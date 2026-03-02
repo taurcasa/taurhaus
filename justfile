@@ -20,9 +20,13 @@ dev:
     @mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
     npm run dev:tauri
 
-# Run all checks (quality gate)
+# Run default checks (safe local lane)
 check: fmt lint typecheck test
     @echo "All checks passed."
+
+# Run full checks (includes integration/system Rust tests)
+check-full: fmt lint typecheck test-full
+    @echo "All full checks passed."
 
 # Enforce Rust formatting.
 fmt:
@@ -37,12 +41,52 @@ lint:
 typecheck:
     npm run typecheck
 
-# Run all tests
-test: test-rust test-frontend
+# Run default tests (safe local lane)
+test: test-rust-fast test-frontend
 
-# Run Rust tests
-test-rust:
-    cd src-tauri && cargo test
+# Run full tests (all Rust lanes + frontend)
+test-full: test-rust test-frontend
+
+# Run all Rust tests (compile lane + unit lane + integration/system lane)
+test-rust: test-rust-fast test-rust-unit test-rust-integration
+
+# Run Rust fast lane (compile all Rust tests, no execution)
+test-rust-fast:
+    cd src-tauri && cargo check --tests
+
+# Run Rust unit-test execution lane (daemon/network/watcher-heavy tests skipped)
+test-rust-unit:
+    cd src-tauri && cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything
+
+# Run Rust integration/system lane (serialized)
+test-rust-integration:
+    cd src-tauri && cargo test --tests -- --test-threads=1
+    cd src-tauri && cargo test --lib daemon::server::tests:: -- --test-threads=1
+    cd src-tauri && cargo test --lib daemon::event_listener::tests:: -- --test-threads=1
+    cd src-tauri && cargo test --lib provider::daemon_client::tests:: -- --test-threads=1
+    cd src-tauri && cargo test --lib daemon::launcher::tests:: -- --test-threads=1
+    cd src-tauri && cargo test --lib fs::watcher::tests::watcher_starts_and_stops -- --test-threads=1
+    cd src-tauri && cargo test --lib fs::watcher::tests::unwatch_all_clears_everything -- --test-threads=1
+
+# Bisect default Rust unit-test lane by module groups with checkpoints
+test-rust-bisect-unit:
+    ./scripts/rust-test-bisect.sh unit
+
+# Bisect heavy daemon/network/watcher suites with checkpoints
+test-rust-bisect-heavy:
+    ./scripts/rust-test-bisect.sh heavy
+
+# Bisect the commands module into sub-groups
+test-rust-bisect-commands:
+    ./scripts/rust-test-bisect.sh commands
+
+# Bisect the coordination module into sub-groups
+test-rust-bisect-coordination:
+    ./scripts/rust-test-bisect.sh coordination
+
+# Bisect coordination orchestrator tests one-by-one
+test-rust-bisect-orchestrator:
+    ./scripts/rust-test-bisect.sh orchestrator
 
 # Run frontend tests
 test-frontend:

@@ -220,7 +220,24 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
-    fn start_daemon() -> (u16, Arc<AtomicBool>) {
+    struct TestDaemon {
+        port: u16,
+        shutdown: Arc<AtomicBool>,
+        _heavy_guard: crate::test_support::HeavyTestGuard,
+        handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
+    }
+
+    impl Drop for TestDaemon {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Relaxed);
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn start_daemon() -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -233,45 +250,53 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            let _ = crate::daemon::server::run(&config, shutdown_clone);
+        let handle = std::thread::spawn(move || {
+            crate::daemon::server::run(&config, shutdown_clone)
         });
         std::thread::sleep(Duration::from_millis(100));
-        (port, shutdown)
+        TestDaemon {
+            port,
+            shutdown,
+            _heavy_guard: heavy_guard,
+            handle: Some(handle),
+        }
     }
 
     #[test]
     fn event_listener_connects_and_watches() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         let (tx, _rx) = mpsc::channel();
 
-        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        let mut listener =
+            DaemonEventListener::connect(&format!("127.0.0.1:{}", daemon.port), tx).unwrap();
         let result = listener.watch("p1", dir.path().to_str().unwrap());
         assert!(result.is_ok());
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn event_listener_watch_nonexistent_fails() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let (tx, _rx) = mpsc::channel();
 
-        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        let mut listener =
+            DaemonEventListener::connect(&format!("127.0.0.1:{}", daemon.port), tx).unwrap();
         let result = listener.watch("p1", "/nonexistent/path/that/does/not/exist");
         assert!(result.is_err());
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn event_listener_receives_file_change() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
         let (tx, rx) = mpsc::channel();
 
-        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        let mut listener =
+            DaemonEventListener::connect(&format!("127.0.0.1:{}", daemon.port), tx).unwrap();
         listener.watch("p1", dir.path().to_str().unwrap()).unwrap();
 
         // Start the event loop on a background thread
@@ -304,14 +329,14 @@ mod tests {
             }
         }
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
         // Event loop will exit when daemon connection drops
         let _ = listener_handle.join();
     }
 
     #[test]
     fn event_listener_receives_git_change() {
-        let (port, shutdown) = start_daemon();
+        let daemon = start_daemon();
         let dir = tempfile::TempDir::new().unwrap();
 
         // Create a git repo structure so .git/HEAD changes are classified as GitInternal
@@ -320,7 +345,8 @@ mod tests {
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main").unwrap();
 
         let (tx, rx) = mpsc::channel();
-        let mut listener = DaemonEventListener::connect(&format!("127.0.0.1:{port}"), tx).unwrap();
+        let mut listener =
+            DaemonEventListener::connect(&format!("127.0.0.1:{}", daemon.port), tx).unwrap();
         listener.watch("p1", dir.path().to_str().unwrap()).unwrap();
 
         let listener_handle = std::thread::spawn(move || {
@@ -348,7 +374,7 @@ mod tests {
         }
         assert!(got_git, "Should receive a GitChanged event");
 
-        shutdown.store(true, Ordering::Relaxed);
+        daemon.shutdown.store(true, Ordering::Relaxed);
         let _ = listener_handle.join();
     }
 

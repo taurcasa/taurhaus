@@ -343,33 +343,60 @@ mod tests {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
 
-    fn start_test_server() -> (u16, Arc<AtomicBool>) {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        // Find a free port
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+    struct TestServer {
+        port: u16,
+        shutdown: Arc<AtomicBool>,
+        _heavy_guard: crate::test_support::HeavyTestGuard,
+        handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
+    }
 
-        let config = DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        };
+    impl Drop for TestServer {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Relaxed);
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn start_server(config: DaemonConfig) -> TestServer {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let port = config.port;
         let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            let _ = run(&config, shutdown_clone);
+        let handle = std::thread::spawn(move || {
+            run(&config, shutdown_clone)
         });
+        let server = TestServer {
+            port,
+            shutdown,
+            _heavy_guard: heavy_guard,
+            handle: Some(handle),
+        };
 
         // Poll until the server is accepting connections (up to 2s).
         // A fixed sleep was flaky under parallel test load.
         for _ in 0..40 {
             if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-                return (port, shutdown);
+                return server;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         panic!("test server on port {port} did not start within 2s");
+    }
+
+    fn start_test_server() -> TestServer {
+        // Find a free port
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        start_server(DaemonConfig {
+            port,
+            bind_addr: "127.0.0.1".to_string(),
+            idle_timeout_secs: None,
+            auth_token: None,
+        })
     }
 
     fn send_request(
@@ -389,7 +416,8 @@ mod tests {
 
     #[test]
     fn server_responds_to_ping() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -406,12 +434,13 @@ mod tests {
         let result: protocol::PingResult = serde_json::from_value(resp.result.unwrap()).unwrap();
         assert_eq!(result.version, env!("CARGO_PKG_VERSION"));
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_returns_error_for_unknown_method() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -425,12 +454,13 @@ mod tests {
         assert!(!resp.is_ok());
         assert_eq!(resp.error.unwrap().code, "UNKNOWN_METHOD");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_handles_git_status_on_test_repo() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         // Create a test repo
         let dir = tempfile::TempDir::new().unwrap();
@@ -456,12 +486,13 @@ mod tests {
             serde_json::from_value(resp.result.unwrap()).unwrap();
         assert!(!status.is_dirty);
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_handles_file_tree() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
@@ -486,12 +517,13 @@ mod tests {
             serde_json::from_value(resp.result.unwrap()).unwrap();
         assert!(!tree.is_empty());
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_handles_read_file() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.rs"), "fn main() {}").unwrap();
@@ -517,12 +549,13 @@ mod tests {
             serde_json::from_value(resp.result.unwrap()).unwrap();
         assert_eq!(content.content, "fn main() {}");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_handles_multiple_requests_on_same_connection() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -539,12 +572,13 @@ mod tests {
         assert!(r2.is_ok());
         assert_eq!(r2.id, "p2");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_handles_malformed_json() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -562,12 +596,13 @@ mod tests {
         assert!(!resp.is_ok());
         assert_eq!(resp.error.unwrap().code, "PARSE_ERROR");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_shutdown_method() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -581,11 +616,12 @@ mod tests {
 
         // The shutdown flag should be set
         std::thread::sleep(std::time::Duration::from_millis(100));
-        assert!(shutdown.load(Ordering::Relaxed));
+        assert!(server.shutdown.load(Ordering::Relaxed));
     }
 
     #[test]
     fn server_idle_timeout_shuts_down() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -617,7 +653,8 @@ mod tests {
 
     #[test]
     fn server_rejects_oversized_request() {
-        let (port, shutdown) = start_test_server();
+        let server = start_test_server();
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -642,42 +679,30 @@ mod tests {
         let r = send_request(&mut stream, &mut reader, &DaemonRequest::ping("p1"));
         assert!(r.is_ok());
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     // -----------------------------------------------------------------------
     // Auth token tests
     // -----------------------------------------------------------------------
 
-    fn start_authed_server(token: &str) -> (u16, Arc<AtomicBool>) {
-        let shutdown = Arc::new(AtomicBool::new(false));
+    fn start_authed_server(token: &str) -> TestServer {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
 
-        let config = DaemonConfig {
+        start_server(DaemonConfig {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
             auth_token: Some(token.to_string()),
-        };
-        let shutdown_clone = shutdown.clone();
-        std::thread::spawn(move || {
-            let _ = run(&config, shutdown_clone);
-        });
-
-        for _ in 0..40 {
-            if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-                return (port, shutdown);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        panic!("authed test server on port {port} did not start within 2s");
+        })
     }
 
     #[test]
     fn server_rejects_missing_auth_token() {
-        let (port, shutdown) = start_authed_server("secret-token-123");
+        let server = start_authed_server("secret-token-123");
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -692,12 +717,13 @@ mod tests {
         assert!(!resp.is_ok());
         assert_eq!(resp.error.unwrap().code, "AUTH_FAILED");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_rejects_wrong_auth_token() {
-        let (port, shutdown) = start_authed_server("secret-token-123");
+        let server = start_authed_server("secret-token-123");
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -712,12 +738,13 @@ mod tests {
         assert!(!resp.is_ok());
         assert_eq!(resp.error.unwrap().code, "AUTH_FAILED");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
     fn server_accepts_correct_auth_token() {
-        let (port, shutdown) = start_authed_server("secret-token-123");
+        let server = start_authed_server("secret-token-123");
+        let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -732,6 +759,6 @@ mod tests {
         assert!(resp.is_ok());
         assert_eq!(resp.id, "r1");
 
-        shutdown.store(true, Ordering::Relaxed);
+        server.shutdown.store(true, Ordering::Relaxed);
     }
 }

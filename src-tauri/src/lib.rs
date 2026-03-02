@@ -36,6 +36,9 @@ pub mod terminal;
 
 pub mod platform;
 
+#[cfg(test)]
+mod test_support;
+
 use std::sync::Mutex;
 
 use commands::projects::DbState;

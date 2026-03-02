@@ -414,6 +414,7 @@ mod tests {
 
     #[test]
     fn watcher_starts_and_stops() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let dir = tempfile::TempDir::new().unwrap();
         let (mut watcher, _rx) = ProjectWatcher::new();
 
@@ -429,6 +430,7 @@ mod tests {
 
     #[test]
     fn unwatch_all_clears_everything() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let d1 = tempfile::TempDir::new().unwrap();
         let d2 = tempfile::TempDir::new().unwrap();
         let (mut watcher, _rx) = ProjectWatcher::new();

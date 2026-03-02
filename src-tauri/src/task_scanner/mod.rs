@@ -27,6 +27,27 @@ use crate::session_scanner::ClaudeSession;
 /// Calls each tool-specific parser and aggregates tasks. If a parser fails,
 /// its error is recorded but other parsers still contribute their results.
 pub fn get_tasks_for_project(project_path: &str, sessions: &[ClaudeSession]) -> TaskResult {
+    get_tasks_for_project_with(
+        project_path,
+        sessions,
+        claude::get_tasks,
+        codex::get_tasks,
+        gemini::get_tasks,
+    )
+}
+
+fn get_tasks_for_project_with<CF, XF, GF>(
+    project_path: &str,
+    sessions: &[ClaudeSession],
+    get_claude_tasks: CF,
+    get_codex_tasks: XF,
+    get_gemini_tasks: GF,
+) -> TaskResult
+where
+    CF: Fn(&str, &[&ClaudeSession]) -> Result<Vec<UnifiedTask>, String>,
+    XF: Fn(&str, &[&ClaudeSession]) -> Result<Vec<UnifiedTask>, String>,
+    GF: Fn(&str) -> Result<Vec<UnifiedTask>, String>,
+{
     let mut result = TaskResult::empty();
 
     // Claude: structured task JSON
@@ -34,7 +55,7 @@ pub fn get_tasks_for_project(project_path: &str, sessions: &[ClaudeSession]) -> 
         .iter()
         .filter(|s| s.cli_tool == CliTool::Claude)
         .collect();
-    match claude::get_tasks(project_path, &claude_sessions) {
+    match get_claude_tasks(project_path, &claude_sessions) {
         Ok(tasks) => result.tasks.extend(tasks),
         Err(e) => result.errors.push(("claude".to_string(), e.to_string())),
     }
@@ -44,13 +65,13 @@ pub fn get_tasks_for_project(project_path: &str, sessions: &[ClaudeSession]) -> 
         .iter()
         .filter(|s| s.cli_tool == CliTool::Codex)
         .collect();
-    match codex::get_tasks(project_path, &codex_sessions) {
+    match get_codex_tasks(project_path, &codex_sessions) {
         Ok(tasks) => result.tasks.extend(tasks),
         Err(e) => result.errors.push(("codex".to_string(), e.to_string())),
     }
 
     // Gemini: TODO.md checkboxes (no session data needed)
-    match gemini::get_tasks(project_path) {
+    match get_gemini_tasks(project_path) {
         Ok(tasks) => result.tasks.extend(tasks),
         Err(e) => result.errors.push(("gemini".to_string(), e.to_string())),
     }
@@ -64,7 +85,14 @@ mod tests {
 
     #[test]
     fn empty_sessions_returns_empty_result() {
-        let result = get_tasks_for_project("/nonexistent/path", &[]);
+        let sessions: Vec<ClaudeSession> = Vec::new();
+        let result = get_tasks_for_project_with(
+            "/nonexistent/path",
+            &sessions,
+            |_project_path, _sessions| Ok(Vec::new()),
+            |_project_path, _sessions| Ok(Vec::new()),
+            |_project_path| Ok(Vec::new()),
+        );
         // Should not error — parsers gracefully return empty vecs for missing data
         assert!(result.tasks.is_empty());
         assert!(result.errors.is_empty());

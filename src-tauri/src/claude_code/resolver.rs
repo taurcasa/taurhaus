@@ -305,6 +305,7 @@ mod tests {
 
     // Integration test: verify against real Claude Code data if available
     #[test]
+    #[ignore = "host-dependent probe; run manually when needed"]
     fn resolve_real_project_if_available() {
         let taurhaus_path = Path::new("/home/testuser/projects/taurhaus");
         if taurhaus_path.exists() {
