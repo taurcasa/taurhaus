@@ -60,13 +60,13 @@ just dev-frontend
 All tests must pass before submitting a PR:
 
 ```bash
-just check  # Runs clippy + svelte-check + all tests
+just check  # Runs fmt + clippy + svelte-check + all tests
 ```
 
 Individual test suites:
 
 ```bash
-just test-rust       # Rust unit tests
+just test-rust       # Rust tests (fast compile check + unit + integration)
 just test-frontend   # Frontend tests (Vitest)
 ```
 
@@ -120,6 +120,7 @@ src/                    # Svelte frontend
 src-tauri/              # Rust backend
   src/
     commands/           # Tauri IPC command handlers
+    coordination/       # Multi-agent team orchestration (mesh CLI, pipelines)
     daemon/             # WSL daemon (launcher, protocol, server)
     session_scanner/    # Multi-CLI session detection
     db/                 # SQLite queries and migrations

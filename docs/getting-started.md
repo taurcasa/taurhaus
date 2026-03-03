@@ -156,10 +156,11 @@ On first launch, taurhaus will:
 The wizard helps you discover your projects:
 
 1. **Welcome** — Overview of what taurhaus does
-2. **Browse** — Navigate to your project directories (e.g., `~/projects/`)
-3. **Select** — Choose which projects to register
-4. **Progress** — Projects are scanned and indexed
-5. **Complete** — You're ready to go
+2. **Daemon setup** — Check daemon install status, offer install/update if needed
+3. **Browse** — Navigate to your project directories (e.g., `~/projects/`)
+4. **Select** — Choose which projects to register
+5. **Progress** — Projects are scanned and indexed
+6. **Complete** — You're ready to go
 
 The app scans `~/projects/` by default. You can add more directories later in Settings.
 
@@ -184,8 +185,8 @@ Each project has five tabs:
 | **Overview** | README, recent commits, session handoffs |
 | **Files** | File tree with syntax-highlighted preview |
 | **Tasks** | Aggregated tasks from Claude Code, Codex, and Gemini |
+| **Mesh** | Multi-agent team setup and live roster |
 | **Git** | Commit history, diffs, and file changes |
-| **Sessions** | Completed session history with commit context |
 
 ### CLI Sessions
 
@@ -194,11 +195,15 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 - **Green glow** = actively working (streaming output)
 - **Amber outline** = idle (waiting for input)
 
-**Launch a session**: Right-click a project, select "Launch Claude" (or Codex, or Gemini)
+**Launch a session**: Right-click a project and choose from per-tool options — Continue (resume last), New (fresh session), or Resume (pick session). Available for Claude, Codex, and Gemini.
 
 **Navigate to a session**: Click the tool icon to jump to that session in your terminal
 
 **Stop a session**: Right-click the tool icon and select "Stop"
+
+### Mesh View
+
+The Mesh tab lets you set up and manage multi-agent teams. Define a team roster (lead + agents using any mix of Claude, Codex, and Gemini), launch with one click, and monitor all agents from a live roster. See [Mesh view](features/mesh.md) for details.
 
 ### Search
 

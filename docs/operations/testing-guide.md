@@ -61,7 +61,7 @@ just test-macos-e2e       # macOS E2E via SSH on remote Mac Mini
 
 **Skip build** (when binary is known-fresh): `E2E_SKIP_BUILD=1 just test-e2e-spec SPEC`
 
-Test specs live in `e2e/specs/` — 18 spec files covering all major features.
+Test specs live in `e2e/specs/` — 17 spec files covering all major features.
 
 ## Test lanes
 
@@ -96,9 +96,10 @@ just check   # Full quality gate
 ```
 
 This runs:
-1. `cargo clippy` — Rust lints
-2. `npx svelte-check` — Svelte type checking
-3. All tests (Rust + frontend)
+1. `cargo fmt --check` — Rust formatting
+2. `cargo clippy` — Rust lints
+3. `npx svelte-check` — Svelte type checking
+4. All tests (Rust + frontend)
 
 **Run on every task.** The quality gate must pass before any work is considered complete.
 

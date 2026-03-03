@@ -4,7 +4,7 @@ Reference for taurhaus Tauri IPC commands exposed from `src-tauri/src/commands/`
 
 ## Overview
 
-The backend currently registers 61 `#[tauri::command]` functions. Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
+The backend currently registers 63 `#[tauri::command]` functions. Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
 
 ## Projects commands
 
@@ -100,6 +100,13 @@ Session update behavior:
 | `stop_daemon` | none | `Result<String, String>` | `daemon.rs` | Stops daemon process management and watch loops. |
 | `check_daemon_install_status` | none | `Result<DaemonInstallStatus, String>` | `daemon.rs` | Returns daemon install/version/update status for onboarding UI. |
 | `install_daemon` | none | `Result<String, String>` | `daemon.rs` | Installs bundled daemon binary (or updates existing install). |
+
+## Mesh install commands
+
+| Command | Parameters (frontend args) | Return type | Module | Description |
+|---|---|---|---|---|
+| `check_mesh_install_status` | none | `Result<MeshInstallStatus, String>` | `mesh.rs` | Checks installed mesh version vs bundled version and reports availability (native/WSL-aware). |
+| `install_mesh` | none | `Result<String, String>` | `mesh.rs` | Installs bundled mesh binary into the active environment (native or WSL). |
 
 ## Settings commands
 

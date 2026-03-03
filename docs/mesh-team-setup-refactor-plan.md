@@ -1,5 +1,8 @@
 # Mesh Team Setup Refactor Plan
 
+> Historical planning artifact: this document captures an earlier refactor plan snapshot.  
+> Task statuses below are not the current delivery board state.
+
 ## Goal
 Unify team onboarding/session launch architecture so mesh setup reuses the same launch/session-tracking path as context-menu launches, with deterministic behavior across Linux/macOS/Windows(WSL).
 

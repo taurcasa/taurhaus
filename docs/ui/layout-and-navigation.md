@@ -52,10 +52,9 @@ Tabs are rendered as pills in the titlebar. Available tabs:
 |-----|-----------|-----------|
 | Overview | `OverviewTab.svelte` | Always (default) |
 | Files | `FilesTab.svelte` | Always |
-| Git | `GitTab.svelte` | Always |
 | Tasks | `TaskBoard.svelte` | Always |
-| Sessions | `SessionHistory.svelte` | Always |
-| Mesh | `MeshTab.svelte` | When mesh feature is available |
+| Mesh | `MeshTab.svelte` | Always |
+| Git | `GitTab.svelte` | Always |
 | Settings | `Settings.svelte` | Via gear icon (replaces tab content) |
 
 Tabs are tracked in a `visitedTabs` set — only tabs that have been visited render their component (lazy initialization).

@@ -148,7 +148,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
-Full architecture: [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md) (22 ADRs)
+Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/`](docs/architecture/) references.
 
 ## Key Files
 
@@ -159,15 +159,15 @@ Full architecture: [`docs/phase-4-architecture.md`](docs/phase-4-architecture.md
 | `src/app.css` | Design tokens + global styles |
 | `src/lib/ipc.js` | Tauri IPC commands + dev-mode mock fallbacks |
 | `docs/design-brief.md` | Full requirements (Phase 2) |
-| `docs/phase-4-architecture.md` | Technical architecture (22 ADRs) |
+| `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |
-| `BOOTSTRAP.md` | Project lifecycle and phase status |
+| `CHANGELOG.md` | Shipped milestones and release history |
 
 ## Development Workflow (Phase 5)
 
-Full workflow: [`docs/phase-5-workflow.md`](docs/phase-5-workflow.md) | Infographic: [`docs/workflow-infographic.jpg`](docs/workflow-infographic.jpg)
+Workflow reference: [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup and contribution flow) and the sections below.
 
 ### Autonomous Execution Loop
 - **Project loop**: Work through ALL phases (5A→5B→...→5G) autonomously. No pause between phases.
@@ -216,4 +216,4 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 
 ## Phase Status
 
-Phases 1-4 complete. Phase 5 (Implementation) is next. See `BOOTSTRAP.md` for details.
+Phases 1-4 complete. Implementation continues under task-based milestones; see [`CHANGELOG.md`](CHANGELOG.md) for shipped progress.

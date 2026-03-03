@@ -72,6 +72,8 @@ The settings panel is a scrollable form accessible from the sidebar. Opens with 
 
 Scan directories and ignore patterns are edited as multi-line text (one entry per line). Thresholds are numeric inputs that save on blur.
 
+> **Note**: Scan directories and ignore patterns are persisted in settings but not yet wired to the project scanner at runtime. Currently the scanner uses hardcoded defaults. This will be connected in a future release.
+
 ### Display
 
 | Setting | Type | Default | Description |

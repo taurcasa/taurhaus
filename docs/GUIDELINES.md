@@ -19,7 +19,7 @@ Standards for writing and maintaining taurhaus documentation.
 | **UI** | `docs/ui/` | Visual design system and layout documentation | Design tokens, layout structure |
 | **Operations** | `docs/operations/` | Build, test, deploy, release procedures | Build guide, testing strategy |
 | **Security** | `docs/security/` | Audit reports, risk register, security model | Audit reports, risk register |
-| **Mesh** | `docs/` (top-level) | Multi-CLI coordination design docs (in-flight) | coordination-architecture, mesh-view-design |
+| **Mesh** | `docs/` (top-level) | Multi-CLI coordination docs for shipped functionality and ongoing design | coordination-architecture, mesh-view-design |
 
 ## Document Structure Template
 
@@ -48,7 +48,7 @@ Operations docs: prerequisites, step-by-step procedures
 
 ## Related documents
 
-- [Link to related doc](relative-path.md) — one-line description
+- [Link to related doc](architecture/data-model.md) — one-line description
 ```
 
 ## Writing Style

@@ -74,7 +74,7 @@ Auto-detected and manual project dependencies.
 | `id` | TEXT | PK | UUID v4 |
 | `source_project_id` | TEXT | NOT NULL, FK → projects | Dependent project |
 | `target_project_id` | TEXT | NOT NULL, FK → projects | Dependency |
-| `relationship_type` | TEXT | NOT NULL | Type: `dependency`, `reference`, `mention` |
+| `relationship_type` | TEXT | NOT NULL | Type: `depends_on`, `references`, `mentioned_in_session` |
 | `detection_source` | TEXT | NOT NULL | How detected: `cargo_toml`, `claude_md`, `session`, `manual` |
 | `dismissed` | INTEGER | NOT NULL, default 0 | User dismissed this relationship (opt-out model) |
 | `first_detected_at` | TEXT | NOT NULL | First seen timestamp |
@@ -150,7 +150,7 @@ Persistent MmapDirectory-backed index stored in `app_data_dir()/search_index/`. 
 
 ### Indexing lifecycle
 
-- **Startup**: Full rebuild from filesystem — walks all registered project trees, indexes file content and recent commits.
+- **Startup**: Rebuilds only when the index is empty (`doc_count == 0`) — walks all registered project trees, indexes file content and recent commits. If the persisted index already has documents, startup skips the rebuild entirely.
 - **Incremental**: File watcher events trigger per-file re-indexing (delete old doc → add new doc). Protected against symlink escape attacks.
 - **Manual rebuild**: `rebuild_index` IPC command triggers a full re-index from scratch.
 
@@ -159,6 +159,17 @@ Persistent MmapDirectory-backed index stored in `app_data_dir()/search_index/`. 
 - Writer heap size: 50 MB
 - Index directory: `app_data_dir()/search_index/`
 - Writer is held as managed Tauri state (`SearchState`) behind a `Mutex`
+
+## Coordination storage
+
+Multi-agent team state is stored on the filesystem, not in SQLite:
+
+| Path | Purpose |
+|------|---------|
+| `~/.claude/teams/<team>/config.json` | Team definition (members, lead, creation time) |
+| `~/.claude/teams/<team>/runtime/<member>.json` | Per-member runtime state (daemon PID, health, pane ID) |
+
+Team discovery at startup scans `~/.claude/teams/` for existing team directories. Disbanding a team removes its directory entirely.
 
 ## Filesystem
 

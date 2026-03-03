@@ -15,13 +15,22 @@ Taurhaus gains the ability to create, monitor, and manage multi-agent teams that
 
 ## Design Decision Log
 
+Status labels use current implementation state:
+- **Implemented**: shipped and used by current code paths
+- **Partial**: scaffolding exists, but behavior is incomplete or not fully wired
+- **Planned**: design intent only; not implemented in active path
+
 ### D1: Trait, not enum, for backend abstraction
+
+**Status**: Implemented
 
 **Decision**: `CoordinationBackend` is a Rust trait, not an enum with match arms.
 
 **Rationale**: The trait enforces the backend boundary at the type system level. Call sites cannot reach into backend-specific internals. Testable via mock injection. Adding a third backend is additive (new file), not surgical (touch every match block). The effort difference between trait and enum is negligible for AI implementers — only code quality matters.
 
 ### D2: Durable config separated from volatile runtime state
+
+**Status**: Implemented
 
 **Decision**: Team configuration and runtime coordination state live in separate files.
 
@@ -37,6 +46,8 @@ Taurhaus gains the ability to create, monitor, and manage multi-agent teams that
 
 ### D3: JSON is live truth, SQLite is projection/history
 
+**Status**: Planned
+
 **Decision**: JSON files in `~/.claude/` are the source of truth for live coordination state. SQLite stores projections for history, querying, and UI ergonomics.
 
 **Invariant**: SQLite must never be a competing writable source of truth for live coordination. Edits flow through coordination stores first, then get projected to SQLite.
@@ -49,6 +60,8 @@ Taurhaus gains the ability to create, monitor, and manage multi-agent teams that
 
 ### D4: Logical team membership separated from session attachment
 
+**Status**: Implemented
+
 **Decision**: A team member is a logical role that persists independently of any specific tmux pane or process.
 
 - **Logical member** (durable, in config.json): name, role, instructions, projectPath
@@ -57,6 +70,8 @@ Taurhaus gains the ability to create, monitor, and manage multi-agent teams that
 Members can be "detached" (pane died) but remain on the team. Rebind via process scanning without re-joining.
 
 ### D5: Two-tier launch strategy
+
+**Status**: Partial
 
 **Decision**: Claude Code agents use native CLI flags. Codex/Gemini agents use mesh daemon bridge.
 
@@ -69,6 +84,8 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 
 ### D6: Delivery lease for daemon conflict avoidance
 
+**Status**: Partial
+
 **Decision**: Per-member runtime lease file with PID, instance UUID, hostname, and heartbeat timestamp.
 
 - Taurhaus writes its PID when it takes delivery ownership
@@ -77,6 +94,8 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 - PID + instance UUID handles PID-reuse edge case
 
 ### D7: Explicit health state machine
+
+**Status**: Partial
 
 **Decision**: Health monitoring uses explicit states, events, and a deterministic transition function.
 
@@ -89,6 +108,8 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 - Strong: inbox unread count decreased or task activity → clears to Healthy
 
 ### D8: Typed delivery payloads
+
+**Status**: Implemented
 
 **Decision**: `DeliveryRequest` is a Rust enum with per-variant payload structs.
 
@@ -103,6 +124,8 @@ enum DeliveryRequest {
 Each variant carries structured fields reflecting intent. Backend implementations render variant-appropriate content (inbox JSON for Claude, tmux text for mesh-bridged).
 
 ### D9: Closed, taurhaus-centric capability model
+
+**Status**: Implemented
 
 **Decision**: `BackendCapabilities` is a closed struct describing operational semantics, not vendor features.
 
@@ -119,11 +142,16 @@ struct BackendCapabilities {
 
 ### D10: Backend selection — auto-detect with override
 
+**Status**: Planned
+
 **Decision**: `BackendSelector` auto-detects based on CLI tool (session scanner already knows Claude/Codex/Gemini). User can override in team setup UI.
 
 Both `detected_tool` and `selected_backend` are persisted for auditability and debugging.
+Current M0 path forces `MeshBridged` selection; auto-detect/override is designed but not active in setup flow.
 
 ### D11: Channel-based daemon → orchestrator event pipeline
+
+**Status**: Partial
 
 **Decision**: Daemon pushes normalized events onto a bounded channel. Orchestrator consumes, deduplicates, and acts.
 
@@ -132,6 +160,8 @@ Both `detected_tool` and `selected_backend` are persisted for auditability and d
 - Safety net: periodic reconcile scan catches dropped/coalesced events
 
 ### D12: Module structure — self-contained `coordination/` subsystem
+
+**Status**: Implemented
 
 **Decision**: New top-level module, not flattened into existing structure.
 
@@ -160,9 +190,13 @@ src-tauri/src/
 
 ### D13: Never modify agent config files
 
+**Status**: Implemented
+
 **Decision**: Taurhaus never writes to CLAUDE.md, .codex-instructions.md, or any agent configuration files. All agent context delivery happens through tmux injection or inbox file writes — external and ephemeral.
 
 ### D14: Team visibility scoped to managed teams
+
+**Status**: Partial
 
 **Decision**: Taurhaus only shows teams it created/manages (tracked in SQLite). CLI-only mesh teams are not visible — consistent with the existing "only registered projects are visible" model.
 
@@ -177,7 +211,7 @@ src-tauri/src/
 - IPC commands + minimal UI (team setup + status list)
 
 ### M1: Backend parity + health/recovery
-- ClaudeNative backend
+- ClaudeNative backend (Planned; current backend exists as placeholder and launch is not implemented)
 - BackendSelector auto-detect + override
 - Full delivery variants (Bootstrap, RecoveryNudge, OperatorNotice)
 - Health state machine v1 (transitions, cooldown, escalation)

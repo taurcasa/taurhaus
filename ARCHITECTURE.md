@@ -4,7 +4,7 @@ A condensed overview for contributors. For detailed references, see the [docs/ i
 
 ## System Overview
 
-taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, and search. A lightweight companion daemon handles process scanning, file watching, and tmux session management, communicating with the app over TCP (JSON-line protocol on localhost:9000).
+taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, and search. A lightweight companion daemon handles process scanning, file watching, and tmux session management, communicating with the app over TCP (JSON-line protocol on localhost:17233).
 
 The daemon runs on both platforms — the only difference is where:
 
@@ -99,7 +99,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (61)
+### IPC Commands (63)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
@@ -113,9 +113,21 @@ Grouped by domain:
 - **Command Center** (6): launch session, stop session, navigate to session, list sessions, record activity, project activity
 - **Tasks** (3): project tasks, task detail, archived sessions
 - **Daemon** (6): platform, status, start, stop, check install, install
+- **Mesh install** (2): check install status, install mesh
 - **Settings** (2): get, update
 - **Coordination** (12): create/disband/list teams, add/remove members, team status, initialize, add agent, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
 - **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in `app_data_dir()`. Backend uses `tracing` crate. Single log file, truncated per launch.
+
+### Coordination (Mesh View)
+
+The `coordination/` subsystem powers multi-agent team orchestration and is gated by the `mesh-bridged-backend` Cargo feature (enabled by default).
+
+- **State bootstrap**: `CoordinationState` is app-managed and lazily builds the orchestrator on first coordination IPC use (no startup hard dependency on mesh availability).
+- **Persistence**: team definitions are stored in `~/.claude/teams/<team>/config.json` (`TeamConfigStore`), while runtime attachment state lives in `~/.claude/teams/<team>/runtime/*.json` (`MemberRuntimeStore`).
+- **Pipelines**: `coordination/pipelines.rs` drives initialize and hot-add flows (validate -> create panes -> launch sessions -> mesh join -> daemon start -> onboarding delivery).
+- **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes for non-lead members).
+
+See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
 
 ### Session Scanner
 
@@ -155,7 +167,7 @@ Result: one `project-files-changed` Tauri event per edit instead of 5–8. The f
 
 ### Daemon Protocol
 
-JSON-line protocol over TCP (localhost:9000). Same protocol on both platforms — only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS). See [daemon protocol reference](docs/architecture/daemon-protocol.md) for the full command catalog.
+JSON-line protocol over TCP (localhost:17233). Same protocol on both platforms — only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS). See [daemon protocol reference](docs/architecture/daemon-protocol.md) for the full command catalog.
 
 **Events (daemon → app):**
 - `file_changed` — watched file modified (triggers search re-index)
@@ -183,7 +195,7 @@ The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`)
 6. **Search index** — build tantivy index from filesystem if empty
 7. **Task scan** — seed task database from live CLI tool sources
 
-Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. Session detection is frontend-driven (polling `list_claude_sessions` IPC on a 500ms interval).
+Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
 
 ## Data Flow
 
@@ -200,10 +212,11 @@ File changes detected
   → Sends file_changed / git_changed event over TCP to app
   → App updates tantivy index + refreshes affected views
 
-CLI session detected
-  → Frontend polls list_claude_sessions IPC (500ms interval)
-  → Backend queries daemon (or scans locally if disconnected)
-  → Platform module inspects /proc (Linux) or libproc (macOS)
+CLI session state changes
+  → Daemon bridge emits sessions-updated event to frontend
+  → Frontend session store applies delta and refreshes indicators
+  → Startup hydration uses list_claude_sessions once (mock mode uses polling fallback)
+  → Backend scanner inspects /proc (Linux) or libproc (macOS)
   → Sidebar shows tool indicator (active/idle)
   → HoverCard shows full session details on hover
 ```
@@ -245,6 +258,7 @@ just test-macos       # Run Rust tests on Mac Mini via SSH
 - [Data model reference](docs/architecture/data-model.md) — SQLite schema, tantivy index, filesystem layout
 - [IPC reference](docs/architecture/ipc-reference.md) — all Tauri IPC commands with parameters and types
 - [Daemon protocol](docs/architecture/daemon-protocol.md) — TCP JSON-line protocol specification
+- [Coordination architecture](docs/coordination-architecture.md) — mesh orchestration subsystem details
 - [Platform abstraction](docs/platform-abstraction.md) — Linux/macOS dispatch implementation details
 - [File rendering pipeline](docs/file-rendering-pipeline.md) — classification, caching, and rendering
 - [Feature documentation](docs/README.md#features) — per-feature guides

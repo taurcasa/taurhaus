@@ -29,12 +29,12 @@ Default state ASCII mockup:
 ├────────────────────────────────────────────────────────────────────┤
 │ ┌───────────────────────────────────────────────────────────────┐  │
 │ │ Quick Start                                      [Start Team] │  │
-│ │ One Codex dev agent + this project + current lead session.    │  │
+│ │ One Codex dev agent + this project + a new Claude lead session.│  │
 │ └───────────────────────────────────────────────────────────────┘  │
 │ [!] 2 setup warnings detected. You can continue safely.           │
 │                                                                    │
 │ ▸ Advanced setup                                                   │
-│   Your current Claude session is used as team lead.               │
+│   Team lead is fixed to Claude and launches in a new session.     │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,7 +58,7 @@ Advanced setup is a progressive disclosure path.
 - Contains only what changes outcomes:
   - team name / description
   - agent list (add/remove, tool/model/project, role description)
-- Team lead internals are not editable in setup UI; show a simple statement that current Claude session is lead.
+- Team lead internals are not editable in setup UI; show that lead is fixed to Claude (`team-lead`, `opus`) and launches as a new session.
 - Agent editing remains dense and efficient, using the same compact controls and row spacing as runtime.
 
 Rule: advanced should be discoverable, powerful, and quiet. It should never compete visually with Quick Start.
@@ -118,4 +118,3 @@ We are done when all are true:
 5. Setup and runtime feel visually continuous in dark and light modes.
 6. Preflight warnings are calm, concise, and non-alarming unless blocking.
 7. Internal team feedback calls the setup "product UI" rather than "developer form."
-

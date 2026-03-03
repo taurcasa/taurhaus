@@ -133,6 +133,21 @@ Daemon signing note:
 
 - Re-signing after copy is required for modern macOS compatibility (Sequoia linker-signature behavior).
 
+## Mesh CLI build and bundle
+
+The mesh binary is built from a separate project and bundled into `src-tauri/resources/` alongside a version file.
+
+```bash
+just build-mesh       # Build mesh release binary from $MESH_PROJECT (default: ~/projects/mesh)
+just bundle-mesh      # Build + copy binary and version to src-tauri/resources/
+```
+
+`bundle-mesh` writes two files:
+- `src-tauri/resources/mesh` — the mesh binary
+- `src-tauri/resources/mesh.version` — pinned version string (read at runtime by `check_mesh_install_status`)
+
+The `build-linux`, `build-windows`, and `build-macos` recipes automatically include `bundle-mesh` as a dependency.
+
 ## Daemon build and install
 
 Use daemon recipes when validating daemon runtime independently or before app builds.

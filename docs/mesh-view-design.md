@@ -52,9 +52,7 @@ Fields:
 - **CLI tool** — fixed to Claude Code (shown explicitly, not hidden)
 - **Model selector** — opus, sonnet, haiku
 - **Project** — defaults to current project
-- **Session mode**: "Use current session" or "Launch new session"
-  - When "Use current session" is selected, project picker is greyed out (it's wherever you already are)
-  - When "Launch new session" is selected, a new pane is created with a lead bootstrap prompt
+- **Session mode** — currently fixed to `Launch new session` in setup UI (no mode toggle yet)
 
 Why a separate card: the lead role has different constraints and importance. Reduces misconfiguration.
 
@@ -69,25 +67,19 @@ User adds agent cards. Each card:
 - **Description** (optional) — helps the lead know who does what
 
 UX details:
-- Quick-add role buttons: "Frontend", "Backend", "QA", "Docs" — pre-fill the name, user picks tool/model/project
 - Duplicate name detection with inline errors
-- Tool selector shows brand icons (Anthropic starburst, OpenAI blossom, Gemini sparkle) — same as session indicators
+- Tool/model/project are compact select controls in setup
+- Tool brand icons are shown in runtime roster cards
 
-### Step 4: Review Before Launch
-
-Sticky summary panel showing:
-- Team lead summary (name, tool, project, session mode)
-- Agent count by tool
-- Projects involved
-- Panes/sessions that will be created
-- Note: "Initialization will not close existing sessions"
+### Step 4: Launch
 
 Primary CTA: **Initialize Team**
-Secondary: Save draft (for later)
+
+Current implementation starts initialization directly from setup form. There is no separate review screen or save-draft flow in V1.
 
 ### Naming Convention
 
-Agents should be named by function (frontend-dev, reviewer, etc.) so the orchestrating agent knows who to assign what. The UI encourages this with placeholder text and quick-add buttons.
+Agents should be named by function (frontend-dev, reviewer, etc.) so the orchestrating agent knows who to assign what. The UI encourages this with placeholder text.
 
 ---
 
@@ -108,14 +100,15 @@ User clicks **Initialize Team**. The button transforms into a progress view.
   ● Sending onboarding messages...
 ```
 
-Checkmarks roll in as steps complete. Duration: ~5-15 seconds total.
+Expected steps in current UI (in order): validate configuration, create team, create panes, launch sessions, join mesh, start daemons, send onboarding.
 
 ### Failure Handling
 
 If a step fails:
 - Show exact failed step with plain-language error
 - Show what succeeded already
-- Buttons: Retry failed step / Retry from beginning / Exit and keep partial state
+- Buttons: `Retry` and `Back`
+- If failure is "team already exists" at create-team step, show recovery actions: `Open Existing Team` or `Disband Existing Team`
 
 One-click setup is powerful, but opaque failure destroys trust. The user needs operational visibility, not technical logs.
 
@@ -123,7 +116,7 @@ One-click setup is powerful, but opaque failure destroys trust. The user needs o
 
 One backend IPC command (`coordination_initialize_team`) handles the full sequence:
 1. Validate configuration
-2. Create Claude Code team (TeamCreate) or attach existing session
+2. Create Claude Code team (TeamCreate)
 3. Pre-create inboxes for non-Claude agents
 4. Create tmux panes via terminal management
 5. Launch CLIs with proper flags (`--dangerously-skip-permissions` for Claude, `--yolo` for Codex/Gemini)
@@ -131,7 +124,7 @@ One backend IPC command (`coordination_initialize_team`) handles the full sequen
 7. Start `mesh daemon` per non-Claude agent
 8. Send onboarding message to each non-Claude agent
 
-The frontend calls one command and receives streamed progress events. No frontend orchestration of N steps.
+The frontend calls one command and applies the returned `InitializeReport` step list. It also listens to `coordination-step-progress` events when emitted. Frontend does not orchestrate individual backend steps.
 
 ---
 
@@ -179,9 +172,9 @@ After initialization, the mesh tab switches from setup mode to runtime mode:
 
 - **Focus pane** — jump to any agent's tmux session
 - **Add agent to running team** — opens a card form, creates pane, launches CLI, joins mesh, sends onboarding. Teams evolve as needs become clear mid-sprint.
-- **Remove agent from team** — removes from mesh state, session stays alive
 - **Re-send onboarding** — if an agent loses context, resend the mesh instructions
-- **Disband** — tears down mesh state only, all sessions remain alive. Confirms before acting.
+- **Disband** — removes team state and stops managed resources (sessions/panes/daemons/mesh membership). Confirms before acting.
+- **Team cleanup panel (setup mode)** — discover/disband existing teams before launch
 
 ### Nice-to-Have (Not V1)
 
@@ -192,7 +185,7 @@ After initialization, the mesh tab switches from setup mode to runtime mode:
 ### Explicit Non-Goals
 
 - No chat UI — users interact with agents in CLI tools
-- No automatic session teardown on disband
+- No runtime per-agent remove action in V1 roster
 - No real-time message log from mesh
 
 ---
@@ -212,6 +205,7 @@ After initialization, the mesh tab switches from setup mode to runtime mode:
 - tmux unavailable → block Initialize with clear error
 - Agent session dies → session scanner shows it as gone, mesh view reflects "Session ended"
 - Partial initialization failure → show what succeeded, offer retry
+- Team create conflict (`already exists`) → offer `Open Existing Team` or `Disband Existing Team`
 - Same project assigned to many agents → allowed, but warn about resource load
 - Session launched but scanner hasn't detected it yet → show "Starting..." state with brief timeout
 
@@ -233,7 +227,7 @@ V1: one team at a time per project. Multiple concurrent teams adds complexity wi
 4. **Auto-rebalancing tasks between agents** — over-automation before users trust basics
 5. **Drag-and-drop agent placement** — sounds cool but a dropdown/badge selector is faster for "pick a project"
 6. **Complex health dashboard** — existing session indicators (active/idle) are sufficient
-7. **Forced session teardown on disband** — too destructive, manual cleanup via context menu
+7. **Disband without cleaning managed resources** — leaves stale sessions/daemons behind
 8. **Too many "advanced settings" upfront** — increases friction for first successful launch
 
 ---
@@ -260,14 +254,14 @@ Lazy singleton in AppState: `Arc<Mutex<Option<CoordinationOrchestrator>>>`. Firs
 ### Team Lead Mode
 
 Modeled as `LeadMode` in the initialize request:
-- **AttachExisting** — user's current Claude Code session becomes lead. Backend calls TeamCreate, injects team context.
-- **LaunchNew** — backend creates pane, launches Claude Code with lead bootstrap prompt, then TeamCreate.
+- **LaunchNew** — current setup UI always uses this mode. Backend creates pane, launches Claude Code with lead bootstrap prompt, then TeamCreate.
+- **AttachExisting** — supported by backend request model/tests, but not exposed in current setup UI.
 
 Frontend only selects mode. Backend decides the execution branch.
 
 ### Initialize Command
 
-Single backend IPC command: `coordination_initialize_team(config) -> InitializeReport`. Returns per-step status. Frontend streams progress from a single call — no multi-step frontend orchestration.
+Single backend IPC command: `coordination_initialize_team(config) -> InitializeReport`. Returns per-step status in report output; progress events may also be received during execution. No multi-step frontend orchestration.
 
 If partial failure, returns what succeeded and what failed. Frontend shows retry options per failed step.
 

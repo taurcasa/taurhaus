@@ -2,7 +2,7 @@
 
 > The house where all your projects live.
 
-A desktop companion for developers who have far too many AI sessions running at once and have lost track of which project Claude is refactoring, which one Codex is "thinking" about, and whether Gemini has finished or just gone quiet.
+A desktop companion for developers who have far too many AI sessions running at once and have lost track of which project Claude is refactoring, which one Codex is "thinking" about, whether Gemini has finished, and when it is time to spin up a coordinated Mesh team.
 
 If you've ever stared at six terminal tabs wondering "wait, did I already start that migration?" — this is for you.
 
@@ -13,6 +13,7 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 - A **side panel** that sits next to your terminal and tells you what all your AI tools are doing — so you don't have to tab through twelve tmux panes to find out
 - A **context window** for the deeply unwise workflow of running Claude Code, Codex, and Gemini CLI across multiple projects simultaneously (we're not here to judge, we're here to help)
 - A way to **see what's running**, jump between sessions, and pick up where you left off after your ambition briefly exceeded your working memory
+- A **Mesh View** to initialize and run multi-agent teams across CLI tools, including live roster status and hot-add onboarding
 - Built by someone with the same problem. You're among friends here.
 
 ### What this isn't
@@ -26,9 +27,10 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 
 - **Project overview** — All projects at a glance, grouped by activity (Active / Recent / Stale / Dormant)
 - **File browser** — Browse and preview files with VS Code-grade syntax highlighting (Shiki)
-- **Git integration** — Commit history, inline diffs, blame — all in-app via libgit2, no CLI dependency
+- **Git integration** — Commit history and inline diffs — all in-app via libgit2, no CLI dependency
 - **Task board** — Aggregated tasks from Claude Code, Codex, and Gemini CLI in one view
 - **Multi-CLI session management** — Launch, stop, and jump to Claude Code, Codex, and Gemini CLI sessions from the sidebar
+- **Mesh View (multi-agent coordination)** — Create teams, initialize agent sessions, track live team status, and hot-add/re-onboard members
 - **Live activity detection** — Real-time active/idle status for running CLI sessions
 - **Full-text search** — Search across all project content with Ctrl+K (powered by tantivy)
 - **Session handoffs** — Auto-imported session summaries so you can pick up where you left off
@@ -68,6 +70,10 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
    - [Codex](https://github.com/openai/codex): `npm install -g @openai/codex`
    - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli`
 
+5. **Mesh CLI** (required for Mesh View team orchestration):
+   - The Mesh tab can install/update bundled Mesh automatically when supported
+   - Manual check: `mesh --help`
+
 **Install**: Download `taurhaus_x.x.x_x64-setup.exe` from [Releases](../../releases) and run the installer. The app bundles its own WSL daemon and installs it automatically on first launch.
 
 ### macOS
@@ -89,6 +95,10 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
    - [Codex](https://github.com/openai/codex): `brew install --cask codex`
    - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli`
 
+4. **Mesh CLI** (required for Mesh View team orchestration):
+   - The Mesh tab can install/update bundled Mesh automatically when supported
+   - Manual check: `mesh --help`
+
 **Install**: Download the DMG from [Releases](../../releases) — choose `universal` for any Mac, or `aarch64` (Apple Silicon) / `x64` (Intel) for a smaller download. Drag to Applications.
 
 ### First launch
@@ -101,6 +111,7 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 
 - **Browse** — Click any project in the sidebar to see its overview, files, tasks, and git history
 - **Launch a session** — Right-click a project to start a CLI tool session
+- **Start a team** — Open the Mesh tab to initialize a multi-agent team for the selected project
 - **Navigate** — Click tool indicator icons next to a project name to jump to a running session
 - **Search** — Press `Ctrl+K` to search across all projects
 

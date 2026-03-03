@@ -39,6 +39,7 @@ Per-feature documentation describing capabilities and behavior.
 | [Session management](features/session-management.md) | CLI session detection, handoffs, activity tracking |
 | [Task board](features/task-board.md) | Cross-tool task aggregation and kanban display |
 | [Command center](features/command-center.md) | CLI tool launch, stop, resume, and terminal integration |
+| [Mesh view](features/mesh.md) | Multi-agent team setup, live roster, and coordination |
 | [First run and settings](features/first-run-and-settings.md) | Onboarding wizard and application preferences |
 
 ## UI
@@ -61,7 +62,7 @@ Build, test, and release procedures.
 
 ## Multi-CLI coordination (mesh)
 
-Design documents for the multi-agent team orchestration feature (in development).
+Documentation for the multi-agent team orchestration feature.
 
 | Document | Description |
 |----------|-------------|
