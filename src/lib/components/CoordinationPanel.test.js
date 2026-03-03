@@ -25,7 +25,6 @@ import CoordinationPanel from './CoordinationPanel.svelte'
 describe('CoordinationPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    globalThis.confirm = vi.fn(() => true)
     coordinationCreateTeam.mockResolvedValue(undefined)
     coordinationDisbandTeam.mockResolvedValue(undefined)
     coordinationAddMember.mockResolvedValue(undefined)
@@ -89,7 +88,7 @@ describe('CoordinationPanel', () => {
     })
   })
 
-  it('disband uses confirmation and respects cancel path', async () => {
+  it('disband uses confirm dialog and respects cancel path', async () => {
     coordinationListTeams.mockResolvedValue([{ teamName: 'architecture-final' }])
     render(CoordinationPanel, { props: { dark: false } })
 
@@ -98,12 +97,18 @@ describe('CoordinationPanel', () => {
       expect(coordinationGetTeamStatus).toHaveBeenCalledWith('architecture-final')
     })
 
-    globalThis.confirm.mockReturnValueOnce(false)
     await fireEvent.click(screen.getByTestId('coordination-disband-team-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
     expect(coordinationDisbandTeam).not.toHaveBeenCalled()
 
-    globalThis.confirm.mockReturnValueOnce(true)
     await fireEvent.click(screen.getByTestId('coordination-disband-team-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
     await waitFor(() => {
       expect(coordinationDisbandTeam).toHaveBeenCalledWith('architecture-final')
     })

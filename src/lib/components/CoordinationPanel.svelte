@@ -7,6 +7,7 @@
     coordinationListTeams,
     coordinationRemoveMember,
   } from '../ipc.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
 
   let { dark = false } = $props()
 
@@ -29,6 +30,9 @@
   let submitting = $state(false)
   let errorMessage = $state('')
   let didInit = $state(false)
+  let showDisbandConfirm = $state(false)
+  let showRemoveMemberConfirm = $state(false)
+  let memberPendingRemoval = $state('')
 
   const selectedMembers = $derived(selectedStatus?.members ?? [])
   const canCreate = $derived(!submitting && createTeamName.trim().length > 0)
@@ -59,6 +63,9 @@
       if (selectedTeam && !teams.some((team) => normalizeTeamName(team) === selectedTeam)) {
         selectedTeam = ''
         selectedStatus = null
+        showDisbandConfirm = false
+        showRemoveMemberConfirm = false
+        memberPendingRemoval = ''
       }
       if (selectedTeam) {
         await loadTeamStatus(selectedTeam)
@@ -101,15 +108,20 @@
     }
   }
 
-  async function handleDisbandTeam() {
+  function handleDisbandTeam() {
     if (!selectedTeam || submitting) return
-    if (!confirm(`Disband team "${selectedTeam}"? This cannot be undone.`)) return
+    showDisbandConfirm = true
+  }
+
+  async function confirmDisbandTeam() {
+    if (!selectedTeam || submitting) return
     submitting = true
     errorMessage = ''
     try {
       await coordinationDisbandTeam(selectedTeam)
       selectedTeam = ''
       selectedStatus = null
+      showDisbandConfirm = false
       await refreshTeams()
     } catch (err) {
       errorMessage = `Failed to disband team: ${formatError(err, 'unknown error')}`
@@ -133,13 +145,21 @@
     }
   }
 
-  async function handleRemoveMember(name) {
+  function handleRemoveMember(name) {
     if (!selectedTeam || submitting) return
-    if (!confirm(`Remove member "${name}" from "${selectedTeam}"?`)) return
+    memberPendingRemoval = name
+    showRemoveMemberConfirm = true
+  }
+
+  async function confirmRemoveMember() {
+    if (!selectedTeam || submitting || !memberPendingRemoval) return
+    const memberName = memberPendingRemoval
     submitting = true
     errorMessage = ''
     try {
-      await coordinationRemoveMember(selectedTeam, name)
+      await coordinationRemoveMember(selectedTeam, memberName)
+      showRemoveMemberConfirm = false
+      memberPendingRemoval = ''
       await loadTeamStatus(selectedTeam)
     } catch (err) {
       errorMessage = `Failed to remove member: ${formatError(err, 'unknown error')}`
@@ -150,6 +170,9 @@
 
   async function handleSelectTeam(teamName) {
     if (!teamName) return
+    showDisbandConfirm = false
+    showRemoveMemberConfirm = false
+    memberPendingRemoval = ''
     selectedTeam = teamName
     await loadTeamStatus(teamName)
   }
@@ -292,3 +315,30 @@
     {/if}
   </div>
 </section>
+
+{#if showDisbandConfirm}
+  <ConfirmDialog
+    {dark}
+    bind:open={showDisbandConfirm}
+    title="Disband team?"
+    message={`Disband team "${selectedTeam}"? This cannot be undone.`}
+    confirmLabel="Disband"
+    variant="danger"
+    onconfirm={confirmDisbandTeam}
+  />
+{/if}
+
+{#if showRemoveMemberConfirm}
+  <ConfirmDialog
+    {dark}
+    bind:open={showRemoveMemberConfirm}
+    title="Remove member?"
+    message={`Remove member "${memberPendingRemoval}" from "${selectedTeam}"?`}
+    confirmLabel="Remove"
+    variant="danger"
+    onconfirm={confirmRemoveMember}
+    oncancel={() => {
+      memberPendingRemoval = ''
+    }}
+  />
+{/if}

@@ -47,7 +47,6 @@ describe('Mesh vertical slice smoke', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     progressHandler = null
-    globalThis.confirm = vi.fn(() => true)
     checkMeshInstallStatus.mockResolvedValue({
       installed: true,
       version: '0.1.0',
@@ -231,8 +230,9 @@ describe('Mesh vertical slice smoke', () => {
     await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
     await waitFor(() => {
-      expect(globalThis.confirm).toHaveBeenCalled()
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
     await waitFor(() => {
       expect(coordinationDisbandTeam).toHaveBeenCalledWith('taurhaus-team')
     })

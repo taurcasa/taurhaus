@@ -39,7 +39,6 @@ function createDeferred() {
 describe('MeshTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    globalThis.confirm = vi.fn(() => true)
     checkMeshInstallStatus.mockResolvedValue({
       installed: true,
       version: '0.1.0',
@@ -277,7 +276,10 @@ describe('MeshTab', () => {
 
     await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
-    expect(globalThis.confirm).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
 
     await waitFor(() => {
       expect(coordinationDisbandTeam).toHaveBeenCalledWith('architecture-final')
@@ -306,6 +308,11 @@ describe('MeshTab', () => {
     await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
     await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
+    await waitFor(() => {
       expect(screen.getByTestId('mesh-disband-button')).toHaveTextContent('Disbanding...')
       expect(screen.getByTestId('mesh-disband-button')).toBeDisabled()
     })
@@ -323,7 +330,6 @@ describe('MeshTab', () => {
   })
 
   it('disband cancelled does nothing', async () => {
-    globalThis.confirm = vi.fn(() => false)
     coordinationListTeams.mockResolvedValueOnce([
       { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
     ])
@@ -341,6 +347,10 @@ describe('MeshTab', () => {
 
     await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
     await fireEvent.click(screen.getByTestId('mesh-disband-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
 
     expect(coordinationDisbandTeam).not.toHaveBeenCalled()
     expect(screen.getByTestId('mesh-runtime-title')).toBeInTheDocument()

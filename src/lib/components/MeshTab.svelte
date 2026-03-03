@@ -8,6 +8,7 @@
   import MeshInitProgress from './MeshInitProgress.svelte'
   import MeshAvailabilityGate from './MeshAvailabilityGate.svelte'
   import MeshTeamRoster from './MeshTeamRoster.svelte'
+  import ConfirmDialog from './ConfirmDialog.svelte'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -34,6 +35,16 @@
   const formFieldBase =
     'w-full bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none'
   const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
+  const chevronSvg = $derived(
+    dark
+      ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M3 4l2 2 2-2' fill='none' stroke='%2371717a' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
+      : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M3 4l2 2 2-2' fill='none' stroke='%2352525b' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
+  )
+  const inlineSelect = $derived(
+    dark
+      ? `appearance-none bg-zinc-800/80 text-xs text-zinc-300 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
+      : `appearance-none bg-zinc-200/80 text-xs text-zinc-700 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
+  )
 
   let mode = $state('setup')
   let teamName = $state('')
@@ -53,6 +64,7 @@
   let addAgentDescription = $state('')
   let rosterRefreshNonce = $state(0)
   let disbanding = $state(false)
+  let showDisbandConfirm = $state(false)
   let runtimeMessageTimer = null
   let errorMessageTimer = null
 
@@ -172,12 +184,13 @@
     }
   }
 
-  async function handleRuntimeDisband() {
+  function handleRuntimeDisband() {
     if (!teamName || disbanding) return
-    const confirmed = window.confirm(
-      `Disband team "${teamName}"? This will remove mesh state and stop active agent sessions (panes, daemons, and mesh membership).`
-    )
-    if (!confirmed) return
+    showDisbandConfirm = true
+  }
+
+  async function confirmRuntimeDisband() {
+    if (!teamName || disbanding) return
     disbanding = true
     try {
       const result = await coordinationDisbandTeam(teamName)
@@ -188,6 +201,7 @@
       teamName = ''
       showInitProgress = false
       showAddAgentForm = false
+      showDisbandConfirm = false
       initializeRequest = null
       addAgentProgress = null
       onDisbandProp(result)
@@ -231,6 +245,7 @@
     addAgentProgress = null
     addAgentError = ''
     disbanding = false
+    showDisbandConfirm = false
     teamName = ''
     mode = 'setup'
 
@@ -317,7 +332,10 @@
                         data-testid="mesh-add-agent-name-input"
                       />
                       <select
-                        class="{formFieldBase} {fieldTone} {selectScheme}"
+                        class={inlineSelect}
+                        style:background-image={chevronSvg}
+                        style:background-repeat="no-repeat"
+                        style:background-position="right 4px center"
                         value={addAgentTool}
                         onchange={(event) => updateAddAgentTool(event.currentTarget.value)}
                         data-testid="mesh-add-agent-tool-select"
@@ -327,7 +345,10 @@
                         <option value="gemini">Gemini</option>
                       </select>
                       <select
-                        class="{formFieldBase} {fieldTone} {selectScheme}"
+                        class={inlineSelect}
+                        style:background-image={chevronSvg}
+                        style:background-repeat="no-repeat"
+                        style:background-position="right 4px center"
                         bind:value={addAgentModel}
                         data-testid="mesh-add-agent-model-select"
                       >
@@ -336,7 +357,10 @@
                         {/each}
                       </select>
                       <select
-                        class="{formFieldBase} {fieldTone} {selectScheme}"
+                        class={inlineSelect}
+                        style:background-image={chevronSvg}
+                        style:background-repeat="no-repeat"
+                        style:background-position="right 4px center"
                         bind:value={addAgentProjectId}
                         data-testid="mesh-add-agent-project-select"
                       >
@@ -432,6 +456,18 @@
           {/key}
         {/snippet}
       </MeshAvailabilityGate>
+
+      {#if showDisbandConfirm}
+        <ConfirmDialog
+          {dark}
+          bind:open={showDisbandConfirm}
+          title="Disband team?"
+          message={`Disband team "${teamName}"? This will remove mesh state and stop active agent sessions (panes, daemons, and mesh membership).`}
+          confirmLabel="Disband"
+          variant="danger"
+          onconfirm={confirmRuntimeDisband}
+        />
+      {/if}
     {/if}
   </div>
 </section>
