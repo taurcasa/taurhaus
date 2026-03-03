@@ -86,7 +86,11 @@ export function toolIndicators(sessions) {
       const name = getToolName(tool)
       const icon = getToolIcon(tool)
       const isActive = session.state === 'active'
+      const isUnattributed = !isActive && session.project_unattributed_active === true
       const interactive = Boolean(session.tmux_session && session.tmux_window && session.tmux_pane)
+      const statusLabel = isActive
+        ? 'running'
+        : (isUnattributed ? 'project active (unattributed)' : 'idle')
 
       return {
         session,
@@ -95,9 +99,12 @@ export function toolIndicators(sessions) {
         fullName: name,
         icon,
         isActive,
+        isUnattributed,
         interactive,
-        colorClass: isActive ? 'text-success-300' : 'text-warning-300',
-        ariaLabel: `${name}: ${isActive ? 'running' : 'idle'}`,
+        colorClass: isActive
+          ? 'text-success-300'
+          : (isUnattributed ? 'text-info-300' : 'text-warning-300'),
+        ariaLabel: `${name}: ${statusLabel}`,
       }
     })
 }

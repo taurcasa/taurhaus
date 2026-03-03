@@ -138,7 +138,8 @@
         {@const badge = sessionBadge(s)}
         {@const icon = toolIcon(s)}
         {@const isWorking = s.state === 'active'}
-        {@const statusColor = isWorking ? 'text-success-400' : 'text-warning-300'}
+        {@const isUnattributed = !isWorking && s.project_unattributed_active}
+        {@const statusColor = isWorking ? 'text-success-400' : (isUnattributed ? 'text-info-300' : 'text-warning-300')}
 
         <div class="mb-2.5 last:mb-0">
           <!-- Session header: icon + tool name + status + duration -->
@@ -147,7 +148,7 @@
               <path d={icon.path}/>
             </svg>
             <span class="text-[12px] font-medium {statusColor}">{badge.toolLabel}</span>
-            <span class="text-[11px] text-white/35">{isWorking ? 'working' : 'waiting for input'}</span>
+            <span class="text-[11px] text-white/35">{isWorking ? 'working' : (isUnattributed ? 'project active (unattributed)' : 'waiting for input')}</span>
             {#if s._duration != null}
               <span class="text-[11px] text-white/25 ml-auto shrink-0">{formatDuration(s._duration)}</span>
             {/if}

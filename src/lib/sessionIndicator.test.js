@@ -135,4 +135,14 @@ describe('sessionIndicator', () => {
     const indicators = toolIndicators([session])
     expect(indicators[0].session).toBe(session)
   })
+
+  it('toolIndicators marks unattributed project activity distinctly', () => {
+    const indicators = toolIndicators([
+      { state: 'idle', cli_tool: 'codex', project_unattributed_active: true },
+    ])
+    expect(indicators[0].isActive).toBe(false)
+    expect(indicators[0].isUnattributed).toBe(true)
+    expect(indicators[0].colorClass).toBe('text-info-300')
+    expect(indicators[0].ariaLabel).toContain('unattributed')
+  })
 })
