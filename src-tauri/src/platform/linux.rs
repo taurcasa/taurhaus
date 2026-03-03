@@ -15,6 +15,37 @@ pub fn process_tty(pid: u32) -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
+/// Check whether a process currently has a specific file path open.
+///
+/// Reads `/proc/{pid}/fd/*` symlinks and compares canonicalized targets.
+pub fn process_has_open_path(pid: u32, target_path: &str) -> bool {
+    let target = std::path::Path::new(target_path);
+    let target_canon = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+
+    let fd_dir = format!("/proc/{pid}/fd");
+    let entries = match fs::read_dir(&fd_dir) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    for entry in entries.flatten() {
+        if let Ok(link_target) = fs::read_link(entry.path()) {
+            // Ignore sockets/pipes/devices; only regular-ish paths can match.
+            if !link_target.is_absolute() {
+                continue;
+            }
+            let canon = link_target
+                .canonicalize()
+                .unwrap_or_else(|_| link_target.clone());
+            if canon == target_canon {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Read cumulative bytes read by a process from `/proc/{pid}/io`.
 ///
 /// Returns the `rchar` value, which includes all reads (file, network, pipe).
@@ -136,6 +167,11 @@ mod tests {
     #[test]
     fn process_tty_returns_none_for_nonexistent_pid() {
         assert!(process_tty(999_999_999).is_none());
+    }
+
+    #[test]
+    fn process_has_open_path_false_for_nonexistent_pid() {
+        assert!(!process_has_open_path(999_999_999, "/tmp/nonexistent"));
     }
 
     #[test]

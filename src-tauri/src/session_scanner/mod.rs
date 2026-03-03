@@ -21,6 +21,7 @@ pub use cli_tool::CliTool;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// State of a Claude Code session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +31,32 @@ pub enum SessionState {
     Active,
     /// Session is waiting for user input (JSONL mtime > 10s ago, process alive).
     Idle,
+}
+
+/// Confidence level for reported activity state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ActivityConfidence {
+    /// Process-level signal or deterministic file ownership.
+    High,
+    /// Project-scoped file signal used with single-session attribution.
+    Medium,
+    /// No direct attribution signal available.
+    #[default]
+    Low,
+}
+
+/// Attribution quality for the reported activity signal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ActivityAttribution {
+    /// Activity was attributed to this exact process/session.
+    Attributed,
+    /// Project shows activity, but this process cannot be proven as owner.
+    Unattributed,
+    /// No active signal observed.
+    #[default]
+    None,
 }
 
 /// A detected CLI tool session with all available metadata.
@@ -59,6 +86,15 @@ pub struct ClaudeSession {
     pub session_id: Option<String>,
     /// Path to the active JSONL transcript file (if found).
     pub jsonl_path: Option<String>,
+    /// Confidence score for this session's current activity classification.
+    #[serde(default)]
+    pub activity_confidence: ActivityConfidence,
+    /// Attribution quality for the current activity signal.
+    #[serde(default)]
+    pub activity_attribution: ActivityAttribution,
+    /// Project has active session-file signal that could not be tied to this PID.
+    #[serde(default)]
+    pub project_unattributed_active: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,25 +169,66 @@ fn retain_state_trackers(active_pids: &[u32]) {
 /// Codex sessions active when only one is working. When multiple Codex
 /// sessions are present for a project, we ignore the shared file signal and
 /// rely on per-PID IO activity to disambiguate each session.
-fn compute_raw_state(
-    tool: CliTool,
-    idle_state: SessionState,
+struct ActivityDecision {
+    raw_state: SessionState,
+    confidence: ActivityConfidence,
+    attribution: ActivityAttribution,
+    project_unattributed_active: bool,
+    keep_session_metadata: bool,
+}
+
+fn compute_activity_decision(
+    file_active: bool,
     process_active: bool,
-    codex_sessions_for_project: usize,
-) -> SessionState {
-    let active = match tool {
-        CliTool::Codex => {
-            let use_project_file_signal = codex_sessions_for_project <= 1;
-            process_active || (use_project_file_signal && idle_state == SessionState::Active)
+    sessions_for_tool_in_project: usize,
+    deterministic_file_owner: bool,
+) -> ActivityDecision {
+    if process_active {
+        return ActivityDecision {
+            raw_state: SessionState::Active,
+            confidence: ActivityConfidence::High,
+            attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            keep_session_metadata: true,
+        };
+    }
+
+    if file_active {
+        if sessions_for_tool_in_project <= 1 {
+            return ActivityDecision {
+                raw_state: SessionState::Active,
+                confidence: ActivityConfidence::Medium,
+                attribution: ActivityAttribution::Attributed,
+                project_unattributed_active: false,
+                keep_session_metadata: true,
+            };
         }
-        CliTool::Claude | CliTool::Gemini => {
-            idle_state == SessionState::Active || process_active
+
+        if deterministic_file_owner {
+            return ActivityDecision {
+                raw_state: SessionState::Active,
+                confidence: ActivityConfidence::High,
+                attribution: ActivityAttribution::Attributed,
+                project_unattributed_active: false,
+                keep_session_metadata: true,
+            };
         }
-    };
-    if active {
-        SessionState::Active
-    } else {
-        SessionState::Idle
+
+        return ActivityDecision {
+            raw_state: SessionState::Idle,
+            confidence: ActivityConfidence::Low,
+            attribution: ActivityAttribution::Unattributed,
+            project_unattributed_active: true,
+            keep_session_metadata: false,
+        };
+    }
+
+    ActivityDecision {
+        raw_state: SessionState::Idle,
+        confidence: ActivityConfidence::Low,
+        attribution: ActivityAttribution::None,
+        project_unattributed_active: false,
+        keep_session_metadata: sessions_for_tool_in_project <= 1,
     }
 }
 
@@ -176,60 +253,94 @@ fn compute_raw_state(
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
+    let scan_started = Instant::now();
     let processes = process::scan_processes();
+    let process_scan_ms = scan_started.elapsed().as_millis() as u64;
+
+    let tmux_started = Instant::now();
     let pane_map = tmux::list_panes();
-    let mut codex_sessions_per_project: HashMap<String, usize> = HashMap::new();
+    let tmux_ms = tmux_started.elapsed().as_millis() as u64;
+
+    let mut sessions_per_project_tool: HashMap<(String, CliTool), usize> = HashMap::new();
     for proc in &processes {
-        if proc.cli_tool == CliTool::Codex {
-            *codex_sessions_per_project
-                .entry(proc.project_path.clone())
-                .or_default() += 1;
-        }
+        *sessions_per_project_tool
+            .entry((proc.project_path.clone(), proc.cli_tool))
+            .or_default() += 1;
     }
+
+    let classify_started = Instant::now();
+    let mut idle_ms = Duration::default();
+    let mut process_signal_ms = Duration::default();
+    let mut ownership_ms = Duration::default();
 
     let mut sessions: Vec<ClaudeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
+
+            let idle_started = Instant::now();
             let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
-            let codex_sessions_for_project = if proc.cli_tool == CliTool::Codex {
-                codex_sessions_per_project
-                    .get(&proc.project_path)
-                    .copied()
-                    .unwrap_or(1)
-            } else {
-                0
-            };
+            idle_ms += idle_started.elapsed();
+            let file_active = idle_result.state == SessionState::Active;
+            let sessions_for_tool_in_project = sessions_per_project_tool
+                .get(&(proc.project_path.clone(), proc.cli_tool))
+                .copied()
+                .unwrap_or(1);
 
             // Raw state from multiple signals (OR).
             // Claude: file mtime OR consecutive-poll IO hysteresis (sustained rchar).
             // Gemini: file mtime OR TCP socket to :443 (Gemini closes connections when idle).
             // Codex: per-PID IO hysteresis always; project-level file mtime only
             //   when this is the sole Codex session for the project.
+            let process_signal_started = Instant::now();
             let process_active = match proc.cli_tool {
                 CliTool::Claude => proc_io::is_process_active_hysteresis(proc.pid),
                 CliTool::Gemini => proc_io::has_api_connections(proc.pid),
                 CliTool::Codex => proc_io::is_process_active_hysteresis(proc.pid),
             };
-            let raw_state = compute_raw_state(
-                proc.cli_tool,
-                idle_result.state,
+            process_signal_ms += process_signal_started.elapsed();
+
+            // Deterministic fallback in multi-session projects:
+            // if file signal is active but process signal is quiet, check whether this
+            // PID currently holds the session file open.
+            let ownership_started = Instant::now();
+            let deterministic_file_owner = file_active
+                && !process_active
+                && sessions_for_tool_in_project > 1
+                && idle_result
+                    .jsonl_path
+                    .as_deref()
+                    .is_some_and(|p| crate::platform::process_has_open_path(proc.pid, p));
+            ownership_ms += ownership_started.elapsed();
+
+            let decision = compute_activity_decision(
+                file_active,
                 process_active,
-                codex_sessions_for_project,
+                sessions_for_tool_in_project,
+                deterministic_file_owner,
             );
 
-            // In multi-Codex projects the file-based session metadata is shared and
-            // cannot be attributed to a specific process. Hide it to avoid showing
-            // duplicated/misleading session IDs on multiple rows.
-            let (session_id, jsonl_path) =
-                if proc.cli_tool == CliTool::Codex && codex_sessions_for_project > 1 {
-                    (None, None)
-                } else {
-                    (idle_result.session_id, idle_result.jsonl_path)
-                };
+            // Hide shared session metadata when activity attribution is unavailable.
+            let (session_id, jsonl_path) = if decision.keep_session_metadata {
+                (idle_result.session_id, idle_result.jsonl_path)
+            } else {
+                (None, None)
+            };
 
             // Apply bidirectional hysteresis
-            let state = apply_hysteresis(proc.pid, raw_state);
+            let state = apply_hysteresis(proc.pid, decision.raw_state);
+            let (activity_confidence, activity_attribution, project_unattributed_active) =
+                if state == SessionState::Active {
+                    (decision.confidence, decision.attribution, false)
+                } else if decision.project_unattributed_active {
+                    (
+                        ActivityConfidence::Low,
+                        ActivityAttribution::Unattributed,
+                        true,
+                    )
+                } else {
+                    (ActivityConfidence::Low, ActivityAttribution::None, false)
+                };
 
             ClaudeSession {
                 pid: proc.pid,
@@ -244,6 +355,9 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                 state,
                 session_id,
                 jsonl_path,
+                activity_confidence,
+                activity_attribution,
+                project_unattributed_active,
             }
         })
         .collect();
@@ -263,6 +377,20 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
     proc_io::retain_pids(&active_pids);
     retain_state_trackers(&active_pids);
+
+    let classify_ms = classify_started.elapsed().as_millis() as u64;
+    let total_ms = scan_started.elapsed().as_millis() as u64;
+    tracing::debug!(
+        process_scan_ms,
+        tmux_ms,
+        classify_ms,
+        idle_ms = idle_ms.as_millis() as u64,
+        process_signal_ms = process_signal_ms.as_millis() as u64,
+        ownership_ms = ownership_ms.as_millis() as u64,
+        total_ms,
+        sessions = sessions.len(),
+        "session_scanner metrics"
+    );
 
     sessions
 }
@@ -303,6 +431,9 @@ where
                 state: idle_result.state,
                 session_id: idle_result.session_id,
                 jsonl_path: idle_result.jsonl_path,
+                activity_confidence: ActivityConfidence::Low,
+                activity_attribution: ActivityAttribution::None,
+                project_unattributed_active: false,
             }
         })
         .collect();
@@ -348,6 +479,9 @@ mod tests {
             jsonl_path: Some(
                 "/home/user/.claude/projects/-home-user-projects-foo/abc-123.jsonl".to_string(),
             ),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -357,6 +491,8 @@ mod tests {
         assert_eq!(json["state"], "active");
         assert_eq!(json["tmux_pane"], "%3");
         assert_eq!(json["session_id"], "abc-123");
+        assert_eq!(json["activity_confidence"], "high");
+        assert_eq!(json["activity_attribution"], "attributed");
     }
 
     #[test]
@@ -374,6 +510,9 @@ mod tests {
             state: SessionState::Idle,
             session_id: None,
             jsonl_path: None,
+            activity_confidence: ActivityConfidence::Low,
+            activity_attribution: ActivityAttribution::None,
+            project_unattributed_active: false,
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -638,25 +777,39 @@ mod tests {
     }
 
     #[test]
-    fn codex_multi_session_project_ignores_shared_file_signal() {
-        let state = compute_raw_state(CliTool::Codex, SessionState::Active, false, 3);
-        assert_eq!(
-            state,
-            SessionState::Idle,
-            "multi-session Codex project should not mark every session active from shared file mtime"
-        );
+    fn multi_session_file_signal_becomes_unattributed_without_owner() {
+        let d = compute_activity_decision(true, false, 3, false);
+        assert_eq!(d.raw_state, SessionState::Idle);
+        assert_eq!(d.attribution, ActivityAttribution::Unattributed);
+        assert!(d.project_unattributed_active);
+        assert!(!d.keep_session_metadata);
     }
 
     #[test]
-    fn codex_single_session_project_keeps_file_signal() {
-        let state = compute_raw_state(CliTool::Codex, SessionState::Active, false, 1);
-        assert_eq!(state, SessionState::Active);
+    fn single_session_file_signal_is_attributed_medium_confidence() {
+        let d = compute_activity_decision(true, false, 1, false);
+        assert_eq!(d.raw_state, SessionState::Active);
+        assert_eq!(d.confidence, ActivityConfidence::Medium);
+        assert_eq!(d.attribution, ActivityAttribution::Attributed);
+        assert!(d.keep_session_metadata);
     }
 
     #[test]
-    fn codex_process_signal_still_marks_active() {
-        let state = compute_raw_state(CliTool::Codex, SessionState::Idle, true, 3);
-        assert_eq!(state, SessionState::Active);
+    fn process_signal_is_high_confidence_attributed() {
+        let d = compute_activity_decision(false, true, 3, false);
+        assert_eq!(d.raw_state, SessionState::Active);
+        assert_eq!(d.confidence, ActivityConfidence::High);
+        assert_eq!(d.attribution, ActivityAttribution::Attributed);
+    }
+
+    #[test]
+    fn deterministic_owner_resolves_multi_session_file_signal() {
+        let d = compute_activity_decision(true, false, 3, true);
+        assert_eq!(d.raw_state, SessionState::Active);
+        assert_eq!(d.confidence, ActivityConfidence::High);
+        assert_eq!(d.attribution, ActivityAttribution::Attributed);
+        assert!(!d.project_unattributed_active);
+        assert!(d.keep_session_metadata);
     }
 
     #[test]

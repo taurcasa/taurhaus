@@ -18,6 +18,10 @@ pub fn process_tty(_pid: u32) -> Option<String> {
     None
 }
 
+pub fn process_has_open_path(_pid: u32, _target_path: &str) -> bool {
+    false
+}
+
 pub fn process_rchar(_pid: u32) -> Option<u64> {
     None
 }

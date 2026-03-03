@@ -80,6 +80,14 @@ pub fn process_tty(pid: u32) -> Option<String> {
     None
 }
 
+/// Check whether a process currently has a specific file path open.
+///
+/// Not implemented on macOS yet (would require additional lsof parsing).
+/// Returns false so scanner falls back to non-deterministic paths.
+pub fn process_has_open_path(_pid: u32, _target_path: &str) -> bool {
+    false
+}
+
 /// Read cumulative bytes read by a process via `libproc` rusage.
 ///
 /// Uses `proc_pid_rusage()` to get `ri_diskio_bytesread` which tracks
