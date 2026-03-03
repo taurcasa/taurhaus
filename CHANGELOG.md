@@ -6,12 +6,100 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-03
+
 ### Added
+
+**Mesh View — Multi-Agent Team Coordination**
+- Complete Mesh tab: setup form, initialization progress tracker, live team roster, and team cleanup panel
+- Coordination backend: orchestrator with lifecycle management, delivery routing, and audit events
+- Coordination stores with advisory file locking and domain types
+- Coordination IPC commands for team CRUD, agent management, and live status
+- Mesh CLI bundling: `install-mesh` recipe builds and bundles the mesh binary into app resources
+- MeshAvailabilityGate: prerequisite checker (mesh CLI, tmux) before team setup
+- MeshSetupForm: agent roster builder with per-agent tool/model/project selection and custom chevron selects
+- MeshInitProgress: 7-step initialization tracker with real-time IPC progress events
+- MeshTeamRoster: live member status (active/idle/offline) with 5s auto-refresh and tool brand icons
+- Team cleanup panel: discover and disband existing teams before starting new ones
+- Team-conflict recovery: "Open Existing Team" and "Disband & Retry" actions when init hits a name collision
+- ConfirmDialog component: themed `<dialog>` replacement for native `window.confirm()` — backdrop, Escape key, danger/default variants
+- Per-agent CLI warnings surfaced in mesh preflight
+- Coordination event pipeline with drift reconciliation
+- Coordination runtime boundary refactoring and onboarding delivery stabilization
+
+**Session Management**
+- Daemon streaming: session updates via versioned long-poll API replacing Tauri polling
+- Activity attribution model: distinguish tool-originated vs unattributed project activity
+- Session indicator hydration on Tauri startup
+- Codex activity disambiguation per process via session file mtime
+- Unattributed project activity detection in session indicators
+
+**Markdown & Rendering**
+- Mermaid diagram rendering in markdown pipeline with fallback on parse errors
+
+**Documentation**
+- Architecture reference docs and updated ARCHITECTURE.md
+- Feature documentation, UI documentation, operations documentation
+- Security documentation with risk register and audit history
+- Documentation guidelines and index
+- Teal-themed infographics for architecture, file rendering pipeline, session management, and workflow
+- Data model ERD and image optimization script
+- Session activity docs aligned with daemon event stream
+
+**Infrastructure**
 - Persist dark/light theme selection across app restarts
 - Remember window position and size across restarts (tauri-plugin-window-state)
+- Unified coordination pane creation on native tmux layouts
+- E2E: install daemon before all e2e runs
+
+### Changed
+- Coordination modules decomposed: types, pipelines, validation extracted from monolithic files
+- Backend module decomposition: lib.rs split into bootstrap + event_processor + daemon_lifecycle
+- Server.rs decomposed into handlers + watch submodules
+- Idle.rs decomposed into per-resolver submodules
+- Commands/tasks.rs extracted from command_center.rs
+- Launch command resolution shared across command center and coordination
+- Default Codex model updated to gpt-5.3-codex in mesh flows
+- Mermaid session-management diagrams replaced with infographics
+
+### Fixed
+- Windows daemon session path normalization before UI events
+- Metadata-only session update churn in daemon avoided
+- Markdown relative image/link path resolution in file viewer
+- WSL UNC path handling in coordination config writes and team discovery
+- Mesh WSL home parsing hardened against shell banner noise
+- DirectoryBrowser init race and gitTab midnight test flakes
+- Cargo fmt formatting drift normalized across codebase
+- Overflow menu hover hardcoded to dark mode — now theme-aware with click-outside dismiss
+- Add-agent select styling unified to custom-chevron pattern matching setup form
+- Init disband button height mismatch and visual hierarchy (Retry demoted when conflict recovery visible)
+- Inline dark/light ternaries in cleanup panel extracted to $derived tokens per CLAUDE.md convention
+- Cleanup toggle label "Manage (0)" edge case when only warnings exist
+
+### Security
+- Daemon authentication: shared token validates every request
+- Command override validation: allowlist + shell metacharacter rejection
+- Scoped tmux environment variables to session
+- Scoped opener capability to http/https URLs only
+- Bounded read before allocation in daemon server
+- Error path sanitization: home directory paths replaced with ~
+- `#![forbid(unsafe_code)]` at crate root
+- Supply chain policy: cargo-deny configuration
+- DOMPurify: forbid `<style>` elements in markdown output
+- Coordination: reject `.` and `..` team/member names
+- Search: block symlink escapes in incremental indexing
+- Search: de-index unreadable files on incremental updates
+- Provider: cap README asset reads at 5MB
+- Daemon fail-open auth fixed: abort on token failure
+
+### Performance
+- Frontend log bridge pressure reduced
+- Hidden-tab background refresh churn eliminated
+- Shell: surface degraded project loads with retry
 
 ### Removed
 - Windows E2E test infrastructure (recipes, platform detection, cross-filesystem tests)
+- Native `window.confirm()` dialogs — replaced with themed ConfirmDialog component
 
 ## [0.3.8] - 2026-02-28
 
