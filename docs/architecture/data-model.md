@@ -2,7 +2,7 @@
 
 Three storage layers serve different purposes: SQLite for structured metadata, tantivy for full-text search, and the filesystem as the source of truth for content.
 
-![Data Model](../data-model.jpg)
+![Data Model](../images/data-model.jpg)
 
 ## SQLite
 

@@ -25,7 +25,7 @@ Each tool has:
 
 ## Session detection pipeline
 
-![Session Detection Pipeline](../session-detection.jpg)
+![Session Detection Pipeline](../images/session-detection.jpg)
 
 Detection sequence:
 1. Scan processes (`ps -eo pid,args`) and detect known tool command signatures.

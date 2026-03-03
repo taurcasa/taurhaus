@@ -13,7 +13,7 @@ Frontend layout (`TaskBoard.svelte`) has two sub-tabs:
 
 ## Task sources
 
-![Task Aggregation Pipeline](../task-aggregation.jpg)
+![Task Aggregation Pipeline](../images/task-aggregation.jpg)
 
 Each CLI tool uses a different source format, and the scanner unifies them.
 

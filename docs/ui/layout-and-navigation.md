@@ -10,7 +10,7 @@ The application window is a custom-decorated dark teal frame containing floating
 
 The entire window is a dark teal frame (`bg-brand-950`) containing floating panels. No OS window decorations — the titlebar is part of the UI.
 
-![Shell Layout](../shell-layout.jpg)
+![Shell Layout](../images/shell-layout.jpg)
 
 ### Titlebar (46px)
 

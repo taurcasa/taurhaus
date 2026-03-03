@@ -2,7 +2,7 @@
 
 The daemon is a companion process that handles filesystem access, process scanning, and tmux session management. It communicates with the Tauri app over a TCP connection using a JSON-line (NDJSON) protocol.
 
-![Daemon Protocol](../daemon-protocol.jpg)
+![Daemon Protocol](../images/daemon-protocol.jpg)
 
 ## Why a daemon
 

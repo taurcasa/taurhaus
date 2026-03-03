@@ -2,7 +2,7 @@
 
 > How taurhaus classifies, loads, caches, and renders project files across the Overview and Files tabs.
 
-**Infographic**: [`docs/file-rendering-pipeline.jpg`](file-rendering-pipeline.jpg)
+**Infographic**: [`docs/images/file-rendering-pipeline.jpg`](images/file-rendering-pipeline.jpg)
 
 ---
 

@@ -106,7 +106,7 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 
 taurhaus is a native desktop application built with Tauri 2 (Svelte 5 frontend + Rust backend with SQLite, tantivy, and libgit2).
 
-![System Architecture](docs/system-architecture.jpg)
+![System Architecture](docs/images/system-architecture.jpg)
 
 A lightweight companion daemon handles process scanning, file watching, and tmux management. On **Windows** it runs inside WSL2, on **macOS** it runs natively as a subprocess. Both communicate with the app over TCP using a JSON-line protocol.
 

@@ -11,7 +11,7 @@ The daemon runs on both platforms — the only difference is where:
 - **Windows**: The daemon runs inside WSL2 (launched via `wsl.exe`), where it has access to `/proc` for process inspection and the Linux filesystem where AI tools run.
 - **macOS**: The daemon runs natively as a subprocess (launched from `~/.local/bin/taurhaus-daemon`), using `libproc` and `lsof` for process inspection instead of `/proc`.
 
-![System Architecture](docs/system-architecture.jpg)
+![System Architecture](docs/images/system-architecture.jpg)
 
 ## Platform Abstraction
 
@@ -171,7 +171,7 @@ JSON-line protocol over TCP (localhost:9000). Same protocol on both platforms �
 
 ## Startup Sequence
 
-![Startup Sequence](docs/startup-sequence.jpg)
+![Startup Sequence](docs/images/startup-sequence.jpg)
 
 The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`):
 
@@ -187,7 +187,7 @@ Steps 3–7 run in background threads — the UI is interactive as soon as the d
 
 ## Data Flow
 
-![Data Flow](docs/data-flow.jpg)
+![Data Flow](docs/images/data-flow.jpg)
 
 ```
 User clicks project
