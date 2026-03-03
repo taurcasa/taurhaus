@@ -2,6 +2,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands;
 use crate::{daemon, db, fs, models, provider, services, ProviderState, WatcherState};
+use crate::session_scanner::ClaudeSession;
 
 /// Extract the WSL home directory from a Linux path.
 ///
@@ -12,6 +13,27 @@ pub(crate) fn extract_wsl_home(linux_path: &str) -> Option<String> {
         Some(format!("/{}/{}", parts[1], parts[2]))
     } else {
         None
+    }
+}
+
+/// Convert daemon-emitted Linux session paths to frontend-visible Windows paths
+/// when the daemon runs in WSL mode.
+fn normalize_sessions_for_frontend(
+    sessions: &mut [ClaudeSession],
+    wsl_distro: Option<&str>,
+    native_daemon: bool,
+) {
+    if native_daemon {
+        return;
+    }
+    let Some(distro) = wsl_distro else {
+        return;
+    };
+
+    for session in sessions {
+        if session.project_path.starts_with('/') {
+            session.project_path = provider::path::to_windows(&session.project_path, distro);
+        }
     }
 }
 
@@ -355,11 +377,22 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
 
                         since_version = update.version;
                         if update.changed {
+                            let mut sessions = update.sessions;
+                            let distro = {
+                                let provider_state = app.state::<ProviderState>();
+                                provider_state.wsl_distro.clone()
+                            };
+                            normalize_sessions_for_frontend(
+                                &mut sessions,
+                                distro.as_deref(),
+                                crate::daemon::launcher::is_native_daemon(),
+                            );
+
                             let _ = app.emit(
                                 "sessions-updated",
                                 serde_json::json!({
                                     "version": update.version,
-                                    "sessions": update.sessions,
+                                    "sessions": sessions,
                                 }),
                             );
                         }
@@ -374,4 +407,57 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
             std::thread::sleep(RETRY_DELAY);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session_scanner::cli_tool::CliTool;
+    use crate::session_scanner::{ActivityAttribution, ActivityConfidence, SessionState};
+
+    fn test_session(path: &str) -> ClaudeSession {
+        ClaudeSession {
+            pid: 1234,
+            project_path: path.to_string(),
+            tty: "/dev/pts/1".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("1".to_string()),
+            tmux_pane: Some("%1".to_string()),
+            tmux_window_name: Some("work".to_string()),
+            state: SessionState::Active,
+            session_id: Some("sid".to_string()),
+            jsonl_path: Some("/home/dev/.codex/sessions/x.jsonl".to_string()),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+        }
+    }
+
+    #[test]
+    fn normalize_sessions_for_frontend_converts_linux_paths_in_wsl_mode() {
+        let mut sessions = vec![test_session("/home/dev/projects/taurhaus")];
+        normalize_sessions_for_frontend(&mut sessions, Some("Ubuntu"), false);
+        assert_eq!(
+            sessions[0].project_path,
+            r"\\wsl.localhost\Ubuntu\home\dev\projects\taurhaus"
+        );
+    }
+
+    #[test]
+    fn normalize_sessions_for_frontend_skips_native_daemon() {
+        let original = "/home/dev/projects/taurhaus";
+        let mut sessions = vec![test_session(original)];
+        normalize_sessions_for_frontend(&mut sessions, Some("native"), true);
+        assert_eq!(sessions[0].project_path, original);
+    }
+
+    #[test]
+    fn normalize_sessions_for_frontend_requires_distro() {
+        let original = "/home/dev/projects/taurhaus";
+        let mut sessions = vec![test_session(original)];
+        normalize_sessions_for_frontend(&mut sessions, None, false);
+        assert_eq!(sessions[0].project_path, original);
+    }
 }
