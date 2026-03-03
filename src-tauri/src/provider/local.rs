@@ -9,6 +9,9 @@ use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, Git
 
 use super::ProjectProvider;
 
+/// Maximum binary asset size for README image rendering (5 MB).
+const MAX_ASSET_SIZE: u64 = 5 * 1024 * 1024;
+
 /// Provider that performs all operations via direct local filesystem access.
 ///
 /// Used for Windows-local projects and as the fallback for WSL projects when
@@ -94,6 +97,13 @@ impl ProjectProvider for LocalProvider {
         if !canonical_file.starts_with(&canonical_root) {
             return Err(AppError::InvalidPath(
                 "Access denied: path traversal detected".to_string(),
+            ));
+        }
+
+        let metadata = std::fs::metadata(&canonical_file).map_err(AppError::Io)?;
+        if metadata.len() > MAX_ASSET_SIZE {
+            return Err(AppError::InvalidPath(
+                "Asset too large to display (>5 MB)".to_string(),
             ));
         }
 
@@ -269,6 +279,23 @@ mod tests {
         // ".." is caught by canonicalization check
         let result = provider.read_asset(path, "../../../etc/passwd");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn local_read_asset_rejects_oversized_file() {
+        let dir = TempDir::new().unwrap();
+        let oversized = dir.path().join("huge.png");
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(MAX_ASSET_SIZE + 1).unwrap();
+
+        let provider = LocalProvider;
+        let path = dir.path().to_str().unwrap();
+        let err = provider
+            .read_asset(path, "huge.png")
+            .expect_err("oversized asset should be rejected");
+        assert!(err
+            .to_string()
+            .contains("Asset too large to display (>5 MB)"));
     }
 
     #[test]

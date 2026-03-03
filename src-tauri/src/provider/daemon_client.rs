@@ -514,9 +514,8 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || {
-            crate::daemon::server::run(&config, shutdown_clone)
-        });
+        let handle =
+            std::thread::spawn(move || crate::daemon::server::run(&config, shutdown_clone));
         std::thread::sleep(Duration::from_millis(100));
         TestDaemon {
             port,
@@ -639,6 +638,27 @@ mod tests {
         let bytes = provider.read_asset(path, "icon.png").unwrap();
 
         assert_eq!(bytes, data);
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn daemon_provider_read_asset_rejects_oversized_file() {
+        let daemon = start_daemon();
+        let dir = tempfile::TempDir::new().unwrap();
+        let oversized = dir.path().join("huge.png");
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(5 * 1024 * 1024 + 1).unwrap();
+
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
+        let path = dir.path().to_str().unwrap();
+        let err = provider
+            .read_asset(path, "huge.png")
+            .expect_err("oversized asset should be rejected");
+
+        assert!(err
+            .to_string()
+            .contains("Asset too large to display (>5 MB)"));
 
         daemon.shutdown.store(true, Ordering::Relaxed);
     }
