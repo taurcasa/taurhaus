@@ -49,45 +49,118 @@ Process dedup behavior:
 ### 1) Scanner pipeline (all tools)
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontFamily': 'Geist, system-ui, sans-serif',
+    'lineColor': '#2dd4bf',
+    'fontSize': '12px',
+    'edgeLabelBackground': '#2dd4bf'
+  },
+  'flowchart': { 'curve': 'basis', 'padding': 20, 'nodeSpacing': 60, 'rankSpacing': 76, 'wrappingWidth': 280 }
+}}%%
 flowchart TD
-    A["scan_sessions() called"] --> B["scan_processes(): ps -> pid,args -> cli_tool"]
-    B --> C["enrich each process: cwd(project_path) + tty"]
-    C --> D["count Codex sessions per project_path"]
-    D --> E["for each process: compute raw state"]
-    E --> F["apply per-PID state hysteresis (2 consecutive polls)"]
-    F --> G["build ClaudeSession payload"]
-    G --> H["dedupe by (tty, cli_tool), keep highest PID"]
-    H --> I["retain active PIDs in proc_io + state trackers"]
-    I --> J["return session list to frontend"]
+    classDef entry fill:#2dd4bf,stroke:#14b8a6,stroke-width:3px,color:#042f2e
+    classDef step fill:#334155,stroke:#64748b,stroke-width:2px,color:#e2e8f0
+    classDef data fill:#475569,stroke:#94a3b8,stroke-width:2px,color:#f1f5f9
+    classDef key fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#ecfeff
+    classDef output fill:#042f2e,stroke:#2dd4bf,stroke-width:3px,color:#99f6e4
+
+    A(["scan_sessions()<br/>called"]):::entry --> B["scan_processes()<br/>ps -> pid,args -> cli_tool"]:::step
+    B --> C["enrich process<br/>cwd(project_path) + tty"]:::step
+    C --> D[(count Codex sessions<br/>per project_path)]:::data
+    D --> E["compute raw state<br/>for each process"]:::step
+    E --> F["apply per-PID state<br/>hysteresis (2 polls)"]:::key
+    F --> G["build ClaudeSession<br/>payload"]:::step
+    G --> H["dedupe (tty, cli_tool)<br/>keep highest PID"]:::key
+    H --> I[(retain active PIDs in<br/>proc_io + state trackers)]:::data
+    I --> J(["return session list<br/>to frontend"]):::output
+
+    linkStyle default stroke:#2dd4bf,stroke-width:2px
+    linkStyle 3,6 stroke:#94a3b8,stroke-width:1.6px
+    linkStyle 7,8 stroke:#99f6e4,stroke-width:2.4px
 ```
 
 ### 2) Per-tool active/idle decision
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontFamily': 'Geist, system-ui, sans-serif',
+    'lineColor': '#2dd4bf',
+    'fontSize': '12px',
+    'edgeLabelBackground': '#2dd4bf'
+  },
+  'flowchart': { 'curve': 'basis', 'padding': 20, 'nodeSpacing': 60, 'rankSpacing': 76, 'wrappingWidth': 280 }
+}}%%
 flowchart TD
-    A["Process (pid, tool, project_path)"] --> B{"Tool?"}
+    classDef input fill:#2dd4bf,stroke:#14b8a6,stroke-width:3px,color:#042f2e
+    classDef decision fill:#14b8a6,stroke:#0f766e,stroke-width:2.4px,color:#042f2e
+    classDef claude fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#ecfeff
+    classDef gemini fill:#1d4ed8,stroke:#60a5fa,stroke-width:2px,color:#dbeafe
+    classDef codex fill:#334155,stroke:#94a3b8,stroke-width:2px,color:#e2e8f0
+    classDef result fill:#042f2e,stroke:#2dd4bf,stroke-width:3px,color:#99f6e4
 
-    B -->|Claude| C["file_active = claude jsonl/subagent mtime < 5s"]
-    C --> D["proc_active = /proc io hysteresis"]
-    D --> E["raw_active = file_active OR proc_active"]
-    E --> Z["state = hysteresis(raw_active)"]
+    A(["Process<br/>(pid, tool, project_path)"]):::input --> B{"Tool?"}:::decision
 
-    B -->|Gemini| G["file_active = gemini chats mtime < 5s"]
-    G --> H["proc_active = has ESTABLISHED :443 socket"]
-    H --> I["raw_active = file_active OR proc_active"]
+    subgraph CLAUDE_LANE["Claude"]
+      direction TB
+      C["file_active = claude jsonl/<br/>subagent mtime < 5s"]:::claude
+      D["proc_active = /proc io<br/>hysteresis"]:::claude
+      E["raw_active = file_active<br/>OR proc_active"]:::claude
+    end
+
+    subgraph GEMINI_LANE["Gemini"]
+      direction TB
+      G["file_active = gemini chats<br/>mtime < 5s"]:::gemini
+      H["proc_active = has<br/>ESTABLISHED :443 socket"]:::gemini
+      I["raw_active = file_active<br/>OR proc_active"]:::gemini
+    end
+
+    subgraph CODEX_LANE["Codex"]
+      direction TB
+      K["file_active = codex session<br/>mtime < 10s (project-scoped)"]:::codex
+      L["proc_active = /proc io<br/>hysteresis (per pid)"]:::codex
+      M{"codex sessions for<br/>project_path > 1 ?"}:::decision
+      N["raw_active = file_active<br/>OR proc_active"]:::codex
+      O["raw_active = proc_active<br/>only"]:::codex
+      P{"multi-codex?"}:::decision
+      Q["keep session_id/jsonl_path<br/>from file resolver"]:::codex
+      R["hide session_id/jsonl_path<br/>(shared, not attributable)"]:::codex
+    end
+
+    Z(["state =<br/>hysteresis(raw_active)"]):::result
+
+    B --> C
+    C --> D
+    D --> E
+    E --> Z
+
+    B --> G
+    G --> H
+    H --> I
     I --> Z
 
-    B -->|Codex| K["file_active = codex session mtime < 10s (project-scoped)"]
-    K --> L["proc_active = /proc io hysteresis (per pid)"]
-    L --> M{"codex sessions for project_path > 1 ?"}
-    M -->|No| N["raw_active = file_active OR proc_active"]
-    M -->|Yes| O["raw_active = proc_active only"]
-    N --> P{"multi-codex?"}
+    B --> K
+    K --> L
+    L --> M
+    M -->|No| N
+    M -->|Yes| O
+    N --> P
     O --> P
-    P -->|No| Q["keep session_id/jsonl_path from file resolver"]
-    P -->|Yes| R["hide session_id/jsonl_path (shared, not attributable)"]
+    P -->|No| Q
+    P -->|Yes| R
     Q --> Z
     R --> Z
+
+    style CLAUDE_LANE fill:#134e4a,stroke:#2dd4bf,stroke-width:3px,color:#99f6e4,font-weight:bold,font-size:14px
+    style GEMINI_LANE fill:#1e3a8a,stroke:#60a5fa,stroke-width:3px,color:#dbeafe,font-weight:bold,font-size:14px
+    style CODEX_LANE fill:#1f2937,stroke:#94a3b8,stroke-width:3px,color:#e2e8f0,font-weight:bold,font-size:14px
+
+    linkStyle default stroke:#2dd4bf,stroke-width:2px
+    linkStyle 1,5,9,12,13,16,17 stroke:#14b8a6,stroke-width:1.4px,stroke-dasharray:5 5
+    linkStyle 4,8,18,19 stroke:#99f6e4,stroke-width:2.4px
 ```
 
 ## Platform process inspection
