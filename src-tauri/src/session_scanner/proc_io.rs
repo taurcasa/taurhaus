@@ -16,11 +16,12 @@
 //! instant active detection (connection opens) AND instant idle detection
 //! (connection closes) with no decay timers or tradeoffs.
 //!
-//! **Codex** — session file mtime only (no proc-level signal used).
+//! **Codex** — per-PID IO hysteresis + project file mtime fallback.
 //! Codex maintains HTTP keep-alive connections to :443 indefinitely after
 //! finishing work, making TCP socket presence useless as an idle indicator.
-//! The session JSONL file mtime (checked in `idle.rs`) provides reliable
-//! detection with ~9s active→idle latency (5s threshold + 4s hysteresis).
+//! We therefore use `/proc/PID/io` hysteresis per process to distinguish
+//! which Codex session is actively doing work. Project-level session file
+//! mtime (from `idle.rs`) remains a fallback for single-session projects.
 //!
 //! Empirically confirmed (Feb 2026):
 //! - Gemini idle at prompt: 0 ESTABLISHED connections to :443

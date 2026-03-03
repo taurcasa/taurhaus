@@ -123,6 +123,38 @@ fn retain_state_trackers(active_pids: &[u32]) {
     }
 }
 
+/// Compute a process's raw state from tool-specific signals.
+///
+/// For Claude/Gemini we keep the existing behavior: project-level file signal
+/// OR process-level signal marks the process active.
+///
+/// Codex needs special handling for multi-session projects: the file signal is
+/// project-scoped (shared transcript activity), so using it directly marks all
+/// Codex sessions active when only one is working. When multiple Codex
+/// sessions are present for a project, we ignore the shared file signal and
+/// rely on per-PID IO activity to disambiguate each session.
+fn compute_raw_state(
+    tool: CliTool,
+    idle_state: SessionState,
+    process_active: bool,
+    codex_sessions_for_project: usize,
+) -> SessionState {
+    let active = match tool {
+        CliTool::Codex => {
+            let use_project_file_signal = codex_sessions_for_project <= 1;
+            process_active || (use_project_file_signal && idle_state == SessionState::Active)
+        }
+        CliTool::Claude | CliTool::Gemini => {
+            idle_state == SessionState::Active || process_active
+        }
+    };
+    if active {
+        SessionState::Active
+    } else {
+        SessionState::Idle
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -137,37 +169,64 @@ fn retain_state_trackers(active_pids: &[u32]) {
 /// - **Subagent mtime**: subagent file modified < 5s ago (compaction)
 /// - **Proc IO** (Claude): rchar delta > 500 bytes for 2+ consecutive polls
 /// - **TCP sockets** (Gemini only): ESTABLISHED connection to remote port 443
-/// - **Codex**: session file mtime only (TCP keep-alive makes sockets unreliable)
+/// - **Codex (single session/project)**: session file mtime OR proc IO hysteresis
+/// - **Codex (multi session/project)**: proc IO hysteresis only (to avoid
+///   broadcasting one session's file activity to all Codex sessions)
 ///
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
     let processes = process::scan_processes();
     let pane_map = tmux::list_panes();
+    let mut codex_sessions_per_project: HashMap<String, usize> = HashMap::new();
+    for proc in &processes {
+        if proc.cli_tool == CliTool::Codex {
+            *codex_sessions_per_project
+                .entry(proc.project_path.clone())
+                .or_default() += 1;
+        }
+    }
 
     let mut sessions: Vec<ClaudeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
             let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
+            let codex_sessions_for_project = if proc.cli_tool == CliTool::Codex {
+                codex_sessions_per_project
+                    .get(&proc.project_path)
+                    .copied()
+                    .unwrap_or(1)
+            } else {
+                0
+            };
 
             // Raw state from multiple signals (OR).
             // Claude: file mtime OR consecutive-poll IO hysteresis (sustained rchar).
             // Gemini: file mtime OR TCP socket to :443 (Gemini closes connections when idle).
-            // Codex: file mtime ONLY — Codex keeps HTTP keep-alive connections to :443
-            //   indefinitely after finishing work, making TCP presence unreliable.
-            //   Session file mtime gives ~9s active→idle latency (5s threshold + 4s hysteresis),
-            //   which is far better than "never" from the stale TCP connection.
+            // Codex: per-PID IO hysteresis always; project-level file mtime only
+            //   when this is the sole Codex session for the project.
             let process_active = match proc.cli_tool {
                 CliTool::Claude => proc_io::is_process_active_hysteresis(proc.pid),
                 CliTool::Gemini => proc_io::has_api_connections(proc.pid),
-                CliTool::Codex => false,
+                CliTool::Codex => proc_io::is_process_active_hysteresis(proc.pid),
             };
-            let raw_state = if idle_result.state == SessionState::Active || process_active {
-                SessionState::Active
-            } else {
-                SessionState::Idle
-            };
+            let raw_state = compute_raw_state(
+                proc.cli_tool,
+                idle_result.state,
+                process_active,
+                codex_sessions_for_project,
+            );
+
+            // In multi-Codex projects the file-based session metadata is shared and
+            // cannot be attributed to a specific process. Hide it to avoid showing
+            // duplicated/misleading session IDs on multiple rows.
+            let (session_id, jsonl_path) =
+                if proc.cli_tool == CliTool::Codex && codex_sessions_for_project > 1 {
+                    (None, None)
+                } else {
+                    (idle_result.session_id, idle_result.jsonl_path)
+                };
 
             // Apply bidirectional hysteresis
             let state = apply_hysteresis(proc.pid, raw_state);
@@ -183,8 +242,8 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                 tmux_pane: tmux.map(|t| t.pane_id.clone()),
                 tmux_window_name: tmux.map(|t| t.window_name.clone()),
                 state,
-                session_id: idle_result.session_id,
-                jsonl_path: idle_result.jsonl_path,
+                session_id,
+                jsonl_path,
             }
         })
         .collect();
@@ -576,6 +635,28 @@ mod tests {
             let guard = STATE_TRACKERS.lock().unwrap();
             assert!(!guard.as_ref().unwrap().contains_key(&pid));
         }
+    }
+
+    #[test]
+    fn codex_multi_session_project_ignores_shared_file_signal() {
+        let state = compute_raw_state(CliTool::Codex, SessionState::Active, false, 3);
+        assert_eq!(
+            state,
+            SessionState::Idle,
+            "multi-session Codex project should not mark every session active from shared file mtime"
+        );
+    }
+
+    #[test]
+    fn codex_single_session_project_keeps_file_signal() {
+        let state = compute_raw_state(CliTool::Codex, SessionState::Active, false, 1);
+        assert_eq!(state, SessionState::Active);
+    }
+
+    #[test]
+    fn codex_process_signal_still_marks_active() {
+        let state = compute_raw_state(CliTool::Codex, SessionState::Idle, true, 3);
+        assert_eq!(state, SessionState::Active);
     }
 
     #[test]
