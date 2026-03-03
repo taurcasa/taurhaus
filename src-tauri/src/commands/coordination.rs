@@ -7,7 +7,6 @@ use tauri::{AppHandle, Emitter, State};
 
 pub use crate::commands::coordination_types::*;
 use crate::commands::projects::DbState;
-use crate::commands::terminal_settings::load_cli_commands;
 use crate::coordination::backend::bridged::{
     availability_check, preflight_check, AvailabilityReport as BackendAvailabilityReport,
     PreflightAgent, PreflightReport as BackendPreflightReport,
@@ -24,6 +23,21 @@ use crate::coordination::state::CoordinationState;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
+fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
+    #[cfg(test)]
+    {
+        (
+            crate::commands::terminal_settings::load_cli_commands(db),
+            "new_window".to_string(),
+        )
+    }
+    #[cfg(not(test))]
+    {
+        let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
+        (terminal_settings.cli_commands, terminal_settings.tmux_layout)
+    }
+}
+
 #[tauri::command]
 pub fn coordination_initialize_team(
     app: AppHandle,
@@ -32,10 +46,16 @@ pub fn coordination_initialize_team(
     request: InitializeTeamRequest,
 ) -> Result<InitializeReport, String> {
     let request = normalize_initialize_request_paths(&db, request)?;
-    let cli_commands = load_cli_commands(&db);
-    coordination_initialize_team_with_emitter(state.inner(), request, &cli_commands, |event| {
-        let _ = app.emit("coordination-step-progress", event);
-    })
+    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+    coordination_initialize_team_with_emitter_and_layout(
+        state.inner(),
+        request,
+        &cli_commands,
+        &tmux_layout,
+        |event| {
+            let _ = app.emit("coordination-step-progress", event);
+        },
+    )
 }
 
 #[tauri::command]
@@ -46,10 +66,16 @@ pub fn coordination_add_agent(
     request: AddAgentRequest,
 ) -> Result<AddAgentReport, String> {
     let request = normalize_add_agent_request_path(&db, request)?;
-    let cli_commands = load_cli_commands(&db);
-    coordination_add_agent_with_emitter(state.inner(), request, &cli_commands, |event| {
-        let _ = app.emit("coordination-step-progress", event);
-    })
+    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+    coordination_add_agent_with_emitter_and_layout(
+        state.inner(),
+        request,
+        &cli_commands,
+        &tmux_layout,
+        |event| {
+            let _ = app.emit("coordination-step-progress", event);
+        },
+    )
 }
 
 #[tauri::command]
@@ -130,29 +156,56 @@ pub fn coordination_get_feature_availability() -> Result<FeatureAvailabilityRepo
     Ok(coordination_get_feature_availability_impl())
 }
 
-fn coordination_initialize_team_impl_with_cli_commands(
+fn coordination_initialize_team_impl_with_cli_commands_and_layout(
     state: &CoordinationState,
     request: InitializeTeamRequest,
     cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
 ) -> Result<InitializeReport, String> {
     state
         .with_orchestrator(|orchestrator| {
-            orchestrator.initialize_team_with_cli_commands(&request, cli_commands)
+            orchestrator.initialize_team_with_cli_commands_and_layout(
+                &request,
+                cli_commands,
+                tmux_layout,
+            )
         })
         .map_err(map_coordination_error)
 }
 
+#[cfg(test)]
 fn coordination_initialize_team_with_emitter<E>(
     state: &CoordinationState,
     request: InitializeTeamRequest,
     cli_commands: &CliCommandSettings,
+    emit: E,
+) -> Result<InitializeReport, String>
+where
+    E: FnMut(&StepProgressEvent),
+{
+    coordination_initialize_team_with_emitter_and_layout(
+        state,
+        request,
+        cli_commands,
+        "new_window",
+        emit,
+    )
+}
+
+fn coordination_initialize_team_with_emitter_and_layout<E>(
+    state: &CoordinationState,
+    request: InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
     mut emit: E,
 ) -> Result<InitializeReport, String>
 where
     E: FnMut(&StepProgressEvent),
 {
     validate_initialize_request_fields(&request)?;
-    let report = coordination_initialize_team_impl_with_cli_commands(state, request, cli_commands)?;
+    let report = coordination_initialize_team_impl_with_cli_commands_and_layout(
+        state, request, cli_commands, tmux_layout,
+    )?;
     for event in initialize_progress_events(&report) {
         emit(&event);
     }
@@ -164,13 +217,32 @@ fn coordination_add_agent_impl(
     state: &CoordinationState,
     request: AddAgentRequest,
 ) -> Result<AddAgentReport, String> {
-    coordination_add_agent_impl_with_cli_commands(state, request, &CliCommandSettings::default())
+    coordination_add_agent_impl_with_cli_commands(
+        state,
+        request,
+        &CliCommandSettings::default(),
+    )
 }
 
+#[cfg(test)]
 fn coordination_add_agent_impl_with_cli_commands(
     state: &CoordinationState,
     request: AddAgentRequest,
     cli_commands: &CliCommandSettings,
+) -> Result<AddAgentReport, String> {
+    coordination_add_agent_impl_with_cli_commands_and_layout(
+        state,
+        request,
+        cli_commands,
+        "new_window",
+    )
+}
+
+fn coordination_add_agent_impl_with_cli_commands_and_layout(
+    state: &CoordinationState,
+    request: AddAgentRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
 ) -> Result<AddAgentReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("agent.name", &request.agent.name)?;
@@ -178,21 +250,50 @@ fn coordination_add_agent_impl_with_cli_commands(
     validate_non_empty("agent.cli_tool", &request.agent.cli_tool)?;
     state
         .with_orchestrator(|orchestrator| {
-            orchestrator.add_agent_to_team_with_cli_commands(&request, cli_commands)
+            orchestrator.add_agent_to_team_with_cli_commands_and_layout(
+                &request,
+                cli_commands,
+                tmux_layout,
+            )
         })
         .map_err(map_coordination_error)
 }
 
+#[cfg(test)]
 fn coordination_add_agent_with_emitter<E>(
     state: &CoordinationState,
     request: AddAgentRequest,
     cli_commands: &CliCommandSettings,
+    emit: E,
+) -> Result<AddAgentReport, String>
+where
+    E: FnMut(&StepProgressEvent),
+{
+    coordination_add_agent_with_emitter_and_layout(
+        state,
+        request,
+        cli_commands,
+        "new_window",
+        emit,
+    )
+}
+
+fn coordination_add_agent_with_emitter_and_layout<E>(
+    state: &CoordinationState,
+    request: AddAgentRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
     mut emit: E,
 ) -> Result<AddAgentReport, String>
 where
     E: FnMut(&StepProgressEvent),
 {
-    let report = coordination_add_agent_impl_with_cli_commands(state, request, cli_commands)?;
+    let report = coordination_add_agent_impl_with_cli_commands_and_layout(
+        state,
+        request,
+        cli_commands,
+        tmux_layout,
+    )?;
     for event in add_agent_progress_events(&report) {
         emit(&event);
     }

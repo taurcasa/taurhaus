@@ -176,38 +176,40 @@ fn onboarding_flow_launches_lead_and_injects_commands_with_enter() {
     let teams_dir = tmp.path().join("teams");
     let log_path = tmp.path().join("calls.log");
     let counter_path = tmp.path().join("pane_counter.txt");
+    let session_marker = tmp.path().join("tmux_session_created");
 
     fs::create_dir_all(&fake_bin).expect("create fake bin dir");
     fs::create_dir_all(&fake_mesh_bin).expect("create fake mesh bin dir");
     fs::create_dir_all(&teams_dir).expect("create teams dir");
     fs::write(&counter_path, "0\n").expect("seed counter");
 
-    let aitx_script = format!(
+    let tmux_script = format!(
         r#"#!/usr/bin/env bash
 set -euo pipefail
-echo "aitx:$*" >> "{log}"
-if [[ "${{1:-}}" == "new" ]]; then
+echo "tmux:$*" >> "{log}"
+cmd="${{1:-}}"
+if [[ "$cmd" == "has-session" ]]; then
+  if [[ -f "{session_marker}" ]]; then
+    exit 0
+  fi
+  exit 1
+fi
+if [[ "$cmd" == "new-session" ]]; then
+  touch "{session_marker}"
+  exit 0
+fi
+if [[ "$cmd" == "new-window" || "$cmd" == "split-window" ]]; then
   n="$(cat "{counter}")"
   n="$((n + 1))"
   echo "$n" > "{counter}"
   echo "%$n"
   exit 0
 fi
-echo "unsupported aitx call: $*" >&2
-exit 1
-"#,
-        log = log_path.display(),
-        counter = counter_path.display()
-    );
-    write_executable_script(&fake_bin.join("aitx"), &aitx_script);
-
-    let tmux_script = format!(
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "tmux:$*" >> "{log}"
 exit 0
 "#,
-        log = log_path.display()
+        log = log_path.display(),
+        counter = counter_path.display(),
+        session_marker = session_marker.display()
     );
     write_executable_script(&fake_bin.join("tmux"), &tmux_script);
 
@@ -254,9 +256,11 @@ exit 0
     assert!(lead_runtime.daemon_pid.is_none());
 
     let log = fs::read_to_string(&log_path).expect("read call log");
-    assert!(log.contains("aitx:new --path proj-core"));
-    assert!(log.contains("aitx:new --path proj-web"));
-    assert!(log.contains("aitx:new --path proj-api"));
+    assert!(log.contains("tmux:has-session -t taurhaus"));
+    assert!(log.contains("tmux:new-session -d -s taurhaus"));
+    assert!(log.contains("tmux:new-window -n proj-core -t taurhaus: -P -F #{pane_id} -c proj-core"));
+    assert!(log.contains("tmux:new-window -n proj-web -t taurhaus: -P -F #{pane_id} -c proj-web"));
+    assert!(log.contains("tmux:new-window -n proj-api -t taurhaus: -P -F #{pane_id} -c proj-api"));
 
     assert!(log.contains("tmux:send-keys -t %1 -l CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions"));
     assert!(log.contains("--team-name linux-onboarding-e2e"));

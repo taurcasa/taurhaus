@@ -17,9 +17,15 @@ const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
 const TMUX_POST_ENTER_DELAY: Duration = Duration::from_secs(1);
 const SESSION_DETECT_ATTEMPTS: usize = 6;
 const SESSION_DETECT_INTERVAL: Duration = Duration::from_millis(200);
+const TMUX_SPLIT_MAX_PANES: usize = 4;
+const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
 
 pub trait CoordinationRuntime: Send + Sync {
-    fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError>;
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError>;
     fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str)
         -> Result<(), CoordinationError>;
     fn detect_session_id(
@@ -43,17 +49,12 @@ pub trait CoordinationRuntime: Send + Sync {
 pub struct SystemCoordinationRuntime;
 
 impl CoordinationRuntime for SystemCoordinationRuntime {
-    fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError> {
-        let stdout = run_aitx(&["new", "--path", project_id])?;
-        stdout
-            .split_whitespace()
-            .find(|token| !token.trim().is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                CoordinationError::Backend(
-                    "aitx new returned empty output; expected pane identifier".to_string(),
-                )
-            })
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        create_tmux_pane_with_layout(project_id, tmux_layout)
     }
 
     fn send_tmux_keys_with_enter(
@@ -297,7 +298,11 @@ impl RecordingCoordinationRuntime {
 }
 
 impl CoordinationRuntime for RecordingCoordinationRuntime {
-    fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError> {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        _tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
         self.push_call(RuntimeCall::CreatePane {
             project_id: project_id.to_string(),
         });
@@ -370,25 +375,8 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
     }
 }
 
-fn aitx_binary_path() -> Option<String> {
-    if cfg!(target_os = "windows") {
-        mesh_cli::resolve_wsl_binary_path("aitx")
-    } else {
-        None
-    }
-}
-
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
     mesh_cli::mesh_command_invocation(args)
-}
-
-fn aitx_command_invocation(args: &[&str]) -> CommandInvocation {
-    let aitx_path = aitx_binary_path().unwrap_or_else(|| "aitx".to_string());
-    let args = args
-        .iter()
-        .map(|arg| (*arg).to_string())
-        .collect::<Vec<_>>();
-    mesh_cli::command_invocation(&aitx_path, &args)
 }
 
 fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
@@ -447,23 +435,6 @@ fn run_mesh(args: &[&str]) -> Result<String, CoordinationError> {
     }
 }
 
-fn run_aitx(args: &[&str]) -> Result<String, CoordinationError> {
-    let invocation = aitx_command_invocation(args);
-    let output = run_system_command(&invocation)?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if output.status.success() {
-        Ok(stdout)
-    } else {
-        Err(CoordinationError::Backend(format!(
-            "aitx command failed ({} {}): {}",
-            invocation.program,
-            invocation.args.join(" "),
-            stderr
-        )))
-    }
-}
-
 fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
     let invocation = tmux_command_invocation(args);
     let output = run_system_command(&invocation)?;
@@ -479,6 +450,170 @@ fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
             stderr
         )))
     }
+}
+
+fn run_tmux_output(args: &[String]) -> Result<std::process::Output, CoordinationError> {
+    let invocation = tmux_command_invocation(args);
+    run_system_command(&invocation)
+}
+
+fn ensure_taurhaus_tmux_session() -> Result<(), CoordinationError> {
+    let check = run_tmux_output(&[
+        "has-session".to_string(),
+        "-t".to_string(),
+        TAURHAUS_TMUX_SESSION_NAME.to_string(),
+    ])?;
+
+    if check.status.success() {
+        return Ok(());
+    }
+
+    run_tmux(&[
+        "new-session".to_string(),
+        "-d".to_string(),
+        "-s".to_string(),
+        TAURHAUS_TMUX_SESSION_NAME.to_string(),
+    ])?;
+    Ok(())
+}
+
+fn create_tmux_pane_with_layout(
+    project_id: &str,
+    tmux_layout: &str,
+) -> Result<String, CoordinationError> {
+    ensure_taurhaus_tmux_session()?;
+
+    let window_name = std::path::Path::new(project_id)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "agent".to_string());
+
+    if tmux_layout == "split" {
+        if let Some(target) =
+            find_tmux_window_with_space(TAURHAUS_TMUX_SESSION_NAME, TMUX_SPLIT_MAX_PANES)?
+        {
+            return create_tmux_split_pane(project_id, &target);
+        }
+    } else if tmux_layout == "per_project" {
+        if let Some(target) =
+            find_tmux_project_window(TAURHAUS_TMUX_SESSION_NAME, &window_name)?
+        {
+            return create_tmux_split_pane(project_id, &target);
+        }
+    }
+
+    create_tmux_new_window_pane(project_id, &window_name)
+}
+
+fn create_tmux_new_window_pane(
+    project_id: &str,
+    window_name: &str,
+) -> Result<String, CoordinationError> {
+    let pane_id = run_tmux(&[
+        "new-window".to_string(),
+        "-n".to_string(),
+        window_name.to_string(),
+        "-t".to_string(),
+        format!("{TAURHAUS_TMUX_SESSION_NAME}:"),
+        "-P".to_string(),
+        "-F".to_string(),
+        "#{pane_id}".to_string(),
+        "-c".to_string(),
+        project_id.to_string(),
+    ])?;
+
+    parse_tmux_created_pane_id(&pane_id).ok_or_else(|| {
+        CoordinationError::Backend(
+            "tmux new-window returned empty output; expected pane identifier".to_string(),
+        )
+    })
+}
+
+fn create_tmux_split_pane(project_id: &str, target: &str) -> Result<String, CoordinationError> {
+    let pane_id = run_tmux(&[
+        "split-window".to_string(),
+        "-h".to_string(),
+        "-t".to_string(),
+        target.to_string(),
+        "-P".to_string(),
+        "-F".to_string(),
+        "#{pane_id}".to_string(),
+        "-c".to_string(),
+        project_id.to_string(),
+    ])?;
+
+    parse_tmux_created_pane_id(&pane_id).ok_or_else(|| {
+        CoordinationError::Backend(
+            "tmux split-window returned empty output; expected pane identifier".to_string(),
+        )
+    })
+}
+
+fn parse_tmux_created_pane_id(raw: &str) -> Option<String> {
+    raw.split_whitespace()
+        .find(|token| !token.trim().is_empty())
+        .map(str::to_string)
+}
+
+fn find_tmux_window_with_space(
+    tmux_session: &str,
+    max_panes: usize,
+) -> Result<Option<String>, CoordinationError> {
+    let out = run_tmux(&[
+        "list-windows".to_string(),
+        "-t".to_string(),
+        tmux_session.to_string(),
+        "-F".to_string(),
+        "#{window_index}\t#{window_panes}".to_string(),
+    ])?;
+
+    for line in out.lines() {
+        let mut parts = line.split('\t');
+        let window_index = match parts.next() {
+            Some(idx) if !idx.trim().is_empty() => idx.trim(),
+            _ => continue,
+        };
+        let pane_count = parts
+            .next()
+            .and_then(|count| count.trim().parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
+        if pane_count < max_panes {
+            return Ok(Some(format!("{tmux_session}:{window_index}.0")));
+        }
+    }
+
+    Ok(None)
+}
+
+fn find_tmux_project_window(
+    tmux_session: &str,
+    window_name: &str,
+) -> Result<Option<String>, CoordinationError> {
+    let out = run_tmux(&[
+        "list-windows".to_string(),
+        "-t".to_string(),
+        tmux_session.to_string(),
+        "-F".to_string(),
+        "#{window_index}\t#{window_name}".to_string(),
+    ])?;
+
+    for line in out.lines() {
+        let mut parts = line.split('\t');
+        let window_index = match parts.next() {
+            Some(idx) if !idx.trim().is_empty() => idx.trim(),
+            _ => continue,
+        };
+        let name = match parts.next() {
+            Some(name) => name.trim(),
+            None => continue,
+        };
+        if name == window_name {
+            return Ok(Some(format!("{tmux_session}:{window_index}.0")));
+        }
+    }
+
+    Ok(None)
 }
 
 fn tmux_target_for_pane(pane_id: &str) -> String {
@@ -545,7 +680,9 @@ mod tests {
     fn recording_runtime_returns_deterministic_values_and_records_calls() {
         let runtime = RecordingCoordinationRuntime::default();
 
-        let pane = runtime.create_aitx_pane("/tmp/project").expect("pane");
+        let pane = runtime
+            .create_aitx_pane("/tmp/project", "new_window")
+            .expect("pane");
         let pid = runtime
             .spawn_mesh_daemon(&pane, "alpha", "agent-a")
             .expect("pid");

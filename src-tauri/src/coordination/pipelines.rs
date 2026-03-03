@@ -37,13 +37,26 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &InitializeTeamRequest,
     ) -> Result<InitializeReport, CoordinationError> {
-        self.initialize_team_with_cli_commands(request, &CliCommandSettings::default())
+        self.initialize_team_with_cli_commands_and_layout(
+            request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
     }
 
     pub fn initialize_team_with_cli_commands(
         &mut self,
         request: &InitializeTeamRequest,
         cli_commands: &CliCommandSettings,
+    ) -> Result<InitializeReport, CoordinationError> {
+        self.initialize_team_with_cli_commands_and_layout(request, cli_commands, "new_window")
+    }
+
+    pub fn initialize_team_with_cli_commands_and_layout(
+        &mut self,
+        request: &InitializeTeamRequest,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
     ) -> Result<InitializeReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
@@ -105,7 +118,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded("add_lead", "lead added", &mut succeeded_steps, &mut steps);
 
-        if let Err(err) = self.create_panes(request) {
+        if let Err(err) = self.create_panes(request, tmux_layout) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -286,13 +299,26 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &AddAgentRequest,
     ) -> Result<AddAgentReport, CoordinationError> {
-        self.add_agent_to_team_with_cli_commands(request, &CliCommandSettings::default())
+        self.add_agent_to_team_with_cli_commands_and_layout(
+            request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
     }
 
     pub fn add_agent_to_team_with_cli_commands(
         &mut self,
         request: &AddAgentRequest,
         cli_commands: &CliCommandSettings,
+    ) -> Result<AddAgentReport, CoordinationError> {
+        self.add_agent_to_team_with_cli_commands_and_layout(request, cli_commands, "new_window")
+    }
+
+    pub fn add_agent_to_team_with_cli_commands_and_layout(
+        &mut self,
+        request: &AddAgentRequest,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
     ) -> Result<AddAgentReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
@@ -315,7 +341,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.create_pane_for_agent(request, &mut runtime_state) {
+        if let Err(err) = self.create_pane_for_agent(request, &mut runtime_state, tmux_layout) {
             self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
@@ -454,9 +480,15 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn create_panes(&mut self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
+    fn create_panes(
+        &mut self,
+        request: &InitializeTeamRequest,
+        tmux_layout: &str,
+    ) -> Result<(), CoordinationError> {
         if request.lead_mode == LeadMode::LaunchNew {
-            let pane_id = self.runtime.create_aitx_pane(&request.lead.project_id)?;
+            let pane_id = self
+                .runtime
+                .create_aitx_pane(&request.lead.project_id, tmux_layout)?;
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
             runtime.pane_id = Some(pane_id);
@@ -475,7 +507,9 @@ impl CoordinationOrchestrator {
         for agent in &request.agents {
             let member = member_from_agent_setup(agent, MemberRole::Agent)?;
             self.add_member(&request.team_name, member.clone())?;
-            let pane_id = self.runtime.create_aitx_pane(&agent.project_id)?;
+            let pane_id = self
+                .runtime
+                .create_aitx_pane(&agent.project_id, tmux_layout)?;
 
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
@@ -660,8 +694,11 @@ impl CoordinationOrchestrator {
         &self,
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
+        tmux_layout: &str,
     ) -> Result<(), CoordinationError> {
-        let pane_id = self.runtime.create_aitx_pane(&request.agent.project_id)?;
+        let pane_id = self
+            .runtime
+            .create_aitx_pane(&request.agent.project_id, tmux_layout)?;
         runtime_state.pane_id = Some(pane_id);
         runtime_state.session_id = None;
         runtime_state.attached_at = Some(Utc::now());
