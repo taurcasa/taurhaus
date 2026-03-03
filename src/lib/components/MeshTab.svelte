@@ -45,6 +45,21 @@
       ? `appearance-none bg-zinc-800/80 text-xs text-zinc-300 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
       : `appearance-none bg-zinc-200/80 text-xs text-zinc-700 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
   )
+  const cleanupBadgeCurrent = $derived(
+    dark
+      ? 'border border-success-500/40 bg-success-500/10 text-success-300'
+      : 'border border-success-300 bg-success-100 text-success-700'
+  )
+  const cleanupBadgeOther = $derived(
+    dark
+      ? 'border border-zinc-600 bg-zinc-800 text-zinc-300'
+      : 'border border-zinc-300 bg-zinc-100 text-zinc-600'
+  )
+  const cleanupDisbandTone = $derived(
+    dark
+      ? 'text-danger-300 hover:text-danger-200 hover:bg-danger-500/10'
+      : 'text-danger-600 hover:text-danger-700 hover:bg-danger-50'
+  )
 
   let mode = $state('setup')
   let teamName = $state('')
@@ -582,7 +597,7 @@
                             }}
                             data-testid="mesh-cleanup-toggle"
                           >
-                            {showCleanupPanel ? 'Hide' : 'Manage'} ({discoveredTeams.length})
+                            {showCleanupPanel ? 'Hide' : 'Show'}{discoveredTeams.length > 0 ? ` (${discoveredTeams.length})` : ''}
                           </button>
                         </header>
 
@@ -626,23 +641,13 @@
                                       {leadPath || 'No lead project path recorded'}
                                     </p>
                                     <span
-                                      class={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] ${
-                                        isCurrentProject
-                                          ? dark
-                                            ? 'border border-success-500/40 bg-success-500/10 text-success-300'
-                                            : 'border border-success-300 bg-success-100 text-success-700'
-                                          : dark
-                                            ? 'border border-zinc-600 bg-zinc-800 text-zinc-300'
-                                            : 'border border-zinc-300 bg-zinc-100 text-zinc-600'
-                                      }`}
+                                      class={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] ${isCurrentProject ? cleanupBadgeCurrent : cleanupBadgeOther}`}
                                     >
                                       {isCurrentProject ? 'Current project' : 'Different project'}
                                     </span>
                                   </div>
                                   <button
-                                    class="rounded-md px-2 py-1 text-[11px] transition-colors {dark
-                                      ? 'text-danger-300 hover:text-danger-200 hover:bg-danger-500/10'
-                                      : 'text-danger-600 hover:text-danger-700 hover:bg-danger-50'}"
+                                    class="rounded-md px-2 py-1 text-[11px] transition-colors {cleanupDisbandTone}"
                                     onclick={() => requestCleanupDisband(team)}
                                     data-testid={`mesh-cleanup-disband-${sanitizeTeamNameForTestId(currentTeamName)}`}
                                   >
