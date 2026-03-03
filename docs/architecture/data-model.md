@@ -2,6 +2,8 @@
 
 Three storage layers serve different purposes: SQLite for structured metadata, tantivy for full-text search, and the filesystem as the source of truth for content.
 
+![Data Model](../data-model.jpg)
+
 ## SQLite
 
 Single-file database stored in Tauri's `app_data_dir()`. Uses WAL mode for concurrent read performance and enforces foreign key constraints. Migrations are applied automatically on startup.
