@@ -306,6 +306,9 @@ pub fn run() {
                 std::thread::spawn(move || {
                     daemon_lifecycle::daemon_health_check(health_handle, connected_at_startup);
                 });
+
+                // Session activity stream: daemon-owned scanning + app event bridge.
+                daemon_lifecycle::start_session_updates_bridge(app.handle().clone());
             }
 
             // Start file watcher — events from both local and daemon watchers

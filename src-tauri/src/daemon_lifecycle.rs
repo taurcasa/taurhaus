@@ -292,3 +292,86 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
         }
     }
 }
+
+/// Bridge daemon-owned session updates into frontend Tauri events.
+///
+/// Uses a dedicated daemon connection and long-poll update requests so the UI
+/// can stay event-driven. The daemon owns scanner polling and versioning.
+pub(crate) fn start_session_updates_bridge(app: AppHandle) {
+    use std::time::Duration;
+
+    const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
+    const RETRY_DELAY: Duration = Duration::from_secs(1);
+
+    std::thread::spawn(move || {
+        let mut since_version: u64 = 0;
+
+        loop {
+            let (daemon_addr, connected) = {
+                let provider_state = app.state::<ProviderState>();
+                let Some(ref daemon) = provider_state.daemon else {
+                    return;
+                };
+                (daemon.addr().to_string(), daemon.is_connected())
+            };
+
+            if !connected {
+                std::thread::sleep(RETRY_DELAY);
+                continue;
+            }
+
+            let mut listener =
+                match crate::daemon::session_listener::DaemonSessionListener::connect(
+                    &daemon_addr,
+                ) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "Session listener connect failed");
+                        std::thread::sleep(RETRY_DELAY);
+                        continue;
+                    }
+                };
+
+            loop {
+                let still_connected = {
+                    let provider_state = app.state::<ProviderState>();
+                    provider_state
+                        .daemon
+                        .as_ref()
+                        .is_some_and(|daemon| daemon.is_connected())
+                };
+                if !still_connected {
+                    break;
+                }
+
+                match listener.wait_for_updates(since_version, WAIT_TIMEOUT) {
+                    Ok(update) => {
+                        // Daemon restart: its version counter may reset.
+                        // Reset our cursor and retry from a fresh baseline.
+                        if update.version < since_version {
+                            since_version = 0;
+                            continue;
+                        }
+
+                        since_version = update.version;
+                        if update.changed {
+                            let _ = app.emit(
+                                "sessions-updated",
+                                serde_json::json!({
+                                    "version": update.version,
+                                    "sessions": update.sessions,
+                                }),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!(error = %e, "Session listener poll failed");
+                        break;
+                    }
+                }
+            }
+
+            std::thread::sleep(RETRY_DELAY);
+        }
+    });
+}

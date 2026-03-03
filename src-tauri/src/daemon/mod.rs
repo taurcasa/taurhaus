@@ -3,5 +3,7 @@ pub mod event_listener;
 pub(crate) mod handlers;
 pub mod launcher;
 pub mod protocol;
+pub mod session_activity;
+pub mod session_listener;
 pub mod server;
 pub(crate) mod watch;

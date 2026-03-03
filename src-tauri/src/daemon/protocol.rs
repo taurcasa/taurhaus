@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The app checks this on connect. If the daemon's protocol version is
 /// lower than what the app expects, it warns the user to rebuild the daemon.
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -83,6 +83,7 @@ pub mod method {
 
     // Command Center — session management
     pub const LIST_CLAUDE_SESSIONS: &str = "list_claude_sessions";
+    pub const WAIT_SESSION_UPDATES: &str = "wait_session_updates";
     pub const LAUNCH_SESSION: &str = "launch_session";
     pub const STOP_SESSION: &str = "stop_session";
     pub const NAVIGATE_TO_SESSION: &str = "navigate_to_session";
@@ -282,6 +283,32 @@ pub struct NavigateToSessionParams {
     pub tmux_session: String,
     pub tmux_window: String,
     pub tmux_pane: String,
+}
+
+/// `wait_session_updates` params.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WaitSessionUpdatesParams {
+    /// Client's last seen session snapshot version.
+    #[serde(default)]
+    pub since_version: u64,
+    /// Max time to wait for a newer snapshot. Clamped server-side.
+    #[serde(default = "default_wait_session_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_wait_session_timeout_ms() -> u64 {
+    15_000
+}
+
+/// `wait_session_updates` result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WaitSessionUpdatesResult {
+    /// Monotonic daemon-local version of the session snapshot.
+    pub version: u64,
+    /// Whether this response contains a version newer than `since_version`.
+    pub changed: bool,
+    /// Full session snapshot for the reported version.
+    pub sessions: Vec<crate::session_scanner::ClaudeSession>,
 }
 
 // ---------------------------------------------------------------------------
@@ -721,5 +748,25 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: NavigateToSessionParams = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
+    }
+
+    #[test]
+    fn wait_session_updates_params_defaults() {
+        let json = r#"{"since_version":42}"#;
+        let p: WaitSessionUpdatesParams = serde_json::from_str(json).unwrap();
+        assert_eq!(p.since_version, 42);
+        assert_eq!(p.timeout_ms, 15_000);
+    }
+
+    #[test]
+    fn wait_session_updates_result_roundtrip() {
+        let r = WaitSessionUpdatesResult {
+            version: 7,
+            changed: true,
+            sessions: vec![],
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: WaitSessionUpdatesResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(r, back);
     }
 }

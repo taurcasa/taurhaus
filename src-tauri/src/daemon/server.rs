@@ -436,6 +436,36 @@ mod tests {
     }
 
     #[test]
+    fn server_wait_session_updates_returns_typed_payload() {
+        let server = start_test_server();
+        let port = server.port;
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        let req = DaemonRequest::new(
+            "su1",
+            protocol::method::WAIT_SESSION_UPDATES,
+            protocol::WaitSessionUpdatesParams {
+                since_version: u64::MAX,
+                timeout_ms: 0,
+            },
+        );
+        let resp = send_request(&mut stream, &mut reader, &req);
+        assert!(resp.is_ok(), "response: {:?}", resp);
+
+        let payload: protocol::WaitSessionUpdatesResult =
+            serde_json::from_value(resp.result.unwrap()).unwrap();
+        assert!(!payload.changed);
+        assert!(payload.version <= u64::MAX);
+
+        server.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
     fn server_returns_error_for_unknown_method() {
         let server = start_test_server();
         let port = server.port;

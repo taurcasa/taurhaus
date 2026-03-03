@@ -35,6 +35,9 @@ pub(crate) fn dispatch(
             handle_scan_sessions(&request.id, &request.params, provider)
         }
         protocol::method::LIST_CLAUDE_SESSIONS => handle_list_claude_sessions(&request.id),
+        protocol::method::WAIT_SESSION_UPDATES => {
+            handle_wait_session_updates(&request.id, &request.params)
+        }
         protocol::method::LAUNCH_SESSION => handle_launch_session(&request.id, &request.params),
         protocol::method::STOP_SESSION => handle_stop_session(&request.id, &request.params),
         protocol::method::NAVIGATE_TO_SESSION => {
@@ -266,8 +269,31 @@ pub(crate) fn handle_scan_sessions(
 }
 
 pub(crate) fn handle_list_claude_sessions(id: &str) -> DaemonResponse {
-    let sessions = crate::session_scanner::scan_sessions();
+    let sessions = crate::daemon::session_activity::SessionActivityHub::global()
+        .snapshot()
+        .sessions;
     DaemonResponse::ok(id, sessions)
+}
+
+pub(crate) fn handle_wait_session_updates(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::WaitSessionUpdatesParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+    };
+
+    let update = crate::daemon::session_activity::SessionActivityHub::global().wait_for_update(
+        params.since_version,
+        std::time::Duration::from_millis(params.timeout_ms),
+    );
+
+    DaemonResponse::ok(
+        id,
+        protocol::WaitSessionUpdatesResult {
+            version: update.snapshot.version,
+            changed: update.changed,
+            sessions: update.snapshot.sessions,
+        },
+    )
 }
 
 pub(crate) fn handle_launch_session(id: &str, params: &serde_json::Value) -> DaemonResponse {
