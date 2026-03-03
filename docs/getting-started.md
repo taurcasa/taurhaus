@@ -1,19 +1,33 @@
 # Getting Started with taurhaus
 
-This guide walks you through setting up taurhaus from scratch on a Windows machine. By the end, you'll have the app running with your projects loaded and CLI sessions visible.
+This guide walks you through setting up taurhaus from scratch. By the end, you'll have the app running with your projects loaded and CLI sessions visible.
+
+Pick your platform to get started:
+
+- [Windows Setup](#windows-setup)
+- [macOS Setup](#macos-setup)
+- [Install taurhaus](#install-taurhaus) (if prerequisites are already done)
 
 ## Before You Start
 
-taurhaus is a Windows desktop app that manages AI coding sessions running inside WSL2. You'll need:
+taurhaus is a desktop app that manages AI coding sessions (Claude Code, Codex, Gemini CLI) across your projects. It runs on **Windows** and **macOS**.
 
-- **Windows 10 or 11** with admin access
-- **10 minutes** for initial setup
+| | Windows | macOS |
+|---|---------|-------|
+| **Requirements** | Windows 10/11 with WSL2 | macOS 12 Monterey or later |
+| **CLI tools run in** | WSL2 (Linux) | Natively |
+| **Terminal** | Windows Terminal | iTerm2, Ghostty, or Terminal.app |
+| **Setup time** | ~10 minutes | ~5 minutes |
 
-If you already have WSL2, Windows Terminal, and tmux installed, skip straight to [Install taurhaus](#install-taurhaus).
+---
 
-## Step 1: Set Up WSL2
+## Windows Setup
 
-If you don't have WSL2 yet, open PowerShell as Administrator and run:
+If you already have WSL2, Windows Terminal, and tmux installed, skip to [Install Your AI CLI Tools](#install-your-ai-cli-tools).
+
+### Step 1: Set Up WSL2
+
+Open PowerShell as Administrator and run:
 
 ```powershell
 wsl --install
@@ -23,7 +37,7 @@ This installs Ubuntu by default. Restart your computer when prompted.
 
 After restart, open Ubuntu from the Start menu to complete the Linux user setup (username and password).
 
-### Enable mirrored networking
+#### Enable mirrored networking
 
 taurhaus communicates with a daemon running inside WSL. For this to work, WSL must use mirrored networking mode.
 
@@ -42,7 +56,7 @@ wsl --shutdown
 
 **Why this matters**: Without mirrored networking, the Windows app can't connect to the WSL daemon on `localhost:17233`. This is the most common setup issue.
 
-## Step 2: Install tmux
+### Step 2: Install tmux
 
 Open your WSL terminal (Ubuntu) and run:
 
@@ -52,9 +66,35 @@ sudo apt update && sudo apt install -y tmux
 
 taurhaus uses tmux to manage CLI tool sessions in the background. You don't need to know tmux — the app handles everything for you.
 
-## Step 3: Install Your AI CLI Tools
+Now continue to [Install Your AI CLI Tools](#install-your-ai-cli-tools).
 
-Install whichever tools you use inside WSL:
+---
+
+## macOS Setup
+
+### Step 1: Install Homebrew (if needed)
+
+If you don't have Homebrew yet:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### Step 2: Install tmux
+
+```bash
+brew install tmux
+```
+
+taurhaus uses tmux to manage CLI tool sessions in the background. You don't need to know tmux — the app handles everything for you.
+
+Now continue to [Install Your AI CLI Tools](#install-your-ai-cli-tools).
+
+---
+
+## Install Your AI CLI Tools
+
+Install whichever tools you use. On Windows, run these inside WSL. On macOS, run them in your normal terminal.
 
 **Claude Code** (Anthropic):
 ```bash
@@ -73,9 +113,9 @@ npm install -g @google/gemini-cli
 
 You need at least one installed for session management features. The app works without any CLI tools — you just won't see live sessions.
 
-## Step 4: Shell Configuration
+## Shell Configuration
 
-If you use oh-my-zsh, add this line to your `~/.zshrc`:
+If you use oh-my-zsh (default shell framework on many setups, and the default shell on macOS is zsh), add this line to your `~/.zshrc`:
 
 ```bash
 zstyle ':omz:update' mode auto
@@ -87,6 +127,8 @@ This prevents oh-my-zsh from blocking headless terminal sessions with update pro
 
 ## Install taurhaus
 
+### Windows
+
 1. Download the latest `taurhaus_x.x.x_x64-setup.exe` from the [Releases page](../../releases)
 2. Run the installer — it's a standard Windows setup wizard
 3. Launch taurhaus from the Start menu
@@ -95,6 +137,19 @@ On first launch, taurhaus will:
 - Start the WSL daemon automatically (you may see a brief console flash — this is normal)
 - Create a tmux session named "taurhaus" in WSL
 - Show the First Run Wizard
+
+### macOS
+
+1. Download the latest `taurhaus_x.x.x_aarch64.dmg` from the [Releases page](../../releases)
+2. Open the DMG and drag taurhaus to your Applications folder
+3. Launch taurhaus from Applications (or Spotlight)
+
+On first launch, taurhaus will:
+- Install and start the daemon automatically at `~/.local/bin/taurhaus-daemon`
+- Create a tmux session named "taurhaus"
+- Show the First Run Wizard
+
+> **macOS Gatekeeper**: Since the app is not notarized, you may see "taurhaus can't be opened because it is from an unidentified developer." Right-click the app, select Open, then click Open in the dialog. You only need to do this once.
 
 ## First Run Wizard
 
@@ -141,13 +196,13 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 
 **Launch a session**: Right-click a project, select "Launch Claude" (or Codex, or Gemini)
 
-**Navigate to a session**: Click the tool icon to jump to that session in Windows Terminal
+**Navigate to a session**: Click the tool icon to jump to that session in your terminal
 
 **Stop a session**: Right-click the tool icon and select "Stop"
 
 ### Search
 
-Press `Ctrl+K` to open the search overlay. Search across all project files and content.
+Press `Ctrl+K` (Windows) or `Cmd+K` (macOS) to open the search overlay. Search across all project files and content.
 
 ### Settings
 
@@ -155,10 +210,13 @@ Click the gear icon in the bottom-left corner to configure:
 - Scan directories and ignore patterns
 - Activity thresholds (Active / Recent / Stale / Dormant)
 - Code viewer theme (separate for light and dark mode)
+- Preferred terminal emulator (macOS: iTerm2, Ghostty, or Terminal.app)
 
 ## Troubleshooting
 
-### "Daemon not connected" or sessions not appearing
+### Windows
+
+#### "Daemon not connected" or sessions not appearing
 
 The daemon runs inside WSL and communicates over TCP port 17233. If sessions don't appear:
 
@@ -190,15 +248,7 @@ The daemon runs inside WSL and communicates over TCP port 17233. If sessions don
    ```
    This shows detailed connection and scanning logs.
 
-### CLI tool not detected
-
-taurhaus detects CLI tools by scanning running processes in WSL. If a tool doesn't appear:
-
-- Make sure it's installed globally (`npm install -g ...`)
-- Make sure it's running inside the `taurhaus` tmux session (launched via taurhaus, not manually)
-- Check `tmux list-windows -t taurhaus` to see active windows
-
-### Windows Terminal opens but shows nothing
+#### Windows Terminal opens but shows nothing
 
 The terminal tab runs `tmux attach-session -t taurhaus`. If the tmux session doesn't exist:
 
@@ -209,19 +259,82 @@ tmux new-session -d -s taurhaus
 
 Then try launching a session from taurhaus again.
 
-### App feels slow on first load
+### macOS
+
+#### "Daemon not connected" or sessions not appearing
+
+The daemon runs natively and communicates over TCP port 17233. If sessions don't appear:
+
+1. **Check if the daemon is running**:
+   ```bash
+   lsof -i :17233
+   ```
+   If nothing shows, restart taurhaus — it auto-starts the daemon.
+
+2. **Check for port conflicts**:
+   ```bash
+   lsof -i :17233
+   ```
+   If another process is using port 17233, stop it or change the conflicting service's port.
+
+3. **Manual daemon start** (for debugging):
+   ```bash
+   ~/.local/bin/taurhaus-daemon --verbose
+   ```
+
+#### Daemon crashes immediately after update
+
+On macOS Sequoia and later, copied binaries can fail code signature validation. If the daemon won't start after an update:
+
+```bash
+codesign --force --sign - ~/.local/bin/taurhaus-daemon
+```
+
+Then restart taurhaus.
+
+#### Terminal emulator doesn't open
+
+taurhaus supports iTerm2, Ghostty, and Terminal.app. Check that your preferred emulator is installed in `/Applications/`. You can change the emulator in Settings.
+
+### Both Platforms
+
+#### CLI tool not detected
+
+taurhaus detects CLI tools by scanning running processes. If a tool doesn't appear:
+
+- Make sure it's installed globally (`npm install -g ...` or via the tool's installer)
+- Make sure it's running inside the `taurhaus` tmux session (launched via taurhaus, not manually)
+- Check `tmux list-windows -t taurhaus` to see active windows
+
+#### App feels slow on first load
 
 The initial project scan indexes all files for search. This is a one-time operation. Subsequent launches are fast because the index is persisted.
 
 ## Updating
 
-Download and run the latest installer. It overwrites the previous version. Your projects, settings, and search index are preserved (stored in your user data directory, not the install directory).
+Download and run the latest installer (Windows) or DMG (macOS). It overwrites the previous version. Your projects, settings, and search index are preserved — they're stored in your user data directory, not the install directory.
 
-The installer ships an updated daemon binary with each app release. If a local daemon update is needed, taurhaus can install the bundled daemon from the app's daemon update flow.
+The installer ships an updated daemon binary with each release. If a local daemon update is needed, taurhaus can install the bundled daemon from the app's daemon update flow.
 
 ## Uninstalling
 
+### Windows
+
 1. Uninstall taurhaus via Windows Settings > Apps
+2. Optionally remove the daemon binary:
+   ```bash
+   # In WSL
+   rm ~/.local/bin/taurhaus-daemon
+   ```
+3. Optionally remove the tmux session:
+   ```bash
+   tmux kill-session -t taurhaus
+   ```
+4. App data is stored in `%APPDATA%\com.taurhaus.dev` — remove this directory to delete all project data, settings, and search indexes
+
+### macOS
+
+1. Drag taurhaus from Applications to Trash
 2. Optionally remove the daemon binary:
    ```bash
    rm ~/.local/bin/taurhaus-daemon
@@ -230,4 +343,4 @@ The installer ships an updated daemon binary with each app release. If a local d
    ```bash
    tmux kill-session -t taurhaus
    ```
-4. App data is stored in `%APPDATA%\com.taurhaus.app` — remove this directory to delete all project data, settings, and search indexes
+4. App data is stored in `~/Library/Application Support/com.taurhaus.dev` — remove this directory to delete all project data, settings, and search indexes
