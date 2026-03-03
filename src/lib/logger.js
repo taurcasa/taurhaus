@@ -12,14 +12,39 @@ const _warn = console.warn.bind(console)
 const _error = console.error.bind(console)
 const _debug = console.debug.bind(console)
 
+// Prevent high-volume UI debug logs from saturating IPC + backend file writes.
+const DROPPED_PREFIXES = ['[filewatch]', '[file] open:', '[code] highlighted']
+const RATE_WINDOW_MS = 1000
+const MAX_INFO_DEBUG_PER_WINDOW = 25
+let rateWindowStart = Date.now()
+let rateWindowCount = 0
+
 function serialize(...args) {
   return args
     .map(a => (typeof a === 'string' ? a : JSON.stringify(a, null, 0)))
     .join(' ')
 }
 
+function shouldForward(level, message) {
+  if (level === 'warn' || level === 'error') return true
+  if (DROPPED_PREFIXES.some(prefix => message.startsWith(prefix))) return false
+
+  const now = Date.now()
+  if (now - rateWindowStart >= RATE_WINDOW_MS) {
+    rateWindowStart = now
+    rateWindowCount = 0
+  }
+  if (rateWindowCount >= MAX_INFO_DEBUG_PER_WINDOW) {
+    return false
+  }
+  rateWindowCount++
+  return true
+}
+
 function forward(level, ...args) {
-  invoke('frontend_log', { level, message: serialize(...args) }).catch(() => {})
+  const message = serialize(...args)
+  if (!shouldForward(level, message)) return
+  invoke('frontend_log', { level, message }).catch(() => {})
 }
 
 console.log = (...args) => { _log(...args); forward('info', ...args) }

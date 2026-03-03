@@ -23,7 +23,6 @@
     highlightCode(src, lang || 'text', theme).then(html => {
       highlightedHtml = html
       ready = true
-      console.log(`[code] highlighted ${src.length} chars as "${lang || 'text'}"`)
     }).catch((err) => {
       // Shiki failed (e.g., WASM blocked by CSP) — show plain text fallback
       highlightedHtml = ''
