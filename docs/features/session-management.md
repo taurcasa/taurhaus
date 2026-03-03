@@ -44,6 +44,52 @@ Process dedup behavior:
 - Sessions are sorted by PID descending.
 - For duplicate `(tty, cli_tool)` entries, taurhaus keeps the highest PID (typically the native child process, not launcher shim).
 
+## Mermaid flow
+
+### 1) Scanner pipeline (all tools)
+
+```mermaid
+flowchart TD
+    A["scan_sessions() called"] --> B["scan_processes(): ps -> pid,args -> cli_tool"]
+    B --> C["enrich each process: cwd(project_path) + tty"]
+    C --> D["count Codex sessions per project_path"]
+    D --> E["for each process: compute raw state"]
+    E --> F["apply per-PID state hysteresis (2 consecutive polls)"]
+    F --> G["build ClaudeSession payload"]
+    G --> H["dedupe by (tty, cli_tool), keep highest PID"]
+    H --> I["retain active PIDs in proc_io + state trackers"]
+    I --> J["return session list to frontend"]
+```
+
+### 2) Per-tool active/idle decision
+
+```mermaid
+flowchart TD
+    A["Process (pid, tool, project_path)"] --> B{"Tool?"}
+
+    B -->|Claude| C["file_active = claude jsonl/subagent mtime < 5s"]
+    C --> D["proc_active = /proc io hysteresis"]
+    D --> E["raw_active = file_active OR proc_active"]
+    E --> Z["state = hysteresis(raw_active)"]
+
+    B -->|Gemini| G["file_active = gemini chats mtime < 5s"]
+    G --> H["proc_active = has ESTABLISHED :443 socket"]
+    H --> I["raw_active = file_active OR proc_active"]
+    I --> Z
+
+    B -->|Codex| K["file_active = codex session mtime < 10s (project-scoped)"]
+    K --> L["proc_active = /proc io hysteresis (per pid)"]
+    L --> M{"codex sessions for project_path > 1 ?"}
+    M -->|No| N["raw_active = file_active OR proc_active"]
+    M -->|Yes| O["raw_active = proc_active only"]
+    N --> P{"multi-codex?"}
+    O --> P
+    P -->|No| Q["keep session_id/jsonl_path from file resolver"]
+    P -->|Yes| R["hide session_id/jsonl_path (shared, not attributable)"]
+    Q --> Z
+    R --> Z
+```
+
 ## Platform process inspection
 
 Process inspection uses platform-specific implementations:
@@ -67,12 +113,12 @@ SessionResolver-based file detection:
 Process-level supplemental signals:
 - Claude: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis
 - Gemini: ESTABLISHED TCP socket to remote `:443` indicates active API call
-- Codex: no process-level activity signal used (file mtime only)
+- Codex: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis; file mtime is kept as fallback only when the project has a single Codex session
 
 ## Bidirectional hysteresis
 
 Two hysteresis layers reduce state flicker:
-- IO hysteresis (Claude process signal): requires two consecutive above-threshold polls for active confirmation
+- IO hysteresis (Claude/Codex process signals): requires two consecutive above-threshold polls for active confirmation
 - Session state hysteresis (all tools): reported state changes only after two consecutive raw polls agree on the new state
 
 Polling cadence:
@@ -140,7 +186,7 @@ Activity statistics:
 | `src/lib/SessionHistory.svelte` | Archived session timeline with task/commit/file drill-down |
 | `src-tauri/src/session_scanner/mod.rs` | Scanner orchestration, dedup logic, global bidirectional hysteresis |
 | `src-tauri/src/session_scanner/process.rs` | Process discovery and CLI tool detection from `ps` output |
-| `src-tauri/src/session_scanner/proc_io.rs` | Claude IO activity heuristic + Gemini TCP activity checks |
+| `src-tauri/src/session_scanner/proc_io.rs` | Claude/Codex IO activity heuristic + Gemini TCP activity checks |
 | `src-tauri/src/session_scanner/idle/mod.rs` | SessionResolver abstraction and shared detection helpers |
 | `src-tauri/src/session_scanner/idle/claude.rs` | Claude session file + subagent mtime logic |
 | `src-tauri/src/session_scanner/idle/codex.rs` | Codex date-tree lookup + CWD matching + 7-day lookback |
