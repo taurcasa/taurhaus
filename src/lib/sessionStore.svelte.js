@@ -195,6 +195,20 @@ export function applyDaemonSessionUpdate(payload) {
   applySessions(list)
 }
 
+/**
+ * One-shot snapshot hydrate for Tauri runtime startup.
+ * Keeps UI event-driven afterwards, but avoids empty indicators while waiting
+ * for the first daemon-pushed update.
+ */
+export async function hydrateFromBackend() {
+  try {
+    const result = await listClaudeSessions()
+    applySessions(Array.isArray(result) ? result : [])
+  } catch (err) {
+    console.warn('[sessionStore] hydrate failed:', err)
+  }
+}
+
 /** Get the current sessions map (for testing or direct access). */
 export function getSessions() {
   return sessions

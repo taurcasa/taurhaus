@@ -1,6 +1,6 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession } from './lib/ipc.js'
-  import { getSessionForProject, applyDaemonSessionUpdate } from './lib/sessionStore.svelte.js'
+  import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
   import TaskBoard from './lib/TaskBoard.svelte'
@@ -317,6 +317,10 @@
       listen('sessions-updated', (event) => {
         applyDaemonSessionUpdate(event.payload)
       }).then(u => cleanups.push(u))
+
+      // Prime the session store once on startup so indicators do not stay empty
+      // until the first pushed delta arrives.
+      hydrateSessionsFromBackend()
     })
 
     return () => {
