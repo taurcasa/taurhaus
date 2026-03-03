@@ -418,6 +418,7 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         schema_version: 1,
         member_name: "orphan-agent".to_string(),
         pane_id: Some("%7".to_string()),
+        session_id: None,
         daemon_pid: None,
         health: HealthState::SessionDead,
         delivery_lease: None,

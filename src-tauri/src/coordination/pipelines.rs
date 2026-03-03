@@ -132,6 +132,16 @@ impl CoordinationOrchestrator {
                 &mut steps,
             ));
         }
+        if let Err(err) = self.sync_team_config_metadata(&request.team_name) {
+            self.cleanup_initialize_failure(&request.team_name);
+            return Ok(failed_initialize_report(
+                &request.team_name,
+                "launch_sessions",
+                err,
+                succeeded_steps,
+                &mut steps,
+            ));
+        }
         mark_step_succeeded(
             "launch_sessions",
             "cli sessions launched",
@@ -323,7 +333,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.launch_session_for_agent(request, &runtime_state, cli_commands) {
+        if let Err(err) = self.launch_session_for_agent(request, &mut runtime_state, cli_commands) {
             self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
@@ -450,6 +460,7 @@ impl CoordinationOrchestrator {
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
             runtime.pane_id = Some(pane_id);
+            runtime.session_id = None;
             runtime.daemon_pid = None;
             runtime.attached_at = Some(Utc::now());
             runtime.health = HealthState::Healthy;
@@ -469,6 +480,7 @@ impl CoordinationOrchestrator {
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
             runtime.pane_id = Some(pane_id);
+            runtime.session_id = None;
             runtime.daemon_pid = None;
             runtime.attached_at = Some(Utc::now());
             runtime.health = HealthState::Healthy;
@@ -491,7 +503,19 @@ impl CoordinationOrchestrator {
                     request.lead.name, request.team_name
                 ))
             })?;
-            self.launch_agent_in_pane(&pane_id, &request.lead, cli_commands)?;
+            self.launch_agent_in_pane(
+                &pane_id,
+                &request.team_name,
+                &request.lead,
+                MemberRole::Lead,
+                cli_commands,
+            )?;
+            self.capture_session_id_for_member(
+                &request.team_name,
+                &request.lead.name,
+                &pane_id,
+                &request.lead,
+            )?;
         }
 
         for agent in &request.agents {
@@ -503,7 +527,14 @@ impl CoordinationOrchestrator {
                     agent.name, request.team_name
                 ))
             })?;
-            self.launch_agent_in_pane(&pane_id, agent, cli_commands)?;
+            self.launch_agent_in_pane(
+                &pane_id,
+                &request.team_name,
+                agent,
+                MemberRole::Agent,
+                cli_commands,
+            )?;
+            self.capture_session_id_for_member(&request.team_name, &agent.name, &pane_id, agent)?;
         }
         Ok(())
     }
@@ -625,6 +656,7 @@ impl CoordinationOrchestrator {
     ) -> Result<(), CoordinationError> {
         let pane_id = self.runtime.create_aitx_pane(&request.agent.project_id)?;
         runtime_state.pane_id = Some(pane_id);
+        runtime_state.session_id = None;
         runtime_state.attached_at = Some(Utc::now());
         runtime_state.health = Some(HealthState::Healthy);
         Ok(())
@@ -633,7 +665,7 @@ impl CoordinationOrchestrator {
     fn launch_session_for_agent(
         &self,
         request: &AddAgentRequest,
-        runtime_state: &PendingRuntimeState,
+        runtime_state: &mut PendingRuntimeState,
         cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
         let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
@@ -642,17 +674,29 @@ impl CoordinationOrchestrator {
                 request.agent.name, request.team_name
             ))
         })?;
-        self.launch_agent_in_pane(pane_id, &request.agent, cli_commands)?;
+        self.launch_agent_in_pane(
+            pane_id,
+            &request.team_name,
+            &request.agent,
+            MemberRole::Agent,
+            cli_commands,
+        )?;
+        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
+        if cli_tool == CliTool::Claude {
+            runtime_state.session_id = self.runtime.detect_session_id(pane_id, cli_tool)?;
+        }
         Ok(())
     }
 
     fn launch_agent_in_pane(
         &self,
         pane_id: &str,
+        team_name: &str,
         agent: &AgentSetupConfig,
+        role: MemberRole,
         cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
-        let launch_cmd = build_cli_launch_command(agent, cli_commands)?;
+        let launch_cmd = build_cli_launch_command(agent, team_name, role, cli_commands)?;
         self.runtime
             .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())
     }
@@ -736,6 +780,7 @@ impl CoordinationOrchestrator {
         let mut runtime =
             MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)?;
         runtime.pane_id = runtime_state.pane_id.clone();
+        runtime.session_id = runtime_state.session_id.clone();
         runtime.daemon_pid = runtime_state.daemon_pid;
         runtime.attached_at = runtime_state.attached_at;
         runtime.health = runtime_state.health.unwrap_or(HealthState::SessionDead);
@@ -745,13 +790,43 @@ impl CoordinationOrchestrator {
             &request.agent.name,
             &runtime,
         )?;
+        self.sync_team_config_metadata(&request.team_name)?;
         Ok(())
+    }
+
+    fn capture_session_id_for_member(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        pane_id: &str,
+        agent: &AgentSetupConfig,
+    ) -> Result<(), CoordinationError> {
+        let cli_tool = parse_cli_tool(&agent.cli_tool)?;
+        if cli_tool != CliTool::Claude {
+            return Ok(());
+        }
+
+        let session_id = self.runtime.detect_session_id(pane_id, cli_tool)?;
+        let Some(session_id) = session_id else {
+            return Ok(());
+        };
+
+        let mut runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)?;
+        runtime.session_id = Some(session_id);
+        MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)?;
+        Ok(())
+    }
+
+    fn sync_team_config_metadata(&self, team_name: &str) -> Result<(), CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        TeamConfigStore::save(&self.teams_dir, team_name, &config)
     }
 }
 
 #[derive(Debug, Default, Clone)]
 struct PendingRuntimeState {
     pane_id: Option<String>,
+    session_id: Option<String>,
     daemon_pid: Option<u32>,
     attached_at: Option<chrono::DateTime<Utc>>,
     health: Option<HealthState>,
@@ -832,6 +907,8 @@ fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
 
 fn build_cli_launch_command(
     agent: &AgentSetupConfig,
+    team_name: &str,
+    role: MemberRole,
     cli_commands: &CliCommandSettings,
 ) -> Result<String, CoordinationError> {
     let cli_tool = parse_cli_tool(&agent.cli_tool)?;
@@ -843,7 +920,76 @@ fn build_cli_launch_command(
         )));
     }
     validate_command_override(&command).map_err(CoordinationError::Validation)?;
-    Ok(command)
+
+    if cli_tool != CliTool::Claude {
+        return Ok(command);
+    }
+
+    Ok(with_claude_team_context(
+        command,
+        team_name,
+        &agent.name,
+        role,
+    ))
+}
+
+fn with_claude_team_context(
+    mut command: String,
+    team_name: &str,
+    agent_name: &str,
+    role: MemberRole,
+) -> String {
+    if !command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
+        command = format!("CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 {command}");
+    }
+
+    if !command_contains_flag(&command, "--team-name") {
+        command.push_str(" --team-name ");
+        command.push_str(&shell_escape_for_cmd(team_name));
+    }
+    if !command_contains_flag(&command, "--agent-name") {
+        command.push_str(" --agent-name ");
+        command.push_str(&shell_escape_for_cmd(agent_name));
+    }
+    if !command_contains_flag(&command, "--agent-id") {
+        command.push_str(" --agent-id ");
+        command.push_str(&shell_escape_for_cmd(&format!("{agent_name}@{team_name}")));
+    }
+    if !command_contains_flag(&command, "--agent-type") {
+        let agent_type = if role == MemberRole::Lead {
+            "orchestrator"
+        } else {
+            "general-purpose"
+        };
+        command.push_str(" --agent-type ");
+        command.push_str(&shell_escape_for_cmd(agent_type));
+    }
+
+    command
+}
+
+fn command_contains_flag(command: &str, flag: &str) -> bool {
+    command.split_whitespace().any(|token| {
+        token == flag
+            || token
+                .strip_prefix(flag)
+                .is_some_and(|suffix| suffix.starts_with('='))
+    })
+}
+
+fn shell_escape_for_cmd(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | '@'))
+    {
+        return value.to_string();
+    }
+
+    let escaped = value.replace('\'', "'\\''");
+    format!("'{escaped}'")
 }
 
 fn member_from_agent_setup(
@@ -877,7 +1023,13 @@ mod tests {
             description: None,
         };
         assert_eq!(
-            build_cli_launch_command(&agent, &cmds).expect("command"),
+            build_cli_launch_command(
+                &agent,
+                "architecture-final",
+                MemberRole::Agent,
+                &cmds
+            )
+            .expect("command"),
             "gemini --yolo --sandbox read-only"
         );
     }
@@ -893,8 +1045,34 @@ mod tests {
             description: None,
         };
         assert_eq!(
-            build_cli_launch_command(&agent, &cmds).expect("command"),
-            "codex --yolo -m 'gpt-5.3'"
+            build_cli_launch_command(
+                &agent,
+                "architecture-final",
+                MemberRole::Agent,
+                &cmds
+            )
+            .expect("command"),
+            "codex --yolo -m 'gpt-5.3-codex'"
         );
+    }
+
+    #[test]
+    fn build_cli_launch_command_for_claude_appends_team_context() {
+        let cmds = crate::models::CliCommandSettings::default();
+        let agent = AgentSetupConfig {
+            name: "team-lead".to_string(),
+            cli_tool: "claude".to_string(),
+            model: "claude-opus-4-6".to_string(),
+            project_id: "/tmp/project".to_string(),
+            description: None,
+        };
+        let command = build_cli_launch_command(&agent, "ledger-team", MemberRole::Lead, &cmds)
+            .expect("command");
+        assert!(command.contains("CLAUDECODE=1"));
+        assert!(command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"));
+        assert!(command.contains("--team-name ledger-team"));
+        assert!(command.contains("--agent-name team-lead"));
+        assert!(command.contains("--agent-id team-lead@ledger-team"));
+        assert!(command.contains("--agent-type orchestrator"));
     }
 }

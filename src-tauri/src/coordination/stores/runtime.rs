@@ -19,6 +19,7 @@ pub struct MemberRuntimeRecord {
     pub schema_version: u32,
     pub member_name: String,
     pub pane_id: Option<String>,
+    pub session_id: Option<String>,
     pub daemon_pid: Option<u32>,
     pub health: HealthState,
     pub delivery_lease: Option<DeliveryLease>,
@@ -227,6 +228,8 @@ fn parse_runtime_record(
         member_name: Option<String>,
         #[serde(default, alias = "paneId")]
         pane_id: Option<String>,
+        #[serde(default, alias = "sessionId")]
+        session_id: Option<String>,
         #[serde(default, alias = "daemonPid")]
         daemon_pid: Option<u32>,
         health: HealthState,
@@ -248,6 +251,7 @@ fn parse_runtime_record(
         schema_version: wire.schema_version,
         member_name: wire.member_name.unwrap_or_else(|| member_name.to_string()),
         pane_id: wire.pane_id,
+        session_id: wire.session_id,
         daemon_pid: wire.daemon_pid,
         health: wire.health,
         delivery_lease: wire.delivery_lease,
@@ -311,6 +315,7 @@ mod tests {
             schema_version: 1,
             member_name: member_name.to_string(),
             pane_id: Some("%12".to_string()),
+            session_id: Some("session-123".to_string()),
             daemon_pid: Some(4242),
             health: HealthState::Healthy,
             delivery_lease: Some(DeliveryLease {
@@ -442,6 +447,7 @@ mod tests {
             schema_version: 1,
             member_name: "no-heartbeat".to_string(),
             pane_id: None,
+            session_id: None,
             daemon_pid: None,
             health: HealthState::SessionDead,
             delivery_lease: None,

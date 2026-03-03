@@ -214,6 +214,7 @@ impl CoordinationOrchestrator {
             schema_version: 1,
             member_name: member.name.clone(),
             pane_id: None,
+            session_id: None,
             daemon_pid: None,
             health: HealthState::SessionDead,
             delivery_lease: None,

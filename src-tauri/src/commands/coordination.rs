@@ -31,6 +31,7 @@ pub fn coordination_initialize_team(
     state: State<'_, CoordinationState>,
     request: InitializeTeamRequest,
 ) -> Result<InitializeReport, String> {
+    let request = normalize_initialize_request_paths(&db, request)?;
     let cli_commands = load_cli_commands(&db);
     coordination_initialize_team_with_emitter(state.inner(), request, &cli_commands, |event| {
         let _ = app.emit("coordination-step-progress", event);
@@ -44,6 +45,7 @@ pub fn coordination_add_agent(
     state: State<'_, CoordinationState>,
     request: AddAgentRequest,
 ) -> Result<AddAgentReport, String> {
+    let request = normalize_add_agent_request_path(&db, request)?;
     let cli_commands = load_cli_commands(&db);
     coordination_add_agent_with_emitter(state.inner(), request, &cli_commands, |event| {
         let _ = app.emit("coordination-step-progress", event);
@@ -481,6 +483,47 @@ fn validate_initialize_request_fields(request: &InitializeTeamRequest) -> Result
         validate_non_empty(&format!("agents[{idx}].cli_tool"), &agent.cli_tool)?;
     }
     Ok(())
+}
+
+fn normalize_initialize_request_paths(
+    db: &DbState,
+    mut request: InitializeTeamRequest,
+) -> Result<InitializeTeamRequest, String> {
+    request.lead.project_id = resolve_project_reference(db, &request.lead.project_id)?;
+    for agent in &mut request.agents {
+        agent.project_id = resolve_project_reference(db, &agent.project_id)?;
+    }
+    Ok(request)
+}
+
+fn normalize_add_agent_request_path(
+    db: &DbState,
+    mut request: AddAgentRequest,
+) -> Result<AddAgentRequest, String> {
+    request.agent.project_id = resolve_project_reference(db, &request.agent.project_id)?;
+    Ok(request)
+}
+
+#[cfg(not(test))]
+fn resolve_project_reference(db: &DbState, project_ref: &str) -> Result<String, String> {
+    validate_non_empty("project_id", project_ref)?;
+    let trimmed = project_ref.trim();
+
+    let project_path = {
+        let conn = db.0.lock().map_err(|err| err.to_string())?;
+        match crate::db::queries::get_project(&conn, trimmed).map_err(|err| err.to_string())? {
+            Some(project) => project.path,
+            None => trimmed.to_string(),
+        }
+    };
+
+    Ok(crate::provider::path::to_linux(&project_path).unwrap_or(project_path))
+}
+
+#[cfg(test)]
+fn resolve_project_reference(_db: &DbState, project_ref: &str) -> Result<String, String> {
+    validate_non_empty("project_id", project_ref)?;
+    Ok(project_ref.trim().to_string())
 }
 
 fn cli_tool_from_backend_kind(backend_kind: &str) -> Result<CliTool, CoordinationError> {

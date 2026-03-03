@@ -11,14 +11,22 @@ use std::time::Duration;
 
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
+use crate::session_scanner::cli_tool::CliTool;
 
 const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
 const TMUX_POST_ENTER_DELAY: Duration = Duration::from_secs(1);
+const SESSION_DETECT_ATTEMPTS: usize = 6;
+const SESSION_DETECT_INTERVAL: Duration = Duration::from_millis(200);
 
 pub trait CoordinationRuntime: Send + Sync {
     fn create_aitx_pane(&self, project_id: &str) -> Result<String, CoordinationError>;
     fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str)
         -> Result<(), CoordinationError>;
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError>;
     fn join_mesh(&self, team_name: &str, member_name: &str) -> Result<(), CoordinationError>;
     fn spawn_mesh_daemon(
         &self,
@@ -75,6 +83,29 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
 
     fn join_mesh(&self, team_name: &str, member_name: &str) -> Result<(), CoordinationError> {
         run_mesh(&["join", "--team", team_name, "--name", member_name]).map(|_| ())
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        for _ in 0..SESSION_DETECT_ATTEMPTS {
+            let match_id = scan_sessions_for_runtime()
+                .into_iter()
+                .find(|session| {
+                    session.tmux_pane.as_deref() == Some(pane_id) && session.cli_tool == cli_tool
+                })
+                .and_then(|session| session.session_id);
+
+            if match_id.is_some() {
+                return Ok(match_id);
+            }
+
+            thread::sleep(SESSION_DETECT_INTERVAL);
+        }
+
+        Ok(None)
     }
 
     fn spawn_mesh_daemon(
@@ -186,6 +217,30 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     }
 }
 
+#[derive(Debug, Clone)]
+struct RuntimeSessionInfo {
+    tmux_pane: Option<String>,
+    cli_tool: CliTool,
+    session_id: Option<String>,
+}
+
+#[cfg(not(test))]
+fn scan_sessions_for_runtime() -> Vec<RuntimeSessionInfo> {
+    crate::session_scanner::scan_sessions()
+        .into_iter()
+        .map(|session| RuntimeSessionInfo {
+            tmux_pane: session.tmux_pane,
+            cli_tool: session.cli_tool,
+            session_id: session.session_id,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn scan_sessions_for_runtime() -> Vec<RuntimeSessionInfo> {
+    Vec::new()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeCall {
     CreatePane {
@@ -194,6 +249,10 @@ pub enum RuntimeCall {
     SendKeys {
         pane_id: String,
         keys: String,
+    },
+    DetectSessionId {
+        pane_id: String,
+        cli_tool: CliTool,
     },
     JoinMesh {
         team_name: String,
@@ -256,6 +315,18 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             keys: keys.to_string(),
         });
         Ok(())
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.push_call(RuntimeCall::DetectSessionId {
+            pane_id: pane_id.to_string(),
+            cli_tool,
+        });
+        Ok(Some(format!("session-{pane_id}")))
     }
 
     fn join_mesh(&self, team_name: &str, member_name: &str) -> Result<(), CoordinationError> {

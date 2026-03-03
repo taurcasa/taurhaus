@@ -1,5 +1,6 @@
 //! Team configuration store.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +10,9 @@ use serde_json::Value;
 
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
+use super::runtime::MemberRuntimeStore;
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
@@ -152,12 +155,26 @@ impl TeamConfigStore {
 
         let target_path = config_path(teams_dir, team_name);
         let tmp_path = team_dir.join(CONFIG_TMP_FILENAME);
-        let payload =
-            serde_json::to_string_pretty(&mesh_compatible_wire(&normalized)).map_err(|err| {
-                CoordinationError::StoreError(format!(
-                    "failed to serialize team config for '{team_name}': {err}"
-                ))
-            })?;
+        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, team_name) {
+            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
+            Err(err) => {
+                tracing::warn!(
+                    team_name = team_name,
+                    error = %err,
+                    "failed to load runtime records while serializing team config; continuing with defaults"
+                );
+                HashMap::new()
+            }
+        };
+        let payload = serde_json::to_string_pretty(&mesh_compatible_wire(
+            &normalized,
+            &runtime_by_member,
+        ))
+        .map_err(|err| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize team config for '{team_name}': {err}"
+            ))
+        })?;
 
         if let Err(err) = fs::write(&tmp_path, &payload) {
             return Err(CoordinationError::Io(err));
@@ -272,7 +289,10 @@ fn mesh_agent_id(team_name: &str, member_name: &str) -> String {
     format!("{member_name}@{team_name}")
 }
 
-fn mesh_compatible_wire(config: &TeamConfig) -> MeshCompatibleTeamConfigWire {
+fn mesh_compatible_wire(
+    config: &TeamConfig,
+    runtime_by_member: &HashMap<String, MemberRuntimeRecord>,
+) -> MeshCompatibleTeamConfigWire {
     let created_at_millis = config.created_at.timestamp_millis();
     let lead_member = config
         .members
@@ -280,13 +300,19 @@ fn mesh_compatible_wire(config: &TeamConfig) -> MeshCompatibleTeamConfigWire {
         .find(|member| member.role == MemberRole::Lead)
         .or_else(|| config.members.first());
     let lead_agent_id = lead_member.map(|member| mesh_agent_id(&config.name, &member.name));
-    let lead_session_id = lead_member.map(|member| format!("{}-session", member.name));
+    let lead_session_id = lead_member.map(|member| {
+        runtime_by_member
+            .get(&member.name)
+            .and_then(|runtime| runtime.session_id.clone())
+            .unwrap_or_else(|| format!("{}-session", member.name))
+    });
 
     let members = config
         .members
         .iter()
         .map(|member| {
             let project_path = member.project_path.clone();
+            let runtime = runtime_by_member.get(&member.name);
             MeshCompatibleMemberWire {
                 name: member.name.clone(),
                 role: member.role,
@@ -295,7 +321,7 @@ fn mesh_compatible_wire(config: &TeamConfig) -> MeshCompatibleTeamConfigWire {
                 cli_tool: member.cli_tool,
                 agent_id: mesh_agent_id(&config.name, &member.name),
                 agent_type: if member.role == MemberRole::Lead {
-                    "team-lead".to_string()
+                    "orchestrator".to_string()
                 } else {
                     "general-purpose".to_string()
                 },
@@ -303,11 +329,7 @@ fn mesh_compatible_wire(config: &TeamConfig) -> MeshCompatibleTeamConfigWire {
                 joined_at_millis: created_at_millis,
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
-                tmux_pane_id: if member.role == MemberRole::Lead {
-                    Some(String::new())
-                } else {
-                    None
-                },
+                tmux_pane_id: runtime.and_then(|state| state.pane_id.clone()),
                 backend_type: if member.role == MemberRole::Lead {
                     None
                 } else {
@@ -446,7 +468,7 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
 
 fn parse_role(value: &str) -> MemberRole {
     let normalized = value.trim().to_ascii_lowercase();
-    if normalized == "lead" || normalized == "team-lead" {
+    if normalized == "lead" || normalized == "team-lead" || normalized == "orchestrator" {
         MemberRole::Lead
     } else {
         MemberRole::Agent
@@ -558,6 +580,10 @@ mod tests {
         assert_eq!(
             members[0].get("agentId").and_then(Value::as_str),
             Some("team-lead@architecture-final")
+        );
+        assert_eq!(
+            members[0].get("agentType").and_then(Value::as_str),
+            Some("orchestrator")
         );
         assert!(members[0].get("joinedAt").is_some());
         assert!(members[0].get("model").is_some());
@@ -718,6 +744,35 @@ mod tests {
         assert_eq!(config.members[0].cli_tool, CliTool::Claude);
         assert_eq!(config.members[1].role, MemberRole::Agent);
         assert_eq!(config.members[1].cli_tool, CliTool::Codex);
+    }
+
+    #[test]
+    fn load_mesh_format_with_orchestrator_agent_type_marks_lead() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "orchestrator-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+
+        let mesh_json = r#"{
+  "name": "orchestrator-team",
+  "createdAt": 1772399806546,
+  "leadAgentId": "lead@orchestrator-team",
+  "leadSessionId": "session-1",
+  "members": [
+    {
+      "name": "lead",
+      "agentId": "lead@orchestrator-team",
+      "agentType": "orchestrator",
+      "model": "claude-opus-4-6",
+      "cwd": "/home/mstie/projects/taurhaus"
+    }
+  ]
+}"#;
+        fs::write(dir.join(CONFIG_FILENAME), mesh_json).expect("write mesh config");
+
+        let config = TeamConfigStore::load(tmp.path(), team_name).expect("load should succeed");
+        assert_eq!(config.members.len(), 1);
+        assert_eq!(config.members[0].role, MemberRole::Lead);
     }
 
     #[test]

@@ -375,6 +375,14 @@ fn codex_command_has_model_arg(command: &str) -> bool {
     false
 }
 
+fn normalize_codex_model(model: &str) -> String {
+    let trimmed = model.trim();
+    if trimmed.eq_ignore_ascii_case("gpt-5.3") {
+        return "gpt-5.3-codex".to_string();
+    }
+    trimmed.to_string()
+}
+
 /// Build the command used for team-agent launch (fresh mode + optional model).
 pub fn build_team_launch_command(
     cmds: &CliCommandSettings,
@@ -391,7 +399,8 @@ pub fn build_team_launch_command(
         return base;
     }
 
-    format!("{base} -m {}", shell_escape(model))
+    let normalized_model = normalize_codex_model(model);
+    format!("{base} -m {}", shell_escape(&normalized_model))
 }
 
 /// Build the launch command string for a given tool and launch mode.
@@ -665,7 +674,16 @@ mod tests {
         let cmds = crate::models::CliCommandSettings::default();
         assert_eq!(
             build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3"),
-            "codex --yolo -m 'gpt-5.3'"
+            "codex --yolo -m 'gpt-5.3-codex'"
+        );
+    }
+
+    #[test]
+    fn build_team_launch_command_for_codex_preserves_codex_model_suffix() {
+        let cmds = crate::models::CliCommandSettings::default();
+        assert_eq!(
+            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3-codex"),
+            "codex --yolo -m 'gpt-5.3-codex'"
         );
     }
 

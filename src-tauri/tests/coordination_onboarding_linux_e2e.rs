@@ -72,6 +72,11 @@ mod session_scanner {
                     if model.is_empty() || base.contains("-m ") || base.contains("--model") {
                         return base;
                     }
+                    let model = if model.eq_ignore_ascii_case("gpt-5.3") {
+                        "gpt-5.3-codex".to_string()
+                    } else {
+                        model.to_string()
+                    };
                     format!("{base} -m '{model}'")
                 }
             }
@@ -253,8 +258,12 @@ exit 0
     assert!(log.contains("aitx:new --path proj-web"));
     assert!(log.contains("aitx:new --path proj-api"));
 
-    assert!(log.contains("tmux:send-keys -t %1 -l claude --dangerously-skip-permissions"));
-    assert!(log.contains("tmux:send-keys -t %2 -l codex --yolo -m 'gpt-5.3'"));
+    assert!(log.contains("tmux:send-keys -t %1 -l CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions"));
+    assert!(log.contains("--team-name linux-onboarding-e2e"));
+    assert!(log.contains("--agent-name team-lead"));
+    assert!(log.contains("--agent-id team-lead@linux-onboarding-e2e"));
+    assert!(log.contains("--agent-type orchestrator"));
+    assert!(log.contains("tmux:send-keys -t %2 -l codex --yolo -m 'gpt-5.3-codex'"));
     assert!(log.contains("tmux:send-keys -t %3 -l gemini --yolo"));
     assert!(log.contains("tmux:send-keys -t %1 Enter"));
     assert!(log.contains("tmux:send-keys -t %2 Enter"));
