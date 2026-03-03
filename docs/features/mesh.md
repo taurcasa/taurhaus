@@ -2,6 +2,8 @@
 
 The mesh view is taurhaus's multi-agent team coordination tab. It provides one-click team setup, a live team roster, and agent lifecycle management — all backed by mesh CLI and tmux.
 
+![Mesh View Lifecycle](../images/mesh-view-lifecycle.jpg)
+
 ## Overview
 
 Mesh view responsibilities:

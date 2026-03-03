@@ -2,6 +2,8 @@
 
 End-to-end build and release procedures for taurhaus across Linux, Windows, and macOS. This document expands on the quick-reference tables in [CLAUDE.md](../../CLAUDE.md#build--development), with detailed steps, constraints, and troubleshooting.
 
+![Build and Release Pipeline](../images/build-release-pipeline.jpg)
+
 ## Overview
 
 Build and release operations are standardized in `justfile`. Use `just` recipes only.

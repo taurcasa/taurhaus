@@ -2,6 +2,8 @@
 
 Search provides full-text lookup across all registered projects from a single overlay. It indexes project files, imported session summaries, and recent commit metadata, then returns ranked matches for fast cross-project navigation.
 
+![Search Index Pipeline](../images/search-index-pipeline.jpg)
+
 ## Overview
 
 Users open search from the titlebar button or keyboard shortcut:

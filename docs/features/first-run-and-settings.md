@@ -2,6 +2,8 @@
 
 The first-run wizard onboards new users, the splash screen gates the UI during startup, and the settings panel exposes all configurable preferences.
 
+![Onboarding and First-Launch Flow](../images/onboarding-flow.jpg)
+
 ## Overview
 
 Three components handle the initial user experience: a splash screen gates the UI during backend startup, a wizard guides first-time users through daemon setup and project discovery, and a settings panel exposes all configurable preferences.

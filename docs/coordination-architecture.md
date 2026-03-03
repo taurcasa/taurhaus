@@ -3,6 +3,8 @@
 > Taurhaus + mesh integration for multi-agent team orchestration.
 > Designed 2026-03-01. Collaboratively architected by Claude Code + Codex (GPT-5.3).
 
+![Coordination Architecture](images/coordination-architecture.jpg)
+
 ## Overview
 
 Taurhaus gains the ability to create, monitor, and manage multi-agent teams that collaborate via the filesystem. The integration leverages mesh (a Rust CLI for non-Claude agents) and Claude Code's native team system, with the filesystem (`~/.claude/`) as the shared API surface.

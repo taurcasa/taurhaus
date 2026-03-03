@@ -2,6 +2,8 @@
 
 The command center is taurhaus's session control layer for launching, stopping, and navigating CLI tool sessions inside tmux. It connects sidebar/context-menu actions to backend orchestration and platform-specific terminal behavior.
 
+![Command Center Flow](../images/command-center-flow.jpg)
+
 ## Overview
 
 Command center responsibilities:

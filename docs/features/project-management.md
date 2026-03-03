@@ -2,6 +2,8 @@
 
 Project management is the core workflow for adding repositories to taurhaus, organizing them by activity, and navigating from a per-project overview.
 
+![Project Activity Lifecycle](../images/project-activity-lifecycle.jpg)
+
 ## Overview
 
 taurhaus treats each registered repository as a project with persisted metadata, computed activity state, and optional relationships to other projects. Users manage projects from the sidebar and Manage Projects modal, then work from the Overview tab and project context menu.

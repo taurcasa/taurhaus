@@ -2,6 +2,8 @@
 
 Git integration gives each project a native commit browser, file-level detail view, and inline patch inspection.
 
+![Git Data Flow](../images/git-data-flow.jpg)
+
 ## Overview
 
 taurhaus exposes git history through two surfaces:
