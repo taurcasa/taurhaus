@@ -4,6 +4,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::SessionState;
+use crate::session_scanner::cli_tool::CliTool;
 
 /// Scanner cadence for daemon-owned session activity tracking.
 const SCAN_INTERVAL: Duration = Duration::from_millis(500);
@@ -28,6 +30,43 @@ struct HubState {
     initialized: bool,
     version: u64,
     sessions: Vec<ClaudeSession>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SessionEventSignature {
+    pid: u32,
+    project_path: String,
+    tty: String,
+    cli_tool: CliTool,
+    tmux_session: Option<String>,
+    tmux_window: Option<String>,
+    tmux_pane: Option<String>,
+    tmux_window_name: Option<String>,
+    state: SessionState,
+    project_unattributed_active: bool,
+}
+
+fn event_signature(session: &ClaudeSession) -> SessionEventSignature {
+    SessionEventSignature {
+        pid: session.pid,
+        project_path: session.project_path.clone(),
+        tty: session.tty.clone(),
+        cli_tool: session.cli_tool,
+        tmux_session: session.tmux_session.clone(),
+        tmux_window: session.tmux_window.clone(),
+        tmux_pane: session.tmux_pane.clone(),
+        tmux_window_name: session.tmux_window_name.clone(),
+        state: session.state,
+        project_unattributed_active: session.project_unattributed_active,
+    }
+}
+
+fn activity_changed(prev: &[ClaudeSession], next: &[ClaudeSession]) -> bool {
+    let mut prev_sig: Vec<SessionEventSignature> = prev.iter().map(event_signature).collect();
+    let mut next_sig: Vec<SessionEventSignature> = next.iter().map(event_signature).collect();
+    prev_sig.sort_by_key(|s| s.pid);
+    next_sig.sort_by_key(|s| s.pid);
+    prev_sig != next_sig
 }
 
 /// Global daemon-owned session scanner with a versioned snapshot.
@@ -127,12 +166,15 @@ impl SessionActivityHub {
                 let sessions = crate::session_scanner::scan_sessions();
                 let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
 
-                let changed = !state.initialized || state.sessions != sessions;
+                let changed = !state.initialized || activity_changed(&state.sessions, &sessions);
                 if changed {
                     state.sessions = sessions;
                     state.version = state.version.saturating_add(1);
                     state.initialized = true;
                     hub.changed_cv.notify_all();
+                } else {
+                    // Keep latest metadata without generating a new version/event.
+                    state.sessions = sessions;
                 }
 
                 next_tick += SCAN_INTERVAL;
@@ -147,4 +189,3 @@ impl SessionActivityHub {
         });
     }
 }
-
