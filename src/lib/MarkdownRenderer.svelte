@@ -2,8 +2,9 @@
   import { renderMarkdown } from './markdown.js'
   import { readProjectAsset, openExternalUrl } from './ipc.js'
   import * as assetCache from './assetCache.js'
+  import { resolveRelativePath } from './pathUtils.js'
 
-  let { source = '', dark = false, codeTheme = 'github-light', projectId = null, onNavigate = null } = $props()
+  let { source = '', dark = false, codeTheme = 'github-light', projectId = null, filePath = null, onNavigate = null } = $props()
 
   let html = $state('')
   let loading = $state(true)
@@ -34,17 +35,19 @@
       const src = img.getAttribute('src')
       if (!src || /^(https?:|data:|blob:|asset:)/.test(src)) continue
 
+      const resolved = resolveRelativePath(filePath, src)
+
       // Check cache first — synchronous, no flicker
-      const cached = assetCache.get(projectId, src)
+      const cached = assetCache.get(projectId, resolved)
       if (cached) {
         img.src = cached
         continue
       }
 
       // Cache miss — load via IPC and cache for next time
-      readProjectAsset(projectId, src).then(dataUri => {
+      readProjectAsset(projectId, resolved).then(dataUri => {
         if (dataUri) {
-          assetCache.set(projectId, src, dataUri)
+          assetCache.set(projectId, resolved, dataUri)
           img.src = dataUri
         }
       }).catch(() => {
@@ -78,7 +81,7 @@
     if (onNavigate) {
       // Strip any anchor fragment from the path
       const path = href.replace(/#.*$/, '')
-      if (path) onNavigate(path)
+      if (path) onNavigate(resolveImagePath(path))
     }
   }
 </script>

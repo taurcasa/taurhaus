@@ -321,7 +321,7 @@
         {:else if fileContent}
           {#if fileType === 'markdown'}
             <div class="p-6 overflow-auto">
-              <MarkdownRenderer source={fileContent.content} {dark} {codeTheme} projectId={selectedProject?.id} onNavigate={onMarkdownNavigate} />
+              <MarkdownRenderer source={fileContent.content} {dark} {codeTheme} projectId={selectedProject?.id} filePath={selectedFile} onNavigate={onMarkdownNavigate} />
             </div>
           {:else}
             <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} {codeTheme} scrollToLine={targetLineNumber} />
