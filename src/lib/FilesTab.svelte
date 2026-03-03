@@ -12,6 +12,7 @@
     dark,
     codeTheme,
     selectedProject,
+    isActive = true,
     position = $bindable(null),
     navTarget = null,
     onClearNavTarget,
@@ -37,6 +38,8 @@
   let imageDataUri = $state(null)
   let expandedDirs = $state(new Set())
   let targetLineNumber = $state(null)
+  let fileTreeRefreshInFlight = false
+  let fileTreeRefreshPending = false
 
   // Sync position outward for Shell's per-project position memory
   $effect(() => {
@@ -45,8 +48,8 @@
 
   // Load file tree on mount
   $effect(() => {
-    if (!selectedProject?.id) return
-    loadFileTree(selectedProject.id)
+    if (!selectedProject?.id || !isActive) return
+    refreshFileTree(selectedProject.id)
   })
 
   // Watch navTarget and open the requested file
@@ -68,17 +71,14 @@
   // Reading changedPaths after consume would see null and skip the file refresh.
   $effect(() => {
     const paths = changedPaths
-    if (!paths || !selectedProject?.id) return
+    if (!paths || !selectedProject?.id || !isActive) return
     onChangedPathsConsumed?.()
 
-    console.log(`[filewatch] FilesTab: received ${paths.length} changed path(s), selectedFile=${selectedFile}`)
-
     // Refresh file tree (silent — no loading skeleton)
-    loadFileTree(selectedProject.id)
+    refreshFileTree(selectedProject.id)
 
     // Re-read the currently open file if it was among the changes
     if (selectedFile && pathWasChanged(paths, selectedFile)) {
-      console.log(`[filewatch] FilesTab: re-reading "${selectedFile}"`)
       openFile(selectedFile, targetLineNumber)
     }
   })
@@ -100,6 +100,26 @@
       fileTree = []
     } finally {
       fileTreeLoading = false
+    }
+  }
+
+  async function refreshFileTree(projectId) {
+    if (fileTreeRefreshInFlight) {
+      fileTreeRefreshPending = true
+      return
+    }
+
+    fileTreeRefreshInFlight = true
+    try {
+      await loadFileTree(projectId)
+    } finally {
+      fileTreeRefreshInFlight = false
+      if (fileTreeRefreshPending && isActive && selectedProject?.id === projectId) {
+        fileTreeRefreshPending = false
+        refreshFileTree(projectId)
+      } else {
+        fileTreeRefreshPending = false
+      }
     }
   }
 
@@ -146,7 +166,6 @@
     fileError = null
     imageDataUri = null
     fileType = classifyFile(relativePath)
-    console.log(`[file] open: "${relativePath}" → classified as "${fileType}"`)
 
     try {
       if (fileType === 'image') {

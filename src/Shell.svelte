@@ -278,7 +278,6 @@
       // FilesTab to refresh via the fileChangePaths reactive prop.
       listen('project-files-changed', (event) => {
         const { project_id, paths } = event.payload
-        console.log(`[filewatch] Shell: project-files-changed for ${project_id}, ${paths?.length ?? 0} path(s)`, paths)
         // Invalidate asset cache for changed images
         if (paths?.length) {
           for (const p of paths) {
@@ -869,7 +868,9 @@
       <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'tasks'}>
         {#if visitedTabs.has('tasks')}
           <TaskBoard
+            projectId={selectedProject.id}
             projectPath={selectedProject.path}
+            isActive={activeTab === 'tasks'}
             {dark}
             {codeTheme}
             bind:position={taskPosition}
@@ -915,6 +916,7 @@
             {dark}
             {codeTheme}
             {selectedProject}
+            isActive={activeTab === 'files'}
             navTarget={filesNavTarget}
             onClearNavTarget={() => { filesNavTarget = null }}
             bind:position={filesPosition}

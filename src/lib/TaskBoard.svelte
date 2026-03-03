@@ -6,8 +6,8 @@
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
-  /** @type {{ projectPath: string, dark: boolean, codeTheme?: string, position: object|null, navTarget: object|null, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void, onClearNavTarget?: () => void }} */
-  let { projectPath, dark, codeTheme = 'github-light', position = $bindable(null), navTarget = null, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange, onClearNavTarget } = $props()
+  /** @type {{ projectId?: string|null, projectPath: string, isActive?: boolean, dark: boolean, codeTheme?: string, position: object|null, navTarget: object|null, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void, onClearNavTarget?: () => void }} */
+  let { projectId = null, projectPath, isActive = true, dark, codeTheme = 'github-light', position = $bindable(null), navTarget = null, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange, onClearNavTarget } = $props()
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
@@ -95,22 +95,24 @@
     let unlisten = null
     let interval = null
 
-    // Initial fetch
-    fetchTasks()
+    // Initial fetch only when tab is visible to avoid hidden background churn
+    if (isActive) fetchTasks()
 
     // Event-driven updates in Tauri mode
     const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (isTauriEnv) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         if (cancelled) return
-        listen('project-tasks-changed', () => {
-          if (!cancelled && !document.hidden) fetchTasks()
+        listen('project-tasks-changed', (event) => {
+          const eventProjectId = event?.payload?.project_id ?? null
+          const projectMatches = !projectId || !eventProjectId || eventProjectId === projectId
+          if (!cancelled && !document.hidden && isActive && projectMatches) fetchTasks()
         }).then(fn => { unlisten = fn })
       })
     } else {
       // Vite-only mode — poll for mock data
       interval = setInterval(() => {
-        if (!document.hidden) fetchTasks()
+        if (!document.hidden && isActive) fetchTasks()
       }, 5000)
     }
 
