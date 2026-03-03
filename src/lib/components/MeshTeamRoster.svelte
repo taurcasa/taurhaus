@@ -90,6 +90,18 @@
     return tool || 'Unknown'
   }
 
+  function handleWindowClick(event) {
+    const target = event.target
+    if (
+      showOverflowMenu &&
+      target instanceof Element &&
+      !target.closest('[data-testid="mesh-overflow-menu-button"]') &&
+      !target.closest('[data-testid="mesh-overflow-menu"]')
+    ) {
+      showOverflowMenu = false
+    }
+  }
+
   async function refreshRoster() {
     if (!teamName) return
     loading = true
@@ -155,6 +167,8 @@
   })
 </script>
 
+<svelte:window onclick={handleWindowClick} />
+
 <section class="space-y-3" data-testid="mesh-team-roster">
   <header class="flex items-center justify-between gap-3 pb-3 border-b {t.keyline}">
     <div>
@@ -188,7 +202,9 @@
       </button>
       <div class="relative">
         <button
-          class="rounded-md px-1.5 py-1 text-[11px] {t.textMuted} hover:text-zinc-200 hover:bg-zinc-800/70"
+          class="rounded-md px-1.5 py-1 text-[11px] {t.textMuted} {dark
+            ? 'hover:text-zinc-200 hover:bg-zinc-800/70'
+            : 'hover:text-zinc-900 hover:bg-zinc-100'}"
           onclick={() => {
             showOverflowMenu = !showOverflowMenu
           }}
@@ -197,7 +213,10 @@
           ⋯
         </button>
         {#if showOverflowMenu}
-          <div class="absolute right-0 top-full mt-1 rounded-md shadow-lg border {dark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'} py-1 z-10 min-w-[120px]">
+          <div
+            class="absolute right-0 top-full mt-1 rounded-md shadow-lg border {dark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'} py-1 z-10 min-w-[120px]"
+            data-testid="mesh-overflow-menu"
+          >
             <button
               class={actionDanger}
               onclick={() => {
