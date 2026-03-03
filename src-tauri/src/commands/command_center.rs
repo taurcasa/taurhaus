@@ -449,10 +449,7 @@ mod tests {
                 "gemini --yolo --resume",
             ),
         ] {
-            assert_eq!(
-                resolve_configured_tool_command(&cmds, tool, mode),
-                expected
-            );
+            assert_eq!(resolve_configured_tool_command(&cmds, tool, mode), expected);
         }
     }
 

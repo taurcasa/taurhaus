@@ -384,11 +384,7 @@ fn normalize_codex_model(model: &str) -> String {
 }
 
 /// Build the command used for team-agent launch (fresh mode + optional model).
-pub fn build_team_launch_command(
-    cmds: &CliCommandSettings,
-    tool: CliTool,
-    model: &str,
-) -> String {
+pub fn build_team_launch_command(cmds: &CliCommandSettings, tool: CliTool, model: &str) -> String {
     let base = resolve_configured_tool_command(cmds, tool, LaunchMode::Fresh);
     if tool != CliTool::Codex {
         return base;

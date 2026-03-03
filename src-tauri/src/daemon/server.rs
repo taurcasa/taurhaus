@@ -364,9 +364,7 @@ mod tests {
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || {
-            run(&config, shutdown_clone)
-        });
+        let handle = std::thread::spawn(move || run(&config, shutdown_clone));
         let server = TestServer {
             port,
             shutdown,

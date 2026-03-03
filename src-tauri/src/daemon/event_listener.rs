@@ -250,9 +250,8 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || {
-            crate::daemon::server::run(&config, shutdown_clone)
-        });
+        let handle =
+            std::thread::spawn(move || crate::daemon::server::run(&config, shutdown_clone));
         std::thread::sleep(Duration::from_millis(100));
         TestDaemon {
             port,

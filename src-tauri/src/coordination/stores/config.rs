@@ -8,11 +8,11 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::runtime::MemberRuntimeStore;
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
-use super::runtime::MemberRuntimeStore;
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
@@ -166,15 +166,13 @@ impl TeamConfigStore {
                 HashMap::new()
             }
         };
-        let payload = serde_json::to_string_pretty(&mesh_compatible_wire(
-            &normalized,
-            &runtime_by_member,
-        ))
-        .map_err(|err| {
-            CoordinationError::StoreError(format!(
-                "failed to serialize team config for '{team_name}': {err}"
-            ))
-        })?;
+        let payload =
+            serde_json::to_string_pretty(&mesh_compatible_wire(&normalized, &runtime_by_member))
+                .map_err(|err| {
+                    CoordinationError::StoreError(format!(
+                        "failed to serialize team config for '{team_name}': {err}"
+                    ))
+                })?;
 
         if let Err(err) = fs::write(&tmp_path, &payload) {
             return Err(CoordinationError::Io(err));

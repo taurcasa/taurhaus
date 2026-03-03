@@ -860,12 +860,8 @@ fn initialize_team_full_success_path() {
         ]
     );
 
-    let lead_runtime = MemberRuntimeStore::load(
-        tmp.path(),
-        "architecture-final-init",
-        "team-lead",
-    )
-    .expect("lead runtime should exist");
+    let lead_runtime = MemberRuntimeStore::load(tmp.path(), "architecture-final-init", "team-lead")
+        .expect("lead runtime should exist");
     assert!(
         lead_runtime.pane_id.is_some(),
         "lead pane should be created when lead_mode=launch_new"

@@ -29,10 +29,18 @@ pub fn acquire_heavy_test_guard() -> HeavyTestGuard {
         .read(true)
         .write(true)
         .open(&lock_path)
-        .unwrap_or_else(|e| panic!("failed to open heavy test lock file at {:?}: {e}", lock_path));
-    lock_file
-        .lock_exclusive()
-        .unwrap_or_else(|e| panic!("failed to lock heavy test lock file at {:?}: {e}", lock_path));
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to open heavy test lock file at {:?}: {e}",
+                lock_path
+            )
+        });
+    lock_file.lock_exclusive().unwrap_or_else(|e| {
+        panic!(
+            "failed to lock heavy test lock file at {:?}: {e}",
+            lock_path
+        )
+    });
 
     HeavyTestGuard {
         _in_process: in_process,

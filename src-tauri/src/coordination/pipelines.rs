@@ -1040,13 +1040,8 @@ mod tests {
             description: None,
         };
         assert_eq!(
-            build_cli_launch_command(
-                &agent,
-                "architecture-final",
-                MemberRole::Agent,
-                &cmds
-            )
-            .expect("command"),
+            build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
+                .expect("command"),
             "gemini --yolo --sandbox read-only"
         );
     }
@@ -1062,13 +1057,8 @@ mod tests {
             description: None,
         };
         assert_eq!(
-            build_cli_launch_command(
-                &agent,
-                "architecture-final",
-                MemberRole::Agent,
-                &cmds
-            )
-            .expect("command"),
+            build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
+                .expect("command"),
             "codex --yolo -m 'gpt-5.3-codex'"
         );
     }
