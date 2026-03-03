@@ -113,18 +113,21 @@ test-watch:
 build-e2e:
     npx tauri build --debug --no-bundle
 
-# Run E2E tests — Tier 1 only (no daemon required)
-# Builds automatically unless E2E_SKIP_BUILD=1 is set.
-test-e2e:
+# Run E2E tests — Tier 1 only.
+# Ensures the installed daemon matches the current source first, then runs tests.
+# Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
+test-e2e: install-daemon
     npx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
-test-e2e-full:
+# Ensures the installed daemon matches the current source first.
+test-e2e-full: install-daemon
     npx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
+# Ensures the installed daemon matches the current source first.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
-test-e2e-spec SPEC:
+test-e2e-spec SPEC: install-daemon
     npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
 # Reset database (delete SQLite file)
