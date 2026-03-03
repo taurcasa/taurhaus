@@ -11,6 +11,15 @@ taurhaus session management has three layers:
 
 The runtime scanner is process-based and tool-aware, with explicit hysteresis to avoid flickering state changes.
 
+## Runtime delivery model
+
+Session state delivery is event-driven above the daemon:
+- Daemon scanner polls and classifies sessions every 500ms.
+- Daemon serves versioned snapshots via `wait_session_updates` long-poll.
+- App backend bridge (`start_session_updates_bridge`) long-polls daemon updates and emits frontend `sessions-updated` events.
+- Frontend session store applies those events and drives sidebar/hover indicators reactively.
+- On startup, frontend runs a one-shot `list_claude_sessions` hydrate to avoid waiting for first delta event.
+
 ## Supported tools
 
 Supported CLI tools:
@@ -195,8 +204,10 @@ Two hysteresis layers reduce state flicker:
 - Session state hysteresis (all tools): reported state changes only after two consecutive raw polls agree on the new state
 
 Polling cadence:
-- Frontend polls session list every `500ms`.
-- State transition confirmation therefore requires sustained agreement across consecutive polls.
+- Daemon scanner cadence is `500ms` (`SessionActivityHub`).
+- Tauri UI path is event-driven (daemon long-poll -> `sessions-updated`), not frontend IPC polling.
+- Frontend-only mock mode still uses a `500ms` polling loop for local development.
+- State transition confirmation requires sustained agreement across consecutive scanner polls.
 
 ## Sidebar indicators and hover details
 
@@ -243,7 +254,8 @@ Session History timeline view:
 - Supports navigation to commit, file, or commit-range filtered Git view.
 
 Activity statistics:
-- Frontend tracks per-session active/total ticks while polling.
+- Frontend tracks per-session active/total ticks per session-store update tick.
+- In Tauri, update ticks are event-driven daemon snapshots; in mock mode, ticks come from frontend polling.
 - On session disappearance, it persists session activity metrics.
 - HoverCard reads aggregated project activity stats for historical context.
 
@@ -251,7 +263,7 @@ Activity statistics:
 
 | File | Purpose |
 |------|---------|
-| `src/lib/sessionStore.svelte.js` | Polling loop, path normalization, per-session runtime metrics, activity persistence trigger |
+| `src/lib/sessionStore.svelte.js` | Session snapshot store, event-apply path, mock-mode polling, per-session runtime metrics, activity persistence trigger |
 | `src/lib/sessionIndicator.js` | Tool indicator semantics, active/idle coloring, row tinting |
 | `src/lib/toolLogos.js` | Shared SVG logos + display names for Claude/Codex/Gemini |
 | `src/lib/Sidebar.svelte` | Session badges in project list, tmux jump interactions, hover-card entry point |
@@ -264,6 +276,9 @@ Activity statistics:
 | `src-tauri/src/session_scanner/idle/claude.rs` | Claude session file + subagent mtime logic |
 | `src-tauri/src/session_scanner/idle/codex.rs` | Codex date-tree lookup + CWD matching + 7-day lookback |
 | `src-tauri/src/session_scanner/idle/gemini.rs` | Gemini chats directory/hash resolution + mtime logic |
+| `src-tauri/src/daemon/session_activity.rs` | Daemon-owned global scanner hub, versioned snapshots, long-poll waiters |
+| `src-tauri/src/daemon/session_listener.rs` | App-side daemon long-poll client for `wait_session_updates` |
+| `src-tauri/src/daemon_lifecycle.rs` | Session updates bridge (`sessions-updated`) and daemon reconnect flow |
 | `src-tauri/src/platform/linux.rs` | Linux `/proc` process/IO/socket inspection |
 | `src-tauri/src/platform/darwin.rs` | macOS `libproc` + `lsof` process/socket inspection |
 | `src-tauri/src/session/parser.rs` | Handoff markdown/frontmatter + sidecar parser |

@@ -16,9 +16,9 @@ The app and the daemon exist as separate processes because of platform boundarie
 | Property | Value |
 |----------|-------|
 | Transport | TCP |
-| Address | `localhost:9000` |
+| Address | `localhost:17233` |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 4 (current) |
+| Protocol version | 5 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -38,7 +38,7 @@ The app reads this token on connect and includes it in the `auth` field of every
 1. **Startup**: App tries to connect to an already-running daemon
 2. **Auto-launch**: If connection fails, the app starts the daemon and retries
 3. **Health check**: Periodic `ping` requests verify the connection is alive
-4. **Reconnect**: On connection loss, the app rate-limits reconnection attempts (5s cooldown) and refreshes the auth token
+4. **Reconnect**: On connection loss, the app retries connection/restart and re-registers daemon watches
 5. **Disconnect detection**: Failed sends mark the provider as disconnected; IPC commands fall back to `LocalProvider`
 
 ### Timeouts
@@ -158,6 +158,7 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 |--------|--------|--------|-------------|
 | `scan_sessions` | `{ path }` | `{ paths[] }` | Scan for session handoff files |
 | `list_claude_sessions` | — | `Session[]` | List all running CLI tool sessions |
+| `wait_session_updates` | `{ since_version, timeout_ms }` | `{ version, changed, sessions[] }` | Long-poll for a newer session snapshot version |
 | `launch_session` | `{ project_path, mode, cli_tool?, tmux_layout?, command_override? }` | `{ tmux_session?, tmux_window, tmux_pane }` | Launch a CLI tool in a tmux pane |
 | `stop_session` | `{ tmux_pane, cli_tool? }` | — | Stop a running CLI tool session |
 | `navigate_to_session` | `{ tmux_session, tmux_window, tmux_pane }` | — | Focus a tmux pane |
@@ -169,6 +170,16 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 
 **CLI tools** (`cli_tool` field, defaults to `claude`):
 - `claude`, `codex`, `gemini`
+
+### Session activity stream (app bridge)
+
+The daemon itself does not push `session_changed` TCP events. Instead, session activity uses versioned long-poll:
+1. App backend opens a dedicated daemon connection (`DaemonSessionListener`).
+2. App sends `wait_session_updates(since_version, timeout_ms)` repeatedly.
+3. Daemon responds immediately on newer snapshot version, or at timeout with `changed=false`.
+4. App emits a frontend Tauri event `sessions-updated` when `changed=true`.
+
+This keeps polling encapsulated inside daemon + app backend while the frontend stays event-driven.
 
 ### Tasks
 
@@ -183,19 +194,19 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 The daemon runs inside WSL2, launched via `wsl.exe`:
 
 ```
-wsl.exe -d <DISTRO> -- ~/.local/bin/taurhaus-daemon --port 9000
+wsl.exe -d <DISTRO> -- ~/.local/bin/taurhaus-daemon --port 17233
 ```
 
 - `CREATE_NO_WINDOW` flag prevents console flash
 - WSL distro name is validated (alphanumeric, hyphens, underscores, dots only)
-- WSL2 mirrored networking makes `localhost:9000` accessible from Windows
+- WSL2 mirrored networking makes `localhost:17233` accessible from Windows
 
 ### macOS
 
 The daemon runs natively as a subprocess:
 
 ```
-~/.local/bin/taurhaus-daemon --port 9000
+~/.local/bin/taurhaus-daemon --port 17233
 ```
 
 - Binary must be re-signed after copying (`codesign --force --sign -`) due to macOS Sequoia linker-signature rejection
@@ -203,7 +214,7 @@ The daemon runs natively as a subprocess:
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v4), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v5), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
 ## Key files
 
@@ -212,6 +223,8 @@ On connect, the app sends `ping` and checks `protocol_version` in the response. 
 | `src-tauri/src/daemon/protocol.rs` | Wire format types, method constants, param/result structs |
 | `src-tauri/src/daemon/server.rs` | TCP server (daemon-side request handling) |
 | `src-tauri/src/daemon/handlers.rs` | Per-method handler dispatch |
+| `src-tauri/src/daemon/session_activity.rs` | Daemon-owned versioned session snapshot hub |
+| `src-tauri/src/daemon/session_listener.rs` | App-side long-poll client for session updates |
 | `src-tauri/src/daemon/event_listener.rs` | Event listener thread (app-side) |
 | `src-tauri/src/daemon/launcher.rs` | Connection + auto-start logic |
 | `src-tauri/src/daemon/auth.rs` | Token generation, reading, validation |

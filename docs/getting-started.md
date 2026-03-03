@@ -40,7 +40,7 @@ Then restart WSL:
 wsl --shutdown
 ```
 
-**Why this matters**: Without mirrored networking, the Windows app can't connect to the WSL daemon on `localhost:9000`. This is the most common setup issue.
+**Why this matters**: Without mirrored networking, the Windows app can't connect to the WSL daemon on `localhost:17233`. This is the most common setup issue.
 
 ## Step 2: Install tmux
 
@@ -160,7 +160,7 @@ Click the gear icon in the bottom-left corner to configure:
 
 ### "Daemon not connected" or sessions not appearing
 
-The daemon runs inside WSL and communicates over TCP port 9000. If sessions don't appear:
+The daemon runs inside WSL and communicates over TCP port 17233. If sessions don't appear:
 
 1. **Check WSL networking mode**:
    ```powershell
@@ -172,16 +172,16 @@ The daemon runs inside WSL and communicates over TCP port 9000. If sessions don'
 2. **Check if the daemon is running**:
    ```bash
    # In WSL
-   ss -tlnp | grep 9000
+   ss -tlnp | grep 17233
    ```
    If nothing shows, restart taurhaus — it auto-starts the daemon.
 
 3. **Check for port conflicts**:
    ```bash
    # In WSL
-   ss -tlnp | grep 9000
+   ss -tlnp | grep 17233
    ```
-   If another process is using port 9000, stop it or change the conflicting service's port.
+   If another process is using port 17233, stop it or change the conflicting service's port.
 
 4. **Manual daemon start** (for debugging):
    ```bash
@@ -217,7 +217,7 @@ The initial project scan indexes all files for search. This is a one-time operat
 
 Download and run the latest installer. It overwrites the previous version. Your projects, settings, and search index are preserved (stored in your user data directory, not the install directory).
 
-The WSL daemon binary is updated automatically when taurhaus launches — it checks the version and rebuilds if needed.
+The installer ships an updated daemon binary with each app release. If a local daemon update is needed, taurhaus can install the bundled daemon from the app's daemon update flow.
 
 ## Uninstalling
 

@@ -78,6 +78,10 @@ The backend currently registers 61 `#[tauri::command]` functions. Command names 
 | `record_session_activity` | `projectPath: string`, `cliTool: string`, `startedAt: string`, `endedAt: string`, `activeDurationMs: number`, `totalDurationMs: number` | `Result<(), String>` | `command_center.rs` | Persists measured activity stats for a completed session. |
 | `get_project_activity` | `projectPath: string` | `Result<ProjectActivityStats, String>` | `command_center.rs` | Returns aggregated activity totals for a project path. |
 
+Session update behavior:
+- Tauri runtime uses event-driven `sessions-updated` (daemon long-poll bridge) for ongoing updates.
+- `list_claude_sessions` is still used for startup snapshot hydrate and for frontend-only mock-mode polling.
+
 ## Tasks commands
 
 | Command | Parameters (frontend args) | Return type | Module | Description |

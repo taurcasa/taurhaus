@@ -53,7 +53,7 @@ Operations docs: prerequisites, step-by-step procedures
 
 ## Writing Style
 
-- **Tense**: Present tense ("The daemon listens on port 9000"), not future ("The daemon will listen").
+- **Tense**: Present tense ("The daemon listens on port 17233"), not future ("The daemon will listen").
 - **Voice**: Direct and technical. No filler ("In order to", "It should be noted that"). Just state it.
 - **Headings**: Sentence case ("Data model overview"), not title case ("Data Model Overview").
 - **Code snippets**: Only when they clarify something non-obvious. Annotate with comments explaining *why*, not *what*. Never paste entire files.
