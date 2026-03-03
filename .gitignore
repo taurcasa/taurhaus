@@ -2,8 +2,7 @@ node_modules/
 dist/
 .playwright-mcp/
 
-# Claude Code (local dev config, not published)
-CLAUDE.md
+# Claude Code (local dev data, not published)
 .claude/
 
 # Session handoff files (auto-generated, local only)
