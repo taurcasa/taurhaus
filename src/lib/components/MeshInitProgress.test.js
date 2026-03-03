@@ -3,11 +3,16 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('../ipc.js', () => ({
+  coordinationDisbandTeam: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
 }))
 
-const { coordinationInitializeTeam, onCoordinationStepProgress } = await import('../ipc.js')
+const {
+  coordinationDisbandTeam,
+  coordinationInitializeTeam,
+  onCoordinationStepProgress,
+} = await import('../ipc.js')
 
 import MeshInitProgress from './MeshInitProgress.svelte'
 
@@ -25,6 +30,12 @@ describe('MeshInitProgress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     onCoordinationStepProgress.mockResolvedValue(() => {})
+    coordinationDisbandTeam.mockResolvedValue({
+      teamName: 'arch-team',
+      disbanded: true,
+      alreadyDisbanded: false,
+      message: 'team disbanded',
+    })
   })
 
   it('renders pending steps initially', async () => {
@@ -160,6 +171,75 @@ describe('MeshInitProgress', () => {
     })
     expect(screen.getByTestId('mesh-init-retry-button')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-init-failure-details')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-init-open-existing-button')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-init-disband-existing-button')).toBeInTheDocument()
+  })
+
+  it('open existing team action invokes onsuccess with openedExisting flag', async () => {
+    coordinationInitializeTeam.mockResolvedValueOnce({
+      teamName: 'arch-team',
+      failedStep: 'create_team',
+      retryable: true,
+      message: 'team already exists',
+      steps: [
+        { step: 'validate_configuration', status: 'succeeded', message: 'ok' },
+        { step: 'create_team', status: 'failed', message: 'conflict' },
+      ],
+    })
+    const onsuccess = vi.fn()
+
+    render(MeshInitProgress, {
+      props: {
+        dark: false,
+        request: { teamName: 'arch-team' },
+        onsuccess,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-open-existing-button')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-init-open-existing-button'))
+
+    expect(onsuccess).toHaveBeenCalledWith({
+      teamName: 'arch-team',
+      openedExisting: true,
+    })
+  })
+
+  it('disband existing team action disbands then retries initialization', async () => {
+    coordinationInitializeTeam
+      .mockResolvedValueOnce({
+        teamName: 'arch-team',
+        failedStep: 'create_team',
+        retryable: true,
+        message: 'team already exists',
+        steps: [{ step: 'create_team', status: 'failed', message: 'conflict' }],
+      })
+      .mockResolvedValueOnce({
+        teamName: 'arch-team',
+        failedStep: null,
+        retryable: false,
+        message: 'ok',
+        steps: [{ step: 'create_team', status: 'succeeded', message: 'ok' }],
+      })
+
+    render(MeshInitProgress, {
+      props: {
+        dark: false,
+        request: { teamName: 'arch-team' },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-disband-existing-button')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-init-disband-existing-button'))
+
+    await waitFor(() => {
+      expect(coordinationDisbandTeam).toHaveBeenCalledWith('arch-team')
+      expect(coordinationInitializeTeam).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('retry button triggers re-initialization', async () => {

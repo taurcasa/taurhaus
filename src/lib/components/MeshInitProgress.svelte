@@ -1,5 +1,9 @@
 <script>
-  import { coordinationInitializeTeam, onCoordinationStepProgress } from '../ipc.js'
+  import {
+    coordinationDisbandTeam,
+    coordinationInitializeTeam,
+    onCoordinationStepProgress,
+  } from '../ipc.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -54,10 +58,19 @@
   let failedStep = $state('')
   let errorMessage = $state('')
   let lastRequest = $state(null)
+  let disbandingExistingTeam = $state(false)
   let elapsedSeconds = $state(0)
   let elapsedTimer = null
   const succeededSteps = $derived.by(() => steps.filter((entry) => entry.status === 'succeeded'))
   const failedEntry = $derived.by(() => steps.find((entry) => entry.status === 'failed') ?? null)
+  const existingTeamName = $derived.by(() => {
+    const name = activeTeamName || lastRequest?.teamName || ''
+    if (!name || failedStep !== 'create_team') return ''
+    const details = `${errorMessage} ${failedEntry?.message ?? ''}`.toLowerCase()
+    if (!details.includes('already exists')) return ''
+    return name
+  })
+  const canRecoverConflict = $derived(Boolean(existingTeamName))
 
   function resetSteps() {
     steps = stepsOrder.map((step) => ({
@@ -181,6 +194,27 @@
     void runInitialization(lastRequest)
   }
 
+  function handleOpenExistingTeam() {
+    if (!existingTeamName) return
+    onsuccess({ teamName: existingTeamName, openedExisting: true })
+  }
+
+  async function handleDisbandExistingTeam() {
+    if (!existingTeamName || disbandingExistingTeam) return
+    disbandingExistingTeam = true
+    try {
+      await coordinationDisbandTeam(existingTeamName)
+      await runInitialization(lastRequest)
+    } catch (err) {
+      failed = true
+      succeeded = false
+      errorMessage = err?.message || 'Failed to disband existing team.'
+      setStep('create_team', 'failed', errorMessage)
+    } finally {
+      disbandingExistingTeam = false
+    }
+  }
+
   $effect(() => {
     if (!request) return
     void runInitialization(request)
@@ -289,6 +323,24 @@
 
   <div class="flex justify-end gap-2">
     {#if failed}
+      {#if canRecoverConflict}
+        <button
+          class={primaryCta}
+          onclick={handleOpenExistingTeam}
+          disabled={running || disbandingExistingTeam}
+          data-testid="mesh-init-open-existing-button"
+        >
+          Open Existing Team
+        </button>
+        <button
+          class="rounded-md px-3 py-1.5 text-xs bg-danger-500 text-white hover:bg-danger-600 disabled:cursor-not-allowed disabled:opacity-50"
+          onclick={handleDisbandExistingTeam}
+          disabled={running || disbandingExistingTeam}
+          data-testid="mesh-init-disband-existing-button"
+        >
+          {disbandingExistingTeam ? 'Disbanding...' : 'Disband Existing Team'}
+        </button>
+      {/if}
       <button
         class={primaryCta}
         onclick={handleRetry}
