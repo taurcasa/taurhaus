@@ -171,6 +171,8 @@ JSON-line protocol over TCP (localhost:9000). Same protocol on both platforms �
 
 ## Startup Sequence
 
+![Startup Sequence](docs/startup-sequence.jpg)
+
 The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`):
 
 1. **Database** — open/create SQLite, run migrations
@@ -184,6 +186,8 @@ The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`)
 Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. Session detection is frontend-driven (polling `list_claude_sessions` IPC on a 500ms interval).
 
 ## Data Flow
+
+![Data Flow](docs/data-flow.jpg)
 
 ```
 User clicks project

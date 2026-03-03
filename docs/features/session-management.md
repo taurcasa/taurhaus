@@ -25,6 +25,8 @@ Each tool has:
 
 ## Session detection pipeline
 
+![Session Detection Pipeline](../session-detection.jpg)
+
 Detection sequence:
 1. Scan processes (`ps -eo pid,args`) and detect known tool command signatures.
 2. Enrich each process with CWD and TTY via platform APIs.
