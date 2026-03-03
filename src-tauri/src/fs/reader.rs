@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path};
 
 use crate::errors::AppError;
 use crate::models::FileContent;
@@ -18,8 +18,11 @@ pub fn read_file(project_root: &Path, relative_path: &str) -> Result<FileContent
         ));
     }
 
-    // Reject ".." path components
-    if relative_path.contains("..") {
+    // Reject only actual parent-directory traversal components.
+    if Path::new(relative_path)
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
         return Err(AppError::InvalidPath(
             "Path traversal not allowed".to_string(),
         ));
@@ -152,6 +155,15 @@ mod tests {
             AppError::InvalidPath(msg) => assert!(msg.contains("traversal")),
             e => panic!("Expected InvalidPath, got: {e:?}"),
         }
+    }
+
+    #[test]
+    fn allows_filename_containing_double_dot() {
+        let dir = setup();
+        std::fs::write(dir.path().join("release..notes.md"), "safe").unwrap();
+
+        let content = read_file(dir.path(), "release..notes.md").unwrap();
+        assert_eq!(content.content, "safe");
     }
 
     #[test]
