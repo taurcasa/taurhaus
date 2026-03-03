@@ -41,6 +41,7 @@
   "dependencies": {
     "@shikijs/markdown-it": "^3.22.0",
     "dompurify": "^3.3.1",
-    "markdown-it": "^14.1.1"
+    "markdown-it": "^14.1.1",
+    "mermaid": "^11.12.3"
   }
 }

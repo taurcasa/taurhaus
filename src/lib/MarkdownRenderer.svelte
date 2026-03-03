@@ -1,4 +1,5 @@
 <script>
+  import DOMPurify from 'dompurify'
   import { renderMarkdown } from './markdown.js'
   import { readProjectAsset, openExternalUrl } from './ipc.js'
   import * as assetCache from './assetCache.js'
@@ -9,6 +10,7 @@
   let html = $state('')
   let loading = $state(true)
   let container = $state(null)
+  let mermaidRenderCounter = 0
 
   // Re-render when source, theme, or project changes.
   // renderMarkdown already falls back to plain markdown-it if Shiki fails,
@@ -53,6 +55,71 @@
       }).catch(() => {
         // Image not found — leave alt text visible
       })
+    }
+  })
+
+  // After HTML is rendered, replace Mermaid code blocks with rendered SVG.
+  $effect(() => {
+    if (!container || loading) return
+    const isDark = dark
+    let cancelled = false
+
+    ;(async () => {
+      const mermaidBlocks = Array.from(container.querySelectorAll('pre:has(> code.language-mermaid):not([data-mermaid-processed])'))
+      if (mermaidBlocks.length === 0) return
+
+      const { default: mermaid } = await import('mermaid')
+      if (cancelled) return
+
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: isDark ? 'dark' : 'default',
+      })
+
+      for (const pre of mermaidBlocks) {
+        if (cancelled) return
+
+        const codeElement = pre.querySelector('code.language-mermaid')
+        const code = codeElement?.textContent?.trim() ?? ''
+        if (!code) {
+          pre.setAttribute('data-mermaid-processed', 'true')
+          continue
+        }
+
+        try {
+          const id = globalThis.crypto?.randomUUID
+            ? `mermaid-${globalThis.crypto.randomUUID().slice(0, 8)}`
+            : `mermaid-${Date.now()}-${mermaidRenderCounter++}`
+          const { svg } = await mermaid.render(id, code)
+          if (cancelled) return
+
+          const sanitizedSvg = DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+            ADD_TAGS: ['foreignObject'],
+          })
+
+          pre.innerHTML = sanitizedSvg
+          pre.classList.add('mermaid-diagram')
+        } catch (err) {
+          console.error('[markdown] mermaid render failed', err)
+
+          const prev = pre.previousElementSibling
+          if (!prev || !prev.classList.contains('mermaid-error')) {
+            const error = document.createElement('div')
+            error.className = 'mermaid-error'
+            error.textContent = 'Unable to render Mermaid diagram.'
+            pre.parentNode?.insertBefore(error, pre)
+          }
+        } finally {
+          pre.setAttribute('data-mermaid-processed', 'true')
+        }
+      }
+    })().catch((err) => {
+      console.error('[markdown] failed to initialize mermaid', err)
+    })
+
+    return () => {
+      cancelled = true
     }
   })
 
@@ -335,6 +402,30 @@
      fallback for non-Shiki pre blocks. */
   .th-prose :global(pre.shiki) {
     background: unset;
+  }
+
+  .th-prose :global(pre.mermaid-diagram) {
+    background: transparent;
+    border: none;
+    padding: 0;
+    overflow-x: auto;
+  }
+
+  .th-prose :global(pre.mermaid-diagram svg) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .th-prose :global(.mermaid-error) {
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 0.375rem;
+    color: var(--color-red-600, #dc2626);
+  }
+
+  .th-prose-dark :global(.mermaid-error) {
+    color: var(--color-red-400, #f87171);
   }
 
   /* ─── Horizontal Rules ─── */

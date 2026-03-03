@@ -141,6 +141,14 @@ describe('renderMarkdown', () => {
     // Should still render the code content (as plaintext), not throw
     expect(html).toContain('+++')
   })
+
+  it('renders mermaid fenced blocks with language-mermaid class', async () => {
+    const source = '```mermaid\nflowchart TD\n  A-->B\n```'
+    const html = await renderMarkdown(source)
+    expect(html).toContain('language-mermaid')
+    // Mermaid source should remain for downstream diagram rendering.
+    expect(html).toContain('flowchart TD')
+  })
 })
 
 describe('highlightCode', () => {
