@@ -26,6 +26,7 @@ pub fn acquire_heavy_test_guard() -> HeavyTestGuard {
     let lock_path = std::env::temp_dir().join("taurhaus-heavy-tests.lock");
     let lock_file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
