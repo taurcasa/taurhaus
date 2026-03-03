@@ -94,6 +94,7 @@
   // Relationship state
   let relationships = $state([])
   let relationshipsLoading = $state(false)
+  let projectLoadIssues = $state([]) // [{ section, message }]
 
   // Cross-tab navigation state for Git tab
   let gitNavTarget = $state(null) // { type: 'commit', hash } | { type: 'range', after, before } | null
@@ -333,6 +334,28 @@
 
 
   let _selectGeneration = 0
+  function errorMessage(err) {
+    if (typeof err === 'string' && err.trim()) return err
+    if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.trim()) {
+      return err.message
+    }
+    return 'Unknown error'
+  }
+
+  async function withFallback(section, promise, fallback) {
+    try {
+      const value = await promise
+      return { ok: true, section, value, message: null }
+    } catch (err) {
+      return { ok: false, section, value: fallback, message: errorMessage(err) }
+    }
+  }
+
+  async function retryProjectLoad() {
+    if (!selectedProject) return
+    await selectProject(selectedProject)
+  }
+
   async function selectProject(project) {
     const projectId = project.id
 
@@ -344,22 +367,28 @@
     const generation = ++_selectGeneration
 
     // Fire all IPC calls in parallel — don't touch state yet
-    const [detail, commits, sessions, readme, rels] = await Promise.all([
-      getProject(projectId).catch(() => null),
-      getRecentCommits(projectId, 10).catch(() => []),
-      Promise.all([
-        getLatestSession(projectId).catch(() => null),
-        listSessions(projectId, 10).catch(() => []),
-      ]),
-      getReadme(projectId).catch(() => null),
-      getRelationships(projectId).catch(() => []),
+    const [detail, commits, latest, sessionList, readme, rels] = await Promise.all([
+      withFallback('Project details', getProject(projectId), null),
+      withFallback('Recent commits', getRecentCommits(projectId, 10), []),
+      withFallback('Latest session', getLatestSession(projectId), null),
+      withFallback('Session history', listSessions(projectId, 10), []),
+      withFallback('README', getReadme(projectId), null),
+      withFallback('Relationships', getRelationships(projectId), []),
     ])
 
     // Stale check — user clicked a different project while we were loading
     if (generation !== _selectGeneration) return
 
+    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
+      .filter(result => !result.ok)
+      .map(result => ({ section: result.section, message: result.message }))
+    projectLoadIssues = loadIssues
+    if (loadIssues.length > 0) {
+      console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
+    }
+
     // Commit everything in one synchronous block → single DOM repaint
-    selectedProject = detail ? { ...project, ...detail } : project
+    selectedProject = detail.value ? { ...project, ...detail.value } : project
     detailLoading = false
     showAllCommits = false
     activeTab = restoredTab
@@ -376,13 +405,13 @@
     }
     // Restore Task position via separate restoreTarget prop
     taskNavTarget = savedPosition?.taskPosition ?? null
-    recentCommits = commits
+    recentCommits = commits.value
     commitsLoading = false
-    latestSession = sessions[0]
-    sessionHistory = sessions[1] || []
+    latestSession = latest.value
+    sessionHistory = sessionList.value || []
     sessionLoading = false
-    readmeContent = readme
-    relationships = rels
+    readmeContent = readme.value
+    relationships = rels.value
     relationshipsLoading = false
     // Restore file position via navigateTarget — FilesTab loads its own tree
     filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
@@ -778,6 +807,25 @@
             class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
             onclick={() => daemonUpdateDismissed = true}
             data-testid="daemon-update-dismiss"
+          >Dismiss</button>
+        </div>
+      {/if}
+
+      {#if projectLoadIssues.length > 0 && !settingsOpen}
+        <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" data-testid="project-load-degraded-banner">
+          <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
+          <span class="text-[12px] {t.textSecondary} flex-1" data-testid="project-load-degraded-message">
+            Partial project load: {projectLoadIssues.map(i => i.section).join(', ')} failed.
+          </span>
+          <button
+            class="text-[12px] font-medium text-brand-500 hover:text-brand-400 transition-colors"
+            onclick={retryProjectLoad}
+            data-testid="project-load-retry"
+          >Retry</button>
+          <button
+            class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
+            onclick={() => projectLoadIssues = []}
+            data-testid="project-load-dismiss"
           >Dismiss</button>
         </div>
       {/if}

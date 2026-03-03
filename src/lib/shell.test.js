@@ -296,6 +296,23 @@ describe('Per-project position memory', () => {
 describe('selectProject flow', () => {
   let ipc
 
+  function errorMessage(err) {
+    if (typeof err === 'string' && err.trim()) return err
+    if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.trim()) {
+      return err.message
+    }
+    return 'Unknown error'
+  }
+
+  async function withFallback(section, promise, fallback) {
+    try {
+      const value = await promise
+      return { ok: true, section, value, message: null }
+    } catch (err) {
+      return { ok: false, section, value: fallback, message: errorMessage(err) }
+    }
+  }
+
   beforeEach(async () => {
     vi.clearAllMocks()
     ipc = await import('./ipc.js')
@@ -353,21 +370,28 @@ describe('selectProject flow', () => {
     expect(result).toBe('fast-project')
   })
 
-  it('handles individual IPC failures gracefully', async () => {
+  it('collects degraded load issues while preserving fallback data', async () => {
     ipc.getProject.mockRejectedValue(new Error('DB error'))
     ipc.getRecentCommits.mockRejectedValue(new Error('Git error'))
     ipc.getReadme.mockRejectedValue(new Error('File error'))
 
-    // selectProject uses .catch(() => fallback) for each call
     const [detail, commits, readme] = await Promise.all([
-      ipc.getProject('p1').catch(() => null),
-      ipc.getRecentCommits('p1', 10).catch(() => []),
-      ipc.getReadme('p1').catch(() => null),
+      withFallback('Project details', ipc.getProject('p1'), null),
+      withFallback('Recent commits', ipc.getRecentCommits('p1', 10), []),
+      withFallback('README', ipc.getReadme('p1'), null),
     ])
+    const issues = [detail, commits, readme]
+      .filter(result => !result.ok)
+      .map(result => ({ section: result.section, message: result.message }))
 
-    expect(detail).toBeNull()
-    expect(commits).toEqual([])
-    expect(readme).toBeNull()
+    expect(detail.value).toBeNull()
+    expect(commits.value).toEqual([])
+    expect(readme.value).toBeNull()
+    expect(issues).toEqual([
+      { section: 'Project details', message: 'DB error' },
+      { section: 'Recent commits', message: 'Git error' },
+      { section: 'README', message: 'File error' },
+    ])
   })
 })
 
