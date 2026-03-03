@@ -444,7 +444,13 @@ pub fn update_file(
     // Read and index the file
     let content = match std::fs::read_to_string(absolute_path) {
         Ok(c) => c,
-        Err(_) => return Ok(false), // binary or unreadable
+        Err(_) => {
+            // File exists but is no longer readable as text (e.g. binary/encoding/permissions):
+            // remove stale index content for this path.
+            index.remove_by_file_path(&relative);
+            index.commit()?;
+            return Ok(true);
+        }
     };
 
     let title = absolute_path
@@ -895,6 +901,26 @@ mod tests {
         // Should return true (removed from index if it was there) but doc count stays 0
         assert!(modified);
         assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn update_file_removes_stale_doc_when_file_becomes_unreadable() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("notes.md");
+
+        std::fs::write(&file_path, "Readable markdown content").unwrap();
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+        assert_eq!(index.doc_count().unwrap(), 1);
+        assert_eq!(index.search("Readable", 10).unwrap().len(), 1);
+
+        // Keep the same indexable extension, but make content unreadable as UTF-8.
+        std::fs::write(&file_path, [0xff, 0xfe, 0xfd]).unwrap();
+        let modified = update_file(&mut index, "p1", dir.path(), &file_path).unwrap();
+
+        assert!(modified);
+        assert_eq!(index.doc_count().unwrap(), 0);
+        assert!(index.search("Readable", 10).unwrap().is_empty());
     }
 
     #[test]
