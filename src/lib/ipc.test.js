@@ -825,6 +825,56 @@ describe('ipc module', () => {
     })
   })
 
+  describe('checkMeshInstallStatus()', () => {
+    it('returns mock data in non-Tauri mode', async () => {
+      const result = await ipc.checkMeshInstallStatus()
+      expect(result).toEqual({
+        installed: true,
+        version: '0.1.0',
+        bundled_version: '0.1.0',
+        needs_update: false,
+        environment_available: true,
+        error: null,
+      })
+    })
+
+    it('calls check_mesh_install_status in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        installed: false,
+        version: null,
+        bundled_version: '0.1.1',
+        needs_update: false,
+        environment_available: true,
+        error: null,
+      })
+
+      const result = await ipc.checkMeshInstallStatus()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('check_mesh_install_status')
+      expect(result.installed).toBe(false)
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('installMesh()', () => {
+    it('returns mock success in non-Tauri mode', async () => {
+      const result = await ipc.installMesh()
+      expect(result).toContain('Mesh installed successfully')
+    })
+
+    it('calls install_mesh in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('Mesh installed successfully: mesh 0.1.1')
+
+      const result = await ipc.installMesh()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('install_mesh')
+      expect(result).toContain('0.1.1')
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
   // -----------------------------------------------------------------------
   // Coordination IPC wrappers (frontend-only task surface)
   // -----------------------------------------------------------------------

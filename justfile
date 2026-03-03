@@ -17,8 +17,18 @@ dev-frontend:
 # Run full Tauri dev (frontend + backend)
 # Creates placeholder daemon resource if missing (Tauri validates at compile time)
 dev:
-    @mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
+    @mkdir -p src-tauri/resources
+    @touch src-tauri/resources/taurhaus-daemon
+    @touch src-tauri/resources/mesh
+    @echo "0.0.0-dev" > src-tauri/resources/mesh.version
     npm run dev:tauri
+
+# Ensure required Tauri resource files exist for local compile/test lanes.
+ensure-tauri-resources:
+    @mkdir -p src-tauri/resources
+    @touch src-tauri/resources/taurhaus-daemon
+    @touch src-tauri/resources/mesh
+    @if [ ! -s src-tauri/resources/mesh.version ]; then echo "0.0.0-dev" > src-tauri/resources/mesh.version; fi
 
 # Run default checks (safe local lane)
 check: fmt lint typecheck test
@@ -33,7 +43,7 @@ fmt:
     cd src-tauri && cargo fmt --check
 
 # Lint everything
-lint:
+lint: ensure-tauri-resources
     cd src-tauri && cargo clippy --all-targets -- -D warnings
     npm run lint
 
@@ -51,15 +61,15 @@ test-full: test-rust test-frontend
 test-rust: test-rust-fast test-rust-unit test-rust-integration
 
 # Run Rust fast lane (compile all Rust tests, no execution)
-test-rust-fast:
+test-rust-fast: ensure-tauri-resources
     cd src-tauri && cargo check --tests
 
 # Run Rust unit-test execution lane (daemon/network/watcher-heavy tests skipped)
-test-rust-unit:
+test-rust-unit: ensure-tauri-resources
     cd src-tauri && cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything
 
 # Run Rust integration/system lane (serialized)
-test-rust-integration:
+test-rust-integration: ensure-tauri-resources
     cd src-tauri && cargo test --tests -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::server::tests:: -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::event_listener::tests:: -- --test-threads=1
@@ -126,13 +136,25 @@ db-migrate:
     @echo "DB migrations not yet configured — SQLite module pending"
 
 # Build for Linux
-build-linux:
+build-linux: bundle-daemon bundle-mesh
     npm run tauri build
 
 # Build the WSL daemon binary (Linux target)
 build-daemon:
     @mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
     cd src-tauri && cargo build --release --bin taurhaus-daemon
+
+# Build the mesh CLI binary (Linux target, local workspace).
+build-mesh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
+    if [ ! -d "$MESH_PROJECT" ]; then
+        echo "✗ Mesh project not found at $MESH_PROJECT"
+        exit 1
+    fi
+    echo "▸ Building mesh from $MESH_PROJECT…"
+    cd "$MESH_PROJECT" && cargo build --release --bin mesh
 
 # Install daemon to ~/.local/bin/ (WSL)
 # Automatically stops a running daemon before install and restarts it after.
@@ -215,6 +237,27 @@ install-mesh:
     echo "✓ Installed $MESH_BIN to $INSTALL_DIR/"
     "$INSTALL_DIR/$MESH_BIN" --version 2>/dev/null || "$INSTALL_DIR/$MESH_BIN" --help 2>&1 | head -1
 
+# Copy mesh binary to Tauri resources for bundling, plus pinned version metadata.
+bundle-mesh: build-mesh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
+    MESH_BIN="$MESH_PROJECT/target/release/mesh"
+    if [ ! -x "$MESH_BIN" ]; then
+        echo "✗ Built mesh binary not found at $MESH_BIN"
+        exit 1
+    fi
+    MESH_VERSION="$("$MESH_BIN" --version | awk '{print $2}')"
+    if [ -z "$MESH_VERSION" ]; then
+        echo "✗ Could not determine mesh version from $MESH_BIN --version"
+        exit 1
+    fi
+    echo "▸ Bundling mesh binary into src-tauri/resources/…"
+    mkdir -p src-tauri/resources
+    cp "$MESH_BIN" src-tauri/resources/mesh
+    echo "$MESH_VERSION" > src-tauri/resources/mesh.version
+    echo "✓ Mesh binary bundled (version $MESH_VERSION)"
+
 # Run the daemon in foreground (for development)
 run-daemon:
     cd src-tauri && cargo run --bin taurhaus-daemon -- --verbose
@@ -241,7 +284,7 @@ bundle-daemon: build-daemon
 
 # Build Windows NSIS installer (syncs first, builds natively on Windows)
 # Also rebuilds the WSL daemon to keep them in sync.
-build-windows: install-daemon bundle-daemon sync-windows
+build-windows: install-daemon bundle-daemon bundle-mesh sync-windows
     @echo "Note: cmd.exe may print 'UNC paths are not supported'. This is harmless."
     @echo "▸ Installing frontend dependencies on Windows…"
     cmd.exe /c "cd /d {{win_drive}} && npm install"
@@ -278,20 +321,36 @@ test-macos: sync-macos
 build-macos: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
+    if [ ! -d "$MESH_PROJECT" ]; then
+        echo "✗ Mesh project not found at $MESH_PROJECT"
+        exit 1
+    fi
+    echo "▸ Syncing mesh source to macOS…"
+    rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
+    echo "✓ Mesh sync complete"
+    echo ""
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
-    echo "▸ Creating daemon resource placeholder…"
-    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo "▸ Creating resource placeholders…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon {{mac_dir}}/src-tauri/resources/mesh && echo 0.0.0-dev > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building daemon on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon'"
     echo ""
+    echo "▸ Building mesh on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo build --release --bin mesh'"
+    echo ""
     echo "▸ Installing daemon to ~/.local/bin/ on macOS…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p ~/.local/bin && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon ~/.local/bin/ && codesign --force --sign - ~/.local/bin/taurhaus-daemon'"
     echo ""
-    echo "▸ Bundling daemon into resources…"
+    echo "▸ Installing mesh to ~/.local/bin/ on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p ~/.local/bin && cp ~/projects/mesh/target/release/mesh ~/.local/bin/ && chmod 755 ~/.local/bin/mesh && codesign --force --sign - ~/.local/bin/mesh'"
+    echo ""
+    echo "▸ Bundling daemon + mesh into resources…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building macOS app (cargo tauri build)…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && cargo tauri build 2>&1'"
@@ -316,17 +375,30 @@ test-macos-e2e: sync-macos
 build-macos-intel: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
+    if [ ! -d "$MESH_PROJECT" ]; then
+        echo "✗ Mesh project not found at $MESH_PROJECT"
+        exit 1
+    fi
+    echo "▸ Syncing mesh source to macOS…"
+    rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
+    echo "✓ Mesh sync complete"
+    echo ""
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
-    echo "▸ Creating daemon resource placeholder…"
-    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo "▸ Creating resource placeholders…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon {{mac_dir}}/src-tauri/resources/mesh && echo 0.0.0-dev > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building daemon on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon'"
     echo ""
-    echo "▸ Bundling daemon into resources…"
+    echo "▸ Building mesh for x86_64 on macOS…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo build --release --bin mesh --target x86_64-apple-darwin'"
+    echo ""
+    echo "▸ Bundling daemon + mesh into resources…"
     ssh {{mac_host}} "zsh -ilc 'cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/x86_64-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/x86_64-apple-darwin/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building Intel (x86_64) macOS app…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm run build && cargo tauri build --target x86_64-apple-darwin 2>&1'"
@@ -345,11 +417,20 @@ build-macos-intel: sync-macos
 build-macos-universal: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
+    if [ ! -d "$MESH_PROJECT" ]; then
+        echo "✗ Mesh project not found at $MESH_PROJECT"
+        exit 1
+    fi
+    echo "▸ Syncing mesh source to macOS…"
+    rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
+    echo "✓ Mesh sync complete"
+    echo ""
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
     echo ""
-    echo "▸ Creating daemon resource placeholder…"
-    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    echo "▸ Creating resource placeholders…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon {{mac_dir}}/src-tauri/resources/mesh && echo 0.0.0-dev > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building daemon for arm64…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon --target aarch64-apple-darwin'"
@@ -357,11 +438,21 @@ build-macos-universal: sync-macos
     echo "▸ Building daemon for x86_64…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}}/src-tauri && cargo build --release --bin taurhaus-daemon --target x86_64-apple-darwin'"
     echo ""
+    echo "▸ Building mesh for arm64…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo build --release --bin mesh --target aarch64-apple-darwin'"
+    echo ""
+    echo "▸ Building mesh for x86_64…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo build --release --bin mesh --target x86_64-apple-darwin'"
+    echo ""
     echo "▸ Creating universal daemon binary with lipo…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/target/universal-apple-darwin/release && lipo -create {{mac_dir}}/src-tauri/target/aarch64-apple-darwin/release/taurhaus-daemon {{mac_dir}}/src-tauri/target/x86_64-apple-darwin/release/taurhaus-daemon -output {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon && codesign --force --sign - {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon'"
     echo ""
-    echo "▸ Bundling daemon into resources…"
+    echo "▸ Creating universal mesh binary with lipo…"
+    ssh {{mac_host}} "zsh -ilc 'mkdir -p ~/projects/mesh/target/universal-apple-darwin/release && lipo -create ~/projects/mesh/target/aarch64-apple-darwin/release/mesh ~/projects/mesh/target/x86_64-apple-darwin/release/mesh -output ~/projects/mesh/target/universal-apple-darwin/release/mesh && codesign --force --sign - ~/projects/mesh/target/universal-apple-darwin/release/mesh'"
+    echo ""
+    echo "▸ Bundling daemon + mesh into resources…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
+    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/universal-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/universal-apple-darwin/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building universal macOS app (arm64 + x86_64)…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && cargo tauri build --target universal-apple-darwin 2>&1'"

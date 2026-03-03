@@ -346,6 +346,23 @@ pub struct DaemonInstallStatus {
     pub error: Option<String>,
 }
 
+/// Mesh installation status for coordination setup.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MeshInstallStatus {
+    /// Whether the mesh binary exists in ~/.local/bin/mesh (or WSL equivalent).
+    pub installed: bool,
+    /// Version of the installed mesh binary, if available.
+    pub version: Option<String>,
+    /// Version bundled with this app release.
+    pub bundled_version: String,
+    /// True when installed version differs from bundled version.
+    pub needs_update: bool,
+    /// Whether the execution environment is available (native or WSL).
+    pub environment_available: bool,
+    /// Human-readable error if detection failed.
+    pub error: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // IPC response types (used by commands, implemented in later phases)
 // ---------------------------------------------------------------------------

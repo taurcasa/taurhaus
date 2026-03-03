@@ -505,6 +505,8 @@ pub fn run() {
             commands::daemon::stop_daemon,
             commands::daemon::check_daemon_install_status,
             commands::daemon::install_daemon,
+            commands::mesh::check_mesh_install_status,
+            commands::mesh::install_mesh,
             commands::logging::frontend_log,
             commands::command_center::list_claude_sessions,
             commands::command_center::launch_claude_session,

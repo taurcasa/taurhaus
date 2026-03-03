@@ -658,3 +658,20 @@ export function installDaemon() {
     'Daemon installed successfully: taurhaus-daemon 0.3.1'
   )
 }
+
+/** Check mesh installation status for Mesh tab prerequisites. */
+export function checkMeshInstallStatus() {
+  return invokeOrMock('check_mesh_install_status', undefined, () => ({
+    installed: true,
+    version: '0.1.0',
+    bundled_version: '0.1.0',
+    needs_update: false,
+    environment_available: true,
+    error: null,
+  }))
+}
+
+/** Install (or update) mesh binary from bundled resources. */
+export function installMesh() {
+  return invokeOrMock('install_mesh', undefined, () => 'Mesh installed successfully: mesh 0.1.0')
+}

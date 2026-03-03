@@ -3,20 +3,24 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('../ipc.js', () => ({
+  checkMeshInstallStatus: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
   coordinationListTeams: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
+  installMesh: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
 }))
 
 const {
+  checkMeshInstallStatus,
   coordinationAddAgent,
   coordinationDisbandTeam,
   coordinationListTeams,
   coordinationInitializeTeam,
   coordinationPreflightCheck,
+  installMesh,
   onCoordinationStepProgress,
 } = await import('../ipc.js')
 
@@ -36,6 +40,14 @@ describe('MeshTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     globalThis.confirm = vi.fn(() => true)
+    checkMeshInstallStatus.mockResolvedValue({
+      installed: true,
+      version: '0.1.0',
+      bundled_version: '0.1.0',
+      needs_update: false,
+      environment_available: true,
+      error: null,
+    })
     coordinationAddAgent.mockResolvedValue({
       teamName: 'architecture-final',
       memberName: 'backend-dev',
@@ -61,6 +73,7 @@ describe('MeshTab', () => {
       message: 'team initialized',
       steps: [{ step: 'validate_configuration', status: 'succeeded', message: 'ok' }],
     })
+    installMesh.mockResolvedValue('Mesh installed successfully: mesh 0.1.0')
     onCoordinationStepProgress.mockResolvedValue(() => {})
   })
 

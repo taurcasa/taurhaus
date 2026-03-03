@@ -7,6 +7,7 @@ pub mod daemon;
 pub mod files;
 pub mod git;
 pub mod logging;
+pub mod mesh;
 pub mod projects;
 pub mod relationships;
 pub mod search;
