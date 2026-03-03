@@ -1,0 +1,224 @@
+# Daemon protocol
+
+The daemon is a companion process that handles filesystem access, process scanning, and tmux session management. It communicates with the Tauri app over a TCP connection using a JSON-line (NDJSON) protocol.
+
+## Why a daemon
+
+The app and the daemon exist as separate processes because of platform boundaries:
+
+- **Windows**: The GUI runs as a native Windows app, but AI CLI tools (Claude Code, Codex, Gemini CLI) run inside WSL2. The daemon runs inside WSL2 where it has access to `/proc` and the Linux filesystem.
+- **macOS**: The daemon runs natively as a subprocess. No platform boundary — but the same protocol keeps the architecture consistent.
+
+## Connection
+
+| Property | Value |
+|----------|-------|
+| Transport | TCP |
+| Address | `localhost:9000` |
+| Format | NDJSON — one JSON object per line |
+| Protocol version | 4 (current) |
+| Authentication | Shared token (32-byte hex, file-based) |
+
+### Authentication
+
+On startup, the daemon generates a random 32-byte token, writes it to a well-known path with `0600` permissions, and validates it on every request:
+
+| Platform | Token path |
+|----------|-----------|
+| Linux | `~/.local/share/taurhaus/daemon.token` |
+| macOS | `~/Library/Application Support/taurhaus/daemon.token` |
+| Windows | `{FOLDERID_LocalAppData}/taurhaus/daemon.token` |
+
+The app reads this token on connect and includes it in the `auth` field of every request. Old clients without auth support send `null` (backward compatible).
+
+### Connection lifecycle
+
+1. **Startup**: App tries to connect to an already-running daemon
+2. **Auto-launch**: If connection fails, the app starts the daemon and retries
+3. **Health check**: Periodic `ping` requests verify the connection is alive
+4. **Reconnect**: On connection loss, the app rate-limits reconnection attempts (5s cooldown) and refreshes the auth token
+5. **Disconnect detection**: Failed sends mark the provider as disconnected; IPC commands fall back to `LocalProvider`
+
+### Timeouts
+
+| Operation | Timeout |
+|-----------|---------|
+| Ping | 5s |
+| File operations | 10s |
+| Git operations | 30s |
+
+## Wire format
+
+### Request (app → daemon)
+
+```json
+{
+  "id": "r1",
+  "method": "git_status",
+  "params": { "path": "/home/user/project" },
+  "auth": "a1b2c3..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Unique request ID for response matching |
+| `method` | string | Yes | Method name (see command catalog below) |
+| `params` | object | Yes | Method-specific parameters (may be `null`) |
+| `auth` | string | No | Auth token (omitted by old clients) |
+
+### Response (daemon → app)
+
+**Success:**
+```json
+{
+  "id": "r1",
+  "result": { "branch": "main", "is_dirty": false, "ahead": 0, "behind": 0 }
+}
+```
+
+**Error:**
+```json
+{
+  "id": "r1",
+  "error": { "code": "NOT_FOUND", "message": "Path does not exist" }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Matches the request ID |
+| `result` | any | Method-specific result (present on success) |
+| `error` | object | Error with `code` and `message` (present on failure) |
+
+Only one of `result` or `error` is present in each response.
+
+### Event (daemon → app, push-only)
+
+```json
+{
+  "event": "git_changed",
+  "data": { "path": "/home/user/project" }
+}
+```
+
+Events have no `id` field — this is how the client distinguishes them from responses. Events are fire-and-forget; no acknowledgment is expected.
+
+### Message disambiguation
+
+The client deserializes each line as a `DaemonMessage` enum using serde's `#[serde(untagged)]`:
+- Has `id` field → `Response`
+- Has `event` field → `Event`
+
+## Events
+
+| Event | Data | Trigger |
+|-------|------|---------|
+| `file_changed` | `{ path, files[] }` | Watched file modified (triggers search re-index + UI refresh) |
+| `git_changed` | `{ path }` | `.git` directory modified (triggers commit list refresh, debounced 2s) |
+| `session_file_created` | `{ path, file }` | New session handoff file detected |
+
+## Command catalog
+
+### Infrastructure
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `ping` | — | `{ version, protocol_version, uptime_secs }` | Health check. App checks `protocol_version` compatibility. |
+| `shutdown` | — | — | Graceful daemon shutdown |
+| `watch` | `{ path }` | `{ ok }` | Start watching a project directory for file/git changes |
+| `unwatch` | `{ path }` | `{ ok }` | Stop watching a project directory |
+
+### Git
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `git_status` | `{ path }` | `{ branch, is_dirty, ahead, behind }` | Branch name, dirty flag, ahead/behind remote |
+| `git_log` | `{ path, limit?, offset? }` | `Commit[]` | Paginated commit history (default limit=50, offset=0) |
+| `git_latest_commit_time` | `{ path }` | `{ timestamp }` | RFC 3339 timestamp of most recent commit (or null) |
+| `git_commits_in_range` | `{ path, after, before }` | `{ commits[], files[] }` | Commits between two RFC 3339 timestamps |
+| `git_commit_files` | `{ path, hash }` | `{ files[] }` | Files changed in a specific commit (with status) |
+| `git_commit_diff` | `{ path, hash, file_path }` | `{ hunks[] }` | Diff hunks for a specific file in a commit |
+
+### Files
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `file_tree` | `{ path }` | `FileTreeNode[]` | Recursive directory tree (.gitignore-filtered) |
+| `read_file` | `{ path, relative }` | `{ content, language }` | File content with detected language |
+| `read_readme` | `{ path }` | `{ content }` or null | README content if present |
+| `read_asset` | `{ path, relative }` | `{ data }` | Binary file as base64-encoded string |
+| `list_directory` | `{ path }` | `DirEntry[]` | Subdirectory listing for lazy tree expansion |
+
+### Sessions
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `scan_sessions` | `{ path }` | `{ paths[] }` | Scan for session handoff files |
+| `list_claude_sessions` | — | `Session[]` | List all running CLI tool sessions |
+| `launch_session` | `{ project_path, mode, cli_tool?, tmux_layout?, command_override? }` | `{ tmux_session?, tmux_window, tmux_pane }` | Launch a CLI tool in a tmux pane |
+| `stop_session` | `{ tmux_pane, cli_tool? }` | — | Stop a running CLI tool session |
+| `navigate_to_session` | `{ tmux_session, tmux_window, tmux_pane }` | — | Focus a tmux pane |
+
+**Launch modes** (`mode` field):
+- `continue` — resume the last session (e.g., `claude --continue`)
+- `fresh` — start a new session
+- `resume` — tool-specific resume (e.g., `codex resume --last`)
+
+**CLI tools** (`cli_tool` field, defaults to `claude`):
+- `claude`, `codex`, `gemini`
+
+### Tasks
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `get_project_tasks` | `{ path }` | `Task[]` | Aggregated tasks from all CLI tools for a project |
+
+## Platform launch
+
+### Windows
+
+The daemon runs inside WSL2, launched via `wsl.exe`:
+
+```
+wsl.exe -d <DISTRO> -- ~/.local/bin/taurhaus-daemon --port 9000
+```
+
+- `CREATE_NO_WINDOW` flag prevents console flash
+- WSL distro name is validated (alphanumeric, hyphens, underscores, dots only)
+- WSL2 mirrored networking makes `localhost:9000` accessible from Windows
+
+### macOS
+
+The daemon runs natively as a subprocess:
+
+```
+~/.local/bin/taurhaus-daemon --port 9000
+```
+
+- Binary must be re-signed after copying (`codesign --force --sign -`) due to macOS Sequoia linker-signature rejection
+- Uses `libproc` and `lsof` instead of `/proc` for process inspection
+
+### Protocol version check
+
+On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v4), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+
+## Key files
+
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/daemon/protocol.rs` | Wire format types, method constants, param/result structs |
+| `src-tauri/src/daemon/server.rs` | TCP server (daemon-side request handling) |
+| `src-tauri/src/daemon/handlers.rs` | Per-method handler dispatch |
+| `src-tauri/src/daemon/event_listener.rs` | Event listener thread (app-side) |
+| `src-tauri/src/daemon/launcher.rs` | Connection + auto-start logic |
+| `src-tauri/src/daemon/auth.rs` | Token generation, reading, validation |
+| `src-tauri/src/daemon/watch.rs` | File watcher management within daemon |
+| `src-tauri/src/provider/daemon_client.rs` | DaemonProvider — TCP client implementing ProjectProvider trait |
+| `src-tauri/src/daemon_lifecycle.rs` | Health check, reconnect, shutdown orchestration |
+
+## Related documents
+
+- [ARCHITECTURE.md](../../ARCHITECTURE.md) — system overview
+- [Platform abstraction](../platform-abstraction.md) — Linux/macOS dispatch details
+- [IPC reference](ipc-reference.md) — Tauri IPC commands that proxy through the daemon

@@ -1,6 +1,6 @@
 # Architecture
 
-A condensed overview for contributors.
+A condensed overview for contributors. For detailed references, see the [docs/ index](docs/README.md).
 
 ## System Overview
 
@@ -38,7 +38,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `Sidebar.svelte` | Project list, session indicators, context menu, hover cards |
 | `OverviewTab.svelte` | Project summary, README, recent commits, sessions |
 | `FilesTab.svelte` | File tree with syntax-highlighted code preview |
-| `GitTab.svelte` | Commit history, diffs, blame, cross-tab navigation |
+| `GitTab.svelte` | Commit history, diffs, cross-tab navigation |
 | `TaskBoard.svelte` | Kanban board aggregating tasks from Claude Code, Codex, Gemini |
 | `TaskDetailPanel.svelte` | Task detail view with metadata and description |
 | `SearchOverlay.svelte` | Full-text search across all projects (Ctrl+K) |
@@ -62,19 +62,34 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `commands/` | Tauri IPC handlers — thin wrappers over domain modules |
 | `platform/` | Compile-time OS dispatch (linux.rs / darwin.rs) |
 | `db/` | SQLite connection, migrations, typed query functions |
-| `git/` | libgit2 wrappers for commits, diffs, blame, status |
+| `git/` | libgit2 wrappers for commits, diffs, status |
 | `fs/` | File tree, content reading, asset serving, file watching |
 | `search/` | tantivy full-text search index (build, update, query) |
 | `session/` | Session import, parsing, archival |
 | `session_scanner/` | CLI tool detection (process scanning, idle detection) |
 | `task_scanner/` | Task aggregation from Claude Code, Codex, Gemini |
-| `daemon/` | TCP client + server, daemon lifecycle (Windows/WSL only) |
+| `daemon/` | TCP client + server, daemon lifecycle |
 | `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
-| `provider/` | CLI tool definitions and launch configuration |
-| `services/` | Cross-cutting application services |
-| `models/` | Shared data structures |
+| `provider/` | Provider routing — LocalProvider (direct) vs DaemonProvider (TCP) |
+| `services/` | Cross-cutting services: relationships, scanner, project utilities, session import |
+| `models/` | Shared data structures (Project, Session, ActivityState, etc.) |
 | `config/` | Application configuration |
+| `coordination/` | Multi-CLI team orchestration (behind `mesh-bridged-backend` feature flag) |
+| `bootstrap.rs` | Startup sequence: DB init, daemon connect, watcher, index, activity reseed |
+| `event_processor.rs` | File/git event batching (300ms quiet window, 2s ceiling) |
+| `daemon_lifecycle.rs` | Daemon auto-launch, reconnection, shutdown |
+
+The crate enforces `#![deny(unsafe_code)]` — the single exception (libgit2 init) uses a scoped `#[allow]`.
+
+### Provider Routing
+
+The `ProviderState` routes each IPC operation to the right backend based on project path:
+
+- **LocalProvider** — direct filesystem/git/search access. Used for native projects (macOS, Linux).
+- **DaemonProvider** — proxies operations over TCP to the daemon. Used for WSL projects on Windows.
+
+Both implement the `ProjectProvider` trait. The routing is transparent to command handlers — they call `provider_state.resolve(path)` and get the right implementation.
 
 ### Storage
 
@@ -82,20 +97,24 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 - **tantivy**: Full-text search index over files, commits, sessions. Rebuilt from filesystem on startup.
 - **Filesystem**: Source of truth for content. SQLite stores metadata; files are always read fresh.
 
-### IPC Commands (~46)
+See [data model reference](docs/architecture/data-model.md) for schema details.
 
-Fine-grained, one command per operation. Frontend calls in parallel for speed.
+### IPC Commands (61)
+
+Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
 Grouped by domain:
-- **Projects** (11): list, get, register, batch register, update, remove, activity, first-run check, readme, scan directory, system roots
-- **Git** (7): all commits, recent commits, range commits, diff, commit files, status, blame
-- **Files** (4): read file, list directory, read asset, file tree
+- **Projects** (9): list, get, register, batch register, update, remove, first-run check, scan directory, validate path
+- **Git** (6): all commits, recent commits, range commits, diff, commit files, status
+- **Files** (6): read file, list directory, read asset, file tree, readme, system roots
 - **Search** (3): search, rebuild index, index status
-- **Sessions** (5): list, get latest, get archived, get detail, record activity
+- **Sessions** (3): list, get latest, get detail
 - **Relationships** (4): list, create, dismiss, remove
-- **Command Center** (5): launch session, stop session, navigate to session, list sessions, project tasks
-- **Daemon** (3): status, start, stop
+- **Command Center** (6): launch session, stop session, navigate to session, list sessions, record activity, project activity
+- **Tasks** (3): project tasks, task detail, archived sessions
+- **Daemon** (6): platform, status, start, stop, check install, install
 - **Settings** (2): get, update
+- **Coordination** (12): create/disband/list teams, add/remove members, team status, initialize, add agent, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
 - **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in `app_data_dir()`. Backend uses `tracing` crate. Single log file, truncated per launch.
 
 ### Session Scanner
@@ -125,21 +144,43 @@ The terminal module manages launching and focusing terminal emulators with the c
 
 macOS uses event-driven AppleScript to handle click-to-activate focus transitions reliably.
 
+### Event Processing
+
+File system events from `notify` arrive in rapid bursts (5–8 events per file edit). The event processor (`event_processor.rs`) uses **batch-and-flush** to coalesce them:
+
+- **Quiet window** (300ms): batch flushes after no new events for 300ms
+- **Max-wait ceiling** (2s): batch flushes regardless after 2s, preventing starvation
+
+Result: one `project-files-changed` Tauri event per edit instead of 5–8. The frontend listener in Shell.svelte dispatches to the active tab via reactive props.
+
 ### Daemon Protocol
 
-JSON-line protocol over TCP (localhost:9000). Same protocol on both platforms — only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS).
+JSON-line protocol over TCP (localhost:9000). Same protocol on both platforms — only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS). See [daemon protocol reference](docs/architecture/daemon-protocol.md) for the full command catalog.
 
 **Events (daemon → app):**
 - `file_changed` — watched file modified (triggers search re-index)
 - `git_changed` — .git directory modified (triggers commit list refresh)
 - `session_file_created` — new session handoff file detected
 
-**Commands (app → daemon, 24 methods):**
+**Commands (app → daemon, 21 methods):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
 - `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory`
 - `list_claude_sessions`, `launch_session`, `stop_session`, `navigate_to_session`
 - `get_project_tasks`
+
+## Startup Sequence
+
+The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`):
+
+1. **Database** — open/create SQLite, run migrations
+2. **Daemon** — connect to existing daemon or auto-launch (platform-specific)
+3. **File watcher** — register watchers for all projects (.gitignore-filtered)
+4. **Search index** — rebuild tantivy index from filesystem
+5. **Activity reseed** — update `last_activity_at` from latest git commit per project
+6. **Session scanner** — start polling for running CLI tool processes
+
+Steps 3–6 run in background threads — the UI is interactive as soon as the database and daemon are ready.
 
 ## Data Flow
 
@@ -190,3 +231,15 @@ just test-macos       # Run Rust tests on Mac Mini via SSH
 | Daemon comms | JSON-line over TCP | Simple, debuggable, mirrored networking in WSL2 |
 | Platform dispatch | Compile-time `#[cfg]` | Zero runtime cost, compiler-enforced API contract |
 | Terminal mgmt | Per-platform emulator enum | Same decision tree, platform-specific activation |
+| Provider routing | Trait-based dispatch | Transparent local vs daemon routing |
+| Unsafe code | `#![deny(unsafe_code)]` | One scoped exception for libgit2 init |
+
+## Further Reading
+
+- [Data model reference](docs/architecture/data-model.md) — SQLite schema, tantivy index, filesystem layout
+- [IPC reference](docs/architecture/ipc-reference.md) — all Tauri IPC commands with parameters and types
+- [Daemon protocol](docs/architecture/daemon-protocol.md) — TCP JSON-line protocol specification
+- [Platform abstraction](docs/platform-abstraction.md) — Linux/macOS dispatch implementation details
+- [File rendering pipeline](docs/file-rendering-pipeline.md) — classification, caching, and rendering
+- [Feature documentation](docs/README.md#features) — per-feature guides
+- [CLAUDE.md](CLAUDE.md) — code standards, build recipes, development workflow
