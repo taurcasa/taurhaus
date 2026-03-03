@@ -40,6 +40,8 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 
 ## Setup
 
+> For a detailed walkthrough with troubleshooting, see the [Getting Started guide](docs/getting-started.md).
+
 ### Windows
 
 **Prerequisites** — install these before running taurhaus:

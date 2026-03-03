@@ -6,7 +6,7 @@ Documentation index for the taurhaus project — a desktop tool for AI project m
 
 | I want to... | Go to |
 |--------------|-------|
-| Set up the project for development | [Getting Started](getting-started.md) |
+| Install and set up taurhaus | [Getting Started](getting-started.md) |
 | Understand the system architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) |
 | Learn the code standards and build recipes | [CLAUDE.md](../CLAUDE.md) |
 | Contribute code | [CONTRIBUTING.md](../CONTRIBUTING.md) |
