@@ -65,6 +65,12 @@
   let rosterRefreshNonce = $state(0)
   let disbanding = $state(false)
   let showDisbandConfirm = $state(false)
+  let discoveredTeams = $state([])
+  let discoveryWarnings = $state([])
+  let showCleanupPanel = $state(false)
+  let cleanupError = $state('')
+  let cleanupTargetTeam = $state('')
+  let showCleanupConfirm = $state(false)
   let runtimeMessageTimer = null
   let errorMessageTimer = null
 
@@ -109,6 +115,11 @@
   function coerceTeams(response) {
     if (Array.isArray(response)) return response
     return response?.teams ?? []
+  }
+
+  function coerceWarnings(response) {
+    if (Array.isArray(response)) return []
+    return Array.isArray(response?.warnings) ? response.warnings : []
   }
 
   function normalizeLinuxPath(path) {
@@ -167,10 +178,18 @@
     return isSameProjectPath(normalizeLeadPath(team), currentProjectPath)
   }
 
+  function sanitizeTeamNameForTestId(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+  }
+
   async function refreshTeamDiscovery(currentProjectPath, isCancelled = () => false) {
     const response = await coordinationListTeams()
     if (isCancelled()) return
     const teams = coerceTeams(response)
+    discoveredTeams = teams
+    discoveryWarnings = coerceWarnings(response)
     const matchingTeam = teams.find((team) => teamMatchesProject(team, currentProjectPath))
     if (isCancelled()) return
     if (matchingTeam) {
@@ -286,6 +305,25 @@
     }
   }
 
+  function requestCleanupDisband(team) {
+    cleanupError = ''
+    cleanupTargetTeam = normalizeTeamName(team)
+    showCleanupConfirm = Boolean(cleanupTargetTeam)
+  }
+
+  async function confirmCleanupDisband() {
+    if (!cleanupTargetTeam) return
+    try {
+      await coordinationDisbandTeam(cleanupTargetTeam)
+      runtimeMessage = `Team "${cleanupTargetTeam}" disbanded.`
+      showCleanupConfirm = false
+      cleanupTargetTeam = ''
+      await refreshTeamDiscovery(projectPath)
+    } catch (err) {
+      cleanupError = err?.message || 'Failed to disband selected team.'
+    }
+  }
+
   $effect(() => {
     if (runtimeMessageTimer) clearTimeout(runtimeMessageTimer)
     if (!runtimeMessage) return
@@ -320,8 +358,14 @@
     addAgentError = ''
     disbanding = false
     showDisbandConfirm = false
+    showCleanupPanel = false
+    cleanupError = ''
+    cleanupTargetTeam = ''
+    showCleanupConfirm = false
     teamName = ''
     mode = 'setup'
+    discoveredTeams = []
+    discoveryWarnings = []
 
     refreshTeamDiscovery(currentProjectPath, () => cancelled)
       .catch((err) => {
@@ -508,13 +552,110 @@
                     onback={handleProgressBack}
                   />
                 {:else}
-                  <MeshSetupForm
-                    {dark}
-                    {projectPath}
-                    {availableProjects}
-                    preflightWarnings={agentWarnings}
-                    oninitialize={handleInitialize}
-                  />
+                  <div class="space-y-3">
+                    <MeshSetupForm
+                      {dark}
+                      {projectPath}
+                      {availableProjects}
+                      preflightWarnings={agentWarnings}
+                      oninitialize={handleInitialize}
+                    />
+
+                    {#if discoveredTeams.length > 0 || discoveryWarnings.length > 0}
+                      <section
+                        class="rounded-lg border {t.keyline} p-3 space-y-2"
+                        data-testid="mesh-cleanup-panel"
+                      >
+                        <header class="flex items-center justify-between gap-3">
+                          <div class="min-w-0">
+                            <p class="text-[11px] uppercase tracking-[0.14em] {t.textMuted}">
+                              Team Cleanup
+                            </p>
+                            <p class="text-xs {t.textSecondary}">
+                              Review existing teams before starting a new one.
+                            </p>
+                          </div>
+                          <button
+                            class="rounded-md px-2 py-1 text-[11px] transition-colors {neutralGhost}"
+                            onclick={() => {
+                              showCleanupPanel = !showCleanupPanel
+                            }}
+                            data-testid="mesh-cleanup-toggle"
+                          >
+                            {showCleanupPanel ? 'Hide' : 'Manage'} ({discoveredTeams.length})
+                          </button>
+                        </header>
+
+                        {#if showCleanupPanel}
+                          {#if cleanupError}
+                            <p class="text-xs text-danger-500" data-testid="mesh-cleanup-error">
+                              {cleanupError}
+                            </p>
+                          {/if}
+
+                          {#if discoveryWarnings.length > 0}
+                            <div class="rounded-md border border-warning-400/30 bg-warning-400/10 px-2 py-1.5" data-testid="mesh-cleanup-warnings">
+                              <p class="text-[11px] font-medium text-warning-500">Discovery warnings</p>
+                              <ul class="mt-1 space-y-1">
+                                {#each discoveryWarnings as warning}
+                                  <li class="text-[11px] {t.textMuted}">{warning}</li>
+                                {/each}
+                              </ul>
+                            </div>
+                          {/if}
+
+                          {#if discoveredTeams.length === 0}
+                            <p class="text-xs {t.textMuted}">
+                              No valid teams found.
+                            </p>
+                          {:else}
+                            <div class="space-y-1.5" data-testid="mesh-cleanup-team-list">
+                              {#each discoveredTeams as team}
+                                {@const currentTeamName = normalizeTeamName(team)}
+                                {@const leadPath = normalizeLeadPath(team)}
+                                {@const isCurrentProject = teamMatchesProject(team, projectPath)}
+                                <article
+                                  class="rounded-md border {t.keyline} px-2.5 py-2 flex items-start justify-between gap-2"
+                                  data-testid={`mesh-cleanup-team-${sanitizeTeamNameForTestId(currentTeamName)}`}
+                                >
+                                  <div class="min-w-0 space-y-0.5">
+                                    <p class="text-xs font-medium {t.textPrimary}">
+                                      {currentTeamName}
+                                    </p>
+                                    <p class="text-[11px] truncate {t.textMuted}">
+                                      {leadPath || 'No lead project path recorded'}
+                                    </p>
+                                    <span
+                                      class={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] ${
+                                        isCurrentProject
+                                          ? dark
+                                            ? 'border border-success-500/40 bg-success-500/10 text-success-300'
+                                            : 'border border-success-300 bg-success-100 text-success-700'
+                                          : dark
+                                            ? 'border border-zinc-600 bg-zinc-800 text-zinc-300'
+                                            : 'border border-zinc-300 bg-zinc-100 text-zinc-600'
+                                      }`}
+                                    >
+                                      {isCurrentProject ? 'Current project' : 'Different project'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    class="rounded-md px-2 py-1 text-[11px] transition-colors {dark
+                                      ? 'text-danger-300 hover:text-danger-200 hover:bg-danger-500/10'
+                                      : 'text-danger-600 hover:text-danger-700 hover:bg-danger-50'}"
+                                    onclick={() => requestCleanupDisband(team)}
+                                    data-testid={`mesh-cleanup-disband-${sanitizeTeamNameForTestId(currentTeamName)}`}
+                                  >
+                                    Disband
+                                  </button>
+                                </article>
+                              {/each}
+                            </div>
+                          {/if}
+                        {/if}
+                      </section>
+                    {/if}
+                  </div>
                 {/if}
               {/if}
             </div>
@@ -534,6 +675,17 @@
         />
       {/if}
 
+      {#if showCleanupConfirm}
+        <ConfirmDialog
+          {dark}
+          bind:open={showCleanupConfirm}
+          title="Disband selected team?"
+          message={`Disband team "${cleanupTargetTeam}"? This removes mesh state and stops active sessions tied to it.`}
+          confirmLabel="Disband"
+          variant="danger"
+          onconfirm={confirmCleanupDisband}
+        />
+      {/if}
     {/if}
   </div>
 </section>

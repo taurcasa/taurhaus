@@ -185,6 +185,39 @@ describe('MeshTab', () => {
     expect(coordinationListTeams).toHaveBeenCalledTimes(2)
   })
 
+  it('shows cleanup panel in setup mode and disbands selected team', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'ops-team', leadProjectPath: '/projects/ops' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('mesh-cleanup-panel')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-cleanup-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-cleanup-team-list')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-cleanup-disband-ops-team'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(coordinationDisbandTeam).toHaveBeenCalledWith('ops-team')
+    })
+  })
+
   it('add agent shows form and submitting calls coordinationAddAgent', async () => {
     coordinationListTeams.mockResolvedValueOnce([
       { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
