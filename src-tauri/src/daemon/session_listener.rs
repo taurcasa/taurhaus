@@ -54,9 +54,13 @@ impl DaemonSessionListener {
         .with_auth(self.auth_token.clone());
 
         let json = serde_json::to_string(&request).map_err(|e| {
-            AppError::InvalidPath(format!("Serialize wait_session_updates request failed: {e}"))
+            AppError::InvalidPath(format!(
+                "Serialize wait_session_updates request failed: {e}"
+            ))
         })?;
-        self.stream.write_all(json.as_bytes()).map_err(AppError::Io)?;
+        self.stream
+            .write_all(json.as_bytes())
+            .map_err(AppError::Io)?;
         self.stream.write_all(b"\n").map_err(AppError::Io)?;
         self.stream.flush().map_err(AppError::Io)?;
 
@@ -85,8 +89,9 @@ impl DaemonSessionListener {
 
         let result = response.result.unwrap_or(serde_json::Value::Null);
         serde_json::from_value(result).map_err(|e| {
-            AppError::InvalidPath(format!("Deserialize wait_session_updates result failed: {e}"))
+            AppError::InvalidPath(format!(
+                "Deserialize wait_session_updates result failed: {e}"
+            ))
         })
     }
 }
-

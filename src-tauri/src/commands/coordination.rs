@@ -34,7 +34,10 @@ fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     #[cfg(not(test))]
     {
         let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
-        (terminal_settings.cli_commands, terminal_settings.tmux_layout)
+        (
+            terminal_settings.cli_commands,
+            terminal_settings.tmux_layout,
+        )
     }
 }
 
@@ -204,7 +207,10 @@ where
 {
     validate_initialize_request_fields(&request)?;
     let report = coordination_initialize_team_impl_with_cli_commands_and_layout(
-        state, request, cli_commands, tmux_layout,
+        state,
+        request,
+        cli_commands,
+        tmux_layout,
     )?;
     for event in initialize_progress_events(&report) {
         emit(&event);
@@ -217,11 +223,7 @@ fn coordination_add_agent_impl(
     state: &CoordinationState,
     request: AddAgentRequest,
 ) -> Result<AddAgentReport, String> {
-    coordination_add_agent_impl_with_cli_commands(
-        state,
-        request,
-        &CliCommandSettings::default(),
-    )
+    coordination_add_agent_impl_with_cli_commands(state, request, &CliCommandSettings::default())
 }
 
 #[cfg(test)]
@@ -269,13 +271,7 @@ fn coordination_add_agent_with_emitter<E>(
 where
     E: FnMut(&StepProgressEvent),
 {
-    coordination_add_agent_with_emitter_and_layout(
-        state,
-        request,
-        cli_commands,
-        "new_window",
-        emit,
-    )
+    coordination_add_agent_with_emitter_and_layout(state, request, cli_commands, "new_window", emit)
 }
 
 fn coordination_add_agent_with_emitter_and_layout<E>(

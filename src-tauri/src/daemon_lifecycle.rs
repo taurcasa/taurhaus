@@ -1,8 +1,8 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands;
-use crate::{daemon, db, fs, models, provider, services, ProviderState, WatcherState};
 use crate::session_scanner::ClaudeSession;
+use crate::{daemon, db, fs, models, provider, services, ProviderState, WatcherState};
 
 /// Extract the WSL home directory from a Linux path.
 ///
@@ -343,9 +343,8 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
             }
 
             let mut listener =
-                match crate::daemon::session_listener::DaemonSessionListener::connect(
-                    &daemon_addr,
-                ) {
+                match crate::daemon::session_listener::DaemonSessionListener::connect(&daemon_addr)
+                {
                     Ok(l) => l,
                     Err(e) => {
                         tracing::debug!(error = %e, "Session listener connect failed");

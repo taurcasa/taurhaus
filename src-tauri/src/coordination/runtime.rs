@@ -496,9 +496,7 @@ fn create_tmux_pane_with_layout(
             return create_tmux_split_pane(project_id, &target);
         }
     } else if tmux_layout == "per_project" {
-        if let Some(target) =
-            find_tmux_project_window(TAURHAUS_TMUX_SESSION_NAME, &window_name)?
-        {
+        if let Some(target) = find_tmux_project_window(TAURHAUS_TMUX_SESSION_NAME, &window_name)? {
             return create_tmux_split_pane(project_id, &target);
         }
     }

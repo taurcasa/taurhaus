@@ -1,7 +1,7 @@
 use crate::commands::projects::DbState;
-use crate::models::TerminalSettings;
 #[cfg(test)]
 use crate::models::CliCommandSettings;
+use crate::models::TerminalSettings;
 
 pub fn load_terminal_settings(db: &DbState) -> TerminalSettings {
     let conn = match db.0.lock() {

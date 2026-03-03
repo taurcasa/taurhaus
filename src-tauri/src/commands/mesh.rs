@@ -306,7 +306,9 @@ fn install_mesh_native(bundled_binary: &Path, bundled_version: &str) -> Result<S
                     "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
                 ));
             }
-            Ok(format!("Mesh installed successfully: mesh {installed_version}"))
+            Ok(format!(
+                "Mesh installed successfully: mesh {installed_version}"
+            ))
         }
         Ok(_) => Err("Mesh was copied but --version check failed.".to_string()),
         Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
@@ -334,7 +336,14 @@ fn install_mesh_wsl(bundled_binary: &Path, bundled_version: &str) -> Result<Stri
     }
 
     let cp = wsl_command()
-        .args(["-d", &distro, "--", "cp", &wsl_source_path, "$HOME/.local/bin/mesh"])
+        .args([
+            "-d",
+            &distro,
+            "--",
+            "cp",
+            &wsl_source_path,
+            "$HOME/.local/bin/mesh",
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -372,7 +381,9 @@ fn install_mesh_wsl(bundled_binary: &Path, bundled_version: &str) -> Result<Stri
                     "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
                 ));
             }
-            Ok(format!("Mesh installed successfully: mesh {installed_version}"))
+            Ok(format!(
+                "Mesh installed successfully: mesh {installed_version}"
+            ))
         }
         Ok(_) => Err("Mesh was copied but --version check failed.".to_string()),
         Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
@@ -404,6 +415,9 @@ mod tests {
     #[test]
     fn parse_distro_from_wsl_output_handles_utf16le_null_bytes() {
         let raw = b"U\0b\0u\0n\0t\0u\0\n\0";
-        assert_eq!(parse_distro_from_wsl_output(raw), Some("Ubuntu".to_string()));
+        assert_eq!(
+            parse_distro_from_wsl_output(raw),
+            Some("Ubuntu".to_string())
+        );
     }
 }

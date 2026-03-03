@@ -3,9 +3,9 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
 use crate::session_scanner::SessionState;
-use crate::session_scanner::cli_tool::CliTool;
 
 /// Scanner cadence for daemon-owned session activity tracking.
 const SCAN_INTERVAL: Duration = Duration::from_millis(500);
@@ -92,7 +92,9 @@ impl SessionActivityHub {
     /// Return the global hub instance and ensure its scanner thread is running.
     pub fn global() -> Arc<Self> {
         static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
-        let hub = HUB.get_or_init(|| Arc::new(SessionActivityHub::new())).clone();
+        let hub = HUB
+            .get_or_init(|| Arc::new(SessionActivityHub::new()))
+            .clone();
         hub.ensure_scanner_thread();
         hub
     }

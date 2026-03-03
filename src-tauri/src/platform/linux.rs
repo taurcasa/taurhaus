@@ -20,7 +20,9 @@ pub fn process_tty(pid: u32) -> Option<String> {
 /// Reads `/proc/{pid}/fd/*` symlinks and compares canonicalized targets.
 pub fn process_has_open_path(pid: u32, target_path: &str) -> bool {
     let target = std::path::Path::new(target_path);
-    let target_canon = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+    let target_canon = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
 
     let fd_dir = format!("/proc/{pid}/fd");
     let entries = match fs::read_dir(&fd_dir) {
