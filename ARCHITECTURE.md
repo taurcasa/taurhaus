@@ -176,11 +176,12 @@ The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`)
 1. **Database** — open/create SQLite, run migrations
 2. **Daemon** — connect to existing daemon or auto-launch (platform-specific)
 3. **File watcher** — register watchers for all projects (.gitignore-filtered)
-4. **Search index** — rebuild tantivy index from filesystem
-5. **Activity reseed** — update `last_activity_at` from latest git commit per project
-6. **Session scanner** — start polling for running CLI tool processes
+4. **Activity reseed** — update `last_activity_at` from latest git commit per project
+5. **Session import** — import any unimported session handoff files
+6. **Search index** — build tantivy index from filesystem if empty
+7. **Task scan** — seed task database from live CLI tool sources
 
-Steps 3–6 run in background threads — the UI is interactive as soon as the database and daemon are ready.
+Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. Session detection is frontend-driven (polling `list_claude_sessions` IPC on a 500ms interval).
 
 ## Data Flow
 
@@ -196,9 +197,10 @@ File changes detected
   → App updates tantivy index + refreshes affected views
 
 CLI session detected
-  → Daemon's session scanner polls for tool processes
+  → Frontend polls list_claude_sessions IPC (500ms interval)
+  → Backend queries daemon (or scans locally if disconnected)
   → Platform module inspects /proc (Linux) or libproc (macOS)
-  → App receives session_update, sidebar shows tool indicator (active/idle)
+  → Sidebar shows tool indicator (active/idle)
   → HoverCard shows full session details on hover
 ```
 
