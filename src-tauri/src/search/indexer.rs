@@ -425,6 +425,25 @@ pub fn update_file(
         Err(_) => return Ok(false),
     };
 
+    // Enforce project boundary on resolved paths to prevent symlink escapes.
+    let canonical_root = match project_root.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return Ok(false),
+    };
+    let canonical_file = match absolute_path.canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+            index.remove_by_file_path(&relative);
+            index.commit()?;
+            return Ok(true);
+        }
+    };
+    if !canonical_file.starts_with(&canonical_root) {
+        index.remove_by_file_path(&relative);
+        index.commit()?;
+        return Ok(true);
+    }
+
     // If file was deleted or isn't indexable, remove from index
     if !absolute_path.is_file() || !is_indexable_file(absolute_path) {
         index.remove_by_file_path(&relative);
@@ -935,6 +954,25 @@ mod tests {
 
         assert!(!modified);
         assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn update_file_rejects_symlink_target_outside_project() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        let outside_file = outside.path().join("secret.md");
+        std::fs::write(&outside_file, "outside secret").unwrap();
+
+        let symlink_path = dir.path().join("notes.md");
+        std::os::unix::fs::symlink(&outside_file, &symlink_path).unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let modified = update_file(&mut index, "p1", dir.path(), &symlink_path).unwrap();
+
+        assert!(modified);
+        assert_eq!(index.doc_count().unwrap(), 0);
+        assert!(index.search("secret", 10).unwrap().is_empty());
     }
 
     #[test]
