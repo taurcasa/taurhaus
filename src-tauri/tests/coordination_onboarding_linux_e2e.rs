@@ -251,7 +251,7 @@ exit 0
     let lead_runtime = MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "team-lead")
         .expect("lead runtime should exist");
     assert_eq!(lead_runtime.pane_id.as_deref(), Some("%1"));
-    assert!(lead_runtime.daemon_pid.is_some());
+    assert!(lead_runtime.daemon_pid.is_none());
 
     let log = fs::read_to_string(&log_path).expect("read call log");
     assert!(log.contains("aitx:new --path proj-core"));
@@ -269,10 +269,8 @@ exit 0
     assert!(log.contains("tmux:send-keys -t %2 Enter"));
     assert!(log.contains("tmux:send-keys -t %3 Enter"));
 
-    assert!(log.contains("mesh:join --team linux-onboarding-e2e --name team-lead"));
     assert!(log.contains("mesh:join --team linux-onboarding-e2e --name frontend-dev"));
     assert!(log.contains("mesh:join --team linux-onboarding-e2e --name reviewer"));
-    assert!(log.contains("mesh:daemon --pane %1 --team linux-onboarding-e2e --name team-lead"));
     assert!(log.contains("mesh:daemon --pane %2 --team linux-onboarding-e2e --name frontend-dev"));
     assert!(log.contains("mesh:daemon --pane %3 --team linux-onboarding-e2e --name reviewer"));
 }

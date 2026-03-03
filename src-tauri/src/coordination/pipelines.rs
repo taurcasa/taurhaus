@@ -540,16 +540,20 @@ impl CoordinationOrchestrator {
     }
 
     fn join_mesh(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
-        self.runtime
-            .join_mesh(&request.team_name, &request.lead.name)?;
+        if should_use_mesh_sidecar(&request.lead)? {
+            self.runtime
+                .join_mesh(&request.team_name, &request.lead.name)?;
+        }
         for agent in &request.agents {
-            self.runtime.join_mesh(&request.team_name, &agent.name)?;
+            if should_use_mesh_sidecar(agent)? {
+                self.runtime.join_mesh(&request.team_name, &agent.name)?;
+            }
         }
         Ok(())
     }
 
     fn start_daemons(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
-        if request.lead_mode == LeadMode::LaunchNew {
+        if request.lead_mode == LeadMode::LaunchNew && should_use_mesh_sidecar(&request.lead)? {
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
             let pane_id = runtime.pane_id.clone().ok_or_else(|| {
@@ -578,6 +582,9 @@ impl CoordinationOrchestrator {
         }
 
         for agent in &request.agents {
+            if !should_use_mesh_sidecar(agent)? {
+                continue;
+            }
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
             let pane_id = runtime.pane_id.clone().ok_or_else(|| {
@@ -706,6 +713,9 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
+        if !should_use_mesh_sidecar(&request.agent)? {
+            return Ok(());
+        }
         self.runtime
             .join_mesh(&request.team_name, &request.agent.name)?;
         runtime_state.mesh_joined = true;
@@ -717,6 +727,9 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
+        if !should_use_mesh_sidecar(&request.agent)? {
+            return Ok(());
+        }
         let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
             CoordinationError::Backend(format!(
                 "missing pane id for member '{}' in team '{}'",
@@ -931,6 +944,10 @@ fn build_cli_launch_command(
         &agent.name,
         role,
     ))
+}
+
+fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, CoordinationError> {
+    Ok(parse_cli_tool(&agent.cli_tool)? != CliTool::Claude)
 }
 
 fn with_claude_team_context(

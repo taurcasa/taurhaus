@@ -871,8 +871,8 @@ fn initialize_team_full_success_path() {
         "lead pane should be created when lead_mode=launch_new"
     );
     assert!(
-        lead_runtime.daemon_pid.is_some(),
-        "lead daemon should start when lead_mode=launch_new"
+        lead_runtime.daemon_pid.is_none(),
+        "claude lead should not start mesh daemon when launched natively"
     );
 }
 
