@@ -4,6 +4,7 @@
     coordinationInitializeTeam,
     onCoordinationStepProgress,
   } from '../ipc.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -59,6 +60,7 @@
   let errorMessage = $state('')
   let lastRequest = $state(null)
   let disbandingExistingTeam = $state(false)
+  let showDisbandExistingConfirm = $state(false)
   let elapsedSeconds = $state(0)
   let elapsedTimer = null
   const succeededSteps = $derived.by(() => steps.filter((entry) => entry.status === 'succeeded'))
@@ -199,7 +201,12 @@
     onsuccess({ teamName: existingTeamName, openedExisting: true })
   }
 
-  async function handleDisbandExistingTeam() {
+  function handleDisbandExistingTeam() {
+    if (!existingTeamName || disbandingExistingTeam) return
+    showDisbandExistingConfirm = true
+  }
+
+  async function confirmDisbandExistingTeam() {
     if (!existingTeamName || disbandingExistingTeam) return
     disbandingExistingTeam = true
     try {
@@ -333,7 +340,7 @@
           Open Existing Team
         </button>
         <button
-          class="rounded-md px-3 py-1.5 text-xs bg-danger-500 text-white hover:bg-danger-600 disabled:cursor-not-allowed disabled:opacity-50"
+          class="h-8 inline-flex items-center rounded-md px-3 text-xs font-medium bg-danger-500 text-white hover:bg-danger-600 disabled:cursor-not-allowed disabled:opacity-50"
           onclick={handleDisbandExistingTeam}
           disabled={running || disbandingExistingTeam}
           data-testid="mesh-init-disband-existing-button"
@@ -342,7 +349,7 @@
         </button>
       {/if}
       <button
-        class={primaryCta}
+        class={canRecoverConflict ? `h-8 inline-flex items-center rounded-md px-3 text-xs ${subtleButton}` : primaryCta}
         onclick={handleRetry}
         disabled={running}
         data-testid="mesh-init-retry-button"
@@ -370,3 +377,15 @@
     {/if}
   </div>
 </section>
+
+{#if showDisbandExistingConfirm}
+  <ConfirmDialog
+    {dark}
+    bind:open={showDisbandExistingConfirm}
+    title="Disband existing team?"
+    message={`Disband team "${existingTeamName}" and retry initialization?`}
+    confirmLabel="Disband & Retry"
+    variant="danger"
+    onconfirm={confirmDisbandExistingTeam}
+  />
+{/if}

@@ -235,6 +235,10 @@ describe('MeshInitProgress', () => {
       expect(screen.getByTestId('mesh-init-disband-existing-button')).toBeInTheDocument()
     })
     await fireEvent.click(screen.getByTestId('mesh-init-disband-existing-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
 
     await waitFor(() => {
       expect(coordinationDisbandTeam).toHaveBeenCalledWith('arch-team')
