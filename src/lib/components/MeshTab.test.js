@@ -136,6 +136,23 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-runtime-placeholder')).toBeInTheDocument()
   })
 
+  it('matches Linux team path against UNC project path', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/home/mstie/projects/taurhaus/' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\mstie\\projects\\taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+    })
+  })
+
   it('switches mode when project changes', async () => {
     coordinationListTeams
       .mockResolvedValueOnce([

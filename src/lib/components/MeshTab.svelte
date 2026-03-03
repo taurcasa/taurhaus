@@ -111,6 +111,77 @@
     return response?.teams ?? []
   }
 
+  function normalizeLinuxPath(path) {
+    let value = String(path || '').trim()
+    if (!value) return ''
+    value = value.replace(/\\/g, '/')
+    value = value.replace(/\/+/g, '/')
+    while (value.length > 1 && value.endsWith('/')) {
+      value = value.slice(0, -1)
+    }
+    return value
+  }
+
+  function wslUncToLinux(path) {
+    const normalized = String(path || '').trim().replace(/\//g, '\\')
+    const lower = normalized.toLowerCase()
+    let prefix = ''
+    if (lower.startsWith('\\\\wsl$\\')) {
+      prefix = '\\\\wsl$\\'
+    } else if (lower.startsWith('\\\\wsl.localhost\\')) {
+      prefix = '\\\\wsl.localhost\\'
+    } else {
+      return null
+    }
+
+    const remainder = normalized.slice(prefix.length)
+    const firstSeparator = remainder.indexOf('\\')
+    if (firstSeparator === -1) return null
+
+    const afterDistro = remainder.slice(firstSeparator)
+    if (!afterDistro || afterDistro === '\\') return '/'
+    return normalizeLinuxPath(afterDistro)
+  }
+
+  function windowsDriveToLinux(path) {
+    const match = String(path || '').trim().match(/^([a-zA-Z]):[\\/](.*)$/)
+    if (!match) return null
+    const [, drive, rest] = match
+    return normalizeLinuxPath(`/mnt/${drive.toLowerCase()}/${rest}`)
+  }
+
+  function normalizeProjectPath(path) {
+    const raw = String(path || '').trim()
+    if (!raw) return ''
+    return wslUncToLinux(raw) ?? windowsDriveToLinux(raw) ?? normalizeLinuxPath(raw)
+  }
+
+  function isSameProjectPath(left, right) {
+    const leftNormalized = normalizeProjectPath(left)
+    const rightNormalized = normalizeProjectPath(right)
+    if (!leftNormalized || !rightNormalized) return false
+    return leftNormalized === rightNormalized
+  }
+
+  function teamMatchesProject(team, currentProjectPath) {
+    return isSameProjectPath(normalizeLeadPath(team), currentProjectPath)
+  }
+
+  async function refreshTeamDiscovery(currentProjectPath, isCancelled = () => false) {
+    const response = await coordinationListTeams()
+    if (isCancelled()) return
+    const teams = coerceTeams(response)
+    const matchingTeam = teams.find((team) => teamMatchesProject(team, currentProjectPath))
+    if (isCancelled()) return
+    if (matchingTeam) {
+      teamName = normalizeTeamName(matchingTeam)
+      mode = 'runtime'
+    } else if (!showInitProgress) {
+      teamName = ''
+      mode = 'setup'
+    }
+  }
+
   function handleInitialize(request) {
     initializeRequest = request
     showInitProgress = true
@@ -124,7 +195,9 @@
     teamName = result?.teamName ?? initializeRequest?.teamName ?? teamName
     mode = 'runtime'
     showInitProgress = false
-    runtimeMessage = 'Team initialized successfully.'
+    runtimeMessage = result?.openedExisting
+      ? 'Opened existing team.'
+      : 'Team initialized successfully.'
   }
 
   function modelsForTool(tool) {
@@ -205,6 +278,7 @@
       initializeRequest = null
       addAgentProgress = null
       onDisbandProp(result)
+      await refreshTeamDiscovery(projectPath)
     } catch (err) {
       errorMessage = err?.message || 'Failed to disband team.'
     } finally {
@@ -249,16 +323,7 @@
     teamName = ''
     mode = 'setup'
 
-    coordinationListTeams()
-      .then((response) => {
-        if (cancelled) return
-        const teams = coerceTeams(response)
-        const matchingTeam = teams.find((team) => normalizeLeadPath(team) === currentProjectPath)
-        if (matchingTeam) {
-          teamName = normalizeTeamName(matchingTeam)
-          mode = 'runtime'
-        }
-      })
+    refreshTeamDiscovery(currentProjectPath, () => cancelled)
       .catch((err) => {
         if (cancelled) return
         errorMessage = err?.message || 'Failed to load Mesh setup state'
@@ -468,6 +533,7 @@
           onconfirm={confirmRuntimeDisband}
         />
       {/if}
+
     {/if}
   </div>
 </section>
