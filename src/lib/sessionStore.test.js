@@ -427,4 +427,28 @@ describe('sessionStore', () => {
     store.stopPolling()
     expect(store.getSessionStats(1300)).toBeNull()
   })
+
+  it('applies daemon session updates without polling', () => {
+    store.applyDaemonSessionUpdate({
+      version: 1,
+      sessions: [
+        { pid: 1400, project_path: '/proj-daemon', state: 'active', tty: '/dev/pts/2', args: 'codex', cli_tool: 'codex' },
+      ],
+    })
+
+    const session = store.getSessionForProject('/proj-daemon')
+    expect(session).toBeTruthy()
+    expect(session.cli_tool).toBe('codex')
+    expect(session._activePercent).toBe(100)
+  })
+
+  it('accepts raw session arrays in applyDaemonSessionUpdate', () => {
+    store.applyDaemonSessionUpdate([
+      { pid: 1500, project_path: '/proj-array', state: 'idle', tty: '/dev/pts/3', args: 'claude', cli_tool: 'claude' },
+    ])
+
+    const session = store.getSessionForProject('/proj-array')
+    expect(session).toBeTruthy()
+    expect(session.state).toBe('idle')
+  })
 })

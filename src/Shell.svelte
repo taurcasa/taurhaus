@@ -1,6 +1,6 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession } from './lib/ipc.js'
-  import { getSessionForProject } from './lib/sessionStore.svelte.js'
+  import { getSessionForProject, applyDaemonSessionUpdate } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
   import TaskBoard from './lib/TaskBoard.svelte'
@@ -222,8 +222,14 @@
     }
   }
 
-  // Command Center — poll for Claude Code sessions
+  // Session updates:
+  // - Tauri runtime: event-driven via daemon bridge (`sessions-updated`)
+  // - Frontend-only mock mode: fallback polling
   $effect(() => {
+    if (isTauri()) {
+      return
+    }
+
     startSessionPolling()
 
     // Pause polling when document is hidden
@@ -305,6 +311,11 @@
         if (status === 'connected') {
           daemonStatusDismissTimer = setTimeout(() => { daemonStatus = null }, 3000)
         }
+      }).then(u => cleanups.push(u))
+
+      // Session activity updates from daemon bridge (event-driven above daemon).
+      listen('sessions-updated', (event) => {
+        applyDaemonSessionUpdate(event.payload)
       }).then(u => cleanups.push(u))
     })
 
