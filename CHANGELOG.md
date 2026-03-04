@@ -6,6 +6,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-04
+
+### Added
+
+**Task Identity & Session Attribution**
+- Task identity model: `source_key` column (migration 009) disambiguates tasks from different Claude source directories (session-id vs team-name)
+- Codex/Gemini session identity: persist session ID from JSONL metadata with filename-stem fallback
+- Transcript-derived commit time windows: use JSONL session timestamps instead of DB persistence timestamps for accurate commit association
+- Structured enrichment warnings: surface commit-enrichment failures in API response instead of silently returning zero counts
+
+**Scan Robustness & Performance**
+- Tri-state scan outcomes: `Data` / `DefinitivelyEmpty` / `Unavailable` prevent false task pruning on degraded I/O
+- Targeted project invalidation: task file changes rescan only affected project, not all registered projects
+- Per-cycle index caching: `ClaudeSourceIndex` and session list built once per scan cycle and reused across projects
+- Diff-based event emission: `project-tasks-changed` only emits on meaningful task count/status changes
+
+**Mesh Agent Management**
+- Agent removal from existing teams: Remove action on non-lead agents in mesh roster with confirmation dialog
+- `RemoveAgentReport` with per-step outcomes (daemon terminate, mesh leave, pane kill, config/runtime cleanup)
+- Lead-removal guard: backend hard-blocks removing the team lead
+- Pane ownership pre-check: verify tmux pane belongs to expected session before killing
+- Team-lead removal notification: lead-only mesh notification when an agent is removed (who, by whom, cleanup status)
+
+**UI Task Board Polish**
+- Archive metadata display: `archived_reason`, `state_changed_at`, `last_status` surfaced in SessionHistory and TaskDetailPanel
+- Live session history refresh: subscribe to `project-tasks-changed` while history tab is active
+- Deterministic task column sorting: in_progress by recency, pending by dependency count, completed by update time
+- `active_form` secondary text on in-progress task cards
+- Enrichment warning badge on sessions with suspect commit counts
+
+### Fixed
+
+- Always run task reconciliation on startup even for empty scans
+- Tri-state enforcement on degraded I/O: read_dir/parse failures map to `Unavailable` instead of `DefinitivelyEmpty`
+- Async event listener cleanup race in TaskBoard and SessionHistory (unmount before listen resolves)
+- Sort tiebreaker: stable secondary key prevents ordering jitter when primary sort keys tie
+- Archived task detail: targeted DB query replaces O(n) linear scan
+- Generation map bounded with retention-window eviction (prevents unbounded memory growth)
+- Inline dark/light ternaries in SessionHistory extracted to `$derived` tokens
+- Add-agent project path: pass explicit cwd to `join_mesh` instead of falling back to app data directory
+- Roster update idempotent: if member already exists from join step, update entry instead of failing on duplicate
+- Skip transcript lookup for team-scoped Claude sessions: team names have no JSONL transcript, use task timestamps directly without warning
+
 ## [0.4.2] - 2026-03-04
 
 ### Added
