@@ -14,6 +14,7 @@
   } = $props()
 
   let containerWidth = $state(0)
+  const connectionGlowFilterId = `mesh-connection-glow-${Math.random().toString(36).slice(2, 9)}`
 
   function normalizeStatus(status) {
     const value = String(status || '').toLowerCase()
@@ -242,6 +243,7 @@
 
 <div
   class="mesh-canvas"
+  class:is-light={!dark}
   bind:clientWidth={containerWidth}
   data-testid="mesh-canvas"
   style={`min-height: ${canvasHeight}px;`}
@@ -255,6 +257,16 @@
       preserveAspectRatio="none"
       aria-hidden="true"
     >
+      <defs>
+        <filter id={connectionGlowFilterId} x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.35" result="blur"></feGaussianBlur>
+          <feMerge>
+            <feMergeNode in="blur"></feMergeNode>
+            <feMergeNode in="SourceGraphic"></feMergeNode>
+          </feMerge>
+        </filter>
+      </defs>
+
       {#each layout.connections as connection (connection.id)}
         <MeshConnection
           from={connection.from}
@@ -262,6 +274,7 @@
           status={connection.status}
           delay={connection.delay}
           duration={connection.duration}
+          glowFilterId={connectionGlowFilterId}
           nodeHeight={58}
           {dark}
         />
@@ -318,6 +331,15 @@
     position: relative;
     width: 100%;
     min-height: 280px;
+  }
+
+  .mesh-canvas.is-light {
+    background-color: #f8fcfb;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(13, 148, 136, 0.08) 1px, transparent 0),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 249, 247, 0.9) 100%);
+    background-size: 16px 16px, 100% 100%;
+    border-radius: 10px;
   }
 
   .mesh-canvas-connections {

@@ -146,47 +146,47 @@
   }
 
   .mesh-node.is-light {
-    background: linear-gradient(180deg, #f0fdfa 0%, #e6f7f4 100%);
+    background: linear-gradient(180deg, #f8fefd 0%, #ecf7f4 46%, #dcefe9 100%);
     border-color: #b2d8d0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--mesh-node-shadow-light);
     color: #134e4a;
   }
 
   .mesh-node.is-light:hover {
     border-color: #8ec5ba;
-    background: linear-gradient(180deg, #effbf9 0%, #ddf3ef 100%);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    background: linear-gradient(180deg, #fcfffe 0%, #e8f7f3 44%, #d4ece6 100%);
+    box-shadow: var(--mesh-node-shadow-light-hover);
   }
 
   .mesh-node.is-light.is-lead {
     border-color: rgba(13, 148, 136, 0.5);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 8px rgba(13, 148, 136, 0.15);
+    box-shadow: var(--mesh-node-shadow-light), 0 0 10px rgba(13, 148, 136, 0.2);
   }
 
   .mesh-node.is-light.is-lead:hover {
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 0 8px rgba(13, 148, 136, 0.15);
+    box-shadow: var(--mesh-node-shadow-light-hover), 0 0 12px rgba(13, 148, 136, 0.22);
   }
 
   .mesh-node.is-light.is-selected {
     border-color: rgba(13, 148, 136, 0.65);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 0 0 2px rgba(13, 148, 136, 0.15);
+    box-shadow: var(--mesh-node-shadow-light-hover), 0 0 0 2px rgba(13, 148, 136, 0.18);
   }
 
   .mesh-node.is-light.is-lead.is-selected {
     box-shadow:
-      0 4px 14px rgba(0, 0, 0, 0.12),
-      0 0 8px rgba(13, 148, 136, 0.15),
-      0 0 0 2px rgba(13, 148, 136, 0.15);
+      var(--mesh-node-shadow-light-hover),
+      0 0 12px rgba(13, 148, 136, 0.22),
+      0 0 0 2px rgba(13, 148, 136, 0.18);
   }
 
   .mesh-node-status {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 6px;
-    height: 6px;
+    top: 7px;
+    right: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 9999px;
-    box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
     pointer-events: none;
   }
 
@@ -236,6 +236,6 @@
   }
 
   .mesh-node.is-light .mesh-node-status {
-    box-shadow: 0 0 4px rgba(13, 148, 136, 0.2);
+    box-shadow: 0 0 8px rgba(13, 148, 136, 0.3);
   }
 </style>

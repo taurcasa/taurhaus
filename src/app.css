@@ -46,14 +46,16 @@
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
 
   /* Mesh Canvas — Node surfaces */
-  --mesh-node-gradient-from: #1e3a3a;
-  --mesh-node-gradient-to: #152e2e;
-  --mesh-node-gradient-hover-from: #223e3e;
-  --mesh-node-gradient-hover-to: #1a3232;
+  --mesh-node-gradient-from: #2e6261;
+  --mesh-node-gradient-to: #102625;
+  --mesh-node-gradient-hover-from: #38706e;
+  --mesh-node-gradient-hover-to: #15302f;
   --mesh-node-border: #2a4a48;
   --mesh-node-border-hover: #3a5a58;
-  --mesh-node-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  --mesh-node-shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --mesh-node-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.24), 0 14px 32px rgba(0, 0, 0, 0.2);
+  --mesh-node-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.28), 0 10px 24px rgba(0, 0, 0, 0.24), 0 20px 44px rgba(0, 0, 0, 0.22);
+  --mesh-node-shadow-light: 0 1px 2px rgba(15, 23, 42, 0.1), 0 5px 14px rgba(15, 23, 42, 0.11), 0 14px 30px rgba(15, 23, 42, 0.12);
+  --mesh-node-shadow-light-hover: 0 2px 4px rgba(15, 23, 42, 0.11), 0 8px 18px rgba(15, 23, 42, 0.13), 0 18px 38px rgba(15, 23, 42, 0.14);
 
   /* Mesh Canvas — Lead node emphasis */
   --mesh-lead-border: rgba(45, 212, 191, 0.6);
@@ -68,7 +70,7 @@
   /* Mesh Canvas — Connection lines */
   --mesh-connection-color: rgba(45, 212, 191, 0.4);
   --mesh-connection-color-dim: rgba(45, 212, 191, 0.15);
-  --mesh-connection-width: 2px;
+  --mesh-connection-width: 2.5px;
   --mesh-connection-active: rgba(45, 212, 191, 0.8);
 
   /* Mesh Canvas — Add node */

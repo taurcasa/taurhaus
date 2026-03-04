@@ -7,6 +7,7 @@
     nodeHeight = 64,
     delay = 0,
     duration = 400,
+    glowFilterId = '',
   } = $props()
 
   let pathElement = $state(null)
@@ -85,6 +86,10 @@
     if (normalizedStatus === 'offline') {
       styles.push('stroke-dasharray: 6,4')
       styles.push('opacity: 0.28')
+    }
+
+    if (dark && glowFilterId) {
+      styles.push(`filter: url(#${glowFilterId})`)
     }
 
     return styles.join('; ')

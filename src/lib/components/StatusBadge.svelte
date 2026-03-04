@@ -13,6 +13,7 @@
   })
 
   const sizeClass = $derived(size === 'md' ? 'h-2 w-2' : 'h-1.5 w-1.5')
+  const sizeStyle = $derived(size === 'md' ? 'width: 10px; height: 10px;' : 'width: 8px; height: 8px;')
   const toneClass = $derived.by(() => {
     if (normalizedStatus === 'active') return 'bg-success-400'
     if (normalizedStatus === 'idle') return 'bg-warning-400'
@@ -26,7 +27,7 @@
 
 <span
   class="inline-block rounded-full {sizeClass} {toneClass} {isActive ? 'status-badge-active activepulse' : ''}"
-  style={glowStyle}
+  style={`${sizeStyle} ${glowStyle}`}
   aria-label={normalizedStatus}
   data-testid={`status-badge-${normalizedStatus}`}
 ></span>
