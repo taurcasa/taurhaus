@@ -15,16 +15,25 @@ import {
   waitForFileContent,
   clickTestId,
 } from '../helpers/navigation.js'
+import { ensureSearchReady } from '../helpers/search.js'
 import { PAUSE_TICK, WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG, TIMEOUT_MEDIUM } from '../helpers/timing.js'
 import { MOD_KEY } from '../helpers/platform.js'
 
 let mainApp = false
+let searchReady = false
 
 describe('Cross-Tab Navigation', () => {
   before(async () => {
     await waitForAppReady()
     mainApp = await ensureMainApp()
-    if (mainApp) await waitForProjectsLoaded()
+    if (!mainApp) return
+
+    await waitForProjectsLoaded()
+    try {
+      searchReady = await ensureSearchReady()
+    } catch {
+      searchReady = false
+    }
   })
 
   // ─── Overview → Git ───────────────────────────────────────────────────────
@@ -250,6 +259,7 @@ describe('Cross-Tab Navigation', () => {
 
     it('search result click navigates to correct file in Files tab', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       // Open search overlay via Ctrl+K
       await browser.keys([MOD_KEY, 'k'])

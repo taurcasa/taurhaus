@@ -29,6 +29,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
+import net from 'node:net'
 import { resolve } from 'node:path'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -78,11 +79,160 @@ function buildSpecList() {
 let tauriDriver
 let sessionTempRoot = null
 
+function runGitOrThrow(cwd, args, errorMessage) {
+  const result = spawnSync('git', args, {
+    cwd,
+    stdio: 'ignore',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'taurhaus-e2e',
+      GIT_AUTHOR_EMAIL: 'e2e@taurhaus.local',
+      GIT_COMMITTER_NAME: 'taurhaus-e2e',
+      GIT_COMMITTER_EMAIL: 'e2e@taurhaus.local',
+    },
+  })
+  if (result.status !== 0) {
+    throw new Error(errorMessage)
+  }
+}
+
+function createFixtureRepo(repoPath, { title, withHistory = true }) {
+  mkdirSync(repoPath, { recursive: true })
+  mkdirSync(`${repoPath}/src/utils`, { recursive: true })
+  mkdirSync(`${repoPath}/docs`, { recursive: true })
+  mkdirSync(`${repoPath}/assets`, { recursive: true })
+  mkdirSync(`${repoPath}/node_modules/fake-lib`, { recursive: true })
+
+  writeFileSync(
+    `${repoPath}/README.md`,
+    `# ${title}
+
+Sample repository used by taurhaus E2E tests.
+
+## Quick Start
+
+- Open Files tab
+- Open Git tab
+- Open Search and query README
+`
+  )
+  writeFileSync(`${repoPath}/.gitignore`, 'node_modules/\n*.tmp\n')
+  writeFileSync(
+    `${repoPath}/src/main.js`,
+    `import { formatStatus } from './utils/format.js'
+
+export function runApp() {
+  return formatStatus('ready')
+}
+`
+  )
+  writeFileSync(
+    `${repoPath}/src/utils/format.js`,
+    `export function formatStatus(value) {
+  return \`status:\${value}\`
+}
+`
+  )
+  writeFileSync(
+    `${repoPath}/docs/guide.md`,
+    `# Guide
+
+This guide exists so markdown rendering can be tested.
+
+## Notes
+
+Search should find README and guide references.
+`
+  )
+  writeFileSync(
+    `${repoPath}/assets/logo.svg`,
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20"><text x="2" y="14">taurhaus</text></svg>\n'
+  )
+  writeFileSync(`${repoPath}/node_modules/fake-lib/index.js`, 'module.exports = "ignored";\n')
+
+  runGitOrThrow(repoPath, ['init', '-q'], 'Failed to initialize e2e fixture git repository')
+
+  // Commit 1: baseline project structure.
+  runGitOrThrow(repoPath, ['add', '.'], 'Failed to stage initial e2e fixture files')
+  runGitOrThrow(repoPath, ['commit', '-q', '-m', 'chore: initialize e2e fixture project'], 'Failed to create initial e2e fixture commit')
+
+  if (!withHistory) return
+
+  // Commit 2: code + docs update for diff and search coverage.
+  writeFileSync(
+    `${repoPath}/src/main.js`,
+    `import { formatStatus } from './utils/format.js'
+
+export function runApp(mode = 'runtime') {
+  return formatStatus(\`ready:\${mode}\`)
+}
+`
+  )
+  writeFileSync(
+    `${repoPath}/docs/guide.md`,
+    `# Guide
+
+Updated guide content for E2E diff coverage.
+
+## Runtime
+
+The runtime mode keeps agents connected.
+`
+  )
+  runGitOrThrow(repoPath, ['add', '.'], 'Failed to stage second e2e fixture commit')
+  runGitOrThrow(repoPath, ['commit', '-q', '-m', 'feat: add runtime notes and formatter update'], 'Failed to create second e2e fixture commit')
+
+  // Commit 3: additional file churn.
+  writeFileSync(
+    `${repoPath}/docs/changelog.md`,
+    `# Changelog
+
+## 0.1.0
+
+- Added runtime documentation
+- Improved fixture stability
+`
+  )
+  runGitOrThrow(repoPath, ['add', '.'], 'Failed to stage third e2e fixture commit')
+  runGitOrThrow(repoPath, ['commit', '-q', '-m', 'docs: add changelog for git history coverage'], 'Failed to create third e2e fixture commit')
+}
+
+function isPortOpen(host, port, timeoutMs = 250) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    let settled = false
+
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(result)
+    }
+
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+    socket.connect(port, host)
+  })
+}
+
+async function waitForWebDriverReady(host, port, timeoutMs = 5_000, intervalMs = 100) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await isPortOpen(host, port)) return
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  throw new Error(`tauri-driver did not open ${host}:${port} within ${timeoutMs}ms`)
+}
+
 export const config = {
   // ── Runner ──────────────────────────────────────────────────────────────
   runner: 'local',
   hostname: '127.0.0.1',
   port: 4444,
+  connectionRetryTimeout: 10_000,
+  connectionRetryCount: 1,
   maxInstances: 1,
   // WDIO defaults to "info", which logs every COMMAND/DATA/RESULT triplet.
   // In the persistent 14-spec suite that adds thousands of synchronous writes
@@ -152,41 +302,31 @@ export const config = {
    * With batched groups, this runs once per group (5 times for the full suite).
    */
   async beforeSession() {
-    return new Promise((resolve) => {
-      sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
-      const tauriDataDir = `${sessionTempRoot}/app-data`
-      const tauriClaudeDir = `${sessionTempRoot}/claude`
-      const e2eProjectsDir = `${sessionTempRoot}/projects`
-      const taurhausFixtureProject = `${e2eProjectsDir}/taurhaus`
-      mkdirSync(tauriDataDir, { recursive: true })
-      mkdirSync(tauriClaudeDir, { recursive: true })
-      mkdirSync(taurhausFixtureProject, { recursive: true })
-      writeFileSync(`${taurhausFixtureProject}/README.md`, '# taurhaus e2e fixture\n')
-      writeFileSync(`${taurhausFixtureProject}/fixture.txt`, 'e2e fixture project\n')
+    sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
+    const tauriDataDir = `${sessionTempRoot}/app-data`
+    const tauriClaudeDir = `${sessionTempRoot}/claude`
+    const e2eProjectsDir = `${sessionTempRoot}/projects`
+    const taurhausFixtureProject = `${e2eProjectsDir}/taurhaus`
+    const ledgerFixtureProject = `${e2eProjectsDir}/ledger`
+    mkdirSync(tauriDataDir, { recursive: true })
+    mkdirSync(tauriClaudeDir, { recursive: true })
 
-      const gitInit = spawnSync('git', ['init', '-q'], {
-        cwd: taurhausFixtureProject,
-        stdio: 'ignore',
-      })
-      if (gitInit.status !== 0) {
-        throw new Error('Failed to initialize e2e fixture git repository')
-      }
+    createFixtureRepo(taurhausFixtureProject, { title: 'taurhaus fixture', withHistory: true })
+    createFixtureRepo(ledgerFixtureProject, { title: 'ledger fixture', withHistory: false })
 
-      process.env.E2E_PROJECTS_DIR = e2eProjectsDir
-      process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
+    process.env.E2E_PROJECTS_DIR = e2eProjectsDir
+    process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
 
-      tauriDriver = spawn('tauri-driver', [], {
-        env: {
-          ...process.env,
-          TAURHAUS_DATA_DIR: tauriDataDir,
-          TAURHAUS_CLAUDE_DIR: tauriClaudeDir,
-        },
-        stdio: [null, process.stdout, process.stderr],
-      })
-
-      // Give tauri-driver time to start its WebDriver server
-      setTimeout(resolve, 500)
+    tauriDriver = spawn('tauri-driver', [], {
+      env: {
+        ...process.env,
+        TAURHAUS_DATA_DIR: tauriDataDir,
+        TAURHAUS_CLAUDE_DIR: tauriClaudeDir,
+      },
+      stdio: [null, process.stdout, process.stderr],
     })
+
+    await waitForWebDriverReady('127.0.0.1', 4444)
   },
 
   /**

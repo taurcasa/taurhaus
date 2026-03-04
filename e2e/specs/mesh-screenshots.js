@@ -1,11 +1,14 @@
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
+import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 
 let mainApp = false
 let tier2Enabled = false
-let uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
+const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 let createdTeamName = null
+const createdTeamNames = new Set()
+let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
 
 async function invokeCoordination(command, args = {}) {
   return await browser.executeAsync((payload, done) => {
@@ -21,16 +24,32 @@ async function invokeCoordination(command, args = {}) {
   }, { command, args })
 }
 
+async function invokeCoordinationWithTimeout(command, args = {}, timeoutMs = 2_500) {
+  return await Promise.race([
+    invokeCoordination(command, args),
+    new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ ok: false, error: `Timed out after ${timeoutMs}ms` })
+      }, timeoutMs)
+    }),
+  ])
+}
+
+async function hasTestId(testId) {
+  return await (await $(`[data-testid="${testId}"]`)).isExisting()
+}
+
 async function waitForMeshSurface() {
   await browser.waitUntil(
     async () => {
-      const meshTab = await $('[data-testid="mesh-tab"]')
-      const setup = await $('[data-testid="mesh-setup-form"]')
-      const runtime = await $('[data-testid="mesh-team-roster"]')
-      const blocking = await $('[data-testid="mesh-availability-blocking"]')
+      if (!(await hasTestId('mesh-tab'))) return false
       return (
-        (await meshTab.isExisting()) &&
-        ((await setup.isExisting()) || (await runtime.isExisting()) || (await blocking.isExisting()))
+        (await hasTestId('mesh-mode-gate')) ||
+        (await hasTestId('mesh-mode-empty')) ||
+        (await hasTestId('mesh-mode-setup')) ||
+        (await hasTestId('mesh-mode-runtime')) ||
+        (await hasTestId('mesh-mode-initializing')) ||
+        (await hasTestId('mesh-availability-blocking'))
       )
     },
     { ...WAIT_MEDIUM, timeoutMsg: 'Mesh tab surface did not render' }
@@ -40,104 +59,110 @@ async function waitForMeshSurface() {
 async function openMeshTab() {
   await clickTestId('tab-mesh')
   await waitForMeshSurface()
-}
 
-async function selectFirstNonEmptyOption(selector) {
-  const select = await $(selector)
-  if (!(await select.isExisting())) return false
-
-  const value = await browser.execute((sel) => {
-    const el = document.querySelector(sel)
-    if (!el) return null
-    const options = Array.from(el.options || [])
-    const found = options.find((opt) => String(opt.value || '').trim().length > 0)
-    return found?.value ?? null
-  }, selector)
-
-  if (!value) return false
-  await select.selectByAttribute('value', value)
-  return true
-}
-
-async function ensureSetupMode() {
-  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  if (!(await runtimeTitle.isExisting())) return
-
-  await browser.execute(() => {
-    window.confirm = () => true
-  })
-
-  const disbandBtn = await $('[data-testid="mesh-disband-button"]')
-  if (await disbandBtn.isExisting()) {
-    await disbandBtn.click()
+  if (await hasTestId('mesh-mode-gate')) {
     await browser.waitUntil(
-      async () => await (await $('[data-testid="mesh-setup-title"]')).isExisting(),
-      { ...WAIT_LONG, timeoutMsg: 'Mesh did not return to setup mode after disband' }
+      async () => !(await hasTestId('mesh-mode-gate')),
+      { ...WAIT_LONG, timeoutMsg: 'Mesh gate did not resolve' }
     )
   }
 }
 
-async function openAdvancedSetup() {
-  const advancedToggle = await $('[data-testid="mesh-advanced-toggle"]')
-  if (!(await advancedToggle.isExisting())) return
+async function disbandRuntimeTeamIfSafe() {
+  if (!(await hasTestId('mesh-mode-runtime'))) return true
 
-  const teamNameInput = await $('[data-testid="mesh-team-name-input"]')
-  if (await teamNameInput.isExisting()) return
+  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
+  const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+  if (!createdTeamNames.has(teamName)) return false
 
-  await advancedToggle.click()
+  await clickTestId('mesh-runtime-overflow-button')
   await browser.waitUntil(
-    async () => await (await $('[data-testid="mesh-team-name-input"]')).isExisting(),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Advanced setup fields did not appear' }
+    async () => await hasTestId('mesh-runtime-disband'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Runtime disband option unavailable' }
   )
+  await clickTestId('mesh-runtime-disband')
+  if (await hasTestId('confirm-dialog-confirm')) {
+    await clickTestId('confirm-dialog-confirm')
+  }
+
+  await browser.waitUntil(
+    async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
+    { ...WAIT_LONG, timeoutMsg: 'Mesh did not leave runtime mode after disband' }
+  )
+
+  return true
+}
+
+async function ensureSetupMode() {
+  await openMeshTab()
+
+  if (await hasTestId('mesh-availability-blocking')) return false
+
+  if (await hasTestId('mesh-mode-runtime')) {
+    const disbanded = await disbandRuntimeTeamIfSafe()
+    if (!disbanded) return false
+  }
+
+  if (await hasTestId('mesh-mode-empty')) {
+    await clickTestId('mesh-template-build-custom')
+  }
+
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-mode-setup'),
+    { ...WAIT_LONG, timeoutMsg: 'Mesh did not enter setup mode' }
+  )
+
+  return true
 }
 
 async function initializeRuntimeForScreenshot() {
-  const setupTitle = await $('[data-testid="mesh-setup-title"]')
-  if (!(await setupTitle.isExisting())) return false
+  if (!(await ensureSetupMode())) return false
 
-  await openAdvancedSetup()
+  const teamName = `e2e-mesh-shot-${uniqueSuffix}`
 
-  const teamName = `mesh-shot-${uniqueSuffix}`
-  const firstAgentName = `mesh-shot-agent-a-${uniqueSuffix}`
+  await clickTestId('mesh-action-customize')
+  await browser.waitUntil(
+    async () => await hasTestId('team-customizer-panel'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
+  )
 
-  const teamNameInput = await $('[data-testid="mesh-team-name-input"]')
-  await teamNameInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
+  const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
   await teamNameInput.clearValue()
   await teamNameInput.setValue(teamName)
+  await clickTestId('team-customizer-save')
 
-  const firstAgentInput = await $('[data-testid="mesh-agent-name-input-0"]')
-  await firstAgentInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-  await firstAgentInput.clearValue()
-  await firstAgentInput.setValue(firstAgentName)
-
-  const selectedSetupProject = await selectFirstNonEmptyOption('[data-testid="mesh-agent-project-select-0"]')
-  if (!selectedSetupProject) return false
-
-  const createButton = await $('[data-testid="mesh-create-team-button"]')
   await browser.waitUntil(
-    async () => !(await createButton.getProperty('disabled')),
+    async () => !(await hasTestId('team-customizer-panel')),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close' }
+  )
+
+  const createButton = await $('[data-testid="mesh-action-initialize"]')
+  await browser.waitUntil(
+    async () => await createButton.isEnabled(),
     { ...WAIT_MEDIUM, timeoutMsg: 'Initialize button never became enabled' }
   )
   await createButton.click()
 
   await browser.waitUntil(
     async () => {
-      const runtime = await $('[data-testid="mesh-runtime-title"]')
-      const failed = await $('[data-testid="mesh-init-failure"]')
-      return (await runtime.isExisting()) || (await failed.isExisting())
+      const runtime = await hasTestId('mesh-mode-runtime')
+      const failed = await hasTestId('mesh-init-failure')
+      return runtime || failed
     },
     { ...WAIT_XLONG, timeoutMsg: 'Mesh initialization did not resolve to runtime or failure' }
   )
 
-  const failed = await $('[data-testid="mesh-init-failure"]')
-  if (await failed.isExisting()) return false
+  if (await hasTestId('mesh-init-failure')) return false
 
   createdTeamName = teamName
+  createdTeamNames.add(teamName)
   return true
 }
 
 describe('Mesh Screenshot Capture', () => {
   before(async () => {
+    tmuxPaneSnapshot = snapshotTmuxPanes()
+
     await waitForAppReady()
     mainApp = await ensureMainApp()
     if (!mainApp) return
@@ -149,6 +174,7 @@ describe('Mesh Screenshot Capture', () => {
       tier2Enabled = false
       return
     }
+
     const report = availability.result || {}
     const canInitialize = report.canInitialize !== false
     const meshAvailable = report.meshAvailable !== false
@@ -158,46 +184,48 @@ describe('Mesh Screenshot Capture', () => {
   })
 
   after(async () => {
-    await browser.execute(() => {
-      window.confirm = () => true
-    })
-    if (createdTeamName) {
-      await invokeCoordination('coordination_disband_team', { teamName: createdTeamName })
+    for (const teamName of createdTeamNames) {
+      if (!teamName.startsWith('e2e-')) continue
+      await invokeCoordinationWithTimeout('coordination_disband_team', { teamName }, 2_500)
+    }
+    createdTeamNames.clear()
+    createdTeamName = null
+
+    const tmuxCleanup = cleanupNewTmuxPanes(tmuxPaneSnapshot)
+    if (!tmuxCleanup.attempted) {
+      console.log(`[e2e] mesh-screenshots tmux cleanup skipped: ${tmuxCleanup.skippedReason}`)
+    } else if (tmuxCleanup.failed.length > 0) {
+      console.warn(`[e2e] mesh-screenshots tmux cleanup failures: ${JSON.stringify(tmuxCleanup.failed)}`)
     }
   })
 
   it('captures mesh setup/runtime screenshots', async function () {
     if (!mainApp) return this.skip()
 
-    await browser.execute(() => {
-      window.confirm = () => true
-    })
-
     await clickTestId('theme-dark')
     await openMeshTab()
-    await ensureSetupMode()
-    await browser.saveScreenshot('e2e/screenshots/mesh-setup-dark.png')
 
     const blocking = await $('[data-testid="mesh-availability-blocking"]')
     if (await blocking.isExisting()) {
       await browser.saveScreenshot('e2e/screenshots/mesh-unavailable-dark.png')
+      return
     }
 
+    if (!(await ensureSetupMode())) return this.skip()
+    await browser.saveScreenshot('e2e/screenshots/mesh-setup-dark.png')
+
     await clickTestId('theme-light')
-    await openMeshTab()
-    await ensureSetupMode()
+    if (!(await ensureSetupMode())) return this.skip()
     await browser.saveScreenshot('e2e/screenshots/mesh-setup-light.png')
 
     await clickTestId('theme-dark')
     await openMeshTab()
-
     if (!tier2Enabled) return
 
     const runtimeReady = await initializeRuntimeForScreenshot()
     if (!runtimeReady) return
 
-    const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-    if (await runtimeTitle.isExisting()) {
+    if (await hasTestId('mesh-runtime-title')) {
       await browser.saveScreenshot('e2e/screenshots/mesh-runtime-dark.png')
     }
   })

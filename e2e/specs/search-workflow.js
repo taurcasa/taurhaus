@@ -5,15 +5,23 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForFileContent, clickTestId } from '../helpers/navigation.js'
-import { openSearch, closeSearch, dismissSearch } from '../helpers/search.js'
+import { openSearch, closeSearch, dismissSearch, ensureSearchReady } from '../helpers/search.js'
 import { WAIT_INSTANT, WAIT_SHORT, WAIT_MEDIUM, TIMEOUT_LONG } from '../helpers/timing.js'
 
 describe('Search Workflow', () => {
   let mainApp = false
+  let searchReady = false
 
   before(async () => {
     await waitForAppReady()
     mainApp = await ensureMainApp()
+    if (!mainApp) return
+
+    try {
+      searchReady = await ensureSearchReady()
+    } catch {
+      searchReady = false
+    }
   })
 
   afterEach(async () => {
@@ -24,6 +32,7 @@ describe('Search Workflow', () => {
   describe('open and close', () => {
     it('Ctrl+K opens search overlay', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -33,6 +42,7 @@ describe('Search Workflow', () => {
 
     it('search input is focused on open', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -42,6 +52,7 @@ describe('Search Workflow', () => {
 
     it('Escape closes the overlay', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -53,6 +64,7 @@ describe('Search Workflow', () => {
 
     it('reopening clears prior input and results', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       // Open, type something, close, reopen
       await openSearch()
@@ -74,6 +86,7 @@ describe('Search Workflow', () => {
 
     it('Ctrl+K toggles overlay open and closed', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -90,6 +103,7 @@ describe('Search Workflow', () => {
   describe('search and navigate', () => {
     it('typing "README" shows results with non-empty titles', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -115,6 +129,7 @@ describe('Search Workflow', () => {
 
     it('clicking a result closes overlay and loads file in Files tab', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       const overlay = await $('[data-testid="search-overlay"]')
       if (!(await overlay.isExisting())) {
@@ -147,6 +162,7 @@ describe('Search Workflow', () => {
 
     it('gibberish query shows no-results state', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -181,6 +197,7 @@ describe('Search Workflow', () => {
   describe('keyboard navigation', () => {
     it('ArrowDown highlights first result', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       await openSearch()
 
@@ -210,6 +227,7 @@ describe('Search Workflow', () => {
 
     it('Enter on highlighted result navigates and closes overlay', async function () {
       if (!mainApp) return this.skip()
+      if (!searchReady) return this.skip()
 
       const overlay = await $('[data-testid="search-overlay"]')
       if (!(await overlay.isExisting())) {

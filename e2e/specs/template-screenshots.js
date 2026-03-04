@@ -11,9 +11,14 @@ import { resolve } from 'node:path'
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickTestId, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
+import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 
 const screenshotDir = resolve(import.meta.dirname, '..', 'screenshots', 'templates')
 let mainApp = false
+const runId = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
+const runtimeTeamName = `e2e-template-shot-${runId}`
+const createdTeamNames = new Set()
+let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
 
 function testIdSelector(testId) {
   return `[data-testid="${testId}"]`
@@ -21,6 +26,36 @@ function testIdSelector(testId) {
 
 async function hasTestId(testId) {
   return await (await $(testIdSelector(testId))).isExisting()
+}
+
+async function invokeTauri(command, args = undefined) {
+  return await browser.executeAsync((payload, done) => {
+    const tauri = window.__TAURI_INTERNALS__
+    if (!tauri || typeof tauri.invoke !== 'function') {
+      done({ ok: false, error: 'Tauri internals unavailable' })
+      return
+    }
+
+    const invokePromise =
+      payload.hasArgs
+        ? tauri.invoke(payload.command, payload.args)
+        : tauri.invoke(payload.command)
+
+    invokePromise
+      .then((result) => done({ ok: true, result }))
+      .catch((error) => done({ ok: false, error: error?.message ?? String(error) }))
+  }, { command, args, hasArgs: typeof args !== 'undefined' })
+}
+
+async function invokeTauriWithTimeout(command, args = undefined, timeoutMs = 2_500) {
+  return await Promise.race([
+    invokeTauri(command, args),
+    new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ ok: false, error: `Timed out after ${timeoutMs}ms` })
+      }, timeoutMs)
+    }),
+  ])
 }
 
 async function waitForMode(modeTestId) {
@@ -111,6 +146,12 @@ async function ensureEmptyMode() {
   }
 
   if (await hasTestId('mesh-mode-runtime')) {
+    const runtimeTitleEl = await $('[data-testid="mesh-runtime-title"]')
+    const runtimeTeamName = (await runtimeTitleEl.isExisting()) ? (await runtimeTitleEl.getText()).trim() : ''
+    if (!createdTeamNames.has(runtimeTeamName)) {
+      throw new Error(`Refusing to disband runtime team not created by this spec: ${runtimeTeamName || 'unknown'}`)
+    }
+
     if (await hasTestId('mesh-runtime-overflow-button')) {
       await clickTestId('mesh-runtime-overflow-button')
       await browser.pause(120)
@@ -120,6 +161,7 @@ async function ensureEmptyMode() {
       if (await hasTestId('confirm-dialog-confirm')) {
         await clickTestId('confirm-dialog-confirm')
       }
+      createdTeamNames.delete(runtimeTeamName)
     }
   }
 
@@ -182,6 +224,21 @@ async function openTeamCustomizer() {
 
 async function initializeFromSetup() {
   await ensureSetupModeWithPreset()
+  await clickTestId('mesh-action-customize')
+  await browser.waitUntil(
+    async () => await hasTestId('team-customizer-panel'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open before initialization' }
+  )
+  const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
+  await teamNameInput.clearValue()
+  await teamNameInput.setValue(runtimeTeamName)
+  await clickTestId('team-customizer-save')
+  await browser.waitUntil(
+    async () => !(await hasTestId('team-customizer-panel')),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close before initialization' }
+  )
+  createdTeamNames.add(runtimeTeamName)
+
   const initializeButton = await $('[data-testid="mesh-action-initialize"]')
   await initializeButton.waitForExist({ timeout: WAIT_MEDIUM.timeout })
   if (!(await initializeButton.isEnabled())) {
@@ -218,12 +275,29 @@ async function openAddAgentPanel() {
 
 describe('Mesh redesign screenshot capture', () => {
   before(async () => {
+    tmuxPaneSnapshot = snapshotTmuxPanes()
+
     rmSync(screenshotDir, { recursive: true, force: true })
     mkdirSync(screenshotDir, { recursive: true })
     await waitForAppReady()
     mainApp = await ensureMainApp()
     if (!mainApp) return
     await waitForProjectsLoaded()
+  })
+
+  after(async () => {
+    for (const teamName of createdTeamNames) {
+      if (!teamName.startsWith('e2e-')) continue
+      await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 2_500)
+    }
+    createdTeamNames.clear()
+
+    const tmuxCleanup = cleanupNewTmuxPanes(tmuxPaneSnapshot)
+    if (!tmuxCleanup.attempted) {
+      console.log(`[e2e] template-screenshots tmux cleanup skipped: ${tmuxCleanup.skippedReason}`)
+    } else if (tmuxCleanup.failed.length > 0) {
+      console.warn(`[e2e] template-screenshots tmux cleanup failures: ${JSON.stringify(tmuxCleanup.failed)}`)
+    }
   })
 
   it('captures all required mesh redesign views', async function () {
@@ -273,7 +347,15 @@ describe('Mesh redesign screenshot capture', () => {
       // Keep the required init artifact by capturing immediately after click.
       await browser.pause(120)
     }
-    await waitForRuntimeMode()
+    await browser.waitUntil(
+      async () =>
+        (await hasTestId('mesh-mode-runtime')) ||
+        (await hasTestId('mesh-init-failure')) ||
+        (await hasTestId('mesh-error')),
+      { ...WAIT_XLONG, timeoutMsg: 'Mesh did not resolve to runtime or failure state' }
+    )
+    if (!(await hasTestId('mesh-mode-runtime'))) return
+
     await shot('09-runtime-mixed-statuses-dark')
 
     await openAddAgentPanel()

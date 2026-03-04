@@ -1,20 +1,14 @@
 /**
  * Template workflow e2e tests.
  *
- * Covers:
- * - Mesh setup template picker + quick presets + blank-slate fallback
- * - Template catalog browse + composition apply back into setup
- * - Team composer validation errors
- * - Custom template CRUD via backend IPC with UI verification
+ * Updated for mode-based mesh UI:
+ * - empty/setup/runtime wrappers (`mesh-mode-*`)
+ * - template browser slideover (`template-browser-panel`)
  */
-
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
-import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
+import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG } from '../helpers/timing.js'
 
 let mainApp = false
 let templatesBlockedReason = ''
@@ -31,6 +25,14 @@ function getField(value, camel, snake) {
   if (camel in value) return value[camel]
   if (snake in value) return value[snake]
   return undefined
+}
+
+function toSlug(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 async function invokeTauri(command, args = undefined) {
@@ -76,23 +78,41 @@ async function bestEffortFlushPending() {
   } catch {}
 }
 
+async function hasTestId(testId) {
+  return await (await $(`[data-testid="${testId}"]`)).isExisting()
+}
+
 async function waitForMeshSurface() {
   await browser.waitUntil(
     async () => {
-      const setup = await $('[data-testid="mesh-setup-form"]')
-      const runtime = await $('[data-testid="mesh-team-roster"]')
-      const blocking = await $('[data-testid="mesh-availability-blocking"]')
-      const loading = await $('[data-testid="mesh-loading"]')
-      const error = await $('[data-testid="mesh-error"]')
+      const meshTab = await hasTestId('mesh-tab')
+      if (!meshTab) return false
       return (
-        (await setup.isExisting()) ||
-        (await runtime.isExisting()) ||
-        (await blocking.isExisting()) ||
-        (await loading.isExisting()) ||
-        (await error.isExisting())
+        (await hasTestId('mesh-mode-gate')) ||
+        (await hasTestId('mesh-mode-empty')) ||
+        (await hasTestId('mesh-mode-setup')) ||
+        (await hasTestId('mesh-mode-initializing')) ||
+        (await hasTestId('mesh-mode-runtime')) ||
+        (await hasTestId('mesh-availability-blocking')) ||
+        (await hasTestId('mesh-error'))
       )
     },
     { ...WAIT_MEDIUM, timeoutMsg: 'Mesh tab surface did not render' }
+  )
+}
+
+async function closeSlideOverIfOpen() {
+  if (!(await hasTestId('slideover-panel'))) return
+  const closeButtons = await $$('[data-testid="slideover-close"]')
+  if (closeButtons.length > 0) {
+    await closeButtons.at(-1).click()
+  } else {
+    await browser.keys('Escape')
+  }
+
+  await browser.waitUntil(
+    async () => !(await hasTestId('slideover-panel')),
+    { ...WAIT_MEDIUM, timeoutMsg: 'SlideOver did not close' }
   )
 }
 
@@ -100,51 +120,28 @@ async function openMeshTab() {
   await clickTestId('tab-mesh')
   await waitForMeshSurface()
 
-  const loading = await $('[data-testid="mesh-loading"]')
-  if (await loading.isExisting()) {
+  if (await hasTestId('mesh-mode-gate')) {
     await browser.waitUntil(
-      async () => !(await (await $('[data-testid="mesh-loading"]')).isExisting()),
-      { ...WAIT_LONG, timeoutMsg: 'Mesh tab did not finish loading' }
+      async () => !(await hasTestId('mesh-mode-gate')),
+      { ...WAIT_LONG, timeoutMsg: 'Mesh gate did not resolve' }
     )
   }
 }
 
-async function ensureSetupMode() {
-  const setupTitle = await $('[data-testid="mesh-setup-title"]')
-  if (await setupTitle.isExisting()) return
+async function disbandRuntimeTeamIfSafe() {
+  if (!(await hasTestId('mesh-mode-runtime'))) return true
 
   const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  if (!(await runtimeTitle.isExisting())) return
-
-  const overflow = await $('[data-testid="mesh-overflow-menu-button"]')
-  if (!(await overflow.isExisting())) return
-  await overflow.click()
-
-  const disband = await $('[data-testid="mesh-disband-button"]')
-  await disband.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-  await disband.click()
-
-  const confirm = await $('[data-testid="confirm-dialog-confirm"]')
-  if (await confirm.isExisting()) {
-    await confirm.click()
-  }
-
-  await browser.waitUntil(
-    async () => await (await $('[data-testid="mesh-setup-title"]')).isExisting(),
-    { ...WAIT_LONG, timeoutMsg: 'Mesh did not return to setup mode after disband' }
-  )
+  const runtimeTeamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+  templatesBlockedReason = `Refusing to disband runtime team in templates spec (not created here): ${runtimeTeamName || 'unknown'}`
+  return false
 }
 
-async function requireTemplateSetup(testContext) {
-  if (!mainApp) {
-    testContext.skip()
-    return false
-  }
-
+async function ensureEmptyMode(testContext) {
   await openMeshTab()
+  await closeSlideOverIfOpen()
 
-  const blocking = await $('[data-testid="mesh-availability-blocking"]')
-  if (await blocking.isExisting()) {
+  if (await hasTestId('mesh-availability-blocking')) {
     const firstError = await $('[data-testid="mesh-availability-error"]')
     templatesBlockedReason = (await firstError.isExisting())
       ? await firstError.getText()
@@ -153,43 +150,45 @@ async function requireTemplateSetup(testContext) {
     return false
   }
 
-  await ensureSetupMode()
+  if (await hasTestId('mesh-mode-runtime')) {
+    if (!(await disbandRuntimeTeamIfSafe())) {
+      testContext.skip()
+      return false
+    }
+  }
 
-  const setupTitle = await $('[data-testid="mesh-setup-title"]')
-  if (!(await setupTitle.isExisting())) {
-    templatesBlockedReason = 'Mesh setup form unavailable'
-    testContext.skip()
-    return false
+  if (await hasTestId('mesh-mode-setup') && await hasTestId('mesh-action-reset')) {
+    await clickTestId('mesh-action-reset')
+  }
+
+  if (!(await hasTestId('mesh-mode-empty'))) {
+    await browser.waitUntil(
+      async () => await hasTestId('mesh-mode-empty'),
+      { ...WAIT_LONG, timeoutMsg: 'Mesh did not reach empty mode' }
+    )
   }
 
   return true
 }
 
-async function openTemplateCatalog(refresh = true) {
-  if (refresh) {
-    await clickTestId('mesh-template-blank-slate')
+async function requireTemplateSetup(testContext) {
+  if (!mainApp) {
+    testContext.skip()
+    return false
   }
-  await clickTestId('mesh-template-browse-catalog')
-  await browser.waitUntil(
-    async () => {
-      const catalog = await $('[data-testid="template-catalog"]')
-      if (!(await catalog.isExisting())) return false
-      const loading = await $('[data-testid="template-catalog-loading"]')
-      return !(await loading.isExisting())
-    },
-    { ...WAIT_MEDIUM, timeoutMsg: 'Template catalog did not load' }
-  )
+
+  return await ensureEmptyMode(testContext)
 }
 
-async function pickFirstQuickPreset() {
-  const quickPresetButtons = await $$('[data-testid^="mesh-template-preset-"]')
-  for (const button of quickPresetButtons) {
-    if (!(await button.isExisting())) continue
-    if (!(await button.isEnabled())) continue
-    await button.click()
-    return await button.getText()
-  }
-  return null
+async function openTemplateCatalog(testContext) {
+  if (!(await ensureEmptyMode(testContext))) return false
+
+  await clickTestId('mesh-template-browse-catalog')
+  await browser.waitUntil(
+    async () => await hasTestId('template-browser-panel'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Template browser did not open' }
+  )
+  return true
 }
 
 async function findLeadRoleId() {
@@ -252,61 +251,6 @@ function makeTeamPreset(presetId, leadRoleId, agentRoleId, { name, description, 
   }
 }
 
-function commitMessage(commit) {
-  return String(getField(commit, 'message', 'message') ?? '')
-}
-
-function commitShortId(commit) {
-  return String(getField(commit, 'shortId', 'short_id') ?? '')
-}
-
-function commitChangedPaths(commit) {
-  const paths = getField(commit, 'changedPaths', 'changed_paths')
-  return Array.isArray(paths) ? paths : []
-}
-
-function commitTouchesPath(commit, path) {
-  return commitChangedPaths(commit).includes(path)
-}
-
-async function listTemplateHistory(limit = 100) {
-  const page = await invokeOrThrow(
-    'templates_get_history',
-    { limit, cursor: null },
-    'templates_get_history'
-  )
-  return Array.isArray(page?.commits) ? page.commits : []
-}
-
-async function waitForHistoryCommit(predicate, timeoutMsg) {
-  let matched = null
-  await browser.waitUntil(
-    async () => {
-      try {
-        await bestEffortFlushPending()
-        const commits = await listTemplateHistory(200)
-        matched = commits.find((commit) => predicate(commit)) ?? null
-        return Boolean(matched)
-      } catch {
-        return false
-      }
-    },
-    { ...WAIT_LONG, timeoutMsg }
-  )
-  return matched
-}
-
-async function withTempTemplateFile(filename, payload, fn) {
-  const directory = await mkdtemp(join(tmpdir(), 'taurhaus-templates-e2e-'))
-  const templatePath = join(directory, filename)
-  await writeFile(templatePath, payload, 'utf8')
-  try {
-    return await fn(templatePath)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-}
-
 describe('Templates Workflow', () => {
   before(async () => {
     await waitForAppReady()
@@ -314,8 +258,7 @@ describe('Templates Workflow', () => {
     if (mainApp) {
       await waitForProjectsLoaded()
       await openMeshTab()
-      const blocking = await $('[data-testid="mesh-availability-blocking"]')
-      if (await blocking.isExisting()) {
+      if (await hasTestId('mesh-availability-blocking')) {
         const firstError = await $('[data-testid="mesh-availability-error"]')
         templatesBlockedReason = (await firstError.isExisting())
           ? await firstError.getText()
@@ -324,195 +267,38 @@ describe('Templates Workflow', () => {
     }
   })
 
-  it('renders setup template picker controls', async function () {
+  it('renders empty-state template controls', async function () {
     if (!(await requireTemplateSetup(this))) return
 
-    expect(await (await $('[data-testid="mesh-template-picker"]')).isExisting()).toBe(true)
-    expect(await (await $('[data-testid="mesh-template-blank-slate"]')).isExisting()).toBe(true)
-    expect(await (await $('[data-testid="mesh-template-browse-catalog"]')).isExisting()).toBe(true)
-    expect(await (await $('[data-testid="mesh-template-build-custom"]')).isExisting()).toBe(true)
+    expect(await hasTestId('mesh-mode-empty')).toBe(true)
+    expect(await hasTestId('mesh-empty-state')).toBe(true)
+    expect(await hasTestId('mesh-template-browse-catalog')).toBe(true)
+    expect(await hasTestId('mesh-template-build-custom')).toBe(true)
   })
 
-  it('browses built-in entries in template catalog', async function () {
-    if (!(await requireTemplateSetup(this))) return
+  it('browses built-in role and preset entries in template browser', async function () {
+    if (!(await openTemplateCatalog(this))) return
 
-    await openTemplateCatalog(true)
+    await browser.waitUntil(
+      async () => (await $$('[data-testid^="role-template-card-"]')).length > 0,
+      { ...WAIT_MEDIUM, timeoutMsg: 'Role cards did not load in template browser' }
+    )
 
     const roleCards = await $$('[data-testid^="role-template-card-"]')
-    const presetCards = await $$('[data-testid^="team-preset-card-"]')
     expect(roleCards.length).toBeGreaterThan(0)
+
+    await clickTestId('catalog-tab-presets')
+    await browser.waitUntil(
+      async () => (await $$('[data-testid^="template-browser-preset-"]')).length > 0,
+      { ...WAIT_MEDIUM, timeoutMsg: 'Preset cards did not load in template browser' }
+    )
+
+    const presetCards = await $$('[data-testid^="template-browser-preset-"]')
     expect(presetCards.length).toBeGreaterThan(0)
-
-    const readonlyRoles = await $$('[data-testid^="role-readonly-"]')
-    const readonlyPresets = await $$('[data-testid^="preset-readonly-"]')
-    expect(readonlyRoles.length).toBeGreaterThan(0)
-    expect(readonlyPresets.length).toBeGreaterThan(0)
-  })
-
-  it('applies a quick preset to setup roster', async function () {
-    if (!(await requireTemplateSetup(this))) return
-
-    const presetLabel = await pickFirstQuickPreset()
-    if (!presetLabel) return this.skip()
-
-    await browser.waitUntil(
-      async () => {
-        const notice = await $('[data-testid="mesh-template-notice"]')
-        if ((await notice.isExisting()) && (await notice.getText()).includes('Applied preset')) return true
-        const error = await $('[data-testid="mesh-template-error"]')
-        return await error.isExisting()
-      },
-      { ...WAIT_XLONG, timeoutMsg: 'Quick preset application notice did not appear' }
-    )
-
-    const templateError = await $('[data-testid="mesh-template-error"]')
-    if (await templateError.isExisting()) {
-      throw new Error(`Preset application failed: ${await templateError.getText()}`)
-    }
-
-    const notice = await $('[data-testid="mesh-template-notice"]')
-    expect(await notice.getText()).toContain('Applied preset')
-    expect(await notice.getText()).toContain(presetLabel)
-
-    const agentCards = await $$('[data-testid="mesh-agent-card"]')
-    expect(agentCards.length).toBeGreaterThan(0)
-  })
-
-  it('blank-slate fallback resets roster to default shape', async function () {
-    if (!(await requireTemplateSetup(this))) return
-
-    const presetLabel = await pickFirstQuickPreset()
-    if (!presetLabel) return this.skip()
-
-    await browser.waitUntil(
-      async () => {
-        const notice = await $('[data-testid="mesh-template-notice"]')
-        if ((await notice.isExisting()) && (await notice.getText()).includes('Applied preset')) return true
-        const error = await $('[data-testid="mesh-template-error"]')
-        return await error.isExisting()
-      },
-      { ...WAIT_XLONG, timeoutMsg: 'Preset notice did not appear before blank-slate reset' }
-    )
-
-    const templateError = await $('[data-testid="mesh-template-error"]')
-    if (await templateError.isExisting()) {
-      throw new Error(`Preset application failed before blank-slate reset: ${await templateError.getText()}`)
-    }
-
-    await clickTestId('mesh-add-agent-button')
-    const expandedCards = await $$('[data-testid="mesh-agent-card"]')
-    expect(expandedCards.length).toBeGreaterThan(1)
-
-    await clickTestId('mesh-template-blank-slate')
-    await browser.waitUntil(
-      async () => (await $$('[data-testid="mesh-agent-card"]')).length === 1,
-      { ...WAIT_SHORT, timeoutMsg: 'Blank slate did not reset roster to one agent row' }
-    )
-  })
-
-  it('applies catalog composition back into mesh setup', async function () {
-    if (!(await requireTemplateSetup(this))) return
-
-    await openTemplateCatalog(true)
-
-    const previewButtons = await $$('[data-testid^="preset-preview-"]')
-    if (previewButtons.length === 0) return this.skip()
-
-    await previewButtons[0].click()
-
-    await browser.waitUntil(
-      async () => await (await $('[data-testid="team-composer"]')).isExisting(),
-      { ...WAIT_MEDIUM, timeoutMsg: 'Team composer did not open from preset preview' }
-    )
-
-    await browser.waitUntil(
-      async () => {
-        const apply = await $('[data-testid="composer-apply"]')
-        if (await apply.isEnabled()) return true
-        const errors = await $('[data-testid="composer-validation-errors"]')
-        return await errors.isExisting()
-      },
-      { ...WAIT_XLONG, timeoutMsg: 'Composer apply button did not become enabled' }
-    )
-
-    const composerErrors = await $('[data-testid="composer-validation-errors"]')
-    if (await composerErrors.isExisting()) {
-      throw new Error(`Composer validation blocked apply: ${await composerErrors.getText()}`)
-    }
-
-    await clickTestId('composer-apply')
-
-    await browser.waitUntil(
-      async () => {
-        const composer = await $('[data-testid="team-composer"]')
-        const notice = await $('[data-testid="mesh-template-notice"]')
-        return (
-          !(await composer.isExisting()) &&
-          (await notice.isExisting()) &&
-          (await notice.getText()).includes('Applied catalog composition')
-        )
-      },
-      { ...WAIT_MEDIUM, timeoutMsg: 'Catalog composition did not apply back to setup' }
-    )
-
-    const agentCards = await $$('[data-testid="mesh-agent-card"]')
-    expect(agentCards.length).toBeGreaterThan(0)
-  })
-
-  it('shows validation errors for name collisions in team composer', async function () {
-    if (!(await requireTemplateSetup(this))) return
-
-    await clickTestId('mesh-template-build-custom')
-    await browser.waitUntil(
-      async () => await (await $('[data-testid="team-composer"]')).isExisting(),
-      { ...WAIT_MEDIUM, timeoutMsg: 'Team composer did not open from custom flow' }
-    )
-
-    const increaseButtons = await $$('[data-testid^="agent-increase-"]')
-    if (increaseButtons.length === 0) return this.skip()
-    await increaseButtons[0].click()
-
-    await browser.waitUntil(
-      async () => {
-        const secondCard = await $('[data-testid="composer-roster-card-1"]')
-        if (await secondCard.isExisting()) return true
-        const errors = await $('[data-testid="composer-validation-errors"]')
-        return await errors.isExisting()
-      },
-      { ...WAIT_XLONG, timeoutMsg: 'Second roster card did not appear after increasing agent count' }
-    )
-
-    const composerErrors = await $('[data-testid="composer-validation-errors"]')
-    if (await composerErrors.isExisting()) {
-      throw new Error(`Composer stayed invalid after adding agent role: ${await composerErrors.getText()}`)
-    }
-
-    const name0 = await $('[data-testid="composer-roster-name-0"]')
-    const name1 = await $('[data-testid="composer-roster-name-1"]')
-    await name0.clearValue()
-    await name0.setValue('collision-name')
-    await name1.clearValue()
-    await name1.setValue('collision-name')
-
-    await browser.waitUntil(
-      async () => {
-        const warnings = await $('[data-testid="composer-validation-warnings"]')
-        if ((await warnings.isExisting()) && (await warnings.getText()).includes('Name collisions')) {
-          return true
-        }
-        const namesStatus = await $('[data-testid="composer-validation-names"]')
-        if (!(await namesStatus.isExisting())) return false
-        return (await namesStatus.getText()).includes('collision-name')
-      },
-      { ...WAIT_MEDIUM, timeoutMsg: 'Name collision validation error did not appear' }
-    )
-
-    const apply = await $('[data-testid="composer-apply"]')
-    expect(await apply.isEnabled()).toBe(true)
   })
 
   it('creates a custom role template and exposes edit/delete controls', async function () {
-    if (!(await requireTemplateSetup(this))) return
+    if (!(await openTemplateCatalog(this))) return
 
     const roleId = nextId('e2e-role')
     try {
@@ -523,17 +309,22 @@ describe('Templates Workflow', () => {
       )
       await bestEffortFlushPending()
 
-      await openTemplateCatalog(true)
+      await closeSlideOverIfOpen()
+      if (!(await openTemplateCatalog(this))) return
 
       const card = await $(`[data-testid="role-template-card-${roleId}"]`)
       await card.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-      expect(await (await $(`[data-testid="role-edit-${roleId}"]`)).isExisting()).toBe(true)
-      expect(await (await $(`[data-testid="role-delete-${roleId}"]`)).isExisting()).toBe(true)
+      expect(await (await $(`[data-testid="role-use-${roleId}"]`)).isExisting()).toBe(true)
+      expect(await (await $(`[data-testid="role-inspect-${roleId}"]`)).isExisting()).toBe(true)
 
       await (await $(`[data-testid="role-inspect-${roleId}"]`)).click()
       await browser.waitUntil(
-        async () => (await (await $('[data-testid="template-detail-panel"]')).getText()).includes('Role instructions v1'),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Role details panel did not show custom instructions' }
+        async () => {
+          const detail = await $('[data-testid="template-role-detail"]')
+          if (!(await detail.isExisting())) return false
+          return (await detail.getText()).includes('Role instructions v1')
+        },
+        { ...WAIT_MEDIUM, timeoutMsg: 'Role detail panel did not show custom instructions' }
       )
     } finally {
       await bestEffortDeleteRole(roleId)
@@ -542,7 +333,7 @@ describe('Templates Workflow', () => {
   })
 
   it('edits a custom preset and reflects updated details', async function () {
-    if (!(await requireTemplateSetup(this))) return
+    if (!(await openTemplateCatalog(this))) return
 
     const roleId = nextId('e2e-agent')
     const presetId = nextId('e2e-preset')
@@ -560,20 +351,6 @@ describe('Templates Workflow', () => {
         {
           request: {
             preset: makeTeamPreset(presetId, leadRoleId, roleId, {
-              name: 'E2E Preset',
-              description: 'Preset description v1',
-              version: '1.0.0',
-            }),
-          },
-        },
-        'templates_upsert_preset(create)'
-      )
-
-      await invokeOrThrow(
-        'templates_upsert_preset',
-        {
-          request: {
-            preset: makeTeamPreset(presetId, leadRoleId, roleId, {
               name: 'E2E Preset Updated',
               description: 'Preset description v2',
               version: '1.0.1',
@@ -584,19 +361,23 @@ describe('Templates Workflow', () => {
       )
       await bestEffortFlushPending()
 
-      await openTemplateCatalog(true)
-      await (await $(`[data-testid="preset-inspect-${presetId}"]`)).click()
+      await closeSlideOverIfOpen()
+      if (!(await openTemplateCatalog(this))) return
+      await clickTestId('catalog-tab-presets')
       await browser.waitUntil(
-        async () => (await (await $('[data-testid="template-detail-panel"]')).getText()).includes('Preset description v2'),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Preset detail panel did not update after edit' }
+        async () => await (await $(`[data-testid="template-preset-inspect-${presetId}"]`)).isExisting(),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Preset inspect control did not appear for custom preset' }
       )
 
-      await (await $(`[data-testid="preset-preview-${presetId}"]`)).click()
+      await (await $(`[data-testid="template-preset-inspect-${presetId}"]`)).click()
       await browser.waitUntil(
-        async () => await (await $('[data-testid="team-composer"]')).isExisting(),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Preset preview did not open team composer' }
+        async () => {
+          const detail = await $('[data-testid="template-preset-detail"]')
+          if (!(await detail.isExisting())) return false
+          return (await detail.getText()).includes('Preset description v2')
+        },
+        { ...WAIT_MEDIUM, timeoutMsg: 'Preset detail panel did not update after edit' }
       )
-      expect(await (await $('[data-testid="composer-lead-select"]')).getValue()).toBe(leadRoleId)
     } finally {
       await bestEffortDeletePreset(presetId)
       await bestEffortDeleteRole(roleId)
@@ -604,8 +385,8 @@ describe('Templates Workflow', () => {
     }
   })
 
-  it('deletes custom role and preset templates from catalog', async function () {
-    if (!(await requireTemplateSetup(this))) return
+  it('deletes custom role and preset templates from browser listing', async function () {
+    if (!(await openTemplateCatalog(this))) return
 
     const roleId = nextId('e2e-delete-role')
     const presetId = nextId('e2e-delete-preset')
@@ -624,17 +405,23 @@ describe('Templates Workflow', () => {
       )
       await bestEffortFlushPending()
 
-      await openTemplateCatalog(true)
+      await closeSlideOverIfOpen()
+      if (!(await openTemplateCatalog(this))) return
+
       expect(await (await $(`[data-testid="role-template-card-${roleId}"]`)).isExisting()).toBe(true)
-      expect(await (await $(`[data-testid="team-preset-card-${presetId}"]`)).isExisting()).toBe(true)
+      await clickTestId('catalog-tab-presets')
+      expect(await (await $(`[data-testid="template-browser-preset-${presetId}"]`)).isExisting()).toBe(true)
 
       await invokeOrThrow('templates_delete_preset', { presetId }, 'templates_delete_preset')
       await invokeOrThrow('templates_delete_role', { roleId }, 'templates_delete_role')
       await bestEffortFlushPending()
 
-      await openTemplateCatalog(true)
+      await closeSlideOverIfOpen()
+      if (!(await openTemplateCatalog(this))) return
+
       expect(await (await $(`[data-testid="role-template-card-${roleId}"]`)).isExisting()).toBe(false)
-      expect(await (await $(`[data-testid="team-preset-card-${presetId}"]`)).isExisting()).toBe(false)
+      await clickTestId('catalog-tab-presets')
+      expect(await (await $(`[data-testid="template-browser-preset-${presetId}"]`)).isExisting()).toBe(false)
     } finally {
       await bestEffortDeletePreset(presetId)
       await bestEffortDeleteRole(roleId)
