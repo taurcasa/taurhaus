@@ -19,23 +19,34 @@ fn extract_subject_and_body(raw: &str) -> (String, Option<String>) {
     (subject, body)
 }
 
-/// Get recent commits from a git repository, newest first.
-pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>, AppError> {
-    let repo = Repository::open(repo_path).map_err(|e| {
+fn open_git_repo(repo_path: &Path) -> Result<Repository, AppError> {
+    Repository::open(repo_path).map_err(|e| {
         AppError::InvalidPath(format!(
             "Not a git repository: {}: {e}",
             repo_path.display()
         ))
-    })?;
+    })
+}
 
+fn head_revwalk(repo: &Repository) -> Result<Option<git2::Revwalk<'_>>, AppError> {
     let mut revwalk = repo.revwalk().map_err(git_err)?;
     if revwalk.push_head().is_err() {
-        // No HEAD means no commits yet
-        return Ok(vec![]);
+        return Ok(None);
     }
     revwalk
         .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
         .map_err(git_err)?;
+    Ok(Some(revwalk))
+}
+
+/// Get recent commits from a git repository, newest first.
+pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>, AppError> {
+    let repo = open_git_repo(repo_path)?;
+    let revwalk = match head_revwalk(&repo)? {
+        Some(revwalk) => revwalk,
+        // No HEAD means no commits yet
+        None => return Ok(vec![]),
+    };
 
     let now = Utc::now();
     let mut commits = Vec::with_capacity(limit);
@@ -67,20 +78,11 @@ pub fn get_all_commits(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<Commit>, AppError> {
-    let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!(
-            "Not a git repository: {}: {e}",
-            repo_path.display()
-        ))
-    })?;
-
-    let mut revwalk = repo.revwalk().map_err(git_err)?;
-    if revwalk.push_head().is_err() {
-        return Ok(vec![]);
-    }
-    revwalk
-        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
-        .map_err(git_err)?;
+    let repo = open_git_repo(repo_path)?;
+    let revwalk = match head_revwalk(&repo)? {
+        Some(revwalk) => revwalk,
+        None => return Ok(vec![]),
+    };
 
     let now = Utc::now();
     let mut commits = Vec::with_capacity(limit);
@@ -162,20 +164,11 @@ pub fn get_commits_in_range(
     after: DateTime<Utc>,
     before: DateTime<Utc>,
 ) -> Result<Vec<Commit>, AppError> {
-    let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!(
-            "Not a git repository: {}: {e}",
-            repo_path.display()
-        ))
-    })?;
-
-    let mut revwalk = repo.revwalk().map_err(git_err)?;
-    if revwalk.push_head().is_err() {
-        return Ok(vec![]);
-    }
-    revwalk
-        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
-        .map_err(git_err)?;
+    let repo = open_git_repo(repo_path)?;
+    let revwalk = match head_revwalk(&repo)? {
+        Some(revwalk) => revwalk,
+        None => return Ok(vec![]),
+    };
 
     let now = Utc::now();
     let after_ts = after.timestamp();
@@ -217,20 +210,11 @@ pub fn get_files_changed_in_range(
     after: DateTime<Utc>,
     before: DateTime<Utc>,
 ) -> Result<Vec<String>, AppError> {
-    let repo = Repository::open(repo_path).map_err(|e| {
-        AppError::InvalidPath(format!(
-            "Not a git repository: {}: {e}",
-            repo_path.display()
-        ))
-    })?;
-
-    let mut revwalk = repo.revwalk().map_err(git_err)?;
-    if revwalk.push_head().is_err() {
-        return Ok(vec![]);
-    }
-    revwalk
-        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
-        .map_err(git_err)?;
+    let repo = open_git_repo(repo_path)?;
+    let revwalk = match head_revwalk(&repo)? {
+        Some(revwalk) => revwalk,
+        None => return Ok(vec![]),
+    };
 
     let after_ts = after.timestamp();
     let before_ts = before.timestamp();
@@ -443,6 +427,21 @@ mod tests {
 
         repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
             .unwrap();
+    }
+
+    #[test]
+    fn head_revwalk_is_none_without_head_commit() {
+        let (_dir, repo) = init_test_repo();
+        let revwalk = head_revwalk(&repo).unwrap();
+        assert!(revwalk.is_none());
+    }
+
+    #[test]
+    fn head_revwalk_is_available_after_first_commit() {
+        let (_dir, repo) = init_test_repo();
+        create_commit(&repo, "Initial commit");
+        let revwalk = head_revwalk(&repo).unwrap();
+        assert!(revwalk.is_some());
     }
 
     #[test]

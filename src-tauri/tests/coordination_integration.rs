@@ -43,6 +43,17 @@ mod session_scanner {
                 }
             }
         }
+
+        impl CliTool {
+            pub fn from_alias(raw: &str) -> Result<Self, String> {
+                match raw.trim().to_ascii_lowercase().as_str() {
+                    "claude" | "claude_native" => Ok(Self::Claude),
+                    "codex" | "mesh" | "mesh_bridged" => Ok(Self::Codex),
+                    "gemini" => Ok(Self::Gemini),
+                    _ => Err(format!("unsupported cli tool '{}'", raw.trim())),
+                }
+            }
+        }
     }
 
     pub mod control {

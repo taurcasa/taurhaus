@@ -3,6 +3,8 @@
 //! Supports Claude Code, Codex CLI, and Gemini CLI. Each tool has its
 //! own process signature, session directory layout, and launch commands.
 
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 /// Which CLI tool a session belongs to.
@@ -12,6 +14,54 @@ pub enum CliTool {
     Claude,
     Codex,
     Gemini,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseCliToolError {
+    raw: String,
+}
+
+impl ParseCliToolError {
+    fn new(raw: &str) -> Self {
+        Self {
+            raw: raw.trim().to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for ParseCliToolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unsupported cli tool '{}'", self.raw)
+    }
+}
+
+impl std::error::Error for ParseCliToolError {}
+
+impl FromStr for CliTool {
+    type Err = ParseCliToolError;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            "gemini" => Ok(Self::Gemini),
+            _ => Err(ParseCliToolError::new(raw)),
+        }
+    }
+}
+
+impl CliTool {
+    /// Parse a CLI tool string with coordination aliases.
+    pub fn from_alias(raw: &str) -> Result<Self, ParseCliToolError> {
+        let normalized = raw.trim().to_ascii_lowercase();
+        let canonical = match normalized.as_str() {
+            "claude_native" => "claude",
+            "mesh" | "mesh_bridged" => "codex",
+            _ => normalized.as_str(),
+        };
+
+        canonical.parse()
+    }
 }
 
 impl std::fmt::Display for CliTool {
@@ -125,5 +175,28 @@ mod tests {
         assert!(tools.iter().any(|c| c.tool == CliTool::Claude));
         assert!(tools.iter().any(|c| c.tool == CliTool::Codex));
         assert!(tools.iter().any(|c| c.tool == CliTool::Gemini));
+    }
+
+    #[test]
+    fn cli_tool_from_str_is_case_insensitive() {
+        assert_eq!("Claude".parse::<CliTool>().unwrap(), CliTool::Claude);
+        assert_eq!("CODEX".parse::<CliTool>().unwrap(), CliTool::Codex);
+        assert_eq!("gemini".parse::<CliTool>().unwrap(), CliTool::Gemini);
+    }
+
+    #[test]
+    fn cli_tool_from_alias_maps_coordination_values() {
+        assert_eq!(
+            CliTool::from_alias("claude_native").unwrap(),
+            CliTool::Claude
+        );
+        assert_eq!(CliTool::from_alias("mesh").unwrap(), CliTool::Codex);
+        assert_eq!(CliTool::from_alias("mesh_bridged").unwrap(), CliTool::Codex);
+    }
+
+    #[test]
+    fn cli_tool_from_alias_rejects_unknown_values() {
+        let err = CliTool::from_alias("unknown").unwrap_err();
+        assert_eq!(err.to_string(), "unsupported cli tool 'unknown'");
     }
 }

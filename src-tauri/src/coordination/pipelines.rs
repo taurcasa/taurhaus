@@ -1569,14 +1569,7 @@ fn failed_resume_report(
 }
 
 fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "claude" | "claude_native" => Ok(CliTool::Claude),
-        "codex" | "mesh" | "mesh_bridged" => Ok(CliTool::Codex),
-        "gemini" => Ok(CliTool::Gemini),
-        other => Err(CoordinationError::Validation(format!(
-            "unsupported cli tool '{other}'"
-        ))),
-    }
+    CliTool::from_alias(raw).map_err(|err| CoordinationError::Validation(err.to_string()))
 }
 
 fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {

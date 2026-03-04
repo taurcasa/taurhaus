@@ -759,14 +759,12 @@ fn resolve_project_reference(_db: &DbState, project_ref: &str) -> Result<String,
 }
 
 fn cli_tool_from_backend_kind(backend_kind: &str) -> Result<CliTool, CoordinationError> {
-    match backend_kind.trim().to_ascii_lowercase().as_str() {
-        "mesh" | "mesh_bridged" | "codex" => Ok(CliTool::Codex),
-        "claude" | "claude_native" => Ok(CliTool::Claude),
-        "gemini" => Ok(CliTool::Gemini),
-        other => Err(CoordinationError::Validation(format!(
-            "unsupported backend_kind '{other}'"
-        ))),
-    }
+    CliTool::from_alias(backend_kind).map_err(|_| {
+        CoordinationError::Validation(format!(
+            "unsupported backend_kind '{}'",
+            backend_kind.trim()
+        ))
+    })
 }
 
 fn session_status_from_health(health: HealthState) -> SessionStatus {

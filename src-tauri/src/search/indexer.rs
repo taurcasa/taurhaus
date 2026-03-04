@@ -289,38 +289,109 @@ pub fn index_project_files(
 }
 
 /// Index sessions from the database for a given project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionIndexStats {
+    pub indexed: usize,
+    pub skipped: usize,
+}
+
+fn index_session_summaries(
+    index: &mut SearchIndex,
+    project_id: &str,
+    conn: &rusqlite::Connection,
+    summaries: impl IntoIterator<Item = crate::models::SessionSummary>,
+) -> Result<SessionIndexStats, AppError> {
+    use crate::db::session_queries;
+
+    let mut indexed = 0;
+    let mut skipped = 0;
+
+    for summary in summaries {
+        // Get the full session detail for next_steps / open_questions.
+        let detail = match session_queries::get_session(conn, &summary.id) {
+            Ok(Some(detail)) => detail,
+            Ok(None) => {
+                skipped += 1;
+                tracing::debug!(
+                    project_id,
+                    session_id = %summary.id,
+                    "search index: skipping missing session detail"
+                );
+                continue;
+            }
+            Err(err) => {
+                skipped += 1;
+                tracing::debug!(
+                    project_id,
+                    session_id = %summary.id,
+                    error = %err,
+                    "search index: skipping session detail due to load error"
+                );
+                continue;
+            }
+        };
+
+        let mut content = detail.summary.clone();
+        for step in &detail.next_steps {
+            content.push_str("\n- ");
+            content.push_str(step);
+        }
+        for q in &detail.open_questions {
+            content.push_str("\n? ");
+            content.push_str(q);
+        }
+
+        let file_path = format!("session:{}", detail.id);
+        let title_prefix = truncate_at_char_boundary(&detail.summary, 60);
+
+        index.add_document(project_id, "session", &file_path, title_prefix, &content)?;
+        indexed += 1;
+    }
+
+    if skipped > 0 {
+        tracing::debug!(
+            project_id,
+            indexed,
+            skipped,
+            "search index: skipped sessions during indexing"
+        );
+    }
+
+    Ok(SessionIndexStats { indexed, skipped })
+}
+
 pub fn index_project_sessions(
     index: &mut SearchIndex,
     project_id: &str,
     conn: &rusqlite::Connection,
-) -> Result<usize, AppError> {
+) -> Result<SessionIndexStats, AppError> {
     use crate::db::session_queries;
 
     let sessions = session_queries::list_sessions(conn, project_id, 1000, 0)?;
-    let mut count = 0;
+    index_session_summaries(index, project_id, conn, sessions)
+}
 
-    for summary in sessions {
-        // Get the full session detail for next_steps / open_questions
-        if let Ok(Some(detail)) = session_queries::get_session(conn, &summary.id) {
-            let mut content = detail.summary.clone();
-            for step in &detail.next_steps {
-                content.push_str("\n- ");
-                content.push_str(step);
-            }
-            for q in &detail.open_questions {
-                content.push_str("\n? ");
-                content.push_str(q);
-            }
-
-            let file_path = format!("session:{}", detail.id);
-            let title_prefix = truncate_at_char_boundary(&detail.summary, 60);
-
-            index.add_document(project_id, "session", &file_path, title_prefix, &content)?;
-            count += 1;
+fn index_commit_documents(
+    index: &mut SearchIndex,
+    project_id: &str,
+    commits: &[crate::models::Commit],
+    replace_existing: bool,
+) -> Result<usize, AppError> {
+    for commit in commits {
+        let file_path = format!("commit:{}", commit.hash);
+        if replace_existing {
+            index.remove_by_file_path(&file_path);
         }
+        index.add_document(
+            project_id,
+            "commit",
+            &file_path,
+            &commit.message,
+            &format!("{} — {} ({})", commit.message, commit.author, commit.date),
+        )?;
     }
 
-    Ok(count)
+    Ok(commits.len())
 }
 
 /// Index recent commits from git for a given project.
@@ -337,20 +408,7 @@ pub fn index_project_commits(
         Err(_) => return Ok(0), // no git repo or no commits
     };
 
-    let mut count = 0;
-    for commit in commits {
-        let file_path = format!("commit:{}", commit.hash);
-        index.add_document(
-            project_id,
-            "commit",
-            &file_path,
-            &commit.message,
-            &format!("{} — {} ({})", commit.message, commit.author, commit.date),
-        )?;
-        count += 1;
-    }
-
-    Ok(count)
+    index_commit_documents(index, project_id, &commits, false)
 }
 
 /// Build the full index for a single project (files + sessions + commits).
@@ -364,7 +422,8 @@ pub fn build_project_index(
     index.remove_by_project(project_id);
 
     let files = index_project_files(index, project_id, project_root)?;
-    let sessions = index_project_sessions(index, project_id, conn)?;
+    let session_stats = index_project_sessions(index, project_id, conn)?;
+    let sessions = session_stats.indexed;
     let commits = index_project_commits(index, project_id, project_root, 100)?;
 
     index.commit()?;
@@ -544,24 +603,13 @@ pub fn reindex_commits(
         Err(_) => return Ok(0),
     };
 
-    // Remove and re-add each commit
-    for commit in &commits {
-        let file_path = format!("commit:{}", commit.hash);
-        index.remove_by_file_path(&file_path);
-        index.add_document(
-            project_id,
-            "commit",
-            &file_path,
-            &commit.message,
-            &format!("{} — {} ({})", commit.message, commit.author, commit.date),
-        )?;
-    }
+    let count = index_commit_documents(index, project_id, &commits, true)?;
 
     if !commits.is_empty() {
         index.commit()?;
     }
 
-    Ok(commits.len())
+    Ok(count)
 }
 
 #[cfg(test)]
@@ -798,14 +846,96 @@ mod tests {
         db::session_queries::insert_session(&conn, &session).unwrap();
 
         let mut index = SearchIndex::open_in_memory().unwrap();
-        let count = index_project_sessions(&mut index, "p1", &conn).unwrap();
+        let stats = index_project_sessions(&mut index, "p1", &conn).unwrap();
         index.commit().unwrap();
 
-        assert_eq!(count, 1);
+        assert_eq!(stats.indexed, 1);
+        assert_eq!(stats.skipped, 0);
         // Verify the session is searchable
         let results = index.search("scaffold", 10).unwrap();
         assert!(!results.is_empty());
         assert_eq!(results[0].entity_type, "session");
+    }
+
+    #[test]
+    fn index_session_summaries_tracks_skipped_missing_details() {
+        use crate::db;
+        use crate::models::{SessionDetail, SessionSummary};
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let conn = db::init_db(tmp.path()).unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, path, created_at, updated_at) VALUES ('p1', 'test', '/test', '2026-01-01', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+
+        let session = SessionDetail {
+            id: "s1".into(),
+            project_id: "p1".into(),
+            date: "2026-02-15".into(),
+            summary: "Session present".into(),
+            next_steps: vec![],
+            open_questions: vec![],
+            metadata: serde_json::json!({}),
+            file_path: "/test/sessions/s1.md".into(),
+            created_at: "2026-02-15T00:00:00Z".into(),
+        };
+        db::session_queries::insert_session(&conn, &session).unwrap();
+
+        let summaries = vec![
+            SessionSummary {
+                id: "s1".into(),
+                project_id: "p1".into(),
+                date: "2026-02-15".into(),
+                summary: "Session present".into(),
+            },
+            SessionSummary {
+                id: "missing".into(),
+                project_id: "p1".into(),
+                date: "2026-02-14".into(),
+                summary: "Session missing".into(),
+            },
+        ];
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let stats = index_session_summaries(&mut index, "p1", &conn, summaries).unwrap();
+
+        assert_eq!(
+            stats,
+            SessionIndexStats {
+                indexed: 1,
+                skipped: 1
+            }
+        );
+    }
+
+    #[test]
+    fn index_session_summaries_tracks_skipped_load_errors() {
+        use crate::db;
+        use crate::models::SessionSummary;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let conn = db::init_db(tmp.path()).unwrap();
+
+        conn.execute("DROP TABLE sessions", []).unwrap();
+        let summaries = vec![SessionSummary {
+            id: "s1".into(),
+            project_id: "p1".into(),
+            date: "2026-02-15".into(),
+            summary: "Session stale".into(),
+        }];
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let stats = index_session_summaries(&mut index, "p1", &conn, summaries).unwrap();
+
+        assert_eq!(
+            stats,
+            SessionIndexStats {
+                indexed: 0,
+                skipped: 1
+            }
+        );
     }
 
     #[test]
@@ -814,6 +944,69 @@ mod tests {
         let mut index = SearchIndex::open_in_memory().unwrap();
         let count = index_project_commits(&mut index, "p1", dir.path(), 10).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn index_commit_documents_inserts_commit_documents() {
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let commits = vec![
+            crate::models::Commit {
+                hash: "abc12345".to_string(),
+                message: "Add feature".to_string(),
+                body: None,
+                author: "Alice".to_string(),
+                date: "1m".to_string(),
+                timestamp: 1,
+            },
+            crate::models::Commit {
+                hash: "def67890".to_string(),
+                message: "Fix bug".to_string(),
+                body: None,
+                author: "Bob".to_string(),
+                date: "2m".to_string(),
+                timestamp: 2,
+            },
+        ];
+
+        let count = index_commit_documents(&mut index, "p1", &commits, false).unwrap();
+        index.commit().unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(index.doc_count().unwrap(), 2);
+        assert_eq!(index.search("feature", 10).unwrap().len(), 1);
+        assert_eq!(index.search("bug", 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn index_commit_documents_replaces_existing_hash_when_requested() {
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let initial = vec![crate::models::Commit {
+            hash: "abc12345".to_string(),
+            message: "Old message".to_string(),
+            body: None,
+            author: "Alice".to_string(),
+            date: "1m".to_string(),
+            timestamp: 1,
+        }];
+        let updated = vec![crate::models::Commit {
+            hash: "abc12345".to_string(),
+            message: "Updated message".to_string(),
+            body: None,
+            author: "Alice".to_string(),
+            date: "1m".to_string(),
+            timestamp: 1,
+        }];
+
+        index_commit_documents(&mut index, "p1", &initial, false).unwrap();
+        index.commit().unwrap();
+        assert_eq!(index.doc_count().unwrap(), 1);
+        assert_eq!(index.search("Old message", 10).unwrap().len(), 1);
+
+        index_commit_documents(&mut index, "p1", &updated, true).unwrap();
+        index.commit().unwrap();
+
+        assert_eq!(index.doc_count().unwrap(), 1);
+        assert_eq!(index.search("Updated message", 10).unwrap().len(), 1);
     }
 
     #[test]

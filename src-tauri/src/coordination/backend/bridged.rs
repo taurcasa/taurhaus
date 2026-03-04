@@ -14,6 +14,7 @@ use crate::coordination::requests::{
     DeliveryRequest, DeliveryResult, LaunchRequest, LaunchResult, OperatorNoticeDelivery,
     ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
 };
+use crate::session_scanner::cli_tool::CliTool;
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
 const FEATURE_NAME: &str = "mesh-bridged-backend";
@@ -232,12 +233,12 @@ pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
 }
 
 fn required_binary_for_cli_tool(cli_tool: &str) -> Option<&'static str> {
-    match cli_tool {
-        "claude" | "claude_native" => Some("claude"),
-        "codex" | "mesh" | "mesh_bridged" => Some("codex"),
-        "gemini" => Some("gemini"),
-        _ => None,
-    }
+    let parsed = CliTool::from_alias(cli_tool).ok()?;
+    Some(match parsed {
+        CliTool::Claude => "claude",
+        CliTool::Codex => "codex",
+        CliTool::Gemini => "gemini",
+    })
 }
 
 fn cli_tool_label(binary_name: &str) -> &'static str {

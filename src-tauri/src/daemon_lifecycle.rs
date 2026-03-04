@@ -274,6 +274,12 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                 restart_attempts = 0;
                 ever_connected = true;
                 respawn_daemon_watches(&app);
+                {
+                    let app_for_reseed = app.clone();
+                    std::thread::spawn(move || {
+                        crate::event_processor::reseed_daemon_watched_git_status(&app_for_reseed);
+                    });
+                }
                 let _ = app.emit(
                     "daemon-status",
                     serde_json::json!({ "status": "connected" }),
@@ -301,6 +307,14 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                         restart_attempts = 0;
                         ever_connected = true;
                         respawn_daemon_watches(&app);
+                        {
+                            let app_for_reseed = app.clone();
+                            std::thread::spawn(move || {
+                                crate::event_processor::reseed_daemon_watched_git_status(
+                                    &app_for_reseed,
+                                );
+                            });
+                        }
                         let _ = app.emit(
                             "daemon-status",
                             serde_json::json!({ "status": "connected" }),

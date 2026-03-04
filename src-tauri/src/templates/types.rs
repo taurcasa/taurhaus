@@ -35,13 +35,17 @@ pub enum ProjectBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoleDefaults {
+    #[serde(alias = "cli_tool")]
     pub cli_tool: CliTool,
     pub model: String,
+    #[serde(alias = "default_name_pattern")]
     pub default_name_pattern: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BehavioralContract {
     #[serde(default)]
     pub communication: Vec<String>,
@@ -76,26 +80,33 @@ impl BehavioralContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoleConstraints {
-    #[serde(default)]
+    #[serde(default, alias = "min_instances")]
     pub min_instances: u32,
-    #[serde(default = "default_max_instances")]
+    #[serde(default = "default_max_instances", alias = "max_instances")]
     pub max_instances: u32,
-    #[serde(default)]
+    #[serde(default, alias = "requires_lead_tool")]
     pub requires_lead_tool: Option<CliTool>,
-    #[serde(default = "default_allowed_project_binding")]
+    #[serde(
+        default = "default_allowed_project_binding",
+        alias = "allowed_project_binding"
+    )]
     pub allowed_project_binding: ProjectBinding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoleTemplate {
     pub schema: TemplateSchema,
+    #[serde(alias = "role_id")]
     pub role_id: String,
     pub name: String,
     pub version: String,
     pub kind: RoleKind,
     pub defaults: RoleDefaults,
     pub instructions: String,
+    #[serde(alias = "behavioral_contract")]
     pub behavioral_contract: BehavioralContract,
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -193,15 +204,20 @@ impl RoleTemplate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SlotOverrides {
     pub model: Option<String>,
+    #[serde(alias = "name_pattern")]
     pub name_pattern: Option<String>,
+    #[serde(alias = "instructions_replace")]
     pub instructions_replace: Option<String>,
+    #[serde(alias = "instructions_append")]
     pub instructions_append: Option<String>,
+    #[serde(alias = "behavioral_contract_append")]
     pub behavioral_contract_append: Option<BehavioralContract>,
-    #[serde(default)]
+    #[serde(default, alias = "capabilities_add")]
     pub capabilities_add: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "capabilities_remove")]
     pub capabilities_remove: Vec<String>,
 }
 
@@ -265,10 +281,14 @@ impl SlotOverrides {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSlot {
+    #[serde(alias = "role_id")]
     pub role_id: String,
     pub count: u32,
+    #[serde(alias = "project_binding")]
     pub project_binding: ProjectBinding,
+    #[serde(alias = "project_id")]
     pub project_id: Option<String>,
     pub overrides: Option<SlotOverrides>,
 }
@@ -323,20 +343,26 @@ pub(crate) fn validate_agent_slot_common(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamPresetDefaults {
+    #[serde(alias = "team_name_pattern")]
     pub team_name_pattern: String,
+    #[serde(alias = "tmux_layout")]
     pub tmux_layout: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamPreset {
     pub schema: TemplateSchema,
+    #[serde(alias = "preset_id")]
     pub preset_id: String,
     pub name: String,
     pub description: String,
     pub version: String,
+    #[serde(alias = "lead_role_id")]
     pub lead_role_id: String,
-    #[serde(default)]
+    #[serde(default, alias = "agent_slots")]
     pub agent_slots: Vec<AgentSlot>,
     pub defaults: TeamPresetDefaults,
 }
@@ -657,6 +683,74 @@ mod tests {
 
     use super::*;
 
+    fn sample_role_template() -> RoleTemplate {
+        RoleTemplate {
+            schema: TemplateSchema {
+                kind: TemplateKind::RoleTemplate,
+                version: 1,
+            },
+            role_id: "sample-role".to_string(),
+            name: "Sample Role".to_string(),
+            version: "1.0.0".to_string(),
+            kind: RoleKind::Agent,
+            defaults: RoleDefaults {
+                cli_tool: CliTool::Codex,
+                model: "gpt-5.3-codex".to_string(),
+                default_name_pattern: "dev-{n}".to_string(),
+            },
+            instructions: "Execute scoped tasks.".to_string(),
+            behavioral_contract: BehavioralContract {
+                communication: vec!["post updates".to_string()],
+                execution: vec!["deliver tests".to_string()],
+                escalation: vec!["raise blockers".to_string()],
+            },
+            capabilities: vec!["implementation".to_string()],
+            constraints: RoleConstraints {
+                min_instances: 1,
+                max_instances: 3,
+                requires_lead_tool: Some(CliTool::Claude),
+                allowed_project_binding: ProjectBinding::Any,
+            },
+        }
+    }
+
+    fn sample_team_preset() -> TeamPreset {
+        TeamPreset {
+            schema: TemplateSchema {
+                kind: TemplateKind::TeamPreset,
+                version: 1,
+            },
+            preset_id: "sample-preset".to_string(),
+            name: "Sample Preset".to_string(),
+            description: "Sample preset description".to_string(),
+            version: "1.0.0".to_string(),
+            lead_role_id: "lead-role".to_string(),
+            agent_slots: vec![AgentSlot {
+                role_id: "sample-role".to_string(),
+                count: 2,
+                project_binding: ProjectBinding::ExplicitProject,
+                project_id: Some("project-a".to_string()),
+                overrides: Some(SlotOverrides {
+                    model: Some("gpt-5.3-codex".to_string()),
+                    name_pattern: Some("dev-{n}".to_string()),
+                    instructions_replace: Some("Replace instructions".to_string()),
+                    instructions_append: Some("Append instructions".to_string()),
+                    behavioral_contract_append: Some(BehavioralContract {
+                        communication: vec!["sync daily".to_string()],
+                        execution: vec!["ship incrementally".to_string()],
+                        escalation: vec!["escalate quickly".to_string()],
+                    }),
+                    capabilities_add: vec!["review".to_string()],
+                    capabilities_remove: vec!["triage".to_string()],
+                }),
+            }],
+            defaults: TeamPresetDefaults {
+                team_name_pattern: "{project}-team".to_string(),
+                tmux_layout: "tiled".to_string(),
+            },
+        }
+    }
+
     fn manifest_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     }
@@ -896,5 +990,92 @@ mod tests {
                 .any(|entry| entry.contains("project_id is required")),
             "expected explicit_project/project_id validation error, got: {err}"
         );
+    }
+
+    #[test]
+    fn role_template_serializes_with_camel_case_keys() {
+        let role = sample_role_template();
+        let value = serde_json::to_value(&role).expect("serialize role template");
+        let object = value.as_object().expect("role template object");
+
+        assert!(object.contains_key("roleId"));
+        assert!(!object.contains_key("role_id"));
+        assert!(object.contains_key("behavioralContract"));
+        assert!(!object.contains_key("behavioral_contract"));
+
+        let defaults = object
+            .get("defaults")
+            .and_then(serde_json::Value::as_object)
+            .expect("defaults object");
+        assert!(defaults.contains_key("cliTool"));
+        assert!(!defaults.contains_key("cli_tool"));
+        assert!(defaults.contains_key("defaultNamePattern"));
+        assert!(!defaults.contains_key("default_name_pattern"));
+
+        let constraints = object
+            .get("constraints")
+            .and_then(serde_json::Value::as_object)
+            .expect("constraints object");
+        assert!(constraints.contains_key("minInstances"));
+        assert!(!constraints.contains_key("min_instances"));
+        assert!(constraints.contains_key("maxInstances"));
+        assert!(!constraints.contains_key("max_instances"));
+        assert!(constraints.contains_key("requiresLeadTool"));
+        assert!(!constraints.contains_key("requires_lead_tool"));
+        assert!(constraints.contains_key("allowedProjectBinding"));
+        assert!(!constraints.contains_key("allowed_project_binding"));
+    }
+
+    #[test]
+    fn team_preset_serializes_with_camel_case_keys() {
+        let preset = sample_team_preset();
+        let value = serde_json::to_value(&preset).expect("serialize team preset");
+        let object = value.as_object().expect("team preset object");
+
+        assert!(object.contains_key("presetId"));
+        assert!(!object.contains_key("preset_id"));
+        assert!(object.contains_key("leadRoleId"));
+        assert!(!object.contains_key("lead_role_id"));
+        assert!(object.contains_key("agentSlots"));
+        assert!(!object.contains_key("agent_slots"));
+
+        let defaults = object
+            .get("defaults")
+            .and_then(serde_json::Value::as_object)
+            .expect("defaults object");
+        assert!(defaults.contains_key("teamNamePattern"));
+        assert!(!defaults.contains_key("team_name_pattern"));
+
+        let slots = object
+            .get("agentSlots")
+            .and_then(serde_json::Value::as_array)
+            .expect("agentSlots array");
+        let slot = slots
+            .first()
+            .and_then(serde_json::Value::as_object)
+            .expect("first slot");
+        assert!(slot.contains_key("roleId"));
+        assert!(!slot.contains_key("role_id"));
+        assert!(slot.contains_key("projectBinding"));
+        assert!(!slot.contains_key("project_binding"));
+        assert!(slot.contains_key("projectId"));
+        assert!(!slot.contains_key("project_id"));
+
+        let overrides = slot
+            .get("overrides")
+            .and_then(serde_json::Value::as_object)
+            .expect("overrides object");
+        assert!(overrides.contains_key("namePattern"));
+        assert!(!overrides.contains_key("name_pattern"));
+        assert!(overrides.contains_key("instructionsReplace"));
+        assert!(!overrides.contains_key("instructions_replace"));
+        assert!(overrides.contains_key("instructionsAppend"));
+        assert!(!overrides.contains_key("instructions_append"));
+        assert!(overrides.contains_key("behavioralContractAppend"));
+        assert!(!overrides.contains_key("behavioral_contract_append"));
+        assert!(overrides.contains_key("capabilitiesAdd"));
+        assert!(!overrides.contains_key("capabilities_add"));
+        assert!(overrides.contains_key("capabilitiesRemove"));
+        assert!(!overrides.contains_key("capabilities_remove"));
     }
 }
