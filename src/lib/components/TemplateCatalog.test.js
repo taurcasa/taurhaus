@@ -94,7 +94,18 @@ describe('TemplateCatalog', () => {
     }))
 
     composeTeam.mockResolvedValue({
-      roster: [{ name: 'lead-project' }],
+      roster: [
+        {
+          name: 'lead-project',
+          roleId: 'claude-orchestrator',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'claude-opus-4-6',
+          instructions: 'Lead instructions',
+          projectBinding: 'lead_project',
+          projectId: '/projects/taurhaus',
+        },
+      ],
       warnings: [],
       validationErrors: [],
     })
@@ -133,7 +144,7 @@ describe('TemplateCatalog', () => {
     expect(screen.queryByTestId('team-preset-card-review-team')).not.toBeInTheDocument()
   })
 
-  it('shows edit/delete only for user templates and supports preview composition', async () => {
+  it('shows edit/delete only for user templates and opens composer from preset preview', async () => {
     const onComposePreview = vi.fn()
 
     render(TemplateCatalog, {
@@ -154,8 +165,10 @@ describe('TemplateCatalog', () => {
     await fireEvent.click(screen.getByTestId('preset-preview-docs-sprint'))
 
     await waitFor(() => {
-      expect(composeTeam).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('team-composer')).toBeInTheDocument()
     })
+    expect(screen.getByTestId('composer-lead-select')).toHaveValue('claude-orchestrator')
+    expect(composeTeam).toHaveBeenCalled()
     expect(onComposePreview).toHaveBeenCalledTimes(1)
   })
 })

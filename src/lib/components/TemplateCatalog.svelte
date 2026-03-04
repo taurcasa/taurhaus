@@ -6,6 +6,7 @@
     listRoleTemplates,
     listTeamPresets,
   } from '../ipc.js'
+  import TeamComposer from './TeamComposer.svelte'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { themeTokens } from '../themeTokens.js'
 
@@ -17,6 +18,8 @@
     onDeleteTemplate = () => {},
     onImportTemplates = () => {},
     onComposePreview = () => {},
+    onComposeApply = () => {},
+    onSaveComposedPreset = () => {},
   } = $props()
 
   const t = $derived(themeTokens(dark))
@@ -53,6 +56,8 @@
   let selectedRole = $state(null)
   let selectedPreset = $state(null)
   let detailLoading = $state(false)
+  let showComposer = $state(false)
+  let composerInitialPreset = $state(null)
 
   const toolOptions = [
     { value: 'all', label: 'All tools' },
@@ -203,6 +208,8 @@
       projectName: 'project',
     }
     const composed = await composeTeam(request)
+    composerInitialPreset = preset
+    showComposer = true
     onComposePreview({ preset, composed })
   }
 
@@ -566,5 +573,23 @@
         </p>
       {/if}
     </section>
+
+    {#if showComposer}
+      <section class="rounded-md border p-2 {cardTone}" data-testid="template-composer-panel">
+        <TeamComposer
+          dark={dark}
+          initialPreset={composerInitialPreset}
+          onApply={(payload) => {
+            onComposeApply(payload)
+          }}
+          onSavePreset={(payload) => {
+            onSaveComposedPreset(payload)
+          }}
+          onClose={() => {
+            showComposer = false
+          }}
+        />
+      </section>
+    {/if}
   {/if}
 </section>

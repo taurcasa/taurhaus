@@ -18,6 +18,7 @@ const GITIGNORE_FILENAME: &str = ".gitignore";
 const LOCK_FILENAME: &str = ".lock";
 const STATE_FILENAME: &str = "state.json";
 const RECOVERY_COMMIT_MESSAGE: &str = "templates: recovery auto-commit";
+const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp\n.lock\n";
 
@@ -60,6 +61,12 @@ pub struct TemplateStoreState {
     pub last_commit_at: Option<i64>,
     #[serde(default)]
     pub repo_initialized: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct DebounceState {
+    pending_actions: Vec<PendingAction>,
+    window_secs: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +117,13 @@ struct PathChange {
 }
 
 #[derive(Debug, Clone)]
+struct MutationDescriptor {
+    action: String,
+    kind: String,
+    id: String,
+}
+
+#[derive(Debug, Clone)]
 struct RoleTemplateFile {
     template: RoleTemplate,
 }
@@ -119,10 +133,87 @@ struct TeamPresetFile {
     template: TeamPreset,
 }
 
+impl DebounceState {
+    fn from_store(state: TemplateStoreState, window_secs: i64) -> Self {
+        Self {
+            pending_actions: state.pending_actions,
+            window_secs,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.pending_actions.is_empty()
+    }
+
+    fn oldest_first_seen(&self) -> Option<i64> {
+        self.pending_actions.iter().map(|a| a.first_seen_at).min()
+    }
+
+    fn should_flush_lazy(&self, now_ts: i64) -> bool {
+        self.oldest_first_seen()
+            .map(|oldest| now_ts.saturating_sub(oldest) >= self.window_secs)
+            .unwrap_or(false)
+    }
+
+    fn enqueue(&mut self, descriptor: MutationDescriptor, changed_paths: &[PathBuf], now_ts: i64) {
+        if let Some(existing) = self
+            .pending_actions
+            .iter_mut()
+            .find(|action| action.kind == descriptor.kind && action.id == descriptor.id)
+        {
+            existing.action = descriptor.action;
+            existing.last_seen_at = now_ts;
+            for path in changed_paths {
+                let path_str = path.to_string_lossy().to_string();
+                if !existing.changed_paths.iter().any(|existing| existing == &path_str) {
+                    existing.changed_paths.push(path_str);
+                }
+            }
+            return;
+        }
+
+        self.pending_actions.push(PendingAction {
+            action: descriptor.action,
+            kind: descriptor.kind,
+            id: descriptor.id,
+            changed_paths: changed_paths
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect(),
+            first_seen_at: now_ts,
+            last_seen_at: now_ts,
+        });
+    }
+
+    fn commit_message(&self) -> String {
+        if self.pending_actions.len() == 1 {
+            let action = &self.pending_actions[0];
+            return format!("templates: {} {} {}", action.action, action.kind, action.id);
+        }
+        format!("templates: batch {} changes", self.pending_actions.len())
+    }
+
+    fn shutdown_message(&self) -> String {
+        format!("templates: shutdown flush {} changes", self.pending_actions.len())
+    }
+
+    fn take_changed_paths(&self) -> Vec<PathBuf> {
+        let mut unique = BTreeMap::<PathBuf, bool>::new();
+        for action in &self.pending_actions {
+            for raw in &action.changed_paths {
+                let path = PathBuf::from(raw);
+                unique.entry(path).or_insert(true);
+            }
+        }
+        unique.into_keys().collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TemplateStore {
     templates_dir: PathBuf,
     builtins_dir: PathBuf,
+    debounce_window_secs: i64,
 }
 
 impl TemplateStore {
@@ -130,13 +221,23 @@ impl TemplateStore {
         Self {
             templates_dir: app_data_dir.join(TEMPLATES_DIRNAME),
             builtins_dir: default_builtins_dir(),
+            debounce_window_secs: DEFAULT_DEBOUNCE_WINDOW_SECS,
         }
     }
 
     pub fn with_builtins_dir(app_data_dir: PathBuf, builtins_dir: PathBuf) -> Self {
+        Self::with_builtins_and_debounce(app_data_dir, builtins_dir, DEFAULT_DEBOUNCE_WINDOW_SECS)
+    }
+
+    pub fn with_builtins_and_debounce(
+        app_data_dir: PathBuf,
+        builtins_dir: PathBuf,
+        debounce_window_secs: i64,
+    ) -> Self {
         Self {
             templates_dir: app_data_dir.join(TEMPLATES_DIRNAME),
             builtins_dir,
+            debounce_window_secs,
         }
     }
 
@@ -719,8 +820,7 @@ impl TemplateStore {
         let Some(repo) = self.ensure_repo_for_mutation()? else {
             return Ok(None);
         };
-
-        let mut changes = Vec::new();
+        let mut normalized_paths = Vec::new();
         for path in changed_paths {
             let relative = normalize_relative_path(path)?;
             if !is_managed_template_path(&relative) {
@@ -729,34 +829,74 @@ impl TemplateStore {
                     relative.display()
                 )));
             }
-            let absolute = self.templates_dir().join(&relative);
-            let deleted = !absolute.exists();
-            changes.push(PathChange {
-                path: relative,
-                deleted,
-            });
+            normalized_paths.push(relative);
         }
 
-        if changes.is_empty() {
+        if normalized_paths.is_empty() {
             return Ok(None);
         }
 
-        match self.commit_with_repo(&repo, &changes, message) {
-            Ok(Some(oid)) => Ok(Some(oid.to_string())),
-            Ok(None) => Ok(None),
-            Err(err) => {
-                tracing::warn!(
-                    templates_dir = %self.templates_dir.display(),
-                    error = %err,
-                    "template commit skipped; persisted YAML remains source of truth"
-                );
-                Ok(None)
-            }
+        let now_ts = current_timestamp();
+        let mut persisted_state = self.load_state_unlocked()?;
+        let mut state = DebounceState::from_store(persisted_state.clone(), self.debounce_window_secs);
+
+        let stale_commit = self.flush_debounce_if_needed_with_repo(
+            &repo,
+            &mut state,
+            false,
+            false,
+            now_ts,
+        )?;
+
+        let descriptor = parse_mutation_descriptor(message).unwrap_or_else(|| MutationDescriptor {
+            action: "update".to_string(),
+            kind: "template".to_string(),
+            id: "unknown".to_string(),
+        });
+        state.enqueue(descriptor, &normalized_paths, now_ts);
+
+        let followup_commit = self.flush_debounce_if_needed_with_repo(
+            &repo,
+            &mut state,
+            false,
+            false,
+            now_ts,
+        )?;
+
+        persisted_state.pending_actions = state.pending_actions;
+        if stale_commit.is_some() || followup_commit.is_some() {
+            persisted_state.last_commit_at = Some(now_ts);
         }
+        persisted_state.repo_initialized = true;
+        self.save_state_unlocked(&persisted_state)?;
+        Ok(followup_commit.or(stale_commit))
+    }
+
+    pub fn maybe_flush_pending_commits(&self) -> Result<Option<String>, TemplateStoreError> {
+        self.flush_pending_commits_internal(false, false)
+    }
+
+    pub fn flush_pending_commits_on_shutdown(&self) -> Result<Option<String>, TemplateStoreError> {
+        self.flush_pending_commits_internal(true, true)
+    }
+
+    pub fn flush_pending_commits(&self) -> Result<Option<String>, TemplateStoreError> {
+        self.flush_pending_commits_internal(true, false)
     }
 
     pub fn load_state(&self) -> Result<TemplateStoreState, TemplateStoreError> {
         self.ensure_directories()?;
+        let _lock = self.acquire_lock()?;
+        self.load_state_unlocked()
+    }
+
+    pub fn save_state(&self, state: &TemplateStoreState) -> Result<(), TemplateStoreError> {
+        self.ensure_directories()?;
+        let _lock = self.acquire_lock()?;
+        self.save_state_unlocked(state)
+    }
+
+    fn load_state_unlocked(&self) -> Result<TemplateStoreState, TemplateStoreError> {
         let path = self.state_path();
         let raw = match fs::read_to_string(&path) {
             Ok(raw) => raw,
@@ -771,12 +911,116 @@ impl TemplateStore {
         })
     }
 
-    pub fn save_state(&self, state: &TemplateStoreState) -> Result<(), TemplateStoreError> {
-        self.ensure_directories()?;
-        let _lock = self.acquire_lock()?;
+    fn save_state_unlocked(&self, state: &TemplateStoreState) -> Result<(), TemplateStoreError> {
         let payload = serde_json::to_vec_pretty(state)
             .map_err(|err| TemplateStoreError::Parse(format!("failed to serialize state: {err}")))?;
         write_atomic_file(&self.state_path(), &payload)
+    }
+
+    fn flush_pending_commits_internal(
+        &self,
+        force: bool,
+        shutdown_mode: bool,
+    ) -> Result<Option<String>, TemplateStoreError> {
+        self.ensure_directories()?;
+        let _lock = self.acquire_lock()?;
+
+        if !self.git_dir().exists() {
+            return Ok(None);
+        }
+
+        let repo = match Repository::open(self.templates_dir()) {
+            Ok(repo) => repo,
+            Err(err) => {
+                tracing::warn!(
+                    templates_dir = %self.templates_dir.display(),
+                    error = %err,
+                    "skipping pending template flush because repository could not be opened"
+                );
+                return Ok(None);
+            }
+        };
+
+        let mut persisted = self.load_state_unlocked()?;
+        let mut debounce = DebounceState::from_store(persisted.clone(), self.debounce_window_secs);
+        let commit_id = self.flush_debounce_if_needed_with_repo(
+            &repo,
+            &mut debounce,
+            force,
+            shutdown_mode,
+            current_timestamp(),
+        )?;
+
+        persisted.pending_actions = debounce.pending_actions;
+        if commit_id.is_some() {
+            persisted.last_commit_at = Some(current_timestamp());
+        }
+        persisted.repo_initialized = true;
+        self.save_state_unlocked(&persisted)?;
+        Ok(commit_id)
+    }
+
+    fn flush_debounce_if_needed_with_repo(
+        &self,
+        repo: &Repository,
+        debounce: &mut DebounceState,
+        force: bool,
+        shutdown_mode: bool,
+        now_ts: i64,
+    ) -> Result<Option<String>, TemplateStoreError> {
+        if debounce.is_empty() {
+            return Ok(None);
+        }
+
+        if !force && !debounce.should_flush_lazy(now_ts) {
+            return Ok(None);
+        }
+
+        if let Err(err) = self.load_catalog() {
+            tracing::warn!(
+                templates_dir = %self.templates_dir.display(),
+                error = %err,
+                "template pending commit skipped due to pre-commit schema validation failure"
+            );
+            return Ok(None);
+        }
+
+        let mut changes = Vec::new();
+        for path in debounce.take_changed_paths() {
+            let relative = normalize_relative_path(&path)?;
+            let absolute = self.templates_dir().join(&relative);
+            changes.push(PathChange {
+                path: relative,
+                deleted: !absolute.exists(),
+            });
+        }
+
+        if changes.is_empty() {
+            debounce.pending_actions.clear();
+            return Ok(None);
+        }
+
+        let message = if shutdown_mode {
+            debounce.shutdown_message()
+        } else {
+            debounce.commit_message()
+        };
+
+        match self.commit_with_repo(repo, &changes, &message) {
+            Ok(Some(oid)) => {
+                debounce.pending_actions.clear();
+                Ok(Some(oid.to_string()))
+            }
+            Ok(None) => Ok(None),
+            Err(err) => {
+                tracing::warn!(
+                    templates_dir = %self.templates_dir.display(),
+                    error = %err,
+                    "template commit skipped; persisted YAML remains source of truth"
+                );
+                Ok(None)
+            }
+        }
     }
 
     fn roles_dir(&self) -> PathBuf {
@@ -1028,6 +1272,22 @@ fn default_builtins_dir() -> PathBuf {
         .join("templates")
 }
 
+fn current_timestamp() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+fn parse_mutation_descriptor(message: &str) -> Option<MutationDescriptor> {
+    let payload = message.strip_prefix("templates: ")?;
+    let mut parts = payload.split_whitespace();
+    let action = parts.next()?.to_string();
+    let kind = parts.next()?.to_string();
+    let id = parts.collect::<Vec<_>>().join(" ");
+    if id.trim().is_empty() {
+        return None;
+    }
+    Some(MutationDescriptor { action, kind, id })
+}
+
 fn validate_template_id(id: &str, kind: &str) -> Result<(), TemplateStoreError> {
     if id.trim().is_empty() {
         return Err(TemplateStoreError::Validation(format!(
@@ -1219,6 +1479,26 @@ mod tests {
         serde_yaml::from_str::<RoleTemplate>(yaml).expect("parse role yaml")
     }
 
+    fn parse_preset(yaml: &str) -> TeamPreset {
+        serde_yaml::from_str::<TeamPreset>(yaml).expect("parse preset yaml")
+    }
+
+    fn age_pending_actions(store: &TemplateStore, seconds: i64) {
+        let mut state = store.load_state().expect("load state");
+        for action in &mut state.pending_actions {
+            action.first_seen_at -= seconds;
+            action.last_seen_at -= seconds;
+        }
+        store.save_state(&state).expect("save state");
+    }
+
+    fn latest_commit_message(repo_path: &Path) -> String {
+        let repo = Repository::open(repo_path).expect("open repo");
+        let head = repo.head().expect("head");
+        let commit = head.peel_to_commit().expect("head commit");
+        commit.message().unwrap_or("").trim().to_string()
+    }
+
     #[test]
     fn ensure_directories_creates_expected_structure() {
         let (_root, app_data, builtins) = setup_dirs();
@@ -1352,7 +1632,11 @@ mod tests {
                 "templates: seed baseline",
             )
             .expect("initial commit");
-        assert!(initial_commit.is_some(), "baseline should commit");
+        assert!(initial_commit.is_none(), "baseline should be debounced");
+        let flushed = store
+            .flush_pending_commits()
+            .expect("flush baseline pending commit");
+        assert!(flushed.is_some(), "baseline should commit when flushed");
 
         store
             .write_template_file(
@@ -1463,8 +1747,10 @@ mod tests {
         let template = parse_role(&agent_role_yaml("qa", "qa role"));
         let result = store.create_role(&template).expect("create role");
 
-        assert!(result.committed);
-        assert!(result.commit_id.is_some());
+        assert!(!result.committed);
+        assert!(result.commit_id.is_none());
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
         assert!(app_data
             .join("templates")
             .join("roles")
@@ -1498,7 +1784,9 @@ mod tests {
             .update_role("lead", &template)
             .expect("update built-in via override");
 
-        assert!(result.committed);
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
         let role = store.get_role("lead").expect("get role");
         assert_eq!(role.source, TemplateSource::User);
         assert_eq!(role.template.instructions, "lead override");
@@ -1557,7 +1845,9 @@ mod tests {
         store.create_role(&qa).expect("create qa");
 
         let result = store.delete_role("qa").expect("delete qa");
-        assert!(result.committed);
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
         assert!(!app_data
             .join("templates")
             .join("roles")
@@ -1579,7 +1869,9 @@ mod tests {
         write(&external, &agent_role_yaml("researcher", "research role"));
 
         let result = store.import_role(&external).expect("import role");
-        assert!(result.committed);
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
 
         let role = store.get_role("researcher").expect("get imported role");
         assert_eq!(role.source, TemplateSource::User);
@@ -1605,5 +1897,348 @@ mod tests {
             .expect("external role present");
         assert_eq!(ext.source, TemplateSource::User);
         assert_eq!(ext.template.instructions, "external file");
+    }
+
+    #[test]
+    fn list_presets_merges_sources_and_marks_read_only() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store.ensure_directories().expect("ensure dirs");
+
+        write(
+            &app_data.join("templates").join("presets").join("base.yaml"),
+            &preset_yaml("base"),
+        );
+
+        let presets = store.list_presets().expect("list presets");
+        let base = presets
+            .iter()
+            .find(|preset| preset.template.preset_id == "base")
+            .expect("base preset");
+        assert_eq!(base.source, TemplateSource::User);
+        assert!(!base.read_only);
+    }
+
+    #[test]
+    fn get_preset_prefers_user_override() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store.ensure_directories().expect("ensure dirs");
+        write(
+            &app_data.join("templates").join("presets").join("base.yaml"),
+            &preset_yaml("base"),
+        );
+
+        let preset = store.get_preset("base").expect("get preset");
+        assert_eq!(preset.source, TemplateSource::User);
+    }
+
+    #[test]
+    fn create_preset_validates_writes_and_commits() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let preset = parse_preset(&preset_yaml_with_agent("qa-team", "dev"));
+        let result = store.create_preset(&preset).expect("create preset");
+
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
+        assert!(app_data
+            .join("templates")
+            .join("presets")
+            .join("qa-team.yaml")
+            .exists());
+    }
+
+    #[test]
+    fn create_preset_rejects_unknown_role_reference() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data, builtins);
+
+        let preset = parse_preset(&preset_yaml_with_agent("bad", "missing-role"));
+        let err = store.create_preset(&preset).expect_err("must fail");
+        assert!(matches!(err, TemplateStoreError::Validation(_)));
+    }
+
+    #[test]
+    fn create_preset_blocks_built_in_collision() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data, builtins);
+
+        let preset = parse_preset(&preset_yaml("base"));
+        let err = store.create_preset(&preset).expect_err("must fail");
+        assert!(matches!(err, TemplateStoreError::ReadOnly(_)));
+    }
+
+    #[test]
+    fn update_preset_creates_user_override_for_built_in() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let preset = parse_preset(&preset_yaml("base"));
+        let result = store.update_preset("base", &preset).expect("update base");
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
+
+        let loaded = store.get_preset("base").expect("get base");
+        assert_eq!(loaded.source, TemplateSource::User);
+        assert!(app_data
+            .join("templates")
+            .join("presets")
+            .join("base.yaml")
+            .exists());
+    }
+
+    #[test]
+    fn update_preset_fails_when_missing() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data, builtins);
+
+        let preset = parse_preset(&preset_yaml_with_agent("missing", "dev"));
+        let err = store
+            .update_preset("missing", &preset)
+            .expect_err("missing preset");
+        assert!(matches!(err, TemplateStoreError::NotFound(_)));
+    }
+
+    #[test]
+    fn delete_preset_removes_user_preset_and_commits() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let preset = parse_preset(&preset_yaml_with_agent("tmp", "dev"));
+        store.create_preset(&preset).expect("create preset");
+
+        let result = store.delete_preset("tmp").expect("delete preset");
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
+        assert!(!app_data
+            .join("templates")
+            .join("presets")
+            .join("tmp.yaml")
+            .exists());
+    }
+
+    #[test]
+    fn delete_preset_blocks_built_in_delete() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data, builtins);
+
+        let err = store.delete_preset("base").expect_err("built-in delete blocked");
+        assert!(matches!(err, TemplateStoreError::ReadOnly(_)));
+    }
+
+    #[test]
+    fn import_preset_validates_and_writes_to_user_directory() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let external = app_data.join("external-preset.yaml");
+        write(&external, &preset_yaml_with_agent("external", "dev"));
+
+        let result = store.import_preset(&external).expect("import preset");
+        assert!(!result.committed);
+        let flushed = store.flush_pending_commits().expect("flush pending");
+        assert!(flushed.is_some(), "flush should create commit");
+
+        let preset = store.get_preset("external").expect("get imported");
+        assert_eq!(preset.source, TemplateSource::User);
+    }
+
+    #[test]
+    fn list_presets_picks_up_external_files_added_to_presets_directory() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+        store.ensure_directories().expect("ensure dirs");
+
+        write(
+            &app_data.join("templates").join("presets").join("ext.yaml"),
+            &preset_yaml_with_agent("ext", "dev"),
+        );
+
+        let presets = store.list_presets().expect("list presets");
+        let ext = presets
+            .iter()
+            .find(|preset| preset.template.preset_id == "ext")
+            .expect("external preset present");
+        assert_eq!(ext.source, TemplateSource::User);
+    }
+
+    #[test]
+    fn debounce_coalesces_repeated_role_updates_into_single_commit() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_and_debounce(app_data.clone(), builtins, 30);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let qa_v1 = parse_role(&agent_role_yaml("qa", "qa v1"));
+        let qa_v2 = parse_role(&agent_role_yaml("qa", "qa v2"));
+        assert!(!store.create_role(&qa_v1).expect("create").committed);
+        assert!(!store.update_role("qa", &qa_v2).expect("update").committed);
+
+        let state = store.load_state().expect("load state");
+        assert_eq!(state.pending_actions.len(), 1, "same role should coalesce");
+        assert_eq!(state.pending_actions[0].action, "update");
+        assert_eq!(state.pending_actions[0].id, "qa");
+
+        assert!(store
+            .maybe_flush_pending_commits()
+            .expect("maybe flush before debounce")
+            .is_none());
+        age_pending_actions(&store, 31);
+        let commit_id = store
+            .maybe_flush_pending_commits()
+            .expect("flush after debounce");
+        assert!(commit_id.is_some());
+        assert_eq!(
+            latest_commit_message(&app_data.join("templates")),
+            "templates: update role qa"
+        );
+    }
+
+    #[test]
+    fn debounce_uses_batch_message_for_multiple_pending_actions() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_and_debounce(app_data.clone(), builtins, 30);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let qa = parse_role(&agent_role_yaml("qa", "qa role"));
+        let preset = parse_preset(&preset_yaml_with_agent("qa-team", "qa"));
+        assert!(!store.create_role(&qa).expect("create role").committed);
+        assert!(!store.create_preset(&preset).expect("create preset").committed);
+
+        let state = store.load_state().expect("load state");
+        assert_eq!(state.pending_actions.len(), 2);
+
+        age_pending_actions(&store, 31);
+        let commit_id = store
+            .maybe_flush_pending_commits()
+            .expect("flush pending batch");
+        assert!(commit_id.is_some());
+        assert_eq!(
+            latest_commit_message(&app_data.join("templates")),
+            "templates: batch 2 changes"
+        );
+    }
+
+    #[test]
+    fn shutdown_flush_uses_shutdown_message() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_and_debounce(app_data.clone(), builtins, 30);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let qa = parse_role(&agent_role_yaml("qa", "qa role"));
+        assert!(!store.create_role(&qa).expect("create role").committed);
+
+        let commit_id = store
+            .flush_pending_commits_on_shutdown()
+            .expect("shutdown flush");
+        assert!(commit_id.is_some());
+        assert_eq!(
+            latest_commit_message(&app_data.join("templates")),
+            "templates: shutdown flush 1 changes"
+        );
+    }
+
+    #[test]
+    fn stale_pending_actions_flush_before_enqueueing_new_mutation() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_and_debounce(app_data.clone(), builtins, 30);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let qa = parse_role(&agent_role_yaml("qa", "qa role"));
+        assert!(!store.create_role(&qa).expect("create qa").committed);
+        age_pending_actions(&store, 31);
+
+        let qb = parse_role(&agent_role_yaml("qb", "qb role"));
+        let second = store.create_role(&qb).expect("create qb");
+        assert!(
+            second.committed,
+            "creating qb should flush stale qa action before enqueueing qb"
+        );
+
+        let state = store.load_state().expect("load state");
+        assert_eq!(state.pending_actions.len(), 1);
+        assert_eq!(state.pending_actions[0].id, "qb");
+        assert_eq!(
+            latest_commit_message(&app_data.join("templates")),
+            "templates: create role qa"
+        );
+    }
+
+    #[test]
+    fn precommit_validation_failure_preserves_pending_actions() {
+        let (_root, app_data, builtins) = setup_dirs();
+        seed_valid_catalog(&builtins);
+        let store = TemplateStore::with_builtins_and_debounce(app_data.clone(), builtins, 30);
+        store
+            .ensure_repo_for_mutation()
+            .expect("ensure repo")
+            .expect("repo");
+
+        let qa = parse_role(&agent_role_yaml("qa", "qa role"));
+        assert!(!store.create_role(&qa).expect("create role").committed);
+
+        write(
+            &app_data.join("templates").join("presets").join("invalid.yaml"),
+            "not: valid: yaml",
+        );
+        age_pending_actions(&store, 31);
+
+        let flush_result = store
+            .maybe_flush_pending_commits()
+            .expect("flush should not error");
+        assert!(flush_result.is_none(), "invalid schema should skip commit");
+
+        let state = store.load_state().expect("load state");
+        assert!(
+            !state.pending_actions.is_empty(),
+            "pending actions should remain for later retry"
+        );
     }
 }
