@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-03-04
+
+### Added
+
+**Agent Resume Lifecycle**
+- Resume offline members: `coordination_resume_member` pipeline with `Continue` and `Fresh` modes
+- Resume contracts: `ResumeContextMode`, `ResumeMemberRequest`, and `ResumeAgentReport` IPC types
+- MeshTeamRoster resume UX: Resume action on offline rows with mode-aware relaunch
+
+**Liveness Reconciliation**
+- Write-on-drift liveness reconciliation in live status queries (`reconcile_team_liveness`)
+- Shell-return drift detection: `pane_is_shell` checks `#{pane_current_command}` for shell fallthrough
+- Offline drift daemon cleanup: non-Claude `daemon_pid` check/terminate/clear behavior
+
+**Documentation & Infographics**
+- Regenerated 7 infographics for accuracy (mesh-view-lifecycle, coordination-architecture, system-architecture, data-model, task-aggregation, file-rendering-pipeline, build-release-pipeline)
+- New mesh-resume-liveness-sequence infographic: end-to-end sequence diagram for resume and write-on-drift flows
+- Updated ARCHITECTURE.md, CONTRIBUTING.md, mesh-view-design.md, coordination-architecture.md for resume and liveness features
+- Added feature-matrix.md and phase-4-architecture.md documentation
+- Security audit report for v0.4.3 release
+
 ## [0.4.3] - 2026-03-04
 
 ### Added
@@ -28,12 +49,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Lead-removal guard: backend hard-blocks removing the team lead
 - Pane ownership pre-check: verify tmux pane belongs to expected session before killing
 - Team-lead removal notification: lead-only mesh notification when an agent is removed (who, by whom, cleanup status)
-- Resume offline members: `coordination_resume_member` pipeline with `Continue` and `Fresh` modes
-- Resume contracts: `ResumeContextMode`, `ResumeMemberRequest`, and `ResumeAgentReport` IPC types
-- MeshTeamRoster resume UX: Resume action on offline rows with mode-aware relaunch
-- Write-on-drift liveness reconciliation in live status queries (`reconcile_team_liveness`)
-- Shell-return drift detection: `pane_is_shell` checks `#{pane_current_command}` for shell fallthrough
-- Offline drift daemon cleanup: non-Claude `daemon_pid` check/terminate/clear behavior
 
 **UI Task Board Polish**
 - Archive metadata display: `archived_reason`, `state_changed_at`, `last_status` surfaced in SessionHistory and TaskDetailPanel
