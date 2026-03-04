@@ -121,10 +121,12 @@ describe('MeshCanvas', () => {
         .getAllByTestId('mesh-node-agent')
         .map(node => Math.round(centerY(node)))
     )
+    const leadY = Math.round(centerY(screen.getByTestId('mesh-node-lead')))
+    const rows = [...yValues].sort((a, b) => a - b)
 
     expect(yValues.size).toBe(2)
-    expect(yValues.has(148)).toBe(true)
-    expect(yValues.has(228)).toBe(true)
+    expect(rows[0]).toBeGreaterThan(leadY + 70)
+    expect(rows[1] - rows[0]).toBeGreaterThanOrEqual(80)
   })
 
   it('renders one connection per agent', () => {

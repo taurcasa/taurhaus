@@ -1068,67 +1068,82 @@
       onClose={closeSlideOver}
     >
       {#snippet children()}
-        <section class="space-y-3" data-testid="mesh-add-agent-form">
-          <p class="text-xs {t.textMuted}">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
+        <section class="space-y-4" data-testid="mesh-add-agent-form">
+          <p class="text-sm {t.textMuted}">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
 
-          <input
-            class="w-full rounded-md border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
-            placeholder="Agent name"
-            value={addAgentDraft?.name ?? ''}
-            oninput={(event) => updateAddAgentField('name', event.currentTarget.value)}
-            data-testid="mesh-add-agent-name-input"
-          />
+          <div class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">AGENT NAME</p>
+            <input
+              class="h-10 w-full rounded-md border px-2.5 text-base transition-colors focus:outline-none {fieldTone}"
+              placeholder="Agent name"
+              value={addAgentDraft?.name ?? ''}
+              oninput={(event) => updateAddAgentField('name', event.currentTarget.value)}
+              data-testid="mesh-add-agent-name-input"
+            />
+          </div>
 
-          <select
-            class="h-8 w-full rounded-md border px-2 pr-6 text-xs transition-colors focus:outline-none {fieldTone} {selectScheme}"
-            style:background-image={chevronSvg}
-            style:background-repeat="no-repeat"
-            style:background-position="right 6px center"
-            value={addAgentDraft?.tool ?? 'codex'}
-            onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
-            data-testid="mesh-add-agent-tool-select"
-          >
-            <option value="claude">Claude</option>
-            <option value="codex">Codex</option>
-            <option value="gemini">Gemini</option>
-          </select>
+          <div class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">TOOL</p>
+            <select
+              class="h-9 w-full rounded-md border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              style:background-image={chevronSvg}
+              style:background-repeat="no-repeat"
+              style:background-position="right 6px center"
+              value={addAgentDraft?.tool ?? 'codex'}
+              onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
+              data-testid="mesh-add-agent-tool-select"
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </div>
 
-          <select
-            class="h-8 w-full rounded-md border px-2 pr-6 text-xs transition-colors focus:outline-none {fieldTone} {selectScheme}"
-            style:background-image={chevronSvg}
-            style:background-repeat="no-repeat"
-            style:background-position="right 6px center"
-            value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
-            onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
-            data-testid="mesh-add-agent-model-select"
-          >
-            {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
-              <option value={model}>{model}</option>
-            {/each}
-          </select>
+          <div class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">MODEL</p>
+            <select
+              class="h-9 w-full rounded-md border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              style:background-image={chevronSvg}
+              style:background-repeat="no-repeat"
+              style:background-position="right 6px center"
+              value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
+              onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
+              data-testid="mesh-add-agent-model-select"
+            >
+              {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </select>
+          </div>
 
-          <select
-            class="h-8 w-full rounded-md border px-2 pr-6 text-xs transition-colors focus:outline-none {fieldTone} {selectScheme}"
-            style:background-image={chevronSvg}
-            style:background-repeat="no-repeat"
-            style:background-position="right 6px center"
-            value={addAgentDraft?.projectId ?? ''}
-            onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
-            data-testid="mesh-add-agent-project-select"
-          >
-            <option value="">Select project</option>
-            {#each projectOptions as project}
-              <option value={project.id}>{project.label}</option>
-            {/each}
-          </select>
+          <div class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">PROJECT</p>
+            <select
+              class="h-9 w-full rounded-md border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              style:background-image={chevronSvg}
+              style:background-repeat="no-repeat"
+              style:background-position="right 6px center"
+              value={addAgentDraft?.projectId ?? ''}
+              onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
+              data-testid="mesh-add-agent-project-select"
+            >
+              <option value="">Select project</option>
+              {#each projectOptions as project}
+                <option value={project.id}>{project.label}</option>
+              {/each}
+            </select>
+          </div>
 
-          <input
-            class="w-full rounded-md border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
-            placeholder="Description (optional)"
-            value={addAgentDraft?.description ?? ''}
-            oninput={(event) => updateAddAgentField('description', event.currentTarget.value)}
-            data-testid="mesh-add-agent-description-input"
-          />
+          <div class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">DESCRIPTION</p>
+            <input
+              class="h-9 w-full rounded-md border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
+              placeholder="Description (optional)"
+              value={addAgentDraft?.description ?? ''}
+              oninput={(event) => updateAddAgentField('description', event.currentTarget.value)}
+              data-testid="mesh-add-agent-description-input"
+            />
+          </div>
 
           {#if addAgentDraft?.error}
             <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentDraft.error}</p>
@@ -1136,7 +1151,7 @@
 
           <div class="flex items-center justify-end gap-2">
             <button
-              class="rounded-md border px-2 py-1 text-xs {actionSecondary}"
+              class="rounded-md border px-3 py-1.5 text-xs {actionSecondary}"
               type="button"
               onclick={closeSlideOver}
               disabled={addAgentDraft?.submitting}
@@ -1145,7 +1160,7 @@
               Cancel
             </button>
             <button
-              class="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               type="button"
               onclick={submitAddAgent}
               disabled={!canSubmitAddAgent}

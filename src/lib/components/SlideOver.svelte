@@ -37,6 +37,7 @@
 
   function handleBackdropClick(event) {
     if (event.target === event.currentTarget) {
+      event.stopPropagation()
       onClose()
     }
   }
@@ -142,11 +143,11 @@
 </script>
 
 {#if visible}
-  <div class="absolute inset-0 z-[45] pointer-events-none" data-testid="slideover-root">
+  <div class="fixed inset-0 z-[45] pointer-events-none" data-testid="slideover-root">
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="absolute inset-0 z-40 bg-black/30 pointer-events-auto {closing ? 'slideover-backdrop-exit' : 'slideover-backdrop-enter'}"
+      class="fixed inset-0 z-40 bg-black/30 {closing ? 'pointer-events-none slideover-backdrop-exit' : 'pointer-events-auto slideover-backdrop-enter'}"
       onclick={handleBackdropClick}
       data-testid="slideover-backdrop"
     ></div>
@@ -154,7 +155,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
     <aside
       bind:this={panelElement}
-      class="absolute top-0 right-0 bottom-0 z-[45] flex flex-col pointer-events-auto {panelTone} {closing ? 'slideover-panel-exit' : 'slideover-panel-enter'}"
+      class="fixed top-0 right-0 bottom-0 z-[45] flex flex-col pointer-events-auto {panelTone} {closing ? 'slideover-panel-exit' : 'slideover-panel-enter'}"
       style={`width: ${width}px;`}
       role="dialog"
       aria-modal="true"

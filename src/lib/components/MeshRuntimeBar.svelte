@@ -10,18 +10,17 @@
 
   let showOverflowMenu = $state(false)
 
-  const borderTone = $derived(dark ? 'border-zinc-700/70' : 'border-zinc-200')
+  const panelTone = $derived(dark ? 'border-zinc-700/70 bg-zinc-900/60' : 'border-zinc-200 bg-brand-50/80')
   const titleTone = $derived(dark ? 'text-zinc-200' : 'text-zinc-900')
-  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
-  const ghostTone = $derived(
+  const statusPillTone = $derived(
+    dark
+      ? 'border-zinc-700 bg-zinc-900/80 text-zinc-200'
+      : 'border-zinc-200 bg-white/90 text-zinc-700'
+  )
+  const secondaryTone = $derived(
     dark
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
       : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
-  )
-  const overflowTone = $derived(
-    dark
-      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70'
-      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
   )
 
   const statusCounts = $derived.by(() => {
@@ -69,19 +68,34 @@
 <svelte:window onclick={handleWindowClick} />
 
 <footer
-  class="flex h-12 items-center justify-between gap-2 border-t px-3 {borderTone}"
+  class="flex items-center gap-3 rounded-lg border px-4 py-2.5 {panelTone}"
   data-testid="mesh-runtime-bar"
 >
-  <div class="min-w-0">
-    <h2 class="truncate text-sm font-semibold {titleTone}" data-testid="mesh-runtime-title">
+  <div class="min-w-0 flex-1">
+    <h2 class="truncate text-[15px] font-semibold leading-tight {titleTone}" data-testid="mesh-runtime-title">
       {teamName.trim() || 'Untitled Team'}
     </h2>
-    <p class="truncate text-[11px] {mutedTone}" data-testid="mesh-runtime-summary">{statusSummary}</p>
   </div>
 
-  <div class="flex items-center gap-1.5">
+  <div class="flex flex-wrap items-center justify-center gap-1.5" data-testid="mesh-runtime-summary">
+    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
+      <span class="h-1.5 w-1.5 rounded-full bg-success-400"></span>
+      {statusCounts.active} active
+    </span>
+    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
+      <span class="h-1.5 w-1.5 rounded-full bg-warning-400"></span>
+      {statusCounts.idle} idle
+    </span>
+    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
+      <span class="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
+      {statusCounts.offline} offline
+    </span>
+    <span class="sr-only">{statusSummary}</span>
+  </div>
+
+  <div class="flex items-center gap-2">
     <button
-      class="h-8 rounded-md border px-2.5 text-xs transition-colors {ghostTone}"
+      class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
       type="button"
       onclick={() => {
         showOverflowMenu = false
@@ -94,7 +108,7 @@
 
     <div class="relative">
       <button
-        class="h-8 rounded-md px-2 text-xs transition-colors {overflowTone}"
+        class="rounded-md border px-3 py-1.5 text-xs transition-colors {secondaryTone}"
         type="button"
         onclick={toggleOverflowMenu}
         aria-label="Runtime menu"

@@ -9,7 +9,7 @@
     status = 'offline',
     selected = false,
     position = { x: 0, y: 0 },
-    width = 110,
+    width = 140,
     dark = false,
     onClick = () => {},
   } = $props()
@@ -19,7 +19,9 @@
   const nodeHeight = $derived(isLead ? 58 : 52)
 
   const safeName = $derived(String(name || '').trim() || 'unnamed')
-  const safeModel = $derived(String(model || '').trim() || 'model')
+  const safeModel = $derived(String(model || '').trim())
+  const hasModel = $derived(safeModel.length > 0)
+  const allowNameWrap = $derived(safeName.length < 20)
 
   const safeTool = $derived.by(() => {
     const value = String(tool || '').trim().toLowerCase()
@@ -86,11 +88,17 @@
       >
         <path d={icon.path} fill="currentColor"></path>
       </svg>
-      <span class="mesh-node-name" data-testid={`mesh-node-name-${normalizedRole}`}>
+      <span
+        class="mesh-node-name"
+        class:mesh-node-name-wrap={allowNameWrap}
+        data-testid={`mesh-node-name-${normalizedRole}`}
+      >
         {isLead ? '★ ' : ''}{safeName}
       </span>
     </span>
-    <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
+    {#if hasModel}
+      <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
+    {/if}
   </span>
 </button>
 
@@ -108,7 +116,7 @@
     color: #e7f5f2;
     transition: all 150ms ease-out;
     cursor: pointer;
-    padding: 8px 12px;
+    padding: 8px 14px;
     display: flex;
     align-items: center;
     animation: mesh-node-enter 160ms ease-out;
@@ -210,25 +218,33 @@
   }
 
   .mesh-node-name {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 700;
     line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
+  .mesh-node-name.mesh-node-name-wrap {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   .mesh-node-model {
     font-size: 11px;
     line-height: 1.2;
-    color: #8aa8a6;
+    color: #a6c1bd;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .mesh-node.is-light .mesh-node-model {
-    color: #0f766e;
+    color: #0d7c73;
   }
 
   .mesh-node.is-light .mesh-node-tool {

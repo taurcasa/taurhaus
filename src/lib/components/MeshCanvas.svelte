@@ -14,6 +14,7 @@
   } = $props()
 
   let containerWidth = $state(0)
+  let containerHeight = $state(0)
   const connectionGlowFilterId = `mesh-connection-glow-${Math.random().toString(36).slice(2, 9)}`
 
   function normalizeStatus(status) {
@@ -111,6 +112,8 @@
     return {
       ...lead,
       id: String(lead.id ?? 'lead'),
+      tool: lead.tool ?? lead.cliTool ?? lead.cli_tool,
+      model: String(lead.model ?? lead.modelName ?? lead.model_name ?? '').trim(),
       status,
     }
   })
@@ -128,6 +131,8 @@
         return {
           ...agent,
           id,
+          tool: agent?.tool ?? agent?.cliTool ?? agent?.cli_tool,
+          model: String(agent?.model ?? agent?.modelName ?? agent?.model_name ?? '').trim(),
           status,
         }
       }
@@ -135,6 +140,8 @@
       return {
         ...agent,
         id,
+        tool: agent?.tool ?? agent?.cliTool ?? agent?.cli_tool,
+        model: String(agent?.model ?? agent?.modelName ?? agent?.model_name ?? '').trim(),
         status: normalizeStatus(agent?.status),
       }
     })
@@ -158,23 +165,26 @@
 
   const layout = $derived.by(() => {
     const cw = containerWidth || 600
+    const ch = Math.max(420, containerHeight || 0)
     const leadData = normalizedLead
     if (!leadData) return { lead: null, agents: [], connections: [], addNode: null }
 
-    const leadPos = { x: cw / 2, y: 48 }
     const members = normalizedAgents
     const count = members.length
-    const gap = Math.max(12, 24 - (count - 2) * 4)
-    const nodeW = Math.max(90, 110 - Math.max(0, count - 3) * 10)
+    const gap = 24
+    const nodeW = count <= 3 ? 140 : (count <= 5 ? 130 : 118)
+    const leadPos = { x: cw / 2, y: Math.round(ch * 0.3) }
+    const primaryAgentY = Math.round(ch * 0.65)
 
     let positionedAgents = []
 
     if (count >= 7) {
       const row1Count = Math.ceil(count / 2)
       const row2Count = count - row1Count
+      const rowOffset = 44
       positionedAgents = [
-        ...buildRow(members, 0, row1Count, leadPos.y + 100, cw, nodeW, gap),
-        ...buildRow(members, row1Count, row2Count, leadPos.y + 180, cw, nodeW, gap),
+        ...buildRow(members, 0, row1Count, primaryAgentY - rowOffset, cw, nodeW, gap),
+        ...buildRow(members, row1Count, row2Count, primaryAgentY + rowOffset, cw, nodeW, gap),
       ]
     } else if (count > 0) {
       const totalW = count * nodeW + (count - 1) * gap
@@ -184,7 +194,7 @@
         ...agent,
         position: {
           x: startX + i * (nodeW + gap) + nodeW / 2,
-          y: leadPos.y + 120,
+          y: primaryAgentY,
         },
         width: nodeW,
       }))
@@ -208,7 +218,7 @@
         }
         : {
           x: leadPos.x,
-          y: leadPos.y + 120,
+          y: primaryAgentY,
         })
       : null
 
@@ -216,7 +226,7 @@
       lead: {
         ...leadData,
         position: leadPos,
-        width: 130,
+        width: Math.max(140, nodeW),
       },
       agents: positionedAgents,
       connections,
@@ -225,8 +235,9 @@
   })
 
   const canvasHeight = $derived.by(() => {
+    const minHeight = Math.max(420, containerHeight || 0)
     const current = layout
-    if (!current.lead) return 280
+    if (!current.lead) return minHeight
 
     let maxY = current.lead.position.y + 60
     for (const agent of current.agents) {
@@ -237,7 +248,7 @@
       maxY = Math.max(maxY, current.addNode.y + 60)
     }
 
-    return Math.max(280, Math.ceil(maxY))
+    return Math.max(minHeight, Math.ceil(maxY + 20))
   })
 </script>
 
@@ -245,6 +256,7 @@
   class="mesh-canvas"
   class:is-light={!dark}
   bind:clientWidth={containerWidth}
+  bind:clientHeight={containerHeight}
   data-testid="mesh-canvas"
   style={`min-height: ${canvasHeight}px;`}
 >
@@ -330,7 +342,8 @@
   .mesh-canvas {
     position: relative;
     width: 100%;
-    min-height: 280px;
+    height: 100%;
+    min-height: 420px;
   }
 
   .mesh-canvas.is-light {
