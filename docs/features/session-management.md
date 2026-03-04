@@ -32,6 +32,21 @@ Each tool has:
 - tool-specific session file layout resolver
 - tool-specific activity signal strategy
 
+## Session identity persistence for task history
+
+Task history groups archived work by `session_id`. For Codex and Gemini, taurhaus now persists stable session identity directly from transcript metadata instead of relying only on file names:
+
+- Codex (`task_scanner/codex.rs`):
+  - source/session key is extracted from JSONL metadata (`payload.id`, `sessionId`, or `payload.sessionId`)
+  - filename stem is used only as fallback
+  - persisted task records store `session_id = source_key`
+- Gemini (`task_scanner/gemini.rs`):
+  - source/session key is derived from Gemini chat JSON session metadata when available
+  - fallback remains chat filename stem or default gemini source key
+  - persisted task records store `session_id = source_key`
+
+This makes cross-scan grouping stable for non-Claude tools and improves commit-window enrichment consistency.
+
 ## Session detection pipeline
 
 ![Session Detection Pipeline](../images/session-detection.jpg)
@@ -143,6 +158,13 @@ Session History timeline view:
 - Uses `get_archived_sessions` grouped by session id.
 - Shows tasks, commit counts, file counts, source tools, and expandable lazy-loaded commit/file detail.
 - Supports navigation to commit, file, or commit-range filtered Git view.
+- Uses transcript-derived time windows when possible:
+  - Claude: `~/.claude/projects/<slug>/<session>.jsonl`
+  - Codex: matched JSONL in `~/.codex/sessions/YYYY/MM/DD/`
+  - Gemini: matched chat JSON in `~/.gemini/tmp/.../chats/`
+- Falls back to persisted task timestamps (`first_seen_at`/`updated_at`) when transcript range cannot be resolved.
+- Includes structured per-session warnings (`enrichment_warnings`) in API responses when fallback is used or enrichment partially fails.
+- For team-scoped Claude task groups (where `session_id` is a team name), transcript lookup is skipped intentionally and timestamp fallback is used silently.
 
 Activity statistics:
 - Frontend tracks per-session active/total ticks per session-store update tick.

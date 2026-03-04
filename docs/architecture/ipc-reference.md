@@ -4,7 +4,7 @@ Reference for taurhaus Tauri IPC commands exposed from `src-tauri/src/commands/`
 
 ## Overview
 
-The backend currently registers 63 `#[tauri::command]` functions. Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
+The backend currently registers 65 `#[tauri::command]` functions (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
 
 ## Projects commands
 
@@ -27,6 +27,7 @@ The backend currently registers 63 `#[tauri::command]` functions. Command names 
 | `get_recent_commits` | `projectId: string`, `limit?: number` | `Result<Vec<Commit>, String>` | `git.rs` | Returns recent commits for a project. |
 | `get_all_commits` | `projectId: string`, `limit?: number`, `offset?: number` | `Result<Vec<Commit>, String>` | `git.rs` | Returns paginated commit history for a project. |
 | `get_git_status` | `projectId: string` | `Result<GitStatus, String>` | `git.rs` | Returns branch/dirty/ahead-behind git status for a project. |
+| `get_remote_url` | `projectId: string` | `Result<Option<String>, String>` | `git.rs` | Returns normalized remote URL (prefers `origin`; SSH remotes normalized to HTTPS). |
 | `get_commit_files` | `projectPath: string`, `hash: string` | `Result<Vec<CommitFile>, String>` | `tasks.rs` | Returns files changed by a specific commit hash. |
 | `get_commit_diff` | `projectPath: string`, `hash: string`, `filePath: string` | `Result<Vec<DiffHunk>, String>` | `tasks.rs` | Returns parsed diff hunks for one file in one commit. |
 | `get_commits_in_range` | `projectPath: string`, `after: string`, `before: string` | `Result<GitCommitsInRangeResult, String>` | `tasks.rs` | Returns commits and changed files for a time range. |
@@ -39,6 +40,7 @@ The backend currently registers 63 `#[tauri::command]` functions. Command names 
 | `read_file` | `projectId: string`, `relativePath: string` | `Result<FileContent, String>` | `files.rs` | Reads text file contents and language metadata. |
 | `get_readme` | `projectId: string` | `Result<Option<FileContent>, String>` | `files.rs` | Reads a project README when present. |
 | `read_project_asset` | `projectId: string`, `relativePath: string` | `Result<String, String>` | `files.rs` | Reads a binary asset and returns a `data:` URI string. |
+| `check_path_type` | `projectId: string`, `relativePath: string` | `Result<String, String>` | `files.rs` | Returns `file`, `directory`, or `not_found` with traversal/symlink-escape protections. |
 | `list_directory` | `path: string` | `Result<Vec<DirectoryEntry>, String>` | `projects.rs` | Lists immediate directory entries for the add-project browser. |
 | `get_system_roots` | none | `Vec<DirectoryEntry>` | `projects.rs` | Returns root mount points/drives for the directory browser. |
 
@@ -86,8 +88,8 @@ Session update behavior:
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
-| `get_project_tasks` | `projectPath: string` | `Result<TaskResult, String>` | `tasks.rs` | Returns unified task list + scan errors for all supported CLIs. |
-| `get_task_detail` | `projectPath: string`, `taskId: string`, `source: string` | `Result<TaskDetail, String>` | `tasks.rs` | Returns enriched task detail including linked session/commit context. |
+| `get_project_tasks` | `projectPath: string` | `Result<TaskResult, String>` | `tasks.rs` | Returns persisted unified tasks (including `source_key`, archive metadata fields) for the project. |
+| `get_task_detail` | `projectPath: string`, `taskId: string`, `source: string`, `sourceKey: string` | `Result<TaskDetail, String>` | `tasks.rs` | Returns enriched task detail resolved by identity tuple `(source, sourceKey, taskId)`. |
 | `get_archived_sessions` | `projectPath: string` | `Result<ArchivedSessionsResult, String>` | `tasks.rs` | Returns archived session timeline data for history views. |
 
 ## Daemon commands
@@ -134,7 +136,7 @@ These commands are feature-gated behind `mesh-bridged-backend` (enabled by defau
 | `coordination_create_team` | `teamName: string` | `Result<(), String>` | `coordination.rs` | Creates a persisted coordination team shell. |
 | `coordination_disband_team` | `teamName: string` | `Result<DisbandTeamResponse, String>` | `coordination.rs` | Disbands a team and returns status metadata for UI messaging. |
 | `coordination_add_member` | `teamName: string`, `memberName: string`, `backendKind: string` | `Result<(), String>` | `coordination.rs` | Adds a member definition to a team configuration. |
-| `coordination_remove_member` | `teamName: string`, `memberName: string` | `Result<(), String>` | `coordination.rs` | Removes a member definition from a team configuration. |
+| `coordination_remove_member` | `teamName: string`, `memberName: string` | `Result<RemoveAgentReport, String>` | `coordination.rs` | Removes a member and returns teardown step diagnostics + warnings. |
 | `coordination_list_teams` | none | `Result<TeamDiscoveryResponse, String>` | `coordination.rs` | Lists discoverable coordination teams. |
 | `coordination_get_team_status` | `teamName: string` | `Result<TeamStatus, String>` | `coordination.rs` | Returns persisted team configuration and health summary. |
 | `coordination_initialize_team` | `request: InitializeTeamRequest` | `Result<InitializeReport, String>` | `coordination.rs` | Executes full team bootstrap (tmux, sessions, mesh onboarding). |

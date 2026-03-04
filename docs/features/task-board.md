@@ -11,6 +11,16 @@ Frontend layout (`TaskBoard.svelte`) has two sub-tabs:
 - `Active`: three status columns (`In Progress`, `Pending`, `Completed`)
 - `History`: session-grouped archived work (`SessionHistory.svelte`)
 
+## Task identity model (`source_key`)
+
+Task identity is not just `source + task_id`. taurhaus persists tasks with a source-scoped key:
+
+- `source`: `claude`, `codex`, or `gemini`
+- `source_key`: per-source directory/session identity
+- `source_task_id`: task ID inside that source key
+
+This corresponds to the DB uniqueness model (`project_path`, `source`, `source_key`, `source_task_id`), which prevents collisions when different source directories reuse task IDs (for example, Claude session directories vs team-name directories both containing `1.json`).
+
 ## Task sources
 
 ![Task Aggregation Pipeline](../images/task-aggregation.jpg)
@@ -21,12 +31,15 @@ Each CLI tool uses a different source format, and the scanner unifies them.
 
 Source:
 
-- `~/.claude/tasks/{session-id}/*.json` (structured task files)
+- `~/.claude/tasks/{source-key}/*.json` (structured task files)
 
 Parsing (`task_scanner/claude.rs`):
 
-- Uses live `session_id` when available.
-- Falls back offline by scanning project slug under `~/.claude/projects/` and finding the newest session with tasks.
+- Uses a unified scan-all approach: scans all subdirectories under `~/.claude/tasks/`.
+- Classifies each directory through `ClaudeSourceIndex` (`task_scanner/claude_index.rs`), which maps both:
+  - session IDs -> project paths
+  - team names -> project paths (from `~/.claude/teams/*/config.json`)
+- Keeps only directories that map to the active project path.
 - Preserves rich fields: `description`, `activeForm`, `blocks`, `blockedBy`, `owner`, `session_id`.
 - Excludes `status: deleted` tasks.
 
@@ -61,12 +74,17 @@ Parsing (`task_scanner/gemini.rs`):
 
 - `tasks: Vec<UnifiedTask>`
 - `errors: Vec<(source, message)>`
+- `source_outcomes: Vec<SourceScanOutcome>`
 
 Behavior:
 
 - One source failing does not block other sources.
 - Status values are normalized to `pending`, `in_progress`, `completed`.
 - Source is normalized to `claude`, `codex`, or `gemini`.
+- Scan outcome is tri-state per source:
+  - `Data(tasks)` means usable source data was read
+  - `DefinitivelyEmpty` means source scanned successfully and had no tasks
+  - `Unavailable(reason)` means degraded I/O/parse path, so stale pruning is skipped for that source in this cycle
 
 ## Persistence and refresh pipeline
 
@@ -76,9 +94,14 @@ Flow:
 
 1. Scanner collects current tasks from source files.
 2. `persist_task_scan` upserts into DB (`task_queries::upsert_tasks`).
-3. `prune_stale_tasks` archives/deletes tasks missing from current scan per source.
-4. Backend emits `project-tasks-changed`.
-5. `TaskBoard.svelte` listens and re-fetches via `get_project_tasks(projectPath)`.
+3. `prune_stale_tasks` reconciles DB snapshot against current scan on every cycle (including empty scans), scoped by `source + source_key`.
+4. Completed tasks missing from current scan are archived; non-completed stale tasks are deleted.
+5. Archive metadata is preserved for history UX:
+  - `state_changed_at` tracks the last status transition boundary
+  - `last_status` preserves status at archive time
+  - `archived_reason` records why archival happened (for example `completed_and_removed`)
+6. Backend emits `project-tasks-changed`.
+7. `TaskBoard.svelte` listens and re-fetches via `get_project_tasks(projectPath)`.
 
 `get_project_tasks` itself is a DB read and does not re-scan files in request path.
 
@@ -96,6 +119,15 @@ Card content includes:
 - Subject (+ line-through when completed)
 - Optional description preview
 - Optional dependency/owner metadata
+- `active_form` as secondary in-progress text when present
+
+Column ordering is deterministic and stable:
+
+- `In Progress`: newest activity first (`state_changed_at`/`updated_at`/`archived_at` recency), then stable identity tiebreak
+- `Pending`: highest dependency count first, then recency, then stable identity tiebreak
+- `Completed`: newest `updated_at` first, then stable identity tiebreak
+
+Stable tiebreak identity is `source/source_key/id`, which prevents visual jitter when primary sort keys tie.
 
 Current interaction model is click-select rather than drag-and-drop reorder/move; there are no drag handlers in `TaskBoard.svelte`.
 
@@ -122,7 +154,10 @@ Backend enrichment (`commands/tasks.rs`):
 - Groups completed work by `session_id` (or `ungrouped`).
 - Sorts reverse-chronological by session start.
 - Shows task counts, commit/file counts, and contributing source tools.
+- Surfaces archive metadata (`archived_reason`, `last_status`, `state_changed_at`) in expanded task rows/detail.
+- Shows per-session enrichment warning badges when commit-window enrichment falls back or partially fails (`enrichment_warnings`).
 - Lazily loads commit/file details for expanded sessions via `get_commits_in_range`.
+- Live-refreshes while active by listening for `project-tasks-changed` events.
 
 ## Per-project scoping
 
@@ -157,7 +192,8 @@ Result: users return to the same sub-tab/task context when moving between projec
 | `src/lib/taskHelpers.js` | Shared task status labels/badge style mapping. |
 | `src-tauri/src/commands/tasks.rs` | Task IPC commands, detail/session enrichment, persistence helpers, scanner integration. |
 | `src-tauri/src/task_scanner/mod.rs` | Aggregates Claude/Codex/Gemini scanners with partial-failure handling. |
-| `src-tauri/src/task_scanner/claude.rs` | Claude structured task JSON parser + offline fallback lookup. |
+| `src-tauri/src/task_scanner/claude.rs` | Claude unified scan-all parser with source-index project classification. |
+| `src-tauri/src/task_scanner/claude_index.rs` | Session/team source-key index used to map Claude task directories to projects. |
 | `src-tauri/src/task_scanner/codex.rs` | Codex `update_plan` JSONL parser + offline session matching. |
 | `src-tauri/src/task_scanner/gemini.rs` | Gemini `TODO.md` checkbox parser. |
 | `src-tauri/src/task_scanner/types.rs` | Unified task DTOs and task board response types. |

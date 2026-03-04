@@ -86,12 +86,14 @@ Auto-detected and manual project dependencies.
 
 ### tasks
 
-Aggregated tasks from multiple CLI tools. Uses a composite natural key instead of a surrogate ID.
+Aggregated tasks from multiple CLI tools. Uses `source_key`-scoped identity for active rows while retaining archived history rows.
 
 | Column | Type | Constraints | Purpose |
 |--------|------|-------------|---------|
+| `row_id` | INTEGER | PK AUTOINCREMENT | Stable row identity for archived history rows |
 | `project_path` | TEXT | NOT NULL | Project path |
 | `source` | TEXT | NOT NULL | Tool: `claude`, `codex`, `gemini` |
+| `source_key` | TEXT | NOT NULL | Source namespace key (session/team/source bucket) |
 | `source_task_id` | TEXT | NOT NULL | Original ID within the tool |
 | `subject` | TEXT | NOT NULL | Task title |
 | `description` | TEXT | | Detailed description |
@@ -102,14 +104,17 @@ Aggregated tasks from multiple CLI tools. Uses a composite natural key instead o
 | `owner` | TEXT | | Assigned agent/user |
 | `session_id` | TEXT | | Source session identifier |
 | `first_seen_at` | TEXT | NOT NULL | First import timestamp |
+| `state_changed_at` | TEXT | | Last status-transition timestamp |
 | `updated_at` | TEXT | NOT NULL | Last update timestamp |
 | `archived_at` | TEXT | | Set when completed task goes stale (not hard-deleted) |
+| `last_status` | TEXT | | Last persisted status before archival |
+| `archived_reason` | TEXT | | Archive reason code (`completed_and_removed`, etc.) |
 
-**Primary key**: `(project_path, source, source_task_id)` — composite.
+**Active-task identity**: unique partial index on `(project_path, source, source_key, source_task_id) WHERE archived_at IS NULL`.
 
-**Indexes**: `project_path`, `(project_path, source)`.
+**Indexes**: `project_path`, `(project_path, source)`, `(project_path, source, source_key)`, active-identity unique index above, and archived timeline index `(project_path, archived_at DESC, session_id, source, source_key, source_task_id)`.
 
-**Archival**: When a scan no longer includes a previously-completed task, `archived_at` is set instead of deleting the row. Non-completed stale tasks are hard-deleted.
+**Archival**: When a scan no longer includes a previously-completed task, `archived_at` is set instead of deleting the row and `last_status`/`archived_reason` are preserved. Non-completed stale tasks are hard-deleted.
 
 ### settings
 
@@ -133,6 +138,8 @@ Migrations live in `src-tauri/src/db/migrations/` as numbered SQL files. Applied
 | 005 | Create `session_activity` table |
 | 006 | Create `tasks` table with composite primary key |
 | 007 | Add `archived_at` column to tasks |
+| 008 | Add task archive metadata columns: `state_changed_at`, `last_status`, `archived_reason` (with backfill) |
+| 009 | Rebuild tasks schema with `source_key` identity dimension + active-task unique index |
 
 ## tantivy (full-text search)
 

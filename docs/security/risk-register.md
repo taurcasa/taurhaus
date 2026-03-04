@@ -1,6 +1,14 @@
 # Taurhaus Security Risk Register
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
+
+## Open Findings (Task #56 Audit)
+
+| ID | Severity | Risk | Current Status | Planned Mitigation |
+|---|---|---|---|---|
+| F-01 | HIGH | Insecure-by-default autonomous launch flags (`--dangerously-skip-permissions`, `--yolo`) increase prompt-injection blast radius. | Open | Change defaults to safe/interactive launch commands and require explicit opt-in for dangerous flags with user warning. |
+| F-02 | MEDIUM | libgit2 owner validation is globally disabled, broadening trust to dubious-ownership repositories. | Open | Re-enable owner validation by default and add explicit trust/allowlist for known path classes as needed. |
+| F-03 | LOW | External URL opener capability allows `http://**`, enabling insecure transport for untrusted markdown links. | Open | Restrict default allowlist to HTTPS and/or require explicit warning/confirmation for HTTP links. |
 
 ## Accepted Risks
 

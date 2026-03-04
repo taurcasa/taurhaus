@@ -67,7 +67,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `search/` | tantivy full-text search index (build, update, query) |
 | `session/` | Session import, parsing, archival |
 | `session_scanner/` | CLI tool detection (process scanning, idle detection) |
-| `task_scanner/` | Task aggregation from Claude Code, Codex, Gemini |
+| `task_scanner/` | Task aggregation from Claude Code, Codex, Gemini (`claude_index.rs` maps source_key -> project for robust scans) |
 | `daemon/` | TCP client + server, daemon lifecycle |
 | `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
@@ -99,14 +99,14 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (63)
+### IPC Commands (65)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
 Grouped by domain:
 - **Projects** (9): list, get, register, batch register, update, remove, first-run check, scan directory, validate path
-- **Git** (6): all commits, recent commits, range commits, diff, commit files, status
-- **Files** (6): read file, list directory, read asset, file tree, readme, system roots
+- **Git** (7): all commits, recent commits, range commits, diff, commit files, status, remote URL
+- **Files** (7): read file, path type check, list directory, read asset, file tree, readme, system roots
 - **Search** (3): search, rebuild index, index status
 - **Sessions** (3): list, get latest, get detail
 - **Relationships** (4): list, create, dismiss, remove
@@ -177,9 +177,9 @@ JSON-line protocol over TCP (localhost:17233). Same protocol on both platforms �
 **Commands (app → daemon, 21 methods):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
-- `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory`
-- `list_claude_sessions`, `launch_session`, `stop_session`, `navigate_to_session`
-- `get_project_tasks`
+- `file_tree`, `read_file`, `read_readme`, `read_asset`
+- `list_claude_sessions`, `wait_session_updates`, `launch_session`, `stop_session`, `navigate_to_session`
+- `get_project_tasks` (supports optional `scan_cycle_id` in protocol v6)
 
 ## Startup Sequence
 

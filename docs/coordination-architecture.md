@@ -202,6 +202,19 @@ src-tauri/src/
 
 **Decision**: Taurhaus only shows teams it created/manages (tracked in SQLite). CLI-only mesh teams are not visible — consistent with the existing "only registered projects are visible" model.
 
+### D15: Structured member removal with guarded teardown + lead notice
+
+**Status**: Implemented
+
+**Decision**: Runtime member removal is a multi-step operation with explicit diagnostics and safety guards.
+
+- IPC contract: `coordination_remove_member` returns `RemoveAgentReport` (not `()`), including `steps[]` and `warnings[]`.
+- Lead protection: team lead entries are non-removable through this path.
+- Pane safety: pane teardown requires pre-checking pane ownership against the member project path before killing tmux panes.
+- Operator visibility: after removal, taurhaus sends a removal notice to the team lead summarizing whether cleanup was full or partial.
+
+**Rationale**: Removal is an operational workflow, not a simple config mutation. Structured reporting and ownership checks prevent silent failures and reduce accidental pane/process termination risk.
+
 ## Milestone Plan
 
 ### M0: Usable MeshBridged vertical slice

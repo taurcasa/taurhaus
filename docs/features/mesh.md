@@ -11,6 +11,7 @@ Mesh view responsibilities:
 - define and launch multi-agent teams with a single click
 - display a live roster of team members with session status
 - hot-add agents to running teams
+- remove agents from running teams with managed teardown diagnostics
 - re-send onboarding instructions to agents that lose context
 - disband teams with full resource cleanup (panes, daemons, mesh state)
 - discover and clean up stale teams from previous sessions
@@ -140,10 +141,36 @@ Backend health states map to frontend display:
 **Per-member actions:**
 - **Focus** — jump to the agent's tmux pane (only shown if `pane_id` exists)
 - **Re-onboard** — re-send onboarding instructions via `coordination_reonboard` (non-lead members only). Shows brief "Sent!" confirmation.
+- **Remove** — opens a confirmation dialog, then runs backend member-removal teardown for non-lead members.
 
 **Team actions (header):**
 - **+ Agent** — opens the hot-add form
 - **Disband team** — via overflow menu (⋯), with confirmation dialog
+
+## Removing agents from existing teams
+
+From the runtime roster, clicking **Remove** on a non-lead member opens a danger confirmation dialog. Confirming calls `coordination_remove_member(teamName, memberName)`.
+
+Backend removal returns `RemoveAgentReport` with:
+
+- `removed` status
+- per-step outcomes (`steps`)
+- non-fatal cleanup diagnostics (`warnings`)
+
+Typical teardown steps include:
+
+- daemon termination (`terminate_daemon`)
+- mesh leave (`leave_mesh`)
+- pane ownership verification (`verify_pane_ownership`)
+- pane kill when ownership check passes (`kill_pane`)
+- team config/runtime cleanup (`update_config`, `delete_runtime`)
+- removal notice delivery to team lead (`notify_lead`)
+
+Safety/consistency guards:
+
+- Lead-removal guard: backend rejects removing the team lead.
+- Pane ownership pre-check: pane kill is skipped with warning if pane ownership does not match expected project path.
+- Team-lead notification: backend attempts to notify the lead that a member was removed (with partial-cleanup context when warnings exist).
 
 ## Hot-add agents
 
@@ -154,7 +181,13 @@ From the runtime view, clicking "+ Agent" opens an inline form with:
 - Target project selector
 - Description (optional)
 
-Submission calls `coordination_add_agent`, which handles: create pane, launch CLI, mesh join, start daemon, send onboarding. Progress is shown inline with per-step status.
+Submission calls `coordination_add_agent`, which handles: create pane, launch CLI, mesh join, start daemon, send onboarding, and roster update. Progress is shown inline with per-step status.
+
+Project-path handling in hot-add:
+
+- The selected project from the dropdown is normalized and passed through the request as `agent.project_id`.
+- Mesh join is executed in that explicit project path context (no process-cwd/app-data fallback).
+- Roster update is idempotent: if mesh pre-created the member entry, taurhaus updates project path/metadata instead of failing on duplicate-member conflict.
 
 ## Team cleanup panel
 
@@ -190,6 +223,7 @@ Mesh view uses these backend commands:
 | `coordination_preflight_check` | Validate prerequisites before initialization |
 | `coordination_initialize_team` | Execute full team bootstrap pipeline |
 | `coordination_add_agent` | Hot-add one agent to a running team |
+| `coordination_remove_member` | Remove one non-lead agent with teardown + diagnostics |
 | `coordination_reonboard` | Re-send onboarding to one member |
 | `coordination_get_live_team_status` | Get runtime roster with session status |
 | `coordination_list_teams` | Discover existing teams for auto-restore and cleanup |

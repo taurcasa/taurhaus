@@ -18,7 +18,7 @@ The app and the daemon exist as separate processes because of platform boundarie
 | Transport | TCP |
 | Address | `localhost:17233` |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 5 (current) |
+| Protocol version | 6 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -150,7 +150,6 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | `read_file` | `{ path, relative }` | `{ content, language }` | File content with detected language |
 | `read_readme` | `{ path }` | `{ content }` or null | README content if present |
 | `read_asset` | `{ path, relative }` | `{ data }` | Binary file as base64-encoded string |
-| `list_directory` | `{ path }` | `DirEntry[]` | Subdirectory listing for lazy tree expansion |
 
 ### Sessions
 
@@ -185,7 +184,17 @@ This keeps polling encapsulated inside daemon + app backend while the frontend s
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
-| `get_project_tasks` | `{ path }` | `Task[]` | Aggregated tasks from all CLI tools for a project |
+| `get_project_tasks` | `{ path, scan_cycle_id? }` | `TaskResult` (`{ tasks, errors, source_outcomes }`) | Aggregated tasks from all CLI tools for a project. `scan_cycle_id` is optional. |
+
+### Per-cycle task scan caching (v6)
+
+`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6):
+
+- When present, the daemon reuses cached `scan_sessions()` + `ClaudeSourceIndex` inputs for repeated project scans in the same cycle.
+- When absent, the daemon performs a fresh input scan (backward compatible behavior).
+- The daemon still accepts legacy params shaped as `{ path }`.
+
+This reduces duplicated session/index work during one frontend task-scan pass while preserving compatibility with older clients.
 
 ## Platform launch
 
@@ -214,7 +223,7 @@ The daemon runs natively as a subprocess:
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v5), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v6), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
 ## Key files
 
