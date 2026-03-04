@@ -230,7 +230,7 @@ describe('MeshSetupForm', () => {
     expect(screen.getByTestId('mesh-agent-tool-select-0')).toHaveValue('codex')
   })
 
-  it('blank slate resets roster after template application', async () => {
+  it('browse all templates opens catalog flow', async () => {
     render(MeshSetupForm, {
       props: {
         dark: false,
@@ -239,18 +239,9 @@ describe('MeshSetupForm', () => {
       },
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-template-preset-review-team')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-template-preset-review-team'))
-    await waitFor(() => {
-      expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(2)
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-template-blank-slate'))
-    await waitFor(() => {
-      expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(1)
+      expect(screen.getByTestId('template-catalog')).toBeInTheDocument()
     })
   })
 

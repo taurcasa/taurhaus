@@ -1,0 +1,142 @@
+<script>
+  import { themeTokens } from '../themeTokens.js'
+  import StatusBadge from './StatusBadge.svelte'
+
+  let {
+    name = '',
+    role = 'agent',
+    tool = 'claude',
+    model = '',
+    status = 'offline',
+    projectId = '',
+    description = '',
+    mode = 'setup',
+    dark = false,
+    onEdit = () => {},
+    onRemove = () => {},
+    onResume = () => {},
+    onStop = () => {},
+    onFocusPane = () => {},
+    onClose = () => {},
+  } = $props()
+
+  const t = $derived(themeTokens(dark))
+  const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
+  const normalizedMode = $derived(mode === 'runtime' ? 'runtime' : 'setup')
+  const normalizedStatus = $derived.by(() => {
+    const value = String(status || '').toLowerCase()
+    if (value === 'active') return 'active'
+    if (value === 'idle') return 'idle'
+    return 'offline'
+  })
+
+  const toolLabel = $derived.by(() => {
+    const value = String(tool || '').toLowerCase()
+    if (value === 'claude') return 'Claude'
+    if (value === 'codex') return 'Codex'
+    if (value === 'gemini') return 'Gemini'
+    return tool || 'Unknown'
+  })
+
+  const statusLabel = $derived.by(() => {
+    if (normalizedStatus === 'active') return 'Active'
+    if (normalizedStatus === 'idle') return 'Idle'
+    return 'Offline'
+  })
+
+  const ghostButtonTone = $derived(
+    dark
+      ? 'text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/70'
+      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+  )
+  const dangerGhostTone = $derived(
+    dark
+      ? 'text-danger-300 hover:bg-danger-500/10'
+      : 'text-danger-600 hover:bg-danger-50'
+  )
+  const closeTone = $derived(
+    dark
+      ? 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/70'
+      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
+  )
+</script>
+
+<aside
+  class="absolute left-1/2 top-full mt-3 -translate-x-1/2 z-20 w-[240px] rounded-xl p-3 mesh-node-detail animate-[mesh-detail-enter_160ms_ease-out]"
+  style="background: linear-gradient(180deg, var(--mesh-node-gradient-from), var(--mesh-node-gradient-to)); border: 1px solid var(--mesh-node-border); box-shadow: var(--mesh-node-shadow);"
+  data-testid="mesh-node-detail"
+>
+  <header class="flex items-start gap-2">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-1.5 min-w-0">
+        <h3 class="text-[14px] font-semibold truncate {t.textPrimary}" data-testid="mesh-node-detail-name">{name}</h3>
+        <StatusBadge status={normalizedStatus} size="md" {dark} />
+        <span class="text-[10px] {t.textMuted}" data-testid="mesh-node-detail-status">{statusLabel}</span>
+      </div>
+      <p class="mt-1 text-[12px] truncate {t.textMuted}" data-testid="mesh-node-detail-tool-model">
+        {toolLabel} {model ? `· ${model}` : ''}
+      </p>
+    </div>
+    <button
+      class="h-6 w-6 shrink-0 rounded-md text-xs transition-colors {closeTone}"
+      onclick={onClose}
+      aria-label="Close node detail"
+      data-testid="mesh-node-detail-close"
+    >
+      ✕
+    </button>
+  </header>
+
+  <p class="mt-1 text-[12px] truncate {t.textMuted}" data-testid="mesh-node-detail-project">{projectId || 'n/a'}</p>
+
+  {#if description && description.trim().length > 0}
+    <p class="mt-2 text-[12px] leading-relaxed {t.textSecondary} line-clamp-3" data-testid="mesh-node-detail-description">
+      {description}
+    </p>
+  {/if}
+
+  <div class="mt-3 pt-2 border-t {t.keyline}">
+    <div class="flex items-center gap-1.5">
+      {#if normalizedMode === 'setup'}
+        <button
+          class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
+          onclick={onEdit}
+          data-testid="mesh-node-detail-edit"
+        >
+          Edit
+        </button>
+        {#if normalizedRole !== 'lead'}
+          <button
+            class="text-xs px-2 py-1 rounded transition-colors {dangerGhostTone}"
+            onclick={onRemove}
+            data-testid="mesh-node-detail-remove"
+          >
+            Remove
+          </button>
+        {/if}
+      {:else}
+        <button
+          class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
+          onclick={onResume}
+          data-testid="mesh-node-detail-resume"
+        >
+          Resume
+        </button>
+        <button
+          class="text-xs px-2 py-1 rounded transition-colors {dangerGhostTone}"
+          onclick={onStop}
+          data-testid="mesh-node-detail-stop"
+        >
+          Stop
+        </button>
+        <button
+          class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
+          onclick={onFocusPane}
+          data-testid="mesh-node-detail-focus"
+        >
+          Focus ▶
+        </button>
+      {/if}
+    </div>
+  </div>
+</aside>

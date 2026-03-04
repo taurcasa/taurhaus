@@ -3,6 +3,7 @@
   import { createAsyncGuard } from '../asyncGuard.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption, projectBasename } from '../projectOptions.js'
+  import MeshEmptyState from './MeshEmptyState.svelte'
   import TeamComposer from './TeamComposer.svelte'
   import TemplateCatalog from './TemplateCatalog.svelte'
   import { themeTokens } from '../themeTokens.js'
@@ -17,11 +18,6 @@
 
   const t = $derived(themeTokens(dark))
   const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
-  const neutralTone = $derived(
-    dark
-      ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
-      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
-  )
   const frameTone = $derived(
     dark ? 'border-zinc-700/70 bg-zinc-900/60' : 'border-zinc-200 bg-zinc-50/80'
   )
@@ -73,7 +69,6 @@
   let teamDescription = $state('')
   let onboardingDismissed = $state(false)
   let showCustomize = $state(false)
-  let templateMode = $state('blank')
   let templatePresetsLoading = $state(false)
   let templateError = $state('')
   let templateNotice = $state('')
@@ -152,6 +147,10 @@
       name: value?.name ?? '',
       description: value?.description ?? '',
       leadRoleId: value?.leadRoleId ?? value?.lead_role_id ?? '',
+      agentCount: Math.max(0, Number(value?.agentCount ?? value?.agent_count ?? 0)),
+      leadCount: Math.max(0, Number(value?.leadCount ?? value?.lead_count ?? 1)),
+      tools: Array.isArray(value?.tools) ? value.tools : [],
+      builtIn: Boolean(value?.builtIn ?? value?.built_in ?? false),
     }
   }
 
@@ -295,19 +294,8 @@
     showTemplateCatalog = false
   }
 
-  function startBlankSlate() {
-    resetTemplateTransientState()
-    presetApplyGuard.invalidate()
-    templateMode = 'blank'
-    selectedPresetId = ''
-    selectedPreset = null
-    lead = defaultLead()
-    agents = [defaultAgent()]
-  }
-
   async function applyPreset(presetId) {
     const sequence = presetApplyGuard.next()
-    templateMode = 'preset'
     resetTemplateTransientState()
     selectedPresetId = presetId
     selectedPreset = null
@@ -335,21 +323,18 @@
   function startCustomTemplateFlow() {
     resetTemplateTransientState()
     presetApplyGuard.invalidate()
-    templateMode = 'custom'
     showTeamComposer = true
   }
 
   function openTemplateCatalog() {
     resetTemplateTransientState()
     presetApplyGuard.invalidate()
-    templateMode = 'catalog'
     showTemplateCatalog = true
   }
 
   function applyCompositionPayload(payload, notice = 'Applied composed team') {
     resetTemplateTransientState()
     presetApplyGuard.invalidate()
-    templateMode = 'custom'
     applyInitializedPayload(payload, notice)
   }
 
@@ -518,65 +503,21 @@
     </div>
   {/if}
 
-  <section
-    class="space-y-2 rounded-lg border p-3 {panelTone}"
-    data-testid="mesh-template-picker"
-  >
-    <header class="space-y-0.5">
-      <h3 class="text-xs font-semibold uppercase tracking-wide {t.textSecondary}">
-        Start from template
-      </h3>
-      <p class="text-[11px] {t.textMuted}">
-        Apply a preset, browse catalog templates, or compose a custom team before editing.
-      </p>
-    </header>
-
-    <div class="flex flex-wrap gap-1.5">
-      <button
-        class="rounded-md border px-2 py-1 text-[11px] {templateMode === 'blank' ? 'bg-brand-600 text-white border-brand-600' : neutralTone}"
-        type="button"
-        onclick={startBlankSlate}
-        data-testid="mesh-template-blank-slate"
-      >
-        Blank slate
-      </button>
-      <button
-        class="rounded-md border px-2 py-1 text-[11px] {templateMode === 'catalog' ? 'bg-brand-600 text-white border-brand-600' : neutralTone}"
-        type="button"
-        onclick={openTemplateCatalog}
-        data-testid="mesh-template-browse-catalog"
-      >
-        Browse catalog
-      </button>
-      <button
-        class="rounded-md border px-2 py-1 text-[11px] {templateMode === 'custom' ? 'bg-brand-600 text-white border-brand-600' : neutralTone}"
-        type="button"
-        onclick={startCustomTemplateFlow}
-        data-testid="mesh-template-build-custom"
-      >
-        Build custom team
-      </button>
-    </div>
-
-    <div class="space-y-1">
-      <p class="text-[10px] uppercase tracking-wide {t.textMuted}">Quick presets</p>
-      <div class="flex flex-wrap gap-1">
-        {#each quickPresets as preset}
-          <button
-            class="rounded-md border px-2 py-1 text-[11px] {selectedPresetId === preset.presetId ? 'bg-brand-600 text-white border-brand-600' : neutralTone} disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-            onclick={() => {
-              void applyPreset(preset.presetId)
-            }}
-            disabled={preset.missing}
-            data-testid={`mesh-template-preset-${preset.presetId}`}
-          >
-            {preset.name}
-          </button>
-        {/each}
-      </div>
-    </div>
-
+  <section class="rounded-lg border p-3 {panelTone}" data-testid="mesh-template-picker">
+    <MeshEmptyState
+      presets={quickPresets.filter((preset) => !preset.missing)}
+      dark={dark}
+      onSelectPreset={(preset) => {
+        if (!preset?.presetId) return
+        void applyPreset(preset.presetId)
+      }}
+      onBrowseTemplates={() => {
+        openTemplateCatalog()
+      }}
+      onStartCustom={() => {
+        startCustomTemplateFlow()
+      }}
+    />
     {#if templatePresetsLoading}
       <p class="text-xs {t.textMuted}" data-testid="mesh-template-loading">Loading templates...</p>
     {/if}

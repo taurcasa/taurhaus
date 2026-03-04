@@ -44,6 +44,37 @@
   /* Fonts */
   --font-sans: 'Geist', ui-sans-serif, -apple-system, system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
+
+  /* Mesh Canvas — Node surfaces */
+  --mesh-node-gradient-from: #1e3a3a;
+  --mesh-node-gradient-to: #152e2e;
+  --mesh-node-gradient-hover-from: #223e3e;
+  --mesh-node-gradient-hover-to: #1a3232;
+  --mesh-node-border: #2a4a48;
+  --mesh-node-border-hover: #3a5a58;
+  --mesh-node-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --mesh-node-shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.35);
+
+  /* Mesh Canvas — Lead node emphasis */
+  --mesh-lead-border: rgba(45, 212, 191, 0.6);
+  --mesh-lead-glow: 0 0 12px rgba(45, 212, 191, 0.25);
+  --mesh-lead-gradient-from: #1e3a3a;
+  --mesh-lead-gradient-to: #152e2e;
+
+  /* Mesh Canvas — Selected/active node */
+  --mesh-selected-border: rgba(45, 212, 191, 0.7);
+  --mesh-selected-glow: 0 0 14px rgba(45, 212, 191, 0.2);
+
+  /* Mesh Canvas — Connection lines */
+  --mesh-connection-color: rgba(45, 212, 191, 0.4);
+  --mesh-connection-color-dim: rgba(45, 212, 191, 0.15);
+  --mesh-connection-width: 2px;
+  --mesh-connection-active: rgba(45, 212, 191, 0.8);
+
+  /* Mesh Canvas — Add node */
+  --mesh-add-border: rgba(45, 212, 191, 0.3);
+  --mesh-add-border-hover: rgba(45, 212, 191, 0.5);
+  --mesh-add-icon: rgba(45, 212, 191, 0.6);
 }
 
 html, body, #app {
@@ -82,6 +113,15 @@ body {
     animation: none;
     filter: brightness(1.1);
   }
+
+  .mesh-connection {
+    animation: none !important;
+  }
+
+  .mesh-node {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* ── Content enter animation ──────────────────────────────────────────── */
@@ -95,6 +135,36 @@ body {
 @keyframes content-enter {
   from { opacity: 0.6; transform: translateY(4px); }
   to   { opacity: 1;   transform: translateY(0); }
+}
+
+@keyframes mesh-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes mesh-established-pulse {
+  0%   { filter: drop-shadow(0 0 4px rgba(45, 212, 191, 0.4)); }
+  50%  { filter: drop-shadow(0 0 12px rgba(45, 212, 191, 0.6)); }
+  100% { filter: drop-shadow(0 0 4px rgba(45, 212, 191, 0.2)); }
+}
+
+@keyframes mesh-connection-breathe {
+  0%, 100% { opacity: 0.8; }
+  50%      { opacity: 0.5; }
+}
+
+@keyframes mesh-node-enter {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes mesh-node-exit {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.9); }
+}
+
+@keyframes mesh-detail-enter {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 /* ── Scrollbar styling ────────────────────────────────────────────────── */
@@ -158,4 +228,3 @@ aside ::-webkit-scrollbar-thumb:hover {
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-

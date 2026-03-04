@@ -111,6 +111,14 @@ src-tauri/src/coordination/
 - **Backend**: `tracing::info/warn/error/debug` -- goes to stderr + log file
 - **Frontend**: `console.log` -- monkey-patched to also write to backend log via IPC
 
+## Context Compaction Recovery
+
+If you experience a context compaction and find yourself idle with no active task, **immediately report to the team lead** via mesh and ask whether idle is the correct state. Do not assume you are done — compaction may have dropped your task context.
+
+```
+mesh send --team taurhaus-team --to team-lead "Context compacted. I'm currently idle — is that correct or do I have an active task?"
+```
+
 ## Mesh Integration
 
 - Teams stored at `~/.claude/teams/`
