@@ -142,7 +142,7 @@ mod coordination;
 
 use commands::coordination::{AddAgentRequest, AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
-use coordination::runtime::RecordingCoordinationRuntime;
+use coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime};
 use coordination::state::CoordinationState;
 use coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 
@@ -153,6 +153,20 @@ fn test_state(teams_dir: PathBuf) -> CoordinationState {
         Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     )
+}
+
+fn test_state_with_runtime(
+    teams_dir: PathBuf,
+) -> (CoordinationState, Arc<RecordingCoordinationRuntime>) {
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let runtime_for_factory = runtime.clone();
+    let state = CoordinationState::with_components_and_runtime(
+        teams_dir,
+        BackendSelector::m0(),
+        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(move || runtime_for_factory.clone() as Arc<dyn CoordinationRuntime>),
+    );
+    (state, runtime)
 }
 
 fn make_request(team_name: &str) -> InitializeTeamRequest {
@@ -344,4 +358,47 @@ fn preflight_check_with_real_lookup_returns_stable_shape() {
         assert!(!warning.cli_tool.trim().is_empty());
         assert!(!warning.message.trim().is_empty());
     }
+}
+
+#[test]
+fn live_status_reconciles_member_to_offline_when_pane_disappears() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (state, runtime) = test_state_with_runtime(tmp.path().to_path_buf());
+    let team_name = "integration-live-status-reconcile";
+
+    let init = make_request(team_name);
+    state
+        .with_orchestrator(|orchestrator| orchestrator.initialize_team(&init))
+        .expect("initialize should succeed");
+
+    let frontend_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, "frontend-dev").expect("frontend runtime");
+    let pane_id = frontend_runtime
+        .pane_id
+        .clone()
+        .expect("frontend-dev should have pane id after initialize");
+    runtime.set_pane_exists(&pane_id, false);
+
+    let status = commands::coordination::coordination_get_live_team_status_for_tests(
+        &state,
+        team_name.to_string(),
+    )
+    .expect("live status should succeed");
+
+    let frontend_row = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev row should exist");
+    assert_eq!(
+        frontend_row.session_status,
+        commands::coordination::SessionStatus::Offline
+    );
+
+    let reconciled =
+        MemberRuntimeStore::load(tmp.path(), team_name, "frontend-dev").expect("frontend runtime");
+    assert_eq!(
+        reconciled.health,
+        coordination::domain::HealthState::SessionDead
+    );
 }

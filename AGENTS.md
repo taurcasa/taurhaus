@@ -11,7 +11,19 @@ Desktop tool for AI project management. Tauri 2 + Svelte 5 + Rust backend + Tail
 
 ## Scope Discipline
 
-Only modify files directly related to your assigned task. Do NOT run `cargo fmt`, `rustfmt`, or any formatter on files outside the task scope. Do NOT refactor, clean up, or "improve" code you weren't asked to touch.
+Only modify files directly related to your assigned task. Do NOT refactor, clean up, or "improve" code you weren't asked to touch.
+
+## Pre-Completion Quality Gate
+
+**Before reporting any implementation task as done**, run:
+
+```
+just agent-quality
+```
+
+This runs `cargo fmt`, `cargo clippy`, and `cargo check --tests`. All three must pass before you mark a task complete. If clippy or check fails, fix the issues in your changed files before reporting done.
+
+This is mandatory for every task that touches Rust code. Do not skip it.
 
 ## Code Standards
 
@@ -42,6 +54,15 @@ Rust backend lives in `src-tauri/`. Cargo commands must run from `src-tauri/` or
 - Frontend: Vitest + JSDOM + `@testing-library/svelte`
 - Test data generated on the fly in tempdirs, never checked-in fixtures
 - AC-driven coverage -- every acceptance criterion gets a test
+
+## Integration Test Shims
+
+The integration tests in `src-tauri/tests/` include source files via `#[path = "../src/..."]` and define stub modules for dependencies that don't exist in the test crate scope. If you add new imports to `coordination/pipelines.rs` or similar included files, you must also update the shim modules in:
+
+- `src-tauri/tests/coordination_integration.rs`
+- `src-tauri/tests/coordination_onboarding_linux_e2e.rs`
+
+The `just agent-quality` recipe will catch this via `cargo check --tests`.
 
 ## Architecture
 

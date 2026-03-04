@@ -997,6 +997,26 @@ fn live_team_status_round_trip() {
 }
 
 #[test]
+fn live_status_test_helper_invokes_live_status_impl() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_with_emitter(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize");
+
+    let status =
+        coordination_get_live_team_status_for_tests(&state, "architecture-final".to_string())
+            .expect("live status should succeed");
+    assert_eq!(status.team_name, "architecture-final");
+    assert_eq!(status.lead_name, "team-lead");
+    assert!(!status.members.is_empty());
+}
+
+#[test]
 fn step_progress_event_round_trip() {
     let value = StepProgressEvent {
         team_name: "architecture-final".to_string(),

@@ -55,6 +55,7 @@ pub trait CoordinationRuntime: Send + Sync {
     ) -> Result<bool, CoordinationError>;
     fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError>;
     fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError>;
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError>;
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError>;
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError>;
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError>;
@@ -306,6 +307,21 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         Ok(raw == "1" || raw == "true")
     }
 
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        let out = run_tmux_output(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            tmux_target_for_pane(pane_id),
+            "#{pane_current_command}".to_string(),
+        ])?;
+        if !out.status.success() {
+            return Ok(false);
+        }
+        let raw = String::from_utf8_lossy(&out.stdout);
+        Ok(is_shell_command(raw.as_ref()))
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         run_tmux(&[
             "kill-pane".to_string(),
@@ -453,6 +469,9 @@ pub enum RuntimeCall {
     CheckPaneDead {
         pane_id: String,
     },
+    CheckPaneShell {
+        pane_id: String,
+    },
     KillPane {
         pane_id: String,
     },
@@ -469,7 +488,9 @@ pub struct RecordingCoordinationRuntime {
     calls: Mutex<Vec<RuntimeCall>>,
     pane_exists: Mutex<HashMap<String, bool>>,
     pane_dead: Mutex<HashMap<String, bool>>,
+    pane_shell: Mutex<HashMap<String, bool>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
+    pid_running: Mutex<HashMap<u32, bool>>,
     pane_counter: AtomicUsize,
     pid_counter: AtomicU32,
 }
@@ -500,9 +521,21 @@ impl RecordingCoordinationRuntime {
         }
     }
 
+    pub fn set_pane_shell(&self, pane_id: &str, shell: bool) {
+        if let Ok(mut map) = self.pane_shell.lock() {
+            map.insert(pane_id.to_string(), shell);
+        }
+    }
+
     pub fn set_pane_ownership(&self, pane_id: &str, matches_project: bool) {
         if let Ok(mut map) = self.pane_ownership.lock() {
             map.insert(pane_id.to_string(), matches_project);
+        }
+    }
+
+    pub fn set_pid_running(&self, pid: u32, running: bool) {
+        if let Ok(mut map) = self.pid_running.lock() {
+            map.insert(pid, running);
         }
     }
 }
@@ -520,6 +553,7 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         let pane_id = format!("test-pane-{idx}");
         self.set_pane_exists(&pane_id, true);
         self.set_pane_dead(&pane_id, false);
+        self.set_pane_shell(&pane_id, false);
         self.set_pane_ownership(&pane_id, true);
         Ok(pane_id)
     }
@@ -621,6 +655,19 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         Ok(dead)
     }
 
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.push_call(RuntimeCall::CheckPaneShell {
+            pane_id: pane_id.to_string(),
+        });
+        let is_shell = self
+            .pane_shell
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .unwrap_or(false);
+        Ok(is_shell)
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.push_call(RuntimeCall::KillPane {
             pane_id: pane_id.to_string(),
@@ -636,7 +683,13 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
 
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
         self.push_call(RuntimeCall::CheckPid { pid });
-        Ok(false)
+        let running = self
+            .pid_running
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&pid).copied())
+            .unwrap_or(false);
+        Ok(running)
     }
 }
 
@@ -912,6 +965,17 @@ fn normalize_path_for_compare(raw: &str) -> String {
     value
 }
 
+fn is_shell_command(raw: &str) -> bool {
+    let command = raw
+        .trim()
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .trim_start_matches('-')
+        .to_ascii_lowercase();
+    matches!(command.as_str(), "bash" | "zsh" | "sh" | "fish")
+}
+
 #[cfg(not(target_os = "windows"))]
 fn validate_unix_pid(pid: u32) -> Result<String, CoordinationError> {
     if pid == 0 || pid > i32::MAX as u32 {
@@ -973,6 +1037,21 @@ mod tests {
             normalize_path_for_compare("\\\\home\\\\mstie\\\\projects\\\\taurhaus\\\\"),
             "/home/mstie/projects/taurhaus"
         );
+    }
+
+    #[test]
+    fn shell_command_detection_matches_supported_shells() {
+        assert!(is_shell_command("bash"));
+        assert!(is_shell_command("zsh"));
+        assert!(is_shell_command("/usr/bin/fish"));
+        assert!(is_shell_command("-sh"));
+    }
+
+    #[test]
+    fn shell_command_detection_rejects_non_shell_commands() {
+        assert!(!is_shell_command("codex"));
+        assert!(!is_shell_command("claude"));
+        assert!(!is_shell_command(""));
     }
 
     #[cfg(not(target_os = "windows"))]

@@ -419,7 +419,10 @@ fn coordination_get_live_team_status_impl(
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
     let status = state
-        .with_orchestrator(|orchestrator| orchestrator.get_team_status(&team_name))
+        .with_orchestrator(|orchestrator| {
+            orchestrator.reconcile_team_liveness(&team_name)?;
+            orchestrator.get_team_status(&team_name)
+        })
         .map_err(map_coordination_error)?;
 
     let runtime_by_member = status
@@ -471,6 +474,14 @@ fn coordination_get_live_team_status_impl(
         lead_name,
         members,
     })
+}
+
+#[cfg(test)]
+pub(crate) fn coordination_get_live_team_status_for_tests(
+    state: &CoordinationState,
+    team_name: String,
+) -> Result<LiveTeamStatus, String> {
+    coordination_get_live_team_status_impl(state, team_name)
 }
 
 fn coordination_create_team_impl(

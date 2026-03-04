@@ -150,6 +150,10 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         self.inner.pane_is_dead(pane_id)
     }
 
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.inner.kill_aitx_pane(pane_id)
     }
@@ -241,6 +245,10 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
 
     fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
         self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
@@ -828,6 +836,433 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         fake.call_counts(),
         (0, 0, 0, 1),
         "orphan runtime reconcile should attempt backend teardown"
+    );
+}
+
+#[test]
+fn liveness_reconcile_marks_missing_pane_id_offline() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.pane_id = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert!(
+        !runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPaneExists { .. }
+                | RuntimeCall::CheckPaneDead { .. }
+                | RuntimeCall::CheckPaneShell { .. }
+        )),
+        "missing pane id should not query tmux pane state"
+    );
+}
+
+#[test]
+fn liveness_reconcile_marks_missing_pane_target_offline() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", false);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPaneExists { pane_id } if pane_id == "%9")));
+    assert!(
+        !calls.iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPaneDead { .. } | RuntimeCall::CheckPaneShell { .. }
+        )),
+        "missing pane target should short-circuit dead/shell checks"
+    );
+}
+
+#[test]
+fn liveness_reconcile_marks_dead_pane_offline() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", true);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPaneDead { pane_id } if pane_id == "%9")));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::CheckPaneShell { .. })),
+        "dead pane should short-circuit shell checks"
+    );
+}
+
+#[test]
+fn liveness_reconcile_marks_shell_pane_offline() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", true);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPaneShell { pane_id } if pane_id == "%9")));
+}
+
+#[test]
+fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pid_running(4242, true);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(
+        updated, record,
+        "active CLI pane should not be marked offline"
+    );
+    assert!(
+        !runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
+        )),
+        "healthy member should not trigger daemon pid checks"
+    );
+}
+
+#[test]
+fn liveness_reconcile_terminates_running_non_claude_daemon() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pid_running(4242, true);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, None);
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 4242)));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)));
+}
+
+#[test]
+fn liveness_reconcile_clears_non_running_non_claude_daemon_pid_without_terminate() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pid_running(4242, false);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, None);
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 4242)));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)),
+        "non-running daemon pid should be cleared without terminate call"
+    );
+}
+
+#[test]
+fn liveness_reconcile_skips_daemon_cleanup_for_claude_members() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "claude-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Claude))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, Some(4242));
+    assert!(
+        !runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
+        )),
+        "claude members should not run daemon pid cleanup"
+    );
+}
+
+#[test]
+fn liveness_reconcile_is_write_on_drift() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::SessionDead;
+    record.session_id = Some("stale-session".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pane_exists("%9", false);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(
+        updated, record,
+        "no write should occur without health drift"
+    );
+    assert!(
+        !runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
+        )),
+        "daemon cleanup should be skipped when health is already SessionDead"
+    );
+}
+
+#[test]
+fn liveness_reconcile_updates_only_drifted_members() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let drifted_member = "drifted-member";
+    let healthy_member = "healthy-member";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(drifted_member, CliTool::Codex))
+        .expect("add drifted member");
+    orchestrator
+        .add_member(team_name, sample_member(healthy_member, CliTool::Codex))
+        .expect("add healthy member");
+
+    let mut drifted =
+        MemberRuntimeStore::load(tmp.path(), team_name, drifted_member).expect("load");
+    drifted.health = HealthState::Healthy;
+    drifted.session_id = Some("session-drifted".to_string());
+    drifted.pane_id = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, drifted_member, &drifted)
+        .expect("save drifted");
+
+    let mut healthy =
+        MemberRuntimeStore::load(tmp.path(), team_name, healthy_member).expect("load");
+    healthy.health = HealthState::Healthy;
+    healthy.session_id = Some("session-healthy".to_string());
+    healthy.daemon_pid = Some(9999);
+    healthy.pane_id = Some("%11".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, healthy_member, &healthy)
+        .expect("save healthy");
+
+    runtime.set_pane_exists("%11", true);
+    runtime.set_pane_dead("%11", false);
+    runtime.set_pane_shell("%11", false);
+    runtime.set_pid_running(9999, true);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let drifted_updated =
+        MemberRuntimeStore::load(tmp.path(), team_name, drifted_member).expect("reload drifted");
+    assert_eq!(drifted_updated.health, HealthState::SessionDead);
+    assert_eq!(drifted_updated.session_id, None);
+
+    let healthy_updated =
+        MemberRuntimeStore::load(tmp.path(), team_name, healthy_member).expect("reload healthy");
+    assert_eq!(
+        healthy_updated, healthy,
+        "member without drift should not be rewritten"
+    );
+    assert!(
+        !runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPid { pid } if *pid == 9999
+        )),
+        "healthy member should not trigger daemon checks"
     );
 }
 

@@ -744,6 +744,15 @@ release:
 screenshot:
     @echo "Screenshot recipe not yet configured"
 
+# Agent pre-completion quality gate.
+# Codex/Gemini agents must run this before reporting a task as done.
+# Referenced in AGENTS.md — extend here as new friction points surface.
+agent-quality:
+    cd src-tauri && cargo fmt
+    cd src-tauri && cargo clippy --all-targets -- -D warnings
+    cd src-tauri && cargo check --tests
+    @echo "Agent quality gate passed."
+
 # Security audit (integration tasks + phase boundaries)
 security-audit:
     cd src-tauri && cargo audit 2>/dev/null || echo "cargo-audit not installed — run: cargo install cargo-audit"

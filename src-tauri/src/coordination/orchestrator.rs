@@ -426,6 +426,88 @@ impl CoordinationOrchestrator {
         })
     }
 
+    /// Reconcile member liveness for a team using pane + daemon state.
+    ///
+    /// This is a write-on-drift pass used by the live status query path.
+    pub fn reconcile_team_liveness(&mut self, team_name: &str) -> Result<(), CoordinationError> {
+        validate_team_name(team_name)?;
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let members_by_name = config
+            .members
+            .into_iter()
+            .map(|member| (member.name.clone(), member))
+            .collect::<HashMap<_, _>>();
+        let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
+
+        for (member_name, mut runtime) in runtime_records {
+            let Some(member) = members_by_name.get(&member_name) else {
+                continue;
+            };
+
+            let (offline_detected, reason) = match runtime.pane_id.as_deref() {
+                None => (true, "missing_pane_id"),
+                Some(pane_id) => {
+                    if !self.runtime.pane_exists(pane_id)? {
+                        (true, "pane_missing")
+                    } else if self.runtime.pane_is_dead(pane_id)? {
+                        (true, "pane_dead")
+                    } else if self.runtime.pane_is_shell(pane_id)? {
+                        (true, "pane_shell")
+                    } else {
+                        (false, "pane_active")
+                    }
+                }
+            };
+
+            // Write only when the persisted health is stale.
+            if !offline_detected || runtime.health == HealthState::SessionDead {
+                continue;
+            }
+
+            runtime.health = HealthState::SessionDead;
+            runtime.session_id = None;
+
+            if member.cli_tool != CliTool::Claude {
+                if let Some(pid) = runtime.daemon_pid {
+                    match self.runtime.is_process_running_by_pid(pid) {
+                        Ok(true) => {
+                            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                                tracing::warn!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pid = pid,
+                                    error = %err,
+                                    "failed to terminate stale daemon during liveness reconciliation"
+                                );
+                            }
+                        }
+                        Ok(false) => {}
+                        Err(err) => {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = pid,
+                                error = %err,
+                                "failed to check daemon pid during liveness reconciliation"
+                            );
+                        }
+                    }
+                    runtime.daemon_pid = None;
+                }
+            }
+
+            MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+            tracing::info!(
+                team = %team_name,
+                member = %member_name,
+                reason,
+                "reconciled member liveness drift to offline"
+            );
+        }
+
+        Ok(())
+    }
+
     fn reconcile_team_runtime_state(&self, team_name: &str) -> Result<(), CoordinationError> {
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let member_names = config
