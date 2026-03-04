@@ -15,6 +15,7 @@ use crate::coordination::requests::{
 pub struct FakeBackend {
     calls: Arc<Mutex<FakeCalls>>,
     deliver_failure: Arc<Mutex<Option<ProgrammedError>>>,
+    delivered_requests: Arc<Mutex<Vec<DeliveryRequest>>>,
 }
 
 #[derive(Debug, Default)]
@@ -87,6 +88,13 @@ impl FakeBackend {
             .expect("fake backend failure mutex poisoned");
         *slot = None;
     }
+
+    pub fn delivered_requests(&self) -> Vec<DeliveryRequest> {
+        self.delivered_requests
+            .lock()
+            .map(|requests| requests.clone())
+            .unwrap_or_default()
+    }
 }
 
 impl CoordinationBackend for FakeBackend {
@@ -107,9 +115,12 @@ impl CoordinationBackend for FakeBackend {
         })
     }
 
-    fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
+    fn deliver(&self, req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
         let mut calls = self.calls.lock().expect("fake backend mutex poisoned");
         calls.delivery_count += 1;
+        if let Ok(mut requests) = self.delivered_requests.lock() {
+            requests.push(req.clone());
+        }
 
         if let Some(err) = self
             .deliver_failure

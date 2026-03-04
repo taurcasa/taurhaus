@@ -509,6 +509,18 @@ fn remove_member_cleans_runtime() {
         .create_team(team_name, None)
         .expect("create should succeed");
     orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                instructions: Some("lead".to_string()),
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
+    orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
     let report = orchestrator
@@ -521,8 +533,10 @@ fn remove_member_cleans_runtime() {
     let status = orchestrator
         .get_team_status(team_name)
         .expect("status should load");
-    assert!(status.config.members.is_empty());
-    assert!(status.members_runtime.is_empty());
+    assert_eq!(status.config.members.len(), 1);
+    assert_eq!(status.config.members[0].name, "team-lead");
+    assert_eq!(status.members_runtime.len(), 1);
+    assert_eq!(status.members_runtime[0].0, "team-lead");
 }
 
 #[test]
@@ -537,6 +551,18 @@ fn remove_member_tears_down_runtime_resources() {
     orchestrator
         .create_team(team_name, None)
         .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                instructions: Some("lead".to_string()),
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
     orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
@@ -563,11 +589,29 @@ fn remove_member_tears_down_runtime_resources() {
             .iter()
             .any(|step| step.step == "kill_pane" && step.success)
     );
+    assert!(
+        report
+            .steps
+            .iter()
+            .any(|step| step.step == "notify_lead" && step.success)
+    );
     assert_eq!(
         fake.call_counts(),
-        (0, 0, 0, 1),
-        "remove_member should invoke backend teardown"
+        (0, 1, 0, 1),
+        "remove_member should invoke backend teardown and notify lead"
     );
+    let delivered = fake.delivered_requests();
+    assert_eq!(delivered.len(), 1);
+    match &delivered[0] {
+        DeliveryRequest::OperatorNotice(payload) => {
+            assert_eq!(payload.member_name, "team-lead");
+            assert_eq!(payload.team_name, team_name);
+            assert!(payload.message.contains(member_name));
+            assert!(payload.message.contains(" by '"));
+            assert!(payload.message.contains("Cleanup: complete"));
+        }
+        other => panic!("expected operator notice, got {other:?}"),
+    }
 }
 
 #[test]
@@ -607,9 +651,10 @@ fn remove_member_rejects_lead_removal() {
 fn remove_member_skips_pane_kill_on_ownership_mismatch() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(PaneOwnershipRuntime::new(false));
+    let fake = Arc::new(FakeBackend::default());
     let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
         tmp.path().to_path_buf(),
-        Arc::new(FakeBackend::default()),
+        fake.clone(),
         runtime.clone(),
     );
     let team_name = "architecture-final";
@@ -618,6 +663,18 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
     orchestrator
         .create_team(team_name, None)
         .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                instructions: Some("lead".to_string()),
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
     orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
@@ -645,6 +702,12 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
             .any(|step| step.step == "kill_pane" && !step.success)
     );
     assert!(!report.warnings.is_empty());
+    assert!(
+        report
+            .steps
+            .iter()
+            .any(|step| step.step == "notify_lead" && step.success)
+    );
 
     let calls = runtime.calls();
     assert!(
@@ -661,6 +724,18 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
         )),
         "pane kill should be skipped on ownership mismatch"
     );
+
+    let delivered = fake.delivered_requests();
+    assert_eq!(delivered.len(), 1);
+    match &delivered[0] {
+        DeliveryRequest::OperatorNotice(payload) => {
+            assert_eq!(payload.member_name, "team-lead");
+            assert!(payload.message.contains(member_name));
+            assert!(payload.message.contains(" by '"));
+            assert!(payload.message.contains("Cleanup: partial"));
+        }
+        other => panic!("expected operator notice, got {other:?}"),
+    }
 }
 
 #[test]

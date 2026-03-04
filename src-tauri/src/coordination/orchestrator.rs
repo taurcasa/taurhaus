@@ -15,7 +15,8 @@ use crate::coordination::backend::{BackendKind, CoordinationBackend};
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
-    DeliveryMethod, DeliveryRequest, DeliveryResult, TeardownMode, TeardownRequest,
+    DeliveryMethod, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, TeardownMode,
+    TeardownRequest,
 };
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
@@ -312,10 +313,57 @@ impl CoordinationOrchestrator {
 
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
         let mut steps = teardown.steps;
+        let mut warnings = teardown.warnings;
         steps.push(step_succeeded("update_config", "team config updated"));
 
         MemberRuntimeStore::delete(&self.teams_dir, team_name, member_name)?;
         steps.push(step_succeeded("delete_runtime", "runtime record deleted"));
+
+        let lead_name = config
+            .members
+            .iter()
+            .find(|candidate| candidate.role == MemberRole::Lead)
+            .or_else(|| config.members.first())
+            .map(|candidate| candidate.name.clone());
+        let removed_by = removal_actor_identity();
+        let cleanup_is_partial = !warnings.is_empty();
+        match lead_name {
+            Some(lead_name) => {
+                let notice = render_member_removed_notice(
+                    team_name,
+                    member_name,
+                    removed_by.as_str(),
+                    cleanup_is_partial,
+                    warnings.len(),
+                );
+                match self.backend.deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                    member_name: lead_name.clone(),
+                    team_name: team_name.to_string(),
+                    message: notice,
+                    sender_name: None,
+                })) {
+                    Ok(_) => {
+                        steps.push(step_succeeded(
+                            "notify_lead",
+                            format!("sent removal notice to team lead '{lead_name}'"),
+                        ));
+                    }
+                    Err(err) => {
+                        let warning = format!(
+                            "failed to notify team lead '{lead_name}' about removal: {err}"
+                        );
+                        warnings.push(warning.clone());
+                        steps.push(step_failed("notify_lead", warning));
+                    }
+                }
+            }
+            None => {
+                let warning =
+                    "skipped lead notification: no lead member found in team config".to_string();
+                warnings.push(warning.clone());
+                steps.push(step_failed("notify_lead", warning));
+            }
+        }
 
         self.audit_log
             .push(AuditEvent::MemberRemoved(MemberRemovedEvent {
@@ -329,7 +377,7 @@ impl CoordinationOrchestrator {
             member_name: member_name.to_string(),
             removed: true,
             steps,
-            warnings: teardown.warnings,
+            warnings,
         })
     }
 
@@ -748,6 +796,42 @@ fn step_failed(step: &str, message: impl Into<String>) -> RemoveMemberStepResult
         success: false,
         message: Some(message.into()),
     }
+}
+
+fn removal_actor_identity() -> String {
+    std::env::var("TAURHAUS_OPERATOR")
+        .ok()
+        .and_then(non_empty_trimmed)
+        .or_else(|| std::env::var("USER").ok().and_then(non_empty_trimmed))
+        .or_else(|| std::env::var("USERNAME").ok().and_then(non_empty_trimmed))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn non_empty_trimmed(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn render_member_removed_notice(
+    team_name: &str,
+    removed_member: &str,
+    removed_by: &str,
+    cleanup_is_partial: bool,
+    warning_count: usize,
+) -> String {
+    let cleanup = if cleanup_is_partial {
+        format!("partial ({warning_count} warning{})", if warning_count == 1 { "" } else { "s" })
+    } else {
+        "complete".to_string()
+    };
+
+    format!(
+        "[taurhaus] member_removed: '{removed_member}' was removed from team '{team_name}' by '{removed_by}'. Cleanup: {cleanup}."
+    )
 }
 
 fn infer_backend_kind(tool: CliTool) -> BackendKind {
