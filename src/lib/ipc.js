@@ -491,6 +491,274 @@ export function getProjectActivity(projectPath) {
 // Coordination IPC functions
 // ---------------------------------------------------------------------------
 
+const MOCK_ROLE_TEMPLATES = [
+  {
+    roleId: 'claude-orchestrator',
+    name: 'Claude Orchestrator',
+    version: '1.0.0',
+    kind: 'lead',
+    cliTool: 'claude',
+    model: 'claude-opus-4-6',
+    defaultNamePattern: 'lead-{project}',
+    capabilities: ['planning', 'coordination', 'review', 'triage'],
+    builtIn: true,
+    readOnly: true,
+    instructions:
+      'Coordinate team execution, assign scoped tasks, track blockers, and synthesize outcomes for the user.',
+    behavioralContract: {
+      communication: [
+        'Acknowledge requests quickly and classify next action.',
+        'Assign owners with acceptance criteria and expected evidence.',
+      ],
+      execution: [
+        'Keep tasks scoped and verify completion evidence before closure.',
+        'Enforce project conventions and quality gates.',
+      ],
+      escalation: [
+        'Escalate blockers with context and options.',
+        'Do not allow blocked work to stall silently.',
+      ],
+    },
+    constraints: {
+      minInstances: 1,
+      maxInstances: 1,
+      requiresLeadTool: null,
+      allowedProjectBinding: 'lead_project',
+    },
+  },
+  {
+    roleId: 'codex-developer',
+    name: 'Codex Developer',
+    version: '1.0.0',
+    kind: 'agent',
+    cliTool: 'codex',
+    model: 'gpt-5.3-codex',
+    defaultNamePattern: 'dev-{n}',
+    capabilities: ['implementation', 'testing', 'debugging'],
+    builtIn: true,
+    readOnly: true,
+    instructions:
+      'Implement assigned scope with TDD where applicable, keep changes focused, and report verification steps.',
+    behavioralContract: {
+      communication: [
+        'Acknowledge assignment and restate scope before editing.',
+        'Provide concise progress updates on longer tasks.',
+      ],
+      execution: [
+        'Keep edits scoped to assigned work.',
+        'Write/update tests for behavior changes.',
+      ],
+      escalation: [
+        'Escalate blockers immediately with attempted fixes.',
+        'Flag unexpected repo state before continuing.',
+      ],
+    },
+    constraints: {
+      minInstances: 0,
+      maxInstances: 8,
+      requiresLeadTool: 'claude',
+      allowedProjectBinding: 'any',
+    },
+  },
+  {
+    roleId: 'claude-reviewer',
+    name: 'Claude Reviewer',
+    version: '1.0.0',
+    kind: 'agent',
+    cliTool: 'claude',
+    model: 'claude-opus-4-6',
+    defaultNamePattern: 'reviewer-{n}',
+    capabilities: ['review', 'security', 'risk-analysis', 'testing'],
+    builtIn: true,
+    readOnly: true,
+    instructions:
+      'Review changes for correctness, regressions, security risk, and missing tests. Prioritize actionable findings.',
+    behavioralContract: {
+      communication: [
+        'Confirm review scope before starting.',
+        'Report findings ordered by severity with file references.',
+      ],
+      execution: [
+        'Focus on behavior/regression risk over style nitpicks.',
+        'Highlight residual risks when no critical findings exist.',
+      ],
+      escalation: [
+        'Escalate high-risk defects immediately.',
+      ],
+    },
+    constraints: {
+      minInstances: 0,
+      maxInstances: 6,
+      requiresLeadTool: 'claude',
+      allowedProjectBinding: 'any',
+    },
+  },
+  {
+    roleId: 'custom-doc-writer',
+    name: 'Documentation Writer',
+    version: '0.2.0',
+    kind: 'agent',
+    cliTool: 'gemini',
+    model: 'gemini-2.5-pro',
+    defaultNamePattern: 'docs-{n}',
+    capabilities: ['documentation', 'research'],
+    builtIn: false,
+    readOnly: false,
+    instructions:
+      'Produce concise documentation updates and cross-link architecture references.',
+    behavioralContract: {
+      communication: ['Share draft structure early for review.'],
+      execution: ['Keep docs consistent with shipped behavior.'],
+      escalation: ['Flag stale or conflicting docs as risks.'],
+    },
+    constraints: {
+      minInstances: 0,
+      maxInstances: 4,
+      requiresLeadTool: null,
+      allowedProjectBinding: 'any',
+    },
+  },
+]
+
+const MOCK_TEAM_PRESETS = [
+  {
+    presetId: 'fullstack-dev',
+    name: 'Full Stack Dev Team',
+    description: 'Claude orchestrator with two Codex developers.',
+    version: '1.0.0',
+    leadRoleId: 'claude-orchestrator',
+    builtIn: true,
+    readOnly: true,
+    agentSlots: [
+      { roleId: 'codex-developer', count: 2, projectBinding: 'lead_project', overrides: null },
+    ],
+    defaults: { teamNamePattern: '{project}-team', tmuxLayout: 'tiled' },
+  },
+  {
+    presetId: 'review-team',
+    name: 'Review Team',
+    description: 'Claude orchestrator with two parallel reviewers.',
+    version: '1.0.0',
+    leadRoleId: 'claude-orchestrator',
+    builtIn: true,
+    readOnly: true,
+    agentSlots: [
+      { roleId: 'claude-reviewer', count: 2, projectBinding: 'lead_project', overrides: null },
+    ],
+    defaults: { teamNamePattern: '{project}-review-team', tmuxLayout: 'tiled' },
+  },
+  {
+    presetId: 'docs-sprint',
+    name: 'Docs Sprint Team',
+    description: 'Lead plus one documentation-focused agent.',
+    version: '0.2.0',
+    leadRoleId: 'claude-orchestrator',
+    builtIn: false,
+    readOnly: false,
+    agentSlots: [
+      { roleId: 'custom-doc-writer', count: 1, projectBinding: 'lead_project', overrides: null },
+    ],
+    defaults: { teamNamePattern: '{project}-docs', tmuxLayout: 'even-horizontal' },
+  },
+]
+
+function roleTemplateSummary(template) {
+  return {
+    roleId: template.roleId,
+    name: template.name,
+    kind: template.kind,
+    cliTool: template.cliTool,
+    model: template.model,
+    capabilities: template.capabilities ?? [],
+    builtIn: Boolean(template.builtIn),
+    readOnly: Boolean(template.readOnly),
+  }
+}
+
+function teamPresetSummary(preset) {
+  const referencedRoles = [
+    preset.leadRoleId,
+    ...(preset.agentSlots ?? []).map((slot) => slot.roleId),
+  ]
+    .map((roleId) => MOCK_ROLE_TEMPLATES.find((role) => role.roleId === roleId))
+    .filter(Boolean)
+
+  const tools = [...new Set(referencedRoles.map((role) => role.cliTool))]
+  const capabilities = [...new Set(referencedRoles.flatMap((role) => role.capabilities ?? []))]
+
+  return {
+    presetId: preset.presetId,
+    name: preset.name,
+    description: preset.description,
+    leadRoleId: preset.leadRoleId,
+    roleCount: preset.agentSlots?.length ?? 0,
+    agentCount: (preset.agentSlots ?? []).reduce((total, slot) => total + (slot.count ?? 0), 0),
+    tools,
+    capabilities,
+    builtIn: Boolean(preset.builtIn),
+    readOnly: Boolean(preset.readOnly),
+  }
+}
+
+/** List role template summaries for the template catalog. */
+export function listRoleTemplates() {
+  return invokeOrMock('list_role_templates', undefined, () =>
+    MOCK_ROLE_TEMPLATES.map(roleTemplateSummary)
+  )
+}
+
+/** Get one full role template by ID. */
+export function getRoleTemplate(id) {
+  return invokeOrMock('get_role_template', { id }, () => {
+    const template = MOCK_ROLE_TEMPLATES.find((entry) => entry.roleId === id)
+    return template ? { ...template } : null
+  })
+}
+
+/** List team preset summaries for the template catalog. */
+export function listTeamPresets() {
+  return invokeOrMock('list_team_presets', undefined, () =>
+    MOCK_TEAM_PRESETS.map(teamPresetSummary)
+  )
+}
+
+/** Get one full team preset by ID. */
+export function getTeamPreset(id) {
+  return invokeOrMock('get_team_preset', { id }, () => {
+    const preset = MOCK_TEAM_PRESETS.find((entry) => entry.presetId === id)
+    return preset ? { ...preset } : null
+  })
+}
+
+/** Compose a team from role/preset selections and overrides. */
+export function composeTeam(request) {
+  return invokeOrMock('compose_team', { request }, () => {
+    const leadName = request?.projectName ? `lead-${request.projectName}` : 'lead-project'
+    return {
+      roster: [
+        {
+          name: leadName,
+          roleId: 'claude-orchestrator',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'claude-opus-4-6',
+          instructions: 'Coordinate execution and unblock the team.',
+          behavioralContract: {
+            communication: ['Acknowledge assignments quickly.'],
+            execution: ['Delegate scoped tasks and verify completion evidence.'],
+            escalation: ['Escalate blockers immediately.'],
+          },
+          capabilities: ['planning', 'coordination'],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+      ],
+      warnings: request?.agentSlots?.length ? [] : ['No agent slots selected; roster includes lead only.'],
+      validationErrors: [],
+    }
+  })
+}
+
 /** Create a new coordination team. */
 export function coordinationCreateTeam(teamName) {
   return invokeOrMock('coordination_create_team', { teamName }, () => undefined)
