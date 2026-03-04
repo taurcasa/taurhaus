@@ -1,6 +1,7 @@
-<script>
+  <script>
   import { toolIcon as sessionToolIcon } from '../sessionIndicator.js'
   import { themeTokens } from '../themeTokens.js'
+  import { createAsyncGuard } from '../asyncGuard.js'
 
   let {
     teamName = '',
@@ -36,8 +37,10 @@
   let errorMessage = $state('')
   let reonboarding = $state(new Set())
   let reonboardSent = $state(new Set())
+  let reonboardTimers = new Map()
   let resumeModes = $state({})
   let showOverflowMenu = $state(false)
+  const rosterRefreshGuard = createAsyncGuard()
   const activeCount = $derived.by(
     () => members.filter((member) => statusToState(member.sessionStatus) === 'active').length
   )
@@ -144,22 +147,29 @@
 
   async function refreshRoster() {
     if (!teamName) return
+    const refreshSequence = rosterRefreshGuard.next()
+    const expectedTeamName = teamName
     loading = true
     errorMessage = ''
     try {
       const ipc = await import('../ipc.js')
       const getLiveStatus = ipc?.coordinationGetLiveTeamStatus
       if (typeof getLiveStatus !== 'function') {
+        if (!rosterRefreshGuard.isCurrent(refreshSequence) || teamName !== expectedTeamName) return
         members = []
         return
       }
-      const status = await getLiveStatus(teamName)
+      const status = await getLiveStatus(expectedTeamName)
+      if (!rosterRefreshGuard.isCurrent(refreshSequence) || teamName !== expectedTeamName) return
       members = (status?.members ?? []).map(normalizeMember)
     } catch (err) {
+      if (!rosterRefreshGuard.isCurrent(refreshSequence) || teamName !== expectedTeamName) return
       errorMessage = err?.message || 'Failed to load team roster'
       members = []
     } finally {
-      loading = false
+      if (rosterRefreshGuard.isCurrent(refreshSequence) && teamName === expectedTeamName) {
+        loading = false
+      }
     }
   }
 
@@ -171,17 +181,30 @@
     try {
       await reonboard(teamName, memberName)
       reonboardSent = new Set([...reonboardSent, memberName])
-      setTimeout(() => {
+      const existingTimer = reonboardTimers.get(memberName)
+      if (existingTimer) clearTimeout(existingTimer)
+      const timerId = setTimeout(() => {
         const next = new Set(reonboardSent)
         next.delete(memberName)
         reonboardSent = next
+        reonboardTimers.delete(memberName)
       }, 2000)
+      reonboardTimers.set(memberName, timerId)
     } finally {
       const next = new Set(reonboarding)
       next.delete(memberName)
       reonboarding = next
     }
   }
+
+  $effect(() => {
+    return () => {
+      for (const timerId of reonboardTimers.values()) {
+        clearTimeout(timerId)
+      }
+      reonboardTimers = new Map()
+    }
+  })
 
   $effect(() => {
     if (!teamName) return
@@ -201,6 +224,7 @@
 
     return () => {
       cancelled = true
+      rosterRefreshGuard.invalidate()
       if (intervalId) clearInterval(intervalId)
       void nonce
     }

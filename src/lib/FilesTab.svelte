@@ -7,6 +7,7 @@
   import CodeViewer from './CodeViewer.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import { themeTokens } from './themeTokens.js'
+  import { createAsyncGuard } from './asyncGuard.js'
 
   let {
     dark,
@@ -41,6 +42,7 @@
   let targetAnchor = $state(null)
   let fileTreeRefreshInFlight = false
   let fileTreeRefreshPending = false
+  const fileReadGuard = createAsyncGuard()
 
   // Sync position outward for Shell's per-project position memory
   $effect(() => {
@@ -50,6 +52,7 @@
   // Load file tree on mount
   $effect(() => {
     if (!selectedProject?.id || !isActive) return
+    fileReadGuard.invalidate()
     refreshFileTree(selectedProject.id)
   })
 
@@ -154,6 +157,7 @@
   }
 
   function clearSelection() {
+    fileReadGuard.invalidate()
     selectedFile = null
     targetLineNumber = null
     targetAnchor = null
@@ -219,6 +223,14 @@
 
   async function openFile(relativePath, lineNumber = null, anchor = null) {
     if (!selectedProject) return
+    const projectId = selectedProject.id
+    const requestPath = relativePath
+    const requestSequence = fileReadGuard.next()
+    const isStale = () =>
+      !fileReadGuard.isCurrent(requestSequence)
+        || selectedProject?.id !== projectId
+        || selectedFile !== requestPath
+
     selectedFile = relativePath
     targetLineNumber = lineNumber
     targetAnchor = anchor
@@ -239,18 +251,20 @@
     fileContent = null
     fileError = null
     imageDataUri = null
-    fileType = classifyFile(relativePath)
+    fileType = classifyFile(requestPath)
 
     try {
       if (fileType === 'image') {
         // Check asset cache first, then IPC
-        const cached = assetCache.get(selectedProject.id, relativePath)
+        const cached = assetCache.get(projectId, requestPath)
         if (cached) {
+          if (isStale()) return
           imageDataUri = cached
         } else {
-          const dataUri = await readProjectAsset(selectedProject.id, relativePath)
+          const dataUri = await readProjectAsset(projectId, requestPath)
+          if (isStale()) return
           if (dataUri) {
-            assetCache.set(selectedProject.id, relativePath, dataUri)
+            assetCache.set(projectId, requestPath, dataUri)
             imageDataUri = dataUri
           } else {
             fileError = 'error'
@@ -258,12 +272,16 @@
         }
       } else if (fileType === 'binary' || fileType === 'pdf') {
         // Known binary -- no IPC call
+        if (isStale()) return
         fileError = fileType
       } else {
         // text or markdown -- read as text
-        fileContent = await readFile(selectedProject.id, relativePath)
+        const content = await readFile(projectId, requestPath)
+        if (isStale()) return
+        fileContent = content
       }
     } catch (e) {
+      if (isStale()) return
       const msg = String(e?.message || e || '')
       console.error(`[file] error loading "${relativePath}" (project=${selectedProject?.id}): ${msg}`)
       if (msg.includes('Binary file') || msg.includes('cannot be read as text')) {
@@ -274,7 +292,9 @@
         fileError = 'error'
       }
     } finally {
-      fileContentLoading = false
+      if (!isStale()) {
+        fileContentLoading = false
+      }
     }
   }
 

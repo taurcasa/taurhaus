@@ -809,18 +809,15 @@ export async function listRoleTemplates() {
     const summaries = await invoke('templates_list_roles')
     const enriched = await Promise.all(
       (summaries ?? []).map(async (summary) => {
-        const roleId = summary?.roleId ?? summary?.role_id
+        const roleId = summary?.roleId
         if (!roleId) return summary
         try {
           const detail = await invoke('templates_get_role', { roleId })
-          const resolvedRoleId = detail?.roleId ?? detail?.role_id ?? roleId
+          const resolvedRoleId = detail?.roleId ?? roleId
           const resolvedCliTool =
             detail?.cliTool ??
-            detail?.cli_tool ??
             detail?.defaults?.cliTool ??
-            detail?.defaults?.cli_tool ??
             summary?.cliTool ??
-            summary?.cli_tool ??
             null
           const resolvedModel =
             detail?.model ??
@@ -841,14 +838,14 @@ export async function listRoleTemplates() {
             model: resolvedModel,
             capabilities: resolvedCapabilities,
             builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
-            readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
+            readOnly: Boolean(summary?.readOnly),
           }
         } catch {
           return {
             ...summary,
             roleId,
             builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
-            readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
+            readOnly: Boolean(summary?.readOnly),
           }
         }
       })
@@ -874,22 +871,32 @@ export async function listTeamPresets() {
       invoke('templates_list_presets'),
       listRoleTemplates(),
     ])
-    const roleMap = new Map((roles ?? []).map((role) => [role.roleId ?? role.role_id, role]))
+    const roleMap = new Map(
+      (roles ?? [])
+        .map((role) => [role?.roleId, role])
+        .filter(([roleId]) => Boolean(roleId))
+    )
 
     const enriched = await Promise.all(
       (summaries ?? []).map(async (summary) => {
-        const presetId = summary?.presetId ?? summary?.preset_id
+        const presetId = summary?.presetId
         if (!presetId) return summary
         let detail = null
         try {
           detail = await invoke('templates_get_preset', { presetId })
         } catch {}
 
-        const leadRoleId = detail?.leadRoleId ?? detail?.lead_role_id ?? summary?.leadRoleId ?? summary?.lead_role_id ?? ''
-        const agentSlots = detail?.agentSlots ?? detail?.agent_slots ?? []
-        const referencedRoleIds = [leadRoleId, ...agentSlots.map((slot) => slot?.roleId ?? slot?.role_id)].filter(Boolean)
+        const leadRoleId =
+          detail?.leadRoleId ??
+          summary?.leadRoleId ??
+          ''
+        const agentSlots = detail?.agentSlots ?? []
+        const referencedRoleIds = [
+          leadRoleId,
+          ...agentSlots.map((slot) => slot?.roleId),
+        ].filter(Boolean)
         const referencedRoles = referencedRoleIds.map((roleId) => roleMap.get(roleId)).filter(Boolean)
-        const tools = [...new Set(referencedRoles.map((role) => role?.cliTool ?? role?.cli_tool).filter(Boolean))]
+        const tools = [...new Set(referencedRoles.map((role) => role?.cliTool).filter(Boolean))]
         const capabilities = [...new Set(referencedRoles.flatMap((role) => role?.capabilities ?? []))]
 
         return {
@@ -902,7 +909,7 @@ export async function listTeamPresets() {
           tools,
           capabilities,
           builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
-          readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
+          readOnly: Boolean(summary?.readOnly),
         }
       })
     )
@@ -1039,7 +1046,7 @@ export function coordinationRemoveMember(teamName, memberName) {
 
 /** List all known coordination teams. */
 export function coordinationListTeams() {
-  return invokeOrMock('coordination_list_teams', undefined, () => [])
+  return invokeOrMock('coordination_list_teams', undefined, () => ({ teams: [], warnings: [] }))
 }
 
 /** Get current team status (member list and runtime state summary). */

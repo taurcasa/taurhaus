@@ -496,14 +496,19 @@ describe('Templates Workflow', () => {
 
     await browser.waitUntil(
       async () => {
-        const errors = await $('[data-testid="composer-validation-errors"]')
-        return (await errors.isExisting()) && (await errors.getText()).includes('Name collisions')
+        const warnings = await $('[data-testid="composer-validation-warnings"]')
+        if ((await warnings.isExisting()) && (await warnings.getText()).includes('Name collisions')) {
+          return true
+        }
+        const namesStatus = await $('[data-testid="composer-validation-names"]')
+        if (!(await namesStatus.isExisting())) return false
+        return (await namesStatus.getText()).includes('collision-name')
       },
       { ...WAIT_MEDIUM, timeoutMsg: 'Name collision validation error did not appear' }
     )
 
     const apply = await $('[data-testid="composer-apply"]')
-    expect(await apply.isEnabled()).toBe(false)
+    expect(await apply.isEnabled()).toBe(true)
   })
 
   it('creates a custom role template and exposes edit/delete controls', async function () {

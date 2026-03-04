@@ -8,6 +8,7 @@
     coordinationRemoveMember,
   } from '../ipc.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
+  import { createAsyncGuard } from '../asyncGuard.js'
 
   let { dark = false } = $props()
 
@@ -33,6 +34,8 @@
   let showDisbandConfirm = $state(false)
   let showRemoveMemberConfirm = $state(false)
   let memberPendingRemoval = $state('')
+  const teamsLoadGuard = createAsyncGuard()
+  const statusLoadGuard = createAsyncGuard()
 
   const selectedMembers = $derived(selectedStatus?.members ?? [])
   const canCreate = $derived(!submitting && createTeamName.trim().length > 0)
@@ -56,37 +59,56 @@
   }
 
   async function refreshTeams() {
+    const teamsSequence = teamsLoadGuard.next()
     loadingTeams = true
     errorMessage = ''
     try {
-      teams = await coordinationListTeams()
-      if (selectedTeam && !teams.some((team) => normalizeTeamName(team) === selectedTeam)) {
+      const listedTeams = await coordinationListTeams()
+      if (!teamsLoadGuard.isCurrent(teamsSequence)) return
+      teams = listedTeams
+      const currentSelectedTeam = selectedTeam
+      if (
+        currentSelectedTeam
+        && !listedTeams.some((team) => normalizeTeamName(team) === currentSelectedTeam)
+      ) {
         selectedTeam = ''
         selectedStatus = null
+        statusLoadGuard.invalidate()
+        loadingStatus = false
         showDisbandConfirm = false
         showRemoveMemberConfirm = false
         memberPendingRemoval = ''
       }
-      if (selectedTeam) {
-        await loadTeamStatus(selectedTeam)
+      if (currentSelectedTeam) {
+        await loadTeamStatus(currentSelectedTeam)
       }
     } catch (err) {
+      if (!teamsLoadGuard.isCurrent(teamsSequence)) return
       errorMessage = `Failed to list teams: ${formatError(err, 'unknown error')}`
     } finally {
-      loadingTeams = false
+      if (teamsLoadGuard.isCurrent(teamsSequence)) {
+        loadingTeams = false
+      }
     }
   }
 
   async function loadTeamStatus(teamName) {
+    const statusSequence = statusLoadGuard.next()
+    const expectedTeamName = teamName
     loadingStatus = true
     errorMessage = ''
     try {
-      selectedStatus = await coordinationGetTeamStatus(teamName)
+      const status = await coordinationGetTeamStatus(expectedTeamName)
+      if (!statusLoadGuard.isCurrent(statusSequence) || selectedTeam !== expectedTeamName) return
+      selectedStatus = status
     } catch (err) {
+      if (!statusLoadGuard.isCurrent(statusSequence) || selectedTeam !== expectedTeamName) return
       selectedStatus = null
       errorMessage = `Failed to load team status: ${formatError(err, 'unknown error')}`
     } finally {
-      loadingStatus = false
+      if (statusLoadGuard.isCurrent(statusSequence) && selectedTeam === expectedTeamName) {
+        loadingStatus = false
+      }
     }
   }
 
@@ -121,6 +143,8 @@
       await coordinationDisbandTeam(selectedTeam)
       selectedTeam = ''
       selectedStatus = null
+      statusLoadGuard.invalidate()
+      loadingStatus = false
       showDisbandConfirm = false
       await refreshTeams()
     } catch (err) {

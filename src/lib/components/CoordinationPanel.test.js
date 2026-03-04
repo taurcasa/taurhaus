@@ -22,6 +22,18 @@ const {
 
 import CoordinationPanel from './CoordinationPanel.svelte'
 
+function createDeferred() {
+  /** @type {(value: any) => void} */
+  let resolve
+  /** @type {(reason?: any) => void} */
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('CoordinationPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -111,6 +123,41 @@ describe('CoordinationPanel', () => {
     await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
     await waitFor(() => {
       expect(coordinationDisbandTeam).toHaveBeenCalledWith('architecture-final')
+    })
+  })
+
+  it('ignores stale team status responses on rapid team selection', async () => {
+    coordinationListTeams.mockResolvedValue([
+      { teamName: 'alpha-team' },
+      { teamName: 'beta-team' },
+    ])
+
+    const alphaStatus = createDeferred()
+    const betaStatus = createDeferred()
+    coordinationGetTeamStatus.mockImplementation((teamName) => {
+      if (teamName === 'alpha-team') return alphaStatus.promise
+      if (teamName === 'beta-team') return betaStatus.promise
+      return Promise.resolve({ teamName, members: [] })
+    })
+
+    render(CoordinationPanel, { props: { dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('coordination-team-alpha-team')).toBeInTheDocument()
+      expect(screen.getByTestId('coordination-team-beta-team')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('coordination-team-alpha-team'))
+    await fireEvent.click(screen.getByTestId('coordination-team-beta-team'))
+
+    betaStatus.resolve({ teamName: 'beta-team', members: ['beta-member'] })
+    await waitFor(() => {
+      expect(screen.getByText('beta-member')).toBeInTheDocument()
+    })
+
+    alphaStatus.resolve({ teamName: 'alpha-team', members: ['alpha-member'] })
+    await waitFor(() => {
+      expect(screen.getByText('beta-member')).toBeInTheDocument()
+      expect(screen.queryByText('alpha-member')).not.toBeInTheDocument()
     })
   })
 })

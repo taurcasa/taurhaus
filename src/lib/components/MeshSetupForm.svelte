@@ -1,5 +1,8 @@
 <script>
   import { composeTeam, getTeamPreset, listTeamPresets } from '../ipc.js'
+  import { createAsyncGuard } from '../asyncGuard.js'
+  import { collectDuplicateNames } from '../meshValidation.js'
+  import { normalizeProjectOption, projectBasename } from '../projectOptions.js'
   import TeamComposer from './TeamComposer.svelte'
   import TemplateCatalog from './TemplateCatalog.svelte'
   import { themeTokens } from '../themeTokens.js'
@@ -38,28 +41,14 @@
     gemini: ['gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 
-  function projectBasename(path) {
-    return String(path || '').split(/[\\/]+/).filter(Boolean).at(-1) || 'project'
-  }
-
   function inferTeamName(path) {
     return `${projectBasename(path)}-team`
   }
 
-  function normalizeProjectOption(project) {
-    if (typeof project === 'string') {
-      return { id: project, label: projectBasename(project) }
-    }
-    if (project && typeof project === 'object') {
-      const id = project.path || project.id || project.name || ''
-      const label = project.name || projectBasename(project.path || project.id) || 'Unnamed'
-      return { id, label }
-    }
-    return { id: '', label: '' }
-  }
-
   const projectOptions = $derived(
-    (availableProjects ?? []).map(normalizeProjectOption).filter((p) => p.id)
+    (availableProjects ?? [])
+      .map((project) => normalizeProjectOption(project, { unnamedLabel: 'Unnamed' }))
+      .filter((p) => p.id)
   )
 
   const projectName = $derived(projectBasename(projectPath))
@@ -93,7 +82,9 @@
   let selectedPreset = $state(null)
   let showTeamComposer = $state(false)
   let showTemplateCatalog = $state(false)
-  let applyPresetSequence = 0
+  let startTeamInFlight = $state(false)
+  const presetApplyGuard = createAsyncGuard()
+  const presetCatalogGuard = createAsyncGuard()
   const quickPresetIds = ['fullstack-dev', 'research-dev', 'review-team']
 
   function defaultLead() {
@@ -278,44 +269,51 @@
   }
 
   async function loadTemplatePresets() {
+    const sequence = presetCatalogGuard.next()
     templatePresetsLoading = true
     templateError = ''
     try {
       const presets = await listTeamPresets()
+      if (!presetCatalogGuard.isCurrent(sequence)) return
       presetSummaries = (presets ?? []).map(normalizePresetSummary).filter((entry) => entry.presetId)
     } catch (error) {
+      if (!presetCatalogGuard.isCurrent(sequence)) return
       presetSummaries = []
       templateError = error?.message || 'Failed to load templates.'
     } finally {
-      templatePresetsLoading = false
+      if (presetCatalogGuard.isCurrent(sequence)) {
+        templatePresetsLoading = false
+      }
     }
   }
 
+  function resetTemplateTransientState() {
+    startTeamInFlight = false
+    templateError = ''
+    templateNotice = ''
+    showTeamComposer = false
+    showTemplateCatalog = false
+  }
+
   function startBlankSlate() {
-    applyPresetSequence += 1
+    resetTemplateTransientState()
+    presetApplyGuard.invalidate()
     templateMode = 'blank'
     selectedPresetId = ''
     selectedPreset = null
-    showTeamComposer = false
-    showTemplateCatalog = false
-    templateError = ''
-    templateNotice = ''
     lead = defaultLead()
     agents = [defaultAgent()]
   }
 
   async function applyPreset(presetId) {
-    const sequence = ++applyPresetSequence
+    const sequence = presetApplyGuard.next()
     templateMode = 'preset'
-    templateError = ''
-    templateNotice = ''
+    resetTemplateTransientState()
     selectedPresetId = presetId
     selectedPreset = null
-    showTeamComposer = false
-    showTemplateCatalog = false
     try {
       const preset = normalizePreset(await getTeamPreset(presetId))
-      if (sequence !== applyPresetSequence) return
+      if (!presetApplyGuard.isCurrent(sequence)) return
       if (!preset) {
         templateError = 'Preset not found.'
         return
@@ -326,39 +324,37 @@
         agentSlots: preset.agentSlots ?? [],
         projectName,
       })
-      if (sequence !== applyPresetSequence) return
+      if (!presetApplyGuard.isCurrent(sequence)) return
       applyComposedRoster(composed, `Applied preset: ${preset.name}`)
     } catch (error) {
-      if (sequence !== applyPresetSequence) return
+      if (!presetApplyGuard.isCurrent(sequence)) return
       templateError = error?.message || 'Failed to apply preset.'
     }
   }
 
   function startCustomTemplateFlow() {
-    applyPresetSequence += 1
+    resetTemplateTransientState()
+    presetApplyGuard.invalidate()
     templateMode = 'custom'
-    templateError = ''
-    templateNotice = ''
-    showTemplateCatalog = false
     showTeamComposer = true
   }
 
   function openTemplateCatalog() {
-    applyPresetSequence += 1
+    resetTemplateTransientState()
+    presetApplyGuard.invalidate()
     templateMode = 'catalog'
-    templateError = ''
-    templateNotice = ''
-    showTeamComposer = false
     showTemplateCatalog = true
   }
 
   function applyCompositionPayload(payload, notice = 'Applied composed team') {
-    applyPresetSequence += 1
+    resetTemplateTransientState()
+    presetApplyGuard.invalidate()
     templateMode = 'custom'
     applyInitializedPayload(payload, notice)
   }
 
   $effect(() => {
+    startTeamInFlight = false
     if (!teamName.trim()) {
       teamName = inferTeamName(projectPath)
     }
@@ -381,6 +377,10 @@
 
   $effect(() => {
     void loadTemplatePresets()
+    return () => {
+      presetCatalogGuard.invalidate()
+      presetApplyGuard.invalidate()
+    }
   })
 
   function modelsForTool(tool) {
@@ -430,24 +430,21 @@
   }
 
   const duplicateNames = $derived.by(() => {
-    const counts = new Map()
     const names = [lead.name, ...agents.map((a) => a.name)]
       .map((n) => n.trim().toLowerCase())
       .filter(Boolean)
-    for (const name of names) {
-      counts.set(name, (counts.get(name) ?? 0) + 1)
-    }
-    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name))
+    return collectDuplicateNames(names)
   })
 
-  const hasDuplicateNames = $derived(duplicateNames.size > 0)
+  const hasDuplicateNames = $derived(duplicateNames.length > 0)
 
   function agentDisplayName(agent, index) {
     return agent.name.trim() || `${projectName}-dev${agents.length > 1 ? `-${index + 1}` : ''}`
   }
 
   function startTeam() {
-    if (hasDuplicateNames) return
+    if (startTeamInFlight) return
+    startTeamInFlight = true
     oninitialize({
       teamName: teamName.trim() || inferTeamName(projectPath),
       teamDescription: teamDescription.trim() || null,
@@ -732,7 +729,7 @@
   </div>
 
   {#if hasDuplicateNames}
-    <p class="text-xs text-danger-500" data-testid="mesh-duplicate-name-error">
+    <p class="text-xs text-warning-500" data-testid="mesh-duplicate-name-error">
       Duplicate member names. Each name must be unique.
     </p>
   {/if}
@@ -788,9 +785,9 @@
         class="h-8 inline-flex items-center rounded-md bg-brand-600 px-4 text-xs font-medium text-white hover:bg-brand-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         type="button"
         onclick={startTeam}
-        disabled={hasDuplicateNames}
+        disabled={startTeamInFlight}
         data-testid="mesh-create-team-button"
-      >Start Team</button>
+      >{startTeamInFlight ? 'Starting…' : 'Start Team'}</button>
     </div>
   </div>
 </section>

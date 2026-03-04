@@ -926,20 +926,20 @@ describe('ipc module', () => {
       tauriCore.invoke
         .mockResolvedValueOnce([
           {
-            role_id: 'codex-developer',
+            roleId: 'codex-developer',
             name: 'Codex Developer',
             version: '1.0.0',
             kind: 'agent',
             source: 'built_in',
-            read_only: true,
+            readOnly: true,
           },
         ])
         .mockResolvedValueOnce({
-          role_id: 'codex-developer',
+          roleId: 'codex-developer',
           name: 'Codex Developer',
           kind: 'agent',
           defaults: {
-            cli_tool: 'codex',
+            cliTool: 'codex',
             model: 'gpt-5.3-codex',
           },
           capabilities: ['implementation'],
@@ -961,6 +961,48 @@ describe('ipc module', () => {
           readOnly: true,
         }),
       ])
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('listTeamPresets()', () => {
+    it('normalizes aliased preset fields in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke
+        .mockResolvedValueOnce([
+          {
+            presetId: 'review-team',
+            name: 'Review Team',
+            leadRoleId: 'claude-reviewer',
+            source: 'built_in',
+            readOnly: true,
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce({
+          presetId: 'review-team',
+          leadRoleId: 'claude-reviewer',
+          agentSlots: [{ roleId: 'codex-developer', count: 2 }],
+        })
+
+      const result = await ipc.listTeamPresets()
+
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(1, 'templates_list_presets')
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(2, 'templates_list_roles')
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(3, 'templates_get_preset', {
+        presetId: 'review-team',
+      })
+      expect(result).toEqual([
+        expect.objectContaining({
+          presetId: 'review-team',
+          leadRoleId: 'claude-reviewer',
+          roleCount: 1,
+          agentCount: 2,
+          builtIn: true,
+          readOnly: true,
+        }),
+      ])
+
       delete window.__TAURI_INTERNALS__
     })
   })

@@ -94,7 +94,9 @@ export const MOCK_SETTINGS = {
   thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
   ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
   code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
-  terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' },
+  terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+  daemon: { port: 17233, path: '~/.local/bin/taurhaus-daemon', auto_start: true },
+  dark_mode: false,
 }
 
 export const MOCK_CLAUDE_SESSIONS = [

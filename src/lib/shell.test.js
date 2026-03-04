@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createAsyncGuard } from './asyncGuard.js'
 
 // Mock IPC module
 vi.mock('./ipc.js', () => ({
@@ -620,6 +621,83 @@ describe('selectProject flow', () => {
     await Promise.all([first, second])
 
     expect(result).toBe('fast-project')
+  })
+
+  it('loader guard keeps latest project sessions and ignores stale responses', async () => {
+    function createDeferred() {
+      /** @type {(value: any) => void} */
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const sessionGuard = createAsyncGuard()
+    let selectedProject = { id: 'project-b' }
+    let latestSession = null
+    let sessionHistory = []
+
+    const slowA = createDeferred()
+    const fastB = createDeferred()
+
+    async function loadSessions(projectId, latestPromise, historyPromise) {
+      const sequence = sessionGuard.next()
+      const [latest, history] = await Promise.all([latestPromise, historyPromise])
+      if (!sessionGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
+      latestSession = latest
+      sessionHistory = history
+    }
+
+    const first = loadSessions('project-a', slowA.promise, slowA.promise)
+    const second = loadSessions('project-b', fastB.promise, fastB.promise)
+    fastB.resolve({ id: 'latest-b', items: ['b1'] })
+    await second
+
+    // Project switched while request A still in flight.
+    selectedProject = { id: 'project-b' }
+    slowA.resolve({ id: 'latest-a', items: ['a1'] })
+    await first
+
+    expect(latestSession.id).toBe('latest-b')
+    expect(sessionHistory.items).toEqual(['b1'])
+  })
+
+  it('listener cleanup disposes listeners that resolve after effect teardown', async () => {
+    function createDeferred() {
+      /** @type {(value: any) => void} */
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const cleanups = []
+    const deferredUnlisten = createDeferred()
+    const unlisten = vi.fn()
+    const listen = vi.fn(() => deferredUnlisten.promise)
+
+    let destroyed = false
+    function registerListener(eventName, handler) {
+      listen(eventName, handler).then((dispose) => {
+        if (destroyed) {
+          dispose()
+          return
+        }
+        cleanups.push(dispose)
+      })
+    }
+
+    registerListener('sessions-updated', () => {})
+    destroyed = true
+    cleanups.forEach((dispose) => dispose())
+
+    deferredUnlisten.resolve(unlisten)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(unlisten).toHaveBeenCalledTimes(1)
   })
 
   it('collects degraded load issues while preserving fallback data', async () => {

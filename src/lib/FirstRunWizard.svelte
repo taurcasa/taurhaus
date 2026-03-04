@@ -1,5 +1,6 @@
 <script>
   import { scanDirectory, registerProjectsBatch, checkDaemonInstallStatus, installDaemon, getPlatform, isTauri } from './ipc.js'
+  import { getBatchProgressName } from './batchRegistrationProgress.js'
   import { themeTokens } from './themeTokens.js'
   import DirectoryBrowser from './DirectoryBrowser.svelte'
 
@@ -132,7 +133,7 @@
         const { listen } = await import('@tauri-apps/api/event')
         unlisten = await listen('batch-registration-progress', (event) => {
           progressIndex = (event.payload.index ?? 0) + 1
-          progressName = event.payload.project_name || ''
+          progressName = getBatchProgressName(event.payload)
         })
       } catch { /* non-critical */ }
     }

@@ -15,6 +15,7 @@
   import Sidebar from './lib/Sidebar.svelte'
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
+  import { createAsyncGuard } from './lib/asyncGuard.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
@@ -106,6 +107,9 @@
   let gitPosition = $state(null)
   let taskPosition = $state(null)
   let taskNavTarget = $state(null)
+  const sessionsLoadGuard = createAsyncGuard()
+  const readmeLoadGuard = createAsyncGuard()
+  const relationshipsLoadGuard = createAsyncGuard()
 
   function saveProjectPosition() {
     if (!selectedProject) return
@@ -251,11 +255,23 @@
   // Tauri real-time event listeners (ADR-022)
   $effect(() => {
     if (!isTauri()) return
+    let destroyed = false
     let cleanups = []
 
+    function registerListener(listen, eventName, handler) {
+      listen(eventName, handler).then((unlisten) => {
+        if (destroyed) {
+          unlisten()
+          return
+        }
+        cleanups.push(unlisten)
+      })
+    }
+
     import('@tauri-apps/api/event').then(({ listen }) => {
+      if (destroyed) return
       // Git status changed — refresh sidebar project status
-      listen('project-git-changed', (event) => {
+      registerListener(listen, 'project-git-changed', (event) => {
         const { project_id } = event.payload
         const idx = projects.findIndex(p => p.id === project_id)
         if (idx !== -1 && event.payload.branch !== undefined) {
@@ -264,25 +280,25 @@
         if (selectedProject?.id === project_id) {
           selectedProject = { ...selectedProject, branch: event.payload.branch ?? selectedProject.branch, is_dirty: event.payload.is_dirty ?? selectedProject.is_dirty }
         }
-      }).then(u => cleanups.push(u))
+      })
 
       // Session imported — refresh session display
-      listen('session-imported', (event) => {
+      registerListener(listen, 'session-imported', (event) => {
         const { project_id } = event.payload
         if (selectedProject?.id === project_id) {
           loadSessions(project_id)
         }
-      }).then(u => cleanups.push(u))
+      })
 
       // Startup reseed complete — reload project list to pick up cached git status
-      listen('projects-reseed-complete', () => {
+      registerListener(listen, 'projects-reseed-complete', () => {
         loadProjects()
-      }).then(u => cleanups.push(u))
+      })
 
       // File changes — central handler for all file-change responses.
       // Invalidates caches, refreshes Overview README, and signals
       // FilesTab to refresh via the fileChangePaths reactive prop.
-      listen('project-files-changed', (event) => {
+      registerListener(listen, 'project-files-changed', (event) => {
         const { project_id, paths } = event.payload
         // Invalidate asset cache for changed images
         if (paths?.length) {
@@ -300,10 +316,10 @@
         }
         // Signal FilesTab to refresh (it reads this reactively)
         fileChangePaths = paths
-      }).then(u => cleanups.push(u))
+      })
 
       // Daemon status changes (bootstrap chain + health check)
-      listen('daemon-status', (event) => {
+      registerListener(listen, 'daemon-status', (event) => {
         const { status } = event.payload
         daemonStatus = status
         clearTimeout(daemonStatusDismissTimer)
@@ -311,19 +327,22 @@
         if (status === 'connected') {
           daemonStatusDismissTimer = setTimeout(() => { daemonStatus = null }, 3000)
         }
-      }).then(u => cleanups.push(u))
+      })
 
       // Session activity updates from daemon bridge (event-driven above daemon).
-      listen('sessions-updated', (event) => {
+      registerListener(listen, 'sessions-updated', (event) => {
         applyDaemonSessionUpdate(event.payload)
-      }).then(u => cleanups.push(u))
+      })
 
       // Prime the session store once on startup so indicators do not stay empty
       // until the first pushed delta arrives.
-      hydrateSessionsFromBackend()
-    })
+      if (!destroyed) {
+        hydrateSessionsFromBackend()
+      }
+    }).catch(() => {})
 
     return () => {
+      destroyed = true
       cleanups.forEach(u => u())
     }
   })
@@ -432,38 +451,53 @@
   }
 
   async function loadSessions(projectId) {
+    const sequence = sessionsLoadGuard.next()
     sessionLoading = true
     try {
       const [latest, history] = await Promise.all([
         getLatestSession(projectId),
         listSessions(projectId, 10),
       ])
+      if (!sessionsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       latestSession = latest
       sessionHistory = history || []
     } catch {
+      if (!sessionsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       latestSession = null
       sessionHistory = []
     } finally {
-      sessionLoading = false
+      if (sessionsLoadGuard.isCurrent(sequence) && selectedProject?.id === projectId) {
+        sessionLoading = false
+      }
     }
   }
 
   async function loadReadmeForOverview(projectId) {
+    const sequence = readmeLoadGuard.next()
     try {
-      readmeContent = await getReadme(projectId)
+      const readme = await getReadme(projectId)
+      if (!readmeLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
+      readmeContent = readme
     } catch {
+      if (!readmeLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       readmeContent = null
     }
   }
 
   async function loadRelationships(projectId) {
+    const sequence = relationshipsLoadGuard.next()
     relationshipsLoading = true
     try {
-      relationships = await getRelationships(projectId)
+      const loadedRelationships = await getRelationships(projectId)
+      if (!relationshipsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
+      relationships = loadedRelationships
     } catch {
+      if (!relationshipsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       relationships = []
     } finally {
-      relationshipsLoading = false
+      if (relationshipsLoadGuard.isCurrent(sequence) && selectedProject?.id === projectId) {
+        relationshipsLoading = false
+      }
     }
   }
 

@@ -11,6 +11,8 @@
   import MeshAvailabilityGate from './MeshAvailabilityGate.svelte'
   import MeshTeamRoster from './MeshTeamRoster.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
+  import { createAsyncGuard } from '../asyncGuard.js'
+  import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -95,6 +97,7 @@
   let showCleanupConfirm = $state(false)
   let runtimeMessageTimer = null
   let errorMessageTimer = null
+  const teamDiscoveryGuard = createAsyncGuard()
 
   const modelOptionsByTool = {
     claude: ['opus', 'sonnet', 'haiku'],
@@ -102,20 +105,12 @@
     gemini: ['gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 
-  function normalizeProjectOption(project) {
-    if (typeof project === 'string') {
-      return { id: project, label: project }
-    }
-    if (project && typeof project === 'object') {
-      const id = project.path || project.id || project.name || ''
-      const label = project.name || project.path || project.id || 'Unnamed project'
-      return { id, label }
-    }
-    return { id: '', label: '' }
-  }
-
   const projectOptions = $derived(
-    (availableProjects ?? []).map(normalizeProjectOption).filter((project) => project.id)
+    (availableProjects ?? [])
+      .map((project) =>
+        normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' })
+      )
+      .filter((project) => project.id)
   )
 
   const canSubmitAddAgent = $derived(
@@ -206,14 +201,14 @@
       .replace(/[^a-z0-9_-]+/g, '-')
   }
 
-  async function refreshTeamDiscovery(currentProjectPath, isCancelled = () => false) {
+  async function refreshTeamDiscovery(currentProjectPath, sequence = teamDiscoveryGuard.next()) {
     const response = await coordinationListTeams()
-    if (isCancelled()) return
+    if (!teamDiscoveryGuard.isCurrent(sequence)) return
     const teams = coerceTeams(response)
     discoveredTeams = teams
     discoveryWarnings = coerceWarnings(response)
     const matchingTeam = teams.find((team) => teamMatchesProject(team, currentProjectPath))
-    if (isCancelled()) return
+    if (!teamDiscoveryGuard.isCurrent(sequence)) return
     if (matchingTeam) {
       teamName = normalizeTeamName(matchingTeam)
       mode = 'runtime'
@@ -433,7 +428,7 @@
 
   $effect(() => {
     const currentProjectPath = projectPath
-    let cancelled = false
+    const sequence = teamDiscoveryGuard.next()
 
     loading = true
     errorMessage = ''
@@ -456,19 +451,19 @@
     discoveredTeams = []
     discoveryWarnings = []
 
-    refreshTeamDiscovery(currentProjectPath, () => cancelled)
+    refreshTeamDiscovery(currentProjectPath, sequence)
       .catch((err) => {
-        if (cancelled) return
+        if (!teamDiscoveryGuard.isCurrent(sequence)) return
         errorMessage = err?.message || 'Failed to load Mesh setup state'
       })
       .finally(() => {
-        if (!cancelled) {
+        if (teamDiscoveryGuard.isCurrent(sequence)) {
           loading = false
         }
       })
 
     return () => {
-      cancelled = true
+      teamDiscoveryGuard.invalidate()
     }
   })
 </script>

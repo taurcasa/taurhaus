@@ -3,6 +3,7 @@
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
   import { themeTokens } from './themeTokens.js'
+  import { createAsyncGuard } from './asyncGuard.js'
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
@@ -32,6 +33,7 @@
   // Selection + detail panel state
   let selectedTask = $state(null)
   let taskDetail = $state(null)
+  const taskListFetchGuard = createAsyncGuard()
 
   const SOURCE_LABELS = TOOL_NAMES
 
@@ -176,14 +178,29 @@
     }
 
     async function fetchTasks() {
+      const fetchSequence = taskListFetchGuard.next()
+      const expectedProjectPath = projectPath
+      loading = true
       try {
-        const result = await getProjectTasks(projectPath)
-        if (destroyed) return
+        const result = await getProjectTasks(expectedProjectPath)
+        if (
+          destroyed
+          || !taskListFetchGuard.isCurrent(fetchSequence)
+          || projectPath !== expectedProjectPath
+        ) {
+          return
+        }
         tasks = result.tasks || []
         errors = result.errors || []
         loading = false
       } catch (e) {
-        if (destroyed) return
+        if (
+          destroyed
+          || !taskListFetchGuard.isCurrent(fetchSequence)
+          || projectPath !== expectedProjectPath
+        ) {
+          return
+        }
         errors = [['fetch', e.message || 'Failed to load tasks']]
         loading = false
       }
@@ -191,6 +208,7 @@
 
     return () => {
       destroyed = true
+      taskListFetchGuard.invalidate()
       if (unlisten) {
         unlisten()
         unlisten = null

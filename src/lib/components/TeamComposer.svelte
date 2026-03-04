@@ -1,5 +1,6 @@
 <script>
   import { composeTeam, listRoleTemplates } from '../ipc.js'
+  import { collectDuplicateNames } from '../meshValidation.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { themeTokens } from '../themeTokens.js'
 
@@ -89,13 +90,16 @@
     for (const message of composedResult.warnings ?? []) warnings.push(String(message))
 
     const leadCount = editedRoster.filter((member) => member.roleKind === 'lead').length
+    const duplicateNames = collectDuplicateNames(
+      editedRoster.map((member, index) => normalizedMemberName(member, index))
+    )
+
     if (leadCount !== 1) {
-      errors.push(`Lead check failed: expected 1 lead, found ${leadCount}.`)
+      warnings.push(`Lead check failed: expected 1 lead, found ${leadCount}.`)
     }
 
-    const duplicateNames = findDuplicateNames(editedRoster)
     if (duplicateNames.length > 0) {
-      errors.push(`Name collisions: ${duplicateNames.join(', ')}.`)
+      warnings.push(`Name collisions: ${duplicateNames.join(', ')}.`)
     }
 
     const available = new Set((availableTools ?? []).map((tool) => String(tool).toLowerCase()))
@@ -260,17 +264,6 @@
         instructions: prior?.instructions ?? member.instructions,
       }
     })
-  }
-
-  function findDuplicateNames(roster) {
-    const counts = new Map()
-    for (const [index, member] of roster.entries()) {
-      const name = normalizedMemberName(member, index).toLowerCase()
-      counts.set(name, (counts.get(name) ?? 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .filter(([, count]) => count > 1)
-      .map(([name]) => name)
   }
 
   function normalizedMemberName(member, index) {

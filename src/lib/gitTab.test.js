@@ -63,6 +63,18 @@ function makeDiffHunks() {
   }]
 }
 
+function createDeferred() {
+  /** @type {(value: any) => void} */
+  let resolve
+  /** @type {(reason?: any) => void} */
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 import GitTab from './GitTab.svelte'
 
 describe('GitTab component', () => {
@@ -263,6 +275,77 @@ describe('GitTab component', () => {
     })
   })
 
+  it('ignores stale diff responses when switching files quickly', async () => {
+    getAllCommits.mockResolvedValue(makeCommits(1))
+    getCommitFiles.mockResolvedValue([
+      { path: 'src/first.js', status: 'modified' },
+      { path: 'src/second.js', status: 'modified' },
+    ])
+    const firstDiff = createDeferred()
+    const secondDiff = createDeferred()
+    getCommitDiff.mockImplementation((_, __, path) => {
+      if (path === 'src/first.js') return firstDiff.promise
+      if (path === 'src/second.js') return secondDiff.promise
+      return Promise.resolve([])
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('commit-row')).toBeTruthy()
+    })
+    await fireEvent.click(screen.getByTestId('commit-row'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId('commit-file')).toHaveLength(2)
+    })
+
+    const fileButtons = screen.getAllByTestId('commit-file')
+    const firstFileButton = fileButtons.find((button) => button.textContent.includes('src/first.js'))
+    const secondFileButton = fileButtons.find((button) => button.textContent.includes('src/second.js'))
+    expect(firstFileButton).toBeTruthy()
+    expect(secondFileButton).toBeTruthy()
+
+    await fireEvent.click(firstFileButton)
+    await waitFor(() => {
+      expect(screen.getByTestId('diff-loading')).toBeTruthy()
+      expect(screen.getByText('src/first.js')).toBeTruthy()
+    })
+
+    const diffPills = screen.getAllByTestId('file-pill')
+    const secondFilePill = diffPills.find((pill) => pill.textContent.includes('second.js'))
+    expect(secondFilePill).toBeTruthy()
+    await fireEvent.click(secondFilePill)
+
+    secondDiff.resolve([
+      {
+        old_start: 1,
+        old_lines: 1,
+        new_start: 1,
+        new_lines: 1,
+        lines: [{ origin: '+', content: 'second-line', old_lineno: null, new_lineno: 1 }],
+      },
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByText('second-line')).toBeTruthy()
+    })
+
+    firstDiff.resolve([
+      {
+        old_start: 1,
+        old_lines: 1,
+        new_start: 1,
+        new_lines: 1,
+        lines: [{ origin: '+', content: 'first-line', old_lineno: null, new_lineno: 1 }],
+      },
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByText('second-line')).toBeTruthy()
+      expect(screen.queryByText('first-line')).toBeNull()
+    })
+  })
+
   it('back to files returns to file list from diff', async () => {
     getAllCommits.mockResolvedValue(makeCommits(1))
     getCommitFiles.mockResolvedValue([{ path: 'src/foo.js', status: 'modified' }])
@@ -382,6 +465,66 @@ describe('GitTab component', () => {
     })
     await waitFor(() => {
       expect(screen.getByTestId('git-empty').textContent).toContain('No commits in this range')
+    })
+  })
+
+  it('ignores stale range responses after clearing filter', async () => {
+    const initialCommits = [
+      {
+        hash: 'base0001',
+        message: 'Base commit',
+        body: null,
+        author: 'Developer',
+        date: '1h',
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+    ]
+    const clearCommits = [
+      {
+        hash: 'clear0001',
+        message: 'Clear result commit',
+        body: null,
+        author: 'Developer',
+        date: '2h',
+        timestamp: Math.floor(Date.now() / 1000) - 100,
+      },
+    ]
+
+    const staleRange = createDeferred()
+    const clearLoad = createDeferred()
+    let getAllCommitsCallCount = 0
+    getAllCommits.mockImplementation(() => {
+      getAllCommitsCallCount += 1
+      if (getAllCommitsCallCount === 1) return Promise.resolve(initialCommits)
+      return clearLoad.promise
+    })
+    getCommitsInRange.mockImplementation(() => staleRange.promise)
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(GitTab, {
+      props: {
+        projectPath: '/test',
+        projectId: 'p1',
+        dark: false,
+        navTarget: { type: 'range', after: '2026-02-20T10:00:00Z', before: '2026-02-20T12:00:00Z' },
+        onClearNavTarget: vi.fn(),
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('range-filter')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByText('Clear'))
+    clearLoad.resolve(clearCommits)
+    await waitFor(() => {
+      expect(screen.getByText('Clear result commit')).toBeTruthy()
+    })
+
+    staleRange.resolve({ commits: [{ ...initialCommits[0], hash: 'stale0001', message: 'Stale range commit' }] })
+    await waitFor(() => {
+      expect(screen.getByText('Clear result commit')).toBeTruthy()
+      expect(screen.queryByText('Stale range commit')).toBeNull()
     })
   })
 

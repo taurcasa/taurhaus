@@ -35,6 +35,18 @@ async function openCustomize() {
   })
 }
 
+function createDeferred() {
+  /** @type {(value: any) => void} */
+  let resolve
+  /** @type {(reason?: any) => void} */
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('MeshSetupForm', () => {
   const availableProjects = [
     { id: 'proj-web', name: 'Web UI' },
@@ -242,6 +254,45 @@ describe('MeshSetupForm', () => {
     })
   })
 
+  it('ignores stale preset responses when switching presets quickly', async () => {
+    const firstPreset = createDeferred()
+    getTeamPreset.mockImplementationOnce(() => firstPreset.promise)
+
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-preset-fullstack-dev')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-template-preset-review-team')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-fullstack-dev'))
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-review-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-notice')).toHaveTextContent(
+        'Applied preset: Review Team'
+      )
+    })
+    expect(screen.getByTestId('mesh-agent-name-input-0')).toHaveValue('claude-reviewer-1')
+
+    firstPreset.resolve({
+      presetId: 'fullstack-dev',
+      name: 'Fullstack Dev',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [{ roleId: 'codex-developer', count: 2, projectBinding: 'lead_project' }],
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(screen.getByTestId('mesh-agent-name-input-0')).toHaveValue('claude-reviewer-1')
+  })
+
   it('build custom team opens TeamComposer flow', async () => {
     render(MeshSetupForm, {
       props: {
@@ -411,12 +462,14 @@ describe('MeshSetupForm', () => {
     )
   })
 
-  it('duplicate name shows inline error', async () => {
+  it('duplicate names show warning but still submit initialization request', async () => {
+    const onInitialize = vi.fn()
     render(MeshSetupForm, {
       props: {
         dark: false,
         projectPath: '/projects/taurhaus',
         availableProjects,
+        oninitialize: onInitialize,
       },
     })
 
@@ -431,6 +484,10 @@ describe('MeshSetupForm', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-duplicate-name-error')).toBeInTheDocument()
     })
+
+    expect(screen.getByTestId('mesh-create-team-button')).not.toBeDisabled()
+    await fireEvent.click(screen.getByTestId('mesh-create-team-button'))
+    expect(onInitialize).toHaveBeenCalledTimes(1)
   })
 
   it('start team button is always enabled with defaults', async () => {
@@ -443,6 +500,26 @@ describe('MeshSetupForm', () => {
     })
 
     expect(screen.getByTestId('mesh-create-team-button')).not.toBeDisabled()
+  })
+
+  it('prevents double-submit on rapid start team clicks', async () => {
+    const onInitialize = vi.fn()
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+        oninitialize: onInitialize,
+      },
+    })
+
+    const startButton = screen.getByTestId('mesh-create-team-button')
+    await fireEvent.click(startButton)
+    await fireEvent.click(startButton)
+
+    expect(onInitialize).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('mesh-create-team-button')).toBeDisabled()
+    expect(screen.getByTestId('mesh-create-team-button')).toHaveTextContent('Starting')
   })
 
   it('infers team name from UNC project path', async () => {

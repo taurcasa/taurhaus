@@ -66,6 +66,19 @@
     }
   }
 
+  function handleKeydown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      handleConfirm()
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      dismiss()
+    }
+  }
+
   $effect(() => {
     const dialog = dialogElement
     if (!dialog) return
@@ -86,6 +99,7 @@
   class="m-0 rounded-lg border p-0 shadow-xl backdrop:bg-transparent"
   oncancel={handleCancelEvent}
   onclick={handleBackdropClick}
+  onkeydown={handleKeydown}
   data-testid="confirm-dialog"
 >
   <div class="w-[min(360px,calc(100vw-2rem))] rounded-lg border p-5 animate-[meshfade_150ms_ease-out] {panelTone}">

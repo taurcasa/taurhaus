@@ -181,4 +181,38 @@ describe('TeamComposer', () => {
     })
     expect(payload.roster[1].instructions).toBe('Write API docs and tests.')
   })
+
+  it('keeps apply enabled when roster edits introduce duplicate names', async () => {
+    const onApply = vi.fn()
+
+    render(TeamComposer, {
+      props: {
+        projectPath: '/projects/taurhaus',
+        initialPreset: {
+          presetId: 'fullstack-dev',
+          leadRoleId: 'claude-orchestrator',
+          agentSlots: [{ roleId: 'codex-developer', count: 1 }],
+        },
+        onApply,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-roster-card-1')).toBeInTheDocument()
+    })
+
+    await fireEvent.input(screen.getByTestId('composer-roster-name-1'), {
+      target: { value: 'lead-project' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-validation-warnings')).toHaveTextContent(
+        'Name collisions: lead-project.'
+      )
+    })
+
+    expect(screen.getByTestId('composer-apply')).not.toBeDisabled()
+    await fireEvent.click(screen.getByTestId('composer-apply'))
+    expect(onApply).toHaveBeenCalledTimes(1)
+  })
 })

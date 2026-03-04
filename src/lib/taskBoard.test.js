@@ -97,6 +97,18 @@ function makeTask(overrides = {}) {
   }
 }
 
+function createDeferred() {
+  /** @type {(value: any) => void} */
+  let resolve
+  /** @type {(reason?: any) => void} */
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 import TaskBoard from './TaskBoard.svelte'
 
 describe('TaskBoard component', () => {
@@ -118,6 +130,46 @@ describe('TaskBoard component', () => {
     render(TaskBoard, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
       expect(screen.getByTestId('tasks-empty')).toBeTruthy()
+    })
+  })
+
+  it('ignores stale task fetch responses after project switch', async () => {
+    const projectA = createDeferred()
+    const projectB = createDeferred()
+    getProjectTasks.mockImplementation((path) => {
+      if (path === '/project-a') return projectA.promise
+      if (path === '/project-b') return projectB.promise
+      return Promise.resolve({ tasks: [], errors: [] })
+    })
+
+    const { rerender } = render(TaskBoard, {
+      props: { projectPath: '/project-a', dark: false },
+    })
+
+    await waitFor(() => {
+      expect(getProjectTasks).toHaveBeenCalledWith('/project-a')
+    })
+
+    await rerender({ projectPath: '/project-b', dark: false })
+    await waitFor(() => {
+      expect(getProjectTasks).toHaveBeenCalledWith('/project-b')
+    })
+
+    projectB.resolve({
+      tasks: [makeTask({ id: 'b', source_key: 'codex-b', subject: 'Project B task', status: 'pending' })],
+      errors: [],
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Project B task')).toBeTruthy()
+    })
+
+    projectA.resolve({
+      tasks: [makeTask({ id: 'a', source_key: 'codex-a', subject: 'Project A task', status: 'pending' })],
+      errors: [],
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Project B task')).toBeTruthy()
+      expect(screen.queryByText('Project A task')).toBeNull()
     })
   })
 

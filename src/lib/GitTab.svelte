@@ -2,6 +2,7 @@
   import { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
   import ContextMenu from './ContextMenu.svelte'
+  import { createAsyncGuard } from './asyncGuard.js'
 
   /** @type {{ projectPath: string, projectId: string, dark: boolean, navTarget: object|null, position: object|null, onNavigateToFile?: (path: string) => void, onClearNavTarget?: () => void }} */
   let { projectPath, projectId, dark, navTarget = null, position = $bindable(null), onNavigateToFile, onClearNavTarget } = $props()
@@ -50,6 +51,9 @@
   let hasMore = $state(true)
   let currentOffset = $state(0)
   let sentinelEl = $state(null)
+  const commitListGuard = createAsyncGuard()
+  const commitFilesGuard = createAsyncGuard()
+  const diffGuard = createAsyncGuard()
 
   // Sync position outward for Shell's per-project position memory
   $effect(() => {
@@ -62,22 +66,29 @@
     let cancelled = false
 
     async function load() {
+      const commitListSequence = commitListGuard.next()
       loading = true
       selectedHash = null
       commitFiles = []
       rangeFilter = null
+      selectedFilePath = null
+      diffHunks = []
+      filesLoading = false
+      diffLoading = false
+      commitFilesGuard.invalidate()
+      diffGuard.invalidate()
       currentOffset = 0
       hasMore = true
       try {
         const result = await getAllCommits(projectId, PAGE_SIZE, 0)
-        if (!cancelled) {
+        if (!cancelled && commitListGuard.isCurrent(commitListSequence)) {
           commits = result
           currentOffset = result.length
           hasMore = result.length >= PAGE_SIZE
           loading = false
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && commitListGuard.isCurrent(commitListSequence)) {
           commits = []
           hasMore = false
           loading = false
@@ -105,70 +116,128 @@
   })
 
   async function loadRange(after, before) {
+    const commitListSequence = commitListGuard.next()
     loading = true
     selectedHash = null
     commitFiles = []
+    selectedFilePath = null
+    diffHunks = []
+    filesLoading = false
+    diffLoading = false
+    commitFilesGuard.invalidate()
+    diffGuard.invalidate()
     rangeFilter = { after, before }
     try {
       const result = await getCommitsInRange(projectPath, after, before)
+      if (!commitListGuard.isCurrent(commitListSequence)) return
       commits = result.commits || []
     } catch {
+      if (!commitListGuard.isCurrent(commitListSequence)) return
       commits = []
     } finally {
-      loading = false
+      if (commitListGuard.isCurrent(commitListSequence)) {
+        loading = false
+      }
     }
   }
 
-  function clearFilter() {
+  async function clearFilter() {
+    const commitListSequence = commitListGuard.next()
     rangeFilter = null
     loading = true
     selectedHash = null
     commitFiles = []
+    selectedFilePath = null
+    diffHunks = []
+    filesLoading = false
+    diffLoading = false
+    commitFilesGuard.invalidate()
+    diffGuard.invalidate()
     currentOffset = 0
     hasMore = true
-    getAllCommits(projectId, PAGE_SIZE, 0).then(result => {
+    try {
+      const result = await getAllCommits(projectId, PAGE_SIZE, 0)
+      if (!commitListGuard.isCurrent(commitListSequence)) return
       commits = result
       currentOffset = result.length
       hasMore = result.length >= PAGE_SIZE
-      loading = false
-    }).catch(() => {
+    } catch {
+      if (!commitListGuard.isCurrent(commitListSequence)) return
       commits = []
       hasMore = false
-      loading = false
-    })
+    } finally {
+      if (commitListGuard.isCurrent(commitListSequence)) {
+        loading = false
+      }
+    }
   }
 
   async function selectCommit(hash) {
+    const commitFilesSequence = commitFilesGuard.next()
+    diffGuard.invalidate()
+    const expectedHash = hash
     selectedHash = hash
     selectedFilePath = null
     diffHunks = []
+    diffLoading = false
     filesLoading = true
     commitFiles = []
     try {
-      commitFiles = await getCommitFiles(projectPath, hash)
+      const files = await getCommitFiles(projectPath, hash)
+      if (!commitFilesGuard.isCurrent(commitFilesSequence) || selectedHash !== expectedHash) return
+      commitFiles = files
     } catch {
+      if (!commitFilesGuard.isCurrent(commitFilesSequence) || selectedHash !== expectedHash) return
       commitFiles = []
     } finally {
-      filesLoading = false
+      if (commitFilesGuard.isCurrent(commitFilesSequence) && selectedHash === expectedHash) {
+        filesLoading = false
+      }
     }
   }
 
   async function handleFileClick(path) {
     if (selectedFilePath === path) {
       // Toggle off
+      diffGuard.invalidate()
       selectedFilePath = null
       diffHunks = []
+      diffLoading = false
       return
     }
+    const diffSequence = diffGuard.next()
+    const expectedPath = path
+    const expectedHash = selectedHash
     selectedFilePath = path
     diffLoading = true
     diffHunks = []
     try {
-      diffHunks = await getCommitDiff(projectPath, selectedHash, path)
+      const hunks = await getCommitDiff(projectPath, expectedHash, expectedPath)
+      if (
+        !diffGuard.isCurrent(diffSequence)
+        || selectedFilePath !== expectedPath
+        || selectedHash !== expectedHash
+      ) {
+        return
+      }
+      diffHunks = hunks
     } catch {
+      if (
+        !diffGuard.isCurrent(diffSequence)
+        || selectedFilePath !== expectedPath
+        || selectedHash !== expectedHash
+      ) {
+        return
+      }
       diffHunks = []
     } finally {
-      diffLoading = false
+      if (
+        diffGuard.isCurrent(diffSequence)
+        && selectedFilePath === expectedPath
+        && selectedHash === expectedHash
+      ) {
+        diffLoading = false
+      }
     }
   }
 
@@ -181,8 +250,10 @@
   }
 
   function backToFiles() {
+    diffGuard.invalidate()
     selectedFilePath = null
     diffHunks = []
+    diffLoading = false
   }
 
   /** Get the basename of a file path. */
@@ -192,14 +263,19 @@
 
   async function loadMore() {
     if (loadingMore || !hasMore || rangeFilter) return
+    const commitListSequence = commitListGuard.next()
+    const expectedOffset = currentOffset
     loadingMore = true
     try {
-      const batch = await getAllCommits(projectId, PAGE_SIZE, currentOffset)
+      const batch = await getAllCommits(projectId, PAGE_SIZE, expectedOffset)
+      if (!commitListGuard.isCurrent(commitListSequence)) return
       commits = [...commits, ...batch]
       currentOffset += batch.length
       if (batch.length < PAGE_SIZE) hasMore = false
     } catch {
-      hasMore = false
+      if (commitListGuard.isCurrent(commitListSequence)) {
+        hasMore = false
+      }
     } finally {
       loadingMore = false
     }
