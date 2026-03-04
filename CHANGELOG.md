@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-04
+
+### Added
+
+**Unified Task Management**
+- Unified task scanner: scan all `~/.claude/tasks/` subdirectories with index-based classification (session-ID and team-name dirs)
+- Claude source index: maps session IDs and team names to project paths via live sessions, JSONL fallback, and team configs
+- Snapshot-based task archiving: reconcile DB against disk on every scan cycle, including empty scans
+- Archive metadata: `state_changed_at`, `last_status`, `archived_reason` fields with migration 008
+
+### Fixed
+
+- Handle empty git repos gracefully in recent commits (return empty list instead of error for unborn HEAD)
+
 ## [0.4.1] - 2026-03-04
 
 ### Fixed
