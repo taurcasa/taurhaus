@@ -1,18 +1,21 @@
 //! Claude Code task parser.
 //!
-//! Claude Code stores structured task JSON at `~/.claude/tasks/{session-id}/*.json`.
+//! Claude Code stores structured task JSON at `~/.claude/tasks/{source-key}/*.json`.
 //! Each file contains a single task object with rich metadata including dependencies,
 //! owners, and active forms.
 //!
-//! **Live session**: Use `session_id` from running sessions to find task directories.
-//! **Offline fallback**: Scan `~/.claude/projects/{slug}/` for JSONL files, check which
-//! UUIDs have task directories, use most recently modified.
+//! Discovery uses a unified scan-all approach:
+//! 1. Build a source index (session id -> project, team name -> projects)
+//! 2. Scan all task directories under `~/.claude/tasks/`
+//! 3. Classify each directory via the source index and keep only those that map
+//!    to the requested project path.
 
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
+use crate::task_scanner::claude_index::{build_claude_source_index_in, ClaudeSourceIndex};
 use crate::task_scanner::types::{TaskStatus, UnifiedTask};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Maximum file size to parse (1 MB). Skip larger files as a safety measure.
 const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
@@ -35,117 +38,144 @@ struct RawClaudeTask {
 }
 
 /// Get tasks for a project from Claude Code's task storage.
-///
-/// Strategy:
-/// 1. Check live sessions for `session_id` → read `~/.claude/tasks/{session_id}/`
-/// 2. If no live sessions, fall back to finding the most recent session with tasks
 pub fn get_tasks(
     project_path: &str,
     sessions: &[&ClaudeSession],
 ) -> Result<Vec<UnifiedTask>, String> {
-    let tasks_base = match claude_tasks_base_dir() {
-        Some(dir) => dir,
-        None => return Ok(vec![]),
+    let Some(home) = dirs::home_dir() else {
+        return Ok(vec![]);
     };
+    let tasks_base = home.join(".claude").join("tasks");
+    let projects_base = home.join(".claude").join("projects");
+    let teams_base = home.join(".claude").join("teams");
 
-    // Try live sessions first — check each session_id for a tasks directory
-    for session in sessions {
-        if let Some(ref session_id) = session.session_id {
-            let task_dir = tasks_base.join(session_id);
-            if task_dir.is_dir() {
-                return parse_task_directory(&task_dir);
-            }
-        }
-    }
-
-    // Offline fallback: find sessions for this project slug, check for tasks
-    get_tasks_offline(project_path, &tasks_base)
+    get_tasks_in(project_path, sessions, &tasks_base, &projects_base, &teams_base)
 }
 
-/// Testable version that accepts custom base directories.
+/// Testable version with injectable directories.
 pub fn get_tasks_in(
     project_path: &str,
     sessions: &[&ClaudeSession],
     tasks_base: &Path,
     projects_base: &Path,
+    teams_base: &Path,
 ) -> Result<Vec<UnifiedTask>, String> {
-    // Try live sessions first
-    for session in sessions {
-        if let Some(ref session_id) = session.session_id {
-            let task_dir = tasks_base.join(session_id);
-            if task_dir.is_dir() {
-                return parse_task_directory(&task_dir);
-            }
-        }
-    }
-
-    // Offline fallback
-    get_tasks_offline_in(project_path, tasks_base, projects_base)
-}
-
-/// Resolve `~/.claude/tasks/`.
-fn claude_tasks_base_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude").join("tasks"))
-}
-
-/// Offline fallback: scan the project's Claude directory for session IDs with tasks.
-fn get_tasks_offline(project_path: &str, tasks_base: &Path) -> Result<Vec<UnifiedTask>, String> {
-    let projects_base = match dirs::home_dir() {
-        Some(h) => h.join(".claude").join("projects"),
-        None => return Ok(vec![]),
-    };
-    get_tasks_offline_in(project_path, tasks_base, &projects_base)
-}
-
-/// Offline fallback with injectable paths for testing.
-fn get_tasks_offline_in(
-    project_path: &str,
-    tasks_base: &Path,
-    projects_base: &Path,
-) -> Result<Vec<UnifiedTask>, String> {
-    let slug = crate::session_scanner::idle::path_to_slug(project_path);
-    let project_dir = projects_base.join(&slug);
-
-    if !project_dir.is_dir() {
+    if !tasks_base.is_dir() {
         return Ok(vec![]);
     }
 
-    // List JSONL files, extract session IDs (filenames without extension)
-    let mut session_ids: Vec<(String, std::time::SystemTime)> = fs::read_dir(&project_dir)
-        .map_err(|e| format!("Failed to read project dir: {e}"))?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
-        .filter_map(|entry| {
-            let session_id = entry.path().file_stem()?.to_str()?.to_string();
-            let mtime = entry.metadata().ok()?.modified().ok()?;
-            Some((session_id, mtime))
-        })
-        .collect();
+    let live_sessions: Vec<ClaudeSession> = sessions.iter().map(|s| (*s).clone()).collect();
+    let index =
+        build_claude_source_index_in(&live_sessions, tasks_base, projects_base, teams_base);
 
-    // Sort by mtime descending — try most recent first
-    session_ids.sort_by(|a, b| b.1.cmp(&a.1));
+    scan_all_task_directories(project_path, tasks_base, &index)
+}
 
-    // Find the first session ID that has a tasks directory
-    for (session_id, _) in &session_ids {
-        let task_dir = tasks_base.join(session_id);
-        if task_dir.is_dir() {
-            return parse_task_directory(&task_dir);
+fn scan_all_task_directories(
+    project_path: &str,
+    tasks_base: &Path,
+    index: &ClaudeSourceIndex,
+) -> Result<Vec<UnifiedTask>, String> {
+    let project_key = normalize_project_path(project_path);
+    let entries = fs::read_dir(tasks_base).map_err(|e| format!("Failed to read tasks base: {e}"))?;
+    let mut all_tasks = Vec::new();
+
+    for entry in entries.filter_map(|e| e.ok()) {
+        let task_dir = entry.path();
+        if !task_dir.is_dir() {
+            continue;
+        }
+
+        let Some(source_key) = task_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+        else {
+            continue;
+        };
+
+        if !directory_has_json_tasks(&task_dir) {
+            continue;
+        }
+
+        if !source_matches_project(source_key, &project_key, index) {
+            continue;
+        }
+
+        if let Some(tasks) = parse_task_directory(&task_dir, source_key)? {
+            all_tasks.extend(tasks);
         }
     }
 
-    Ok(vec![])
+    all_tasks.sort_by(|a, b| {
+        a.session_id
+            .cmp(&b.session_id)
+            .then_with(|| {
+                let a_num: Option<u32> = a.id.parse().ok();
+                let b_num: Option<u32> = b.id.parse().ok();
+                match (a_num, b_num) {
+                    (Some(a), Some(b)) => a.cmp(&b),
+                    _ => a.id.cmp(&b.id),
+                }
+            })
+            .then_with(|| a.subject.cmp(&b.subject))
+    });
+
+    Ok(all_tasks)
 }
 
-/// Parse all task JSON files in a directory.
+fn source_matches_project(
+    source_key: &str,
+    project_key: &str,
+    index: &ClaudeSourceIndex,
+) -> bool {
+    if let Some(session_project) = index.sessions.get(source_key) {
+        return normalize_project_path(&session_project.to_string_lossy()) == project_key;
+    }
+
+    if let Some(team_projects) = index.teams.get(source_key) {
+        return team_projects
+            .iter()
+            .any(|p| normalize_project_path(&p.to_string_lossy()) == project_key);
+    }
+
+    tracing::warn!(
+        source_key,
+        "Skipping orphan Claude task directory with no source-index mapping"
+    );
+    false
+}
+
+fn normalize_project_path(path: &str) -> String {
+    let converted = crate::provider::path::to_linux(path).unwrap_or_else(|| path.to_string());
+    let mut normalized = converted.replace('\\', "/");
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    normalized
+}
+
+fn directory_has_json_tasks(dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+
+    entries.filter_map(|e| e.ok()).any(|entry| {
+        entry
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| ext == "json")
+    })
+}
+
+/// Parse all task JSON files in a directory for a specific source key.
 ///
-/// The `session_id` is extracted from the directory name (the parent UUID).
-/// Tasks with `status: "deleted"` are silently excluded.
-fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
-    let session_id = dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string());
+/// Returns `Ok(None)` when no parseable task rows were found.
+fn parse_task_directory(dir: &Path, source_key: &str) -> Result<Option<Vec<UnifiedTask>>, String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read task dir: {e}"))?;
+    let source_key = Some(source_key.to_string());
 
     let mut tasks = Vec::new();
 
@@ -165,7 +195,7 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
             }
         }
 
-        match parse_task_file(&path, session_id.clone()) {
+        match parse_task_file(&path, source_key.clone()) {
             Ok(Some(task)) => tasks.push(task),
             Ok(None) => {} // Deleted task — silently skip
             Err(e) => {
@@ -178,6 +208,10 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
         }
     }
 
+    if tasks.is_empty() {
+        return Ok(None);
+    }
+
     // Sort by ID for stable ordering
     tasks.sort_by(|a, b| {
         let a_num: Option<u32> = a.id.parse().ok();
@@ -188,7 +222,7 @@ fn parse_task_directory(dir: &Path) -> Result<Vec<UnifiedTask>, String> {
         }
     });
 
-    Ok(tasks)
+    Ok(Some(tasks))
 }
 
 /// Parse a single Claude task JSON file into a UnifiedTask.
@@ -239,6 +273,13 @@ mod tests {
         f.sync_all().unwrap();
     }
 
+    fn parse_task_directory_for_test(dir: &Path) -> Vec<UnifiedTask> {
+        let source_key = dir.file_name().and_then(|n| n.to_str()).unwrap_or("test-source");
+        parse_task_directory(dir, source_key)
+            .unwrap()
+            .unwrap_or_default()
+    }
+
     #[test]
     fn parse_well_formed_task() {
         let tmp = TempDir::new().unwrap();
@@ -260,7 +301,7 @@ mod tests {
             }"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "1");
         assert_eq!(tasks[0].subject, "Implement feature X");
@@ -293,7 +334,7 @@ mod tests {
             r#"{"id":"1","subject":"Test","status":"pending"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks[0].session_id.as_deref(), Some(uuid));
     }
 
@@ -319,7 +360,7 @@ mod tests {
             r#"{"id":"2","subject":"Second","status":"in_progress"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[0].id, "1");
         assert_eq!(tasks[1].id, "2");
@@ -332,7 +373,7 @@ mod tests {
         let task_dir = tmp.path().join("empty-session");
         fs::create_dir_all(&task_dir).unwrap();
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert!(tasks.is_empty());
     }
 
@@ -349,7 +390,7 @@ mod tests {
             r#"{"id":"2","subject":"Valid","status":"pending"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "2");
     }
@@ -381,7 +422,7 @@ mod tests {
             r#"{"id":"4","subject":"Unknown","status":"unknown_value"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks[0].status, TaskStatus::Pending);
         assert_eq!(tasks[1].status, TaskStatus::InProgress);
         assert_eq!(tasks[2].status, TaskStatus::Completed);
@@ -410,7 +451,7 @@ mod tests {
             r#"{"id":"3","subject":"Another active","status":"pending"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].id, "1");
         assert_eq!(tasks[1].id, "3");
@@ -429,7 +470,7 @@ mod tests {
             r#"{"id":"1","subject":"Task","status":"pending","blocks":["2","3"],"blockedBy":["0"]}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks[0].blocks, vec!["2", "3"]);
         assert_eq!(tasks[0].blocked_by, vec!["0"]);
     }
@@ -448,7 +489,7 @@ mod tests {
         write_task(&task_dir, "notes.txt", "some notes");
         write_task(&task_dir, "data.jsonl", r#"{"line":1}"#);
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 1);
     }
 
@@ -476,7 +517,7 @@ mod tests {
             r#"{"id":"2","subject":"Small","status":"pending"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "2");
     }
@@ -494,7 +535,7 @@ mod tests {
             r#"{"id":"1","subject":"Minimal task","status":"pending"}"#,
         );
 
-        let tasks = parse_task_directory(&task_dir).unwrap();
+        let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks.len(), 1);
         assert!(tasks[0].description.is_none());
         assert!(tasks[0].active_form.is_none());
@@ -503,74 +544,33 @@ mod tests {
         assert!(tasks[0].owner.is_none());
     }
 
-    #[test]
-    fn offline_fallback_finds_tasks_by_slug() {
-        let tmp = TempDir::new().unwrap();
-        let tasks_base = tmp.path().join("tasks");
-        let projects_base = tmp.path().join("projects");
-
-        // Create project directory with a JSONL file
-        let slug = "-home-user-projects-myapp";
+    fn write_session_jsonl(projects_base: &Path, slug: &str, session_id: &str, cwd: &str) {
         let project_dir = projects_base.join(slug);
         fs::create_dir_all(&project_dir).unwrap();
-        let mut f = File::create(project_dir.join("sess-abc.jsonl")).unwrap();
-        writeln!(f, "{{}}").unwrap();
+        let mut f = File::create(project_dir.join(format!("{session_id}.jsonl"))).unwrap();
+        writeln!(f, r#"{{"type":"user","sessionId":"{session_id}","cwd":"{cwd}"}}"#).unwrap();
         f.sync_all().unwrap();
-
-        // Create tasks directory for that session
-        let task_dir = tasks_base.join("sess-abc");
-        fs::create_dir_all(&task_dir).unwrap();
-        write_task(
-            &task_dir,
-            "1.json",
-            r#"{"id":"1","subject":"Offline task","status":"pending"}"#,
-        );
-
-        let tasks = get_tasks_in(
-            "/home/user/projects/myapp",
-            &[],
-            &tasks_base,
-            &projects_base,
-        )
-        .unwrap();
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].subject, "Offline task");
     }
 
-    #[test]
-    fn live_session_takes_priority_over_offline() {
-        let tmp = TempDir::new().unwrap();
-        let tasks_base = tmp.path().join("tasks");
-        let projects_base = tmp.path().join("projects");
-
-        // Set up offline tasks
-        let slug = "-home-user-projects-myapp";
-        let project_dir = projects_base.join(slug);
-        fs::create_dir_all(&project_dir).unwrap();
-        let mut f = File::create(project_dir.join("old-session.jsonl")).unwrap();
-        writeln!(f, "{{}}").unwrap();
-        f.sync_all().unwrap();
-
-        let old_task_dir = tasks_base.join("old-session");
-        fs::create_dir_all(&old_task_dir).unwrap();
+    fn write_team_config(teams_base: &Path, team_name: &str, project_path: &str) {
+        let team_dir = teams_base.join(team_name);
+        fs::create_dir_all(&team_dir).unwrap();
         write_task(
-            &old_task_dir,
-            "1.json",
-            r#"{"id":"1","subject":"Old offline task","status":"completed"}"#,
+            &team_dir,
+            "config.json",
+            &format!(
+                r#"{{
+  "name": "{team_name}",
+  "members": [{{"projectPath": "{project_path}"}}]
+}}"#
+            ),
         );
+    }
 
-        // Set up live session tasks
-        let live_task_dir = tasks_base.join("live-session");
-        fs::create_dir_all(&live_task_dir).unwrap();
-        write_task(
-            &live_task_dir,
-            "1.json",
-            r#"{"id":"1","subject":"Live task","status":"in_progress"}"#,
-        );
-
-        let live_session = ClaudeSession {
+    fn make_live_session(session_id: &str, project_path: &str) -> ClaudeSession {
+        ClaudeSession {
             pid: 1234,
-            project_path: "/home/user/projects/myapp".to_string(),
+            project_path: project_path.to_string(),
             tty: "/dev/pts/1".to_string(),
             args: "claude".to_string(),
             cli_tool: CliTool::Claude,
@@ -579,21 +579,179 @@ mod tests {
             tmux_pane: None,
             tmux_window_name: None,
             state: crate::session_scanner::SessionState::Active,
-            session_id: Some("live-session".to_string()),
+            session_id: Some(session_id.to_string()),
             jsonl_path: None,
             activity_confidence: crate::session_scanner::ActivityConfidence::High,
             activity_attribution: crate::session_scanner::ActivityAttribution::Attributed,
             project_unattributed_active: false,
-        };
+        }
+    }
+
+    #[test]
+    fn unified_scan_finds_tasks_in_session_id_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        let session_dir = tasks_base.join("live-session");
+        fs::create_dir_all(&session_dir).unwrap();
+        write_task(
+            &session_dir,
+            "1.json",
+            r#"{"id":"1","subject":"Live session task","status":"in_progress"}"#,
+        );
+
+        let live_session = make_live_session("live-session", "/home/user/projects/myapp");
 
         let tasks = get_tasks_in(
             "/home/user/projects/myapp",
             &[&live_session],
             &tasks_base,
             &projects_base,
+            &teams_base,
         )
         .unwrap();
+
         assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].subject, "Live task");
+        assert_eq!(tasks[0].subject, "Live session task");
+        assert_eq!(tasks[0].session_id.as_deref(), Some("live-session"));
+    }
+
+    #[test]
+    fn unified_scan_finds_tasks_in_team_name_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        let team_name = "taurhaus-team";
+        let team_dir = tasks_base.join(team_name);
+        fs::create_dir_all(&team_dir).unwrap();
+        write_task(
+            &team_dir,
+            "27.json",
+            r#"{"id":"27","subject":"Team task","status":"completed"}"#,
+        );
+        write_team_config(&teams_base, team_name, "/home/user/projects/myapp");
+
+        let tasks = get_tasks_in(
+            "/home/user/projects/myapp",
+            &[],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        )
+        .unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "27");
+        assert_eq!(tasks[0].subject, "Team task");
+        assert_eq!(tasks[0].session_id.as_deref(), Some(team_name));
+    }
+
+    #[test]
+    fn orphan_and_empty_dirs_are_skipped() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        // Orphan: has task json but no session/team mapping.
+        let orphan_dir = tasks_base.join("orphan-source");
+        fs::create_dir_all(&orphan_dir).unwrap();
+        write_task(
+            &orphan_dir,
+            "1.json",
+            r#"{"id":"1","subject":"Orphan","status":"pending"}"#,
+        );
+
+        // Empty mapped team dir: no .json task files.
+        let empty_team_name = "empty-team";
+        let empty_team_dir = tasks_base.join(empty_team_name);
+        fs::create_dir_all(&empty_team_dir).unwrap();
+        write_team_config(&teams_base, empty_team_name, "/home/user/projects/myapp");
+
+        let tasks = get_tasks_in(
+            "/home/user/projects/myapp",
+            &[],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        )
+        .unwrap();
+
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn unified_scan_associates_tasks_with_projects_via_index() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        // Session-mapped task for project A.
+        let session_id = "sess-a";
+        let sess_dir = tasks_base.join(session_id);
+        fs::create_dir_all(&sess_dir).unwrap();
+        write_task(
+            &sess_dir,
+            "1.json",
+            r#"{"id":"1","subject":"Session A task","status":"pending"}"#,
+        );
+        write_session_jsonl(
+            &projects_base,
+            "-home-user-projects-a",
+            session_id,
+            "/home/user/projects/a",
+        );
+
+        // Team-mapped task for project B.
+        let team_name = "team-b";
+        let team_dir = tasks_base.join(team_name);
+        fs::create_dir_all(&team_dir).unwrap();
+        write_task(
+            &team_dir,
+            "2.json",
+            r#"{"id":"2","subject":"Team B task","status":"completed"}"#,
+        );
+        write_team_config(&teams_base, team_name, "/home/user/projects/b");
+
+        let a_tasks = get_tasks_in(
+            "/home/user/projects/a",
+            &[],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        )
+        .unwrap();
+        assert_eq!(a_tasks.len(), 1);
+        assert_eq!(a_tasks[0].subject, "Session A task");
+        assert_eq!(a_tasks[0].session_id.as_deref(), Some(session_id));
+
+        let b_tasks = get_tasks_in(
+            "/home/user/projects/b",
+            &[],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        )
+        .unwrap();
+        assert_eq!(b_tasks.len(), 1);
+        assert_eq!(b_tasks[0].subject, "Team B task");
+        assert_eq!(b_tasks[0].session_id.as_deref(), Some(team_name));
     }
 }

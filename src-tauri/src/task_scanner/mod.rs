@@ -10,6 +10,7 @@
 //! failing doesn't prevent others from returning.
 
 pub mod claude;
+pub mod claude_index;
 pub mod codex;
 pub mod gemini;
 pub mod types;
