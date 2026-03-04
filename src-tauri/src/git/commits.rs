@@ -29,10 +29,10 @@ pub fn get_recent_commits(repo_path: &Path, limit: usize) -> Result<Vec<Commit>,
     })?;
 
     let mut revwalk = repo.revwalk().map_err(git_err)?;
-    revwalk.push_head().map_err(|_| {
+    if revwalk.push_head().is_err() {
         // No HEAD means no commits yet
-        AppError::NotFound("No commits".into())
-    })?;
+        return Ok(vec![]);
+    }
     revwalk
         .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
         .map_err(git_err)?;
@@ -476,9 +476,8 @@ mod tests {
     #[test]
     fn get_recent_commits_empty_repo() {
         let (dir, _repo) = init_test_repo();
-        // No commits — push_head fails, should return NotFound
-        let result = get_recent_commits(dir.path(), 10);
-        assert!(result.is_err());
+        let commits = get_recent_commits(dir.path(), 10).unwrap();
+        assert!(commits.is_empty());
     }
 
     #[test]
