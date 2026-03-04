@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+**Team Template System**
+- Git-backed template command surface: role/preset CRUD, composition/validation, storage status, history, diff, revert, import, and pending flush endpoints (`templates_*`)
+- Template catalog and composition UI: role/preset browsing, quick compose preview, editable roster composition, and mesh-setup integration
+- Template history UX: global/selected-template commit history, commit detail metadata, diff hunk view, dirty-state indicator, and revert action
+
+### Changed
+
+- Mesh setup now supports template-first onboarding paths (preset quick-select, catalog browse, custom composition) while preserving manual blank-slate fallback
+- Frontend IPC layer migrated template calls from temporary mock command names to backend `templates_*` commands
+
+### Documentation
+
+- Added `docs/team-templates.md` user guide for role templates, team presets, composition, history, and revert workflows
+- Updated architecture docs (`ARCHITECTURE.md`, `docs/coordination-architecture.md`) for template storage, composition, and coordination integration points
+
 ## [0.4.4] - 2026-03-04
 
 ### Added

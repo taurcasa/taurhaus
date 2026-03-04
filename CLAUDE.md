@@ -146,6 +146,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
+- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm`) while preserving the existing initialize payload contract.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
 Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/`](docs/architecture/) references.
@@ -158,8 +159,12 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/App.svelte` | Entry wrapper |
 | `src/app.css` | Design tokens + global styles |
 | `src/lib/ipc.js` | Tauri IPC commands + dev-mode mock fallbacks |
+| `src/lib/components/TemplateCatalog.svelte` | Role/preset browser, inspector, and composition entry point |
+| `src/lib/components/TeamComposer.svelte` | Lead/agent composition, roster editing, and validation UI |
+| `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
 | `docs/design-brief.md` | Full requirements (Phase 2) |
 | `ARCHITECTURE.md` | System architecture overview and module map |
+| `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |

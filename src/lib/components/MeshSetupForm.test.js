@@ -8,9 +8,22 @@ vi.mock('../ipc.js', () => ({
   composeTeam: vi.fn(),
   listRoleTemplates: vi.fn(),
   getRoleTemplate: vi.fn(),
+  getTemplateStorageStatus: vi.fn(),
+  getTemplateHistory: vi.fn(),
+  getTemplateDiff: vi.fn(),
+  revertTemplateVersion: vi.fn(),
 }))
 
-const { listTeamPresets, getTeamPreset, composeTeam, listRoleTemplates, getRoleTemplate } =
+const {
+  listTeamPresets,
+  getTeamPreset,
+  composeTeam,
+  listRoleTemplates,
+  getRoleTemplate,
+  getTemplateStorageStatus,
+  getTemplateHistory,
+  getTemplateDiff,
+} =
   await import('../ipc.js')
 
 import MeshSetupForm from './MeshSetupForm.svelte'
@@ -148,6 +161,20 @@ describe('MeshSetupForm', () => {
       name: 'claude-orchestrator',
       instructions: 'Lead instructions',
       behavioralContract: { communication: [], execution: [], escalation: [] },
+    })
+
+    getTemplateStorageStatus.mockResolvedValue({
+      mode: 'git',
+      repoInitialized: true,
+      dirty: false,
+      pendingActions: [],
+      lastCommit: 1_706_000_000,
+    })
+    getTemplateHistory.mockResolvedValue({ commits: [], nextCursor: null })
+    getTemplateDiff.mockResolvedValue({
+      commitId: '',
+      files: [],
+      stats: { filesChanged: 0, insertions: 0, deletions: 0 },
     })
   })
 

@@ -99,7 +99,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (66)
+### IPC Commands (83)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
@@ -116,6 +116,7 @@ Grouped by domain:
 - **Mesh install** (2): check install status, install mesh
 - **Settings** (2): get, update
 - **Coordination** (13): create/disband/list teams, add/remove members, team status, initialize, add agent, resume member, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
+- **Templates** (17): role/preset CRUD, composition + validation, storage status, history, diff, revert, import, flush pending, apply composition
 - **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in `app_data_dir()`. Backend uses `tracing` crate. Single log file, truncated per launch.
 
 ### Coordination (Mesh View)
@@ -130,6 +131,18 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes for non-lead members).
 
 See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
+
+### Team Templates
+
+The template system provides reusable role templates and team presets, with composition and history integrated into mesh setup.
+
+- **Storage model**: built-in templates ship read-only from resources; user templates are YAML files in the app-managed templates directory (`roles/`, `presets/`, `_meta/`).
+- **Git-backed state**: template writes are committed through `TemplateStore`, enabling history (`templates_get_history`), diff (`templates_get_diff`), and forward revert (`templates_revert`).
+- **Composition engine**: `templates::composition::compose_team` resolves lead and agent slots into a concrete roster, returning `warnings` and `validation_errors`.
+- **Frontend pipeline**: `TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm` -> `coordination_initialize_team` (initialize payload shape remains unchanged).
+- **Operational visibility**: storage mode, dirty state, and pending actions are exposed via `templates_get_storage_status`; manual flush is available via `templates_flush_pending`.
+
+See [team templates guide](docs/team-templates.md) for user-facing workflows.
 
 ### Session Scanner
 
@@ -262,6 +275,7 @@ just agent-quality    # Rust implementation quality gate: fmt + clippy + check -
 - [IPC reference](docs/architecture/ipc-reference.md) — all Tauri IPC commands with parameters and types
 - [Daemon protocol](docs/architecture/daemon-protocol.md) — TCP JSON-line protocol specification
 - [Coordination architecture](docs/coordination-architecture.md) — mesh orchestration subsystem details
+- [Team templates guide](docs/team-templates.md) — role templates, presets, composition, history, and revert workflow
 - [Platform abstraction](docs/platform-abstraction.md) — Linux/macOS dispatch implementation details
 - [File rendering pipeline](docs/file-rendering-pipeline.md) — classification, caching, and rendering
 - [Feature documentation](docs/README.md#features) — per-feature guides
