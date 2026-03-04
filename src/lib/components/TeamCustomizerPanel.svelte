@@ -48,6 +48,7 @@
   let newPresetDescription = $state('')
   let isSavingPreset = $state(false)
   let presetSaveMessage = $state('')
+  let presetSaveError = $state(false)
 
   const projectOptions = $derived.by(() =>
     (availableProjects ?? [])
@@ -146,42 +147,82 @@
     agents = agents.filter((agent) => agent.id !== id)
   }
 
+  function slugifyPresetId(value) {
+    const slug = String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s_-]+/g, '')
+      .replace(/[\s_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    return slug || 'custom-preset'
+  }
+
+  function fallbackLeadRoleId(tool) {
+    const normalized = String(tool || '').toLowerCase()
+    if (normalized === 'codex') return 'codex-developer'
+    if (normalized === 'gemini') return 'custom-doc-writer'
+    return 'claude-orchestrator'
+  }
+
+  function fallbackAgentRoleId(tool) {
+    const normalized = String(tool || '').toLowerCase()
+    if (normalized === 'claude') return 'claude-reviewer'
+    if (normalized === 'gemini') return 'custom-doc-writer'
+    return 'codex-developer'
+  }
+
   async function handleSaveAsPreset() {
     if (hasErrors || !newPresetName.trim()) return
+    if ((agents ?? []).length === 0) {
+      presetSaveError = true
+      presetSaveMessage = 'At least one agent is required to save a preset.'
+      return
+    }
+
     isSavingPreset = true
     presetSaveMessage = ''
+    presetSaveError = false
 
     try {
-      const agentSlots = []
-      for (const agent of agents) {
-        agentSlots.push({
-          roleId: agent.roleId || 'agent-default',
-          count: 1,
-          overrides: {
-            name: agent.name,
-            cliTool: agent.tool,
-            model: agent.model,
-            description: agent.description,
-          }
-        })
-      }
+      const leadRoleId = lead?.roleId || fallbackLeadRoleId(lead?.tool)
+      const agentSlots = agents.map((agent) => ({
+        roleId: agent.roleId || fallbackAgentRoleId(agent.tool),
+        count: 1,
+        projectBinding: 'lead_project',
+        projectId: null,
+        overrides: null,
+      }))
 
       await upsertTeamPreset({
+        schema: {
+          kind: 'team_preset',
+          version: 1,
+        },
+        presetId: slugifyPresetId(newPresetName),
         name: newPresetName.trim(),
-        description: newPresetDescription.trim(),
-        leadRoleId: lead?.roleId || null,
+        description: newPresetDescription.trim() || 'Custom team preset',
+        version: '1.0.0',
+        leadRoleId,
         agentSlots,
+        defaults: {
+          teamNamePattern: '{project}-team',
+          tmuxLayout: 'tiled',
+        },
       })
 
       presetSaveMessage = 'Preset saved to catalog'
+      presetSaveError = false
       setTimeout(() => {
         showSavePresetDialog = false
         presetSaveMessage = ''
+        presetSaveError = false
         newPresetName = ''
         newPresetDescription = ''
       }, 2000)
     } catch (err) {
-      presetSaveMessage = `Error: ${err.message || 'Failed to save'}`
+      presetSaveError = true
+      presetSaveMessage = err?.message || 'Failed to save preset.'
     } finally {
       isSavingPreset = false
     }
@@ -300,6 +341,8 @@
             onclick={() => {
               showSavePresetDialog = true
               newPresetName = localTeamName
+              presetSaveError = false
+              presetSaveMessage = ''
             }}
             disabled={hasErrors}
             data-testid="team-customizer-save-preset-trigger"
@@ -330,7 +373,7 @@
           </label>
           
           {#if presetSaveMessage}
-            <p class="text-xs font-medium {presetSaveMessage.startsWith('Error') ? 'text-danger-500' : 'text-success-600'}" data-testid="save-preset-feedback">
+            <p class="text-xs font-medium {presetSaveError ? 'text-danger-500' : 'text-success-600'}" data-testid="save-preset-feedback">
               {presetSaveMessage}
             </p>
           {/if}
@@ -341,6 +384,7 @@
               onclick={() => {
                 showSavePresetDialog = false
                 presetSaveMessage = ''
+                presetSaveError = false
               }}
               data-testid="save-preset-cancel"
             >

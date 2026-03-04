@@ -97,14 +97,52 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     
     await fireEvent.click(screen.getByTestId('save-preset-confirm'))
 
-    expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'My Cool Preset',
-      description: 'Preset desc',
-      leadRoleId: null, // Lead doesn't have roleId in current baseTeamConfig, we'll see how it's handled
-      agentSlots: [
-        expect.objectContaining({ count: 1 })
-      ]
-    }))
+    expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schema: {
+          kind: 'team_preset',
+          version: 1,
+        },
+        presetId: 'my-cool-preset',
+        name: 'My Cool Preset',
+        description: 'Preset desc',
+        version: '1.0.0',
+        leadRoleId: 'claude-orchestrator',
+        defaults: {
+          teamNamePattern: '{project}-team',
+          tmuxLayout: 'tiled',
+        },
+        agentSlots: [
+          expect.objectContaining({
+            roleId: 'codex-developer',
+            count: 1,
+            projectBinding: 'lead_project',
+            projectId: null,
+            overrides: null,
+          }),
+        ],
+      })
+    )
+  })
+
+  it('shows danger feedback class when save fails', async () => {
+    ipc.upsertTeamPreset.mockRejectedValueOnce(new Error('save failed'))
+
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: baseTeamConfig(),
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await fireEvent.click(await screen.findByTestId('team-customizer-save-preset-trigger'))
+    await fireEvent.input(screen.getByTestId('save-preset-name-input'), { target: { value: 'Broken Preset' } })
+    await fireEvent.click(screen.getByTestId('save-preset-confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('save-preset-feedback')).toHaveClass('text-danger-500')
+    })
   })
 
   it('disables save preset button when team config has errors', async () => {

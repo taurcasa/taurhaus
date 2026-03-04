@@ -1034,7 +1034,42 @@ describe('ipc module', () => {
       await ipc.upsertRoleTemplate(roleData)
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_role', {
-        request: { template: roleData },
+        request: {
+          template: expect.objectContaining({
+            roleId: 'custom-role',
+            name: 'Custom Role',
+            kind: 'agent',
+            schema: { kind: 'role_template', version: 1 },
+          }),
+        },
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('upsertRoleTemplate normalizes role-editor payload shape', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+
+      await ipc.upsertRoleTemplate({
+        roleId: 'frontend-dev',
+        name: 'Frontend Dev',
+        tool: 'codex',
+        model: 'gpt-5.3-codex',
+        instructions: 'Ship UI updates.',
+        behavioralContract: [{ rule: 'Report progress', enabled: true }],
+        capabilities: ['frontend'],
+      })
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_role', {
+        request: {
+          template: expect.objectContaining({
+            roleId: 'frontend-dev',
+            defaults: expect.objectContaining({ cliTool: 'codex' }),
+            behavioralContract: expect.objectContaining({
+              execution: ['Report progress'],
+            }),
+          }),
+        },
       })
       delete window.__TAURI_INTERNALS__
     })
@@ -1089,7 +1124,39 @@ describe('ipc module', () => {
 
       await ipc.upsertTeamPreset(presetData)
 
-      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_preset', { presetData })
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_preset', {
+        request: {
+          preset: expect.objectContaining({
+            presetId: 'custom-preset',
+            name: 'Custom Preset',
+            schema: { kind: 'team_preset', version: 1 },
+          }),
+        },
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('upsertTeamPreset accepts nested preset payloads', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+
+      await ipc.upsertTeamPreset({
+        preset: {
+          presetId: 'nested-preset',
+          name: 'Nested Preset',
+          leadRoleId: 'claude-orchestrator',
+          agentSlots: [],
+        },
+      })
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_preset', {
+        request: {
+          preset: expect.objectContaining({
+            presetId: 'nested-preset',
+            name: 'Nested Preset',
+          }),
+        },
+      })
       delete window.__TAURI_INTERNALS__
     })
 

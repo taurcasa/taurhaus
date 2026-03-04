@@ -671,6 +671,7 @@
 
   function openAddAgentPanel() {
     const defaultProject = projectOptions[0]?.id || projectPath || ''
+    roleTemplates = []
     slideOver = 'addAgent'
     slideOverContext = {
       roleId: '',
@@ -1388,13 +1389,17 @@
             style:background-position="right 6px center"
             value={addAgentDraft?.roleId ?? ''}
             onchange={(event) => handleRoleChange(event.currentTarget.value)}
-            disabled={addAgentDraft?.submitting}
+            disabled={addAgentDraft?.submitting || loadingRoles}
             data-testid="mesh-add-agent-role-select"
           >
-            <option value="">Manual configuration</option>
-            {#each roleTemplates as role}
-              <option value={role.roleId}>{role.name}</option>
-            {/each}
+            {#if loadingRoles}
+              <option value="">Loading roles...</option>
+            {:else}
+              <option value="">Manual configuration</option>
+              {#each roleTemplates as role}
+                <option value={role.roleId}>{role.name}</option>
+              {/each}
+            {/if}
           </select>
         </div>
 

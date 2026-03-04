@@ -50,6 +50,11 @@
   )
 
   const labelTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
+  const addButtonTone = $derived(
+    dark
+      ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+      : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+  )
   function slugify(text) {
     return text
       .toString()
@@ -265,7 +270,7 @@
             data-testid="role-editor-add-rule-input"
           />
           <button
-            class="h-8 px-3 rounded-md bg-zinc-800 text-white text-xs hover:bg-zinc-700 transition-colors"
+            class="h-8 px-3 rounded-md text-xs transition-colors {addButtonTone}"
             onclick={addRule}
             data-testid="role-editor-add-rule-button"
           >
@@ -306,7 +311,7 @@
             data-testid="role-editor-add-capability-input"
           />
           <button
-            class="h-8 px-3 rounded-md bg-zinc-800 text-white text-xs hover:bg-zinc-700 transition-colors"
+            class="h-8 px-3 rounded-md text-xs transition-colors {addButtonTone}"
             onclick={addCapability}
             data-testid="role-editor-add-capability-button"
           >

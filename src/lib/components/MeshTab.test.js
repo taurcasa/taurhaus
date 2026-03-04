@@ -452,6 +452,43 @@ describe('MeshTab', () => {
     })
   })
 
+  it('shows loading state for role picker while role templates load', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+    const rolesLoad = deferred()
+    listRoleTemplates.mockReturnValueOnce(rolesLoad.promise)
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    })
+
+    const roleSelect = screen.getByTestId('mesh-add-agent-role-select')
+    expect(roleSelect).toBeDisabled()
+    expect(screen.getByRole('option', { name: 'Loading roles...' })).toBeInTheDocument()
+
+    rolesLoad.resolve([
+      { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
+    ])
+
+    await waitFor(() => {
+      expect(roleSelect).not.toBeDisabled()
+    })
+    expect(screen.getByRole('option', { name: 'Manual configuration' })).toBeInTheDocument()
+  })
+
   it('captures runtime node as role and saves through upsertRoleTemplate', async () => {
     coordinationListTeams.mockResolvedValueOnce([
       { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },

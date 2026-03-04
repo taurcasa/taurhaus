@@ -864,10 +864,147 @@ export function getRoleTemplate(id) {
 }
 
 function normalizeRoleTemplateInput(roleData) {
-  if (roleData && typeof roleData === 'object' && roleData.template) {
-    return roleData.template
+  const source =
+    roleData && typeof roleData === 'object' && roleData.template
+      ? roleData.template
+      : roleData
+
+  if (!source || typeof source !== 'object') {
+    return source
   }
-  return roleData
+
+  const roleKind = String(source.kind ?? 'agent').toLowerCase() === 'lead' ? 'lead' : 'agent'
+  const cliTool = String(
+    source.tool ??
+    source.cliTool ??
+    source.cli_tool ??
+    source.defaults?.cliTool ??
+    source.defaults?.cli_tool ??
+    (roleKind === 'lead' ? 'claude' : 'codex')
+  ).toLowerCase()
+  const model = String(
+    source.model ??
+    source.defaults?.model ??
+    (cliTool === 'claude'
+      ? 'claude-opus-4-6'
+      : (cliTool === 'gemini' ? 'gemini-3.1-pro' : 'gpt-5.3-codex'))
+  )
+  const roleId = String(source.roleId ?? source.role_id ?? '').trim()
+  const behavioralInput = source.behavioralContract ?? source.behavioral_contract
+  const behavioralContract = Array.isArray(behavioralInput)
+    ? {
+      communication: [],
+      execution: behavioralInput
+        .map((entry) => {
+          if (typeof entry === 'string') return entry.trim()
+          if (!entry || typeof entry !== 'object') return ''
+          if (entry.enabled === false) return ''
+          return String(entry.rule ?? entry.text ?? '').trim()
+        })
+        .filter(Boolean),
+      escalation: [],
+    }
+    : {
+      communication: Array.isArray(behavioralInput?.communication)
+        ? behavioralInput.communication.map((line) => String(line ?? '').trim()).filter(Boolean)
+        : [],
+      execution: Array.isArray(behavioralInput?.execution)
+        ? behavioralInput.execution.map((line) => String(line ?? '').trim()).filter(Boolean)
+        : [],
+      escalation: Array.isArray(behavioralInput?.escalation)
+        ? behavioralInput.escalation.map((line) => String(line ?? '').trim()).filter(Boolean)
+        : [],
+    }
+  if (
+    behavioralContract.communication.length === 0 &&
+    behavioralContract.execution.length === 0 &&
+    behavioralContract.escalation.length === 0
+  ) {
+    behavioralContract.execution = ['Execute assigned tasks and report status clearly.']
+  }
+
+  const capabilities = Array.isArray(source.capabilities)
+    ? source.capabilities.map((capability) => String(capability ?? '').trim()).filter(Boolean)
+    : []
+  const constraints = source.constraints ?? {}
+  const minInstancesRaw = Number(constraints.minInstances ?? constraints.min_instances ?? (roleKind === 'lead' ? 1 : 0))
+  const maxInstancesRaw = Number(constraints.maxInstances ?? constraints.max_instances ?? (roleKind === 'lead' ? 1 : 8))
+  const minInstances = Number.isFinite(minInstancesRaw) ? Math.max(0, Math.floor(minInstancesRaw)) : (roleKind === 'lead' ? 1 : 0)
+  const maxInstances = Number.isFinite(maxInstancesRaw) ? Math.max(1, Math.floor(maxInstancesRaw)) : (roleKind === 'lead' ? 1 : 8)
+
+  return {
+    schema: {
+      kind: 'role_template',
+      version: Number(source.schema?.version ?? 1) || 1,
+    },
+    roleId,
+    name: String(source.name ?? '').trim(),
+    version: String(source.version ?? '1.0.0'),
+    kind: roleKind,
+    defaults: {
+      cliTool,
+      model,
+      defaultNamePattern: String(
+        source.defaults?.defaultNamePattern ??
+        source.defaults?.default_name_pattern ??
+        (roleKind === 'lead' ? 'team-lead' : `${roleId || 'agent'}-{n}`)
+      ),
+    },
+    instructions: String(source.instructions ?? '').trim(),
+    behavioralContract,
+    capabilities: capabilities.length > 0 ? capabilities : [roleKind === 'lead' ? 'orchestration' : 'implementation'],
+    constraints: {
+      minInstances: roleKind === 'lead' ? 1 : minInstances,
+      maxInstances: roleKind === 'lead' ? 1 : Math.max(maxInstances, minInstances),
+      requiresLeadTool: constraints.requiresLeadTool ?? constraints.requires_lead_tool ?? null,
+      allowedProjectBinding:
+        constraints.allowedProjectBinding ??
+        constraints.allowed_project_binding ??
+        'lead_project',
+    },
+  }
+}
+
+function normalizeTeamPresetInput(presetData) {
+  const source =
+    presetData && typeof presetData === 'object' && presetData.preset
+      ? presetData.preset
+      : presetData
+  if (!source || typeof source !== 'object') {
+    return source
+  }
+
+  const rawSlots = Array.isArray(source.agentSlots)
+    ? source.agentSlots
+    : (Array.isArray(source.agent_slots) ? source.agent_slots : [])
+  const agentSlots = rawSlots.map((slot) => ({
+    roleId: String(slot?.roleId ?? slot?.role_id ?? '').trim(),
+    count: Math.max(1, Number(slot?.count ?? 1) || 1),
+    projectBinding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
+    projectId: slot?.projectId ?? slot?.project_id ?? null,
+    overrides: slot?.overrides ?? null,
+  }))
+
+  return {
+    schema: {
+      kind: 'team_preset',
+      version: Number(source.schema?.version ?? 1) || 1,
+    },
+    presetId: String(source.presetId ?? source.preset_id ?? '').trim(),
+    name: String(source.name ?? '').trim(),
+    description: String(source.description ?? '').trim(),
+    version: String(source.version ?? '1.0.0'),
+    leadRoleId: String(source.leadRoleId ?? source.lead_role_id ?? '').trim(),
+    agentSlots,
+    defaults: {
+      teamNamePattern: String(
+        source.defaults?.teamNamePattern ??
+        source.defaults?.team_name_pattern ??
+        '{project}-team'
+      ),
+      tmuxLayout: String(source.defaults?.tmuxLayout ?? source.defaults?.tmux_layout ?? 'tiled'),
+    },
+  }
 }
 
 /** Create or update a role template. */
@@ -955,13 +1092,14 @@ export function getTeamPreset(id) {
 
 /** Create or update a team preset. */
 export function upsertTeamPreset(presetData) {
-  return invokeOrMock('templates_upsert_preset', { presetData }, () => ({
-    presetId: presetData?.presetId ?? presetData?.preset_id ?? null,
-    name: presetData?.name ?? '',
-    leadRoleId: presetData?.leadRoleId ?? presetData?.lead_role_id ?? '',
-    agentSlots: Array.isArray(presetData?.agentSlots)
-      ? presetData.agentSlots
-      : (Array.isArray(presetData?.agent_slots) ? presetData.agent_slots : []),
+  const preset = normalizeTeamPresetInput(presetData)
+  return invokeOrMock('templates_upsert_preset', { request: { preset } }, () => ({
+    presetId: preset?.presetId ?? preset?.preset_id ?? null,
+    name: preset?.name ?? '',
+    leadRoleId: preset?.leadRoleId ?? preset?.lead_role_id ?? '',
+    agentSlots: Array.isArray(preset?.agentSlots)
+      ? preset.agentSlots
+      : (Array.isArray(preset?.agent_slots) ? preset.agent_slots : []),
     builtIn: false,
     readOnly: false,
   }))
