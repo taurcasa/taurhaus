@@ -753,6 +753,11 @@ agent-quality:
     cd src-tauri && cargo check --tests
     @echo "Agent quality gate passed."
 
+# Bootstrap infographic manifest from taursult MCP generation DB.
+# Pulls prompts, settings, and sha256 for all tagged generations.
+bootstrap-infographic-manifest:
+    ./scripts/bootstrap-infographic-manifest.sh
+
 # Security audit (integration tasks + phase boundaries)
 security-audit:
     cd src-tauri && cargo audit 2>/dev/null || echo "cargo-audit not installed — run: cargo install cargo-audit"
