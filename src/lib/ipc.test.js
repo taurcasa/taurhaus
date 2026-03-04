@@ -261,6 +261,26 @@ describe('ipc module', () => {
     })
   })
 
+  describe('getRemoteUrl()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('https://github.com/org/repo')
+
+      const result = await ipc.getRemoteUrl('p1')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_remote_url', { projectId: 'p1' })
+      expect(result).toBe('https://github.com/org/repo')
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to null when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getRemoteUrl('p1')
+
+      expect(result).toBeNull()
+    })
+  })
+
   // -----------------------------------------------------------------------
   // File IPC functions
   // -----------------------------------------------------------------------
@@ -308,6 +328,31 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('path')
       expect(result).toHaveProperty('content')
       expect(result).toHaveProperty('language')
+    })
+  })
+
+  describe('checkPathType()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('directory')
+
+      const result = await ipc.checkPathType('p1', 'docs')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('check_path_type', {
+        projectId: 'p1',
+        relativePath: 'docs',
+      })
+      expect(result).toBe('directory')
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to not_found when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.checkPathType('p1', 'docs')
+
+      expect(tauriCore.invoke).not.toHaveBeenCalled()
+      expect(result).toBe('not_found')
     })
   })
 

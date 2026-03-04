@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path};
 
 use base64::Engine as _;
 use tauri::State;
@@ -8,6 +8,10 @@ use crate::db::queries;
 use crate::errors::sanitize_error;
 use crate::models::{FileContent, FileTreeNode};
 use crate::ProviderState;
+
+const PATH_TYPE_FILE: &str = "file";
+const PATH_TYPE_DIRECTORY: &str = "directory";
+const PATH_TYPE_NOT_FOUND: &str = "not_found";
 
 /// Look up a project's path from the DB, releasing the lock immediately.
 fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
@@ -31,6 +35,60 @@ pub fn get_file_tree(
         .map_err(|e| sanitize_error(&e.to_string()))
 }
 
+fn classify_path_type(project_root: &Path, relative_path: &str) -> Result<&'static str, String> {
+    let normalized = relative_path.replace('\\', "/");
+    let trimmed = normalized.trim();
+
+    // Empty path means "project root", which is always a directory.
+    if trimmed.is_empty() || trimmed == "." {
+        return Ok(PATH_TYPE_DIRECTORY);
+    }
+
+    let rel = Path::new(trimmed);
+
+    if rel.is_absolute() {
+        return Ok(PATH_TYPE_NOT_FOUND);
+    }
+
+    // Reject traversal/absolute-like components and report as not_found.
+    if rel.components().any(|c| {
+        matches!(
+            c,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return Ok(PATH_TYPE_NOT_FOUND);
+    }
+
+    let candidate = project_root.join(rel);
+    if !candidate.exists() {
+        return Ok(PATH_TYPE_NOT_FOUND);
+    }
+
+    let canonical_root = project_root
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve project root: {e}"))?;
+
+    let canonical_candidate = match candidate.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return Ok(PATH_TYPE_NOT_FOUND),
+    };
+
+    // Guard against symlink escapes.
+    if !canonical_candidate.starts_with(&canonical_root) {
+        return Ok(PATH_TYPE_NOT_FOUND);
+    }
+
+    let metadata = std::fs::metadata(&canonical_candidate).map_err(|e| e.to_string())?;
+    if metadata.is_file() {
+        Ok(PATH_TYPE_FILE)
+    } else if metadata.is_dir() {
+        Ok(PATH_TYPE_DIRECTORY)
+    } else {
+        Ok(PATH_TYPE_NOT_FOUND)
+    }
+}
+
 #[tauri::command]
 pub fn read_file(
     db: State<'_, DbState>,
@@ -47,6 +105,18 @@ pub fn read_file(
     provider
         .read_file(&path, &relative_path)
         .map_err(|e| sanitize_error(&e.to_string()))
+}
+
+#[tauri::command]
+pub fn check_path_type(
+    db: State<'_, DbState>,
+    project_id: String,
+    relative_path: String,
+) -> Result<String, String> {
+    let path = resolve_project_path(&db, &project_id)?;
+    classify_path_type(Path::new(&path), &relative_path)
+        .map(|kind| kind.to_string())
+        .map_err(|e| sanitize_error(&e))
 }
 
 #[tauri::command]
@@ -122,5 +192,67 @@ fn mime_from_extension(path: &str) -> &'static str {
         "ico" => "image/x-icon",
         "bmp" => "image/bmp",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn classify_path_type_returns_file_for_file() {
+        let dir = TempDir::new().expect("tempdir");
+        std::fs::write(dir.path().join("README.md"), "# test").expect("write file");
+
+        let kind = classify_path_type(dir.path(), "README.md").expect("classify");
+        assert_eq!(kind, PATH_TYPE_FILE);
+    }
+
+    #[test]
+    fn classify_path_type_returns_directory_for_directory() {
+        let dir = TempDir::new().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("docs")).expect("mkdir docs");
+
+        let kind = classify_path_type(dir.path(), "docs").expect("classify");
+        assert_eq!(kind, PATH_TYPE_DIRECTORY);
+    }
+
+    #[test]
+    fn classify_path_type_returns_not_found_for_missing_path() {
+        let dir = TempDir::new().expect("tempdir");
+        let kind = classify_path_type(dir.path(), "missing.md").expect("classify");
+        assert_eq!(kind, PATH_TYPE_NOT_FOUND);
+    }
+
+    #[test]
+    fn classify_path_type_returns_not_found_for_parent_traversal() {
+        let dir = TempDir::new().expect("tempdir");
+        let kind = classify_path_type(dir.path(), "../outside.md").expect("classify");
+        assert_eq!(kind, PATH_TYPE_NOT_FOUND);
+    }
+
+    #[test]
+    fn classify_path_type_returns_not_found_for_absolute_path() {
+        let dir = TempDir::new().expect("tempdir");
+        let kind = classify_path_type(dir.path(), "/etc/passwd").expect("classify");
+        assert_eq!(kind, PATH_TYPE_NOT_FOUND);
+    }
+
+    #[test]
+    fn classify_path_type_treats_empty_path_as_directory() {
+        let dir = TempDir::new().expect("tempdir");
+        let kind = classify_path_type(dir.path(), "").expect("classify");
+        assert_eq!(kind, PATH_TYPE_DIRECTORY);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn classify_path_type_returns_not_found_for_symlink_escape() {
+        let dir = TempDir::new().expect("tempdir");
+        std::os::unix::fs::symlink("/tmp", dir.path().join("escape")).expect("create symlink");
+
+        let kind = classify_path_type(dir.path(), "escape").expect("classify");
+        assert_eq!(kind, PATH_TYPE_NOT_FOUND);
     }
 }

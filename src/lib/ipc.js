@@ -122,6 +122,11 @@ export function getGitStatus(projectId) {
   }))
 }
 
+/** Get normalized remote URL for a project, if available. */
+export function getRemoteUrl(projectId) {
+  return invokeOrMock('get_remote_url', { projectId }, () => null)
+}
+
 // ---------------------------------------------------------------------------
 // File IPC functions
 // ---------------------------------------------------------------------------
@@ -143,6 +148,11 @@ export function readFile(projectId, relativePath) {
 /** Read a binary asset from a project directory as a base64 data URI. */
 export function readProjectAsset(projectId, relativePath) {
   return invokeOrMock('read_project_asset', { projectId, relativePath }, () => null)
+}
+
+/** Check if a project-relative path points to a file, directory, or missing entry. */
+export function checkPathType(projectId, relativePath) {
+  return invokeOrMock('check_path_type', { projectId, relativePath }, () => 'not_found')
 }
 
 /** Get the README for a project. */
