@@ -8,9 +8,11 @@
     onAddAgent = () => {},
     onDisband = () => {},
     onRemoveAgent = () => {},
+    onResumeAgent = () => {},
     onFocusPane = () => {},
     disbanding = false,
     removingMembers = [],
+    resumingMembers = [],
     refreshNonce = 0,
   } = $props()
 
@@ -23,12 +25,18 @@
       ? 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70 hover:border-zinc-500 disabled:opacity-50'
       : 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 hover:border-zinc-400 disabled:opacity-50'
   )
+  const rowSelectTone = $derived(
+    dark
+      ? 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-700 bg-zinc-900 text-zinc-300 disabled:opacity-50'
+      : 'rounded px-1.5 py-0.5 text-[10px] border border-zinc-300 bg-white text-zinc-700 disabled:opacity-50'
+  )
 
   let members = $state([])
   let loading = $state(false)
   let errorMessage = $state('')
   let reonboarding = $state(new Set())
   let reonboardSent = $state(new Set())
+  let resumeModes = $state({})
   let showOverflowMenu = $state(false)
   const activeCount = $derived.by(
     () => members.filter((member) => statusToState(member.sessionStatus) === 'active').length
@@ -39,6 +47,11 @@
   const removingMemberSet = $derived.by(() => {
     if (removingMembers instanceof Set) return removingMembers
     if (Array.isArray(removingMembers)) return new Set(removingMembers)
+    return new Set()
+  })
+  const resumingMemberSet = $derived.by(() => {
+    if (resumingMembers instanceof Set) return resumingMembers
+    if (Array.isArray(resumingMembers)) return new Set(resumingMembers)
     return new Set()
   })
 
@@ -111,6 +124,22 @@
 
   function isRemovingMember(memberName) {
     return removingMemberSet.has(memberName)
+  }
+
+  function isResumingMember(memberName) {
+    return resumingMemberSet.has(memberName)
+  }
+
+  function isRowBusy(memberName) {
+    return isRemovingMember(memberName) || isResumingMember(memberName)
+  }
+
+  function getResumeMode(memberName) {
+    return resumeModes[memberName] ?? 'continue'
+  }
+
+  function setResumeMode(memberName, mode) {
+    resumeModes = { ...resumeModes, [memberName]: mode === 'fresh' ? 'fresh' : 'continue' }
   }
 
   async function refreshRoster() {
@@ -304,17 +333,39 @@
                 class={rowActionTone}
                 onclick={() => onFocusPane(member.paneId)}
                 title="Jump to this agent's terminal pane"
-                disabled={isRemovingMember(member.name)}
+                disabled={isRowBusy(member.name)}
                 data-testid={`mesh-focus-pane-${member.name}`}
               >
                 Focus
+              </button>
+            {/if}
+            {#if statusToState(member.sessionStatus) === 'offline'}
+              <select
+                class={rowSelectTone}
+                value={getResumeMode(member.name)}
+                onchange={(event) => setResumeMode(member.name, event.currentTarget.value)}
+                disabled={isRowBusy(member.name)}
+                title="Resume mode"
+                data-testid={`mesh-resume-mode-${member.name}`}
+              >
+                <option value="continue">Continue</option>
+                <option value="fresh">Fresh</option>
+              </select>
+              <button
+                class={rowActionTone}
+                onclick={() => onResumeAgent(member.name, getResumeMode(member.name))}
+                disabled={isRowBusy(member.name)}
+                title="Resume this agent session"
+                data-testid={`mesh-resume-member-${member.name}`}
+              >
+                {isResumingMember(member.name) ? 'Resuming...' : 'Resume'}
               </button>
             {/if}
             {#if member.role !== 'lead'}
               <button
                 class={rowActionTone}
                 onclick={() => handleReonboard(member.name)}
-                disabled={reonboarding.has(member.name) || isRemovingMember(member.name)}
+                disabled={reonboarding.has(member.name) || isRowBusy(member.name)}
                 title="Re-send setup instructions to this agent"
                 data-testid={`mesh-reonboard-${member.name}`}
               >
@@ -323,7 +374,7 @@
               <button
                 class={rowActionTone}
                 onclick={() => onRemoveAgent(member.name)}
-                disabled={isRemovingMember(member.name)}
+                disabled={isRowBusy(member.name)}
                 title="Remove this agent and clean up managed resources"
                 data-testid={`mesh-remove-member-${member.name}`}
               >

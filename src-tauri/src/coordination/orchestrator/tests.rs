@@ -142,6 +142,14 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         self.inner.pane_belongs_to_project(pane_id, project_id)
     }
 
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.inner.kill_aitx_pane(pane_id)
     }
@@ -225,6 +233,14 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
     ) -> Result<bool, CoordinationError> {
         let _ = self.inner.pane_belongs_to_project(pane_id, project_id)?;
         Ok(self.ownership_matches)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {

@@ -42,6 +42,7 @@ mod session_scanner {
     }
 
     pub mod control {
+        use crate::daemon::protocol::LaunchMode;
         use crate::models::CliCommandSettings;
 
         use super::cli_tool::CliTool;
@@ -56,6 +57,23 @@ mod session_scanner {
                 ));
             }
             Ok(())
+        }
+
+        pub fn resolve_configured_tool_command(
+            cmds: &CliCommandSettings,
+            tool: CliTool,
+            mode: LaunchMode,
+        ) -> String {
+            let tool_cmds = match tool {
+                CliTool::Claude => &cmds.claude,
+                CliTool::Codex => &cmds.codex,
+                CliTool::Gemini => &cmds.gemini,
+            };
+            match mode {
+                LaunchMode::Continue => tool_cmds.continue_cmd.clone(),
+                LaunchMode::Fresh => tool_cmds.fresh.clone(),
+                LaunchMode::Resume => tool_cmds.resume.clone(),
+            }
         }
 
         pub fn build_team_launch_command(
@@ -80,6 +98,17 @@ mod session_scanner {
                     format!("{base} -m '{model}'")
                 }
             }
+        }
+    }
+}
+
+mod daemon {
+    pub mod protocol {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum LaunchMode {
+            Continue,
+            Fresh,
+            Resume,
         }
     }
 }

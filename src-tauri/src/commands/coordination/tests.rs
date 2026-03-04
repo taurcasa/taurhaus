@@ -80,6 +80,14 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
     }
 }
 
+fn sample_resume_request(team_name: &str, member_name: &str) -> ResumeMemberRequest {
+    ResumeMemberRequest {
+        team_name: team_name.to_string(),
+        member_name: member_name.to_string(),
+        context_mode: ResumeContextMode::Continue,
+    }
+}
+
 #[test]
 fn team_summary_serialization_round_trip() {
     let value = TeamSummary {
@@ -484,6 +492,78 @@ fn add_agent_and_reonboard_validate_empty_strings() {
 }
 
 #[test]
+fn resume_member_validates_empty_fields() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+
+    let err = coordination_resume_member_impl(
+        &state,
+        ResumeMemberRequest {
+            team_name: "".to_string(),
+            member_name: "agent".to_string(),
+            context_mode: ResumeContextMode::Continue,
+        },
+    )
+    .expect_err("empty team_name should fail");
+    assert!(err.contains("team_name"));
+
+    let err = coordination_resume_member_impl(
+        &state,
+        ResumeMemberRequest {
+            team_name: "arch".to_string(),
+            member_name: " ".to_string(),
+            context_mode: ResumeContextMode::Fresh,
+        },
+    )
+    .expect_err("blank member_name should fail");
+    assert!(err.contains("member_name"));
+}
+
+#[test]
+fn resume_member_ipc_returns_report_shape() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_with_emitter(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize");
+
+    let mut runtime = crate::coordination::stores::MemberRuntimeStore::load(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+    )
+    .expect("member runtime");
+    runtime.health = crate::coordination::domain::HealthState::SessionDead;
+    crate::coordination::stores::MemberRuntimeStore::save(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+        &runtime,
+    )
+    .expect("save runtime");
+
+    let report = coordination_resume_member_impl(
+        &state,
+        ResumeMemberRequest {
+            team_name: "architecture-final".to_string(),
+            member_name: "frontend-dev".to_string(),
+            context_mode: ResumeContextMode::Continue,
+        },
+    )
+    .expect("resume should return a report");
+
+    assert_eq!(report.team_name, "architecture-final");
+    assert_eq!(report.member_name, "frontend-dev");
+    assert!(report.resumed);
+    assert_eq!(report.failed_step, None);
+    assert!(!report.steps.is_empty());
+}
+
+#[test]
 fn create_team_happy_path_persists_team() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -815,6 +895,42 @@ fn add_agent_request_and_report_round_trip() {
     let report_json = serde_json::to_string(&report).expect("serialize add-agent report");
     let report_decoded: AddAgentReport =
         serde_json::from_str(&report_json).expect("deserialize add-agent report");
+    assert_eq!(report_decoded, report);
+}
+
+#[test]
+fn resume_member_request_and_report_round_trip() {
+    let request = sample_resume_request("architecture-final", "backend-dev");
+    let req_json = serde_json::to_string(&request).expect("serialize resume-member request");
+    let req_decoded: ResumeMemberRequest =
+        serde_json::from_str(&req_json).expect("deserialize resume-member request");
+    assert_eq!(req_decoded, request);
+
+    let report = ResumeAgentReport {
+        team_name: "architecture-final".to_string(),
+        member_name: "backend-dev".to_string(),
+        resumed: true,
+        succeeded_steps: vec![
+            "validate".to_string(),
+            "resolve_pane".to_string(),
+            "launch_session".to_string(),
+            "update_runtime".to_string(),
+        ],
+        failed_step: None,
+        retryable: false,
+        message: "member resumed".to_string(),
+        steps: vec![StepProgress {
+            step: "launch_session".to_string(),
+            status: StepStatus::Succeeded,
+            message: Some("session launched".to_string()),
+        }],
+        warnings: vec![],
+        pane_id: Some("%12".to_string()),
+        reused_pane: true,
+    };
+    let report_json = serde_json::to_string(&report).expect("serialize resume-member report");
+    let report_decoded: ResumeAgentReport =
+        serde_json::from_str(&report_json).expect("deserialize resume-member report");
     assert_eq!(report_decoded, report);
 }
 

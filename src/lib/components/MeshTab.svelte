@@ -4,6 +4,7 @@
     coordinationDisbandTeam,
     coordinationListTeams,
     coordinationRemoveMember,
+    coordinationResumeMember,
   } from '../ipc.js'
   import MeshSetupForm from './MeshSetupForm.svelte'
   import MeshInitProgress from './MeshInitProgress.svelte'
@@ -81,6 +82,7 @@
   let addAgentDescription = $state('')
   let rosterRefreshNonce = $state(0)
   let removingMembers = $state(new Set())
+  let resumingMembers = $state(new Set())
   let removeMemberPending = $state('')
   let showRemoveMemberConfirm = $state(false)
   let disbanding = $state(false)
@@ -356,6 +358,38 @@
     }
   }
 
+  async function requestResumeMember(memberName, contextMode = 'continue') {
+    if (
+      !teamName ||
+      !memberName ||
+      disbanding ||
+      removingMembers.has(memberName) ||
+      resumingMembers.has(memberName)
+    ) {
+      return
+    }
+    const normalizedMode = contextMode === 'fresh' ? 'fresh' : 'continue'
+    resumingMembers = new Set([...resumingMembers, memberName])
+    try {
+      const report = await coordinationResumeMember(teamName, memberName, normalizedMode)
+      if (!report?.resumed) {
+        errorMessage = report?.message || `Failed to resume member '${memberName}'.`
+        return
+      }
+      const warningCount = Array.isArray(report?.warnings) ? report.warnings.length : 0
+      runtimeMessage = warningCount > 0
+        ? `Resumed '${memberName}' with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
+        : `Resumed '${memberName}'.`
+      rosterRefreshNonce += 1
+    } catch (err) {
+      errorMessage = err?.message || `Failed to resume member '${memberName}'.`
+    } finally {
+      const next = new Set(resumingMembers)
+      next.delete(memberName)
+      resumingMembers = next
+    }
+  }
+
   function requestCleanupDisband(team) {
     cleanupError = ''
     cleanupTargetTeam = normalizeTeamName(team)
@@ -416,6 +450,7 @@
     removeMemberPending = ''
     showRemoveMemberConfirm = false
     removingMembers = new Set()
+    resumingMembers = new Set()
     teamName = ''
     mode = 'setup'
     discoveredTeams = []
@@ -594,9 +629,11 @@
                   refreshNonce={rosterRefreshNonce}
                   {disbanding}
                   removingMembers={[...removingMembers]}
+                  resumingMembers={[...resumingMembers]}
                   onAddAgent={openAddAgentForm}
                   onDisband={handleRuntimeDisband}
                   onRemoveAgent={requestRemoveMember}
+                  onResumeAgent={requestResumeMember}
                   onFocusPane={onFocusPaneProp}
                 />
               {:else}

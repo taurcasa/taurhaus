@@ -11,6 +11,7 @@ vi.mock('../ipc.js', () => ({
   coordinationInitializeTeam: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
   coordinationRemoveMember: vi.fn(),
+  coordinationResumeMember: vi.fn(),
   installMesh: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
 }))
@@ -24,6 +25,7 @@ const {
   coordinationInitializeTeam,
   coordinationPreflightCheck,
   coordinationRemoveMember,
+  coordinationResumeMember,
   installMesh,
   onCoordinationStepProgress,
 } = await import('../ipc.js')
@@ -65,6 +67,19 @@ describe('MeshTab', () => {
       message: 'member removed',
       steps: [],
       warnings: [],
+    })
+    coordinationResumeMember.mockResolvedValue({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      resumed: true,
+      succeededSteps: ['validate', 'launch_session', 'update_runtime'],
+      failedStep: null,
+      retryable: false,
+      message: 'member resumed',
+      steps: [],
+      warnings: [],
+      paneId: '%2',
+      reusedPane: true,
     })
     coordinationGetLiveTeamStatus.mockResolvedValue({
       teamName: 'architecture-final',
@@ -509,5 +524,304 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(coordinationRemoveMember).toHaveBeenCalledWith('architecture-final', 'backend-dev')
     })
+  })
+
+  it('resume calls coordinationResumeMember with default continue mode', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          description: 'lead',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'backend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: 'proj-api',
+          description: 'api',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
+
+    await waitFor(() => {
+      expect(coordinationResumeMember).toHaveBeenCalledWith(
+        'architecture-final',
+        'backend-dev',
+        'continue'
+      )
+    })
+  })
+
+  it('resume propagates fresh mode selection to IPC call', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          description: 'lead',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'backend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: 'proj-api',
+          description: 'api',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-mode-backend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.change(screen.getByTestId('mesh-resume-mode-backend-dev'), {
+      target: { value: 'fresh' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
+
+    await waitFor(() => {
+      expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'backend-dev', 'fresh')
+    })
+  })
+
+  it('resume shows in-flight row state while request is running', async () => {
+    const deferred = createDeferred()
+    coordinationResumeMember.mockReturnValueOnce(deferred.promise)
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          description: 'lead',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'backend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: 'proj-api',
+          description: 'api',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toHaveTextContent('Resuming...')
+      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeDisabled()
+      expect(screen.getByTestId('mesh-remove-member-backend-dev')).toBeDisabled()
+    })
+
+    deferred.resolve({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      resumed: true,
+      succeededSteps: ['validate', 'launch_session', 'update_runtime'],
+      failedStep: null,
+      retryable: false,
+      message: 'member resumed',
+      steps: [],
+      warnings: [],
+      paneId: '%2',
+      reusedPane: true,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent("Resumed 'backend-dev'.")
+    })
+  })
+
+  it('resume success with warnings includes warning count in toast', async () => {
+    coordinationResumeMember.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      resumed: true,
+      succeededSteps: ['validate', 'launch_session', 'update_runtime'],
+      failedStep: null,
+      retryable: false,
+      message: 'member resumed',
+      steps: [],
+      warnings: ['stale daemon pid', 'pane recreated'],
+      paneId: '%2',
+      reusedPane: false,
+    })
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          description: 'lead',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'backend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: 'proj-api',
+          description: 'api',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
+        "Resumed 'backend-dev' with 2 warnings."
+      )
+    })
+  })
+
+  it('resume failure shows error and keeps roster responsive', async () => {
+    coordinationResumeMember.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      resumed: false,
+      succeededSteps: ['validate'],
+      failedStep: 'launch_session',
+      retryable: true,
+      message: 'resume launch failed',
+      steps: [],
+      warnings: [],
+      paneId: '%2',
+      reusedPane: true,
+    })
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          description: 'lead',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'backend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: 'proj-api',
+          description: 'api',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-error')).toHaveTextContent('resume launch failed')
+    })
+    expect(screen.getByTestId('mesh-resume-member-backend-dev')).toHaveTextContent('Resume')
+    expect(screen.getByTestId('mesh-resume-member-backend-dev')).not.toBeDisabled()
   })
 })

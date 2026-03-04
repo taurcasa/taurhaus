@@ -82,6 +82,25 @@ pub fn coordination_add_agent(
 }
 
 #[tauri::command]
+pub fn coordination_resume_member(
+    app: AppHandle,
+    db: State<'_, DbState>,
+    state: State<'_, CoordinationState>,
+    request: ResumeMemberRequest,
+) -> Result<ResumeAgentReport, String> {
+    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+    coordination_resume_member_with_emitter_and_layout(
+        state.inner(),
+        request,
+        &cli_commands,
+        &tmux_layout,
+        |event| {
+            let _ = app.emit("coordination-step-progress", event);
+        },
+    )
+}
+
+#[tauri::command]
 pub fn coordination_reonboard(
     state: State<'_, CoordinationState>,
     request: ReonboardRequest,
@@ -291,6 +310,60 @@ where
         tmux_layout,
     )?;
     for event in add_agent_progress_events(&report) {
+        emit(&event);
+    }
+    Ok(report)
+}
+
+#[cfg(test)]
+fn coordination_resume_member_impl(
+    state: &CoordinationState,
+    request: ResumeMemberRequest,
+) -> Result<ResumeAgentReport, String> {
+    coordination_resume_member_impl_with_cli_commands_and_layout(
+        state,
+        request,
+        &CliCommandSettings::default(),
+        "new_window",
+    )
+}
+
+fn coordination_resume_member_impl_with_cli_commands_and_layout(
+    state: &CoordinationState,
+    request: ResumeMemberRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+) -> Result<ResumeAgentReport, String> {
+    validate_non_empty("team_name", &request.team_name)?;
+    validate_non_empty("member_name", &request.member_name)?;
+    state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.resume_member_with_cli_commands_and_layout(
+                &request,
+                cli_commands,
+                tmux_layout,
+            )
+        })
+        .map_err(map_coordination_error)
+}
+
+fn coordination_resume_member_with_emitter_and_layout<E>(
+    state: &CoordinationState,
+    request: ResumeMemberRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    mut emit: E,
+) -> Result<ResumeAgentReport, String>
+where
+    E: FnMut(&StepProgressEvent),
+{
+    let report = coordination_resume_member_impl_with_cli_commands_and_layout(
+        state,
+        request,
+        cli_commands,
+        tmux_layout,
+    )?;
+    for event in resume_member_progress_events(&report) {
         emit(&event);
     }
     Ok(report)
@@ -722,6 +795,27 @@ fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> 
         events.push(StepProgressEvent {
             team_name: report.team_name.clone(),
             operation: "add_agent".to_string(),
+            progress: progress.clone(),
+        });
+    }
+    events
+}
+
+fn resume_member_progress_events(report: &ResumeAgentReport) -> Vec<StepProgressEvent> {
+    let mut events = Vec::new();
+    for progress in &report.steps {
+        events.push(StepProgressEvent {
+            team_name: report.team_name.clone(),
+            operation: "resume_member".to_string(),
+            progress: StepProgress {
+                step: progress.step.clone(),
+                status: StepStatus::Running,
+                message: None,
+            },
+        });
+        events.push(StepProgressEvent {
+            team_name: report.team_name.clone(),
+            operation: "resume_member".to_string(),
             progress: progress.clone(),
         });
     }

@@ -109,6 +109,7 @@ describe('MeshTeamRoster', () => {
       expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toBeVisible()
       expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeVisible()
       expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toBeVisible()
+      expect(screen.getByTestId('mesh-resume-member-docs-writer')).toBeVisible()
     })
     expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toHaveAttribute(
       'title',
@@ -151,6 +152,43 @@ describe('MeshTeamRoster', () => {
     expect(onRemoveAgent).toHaveBeenCalledWith('frontend-dev')
   })
 
+  it('resume is shown only for offline rows and lead is resume-eligible', async () => {
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      ...sampleRoster,
+      members: [
+        { ...sampleRoster.members[0], sessionStatus: 'offline' },
+        sampleRoster.members[1],
+        sampleRoster.members[2],
+      ],
+    })
+
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final' } })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-docs-writer')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-resume-member-team-lead')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('mesh-resume-member-frontend-dev')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-remove-member-team-lead')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-resume-mode-docs-writer')).toHaveValue('continue')
+  })
+
+  it('resume button calls onResumeAgent with selected mode', async () => {
+    const onResumeAgent = vi.fn()
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final', onResumeAgent } })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-docs-writer')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-docs-writer'))
+    expect(onResumeAgent).toHaveBeenCalledWith('docs-writer', 'continue')
+
+    await fireEvent.change(screen.getByTestId('mesh-resume-mode-docs-writer'), {
+      target: { value: 'fresh' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-resume-member-docs-writer'))
+    expect(onResumeAgent).toHaveBeenLastCalledWith('docs-writer', 'fresh')
+  })
+
   it('shows row-level removing state when member is pending removal', async () => {
     render(MeshTeamRoster, {
       props: {
@@ -164,6 +202,30 @@ describe('MeshTeamRoster', () => {
     expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toBeDisabled()
     expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toBeDisabled()
     expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeDisabled()
+  })
+
+  it('shows row-level resuming state and disables row actions', async () => {
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      ...sampleRoster,
+      members: [
+        sampleRoster.members[0],
+        sampleRoster.members[1],
+        { ...sampleRoster.members[2], paneId: '%5' },
+      ],
+    })
+    render(MeshTeamRoster, {
+      props: {
+        teamName: 'architecture-final',
+        resumingMembers: ['docs-writer'],
+      },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-resume-member-docs-writer')).toHaveTextContent('Resuming...')
+    })
+    expect(screen.getByTestId('mesh-resume-member-docs-writer')).toBeDisabled()
+    expect(screen.getByTestId('mesh-resume-mode-docs-writer')).toBeDisabled()
+    expect(screen.getByTestId('mesh-focus-pane-docs-writer')).toBeDisabled()
+    expect(screen.getByTestId('mesh-remove-member-docs-writer')).toBeDisabled()
   })
 
   it('manual refresh button triggers an immediate roster fetch', async () => {

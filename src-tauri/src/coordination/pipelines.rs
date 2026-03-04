@@ -4,7 +4,7 @@ use chrono::Utc;
 
 use crate::commands::coordination_types::{
     AddAgentReport, AddAgentRequest, AgentSetupConfig, InitializeReport, InitializeTeamRequest,
-    LeadMode, StepProgress, StepStatus,
+    LeadMode, ResumeAgentReport, ResumeContextMode, ResumeMemberRequest, StepProgress, StepStatus,
 };
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
@@ -13,13 +13,17 @@ use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     DeliveryRequest, OperatorNoticeDelivery, TeardownMode, TeardownRequest,
 };
+use crate::coordination::runtime::{resolve_or_create_pane_for_member, PaneResolution};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
 };
+use crate::daemon::protocol::LaunchMode as DaemonLaunchMode;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::control::{build_team_launch_command, validate_command_override};
+use crate::session_scanner::control::{
+    build_team_launch_command, resolve_configured_tool_command, validate_command_override,
+};
 
 impl CoordinationOrchestrator {
     /// Initialize a team via the high-level multi-step pipeline.
@@ -455,6 +459,304 @@ impl CoordinationOrchestrator {
         })
     }
 
+    /// Resume a member session with default command settings.
+    pub fn resume_member(
+        &mut self,
+        team_name: &str,
+        member_name: &str,
+        context_mode: ResumeContextMode,
+    ) -> Result<ResumeAgentReport, CoordinationError> {
+        let request = ResumeMemberRequest {
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+            context_mode,
+        };
+        self.resume_member_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+    }
+
+    pub fn resume_member_with_cli_commands(
+        &mut self,
+        request: &ResumeMemberRequest,
+        cli_commands: &CliCommandSettings,
+    ) -> Result<ResumeAgentReport, CoordinationError> {
+        self.resume_member_with_cli_commands_and_layout(request, cli_commands, "new_window")
+    }
+
+    /// Resume a member session in an existing team.
+    pub fn resume_member_with_cli_commands_and_layout(
+        &mut self,
+        request: &ResumeMemberRequest,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+    ) -> Result<ResumeAgentReport, CoordinationError> {
+        let mut succeeded_steps = Vec::new();
+        let mut steps = Vec::new();
+        let mut warnings = Vec::new();
+        let mut runtime_state = PendingResumeState::default();
+
+        if let Err(err) = self.validate_resume_request(request) {
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "validate",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                runtime_state.pane_id.clone(),
+                runtime_state.reused_pane,
+            ));
+        }
+        mark_step_succeeded(
+            "validate",
+            "request validated",
+            &mut succeeded_steps,
+            &mut steps,
+        );
+
+        let (member, mut runtime_record, lead_name) = match self.load_resume_member_state(request) {
+            Ok(value) => value,
+            Err(err) => {
+                return Ok(failed_resume_report(
+                    &request.team_name,
+                    &request.member_name,
+                    "load_member",
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                    warnings,
+                    runtime_state.pane_id.clone(),
+                    runtime_state.reused_pane,
+                ))
+            }
+        };
+        mark_step_succeeded(
+            "load_member",
+            "member and runtime state loaded",
+            &mut succeeded_steps,
+            &mut steps,
+        );
+
+        let pane_resolution =
+            match self.resolve_resume_pane(&member, Some(&runtime_record), tmux_layout) {
+                Ok(resolution) => resolution,
+                Err(err) => {
+                    self.cleanup_resume_failure(request, &runtime_state);
+                    return Ok(failed_resume_report(
+                        &request.team_name,
+                        &request.member_name,
+                        "resolve_pane",
+                        err,
+                        succeeded_steps,
+                        &mut steps,
+                        warnings,
+                        runtime_state.pane_id.clone(),
+                        runtime_state.reused_pane,
+                    ));
+                }
+            };
+        runtime_state.pane_id = Some(pane_resolution.pane_id.clone());
+        runtime_state.reused_pane = pane_resolution.reused_pane;
+        if pane_resolution.created_new_pane {
+            runtime_state.created_pane_id = Some(pane_resolution.pane_id.clone());
+            if runtime_record.pane_id.is_some() && !pane_resolution.reused_pane {
+                warnings.push(format!(
+                    "existing pane was not reusable for '{}'; created a new pane",
+                    request.member_name
+                ));
+            }
+        }
+        let resolve_message = if pane_resolution.reused_pane {
+            format!("reused pane {}", pane_resolution.pane_id)
+        } else {
+            format!("created pane {}", pane_resolution.pane_id)
+        };
+        mark_step_succeeded(
+            "resolve_pane",
+            resolve_message.as_str(),
+            &mut succeeded_steps,
+            &mut steps,
+        );
+
+        let pane_id = pane_resolution.pane_id;
+        if let Err(err) =
+            self.launch_resume_session(request, &member, &pane_id, cli_commands, &mut runtime_state)
+        {
+            self.cleanup_resume_failure(request, &runtime_state);
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "launch_session",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        }
+        mark_step_succeeded(
+            "launch_session",
+            "cli session launched",
+            &mut succeeded_steps,
+            &mut steps,
+        );
+
+        let is_claude = member.cli_tool == CliTool::Claude;
+        let is_lead = member.role == MemberRole::Lead;
+        if is_claude {
+            mark_step_succeeded(
+                "join_mesh",
+                "not required for claude",
+                &mut succeeded_steps,
+                &mut steps,
+            );
+        } else if let Err(err) = self.resume_join_mesh(request, &member, &mut runtime_state) {
+            self.cleanup_resume_failure(request, &runtime_state);
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "join_mesh",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        } else {
+            mark_step_succeeded("join_mesh", "mesh joined", &mut succeeded_steps, &mut steps);
+        }
+
+        if is_claude {
+            mark_step_succeeded(
+                "start_daemon",
+                "not required for claude",
+                &mut succeeded_steps,
+                &mut steps,
+            );
+        } else if let Err(err) = self.resume_start_daemon(
+            request,
+            &member,
+            &pane_id,
+            runtime_record.daemon_pid,
+            &mut runtime_state,
+            &mut warnings,
+        ) {
+            self.cleanup_resume_failure(request, &runtime_state);
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "start_daemon",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        } else {
+            mark_step_succeeded(
+                "start_daemon",
+                "mesh daemon started",
+                &mut succeeded_steps,
+                &mut steps,
+            );
+        }
+
+        if is_claude && is_lead {
+            mark_step_succeeded(
+                "send_onboarding",
+                "not required for claude lead",
+                &mut succeeded_steps,
+                &mut steps,
+            );
+        } else if let Err(err) = self.resume_send_onboarding(request, &member, &lead_name) {
+            self.cleanup_resume_failure(request, &runtime_state);
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "send_onboarding",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        } else {
+            mark_step_succeeded(
+                "send_onboarding",
+                "onboarding delivered",
+                &mut succeeded_steps,
+                &mut steps,
+            );
+        }
+
+        runtime_record.pane_id = Some(pane_id.clone());
+        runtime_record.session_id = runtime_state.session_id.clone();
+        runtime_record.daemon_pid = runtime_state.daemon_pid;
+        runtime_record.attached_at = Some(Utc::now());
+        runtime_record.health = HealthState::Healthy;
+        if let Err(err) = MemberRuntimeStore::save(
+            &self.teams_dir,
+            &request.team_name,
+            &request.member_name,
+            &runtime_record,
+        ) {
+            self.cleanup_resume_failure(request, &runtime_state);
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "update_runtime",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        }
+        if let Err(err) = self.sync_team_config_metadata(&request.team_name) {
+            self.cleanup_resume_failure(request, &runtime_state);
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "update_runtime",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        }
+        mark_step_succeeded(
+            "update_runtime",
+            "runtime state updated",
+            &mut succeeded_steps,
+            &mut steps,
+        );
+
+        Ok(ResumeAgentReport {
+            team_name: request.team_name.clone(),
+            member_name: request.member_name.clone(),
+            resumed: true,
+            succeeded_steps,
+            failed_step: None,
+            retryable: false,
+            message: "member resumed".to_string(),
+            steps,
+            warnings,
+            pane_id: Some(pane_id),
+            reused_pane: runtime_state.reused_pane,
+        })
+    }
+
     fn validate_initialize_configuration(
         &self,
         request: &InitializeTeamRequest,
@@ -694,6 +996,205 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
+    fn validate_resume_request(
+        &self,
+        request: &ResumeMemberRequest,
+    ) -> Result<(), CoordinationError> {
+        validate_team_name(&request.team_name)?;
+        validate_member_name(&request.member_name)?;
+        Ok(())
+    }
+
+    fn load_resume_member_state(
+        &self,
+        request: &ResumeMemberRequest,
+    ) -> Result<(Member, MemberRuntimeRecord, String), CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+        let lead_name = config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string());
+        let member = config
+            .members
+            .iter()
+            .find(|member| member.name == request.member_name)
+            .cloned()
+            .ok_or_else(|| {
+                CoordinationError::NotFound(format!(
+                    "member '{}' not found in team '{}'",
+                    request.member_name, request.team_name
+                ))
+            })?;
+
+        let runtime = match MemberRuntimeStore::load(
+            &self.teams_dir,
+            &request.team_name,
+            &request.member_name,
+        ) {
+            Ok(runtime) => runtime,
+            Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.member_name),
+            Err(err) => return Err(err),
+        };
+        if runtime.health != HealthState::SessionDead {
+            return Err(CoordinationError::Conflict(format!(
+                "member '{}' in team '{}' is not offline",
+                request.member_name, request.team_name
+            )));
+        }
+
+        Ok((member, runtime, lead_name))
+    }
+
+    fn resolve_resume_pane(
+        &self,
+        member: &Member,
+        runtime_record: Option<&MemberRuntimeRecord>,
+        tmux_layout: &str,
+    ) -> Result<PaneResolution, CoordinationError> {
+        resolve_or_create_pane_for_member(
+            self.runtime.as_ref(),
+            member,
+            runtime_record,
+            tmux_layout,
+        )
+    }
+
+    fn launch_resume_session(
+        &self,
+        request: &ResumeMemberRequest,
+        member: &Member,
+        pane_id: &str,
+        cli_commands: &CliCommandSettings,
+        runtime_state: &mut PendingResumeState,
+    ) -> Result<(), CoordinationError> {
+        let agent = AgentSetupConfig {
+            name: member.name.clone(),
+            cli_tool: member.cli_tool.to_string(),
+            model: String::new(),
+            project_id: member.project_path.display().to_string(),
+            description: member.instructions.clone(),
+        };
+        let launch_cmd = build_resume_cli_launch_command(
+            &agent,
+            &request.team_name,
+            member.role,
+            request.context_mode,
+            cli_commands,
+        )?;
+        self.runtime
+            .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())?;
+
+        if member.cli_tool == CliTool::Claude {
+            runtime_state.session_id = self.runtime.detect_session_id(pane_id, CliTool::Claude)?;
+        } else {
+            runtime_state.session_id = None;
+        }
+
+        Ok(())
+    }
+
+    fn resume_join_mesh(
+        &self,
+        request: &ResumeMemberRequest,
+        member: &Member,
+        runtime_state: &mut PendingResumeState,
+    ) -> Result<(), CoordinationError> {
+        let project_id = member.project_path.display().to_string();
+        self.runtime.join_mesh(
+            &request.team_name,
+            &request.member_name,
+            project_id.as_str(),
+        )?;
+        runtime_state.mesh_joined = true;
+        Ok(())
+    }
+
+    fn resume_start_daemon(
+        &self,
+        request: &ResumeMemberRequest,
+        member: &Member,
+        pane_id: &str,
+        previous_daemon_pid: Option<u32>,
+        runtime_state: &mut PendingResumeState,
+        warnings: &mut Vec<String>,
+    ) -> Result<(), CoordinationError> {
+        if let Some(pid) = previous_daemon_pid {
+            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                warnings.push(format!("failed to terminate stale daemon pid {pid}: {err}"));
+            }
+        }
+        let new_pid = self
+            .runtime
+            .spawn_mesh_daemon(pane_id, &request.team_name, &member.name)?;
+        runtime_state.daemon_pid = Some(new_pid);
+        runtime_state.new_daemon_pid = Some(new_pid);
+        Ok(())
+    }
+
+    fn resume_send_onboarding(
+        &mut self,
+        request: &ResumeMemberRequest,
+        member: &Member,
+        lead_name: &str,
+    ) -> Result<(), CoordinationError> {
+        let onboarding =
+            DeliveryRenderer::render_onboarding(&request.team_name, &member.name, lead_name);
+        self.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            member_name: member.name.clone(),
+            team_name: request.team_name.clone(),
+            message: onboarding,
+            sender_name: Some(lead_name.to_string()),
+        }))?;
+        Ok(())
+    }
+
+    fn cleanup_resume_failure(
+        &mut self,
+        request: &ResumeMemberRequest,
+        runtime_state: &PendingResumeState,
+    ) {
+        if let Some(pid) = runtime_state.new_daemon_pid {
+            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.member_name,
+                    pid = pid,
+                    error = %err,
+                    "resume rollback: failed to stop daemon process"
+                );
+            }
+        }
+
+        if runtime_state.mesh_joined {
+            if let Err(err) = self.backend.teardown(TeardownRequest {
+                member_name: request.member_name.clone(),
+                team_name: request.team_name.clone(),
+                mode: TeardownMode::Graceful,
+            }) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.member_name,
+                    error = %err,
+                    "resume rollback: failed to leave mesh"
+                );
+            }
+        }
+
+        if let Some(pane_id) = runtime_state.created_pane_id.as_deref() {
+            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %request.member_name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "resume rollback: failed to kill newly created pane"
+                );
+            }
+        }
+    }
+
     fn create_pane_for_agent(
         &self,
         request: &AddAgentRequest,
@@ -910,6 +1411,17 @@ struct PendingRuntimeState {
     member_added: bool,
 }
 
+#[derive(Debug, Default, Clone)]
+struct PendingResumeState {
+    pane_id: Option<String>,
+    session_id: Option<String>,
+    daemon_pid: Option<u32>,
+    new_daemon_pid: Option<u32>,
+    created_pane_id: Option<String>,
+    reused_pane: bool,
+    mesh_joined: bool,
+}
+
 fn mark_step_succeeded(
     step: &str,
     message: &str,
@@ -970,6 +1482,38 @@ fn failed_add_agent_report(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn failed_resume_report(
+    team_name: &str,
+    member_name: &str,
+    failed_step: &str,
+    err: CoordinationError,
+    succeeded_steps: Vec<String>,
+    steps: &mut Vec<StepProgress>,
+    warnings: Vec<String>,
+    pane_id: Option<String>,
+    reused_pane: bool,
+) -> ResumeAgentReport {
+    steps.push(StepProgress {
+        step: failed_step.to_string(),
+        status: StepStatus::Failed,
+        message: Some(err.to_string()),
+    });
+    ResumeAgentReport {
+        team_name: team_name.to_string(),
+        member_name: member_name.to_string(),
+        resumed: false,
+        succeeded_steps,
+        failed_step: Some(failed_step.to_string()),
+        retryable: true,
+        message: err.to_string(),
+        steps: std::mem::take(steps),
+        warnings,
+        pane_id,
+        reused_pane,
+    }
+}
+
 fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "claude" | "claude_native" => Ok(CliTool::Claude),
@@ -1006,6 +1550,45 @@ fn build_cli_launch_command(
     if command.trim().is_empty() {
         return Err(CoordinationError::Validation(format!(
             "configured launch command is empty for '{}'",
+            agent.cli_tool
+        )));
+    }
+    validate_command_override(&command).map_err(CoordinationError::Validation)?;
+
+    if cli_tool != CliTool::Claude {
+        return Ok(command);
+    }
+
+    Ok(with_claude_team_context(
+        command,
+        team_name,
+        &agent.name,
+        role,
+    ))
+}
+
+fn build_resume_cli_launch_command(
+    agent: &AgentSetupConfig,
+    team_name: &str,
+    role: MemberRole,
+    context_mode: ResumeContextMode,
+    cli_commands: &CliCommandSettings,
+) -> Result<String, CoordinationError> {
+    let cli_tool = parse_cli_tool(&agent.cli_tool)?;
+    let command = match context_mode {
+        ResumeContextMode::Fresh => build_team_launch_command(cli_commands, cli_tool, &agent.model),
+        ResumeContextMode::Continue => {
+            let mode = if cli_tool == CliTool::Claude {
+                DaemonLaunchMode::Continue
+            } else {
+                DaemonLaunchMode::Resume
+            };
+            resolve_configured_tool_command(cli_commands, cli_tool, mode)
+        }
+    };
+    if command.trim().is_empty() {
+        return Err(CoordinationError::Validation(format!(
+            "configured resume command is empty for '{}'",
             agent.cli_tool
         )));
     }
@@ -1104,6 +1687,32 @@ fn member_from_agent_setup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use tempfile::TempDir;
+
+    use crate::coordination::backend::fake::FakeBackend;
+    use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+    use crate::coordination::stores::MemberRuntimeStore;
+
+    fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Member {
+        Member {
+            name: name.to_string(),
+            role,
+            instructions: None,
+            project_path: PathBuf::from(project),
+            cli_tool,
+        }
+    }
+
+    fn new_orchestrator(
+        tmp: &TempDir,
+        backend: Arc<FakeBackend>,
+        runtime: Arc<RecordingCoordinationRuntime>,
+    ) -> CoordinationOrchestrator {
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime)
+    }
 
     #[test]
     fn build_cli_launch_command_uses_configured_fresh_command() {
@@ -1158,5 +1767,351 @@ mod tests {
         assert!(command.contains("--agent-name team-lead"));
         assert!(command.contains("--agent-id team-lead@ledger-team"));
         assert!(command.contains("--agent-type orchestrator"));
+    }
+
+    #[test]
+    fn build_resume_cli_launch_command_continue_uses_resume_for_codex() {
+        let cmds = crate::models::CliCommandSettings::default();
+        let agent = AgentSetupConfig {
+            name: "builder".to_string(),
+            cli_tool: "codex".to_string(),
+            model: "gpt-5.3".to_string(),
+            project_id: "/tmp/project".to_string(),
+            description: None,
+        };
+
+        let command = build_resume_cli_launch_command(
+            &agent,
+            "architecture-final",
+            MemberRole::Agent,
+            ResumeContextMode::Continue,
+            &cmds,
+        )
+        .expect("command");
+        assert_eq!(command, "codex resume --last --yolo");
+    }
+
+    #[test]
+    fn build_resume_cli_launch_command_continue_uses_claude_continue_with_team_context() {
+        let cmds = crate::models::CliCommandSettings::default();
+        let agent = AgentSetupConfig {
+            name: "team-lead".to_string(),
+            cli_tool: "claude".to_string(),
+            model: "opus".to_string(),
+            project_id: "/tmp/project".to_string(),
+            description: None,
+        };
+
+        let command = build_resume_cli_launch_command(
+            &agent,
+            "architecture-final",
+            MemberRole::Lead,
+            ResumeContextMode::Continue,
+            &cmds,
+        )
+        .expect("command");
+        assert!(command.contains("--continue"));
+        assert!(command.contains("--agent-type orchestrator"));
+        assert!(command.contains("--team-name architecture-final"));
+    }
+
+    #[test]
+    fn resume_pipeline_claude_lead_skips_mesh_daemon_and_onboarding() {
+        let tmp = TempDir::new().expect("tempdir");
+        let backend = Arc::new(FakeBackend::default());
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+        orchestrator
+            .create_team("architecture-final", None)
+            .expect("create team");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member(
+                    "team-lead",
+                    MemberRole::Lead,
+                    CliTool::Claude,
+                    "/tmp/lead-project",
+                ),
+            )
+            .expect("add lead");
+
+        let mut lead_runtime =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead")
+                .expect("runtime");
+        lead_runtime.pane_id = Some("%9".to_string());
+        lead_runtime.health = HealthState::SessionDead;
+        MemberRuntimeStore::save(tmp.path(), "architecture-final", "team-lead", &lead_runtime)
+            .expect("save runtime");
+
+        let report = orchestrator
+            .resume_member(
+                "architecture-final",
+                "team-lead",
+                ResumeContextMode::Continue,
+            )
+            .expect("resume report");
+
+        assert!(report.resumed);
+        assert!(report.reused_pane);
+        assert_eq!(report.failed_step, None);
+        let join_step = report
+            .steps
+            .iter()
+            .find(|step| step.step == "join_mesh")
+            .expect("join step");
+        assert_eq!(join_step.status, StepStatus::Succeeded);
+        assert!(join_step
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not required"));
+        let daemon_step = report
+            .steps
+            .iter()
+            .find(|step| step.step == "start_daemon")
+            .expect("daemon step");
+        assert!(daemon_step
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not required"));
+        let onboarding_step = report
+            .steps
+            .iter()
+            .find(|step| step.step == "send_onboarding")
+            .expect("onboarding step");
+        assert!(onboarding_step
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not required"));
+
+        let calls = runtime.calls();
+        let launch = calls
+            .iter()
+            .find_map(|call| match call {
+                RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+                _ => None,
+            })
+            .expect("launch command");
+        assert!(launch.contains("--continue"));
+        assert!(launch.contains("--agent-type orchestrator"));
+        assert!(!calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
+        assert!(!calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+        assert_eq!(
+            backend.call_counts().1,
+            0,
+            "onboarding should be skipped for lead"
+        );
+    }
+
+    #[test]
+    fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
+        let tmp = TempDir::new().expect("tempdir");
+        let backend = Arc::new(FakeBackend::default());
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+        orchestrator
+            .create_team("architecture-final", None)
+            .expect("create team");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member(
+                    "team-lead",
+                    MemberRole::Lead,
+                    CliTool::Claude,
+                    "/tmp/lead-project",
+                ),
+            )
+            .expect("add lead");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member(
+                    "researcher",
+                    MemberRole::Agent,
+                    CliTool::Claude,
+                    "/tmp/research",
+                ),
+            )
+            .expect("add member");
+
+        let mut member_runtime =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "researcher")
+                .expect("runtime");
+        member_runtime.pane_id = Some("%10".to_string());
+        member_runtime.health = HealthState::SessionDead;
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            "researcher",
+            &member_runtime,
+        )
+        .expect("save runtime");
+
+        let report = orchestrator
+            .resume_member(
+                "architecture-final",
+                "researcher",
+                ResumeContextMode::Continue,
+            )
+            .expect("resume report");
+
+        assert!(report.resumed);
+        let calls = runtime.calls();
+        let launch = calls
+            .iter()
+            .find_map(|call| match call {
+                RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+                _ => None,
+            })
+            .expect("launch command");
+        assert!(launch.contains("--agent-type general-purpose"));
+        assert!(!calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
+        assert!(!calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+        assert_eq!(backend.call_counts().1, 1, "onboarding should be delivered");
+    }
+
+    #[test]
+    fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime() {
+        let tmp = TempDir::new().expect("tempdir");
+        let backend = Arc::new(FakeBackend::default());
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+        orchestrator
+            .create_team("architecture-final", None)
+            .expect("create team");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member(
+                    "team-lead",
+                    MemberRole::Lead,
+                    CliTool::Claude,
+                    "/tmp/lead-project",
+                ),
+            )
+            .expect("add lead");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            )
+            .expect("add member");
+
+        let mut member_runtime =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+        member_runtime.pane_id = Some("%11".to_string());
+        member_runtime.daemon_pid = Some(55);
+        member_runtime.health = HealthState::SessionDead;
+        MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
+            .expect("save runtime");
+
+        let report = orchestrator
+            .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+            .expect("resume report");
+        assert!(report.resumed);
+        assert!(report.reused_pane);
+
+        let calls = runtime.calls();
+        let launch = calls
+            .iter()
+            .find_map(|call| match call {
+                RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+                _ => None,
+            })
+            .expect("launch command");
+        assert_eq!(launch, "codex resume --last --yolo");
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 55)));
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+        assert_eq!(backend.call_counts().1, 1, "onboarding should be delivered");
+
+        let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder")
+            .expect("updated runtime");
+        assert_eq!(updated.pane_id.as_deref(), Some("%11"));
+        assert_eq!(updated.health, HealthState::Healthy);
+        assert_eq!(updated.daemon_pid, Some(10000));
+        assert!(updated.attached_at.is_some());
+    }
+
+    #[test]
+    fn resume_failure_cleans_created_resources_and_keeps_member_config() {
+        let tmp = TempDir::new().expect("tempdir");
+        let backend = Arc::new(FakeBackend::default());
+        backend.set_deliver_error(CoordinationError::Backend("delivery failed".to_string()));
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+        orchestrator
+            .create_team("architecture-final", None)
+            .expect("create team");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member(
+                    "team-lead",
+                    MemberRole::Lead,
+                    CliTool::Claude,
+                    "/tmp/lead-project",
+                ),
+            )
+            .expect("add lead");
+        orchestrator
+            .add_member(
+                "architecture-final",
+                member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            )
+            .expect("add member");
+
+        // Existing pane should be reused; rollback must not kill it.
+        let mut member_runtime =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+        member_runtime.pane_id = Some("%77".to_string());
+        member_runtime.health = HealthState::SessionDead;
+        MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
+            .expect("save runtime");
+
+        let report = orchestrator
+            .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+            .expect("resume report");
+        assert!(!report.resumed);
+        assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+
+        let config = TeamConfigStore::load(tmp.path(), "architecture-final").expect("team config");
+        assert!(config.members.iter().any(|entry| entry.name == "builder"));
+
+        let calls = runtime.calls();
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 10000)));
+        assert!(
+            !calls
+                .iter()
+                .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%77")),
+            "reused pane must not be killed during rollback"
+        );
     }
 }

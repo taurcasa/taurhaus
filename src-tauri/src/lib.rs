@@ -542,6 +542,8 @@ pub fn run() {
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_add_agent,
             #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_resume_member,
+            #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_reonboard,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_live_team_status,

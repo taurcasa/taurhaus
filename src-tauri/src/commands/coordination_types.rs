@@ -121,6 +121,23 @@ pub struct AddAgentRequest {
     pub agent: AgentSetupConfig,
 }
 
+/// Context mode for resume operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResumeContextMode {
+    Continue,
+    Fresh,
+}
+
+/// IPC request for resuming a team member session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeMemberRequest {
+    pub team_name: String,
+    pub member_name: String,
+    pub context_mode: ResumeContextMode,
+}
+
 /// IPC response for hot-add operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,6 +149,23 @@ pub struct AddAgentReport {
     pub retryable: bool,
     pub message: String,
     pub steps: Vec<StepProgress>,
+}
+
+/// IPC response for resume operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeAgentReport {
+    pub team_name: String,
+    pub member_name: String,
+    pub resumed: bool,
+    pub succeeded_steps: Vec<String>,
+    pub failed_step: Option<String>,
+    pub retryable: bool,
+    pub message: String,
+    pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
+    pub pane_id: Option<String>,
+    pub reused_pane: bool,
 }
 
 /// IPC response for runtime member removal with teardown diagnostics.

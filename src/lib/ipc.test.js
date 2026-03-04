@@ -977,6 +977,34 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    it('coordinationResumeMember calls invoke with request and returns deterministic mock shape', async () => {
+      const mockModeResult = await ipc.coordinationResumeMember('arch', 'bob', 'continue')
+      expect(mockModeResult).toEqual({
+        teamName: 'arch',
+        memberName: 'bob',
+        resumed: true,
+        succeededSteps: ['validate', 'resolve_pane', 'launch_session', 'update_runtime'],
+        failedStep: null,
+        retryable: false,
+        message: 'member resumed',
+        steps: [
+          { step: 'validate', status: 'succeeded', message: 'request validated' },
+          { step: 'update_runtime', status: 'succeeded', message: 'runtime updated' },
+        ],
+        warnings: [],
+        paneId: '%2',
+        reusedPane: false,
+      })
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+      await ipc.coordinationResumeMember('arch', 'bob', 'fresh')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_resume_member', {
+        request: { teamName: 'arch', memberName: 'bob', contextMode: 'fresh' },
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('coordinationGetFeatureAvailability calls invoke and returns deterministic mock shape', async () => {
       const mockModeResult = await ipc.coordinationGetFeatureAvailability()
       expect(mockModeResult).toEqual({

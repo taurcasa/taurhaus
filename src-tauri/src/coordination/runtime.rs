@@ -3,14 +3,17 @@
 //! This isolates host-level operations (tmux, mesh, process control) behind a
 //! single interface so tests can run against a deterministic runtime double.
 
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
+use crate::coordination::domain::Member;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
+use crate::coordination::stores::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
 
 const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
@@ -50,9 +53,116 @@ pub trait CoordinationRuntime: Send + Sync {
         pane_id: &str,
         project_id: &str,
     ) -> Result<bool, CoordinationError>;
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError>;
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError>;
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError>;
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError>;
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaneResolution {
+    pub pane_id: String,
+    pub reused_pane: bool,
+    pub created_new_pane: bool,
+}
+
+/// Resolve a reusable pane for a member or create a fresh one.
+///
+/// Classification:
+/// - Missing pane id -> create
+/// - Lookup fail / missing pane target -> create
+/// - Dead pane + ownership match -> kill + create
+/// - Alive pane + ownership match -> reuse
+/// - Ownership mismatch/check failure -> warn + create
+pub fn resolve_or_create_pane_for_member(
+    runtime: &dyn CoordinationRuntime,
+    member: &Member,
+    runtime_record: Option<&MemberRuntimeRecord>,
+    tmux_layout: &str,
+) -> Result<PaneResolution, CoordinationError> {
+    let project_id = member.project_path.display().to_string();
+
+    let create_new = || -> Result<PaneResolution, CoordinationError> {
+        let pane_id = runtime.create_aitx_pane(&project_id, tmux_layout)?;
+        Ok(PaneResolution {
+            pane_id,
+            reused_pane: false,
+            created_new_pane: true,
+        })
+    };
+
+    let Some(existing_pane_id) = runtime_record.and_then(|record| record.pane_id.as_deref()) else {
+        return create_new();
+    };
+
+    if !runtime.pane_exists(existing_pane_id)? {
+        return create_new();
+    }
+
+    let is_dead = runtime.pane_is_dead(existing_pane_id)?;
+    if is_dead {
+        match runtime.pane_belongs_to_project(existing_pane_id, &project_id) {
+            Ok(true) => {
+                if let Err(err) = runtime.kill_aitx_pane(existing_pane_id) {
+                    tracing::warn!(
+                        pane_id = %existing_pane_id,
+                        member = %member.name,
+                        team_project = %project_id,
+                        error = %err,
+                        "resume pane resolution: failed to kill dead pane before recreate"
+                    );
+                }
+                return create_new();
+            }
+            Ok(false) => {
+                tracing::warn!(
+                    pane_id = %existing_pane_id,
+                    member = %member.name,
+                    team_project = %project_id,
+                    "resume pane resolution: dead pane ownership mismatch, creating new pane"
+                );
+                return create_new();
+            }
+            Err(err) => {
+                tracing::warn!(
+                    pane_id = %existing_pane_id,
+                    member = %member.name,
+                    team_project = %project_id,
+                    error = %err,
+                    "resume pane resolution: failed ownership check for dead pane, creating new pane"
+                );
+                return create_new();
+            }
+        }
+    }
+
+    match runtime.pane_belongs_to_project(existing_pane_id, &project_id) {
+        Ok(true) => Ok(PaneResolution {
+            pane_id: existing_pane_id.to_string(),
+            reused_pane: true,
+            created_new_pane: false,
+        }),
+        Ok(false) => {
+            tracing::warn!(
+                pane_id = %existing_pane_id,
+                member = %member.name,
+                team_project = %project_id,
+                "resume pane resolution: pane ownership mismatch, creating new pane"
+            );
+            create_new()
+        }
+        Err(err) => {
+            tracing::warn!(
+                pane_id = %existing_pane_id,
+                member = %member.name,
+                team_project = %project_id,
+                error = %err,
+                "resume pane resolution: ownership check failed, creating new pane"
+            );
+            create_new()
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -163,6 +273,37 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "#{pane_current_path}".to_string(),
         ])?;
         Ok(normalize_path_for_compare(&pane_path) == normalize_path_for_compare(project_id))
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        let out = run_tmux_output(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            tmux_target_for_pane(pane_id),
+            "#{pane_id}".to_string(),
+        ])?;
+        if !out.status.success() {
+            return Ok(false);
+        }
+        Ok(!String::from_utf8_lossy(&out.stdout).trim().is_empty())
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        let out = run_tmux_output(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            tmux_target_for_pane(pane_id),
+            "#{pane_dead}".to_string(),
+        ])?;
+        if !out.status.success() {
+            return Ok(false);
+        }
+        let raw = String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .to_ascii_lowercase();
+        Ok(raw == "1" || raw == "true")
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
@@ -306,6 +447,12 @@ pub enum RuntimeCall {
         pane_id: String,
         project_id: String,
     },
+    CheckPaneExists {
+        pane_id: String,
+    },
+    CheckPaneDead {
+        pane_id: String,
+    },
     KillPane {
         pane_id: String,
     },
@@ -320,6 +467,9 @@ pub enum RuntimeCall {
 #[derive(Debug, Default)]
 pub struct RecordingCoordinationRuntime {
     calls: Mutex<Vec<RuntimeCall>>,
+    pane_exists: Mutex<HashMap<String, bool>>,
+    pane_dead: Mutex<HashMap<String, bool>>,
+    pane_ownership: Mutex<HashMap<String, bool>>,
     pane_counter: AtomicUsize,
     pid_counter: AtomicU32,
 }
@@ -337,6 +487,24 @@ impl RecordingCoordinationRuntime {
             calls.push(call);
         }
     }
+
+    pub fn set_pane_exists(&self, pane_id: &str, exists: bool) {
+        if let Ok(mut map) = self.pane_exists.lock() {
+            map.insert(pane_id.to_string(), exists);
+        }
+    }
+
+    pub fn set_pane_dead(&self, pane_id: &str, dead: bool) {
+        if let Ok(mut map) = self.pane_dead.lock() {
+            map.insert(pane_id.to_string(), dead);
+        }
+    }
+
+    pub fn set_pane_ownership(&self, pane_id: &str, matches_project: bool) {
+        if let Ok(mut map) = self.pane_ownership.lock() {
+            map.insert(pane_id.to_string(), matches_project);
+        }
+    }
 }
 
 impl CoordinationRuntime for RecordingCoordinationRuntime {
@@ -349,7 +517,11 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             project_id: project_id.to_string(),
         });
         let idx = self.pane_counter.fetch_add(1, Ordering::SeqCst) + 1;
-        Ok(format!("test-pane-{idx}"))
+        let pane_id = format!("test-pane-{idx}");
+        self.set_pane_exists(&pane_id, true);
+        self.set_pane_dead(&pane_id, false);
+        self.set_pane_ownership(&pane_id, true);
+        Ok(pane_id)
     }
 
     fn send_tmux_keys_with_enter(
@@ -414,13 +586,46 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             pane_id: pane_id.to_string(),
             project_id: project_id.to_string(),
         });
-        Ok(true)
+        let matches = self
+            .pane_ownership
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .unwrap_or(true);
+        Ok(matches)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.push_call(RuntimeCall::CheckPaneExists {
+            pane_id: pane_id.to_string(),
+        });
+        let exists = self
+            .pane_exists
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .unwrap_or(true);
+        Ok(exists)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.push_call(RuntimeCall::CheckPaneDead {
+            pane_id: pane_id.to_string(),
+        });
+        let dead = self
+            .pane_dead
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .unwrap_or(false);
+        Ok(dead)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.push_call(RuntimeCall::KillPane {
             pane_id: pane_id.to_string(),
         });
+        self.set_pane_exists(pane_id, false);
         Ok(())
     }
 
@@ -720,6 +925,33 @@ fn validate_unix_pid(pid: u32) -> Result<String, CoordinationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coordination::domain::{HealthState, Member, MemberRole};
+    use crate::coordination::stores::MemberRuntimeRecord;
+    use std::path::PathBuf;
+
+    fn sample_member(name: &str, project_path: &str) -> Member {
+        Member {
+            name: name.to_string(),
+            role: MemberRole::Agent,
+            instructions: None,
+            project_path: PathBuf::from(project_path),
+            cli_tool: CliTool::Codex,
+        }
+    }
+
+    fn sample_runtime_with_pane(member_name: &str, pane_id: &str) -> MemberRuntimeRecord {
+        MemberRuntimeRecord {
+            schema_version: 1,
+            member_name: member_name.to_string(),
+            pane_id: Some(pane_id.to_string()),
+            session_id: None,
+            daemon_pid: None,
+            health: HealthState::SessionDead,
+            delivery_lease: None,
+            attached_at: None,
+            last_seen_at: None,
+        }
+    }
 
     #[test]
     fn tmux_target_uses_pane_id_when_present() {
@@ -827,5 +1059,106 @@ mod tests {
                 RuntimeCall::CheckPid { pid: 10000 },
             ]
         );
+    }
+
+    #[test]
+    fn resolve_or_create_pane_missing_creates_new_pane() {
+        let runtime = RecordingCoordinationRuntime::default();
+        let member = sample_member("agent-a", "/tmp/project");
+
+        let resolution = resolve_or_create_pane_for_member(&runtime, &member, None, "new_window")
+            .expect("resolution");
+
+        assert!(resolution.created_new_pane);
+        assert!(!resolution.reused_pane);
+        assert_eq!(resolution.pane_id, "test-pane-1");
+    }
+
+    #[test]
+    fn resolve_or_create_pane_lookup_fail_creates_new_pane() {
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%9", false);
+        let member = sample_member("agent-a", "/tmp/project");
+        let record = sample_runtime_with_pane("agent-a", "%9");
+
+        let resolution =
+            resolve_or_create_pane_for_member(&runtime, &member, Some(&record), "new_window")
+                .expect("resolution");
+
+        assert!(resolution.created_new_pane);
+        assert!(!resolution.reused_pane);
+        assert_eq!(resolution.pane_id, "test-pane-1");
+        assert!(runtime.calls().contains(&RuntimeCall::CheckPaneExists {
+            pane_id: "%9".to_string()
+        }));
+    }
+
+    #[test]
+    fn resolve_or_create_pane_dead_and_owned_kills_then_recreates() {
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", true);
+        runtime.set_pane_ownership("%9", true);
+        let member = sample_member("agent-a", "/tmp/project");
+        let record = sample_runtime_with_pane("agent-a", "%9");
+
+        let resolution =
+            resolve_or_create_pane_for_member(&runtime, &member, Some(&record), "new_window")
+                .expect("resolution");
+
+        assert!(resolution.created_new_pane);
+        assert!(!resolution.reused_pane);
+        assert_eq!(resolution.pane_id, "test-pane-1");
+        let calls = runtime.calls();
+        assert!(calls.contains(&RuntimeCall::KillPane {
+            pane_id: "%9".to_string()
+        }));
+    }
+
+    #[test]
+    fn resolve_or_create_pane_alive_and_owned_reuses_existing() {
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_pane_ownership("%9", true);
+        let member = sample_member("agent-a", "/tmp/project");
+        let record = sample_runtime_with_pane("agent-a", "%9");
+
+        let resolution =
+            resolve_or_create_pane_for_member(&runtime, &member, Some(&record), "new_window")
+                .expect("resolution");
+
+        assert!(!resolution.created_new_pane);
+        assert!(resolution.reused_pane);
+        assert_eq!(resolution.pane_id, "%9");
+        let calls = runtime.calls();
+        assert!(!calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::CreatePane { .. })));
+    }
+
+    #[test]
+    fn resolve_or_create_pane_ownership_mismatch_creates_without_kill() {
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_pane_ownership("%9", false);
+        let member = sample_member("agent-a", "/tmp/project");
+        let record = sample_runtime_with_pane("agent-a", "%9");
+
+        let resolution =
+            resolve_or_create_pane_for_member(&runtime, &member, Some(&record), "new_window")
+                .expect("resolution");
+
+        assert!(resolution.created_new_pane);
+        assert!(!resolution.reused_pane);
+        assert_eq!(resolution.pane_id, "test-pane-1");
+        let calls = runtime.calls();
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::CreatePane { .. })));
+        assert!(!calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%9")));
     }
 }

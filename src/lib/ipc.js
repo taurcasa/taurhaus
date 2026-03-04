@@ -576,6 +576,30 @@ export function coordinationAddAgent(request) {
   }))
 }
 
+/** Resume one offline member in an existing team. */
+export function coordinationResumeMember(teamName, memberName, contextMode = 'continue') {
+  return invokeOrMock(
+    'coordination_resume_member',
+    { request: { teamName, memberName, contextMode } },
+    () => ({
+      teamName,
+      memberName,
+      resumed: true,
+      succeededSteps: ['validate', 'resolve_pane', 'launch_session', 'update_runtime'],
+      failedStep: null,
+      retryable: false,
+      message: 'member resumed',
+      steps: [
+        { step: 'validate', status: 'succeeded', message: 'request validated' },
+        { step: 'update_runtime', status: 'succeeded', message: 'runtime updated' },
+      ],
+      warnings: [],
+      paneId: '%2',
+      reusedPane: false,
+    })
+  )
+}
+
 /** Re-send onboarding guidance to an existing team member. */
 export function coordinationReonboard(teamName, memberName) {
   return invokeOrMock(
