@@ -16,8 +16,11 @@ pub struct PersistedTask {
     pub owner: Option<String>,
     pub session_id: Option<String>,
     pub first_seen_at: String,
+    pub state_changed_at: Option<String>,
     pub updated_at: String,
     pub archived_at: Option<String>,
+    pub last_status: Option<String>,
+    pub archived_reason: Option<String>,
 }
 
 /// Upsert a task — insert or update if the composite key already exists.
@@ -30,8 +33,8 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
         serde_json::to_string(&task.blocked_by).unwrap_or_else(|_| "[]".to_string());
 
     conn.execute(
-        "INSERT INTO tasks (project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, updated_at, archived_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, NULL)
+        "INSERT INTO tasks (project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL, ?15, NULL)
          ON CONFLICT (project_path, source, source_task_id) DO UPDATE SET
             subject = excluded.subject,
             description = excluded.description,
@@ -41,8 +44,14 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
             blocked_by = excluded.blocked_by,
             owner = excluded.owner,
             session_id = excluded.session_id,
+            state_changed_at = CASE
+                WHEN tasks.status != excluded.status THEN excluded.updated_at
+                ELSE tasks.state_changed_at
+            END,
             updated_at = excluded.updated_at,
-            archived_at = NULL",
+            archived_at = NULL,
+            last_status = excluded.status,
+            archived_reason = NULL",
         params![
             task.project_path,
             task.source,
@@ -56,7 +65,9 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
             task.owner,
             task.session_id,
             task.first_seen_at,
+            task.state_changed_at,
             task.updated_at,
+            task.last_status,
         ],
     )?;
     Ok(())
@@ -77,7 +88,7 @@ pub fn get_tasks_for_project(
     project_path: &str,
 ) -> Result<Vec<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, updated_at, archived_at
+        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
          FROM tasks
          WHERE project_path = ?1 AND archived_at IS NULL
          ORDER BY source, source_task_id",
@@ -100,8 +111,11 @@ pub fn get_tasks_for_project(
                 owner: row.get(9)?,
                 session_id: row.get(10)?,
                 first_seen_at: row.get(11)?,
-                updated_at: row.get(12)?,
-                archived_at: row.get(13)?,
+                state_changed_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                archived_at: row.get(14)?,
+                last_status: row.get(15)?,
+                archived_reason: row.get(16)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -125,46 +139,36 @@ pub fn archive_or_delete_stale_tasks(
     source: &str,
     active_ids: &[&str],
 ) -> Result<StaleTaskResult, rusqlite::Error> {
-    if active_ids.is_empty() {
-        // If no active IDs, don't touch anything — the scanner may not have run
-        return Ok(StaleTaskResult {
-            archived: 0,
-            deleted: 0,
-        });
-    }
+    let stale_filter = if active_ids.is_empty() {
+        String::new()
+    } else {
+        let placeholders: Vec<String> = (0..active_ids.len())
+            .map(|i| format!("?{}", i + 3))
+            .collect();
+        format!("AND source_task_id NOT IN ({})", placeholders.join(", "))
+    };
 
-    let placeholders: Vec<String> = (0..active_ids.len())
-        .map(|i| format!("?{}", i + 3))
-        .collect();
-    let not_in = placeholders.join(", ");
-
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-        Box::new(project_path.to_string()),
-        Box::new(source.to_string()),
-    ];
-    for id in active_ids {
-        params.push(Box::new(id.to_string()));
-    }
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let mut sql_params: Vec<String> = vec![project_path.to_string(), source.to_string()];
+    sql_params.extend(active_ids.iter().map(|id| id.to_string()));
 
     // Archive completed stale tasks
     let now = chrono::Utc::now().to_rfc3339();
     let archive_sql = format!(
-        "UPDATE tasks SET archived_at = '{now}' \
+        "UPDATE tasks SET archived_at = '{now}', last_status = status, archived_reason = 'completed_and_removed' \
          WHERE project_path = ?1 AND source = ?2 \
-         AND source_task_id NOT IN ({not_in}) \
+         {stale_filter} \
          AND status = 'completed' AND archived_at IS NULL"
     );
-    let archived = conn.execute(&archive_sql, param_refs.as_slice())?;
+    let archived = conn.execute(&archive_sql, rusqlite::params_from_iter(sql_params.iter()))?;
 
     // Delete non-completed stale tasks
     let delete_sql = format!(
         "DELETE FROM tasks \
          WHERE project_path = ?1 AND source = ?2 \
-         AND source_task_id NOT IN ({not_in}) \
-         AND status != 'completed'"
+         {stale_filter} \
+         AND status != 'completed' AND archived_at IS NULL"
     );
-    let deleted = conn.execute(&delete_sql, param_refs.as_slice())?;
+    let deleted = conn.execute(&delete_sql, rusqlite::params_from_iter(sql_params.iter()))?;
 
     Ok(StaleTaskResult { archived, deleted })
 }
@@ -185,7 +189,7 @@ pub fn get_archived_tasks_for_project(
     project_path: &str,
 ) -> Result<Vec<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, updated_at, archived_at
+        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
          FROM tasks
          WHERE project_path = ?1 AND archived_at IS NOT NULL
          ORDER BY session_id, source, source_task_id",
@@ -208,8 +212,11 @@ pub fn get_archived_tasks_for_project(
                 owner: row.get(9)?,
                 session_id: row.get(10)?,
                 first_seen_at: row.get(11)?,
-                updated_at: row.get(12)?,
-                archived_at: row.get(13)?,
+                state_changed_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                archived_at: row.get(14)?,
+                last_status: row.get(15)?,
+                archived_reason: row.get(16)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -257,8 +264,11 @@ mod tests {
             owner: None,
             session_id: None,
             first_seen_at: "2026-02-22T10:00:00Z".to_string(),
+            state_changed_at: Some("2026-02-22T10:00:00Z".to_string()),
             updated_at: "2026-02-22T10:00:00Z".to_string(),
             archived_at: None,
+            last_status: Some(status.to_string()),
+            archived_reason: None,
         }
     }
 
@@ -517,19 +527,54 @@ mod tests {
     }
 
     #[test]
-    fn stale_with_empty_active_ids_is_noop() {
+    fn stale_with_empty_active_ids_archives_and_deletes_all_for_source() {
         let (conn, _tmp) = test_db();
 
         upsert_task(&conn, &make_task("claude", "1", "Task 1", "completed")).unwrap();
+        upsert_task(&conn, &make_task("claude", "2", "Task 2", "pending")).unwrap();
 
         let empty: Vec<&str> = vec![];
         let result =
             archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &empty).unwrap();
-        assert_eq!(result.archived, 0);
-        assert_eq!(result.deleted, 0);
+        assert_eq!(result.archived, 1);
+        assert_eq!(result.deleted, 1);
 
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
-        assert_eq!(tasks.len(), 1);
+        assert!(tasks.is_empty());
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(
+            archived[0].archived_reason.as_deref(),
+            Some("completed_and_removed")
+        );
+    }
+
+    #[test]
+    fn upsert_sets_state_changed_only_on_status_transition() {
+        let (conn, _tmp) = test_db();
+
+        let mut task = make_task("claude", "1", "Task", "pending");
+        task.updated_at = "2026-02-22T10:00:00Z".to_string();
+        task.state_changed_at = Some("2026-02-22T10:00:00Z".to_string());
+        upsert_task(&conn, &task).unwrap();
+
+        // Same status; state_changed_at should be preserved.
+        task.subject = "Task renamed".to_string();
+        task.updated_at = "2026-02-22T10:05:00Z".to_string();
+        upsert_task(&conn, &task).unwrap();
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks[0].state_changed_at.as_deref(), Some("2026-02-22T10:00:00Z"));
+
+        // Status transition; state_changed_at should update to current updated_at.
+        task.status = "completed".to_string();
+        task.updated_at = "2026-02-22T10:10:00Z".to_string();
+        upsert_task(&conn, &task).unwrap();
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks[0].state_changed_at.as_deref(), Some("2026-02-22T10:10:00Z"));
+        assert_eq!(tasks[0].last_status.as_deref(), Some("completed"));
     }
 
     #[test]

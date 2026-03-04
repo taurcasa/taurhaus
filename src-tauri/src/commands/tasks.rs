@@ -340,17 +340,13 @@ fn persisted_to_unified(
 ///
 /// After upserting the current scan results, removes DB entries for tasks that
 /// no longer appear in the scan (e.g., deleted from disk or status changed to
-/// "deleted"). Only prunes sources that contributed at least one task — if a
-/// source returned 0 tasks, its existing DB entries are preserved (the scanner
-/// may not have been able to reach the data).
+/// "deleted"). Reconciliation runs even on empty scans, but only for sources
+/// that were successfully scanned in this cycle.
 pub(crate) fn persist_task_scan(
     conn: &rusqlite::Connection,
     normalized_path: &str,
     scan_result: &crate::task_scanner::TaskResult,
 ) {
-    if scan_result.tasks.is_empty() {
-        return;
-    }
     let now = chrono::Utc::now().to_rfc3339();
     let persisted: Vec<crate::db::task_queries::PersistedTask> = scan_result
         .tasks
@@ -368,12 +364,18 @@ pub(crate) fn persist_task_scan(
             owner: t.owner.clone(),
             session_id: t.session_id.clone(),
             first_seen_at: now.clone(),
+            state_changed_at: Some(now.clone()),
             updated_at: now.clone(),
             archived_at: None,
+            last_status: Some(t.status.to_string()),
+            archived_reason: None,
         })
         .collect();
-    if let Err(e) = crate::db::task_queries::upsert_tasks(conn, &persisted) {
-        tracing::warn!(error = %e, "Failed to persist scanned tasks");
+
+    if !persisted.is_empty() {
+        if let Err(e) = crate::db::task_queries::upsert_tasks(conn, &persisted) {
+            tracing::warn!(error = %e, "Failed to persist scanned tasks");
+        }
     }
 
     prune_stale_tasks(conn, normalized_path, scan_result);
@@ -381,26 +383,34 @@ pub(crate) fn persist_task_scan(
 
 /// Archive or delete tasks that no longer appear in a scan result.
 ///
-/// Groups scan results by source, then for each source that contributed >=1 task,
-/// removes DB entries not present in the current scan.
+/// Groups scan results by source, then reconciles only sources that were
+/// successfully scanned in this cycle. A successfully scanned source with zero
+/// tasks means all previous tasks from that source are stale.
 fn prune_stale_tasks(
     conn: &rusqlite::Connection,
     normalized_path: &str,
     scan_result: &crate::task_scanner::TaskResult,
 ) {
-    let mut sources: std::collections::HashMap<String, Vec<&str>> =
+    let mut active_by_source: std::collections::HashMap<String, Vec<&str>> =
         std::collections::HashMap::new();
     for task in &scan_result.tasks {
-        sources
+        active_by_source
             .entry(task.source.to_string())
             .or_default()
             .push(&task.id);
     }
-    for (source, active_ids) in &sources {
+
+    for source in successfully_scanned_sources(scan_result) {
+        let empty: [&str; 0] = [];
+        let active_ids = active_by_source
+            .get(&source)
+            .map(|ids| ids.as_slice())
+            .unwrap_or(&empty);
+
         match crate::db::task_queries::archive_or_delete_stale_tasks(
             conn,
             normalized_path,
-            source,
+            &source,
             active_ids,
         ) {
             Ok(result) => {
@@ -418,6 +428,22 @@ fn prune_stale_tasks(
             }
         }
     }
+}
+
+fn successfully_scanned_sources(
+    scan_result: &crate::task_scanner::TaskResult,
+) -> std::collections::BTreeSet<String> {
+    let failed_sources: std::collections::HashSet<&str> = scan_result
+        .errors
+        .iter()
+        .map(|(source, _)| source.as_str())
+        .collect();
+
+    crate::session_scanner::cli_tool::all_tools()
+        .iter()
+        .map(|tool| tool.tool.to_string())
+        .filter(|source| !failed_sources.contains(source.as_str()))
+        .collect()
 }
 
 /// Scan task files from live sources (daemon or local).
@@ -473,4 +499,201 @@ pub(crate) fn scan_tasks_from_files(
         .collect();
 
     crate::task_scanner::get_tasks_for_project(project_path, &project_sessions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::init_db;
+    use crate::task_scanner::{TaskResult, TaskStatus, UnifiedTask};
+    use pretty_assertions::assert_eq;
+    use tempfile::NamedTempFile;
+
+    fn test_db() -> (rusqlite::Connection, NamedTempFile) {
+        let tmp = NamedTempFile::new().unwrap();
+        let conn = init_db(tmp.path()).unwrap();
+        (conn, tmp)
+    }
+
+    fn make_task_result(tasks: Vec<UnifiedTask>, errors: Vec<(&str, &str)>) -> TaskResult {
+        TaskResult {
+            tasks,
+            errors: errors
+                .into_iter()
+                .map(|(source, error)| (source.to_string(), error.to_string()))
+                .collect(),
+        }
+    }
+
+    fn make_unified_task(source: CliTool, id: &str, status: TaskStatus) -> UnifiedTask {
+        UnifiedTask {
+            id: id.to_string(),
+            subject: format!("Task {id}"),
+            description: None,
+            active_form: None,
+            status,
+            source,
+            blocks: vec![],
+            blocked_by: vec![],
+            owner: None,
+            session_id: None,
+        }
+    }
+
+    #[test]
+    fn empty_scan_archives_completed_and_deletes_non_completed_for_scanned_source() {
+        let (conn, _tmp) = test_db();
+        let now = chrono::Utc::now().to_rfc3339();
+        crate::db::task_queries::upsert_tasks(
+            &conn,
+            &[
+                crate::db::task_queries::PersistedTask {
+                    project_path: "/projects/foo".to_string(),
+                    source: "claude".to_string(),
+                    source_task_id: "1".to_string(),
+                    subject: "Done".to_string(),
+                    description: None,
+                    active_form: None,
+                    status: "completed".to_string(),
+                    blocks: vec![],
+                    blocked_by: vec![],
+                    owner: None,
+                    session_id: None,
+                    first_seen_at: now.clone(),
+                    state_changed_at: Some(now.clone()),
+                    updated_at: now.clone(),
+                    archived_at: None,
+                    last_status: Some("completed".to_string()),
+                    archived_reason: None,
+                },
+                crate::db::task_queries::PersistedTask {
+                    project_path: "/projects/foo".to_string(),
+                    source: "claude".to_string(),
+                    source_task_id: "2".to_string(),
+                    subject: "Pending".to_string(),
+                    description: None,
+                    active_form: None,
+                    status: "pending".to_string(),
+                    blocks: vec![],
+                    blocked_by: vec![],
+                    owner: None,
+                    session_id: None,
+                    first_seen_at: now.clone(),
+                    state_changed_at: Some(now.clone()),
+                    updated_at: now,
+                    archived_at: None,
+                    last_status: Some("pending".to_string()),
+                    archived_reason: None,
+                },
+            ],
+        )
+        .unwrap();
+
+        // Successful empty scan for Claude. Codex/Gemini failed, so only Claude is reconciled.
+        let scan_result = make_task_result(vec![], vec![("codex", "failed"), ("gemini", "failed")]);
+        persist_task_scan(&conn, "/projects/foo", &scan_result);
+
+        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert!(active.is_empty());
+
+        let archived =
+            crate::db::task_queries::get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].source, "claude");
+        assert_eq!(archived[0].source_task_id, "1");
+        assert_eq!(archived[0].last_status.as_deref(), Some("completed"));
+        assert_eq!(
+            archived[0].archived_reason.as_deref(),
+            Some("completed_and_removed")
+        );
+    }
+
+    #[test]
+    fn partial_scan_failure_does_not_prune_unscanned_sources() {
+        let (conn, _tmp) = test_db();
+        let now = chrono::Utc::now().to_rfc3339();
+        crate::db::task_queries::upsert_tasks(
+            &conn,
+            &[
+                crate::db::task_queries::PersistedTask {
+                    project_path: "/projects/foo".to_string(),
+                    source: "claude".to_string(),
+                    source_task_id: "1".to_string(),
+                    subject: "Done".to_string(),
+                    description: None,
+                    active_form: None,
+                    status: "completed".to_string(),
+                    blocks: vec![],
+                    blocked_by: vec![],
+                    owner: None,
+                    session_id: None,
+                    first_seen_at: now.clone(),
+                    state_changed_at: Some(now.clone()),
+                    updated_at: now.clone(),
+                    archived_at: None,
+                    last_status: Some("completed".to_string()),
+                    archived_reason: None,
+                },
+                crate::db::task_queries::PersistedTask {
+                    project_path: "/projects/foo".to_string(),
+                    source: "codex".to_string(),
+                    source_task_id: "codex-1".to_string(),
+                    subject: "Codex pending".to_string(),
+                    description: None,
+                    active_form: None,
+                    status: "pending".to_string(),
+                    blocks: vec![],
+                    blocked_by: vec![],
+                    owner: None,
+                    session_id: None,
+                    first_seen_at: now.clone(),
+                    state_changed_at: Some(now.clone()),
+                    updated_at: now,
+                    archived_at: None,
+                    last_status: Some("pending".to_string()),
+                    archived_reason: None,
+                },
+            ],
+        )
+        .unwrap();
+
+        // Claude scan succeeded with no tasks; Codex/Gemini failed this cycle.
+        let scan_result = make_task_result(vec![], vec![("codex", "timeout"), ("gemini", "timeout")]);
+        persist_task_scan(&conn, "/projects/foo", &scan_result);
+
+        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].source, "codex");
+        assert_eq!(active[0].source_task_id, "codex-1");
+    }
+
+    #[test]
+    fn pending_to_completed_to_removed_is_archived() {
+        let (conn, _tmp) = test_db();
+
+        let pending_scan = make_task_result(
+            vec![make_unified_task(CliTool::Claude, "1", TaskStatus::Pending)],
+            vec![("codex", "not-run"), ("gemini", "not-run")],
+        );
+        persist_task_scan(&conn, "/projects/foo", &pending_scan);
+
+        let completed_scan = make_task_result(
+            vec![make_unified_task(CliTool::Claude, "1", TaskStatus::Completed)],
+            vec![("codex", "not-run"), ("gemini", "not-run")],
+        );
+        persist_task_scan(&conn, "/projects/foo", &completed_scan);
+
+        let removed_scan = make_task_result(vec![], vec![("codex", "not-run"), ("gemini", "not-run")]);
+        persist_task_scan(&conn, "/projects/foo", &removed_scan);
+
+        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert!(active.is_empty());
+
+        let archived =
+            crate::db::task_queries::get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].source, "claude");
+        assert_eq!(archived[0].source_task_id, "1");
+        assert_eq!(archived[0].status, "completed");
+    }
 }
