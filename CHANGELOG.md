@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-04
+
+### Fixed
+
+**Markdown Link Navigation**
+- Fix broken relative link clicks in rendered markdown (undefined `resolveImagePath` function)
+- Tab-aware path resolution: Overview tab resolves links against README, Files tab resolves against selected file
+- Cross-file anchor navigation: clicking `docs/foo.md#section` now opens the file and scrolls to the heading
+- Directory links (`docs/`): expand in file tree and open README.md if present
+- Platform route links (`../../releases`, `../../issues`): detect above-root paths, resolve via git remote URL, open in system browser
+- Add `check_path_type` IPC command for file vs directory classification
+- Add `get_remote_url` IPC command with SSH-to-HTTPS remote conversion
+- Fix daemon test assertion for empty session store version
+
 ## [0.4.0] - 2026-03-03
 
 ### Added
