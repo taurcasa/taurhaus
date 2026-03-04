@@ -128,7 +128,7 @@ pub fn coordination_remove_member(
     state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
-) -> Result<(), String> {
+) -> Result<RemoveAgentReport, String> {
     coordination_remove_member_impl(state.inner(), team_name, member_name)
 }
 
@@ -458,14 +458,47 @@ fn coordination_remove_member_impl(
     state: &CoordinationState,
     team_name: String,
     member_name: String,
-) -> Result<(), String> {
+) -> Result<RemoveAgentReport, String> {
     validate_non_empty("team_name", &team_name)?;
     validate_non_empty("member_name", &member_name)?;
-    state
+    let result = state
         .with_orchestrator(|orchestrator| {
             orchestrator.remove_member(&team_name, &member_name, None)
         })
-        .map_err(map_coordination_error)
+        .map_err(map_coordination_error)?;
+
+    let steps = result
+        .steps
+        .into_iter()
+        .map(|step| StepProgress {
+            step: step.step,
+            status: if step.success {
+                StepStatus::Succeeded
+            } else {
+                StepStatus::Failed
+            },
+            message: step.message,
+        })
+        .collect::<Vec<_>>();
+
+    let warning_count = result.warnings.len();
+    let message = if warning_count == 0 {
+        "member removed".to_string()
+    } else {
+        format!(
+            "member removed with {warning_count} warning{}",
+            if warning_count == 1 { "" } else { "s" }
+        )
+    };
+
+    Ok(RemoveAgentReport {
+        team_name: result.team_name,
+        member_name: result.member_name,
+        removed: result.removed,
+        message,
+        steps,
+        warnings: result.warnings,
+    })
 }
 
 fn coordination_list_teams_impl(

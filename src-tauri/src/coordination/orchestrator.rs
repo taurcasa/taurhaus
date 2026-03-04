@@ -1,7 +1,7 @@
 //! Coordination orchestrator service.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -51,6 +51,24 @@ pub struct DisbandTeamResult {
     pub team_name: String,
     pub disbanded: bool,
     pub already_disbanded: bool,
+}
+
+/// Result of removing a member with teardown diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveMemberResult {
+    pub team_name: String,
+    pub member_name: String,
+    pub removed: bool,
+    pub steps: Vec<RemoveMemberStepResult>,
+    pub warnings: Vec<String>,
+}
+
+/// Per-step teardown status for runtime member removal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveMemberStepResult {
+    pub step: String,
+    pub success: bool,
+    pub message: Option<String>,
 }
 
 /// Top-level coordination service entrypoint.
@@ -171,6 +189,7 @@ impl CoordinationOrchestrator {
             self.teardown_member_resources_best_effort(
                 name,
                 &member.name,
+                Some(member.project_path.as_path()),
                 runtime_by_member.get(&member.name),
             );
         }
@@ -241,11 +260,27 @@ impl CoordinationOrchestrator {
         team_name: &str,
         member_name: &str,
         reason: Option<String>,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<RemoveMemberResult, CoordinationError> {
         validate_team_name(team_name)?;
         validate_member_name(member_name)?;
 
         let mut config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let member = config
+            .members
+            .iter()
+            .find(|candidate| candidate.name == member_name)
+            .cloned()
+            .ok_or_else(|| {
+                CoordinationError::NotFound(format!(
+                    "member '{member_name}' not found in team '{team_name}'"
+                ))
+            })?;
+        if member.role == MemberRole::Lead {
+            return Err(CoordinationError::Validation(format!(
+                "member '{member_name}' is the team lead for '{team_name}' and cannot be removed"
+            )));
+        }
+
         let original_len = config.members.len();
         config.members.retain(|member| member.name != member_name);
         if config.members.len() == original_len {
@@ -268,10 +303,19 @@ impl CoordinationOrchestrator {
             }
         };
 
-        self.teardown_member_resources_best_effort(team_name, member_name, runtime.as_ref());
+        let teardown = self.teardown_member_resources_best_effort(
+            team_name,
+            member_name,
+            Some(member.project_path.as_path()),
+            runtime.as_ref(),
+        );
 
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
+        let mut steps = teardown.steps;
+        steps.push(step_succeeded("update_config", "team config updated"));
+
         MemberRuntimeStore::delete(&self.teams_dir, team_name, member_name)?;
+        steps.push(step_succeeded("delete_runtime", "runtime record deleted"));
 
         self.audit_log
             .push(AuditEvent::MemberRemoved(MemberRemovedEvent {
@@ -280,7 +324,13 @@ impl CoordinationOrchestrator {
                 reason,
                 removed_at: Utc::now(),
             }));
-        Ok(())
+        Ok(RemoveMemberResult {
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+            removed: true,
+            steps,
+            warnings: teardown.warnings,
+        })
     }
 
     /// Best-effort startup reconciliation for stale runtime process metadata.
@@ -342,7 +392,12 @@ impl CoordinationOrchestrator {
                     member = %member_name,
                     "orphan runtime record found during startup reconciliation"
                 );
-                self.teardown_member_resources_best_effort(team_name, &member_name, Some(&runtime));
+                self.teardown_member_resources_best_effort(
+                    team_name,
+                    &member_name,
+                    None,
+                    Some(&runtime),
+                );
                 if let Err(err) =
                     MemberRuntimeStore::delete(&self.teams_dir, team_name, &member_name)
                 {
@@ -392,8 +447,11 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
         member_name: &str,
+        member_project_path: Option<&Path>,
         runtime: Option<&MemberRuntimeRecord>,
-    ) {
+    ) -> TeardownDiagnostics {
+        let mut diagnostics = TeardownDiagnostics::default();
+
         if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
             if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
                 tracing::warn!(
@@ -403,7 +461,22 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to terminate daemon during teardown"
                 );
+                diagnostics.steps.push(step_failed(
+                    "terminate_daemon",
+                    format!("failed to terminate daemon pid {pid}: {err}"),
+                ));
+                diagnostics
+                    .warnings
+                    .push(format!("failed to terminate daemon pid {pid}: {err}"));
+            } else {
+                diagnostics
+                    .steps
+                    .push(step_succeeded("terminate_daemon", format!("daemon pid {pid} terminated")));
             }
+        } else {
+            diagnostics
+                .steps
+                .push(step_succeeded("terminate_daemon", "no daemon pid recorded"));
         }
 
         if let Err(err) = self.backend.teardown(TeardownRequest {
@@ -417,19 +490,117 @@ impl CoordinationOrchestrator {
                 error = %err,
                 "failed to leave mesh during teardown"
             );
+            diagnostics.steps.push(step_failed(
+                "leave_mesh",
+                format!("failed to leave mesh: {err}"),
+            ));
+            diagnostics
+                .warnings
+                .push(format!("failed to leave mesh membership: {err}"));
+        } else {
+            diagnostics
+                .steps
+                .push(step_succeeded("leave_mesh", "mesh presence removed"));
         }
 
         if let Some(pane_id) = runtime.and_then(|record| record.pane_id.as_deref()) {
-            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
-                tracing::warn!(
-                    team = %team_name,
-                    member = %member_name,
-                    pane_id = %pane_id,
-                    error = %err,
-                    "failed to kill pane during teardown"
-                );
+            match member_project_path {
+                Some(project_path) => {
+                    let project_path = project_path.display().to_string();
+                    match self
+                        .runtime
+                        .pane_belongs_to_project(pane_id, project_path.as_str())
+                    {
+                        Ok(true) => {
+                            diagnostics.steps.push(step_succeeded(
+                                "verify_pane_ownership",
+                                format!("pane {pane_id} matched project {project_path}"),
+                            ));
+                            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+                                tracing::warn!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pane_id = %pane_id,
+                                    error = %err,
+                                    "failed to kill pane during teardown"
+                                );
+                                diagnostics.steps.push(step_failed(
+                                    "kill_pane",
+                                    format!("failed to kill pane {pane_id}: {err}"),
+                                ));
+                                diagnostics
+                                    .warnings
+                                    .push(format!("failed to kill pane {pane_id}: {err}"));
+                            } else {
+                                diagnostics.steps.push(step_succeeded(
+                                    "kill_pane",
+                                    format!("pane {pane_id} terminated"),
+                                ));
+                            }
+                        }
+                        Ok(false) => {
+                            diagnostics.steps.push(step_failed(
+                                "verify_pane_ownership",
+                                format!(
+                                    "pane {pane_id} did not match expected project {project_path}"
+                                ),
+                            ));
+                            diagnostics.warnings.push(format!(
+                                "skipped pane teardown for {pane_id}: ownership mismatch for {project_path}"
+                            ));
+                            diagnostics.steps.push(step_failed(
+                                "kill_pane",
+                                format!("skipped pane kill for {pane_id} due to ownership mismatch"),
+                            ));
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pane_id = %pane_id,
+                                error = %err,
+                                "failed to verify pane ownership during teardown"
+                            );
+                            diagnostics.steps.push(step_failed(
+                                "verify_pane_ownership",
+                                format!("failed to verify pane ownership for {pane_id}: {err}"),
+                            ));
+                            diagnostics.warnings.push(format!(
+                                "skipped pane teardown for {pane_id}: ownership check failed ({err})"
+                            ));
+                            diagnostics.steps.push(step_failed(
+                                "kill_pane",
+                                format!(
+                                    "skipped pane kill for {pane_id} because ownership check failed"
+                                ),
+                            ));
+                        }
+                    }
+                }
+                None => {
+                    diagnostics.steps.push(step_failed(
+                        "verify_pane_ownership",
+                        format!("no project path recorded for member '{member_name}'"),
+                    ));
+                    diagnostics.warnings.push(format!(
+                        "skipped pane teardown for {pane_id}: missing project path for ownership check"
+                    ));
+                    diagnostics.steps.push(step_failed(
+                        "kill_pane",
+                        format!("skipped pane kill for {pane_id} because project path is missing"),
+                    ));
+                }
             }
+        } else {
+            diagnostics
+                .steps
+                .push(step_succeeded("verify_pane_ownership", "no pane id recorded"));
+            diagnostics
+                .steps
+                .push(step_succeeded("kill_pane", "no pane id recorded"));
         }
+
+        diagnostics
     }
 
     /// Drain buffered audit events and clear the in-memory log.
@@ -554,6 +725,28 @@ impl CoordinationOrchestrator {
                 new_pid,
                 reclaimed_at: Utc::now(),
             }));
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct TeardownDiagnostics {
+    steps: Vec<RemoveMemberStepResult>,
+    warnings: Vec<String>,
+}
+
+fn step_succeeded(step: &str, message: impl Into<String>) -> RemoveMemberStepResult {
+    RemoveMemberStepResult {
+        step: step.to_string(),
+        success: true,
+        message: Some(message.into()),
+    }
+}
+
+fn step_failed(step: &str, message: impl Into<String>) -> RemoveMemberStepResult {
+    RemoveMemberStepResult {
+        step: step.to_string(),
+        success: false,
+        message: Some(message.into()),
     }
 }
 

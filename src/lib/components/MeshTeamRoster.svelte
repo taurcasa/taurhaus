@@ -7,8 +7,10 @@
     dark = false,
     onAddAgent = () => {},
     onDisband = () => {},
+    onRemoveAgent = () => {},
     onFocusPane = () => {},
     disbanding = false,
+    removingMembers = [],
     refreshNonce = 0,
   } = $props()
 
@@ -34,6 +36,11 @@
   const idleCount = $derived.by(
     () => members.filter((member) => statusToState(member.sessionStatus) === 'idle').length
   )
+  const removingMemberSet = $derived.by(() => {
+    if (removingMembers instanceof Set) return removingMembers
+    if (Array.isArray(removingMembers)) return new Set(removingMembers)
+    return new Set()
+  })
 
   function statusToState(status) {
     const normalized = String(status || '').toLowerCase()
@@ -100,6 +107,10 @@
     ) {
       showOverflowMenu = false
     }
+  }
+
+  function isRemovingMember(memberName) {
+    return removingMemberSet.has(memberName)
   }
 
   async function refreshRoster() {
@@ -293,6 +304,7 @@
                 class={rowActionTone}
                 onclick={() => onFocusPane(member.paneId)}
                 title="Jump to this agent's terminal pane"
+                disabled={isRemovingMember(member.name)}
                 data-testid={`mesh-focus-pane-${member.name}`}
               >
                 Focus
@@ -302,11 +314,20 @@
               <button
                 class={rowActionTone}
                 onclick={() => handleReonboard(member.name)}
-                disabled={reonboarding.has(member.name)}
+                disabled={reonboarding.has(member.name) || isRemovingMember(member.name)}
                 title="Re-send setup instructions to this agent"
                 data-testid={`mesh-reonboard-${member.name}`}
               >
                 Re-onboard
+              </button>
+              <button
+                class={rowActionTone}
+                onclick={() => onRemoveAgent(member.name)}
+                disabled={isRemovingMember(member.name)}
+                title="Remove this agent and clean up managed resources"
+                data-testid={`mesh-remove-member-${member.name}`}
+              >
+                {isRemovingMember(member.name) ? 'Removing...' : 'Remove'}
               </button>
               {#if reonboardSent.has(member.name)}
                 <span class="text-[10px] text-success-400 animate-[meshfade_2s_ease-out_forwards]" data-testid={`mesh-reonboard-sent-${member.name}`}>

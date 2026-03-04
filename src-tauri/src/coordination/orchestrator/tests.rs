@@ -123,6 +123,94 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         self.inner.spawn_mesh_daemon(pane_id, team_name, member_name)
     }
 
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
+}
+
+#[derive(Debug)]
+struct PaneOwnershipRuntime {
+    inner: RecordingCoordinationRuntime,
+    ownership_matches: bool,
+}
+
+impl PaneOwnershipRuntime {
+    fn new(ownership_matches: bool) -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+            ownership_matches,
+        }
+    }
+
+    fn calls(&self) -> Vec<RuntimeCall> {
+        self.inner.calls()
+    }
+}
+
+impl CoordinationRuntime for PaneOwnershipRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.join_mesh(team_name, member_name, project_id)
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        let _ = self.inner.pane_belongs_to_project(pane_id, project_id)?;
+        Ok(self.ownership_matches)
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.inner.kill_aitx_pane(pane_id)
     }
@@ -423,9 +511,12 @@ fn remove_member_cleans_runtime() {
     orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
-    orchestrator
+    let report = orchestrator
         .remove_member(team_name, member_name, Some("cleanup".to_string()))
         .expect("remove should succeed");
+    assert!(report.removed);
+    assert!(report.steps.iter().any(|step| step.step == "update_config"));
+    assert!(report.steps.iter().any(|step| step.step == "delete_runtime"));
 
     let status = orchestrator
         .get_team_status(team_name)
@@ -456,13 +547,119 @@ fn remove_member_tears_down_runtime_resources() {
     runtime.daemon_pid = Some(u32::MAX);
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime).expect("runtime saved");
 
-    orchestrator
+    let report = orchestrator
         .remove_member(team_name, member_name, Some("cleanup".to_string()))
         .expect("remove should succeed");
+    assert!(report.removed);
+    assert!(
+        report
+            .steps
+            .iter()
+            .any(|step| step.step == "verify_pane_ownership" && step.success)
+    );
+    assert!(
+        report
+            .steps
+            .iter()
+            .any(|step| step.step == "kill_pane" && step.success)
+    );
     assert_eq!(
         fake.call_counts(),
         (0, 0, 0, 1),
         "remove_member should invoke backend teardown"
+    );
+}
+
+#[test]
+fn remove_member_rejects_lead_removal() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(&tmp);
+    let team_name = "architecture-final";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                instructions: Some("lead".to_string()),
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
+
+    let err = orchestrator
+        .remove_member(team_name, "team-lead", None)
+        .expect_err("lead removal should be blocked");
+    match err {
+        CoordinationError::Validation(message) => {
+            assert!(message.contains("cannot be removed"));
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+}
+
+#[test]
+fn remove_member_skips_pane_kill_on_ownership_mismatch() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(PaneOwnershipRuntime::new(false));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        Arc::new(FakeBackend::default()),
+        runtime.clone(),
+    );
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut runtime_record =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
+    runtime_record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime_record)
+        .expect("runtime saved");
+
+    let report = orchestrator
+        .remove_member(team_name, member_name, Some("cleanup".to_string()))
+        .expect("remove should succeed");
+
+    assert!(
+        report
+            .steps
+            .iter()
+            .any(|step| step.step == "verify_pane_ownership" && !step.success)
+    );
+    assert!(
+        report
+            .steps
+            .iter()
+            .any(|step| step.step == "kill_pane" && !step.success)
+    );
+    assert!(!report.warnings.is_empty());
+
+    let calls = runtime.calls();
+    assert!(
+        calls.iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPaneOwnership { pane_id, .. } if pane_id == "%9"
+        )),
+        "ownership check should run before pane kill"
+    );
+    assert!(
+        !calls.iter().any(|call| matches!(
+            call,
+            RuntimeCall::KillPane { pane_id } if pane_id == "%9"
+        )),
+        "pane kill should be skipped on ownership mismatch"
     );
 }
 

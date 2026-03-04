@@ -584,8 +584,12 @@ fn remove_member_happy_path_removes_member() {
         "mesh".to_string(),
     )
     .expect("add");
-    coordination_remove_member_impl(&state, "arch".to_string(), "alice".to_string())
+    let report = coordination_remove_member_impl(&state, "arch".to_string(), "alice".to_string())
         .expect("remove");
+    assert!(report.removed);
+    assert_eq!(report.team_name, "arch");
+    assert_eq!(report.member_name, "alice");
+    assert!(!report.steps.is_empty());
     let status = coordination_get_team_status_impl(&state, "arch".to_string()).expect("status");
     assert!(status.members.is_empty());
 }
@@ -812,6 +816,33 @@ fn add_agent_request_and_report_round_trip() {
     let report_decoded: AddAgentReport =
         serde_json::from_str(&report_json).expect("deserialize add-agent report");
     assert_eq!(report_decoded, report);
+}
+
+#[test]
+fn remove_agent_report_round_trip() {
+    let value = RemoveAgentReport {
+        team_name: "architecture-final".to_string(),
+        member_name: "backend-dev".to_string(),
+        removed: true,
+        message: "member removed with 1 warning".to_string(),
+        steps: vec![
+            StepProgress {
+                step: "leave_mesh".to_string(),
+                status: StepStatus::Succeeded,
+                message: Some("mesh presence removed".to_string()),
+            },
+            StepProgress {
+                step: "kill_pane".to_string(),
+                status: StepStatus::Failed,
+                message: Some("skipped pane kill for %2 due to ownership mismatch".to_string()),
+            },
+        ],
+        warnings: vec!["skipped pane teardown for %2: ownership mismatch".to_string()],
+    };
+    let json = serde_json::to_string(&value).expect("serialize remove-agent report");
+    let decoded: RemoveAgentReport =
+        serde_json::from_str(&json).expect("deserialize remove-agent report");
+    assert_eq!(decoded, value);
 }
 
 #[test]

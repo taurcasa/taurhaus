@@ -134,6 +134,18 @@ pub struct AddAgentReport {
     pub steps: Vec<StepProgress>,
 }
 
+/// IPC response for runtime member removal with teardown diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveAgentReport {
+    pub team_name: String,
+    pub member_name: String,
+    pub removed: bool,
+    pub message: String,
+    pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
+}
+
 /// IPC request for re-sending onboarding to an existing team member.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

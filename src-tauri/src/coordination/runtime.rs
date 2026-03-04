@@ -45,6 +45,11 @@ pub trait CoordinationRuntime: Send + Sync {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError>;
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError>;
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError>;
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError>;
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError>;
@@ -140,6 +145,24 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         ]);
         let child = spawn_system_command(&invocation)?;
         Ok(child.id())
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        if project_id.trim().is_empty() {
+            return Ok(false);
+        }
+        let pane_path = run_tmux(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            tmux_target_for_pane(pane_id),
+            "#{pane_current_path}".to_string(),
+        ])?;
+        Ok(normalize_path_for_compare(&pane_path) == normalize_path_for_compare(project_id))
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
@@ -279,6 +302,10 @@ pub enum RuntimeCall {
         team_name: String,
         member_name: String,
     },
+    CheckPaneOwnership {
+        pane_id: String,
+        project_id: String,
+    },
     KillPane {
         pane_id: String,
     },
@@ -376,6 +403,18 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         });
         let pid = self.pid_counter.fetch_add(1, Ordering::SeqCst) + 10000;
         Ok(pid)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.push_call(RuntimeCall::CheckPaneOwnership {
+            pane_id: pane_id.to_string(),
+            project_id: project_id.to_string(),
+        });
+        Ok(true)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
@@ -657,6 +696,17 @@ fn tmux_target_for_pane(pane_id: &str) -> String {
     }
 }
 
+fn normalize_path_for_compare(raw: &str) -> String {
+    let mut value = raw.trim().replace('\\', "/");
+    while value.contains("//") {
+        value = value.replace("//", "/");
+    }
+    while value.len() > 1 && value.ends_with('/') {
+        value.pop();
+    }
+    value
+}
+
 #[cfg(not(target_os = "windows"))]
 fn validate_unix_pid(pid: u32) -> Result<String, CoordinationError> {
     if pid == 0 || pid > i32::MAX as u32 {
@@ -679,6 +729,18 @@ mod tests {
     #[test]
     fn tmux_target_wraps_numeric_index() {
         assert_eq!(tmux_target_for_pane("3"), ":.3");
+    }
+
+    #[test]
+    fn normalize_path_for_compare_handles_slashes_and_trailing_separator() {
+        assert_eq!(
+            normalize_path_for_compare("/home/mstie/projects/taurhaus/"),
+            "/home/mstie/projects/taurhaus"
+        );
+        assert_eq!(
+            normalize_path_for_compare("\\\\home\\\\mstie\\\\projects\\\\taurhaus\\\\"),
+            "/home/mstie/projects/taurhaus"
+        );
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -725,6 +787,9 @@ mod tests {
         runtime
             .join_mesh("alpha", "agent-a", "/tmp/project")
             .expect("join");
+        assert!(runtime
+            .pane_belongs_to_project(&pane, "/tmp/project")
+            .expect("ownership check"));
         runtime.terminate_process_by_pid(pid).expect("terminate");
         runtime.kill_aitx_pane(&pane).expect("kill pane");
         assert!(!runtime.is_process_running_by_pid(pid).expect("check pid"));
@@ -750,6 +815,10 @@ mod tests {
                     team_name: "alpha".to_string(),
                     member_name: "agent-a".to_string(),
                     project_id: "/tmp/project".to_string(),
+                },
+                RuntimeCall::CheckPaneOwnership {
+                    pane_id: "test-pane-1".to_string(),
+                    project_id: "/tmp/project".to_string()
                 },
                 RuntimeCall::TerminatePid { pid: 10000 },
                 RuntimeCall::KillPane {

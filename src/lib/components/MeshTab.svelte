@@ -3,6 +3,7 @@
     coordinationAddAgent,
     coordinationDisbandTeam,
     coordinationListTeams,
+    coordinationRemoveMember,
   } from '../ipc.js'
   import MeshSetupForm from './MeshSetupForm.svelte'
   import MeshInitProgress from './MeshInitProgress.svelte'
@@ -17,6 +18,7 @@
     availableProjects = [],
     onAddAgent: onAddAgentProp = () => {},
     onDisband: onDisbandProp = () => {},
+    onRemoveAgent: onRemoveAgentProp = () => {},
     onFocusPane: onFocusPaneProp = () => {},
   } = $props()
 
@@ -78,6 +80,9 @@
   let addAgentProjectId = $state('')
   let addAgentDescription = $state('')
   let rosterRefreshNonce = $state(0)
+  let removingMembers = $state(new Set())
+  let removeMemberPending = $state('')
+  let showRemoveMemberConfirm = $state(false)
   let disbanding = $state(false)
   let showDisbandConfirm = $state(false)
   let discoveredTeams = $state([])
@@ -309,6 +314,8 @@
       showInitProgress = false
       showAddAgentForm = false
       showDisbandConfirm = false
+      showRemoveMemberConfirm = false
+      removeMemberPending = ''
       initializeRequest = null
       addAgentProgress = null
       onDisbandProp(result)
@@ -317,6 +324,35 @@
       errorMessage = err?.message || 'Failed to disband team.'
     } finally {
       disbanding = false
+    }
+  }
+
+  function requestRemoveMember(memberName) {
+    if (!teamName || !memberName || removingMembers.has(memberName) || disbanding) return
+    removeMemberPending = memberName
+    showRemoveMemberConfirm = true
+  }
+
+  async function confirmRuntimeRemoveMember() {
+    if (!teamName || !removeMemberPending || removingMembers.has(removeMemberPending)) return
+    const memberName = removeMemberPending
+    removingMembers = new Set([...removingMembers, memberName])
+    showRemoveMemberConfirm = false
+    removeMemberPending = ''
+    try {
+      const report = await coordinationRemoveMember(teamName, memberName)
+      const warningCount = Array.isArray(report?.warnings) ? report.warnings.length : 0
+      runtimeMessage = warningCount > 0
+        ? `Removed '${memberName}' with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
+        : `Removed '${memberName}'.`
+      onRemoveAgentProp(report)
+      rosterRefreshNonce += 1
+    } catch (err) {
+      errorMessage = err?.message || `Failed to remove member '${memberName}'.`
+    } finally {
+      const next = new Set(removingMembers)
+      next.delete(memberName)
+      removingMembers = next
     }
   }
 
@@ -377,6 +413,9 @@
     cleanupError = ''
     cleanupTargetTeam = ''
     showCleanupConfirm = false
+    removeMemberPending = ''
+    showRemoveMemberConfirm = false
+    removingMembers = new Set()
     teamName = ''
     mode = 'setup'
     discoveredTeams = []
@@ -554,8 +593,10 @@
                   {teamName}
                   refreshNonce={rosterRefreshNonce}
                   {disbanding}
+                  removingMembers={[...removingMembers]}
                   onAddAgent={openAddAgentForm}
                   onDisband={handleRuntimeDisband}
+                  onRemoveAgent={requestRemoveMember}
                   onFocusPane={onFocusPaneProp}
                 />
               {:else}
@@ -677,6 +718,21 @@
           confirmLabel="Disband"
           variant="danger"
           onconfirm={confirmRuntimeDisband}
+        />
+      {/if}
+
+      {#if showRemoveMemberConfirm}
+        <ConfirmDialog
+          {dark}
+          bind:open={showRemoveMemberConfirm}
+          title="Remove agent?"
+          message={`Remove agent "${removeMemberPending}" from "${teamName}"? This stops managed resources (mesh presence, daemon, and pane) when possible.`}
+          confirmLabel="Remove"
+          variant="danger"
+          onconfirm={confirmRuntimeRemoveMember}
+          oncancel={() => {
+            removeMemberPending = ''
+          }}
         />
       {/if}
 

@@ -108,6 +108,7 @@ describe('MeshTeamRoster', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toBeVisible()
       expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeVisible()
+      expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toBeVisible()
     })
     expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toHaveAttribute(
       'title',
@@ -116,6 +117,10 @@ describe('MeshTeamRoster', () => {
     expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toHaveAttribute(
       'title',
       'Re-send setup instructions to this agent'
+    )
+    expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toHaveAttribute(
+      'title',
+      'Remove this agent and clean up managed resources'
     )
   })
 
@@ -134,6 +139,31 @@ describe('MeshTeamRoster', () => {
     render(MeshTeamRoster, { props: { teamName: 'architecture-final', onAddAgent } })
     await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
     expect(onAddAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it('remove button calls onRemoveAgent for non-lead members', async () => {
+    const onRemoveAgent = vi.fn()
+    render(MeshTeamRoster, { props: { teamName: 'architecture-final', onRemoveAgent } })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-remove-member-frontend-dev'))
+    expect(onRemoveAgent).toHaveBeenCalledWith('frontend-dev')
+  })
+
+  it('shows row-level removing state when member is pending removal', async () => {
+    render(MeshTeamRoster, {
+      props: {
+        teamName: 'architecture-final',
+        removingMembers: ['frontend-dev'],
+      },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toHaveTextContent('Removing...')
+    })
+    expect(screen.getByTestId('mesh-remove-member-frontend-dev')).toBeDisabled()
+    expect(screen.getByTestId('mesh-focus-pane-frontend-dev')).toBeDisabled()
+    expect(screen.getByTestId('mesh-reonboard-frontend-dev')).toBeDisabled()
   })
 
   it('manual refresh button triggers an immediate roster fetch', async () => {

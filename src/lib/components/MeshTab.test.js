@@ -6,9 +6,11 @@ vi.mock('../ipc.js', () => ({
   checkMeshInstallStatus: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
+  coordinationGetLiveTeamStatus: vi.fn(),
   coordinationListTeams: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
+  coordinationRemoveMember: vi.fn(),
   installMesh: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
 }))
@@ -17,9 +19,11 @@ const {
   checkMeshInstallStatus,
   coordinationAddAgent,
   coordinationDisbandTeam,
+  coordinationGetLiveTeamStatus,
   coordinationListTeams,
   coordinationInitializeTeam,
   coordinationPreflightCheck,
+  coordinationRemoveMember,
   installMesh,
   onCoordinationStepProgress,
 } = await import('../ipc.js')
@@ -53,6 +57,40 @@ describe('MeshTab', () => {
       failedStep: null,
       message: 'agent added',
       steps: [],
+    })
+    coordinationRemoveMember.mockResolvedValue({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      removed: true,
+      message: 'member removed',
+      steps: [],
+      warnings: [],
+    })
+    coordinationGetLiveTeamStatus.mockResolvedValue({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          description: 'lead',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'backend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3',
+          projectId: 'proj-api',
+          description: 'api',
+          sessionStatus: 'idle',
+          paneId: '%2',
+        },
+      ],
     })
     coordinationPreflightCheck.mockResolvedValue({
       blockingErrors: [],
@@ -440,6 +478,36 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('mesh-runtime-message')).not.toBeInTheDocument()
+    })
+  })
+
+  it('remove agent confirms and calls coordinationRemoveMember', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-remove-member-backend-dev')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-remove-member-backend-dev'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(coordinationRemoveMember).toHaveBeenCalledWith('architecture-final', 'backend-dev')
     })
   })
 })

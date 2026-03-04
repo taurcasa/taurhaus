@@ -513,7 +513,14 @@ export function coordinationAddMember(teamName, memberName, backendKind) {
 
 /** Remove a member from an existing coordination team. */
 export function coordinationRemoveMember(teamName, memberName) {
-  return invokeOrMock('coordination_remove_member', { teamName, memberName }, () => undefined)
+  return invokeOrMock('coordination_remove_member', { teamName, memberName }, () => ({
+    teamName,
+    memberName,
+    removed: true,
+    message: 'member removed',
+    steps: [],
+    warnings: [],
+  }))
 }
 
 /** List all known coordination teams. */
