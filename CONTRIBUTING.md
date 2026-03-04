@@ -63,6 +63,12 @@ All tests must pass before submitting a PR:
 just check  # Runs fmt + clippy + svelte-check + all tests
 ```
 
+For Rust implementation work, run the task-level quality gate before declaring completion:
+
+```bash
+just agent-quality  # cargo fmt + clippy -D warnings + cargo check --tests
+```
+
 Individual test suites:
 
 ```bash
@@ -71,6 +77,8 @@ just test-frontend   # Frontend tests (Vitest)
 ```
 
 Frontend tests run from the project root (not `src-tauri/`). Vitest is configured to find test files at the root level.
+
+If you add imports to source files included by integration shims (for example `coordination/pipelines.rs`), update shim modules in `src-tauri/tests/` and rerun `just agent-quality` to catch test-crate scope breakage early.
 
 ### Regression Testing
 

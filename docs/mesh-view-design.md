@@ -158,6 +158,7 @@ After initialization, the mesh tab switches from setup mode to runtime mode:
 - Tool brand icon + model + target project
 - Session status (active/idle/offline) — pulled from existing session scanner
 - "Focus Pane" button — primary action, jumps to agent's tmux pane
+- "Resume" button on offline rows (Continue/Fresh mode selector)
 
 ### Sidebar Integration
 
@@ -171,6 +172,9 @@ After initialization, the mesh tab switches from setup mode to runtime mode:
 ### Must-Have
 
 - **Focus pane** — jump to any agent's tmux session
+- **Resume offline member** — relaunch an offline member without removing/re-adding.
+  - Continue mode: resume previous context when the CLI supports it.
+  - Fresh mode: launch a clean session for that member identity.
 - **Add agent to running team** — opens a card form, creates pane, launches CLI, joins mesh, sends onboarding. Teams evolve as needs become clear mid-sprint.
 - **Re-send onboarding** — if an agent loses context, resend the mesh instructions
 - **Disband** — removes team state and stops managed resources (sessions/panes/daemons/mesh membership). Confirms before acting.
@@ -203,7 +207,7 @@ After initialization, the mesh tab switches from setup mode to runtime mode:
 ### Runtime
 
 - tmux unavailable → block Initialize with clear error
-- Agent session dies → session scanner shows it as gone, mesh view reflects "Session ended"
+- Agent session dies or exits back to shell prompt → live-status liveness reconciliation marks the member offline (pane missing/dead/shell)
 - Partial initialization failure → show what succeeded, offer retry
 - Team create conflict (`already exists`) → offer `Open Existing Team` or `Disband Existing Team`
 - Same project assigned to many agents → allowed, but warn about resource load
@@ -269,6 +273,37 @@ If partial failure, returns what succeeded and what failed. Frontend shows retry
 
 Single IPC command: `coordination_add_agent(team_name, agent_config) -> AddAgentReport`. Backend handles: create pane → launch CLI → mesh join → daemon → onboard. Same pattern as initialize but for one agent.
 
+### Resume Offline Member
+
+Single IPC command: `coordination_resume_member(team_name, member_name, mode) -> ResumeAgentReport`.
+
+- `mode = Continue` resumes prior context when supported (`ResumeContextMode`)
+- `mode = Fresh` launches a new context for the same team member identity
+- Runtime output includes step-level progress (`ResumeMemberRequest` / `ResumeAgentReport`)
+- Frontend uses the command from `MeshTeamRoster` offline rows and refreshes roster state on success
+
+Pipeline behavior mirrors initialize/add-agent for one member:
+1. Validate request + current member state
+2. Resolve or create pane
+3. Launch CLI with mode-aware command
+4. Join mesh/start daemon for non-Claude members
+5. Send onboarding when applicable
+6. Persist runtime state with pane/session/health updates
+
+### Live Status Liveness Reconciliation
+
+`coordination_get_live_team_status` performs write-on-drift reconciliation before returning roster status:
+
+- Missing pane id => offline drift
+- Pane target missing => offline drift
+- `pane_dead = true` => offline drift
+- `pane_current_command` resolves to shell (`bash`/`zsh`/`sh`/`fish`) => offline drift
+
+On drift:
+- runtime health becomes `SessionDead`
+- `session_id` is cleared
+- non-Claude `daemon_pid` is checked and terminated/cleared when still running
+
 ### Onboarding Message
 
 Template rendered by the delivery module. Contains:
@@ -294,9 +329,8 @@ All coordination code behind `mesh-bridged-backend` Cargo feature (default enabl
 
 ### What Stays Dormant
 
-- **Reconciler** — safety net for state drift, not needed until we have long-running teams
-- **Health state machine** — session indicators handle status display
-- **Advanced audit** — basic step logging is sufficient
+- **Advanced health escalation policy** — `SessionDead` drift handling is active; multi-stage escalation remains out of scope
+- **Advanced audit projections** — basic step logging is sufficient
 - **Lease reclaim semantics** — premature optimization
 
 ---

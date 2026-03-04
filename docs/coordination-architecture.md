@@ -215,6 +215,50 @@ src-tauri/src/
 
 **Rationale**: Removal is an operational workflow, not a simple config mutation. Structured reporting and ownership checks prevent silent failures and reduce accidental pane/process termination risk.
 
+### D16: Resume lifecycle is a first-class member operation
+
+**Status**: Implemented
+
+**Decision**: Offline members are resumed through a dedicated pipeline and IPC surface, not by remove/re-add.
+
+- IPC: `coordination_resume_member`
+- Types: `ResumeContextMode`, `ResumeMemberRequest`, `ResumeAgentReport`
+- Runtime behavior: resolve/reuse pane when possible, launch mode-aware CLI commands, restore mesh daemon path for non-Claude members, persist runtime attachment
+- UI contract: offline rows expose resume actions (`Continue` and `Fresh`)
+
+**Rationale**: Resume preserves team identity and historical context while minimizing operator friction and avoiding destructive config churn.
+
+### D17: Liveness reconciliation is write-on-drift at live-status read time
+
+**Status**: Implemented
+
+**Decision**: Team liveness is reconciled inside orchestrator before returning live team status.
+
+- Drift conditions:
+  - missing `pane_id`
+  - `pane_exists == false`
+  - `pane_is_dead == true`
+  - pane command resolves to shell (`pane_is_shell == true`)
+- Drift mutation:
+  - `health -> SessionDead`
+  - `session_id -> None`
+  - non-Claude `daemon_pid` checked/terminated/cleared
+- Persistence policy: write only when stored health is stale (write-on-drift)
+
+**Rationale**: This closes the gap between cached runtime metadata and real pane/process state without requiring a constantly running reconciliation loop.
+
+### D18: Implementation tasks require a Rust quality gate before completion
+
+**Status**: Implemented
+
+**Decision**: Rust implementation tasks must pass `just agent-quality` before being reported complete.
+
+- Runs `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo check --tests`
+- Captures compile/lint regressions across unit + integration test targets
+- Ensures integration shim breakages are caught when included source files gain new imports
+
+**Rationale**: Coordination changes span runtime, orchestrator, IPC, and integration shims. A strict pre-completion gate prevents partially validated backend changes from being reported as done.
+
 ## Milestone Plan
 
 ### M0: Usable MeshBridged vertical slice

@@ -28,6 +28,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Lead-removal guard: backend hard-blocks removing the team lead
 - Pane ownership pre-check: verify tmux pane belongs to expected session before killing
 - Team-lead removal notification: lead-only mesh notification when an agent is removed (who, by whom, cleanup status)
+- Resume offline members: `coordination_resume_member` pipeline with `Continue` and `Fresh` modes
+- Resume contracts: `ResumeContextMode`, `ResumeMemberRequest`, and `ResumeAgentReport` IPC types
+- MeshTeamRoster resume UX: Resume action on offline rows with mode-aware relaunch
+- Write-on-drift liveness reconciliation in live status queries (`reconcile_team_liveness`)
+- Shell-return drift detection: `pane_is_shell` checks `#{pane_current_command}` for shell fallthrough
+- Offline drift daemon cleanup: non-Claude `daemon_pid` check/terminate/clear behavior
 
 **UI Task Board Polish**
 - Archive metadata display: `archived_reason`, `state_changed_at`, `last_status` surfaced in SessionHistory and TaskDetailPanel
@@ -48,6 +54,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Add-agent project path: pass explicit cwd to `join_mesh` instead of falling back to app data directory
 - Roster update idempotent: if member already exists from join step, update entry instead of failing on duplicate
 - Skip transcript lookup for team-scoped Claude sessions: team names have no JSONL transcript, use task timestamps directly without warning
+- Rust implementation gate documented and enforced via `just agent-quality` (`cargo fmt` + `clippy -D warnings` + `cargo check --tests`)
 
 ## [0.4.2] - 2026-03-04
 

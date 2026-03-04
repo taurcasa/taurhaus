@@ -67,6 +67,8 @@ Documentation for the multi-agent team orchestration feature.
 | Document | Description |
 |----------|-------------|
 | [Coordination architecture](coordination-architecture.md) | Backend design, domain model, design decisions |
+| [Phase 4 architecture](phase-4-architecture.md) | Resume and liveness reconciliation architecture summary |
+| [Feature matrix](feature-matrix.md) | Shipped/partial status of mesh coordination capabilities |
 | [Mesh view design](mesh-view-design.md) | UI design for team management tab |
 | [Mesh setup vision](mesh-setup-vision.md) | UX concept for team onboarding |
 

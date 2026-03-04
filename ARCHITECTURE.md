@@ -99,7 +99,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (65)
+### IPC Commands (66)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
@@ -115,7 +115,7 @@ Grouped by domain:
 - **Daemon** (6): platform, status, start, stop, check install, install
 - **Mesh install** (2): check install status, install mesh
 - **Settings** (2): get, update
-- **Coordination** (12): create/disband/list teams, add/remove members, team status, initialize, add agent, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
+- **Coordination** (13): create/disband/list teams, add/remove members, team status, initialize, add agent, resume member, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
 - **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in `app_data_dir()`. Backend uses `tracing` crate. Single log file, truncated per launch.
 
 ### Coordination (Mesh View)
@@ -124,7 +124,9 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 
 - **State bootstrap**: `CoordinationState` is app-managed and lazily builds the orchestrator on first coordination IPC use (no startup hard dependency on mesh availability).
 - **Persistence**: team definitions are stored in `~/.claude/teams/<team>/config.json` (`TeamConfigStore`), while runtime attachment state lives in `~/.claude/teams/<team>/runtime/*.json` (`MemberRuntimeStore`).
-- **Pipelines**: `coordination/pipelines.rs` drives initialize and hot-add flows (validate -> create panes -> launch sessions -> mesh join -> daemon start -> onboarding delivery).
+- **Pipelines**: `coordination/pipelines.rs` drives initialize, hot-add, and resume flows (validate -> create/resolve panes -> launch sessions -> mesh join -> daemon start -> onboarding delivery).
+- **Resume lifecycle**: offline members are resumed via `coordination_resume_member` with mode-aware commands (`Continue` or `Fresh`) and step-level reporting.
+- **Liveness reconciliation**: live-status reads call orchestrator write-on-drift reconciliation (missing pane, dead pane, or shell-returned pane via `pane_is_shell`) before returning UI status. Offline drift clears stale session IDs and cleans non-Claude daemon PIDs.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes for non-lead members).
 
 See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
@@ -233,6 +235,7 @@ just build-macos-intel # Build Intel (x86_64) DMG via SSH
 just check            # clippy + svelte-check + all tests
 just test             # All tests (Rust + frontend)
 just test-macos       # Run Rust tests on Mac Mini via SSH
+just agent-quality    # Rust implementation quality gate: fmt + clippy + check --tests
 ```
 
 ## Key Decisions
