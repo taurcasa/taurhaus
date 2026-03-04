@@ -8,6 +8,10 @@ vi.mock('../ipc.js', () => ({
   listTeamPresets: vi.fn(),
   getTeamPreset: vi.fn(),
   composeTeam: vi.fn(),
+  getTemplateStorageStatus: vi.fn(),
+  getTemplateHistory: vi.fn(),
+  getTemplateDiff: vi.fn(),
+  revertTemplateVersion: vi.fn(),
 }))
 
 const {
@@ -16,6 +20,9 @@ const {
   listTeamPresets,
   getTeamPreset,
   composeTeam,
+  getTemplateStorageStatus,
+  getTemplateHistory,
+  getTemplateDiff,
 } = await import('../ipc.js')
 
 import TemplateCatalog from './TemplateCatalog.svelte'
@@ -108,6 +115,23 @@ describe('TemplateCatalog', () => {
       ],
       warnings: [],
       validationErrors: [],
+    })
+
+    getTemplateStorageStatus.mockResolvedValue({
+      mode: 'git',
+      repoInitialized: true,
+      dirty: false,
+      pendingActions: [],
+      lastCommit: 1_706_000_000,
+    })
+    getTemplateHistory.mockResolvedValue({
+      commits: [],
+      nextCursor: null,
+    })
+    getTemplateDiff.mockResolvedValue({
+      commitId: '',
+      files: [],
+      stats: { filesChanged: 0, insertions: 0, deletions: 0 },
     })
   })
 

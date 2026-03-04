@@ -7,6 +7,7 @@
     listTeamPresets,
   } from '../ipc.js'
   import TeamComposer from './TeamComposer.svelte'
+  import TemplateHistoryPanel from './TemplateHistoryPanel.svelte'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { themeTokens } from '../themeTokens.js'
 
@@ -58,6 +59,12 @@
   let detailLoading = $state(false)
   let showComposer = $state(false)
   let composerInitialPreset = $state(null)
+  const historyTemplateId = $derived.by(() => selectedRoleId || selectedPresetId || '')
+  const historyTemplateKind = $derived.by(() => {
+    if (selectedRoleId) return 'role'
+    if (selectedPresetId) return 'preset'
+    return ''
+  })
 
   const toolOptions = [
     { value: 'all', label: 'All tools' },
@@ -211,6 +218,19 @@
     composerInitialPreset = preset
     showComposer = true
     onComposePreview({ preset, composed })
+  }
+
+  async function handleHistoryReverted() {
+    const roleId = selectedRoleId
+    const presetId = selectedPresetId
+    await loadCatalog()
+    if (roleId) {
+      await inspectRoleTemplate(roleId)
+      return
+    }
+    if (presetId) {
+      await inspectTeamPreset(presetId)
+    }
   }
 
   function toolIcon(tool) {
@@ -573,6 +593,13 @@
         </p>
       {/if}
     </section>
+
+    <TemplateHistoryPanel
+      dark={dark}
+      selectedTemplateId={historyTemplateId}
+      selectedTemplateKind={historyTemplateKind}
+      onReverted={handleHistoryReverted}
+    />
 
     {#if showComposer}
       <section class="rounded-md border p-2 {cardTone}" data-testid="template-composer-panel">

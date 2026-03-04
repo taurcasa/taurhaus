@@ -662,6 +662,108 @@ const MOCK_TEAM_PRESETS = [
   },
 ]
 
+const MOCK_TEMPLATE_STORAGE_STATUS = {
+  mode: 'git',
+  repoInitialized: true,
+  dirty: true,
+  pendingActions: [],
+  lastCommit: Math.floor(Date.now() / 1000) - 3600,
+}
+
+const MOCK_TEMPLATE_HISTORY = [
+  {
+    commitId: 'f3b6c841d1f84b7e1a2c9018899f1f37f71aa001',
+    shortId: 'f3b6c841',
+    message: 'templates: tune claude reviewer rubric',
+    author: 'taurhaus-dev-1',
+    timestamp: Math.floor(Date.now() / 1000) - 600,
+    changedPaths: ['roles/claude-reviewer.yaml'],
+  },
+  {
+    commitId: 'de11ab008d1ca69f3f7a0b98b7f7c4d0f7d98322',
+    shortId: 'de11ab00',
+    message: 'templates: add docs sprint preset',
+    author: 'taurhaus-dev-2',
+    timestamp: Math.floor(Date.now() / 1000) - 2200,
+    changedPaths: ['presets/docs-sprint.yaml', '_meta/state.json'],
+  },
+  {
+    commitId: '9cc7fb70f1bf8da99ef8d8e50b179e744f5e6f10',
+    shortId: '9cc7fb70',
+    message: 'templates: introduce codex developer role',
+    author: 'team-lead',
+    timestamp: Math.floor(Date.now() / 1000) - 4800,
+    changedPaths: ['roles/codex-developer.yaml'],
+  },
+]
+
+const MOCK_TEMPLATE_DIFFS = {
+  f3b6c841d1f84b7e1a2c9018899f1f37f71aa001: {
+    commitId: 'f3b6c841d1f84b7e1a2c9018899f1f37f71aa001',
+    files: [
+      {
+        path: 'roles/claude-reviewer.yaml',
+        status: 'modified',
+        hunks: [
+          {
+            old_start: 12,
+            old_lines: 3,
+            new_start: 12,
+            new_lines: 4,
+            lines: [
+              { origin: ' ', old_lineno: 12, new_lineno: 12, content: 'behavioral_contract:' },
+              {
+                origin: '-',
+                old_lineno: 13,
+                new_lineno: null,
+                content: '  execution: [focus on correctness]',
+              },
+              {
+                origin: '+',
+                old_lineno: null,
+                new_lineno: 13,
+                content: '  execution: [focus on correctness and regression risk]',
+              },
+              {
+                origin: '+',
+                old_lineno: null,
+                new_lineno: 14,
+                content: '  escalation: [raise high-risk findings immediately]',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    stats: { filesChanged: 1, insertions: 2, deletions: 1 },
+  },
+  de11ab008d1ca69f3f7a0b98b7f7c4d0f7d98322: {
+    commitId: 'de11ab008d1ca69f3f7a0b98b7f7c4d0f7d98322',
+    files: [
+      {
+        path: 'presets/docs-sprint.yaml',
+        status: 'added',
+        hunks: [
+          {
+            old_start: 0,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: 5,
+            lines: [
+              { origin: '+', old_lineno: null, new_lineno: 1, content: 'preset_id: docs-sprint' },
+              { origin: '+', old_lineno: null, new_lineno: 2, content: 'lead_role_id: claude-orchestrator' },
+              { origin: '+', old_lineno: null, new_lineno: 3, content: 'agent_slots:' },
+              { origin: '+', old_lineno: null, new_lineno: 4, content: '  - role_id: custom-doc-writer' },
+              { origin: '+', old_lineno: null, new_lineno: 5, content: '    count: 1' },
+            ],
+          },
+        ],
+      },
+    ],
+    stats: { filesChanged: 1, insertions: 5, deletions: 0 },
+  },
+}
+
 function roleTemplateSummary(template) {
   return {
     roleId: template.roleId,
@@ -701,30 +803,94 @@ function teamPresetSummary(preset) {
 }
 
 /** List role template summaries for the template catalog. */
-export function listRoleTemplates() {
-  return invokeOrMock('list_role_templates', undefined, () =>
-    MOCK_ROLE_TEMPLATES.map(roleTemplateSummary)
-  )
+export async function listRoleTemplates() {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const summaries = await invoke('templates_list_roles')
+    const enriched = await Promise.all(
+      (summaries ?? []).map(async (summary) => {
+        const roleId = summary?.roleId ?? summary?.role_id
+        if (!roleId) return summary
+        try {
+          const detail = await invoke('templates_get_role', { roleId })
+          return {
+            ...summary,
+            ...detail,
+            roleId,
+            builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
+            readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
+          }
+        } catch {
+          return {
+            ...summary,
+            roleId,
+            builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
+            readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
+          }
+        }
+      })
+    )
+    return enriched
+  }
+  return MOCK_ROLE_TEMPLATES.map(roleTemplateSummary)
 }
 
 /** Get one full role template by ID. */
 export function getRoleTemplate(id) {
-  return invokeOrMock('get_role_template', { id }, () => {
+  return invokeOrMock('templates_get_role', { roleId: id }, () => {
     const template = MOCK_ROLE_TEMPLATES.find((entry) => entry.roleId === id)
     return template ? { ...template } : null
   })
 }
 
 /** List team preset summaries for the template catalog. */
-export function listTeamPresets() {
-  return invokeOrMock('list_team_presets', undefined, () =>
-    MOCK_TEAM_PRESETS.map(teamPresetSummary)
-  )
+export async function listTeamPresets() {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const [summaries, roles] = await Promise.all([
+      invoke('templates_list_presets'),
+      listRoleTemplates(),
+    ])
+    const roleMap = new Map((roles ?? []).map((role) => [role.roleId ?? role.role_id, role]))
+
+    const enriched = await Promise.all(
+      (summaries ?? []).map(async (summary) => {
+        const presetId = summary?.presetId ?? summary?.preset_id
+        if (!presetId) return summary
+        let detail = null
+        try {
+          detail = await invoke('templates_get_preset', { presetId })
+        } catch {}
+
+        const leadRoleId = detail?.leadRoleId ?? detail?.lead_role_id ?? summary?.leadRoleId ?? summary?.lead_role_id ?? ''
+        const agentSlots = detail?.agentSlots ?? detail?.agent_slots ?? []
+        const referencedRoleIds = [leadRoleId, ...agentSlots.map((slot) => slot?.roleId ?? slot?.role_id)].filter(Boolean)
+        const referencedRoles = referencedRoleIds.map((roleId) => roleMap.get(roleId)).filter(Boolean)
+        const tools = [...new Set(referencedRoles.map((role) => role?.cliTool ?? role?.cli_tool).filter(Boolean))]
+        const capabilities = [...new Set(referencedRoles.flatMap((role) => role?.capabilities ?? []))]
+
+        return {
+          ...summary,
+          ...detail,
+          presetId,
+          leadRoleId,
+          roleCount: agentSlots.length,
+          agentCount: agentSlots.reduce((total, slot) => total + (slot?.count ?? 0), 0),
+          tools,
+          capabilities,
+          builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
+          readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
+        }
+      })
+    )
+    return enriched
+  }
+  return MOCK_TEAM_PRESETS.map(teamPresetSummary)
 }
 
 /** Get one full team preset by ID. */
 export function getTeamPreset(id) {
-  return invokeOrMock('get_team_preset', { id }, () => {
+  return invokeOrMock('templates_get_preset', { presetId: id }, () => {
     const preset = MOCK_TEAM_PRESETS.find((entry) => entry.presetId === id)
     return preset ? { ...preset } : null
   })
@@ -732,7 +898,16 @@ export function getTeamPreset(id) {
 
 /** Compose a team from role/preset selections and overrides. */
 export function composeTeam(request) {
-  return invokeOrMock('compose_team', { request }, () => {
+  const normalizedRequest = {
+    leadRoleId: request?.leadRoleId ?? request?.lead_role_id ?? '',
+    agentSlots: request?.agentSlots ?? request?.agent_slots ?? [],
+    overrides: {
+      ...(request?.overrides ?? {}),
+      ...(request?.projectName ? { projectName: request.projectName } : {}),
+    },
+  }
+
+  return invokeOrMock('templates_compose_team', { request: normalizedRequest }, () => {
     const leadName = request?.projectName ? `lead-${request.projectName}` : 'lead-project'
     return {
       roster: [
@@ -757,6 +932,39 @@ export function composeTeam(request) {
       validationErrors: [],
     }
   })
+}
+
+/** Get template storage health/status for history and dirty indicators. */
+export function getTemplateStorageStatus() {
+  return invokeOrMock('templates_get_storage_status', undefined, () => ({
+    ...MOCK_TEMPLATE_STORAGE_STATUS,
+  }))
+}
+
+/** Get template history commits across all managed templates. */
+export function getTemplateHistory(limit = 50, cursor = null) {
+  return invokeOrMock('templates_get_history', { limit, cursor }, () => {
+    const page = (MOCK_TEMPLATE_HISTORY ?? []).slice(0, Math.max(1, Math.min(200, limit || 50)))
+    return { commits: page, nextCursor: null }
+  })
+}
+
+/** Get a template-only diff for one commit in template history. */
+export function getTemplateDiff(commitId) {
+  return invokeOrMock('templates_get_diff', { commitId }, () => {
+    return (
+      MOCK_TEMPLATE_DIFFS[commitId] ?? {
+        commitId,
+        files: [],
+        stats: { filesChanged: 0, insertions: 0, deletions: 0 },
+      }
+    )
+  })
+}
+
+/** Revert one template id to a historical commit. */
+export function revertTemplateVersion(id, commitHash) {
+  return invokeOrMock('templates_revert', { request: { id, commitHash } }, () => undefined)
 }
 
 /** Create a new coordination team. */
