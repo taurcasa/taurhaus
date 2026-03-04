@@ -16,6 +16,7 @@
   import MeshEmptyState from './MeshEmptyState.svelte'
   import MeshInitProgress from './MeshInitProgress.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
+  import MeshRuntimeBar from './MeshRuntimeBar.svelte'
   import SlideOver from './SlideOver.svelte'
   import TeamCustomizerPanel from './TeamCustomizerPanel.svelte'
   import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
@@ -974,6 +975,7 @@
             lead={teamConfig?.lead ?? null}
             agents={teamConfig?.agents ?? []}
             mode="initializing"
+            initSteps={null}
             {dark}
             onNodeClick={() => {}}
             onAddClick={() => {}}
@@ -989,26 +991,6 @@
       </div>
     {:else}
       <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-runtime">
-        <header class="flex items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-runtime-title">{teamName}</h2>
-          <div class="flex items-center gap-1.5" data-testid="mesh-runtime-controls">
-            <button
-              class="rounded border px-2 py-1 text-xs {actionSecondary}"
-              onclick={openAddAgentPanel}
-              data-testid="mesh-runtime-add-agent"
-            >
-              Add Agent
-            </button>
-            <button
-              class="rounded border px-2 py-1 text-xs border-danger-500/40 text-danger-400 hover:bg-danger-500/10"
-              onclick={requestDisband}
-              data-testid="mesh-runtime-disband"
-            >
-              Disband
-            </button>
-          </div>
-        </header>
-
         <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-runtime-canvas-frame">
           <MeshCanvas
             lead={teamConfig?.lead ?? null}
@@ -1020,6 +1002,15 @@
             {selectedNodeId}
           />
         </div>
+
+        <MeshRuntimeBar
+          teamName={teamName}
+          agents={teamConfig?.agents ?? []}
+          {dark}
+          onAddAgent={openAddAgentPanel}
+          onDisband={requestDisband}
+          onOverflow={() => {}}
+        />
 
         {#if selectedNode}
           <div class="relative h-0" data-testid="mesh-node-detail-host">

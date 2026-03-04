@@ -6,6 +6,7 @@
     lead = null,
     agents = [],
     mode = 'setup',
+    initSteps = null,
     dark = false,
     onNodeClick = (id) => {},
     onAddClick = () => {},
@@ -31,23 +32,111 @@
     return 'setup'
   })
 
+  function parseInitStepState(steps, agentIds) {
+    const completedIds = new Set()
+    let activeId = null
+
+    const useId = (value) => {
+      const id = value === null || value === undefined ? '' : String(value).trim()
+      return id.length > 0 ? id : null
+    }
+
+    const addCompleted = (value) => {
+      const id = useId(value)
+      if (id) completedIds.add(id)
+    }
+
+    const setActive = (value) => {
+      const id = useId(value)
+      if (id) activeId = id
+    }
+
+    if (Array.isArray(steps)) {
+      for (const entry of steps) {
+        if (entry && typeof entry === 'object') {
+          const status = String(entry.status ?? '').toLowerCase()
+          if (status === 'succeeded' || status === 'complete' || status === 'completed') {
+            addCompleted(entry.id)
+          } else if (status === 'running' || status === 'active' || status === 'initializing') {
+            setActive(entry.id)
+          }
+          continue
+        }
+        addCompleted(entry)
+      }
+    } else if (steps && typeof steps === 'object') {
+      for (const entry of steps.completedIds ?? steps.completed ?? steps.initialized ?? []) {
+        addCompleted(entry)
+      }
+      setActive(steps.activeId ?? steps.currentId ?? steps.initializingId)
+
+      const activeIndex = Number(steps.activeIndex)
+      if (!activeId && Number.isInteger(activeIndex) && activeIndex >= 0) {
+        setActive(agentIds[activeIndex])
+      }
+
+      const completedCount = Number(steps.completedCount)
+      if (Number.isInteger(completedCount) && completedCount > 0) {
+        for (const id of agentIds.slice(0, completedCount)) {
+          addCompleted(id)
+        }
+      }
+    }
+
+    if (!activeId && completedIds.size < agentIds.length) {
+      activeId = agentIds[completedIds.size] ?? null
+    }
+
+    return { completedIds, activeId }
+  }
+
+  const initState = $derived.by(() => {
+    const ids = Array.isArray(agents)
+      ? agents.map((agent, index) => String(agent?.id ?? agent?.name ?? `agent-${index}`))
+      : []
+    return parseInitStepState(initSteps, ids)
+  })
+
   const normalizedLead = $derived.by(() => {
     if (!lead) return null
+
+    let status = normalizeStatus(lead.status)
+    if (normalizedMode === 'initializing') {
+      const started = Boolean(initState.activeId) || initState.completedIds.size > 0
+      const allReady = Array.isArray(agents) && agents.length > 0 && initState.completedIds.size >= agents.length
+      status = allReady ? 'active' : (started ? 'idle' : 'offline')
+    }
+
     return {
       ...lead,
       id: String(lead.id ?? 'lead'),
-      status: normalizeStatus(lead.status),
+      status,
     }
   })
 
   const normalizedAgents = $derived.by(() => {
     if (!Array.isArray(agents)) return []
 
-    return agents.map((agent, index) => ({
-      ...agent,
-      id: String(agent?.id ?? agent?.name ?? `agent-${index}`),
-      status: normalizeStatus(agent?.status),
-    }))
+    return agents.map((agent, index) => {
+      const id = String(agent?.id ?? agent?.name ?? `agent-${index}`)
+
+      if (normalizedMode === 'initializing') {
+        const status = initState.completedIds.has(id)
+          ? 'active'
+          : (initState.activeId === id ? 'idle' : 'offline')
+        return {
+          ...agent,
+          id,
+          status,
+        }
+      }
+
+      return {
+        ...agent,
+        id,
+        status: normalizeStatus(agent?.status),
+      }
+    })
   })
 
   function buildRow(items, startIndex, rowCount, y, cw, nodeW, gap) {
@@ -100,11 +189,13 @@
       }))
     }
 
-    const connections = positionedAgents.map(agent => ({
+    const connections = positionedAgents.map((agent, index) => ({
       id: agent.id,
       from: leadPos,
       to: agent.position,
       status: normalizedMode === 'runtime' ? agent.status : normalizedMode,
+      delay: normalizedMode === 'initializing' ? index * 200 : 0,
+      duration: normalizedMode === 'initializing' ? 400 : 0,
     }))
 
     const lastAgent = positionedAgents[positionedAgents.length - 1] ?? null
@@ -169,6 +260,8 @@
           from={connection.from}
           to={connection.to}
           status={connection.status}
+          delay={connection.delay}
+          duration={connection.duration}
           nodeHeight={58}
           {dark}
         />

@@ -1,6 +1,10 @@
 <script>
   import SlideOver from './SlideOver.svelte'
-  import TeamComposer from './TeamComposer.svelte'
+  import AgentCard from './AgentCard.svelte'
+  import ValidationBar from './ValidationBar.svelte'
+  import { collectDuplicateNames } from '../meshValidation.js'
+  import { normalizeProjectOption } from '../projectOptions.js'
+  import { themeTokens } from '../themeTokens.js'
 
   let {
     open = false,
@@ -14,64 +18,246 @@
     onReset = () => {},
   } = $props()
 
-  function inferProjectName(path) {
-    const segments = String(path || '')
-      .replace(/\\/g, '/')
-      .split('/')
-      .filter(Boolean)
-    return segments.at(-1) ?? 'project'
+  const t = $derived(themeTokens(dark))
+  const inputTone = $derived(
+    dark
+      ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500'
+      : 'border-brand-200 bg-white text-brand-900 placeholder:text-brand-700/60'
+  )
+  const sectionTone = $derived(
+    dark
+      ? 'border-zinc-700/70 bg-zinc-900/40'
+      : 'border-brand-200 bg-linear-to-b from-brand-50 to-[#e6f7f4]'
+  )
+  const ghostTone = $derived(
+    dark
+      ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+      : 'border-brand-200 text-brand-700 hover:bg-brand-50'
+  )
+
+  let localTeamName = $state('')
+  let localDescription = $state('')
+  let lead = $state(null)
+  let agents = $state([])
+  let nextAgentId = $state(1)
+  let hydratedConfig = $state(null)
+
+  const projectOptions = $derived.by(() =>
+    (availableProjects ?? [])
+      .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
+      .filter((project) => project.id)
+  )
+
+  function defaultLead() {
+    return {
+      id: 'lead',
+      name: 'team-lead',
+      tool: 'claude',
+      model: 'opus',
+      projectId: projectPath || projectOptions[0]?.id || '',
+      description: 'Team lead',
+    }
   }
 
-  const projectName = $derived(inferProjectName(projectPath))
-  const initialPreset = $derived.by(() => {
-    if (teamConfig?.composition?.presetId || teamConfig?.composition?.leadRoleId) {
-      return {
-        ...teamConfig.composition,
-      }
+  function defaultAgent(index) {
+    return {
+      id: `agent-${index + 1}`,
+      name: `agent-${index + 1}`,
+      tool: 'codex',
+      model: 'gpt-5.3-codex',
+      projectId: projectPath || projectOptions[0]?.id || '',
+      description: '',
     }
-    return null
+  }
+
+  function hydrateFromConfig(config) {
+    localTeamName = String(config?.teamName ?? '').trim()
+    localDescription = String(config?.description ?? '')
+
+    const incomingLead = config?.lead
+    lead = incomingLead
+      ? {
+          id: String(incomingLead.id ?? 'lead'),
+          name: String(incomingLead.name ?? 'team-lead'),
+          tool: String(incomingLead.tool ?? incomingLead.cliTool ?? 'claude').toLowerCase(),
+          model: String(incomingLead.model ?? 'opus'),
+          projectId: String(incomingLead.projectId ?? incomingLead.project_id ?? projectPath ?? ''),
+          description: String(incomingLead.description ?? 'Team lead'),
+        }
+      : defaultLead()
+
+    const incomingAgents = Array.isArray(config?.agents) ? config.agents : []
+    agents = incomingAgents.map((agent, index) => ({
+      id: String(agent.id ?? `agent-${index + 1}`),
+      name: String(agent.name ?? `agent-${index + 1}`),
+      tool: String(agent.tool ?? agent.cliTool ?? 'codex').toLowerCase(),
+      model: String(agent.model ?? 'gpt-5.3-codex'),
+      projectId: String(agent.projectId ?? agent.project_id ?? projectPath ?? ''),
+      description: String(agent.description ?? ''),
+    }))
+    nextAgentId = agents.length + 1
+  }
+
+  const validationIssues = $derived.by(() => {
+    const issues = []
+    if (!localTeamName.trim()) {
+      issues.push({ severity: 'error', member: 'Team', message: 'Team name is required.' })
+    }
+    if (!lead?.name?.trim()) {
+      issues.push({ severity: 'error', member: 'Lead', message: 'Lead name is required.' })
+    }
+    const duplicates = collectDuplicateNames([lead?.name, ...agents.map((agent) => agent.name)])
+    for (const duplicate of duplicates) {
+      issues.push({ severity: 'error', member: duplicate, message: 'Duplicate member name.' })
+    }
+    return issues
   })
 
-  function handleSave(payload) {
-    onSave(payload)
+  const hasErrors = $derived(validationIssues.some((issue) => issue.severity === 'error'))
+
+  function addAgent() {
+    agents = [...agents, defaultAgent(nextAgentId - 1)]
+    nextAgentId += 1
   }
+
+  function updateLead(payload) {
+    lead = {
+      ...lead,
+      ...payload,
+    }
+  }
+
+  function updateAgent(id, payload) {
+    agents = agents.map((agent) => (agent.id === id ? { ...agent, ...payload } : agent))
+  }
+
+  function removeAgent(id) {
+    agents = agents.filter((agent) => agent.id !== id)
+  }
+
+  function handleSave(payload) {
+    onSave({
+      teamName: localTeamName.trim(),
+      description: localDescription.trim(),
+      presetId: teamConfig?.presetId ?? '',
+      lead: {
+        name: String(lead?.name ?? '').trim(),
+        cliTool: String(lead?.tool ?? 'claude').toLowerCase(),
+        model: String(lead?.model ?? '').trim(),
+        projectId: String(lead?.projectId ?? '').trim(),
+        description: String(lead?.description ?? '').trim(),
+      },
+      agents: agents.map((agent) => ({
+        name: String(agent.name ?? '').trim(),
+        cliTool: String(agent.tool ?? 'codex').toLowerCase(),
+        model: String(agent.model ?? '').trim(),
+        projectId: String(agent.projectId ?? '').trim(),
+        description: String(agent.description ?? '').trim(),
+      })),
+      ...payload,
+    })
+  }
+
+  $effect(() => {
+    if (!open) return
+    if (teamConfig === hydratedConfig) return
+    hydratedConfig = teamConfig
+    hydrateFromConfig(teamConfig)
+  })
 </script>
 
-<SlideOver
-  {open}
-  title="Customize Team"
-  width={460}
-  {dark}
-  onClose={onClose}
->
+<SlideOver {open} title="Customize Team" width={460} {dark} onClose={onClose}>
   {#snippet children()}
-    <div data-testid="team-customizer-panel">
-      <TeamComposer
-        {dark}
-        {projectPath}
-        {projectName}
-        availableTools={['claude', 'codex', 'gemini']}
-        {initialPreset}
-        onApply={handleSave}
-        onSavePreset={() => {}}
-        onClose={onClose}
-      />
+    <section class="space-y-3" data-testid="team-customizer-panel">
+      <div class="space-y-2 rounded-lg border p-3 {sectionTone}" data-testid="team-customizer-header">
+        <label class="space-y-1 block">
+          <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Team name</span>
+          <input
+            class="w-full rounded-md border px-2 py-1.5 text-xs {inputTone}"
+            value={localTeamName}
+            oninput={(event) => {
+              localTeamName = event.currentTarget.value
+            }}
+            data-testid="team-customizer-name-input"
+          />
+        </label>
+        <label class="space-y-1 block">
+          <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Description</span>
+          <input
+            class="w-full rounded-md border px-2 py-1.5 text-xs {inputTone}"
+            value={localDescription}
+            oninput={(event) => {
+              localDescription = event.currentTarget.value
+            }}
+            data-testid="team-customizer-description-input"
+          />
+        </label>
+      </div>
+
+      <ValidationBar issues={validationIssues} {dark} />
 
       {#if context?.selectedRole}
-        <p class="mt-2 text-xs {dark ? 'text-zinc-400' : 'text-zinc-600'}" data-testid="team-customizer-selected-role">
+        <p class="text-xs {dark ? 'text-zinc-400' : 'text-brand-700'}" data-testid="team-customizer-selected-role">
           Selected role from catalog: {context.selectedRole.name || context.selectedRole.roleId}
         </p>
       {/if}
 
-      <div class="mt-3 flex justify-end">
+      {#if lead}
+        <AgentCard
+          testId="team-customizer-lead"
+          role="lead"
+          name={lead.name}
+          tool={lead.tool}
+          model={lead.model}
+          projectId={lead.projectId}
+          description={lead.description}
+          {dark}
+          onSave={updateLead}
+        />
+      {/if}
+
+      <section class="space-y-2">
+        {#each agents as agent (agent.id)}
+          <AgentCard
+            testId={`team-customizer-agent-${agent.id}`}
+            role="agent"
+            name={agent.name}
+            tool={agent.tool}
+            model={agent.model}
+            projectId={agent.projectId}
+            description={agent.description}
+            {dark}
+            onSave={(payload) => updateAgent(agent.id, payload)}
+            onRemove={() => removeAgent(agent.id)}
+          />
+        {/each}
+      </section>
+
+      <button
+        class="rounded-md border px-2 py-1 text-xs transition-colors {ghostTone}"
+        onclick={addAgent}
+        data-testid="team-customizer-add-agent"
+      >
+        + Agent
+      </button>
+
+      <div class="flex justify-end gap-2 border-t pt-2 {t.keyline}">
         <button
-          class="rounded-md border px-2 py-1 text-xs transition-colors {dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+          class="rounded-md border px-2 py-1 text-xs transition-colors {ghostTone}"
           onclick={onReset}
           data-testid="team-customizer-reset"
         >
           Reset to Empty
         </button>
+        <button
+          class="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          onclick={handleSave}
+          disabled={hasErrors}
+          data-testid="team-customizer-save"
+        >
+          Apply
+        </button>
       </div>
-    </div>
+    </section>
   {/snippet}
 </SlideOver>

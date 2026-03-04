@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import MeshCanvas from './MeshCanvas.svelte'
@@ -201,5 +201,46 @@ describe('MeshCanvas', () => {
     expect(screen.queryByTestId('mesh-node-agent')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mesh-connection')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mesh-add-node')).not.toBeInTheDocument()
+  })
+
+  it('applies staggered init animation delays in initializing mode', async () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(3),
+        mode: 'initializing',
+      },
+    })
+
+    await waitFor(() => {
+      const connections = screen.getAllByTestId('mesh-connection')
+      expect(connections[0].getAttribute('style')).toContain('mesh-draw 400ms ease-out 0ms forwards')
+      expect(connections[1].getAttribute('style')).toContain('mesh-draw 400ms ease-out 200ms forwards')
+      expect(connections[2].getAttribute('style')).toContain('mesh-draw 400ms ease-out 400ms forwards')
+    })
+  })
+
+  it('maps runtime connection styling to active, idle, and offline statuses', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        mode: 'runtime',
+        agents: [
+          { ...makeAgents(1)[0], id: 'agent-a', status: 'active' },
+          { ...makeAgents(1)[0], id: 'agent-b', status: 'idle' },
+          { ...makeAgents(1)[0], id: 'agent-c', status: 'offline' },
+        ],
+      },
+    })
+
+    const [activeConnection, idleConnection, offlineConnection] = screen.getAllByTestId('mesh-connection')
+    const activeStyle = activeConnection.getAttribute('style') || ''
+    const idleStyle = idleConnection.getAttribute('style') || ''
+    const offlineStyle = offlineConnection.getAttribute('style') || ''
+
+    expect(activeStyle).toContain('mesh-connection-breathe')
+    expect(idleStyle).toContain('opacity: 0.6')
+    expect(offlineStyle).toContain('stroke-dasharray: 6,4')
+    expect(offlineStyle).toContain('opacity: 0.28')
   })
 })

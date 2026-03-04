@@ -333,12 +333,14 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
     await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
 
+    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
