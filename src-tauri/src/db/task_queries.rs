@@ -191,6 +191,51 @@ pub fn get_task_for_project_by_identity(
     }))
 }
 
+/// Get most-recent archived task by full identity key.
+pub fn get_archived_task_for_project_by_identity(
+    conn: &Connection,
+    project_path: &str,
+    source: &str,
+    source_key: &str,
+    source_task_id: &str,
+) -> Result<Option<PersistedTask>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+         FROM tasks
+         WHERE project_path = ?1 AND source = ?2 AND source_key = ?3 AND source_task_id = ?4 AND archived_at IS NOT NULL
+         ORDER BY archived_at DESC
+         LIMIT 1",
+    )?;
+
+    let mut rows = stmt.query(params![project_path, source, source_key, source_task_id])?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+
+    let blocks_str: String = row.get(8)?;
+    let blocked_by_str: String = row.get(9)?;
+    Ok(Some(PersistedTask {
+        project_path: row.get(0)?,
+        source: row.get(1)?,
+        source_key: row.get(2)?,
+        source_task_id: row.get(3)?,
+        subject: row.get(4)?,
+        description: row.get(5)?,
+        active_form: row.get(6)?,
+        status: row.get(7)?,
+        blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
+        blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+        owner: row.get(10)?,
+        session_id: row.get(11)?,
+        first_seen_at: row.get(12)?,
+        state_changed_at: row.get(13)?,
+        updated_at: row.get(14)?,
+        archived_at: row.get(15)?,
+        last_status: row.get(16)?,
+        archived_reason: row.get(17)?,
+    }))
+}
+
 /// Handle stale tasks for a project+source+source_key that are NOT in the given set of IDs.
 ///
 /// Used after scanning: if the scanner returned tasks `{1, 3, 5}` for a specific
@@ -447,6 +492,63 @@ mod tests {
         let beta = get_tasks_for_project(&conn, "/projects/beta").unwrap();
         assert_eq!(beta.len(), 1);
         assert_eq!(beta[0].subject, "Task B");
+    }
+
+    #[test]
+    fn get_archived_task_for_project_by_identity_returns_latest_match() {
+        let (conn, _tmp) = test_db();
+
+        let mut first = make_task("claude", "1", "First archive", "completed");
+        first.source_key = "session-aaa".to_string();
+        upsert_task(&conn, &first).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            "session-aaa",
+            &[],
+        )
+        .unwrap();
+
+        let mut second = make_task("claude", "1", "Second archive", "completed");
+        second.source_key = "session-aaa".to_string();
+        second.updated_at = "2026-02-22T12:00:00Z".to_string();
+        upsert_task(&conn, &second).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            "session-aaa",
+            &[],
+        )
+        .unwrap();
+
+        let archived = get_archived_task_for_project_by_identity(
+            &conn,
+            "/projects/foo",
+            "claude",
+            "session-aaa",
+            "1",
+        )
+        .unwrap()
+        .expect("expected archived task");
+
+        assert_eq!(archived.subject, "Second archive");
+        assert!(archived.archived_at.is_some());
+    }
+
+    #[test]
+    fn get_archived_task_for_project_by_identity_returns_none_when_missing() {
+        let (conn, _tmp) = test_db();
+        let archived = get_archived_task_for_project_by_identity(
+            &conn,
+            "/projects/foo",
+            "claude",
+            "missing",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(archived, None);
     }
 
     #[test]

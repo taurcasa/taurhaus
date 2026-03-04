@@ -20,6 +20,38 @@ use std::path::Path;
 /// Maximum file size to parse (1 MB). Skip larger files as a safety measure.
 const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
 
+#[derive(Debug, Default)]
+struct ClaudeScanOutcome {
+    tasks: Vec<UnifiedTask>,
+    had_errors: bool,
+    first_error: Option<String>,
+}
+
+impl ClaudeScanOutcome {
+    fn record_error(&mut self, message: String) {
+        self.had_errors = true;
+        if self.first_error.is_none() {
+            self.first_error = Some(message);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct DirectoryParseOutcome {
+    tasks: Vec<UnifiedTask>,
+    had_errors: bool,
+    first_error: Option<String>,
+}
+
+impl DirectoryParseOutcome {
+    fn record_error(&mut self, message: String) {
+        self.had_errors = true;
+        if self.first_error.is_none() {
+            self.first_error = Some(message);
+        }
+    }
+}
+
 /// Raw Claude task JSON shape (matches disk format exactly).
 #[derive(serde::Deserialize)]
 struct RawClaudeTask {
@@ -125,23 +157,42 @@ pub fn get_tasks_in_with_index(
         }
     };
 
-    match scan_all_task_directories(project_path, tasks_base, index) {
-        Ok(tasks) if tasks.is_empty() => ScanOutcome::DefinitivelyEmpty,
-        Ok(tasks) => ScanOutcome::Data(tasks),
-        Err(e) => ScanOutcome::Unavailable(e),
+    let scan = scan_all_task_directories(project_path, tasks_base, index);
+    if !scan.tasks.is_empty() {
+        return ScanOutcome::Data(scan.tasks);
     }
+    if scan.had_errors {
+        return ScanOutcome::Unavailable(
+            scan.first_error
+                .unwrap_or_else(|| "Claude task scan had degraded I/O or parse failures".to_string()),
+        );
+    }
+    ScanOutcome::DefinitivelyEmpty
 }
 
 fn scan_all_task_directories(
     project_path: &str,
     tasks_base: &Path,
     index: &ClaudeSourceIndex,
-) -> Result<Vec<UnifiedTask>, String> {
+) -> ClaudeScanOutcome {
+    let mut outcome = ClaudeScanOutcome::default();
     let project_key = normalize_project_path(project_path);
-    let entries = fs::read_dir(tasks_base).map_err(|e| format!("Failed to read tasks base: {e}"))?;
-    let mut all_tasks = Vec::new();
+    let entries = match fs::read_dir(tasks_base) {
+        Ok(entries) => entries,
+        Err(e) => {
+            outcome.record_error(format!("Failed to read tasks base: {e}"));
+            return outcome;
+        }
+    };
 
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry_result in entries {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(e) => {
+                outcome.record_error(format!("Failed to read tasks base entry: {e}"));
+                continue;
+            }
+        };
         let task_dir = entry.path();
         if !task_dir.is_dir() {
             continue;
@@ -156,20 +207,22 @@ fn scan_all_task_directories(
             continue;
         };
 
-        if !directory_has_json_tasks(&task_dir) {
-            continue;
-        }
-
         if !source_matches_project(source_key, &project_key, index) {
             continue;
         }
 
-        if let Some(tasks) = parse_task_directory(&task_dir, source_key)? {
-            all_tasks.extend(tasks);
+        let parsed = parse_task_directory(&task_dir, source_key);
+        if parsed.had_errors {
+            outcome.record_error(
+                parsed.first_error.unwrap_or_else(|| {
+                    format!("Failed to parse one or more task files in {}", task_dir.display())
+                }),
+            );
         }
+        outcome.tasks.extend(parsed.tasks);
     }
 
-    all_tasks.sort_by(|a, b| {
+    outcome.tasks.sort_by(|a, b| {
         a.session_id
             .cmp(&b.session_id)
             .then_with(|| {
@@ -183,7 +236,7 @@ fn scan_all_task_directories(
             .then_with(|| a.subject.cmp(&b.subject))
     });
 
-    Ok(all_tasks)
+    outcome
 }
 
 fn source_matches_project(
@@ -217,30 +270,26 @@ fn normalize_project_path(path: &str) -> String {
     normalized
 }
 
-fn directory_has_json_tasks(dir: &Path) -> bool {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return false;
-    };
-
-    entries.filter_map(|e| e.ok()).any(|entry| {
-        entry
-            .path()
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|ext| ext == "json")
-    })
-}
-
 /// Parse all task JSON files in a directory for a specific source key.
-///
-/// Returns `Ok(None)` when no parseable task rows were found.
-fn parse_task_directory(dir: &Path, source_key: &str) -> Result<Option<Vec<UnifiedTask>>, String> {
-    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read task dir: {e}"))?;
+fn parse_task_directory(dir: &Path, source_key: &str) -> DirectoryParseOutcome {
+    let mut outcome = DirectoryParseOutcome::default();
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            outcome.record_error(format!("Failed to read task dir: {e}"));
+            return outcome;
+        }
+    };
     let source_key = Some(source_key.to_string());
 
-    let mut tasks = Vec::new();
-
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry_result in entries {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(e) => {
+                outcome.record_error(format!("Failed to read task dir entry: {e}"));
+                continue;
+            }
+        };
         let path = entry.path();
 
         // Only parse .json files
@@ -249,17 +298,25 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> Result<Option<Vec<Unifi
         }
 
         // Skip oversized files
-        if let Ok(meta) = fs::metadata(&path) {
-            if meta.len() > MAX_FILE_SIZE {
+        match fs::metadata(&path) {
+            Ok(meta) if meta.len() > MAX_FILE_SIZE => {
                 tracing::warn!(path = %path.display(), "Skipping oversized task file (> 1MB)");
                 continue;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                outcome.record_error(format!(
+                    "Failed to read task metadata for {}: {e}",
+                    path.display()
+                ));
             }
         }
 
         match parse_task_file(&path, source_key.clone()) {
-            Ok(Some(task)) => tasks.push(task),
+            Ok(Some(task)) => outcome.tasks.push(task),
             Ok(None) => {} // Deleted task — silently skip
             Err(e) => {
+                outcome.record_error(format!("Failed to parse task file {}: {e}", path.display()));
                 tracing::warn!(
                     path = %path.display(),
                     error = %e,
@@ -269,12 +326,8 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> Result<Option<Vec<Unifi
         }
     }
 
-    if tasks.is_empty() {
-        return Ok(None);
-    }
-
     // Sort by ID for stable ordering
-    tasks.sort_by(|a, b| {
+    outcome.tasks.sort_by(|a, b| {
         let a_num: Option<u32> = a.id.parse().ok();
         let b_num: Option<u32> = b.id.parse().ok();
         match (a_num, b_num) {
@@ -283,7 +336,7 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> Result<Option<Vec<Unifi
         }
     });
 
-    Ok(Some(tasks))
+    outcome
 }
 
 /// Parse a single Claude task JSON file into a UnifiedTask.
@@ -343,9 +396,7 @@ mod tests {
 
     fn parse_task_directory_for_test(dir: &Path) -> Vec<UnifiedTask> {
         let source_key = dir.file_name().and_then(|n| n.to_str()).unwrap_or("test-source");
-        parse_task_directory(dir, source_key)
-            .unwrap()
-            .unwrap_or_default()
+        parse_task_directory(dir, source_key).tasks
     }
 
     #[test]
@@ -762,6 +813,90 @@ mod tests {
         );
 
         assert_eq!(outcome, ScanOutcome::DefinitivelyEmpty);
+    }
+
+    #[test]
+    fn malformed_task_files_without_survivors_are_unavailable() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        let session_dir = tasks_base.join("broken-session");
+        fs::create_dir_all(&session_dir).unwrap();
+        write_task(&session_dir, "1.json", "not valid json");
+
+        let live_session = make_live_session("broken-session", "/home/user/projects/myapp");
+        let outcome = get_tasks_in(
+            "/home/user/projects/myapp",
+            &[&live_session],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        );
+        assert!(matches!(outcome, ScanOutcome::Unavailable(_)));
+    }
+
+    #[test]
+    fn malformed_task_files_with_survivors_return_data() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        let session_dir = tasks_base.join("partial-session");
+        fs::create_dir_all(&session_dir).unwrap();
+        write_task(&session_dir, "1.json", "not valid json");
+        write_task(
+            &session_dir,
+            "2.json",
+            r#"{"id":"2","subject":"Still parseable","status":"pending"}"#,
+        );
+
+        let live_session = make_live_session("partial-session", "/home/user/projects/myapp");
+        let tasks = match get_tasks_in(
+            "/home/user/projects/myapp",
+            &[&live_session],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        ) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected partial data, got {other:?}"),
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "2");
+    }
+
+    #[test]
+    fn unreadable_json_entry_without_survivors_is_unavailable() {
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::create_dir_all(&tasks_base).unwrap();
+        fs::create_dir_all(&projects_base).unwrap();
+        fs::create_dir_all(&teams_base).unwrap();
+
+        let session_dir = tasks_base.join("io-session");
+        fs::create_dir_all(&session_dir).unwrap();
+        fs::create_dir_all(session_dir.join("1.json")).unwrap();
+
+        let live_session = make_live_session("io-session", "/home/user/projects/myapp");
+        let outcome = get_tasks_in(
+            "/home/user/projects/myapp",
+            &[&live_session],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        );
+        assert!(matches!(outcome, ScanOutcome::Unavailable(_)));
     }
 
     #[test]

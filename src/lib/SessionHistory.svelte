@@ -15,6 +15,15 @@
   const headerHover   = $derived(dark ? 'hover:bg-zinc-900/60' : 'hover:bg-zinc-100/80')
   const detailBg      = $derived(dark ? 'bg-zinc-900/20' : 'bg-zinc-50/30')
   const hashBg        = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-200/80')
+  const loadingDotBg  = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-200')
+  const loadingTitleBg = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-200')
+  const loadingMetaBg = $derived(dark ? 'bg-zinc-800/50' : 'bg-zinc-100')
+  const loadingCommitHashBg = $derived(dark ? 'bg-zinc-800' : 'bg-zinc-200')
+  const loadingCommitLineBg = $derived(dark ? 'bg-zinc-800/50' : 'bg-zinc-100')
+  const warningChipClass = $derived(dark ? 'bg-warning-300/15 text-warning-300' : 'bg-warning-50 text-warning-600')
+  const warningRowClass = $derived(dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600')
+  const taskHoverClass = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80')
+  const archiveChipClass = $derived(dark ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-600')
 
   const SOURCE_LABELS = TOOL_NAMES
 
@@ -132,6 +141,7 @@
   $effect(() => {
     if (!projectPath || !isActive) return
     const cancelledRef = { cancelled: false }
+    let destroyed = false
     let unlisten = null
     loading = true
     fetchData(cancelledRef)
@@ -139,20 +149,30 @@
     const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (isTauriEnv) {
       import('@tauri-apps/api/event').then(({ listen }) => {
-        if (cancelledRef.cancelled) return
+        if (destroyed) return
         listen('project-tasks-changed', (event) => {
           const eventProjectId = event?.payload?.project_id ?? null
           const projectMatches = !projectId || !eventProjectId || eventProjectId === projectId
-          if (!cancelledRef.cancelled && document.visibilityState !== 'hidden' && projectMatches) {
+          if (!destroyed && document.visibilityState !== 'hidden' && projectMatches) {
             fetchData(cancelledRef)
           }
-        }).then(fn => { unlisten = fn })
+        }).then(fn => {
+          if (destroyed) {
+            fn()
+            return
+          }
+          unlisten = fn
+        })
       })
     }
 
     return () => {
+      destroyed = true
       cancelledRef.cancelled = true
-      if (unlisten) unlisten()
+      if (unlisten) {
+        unlisten()
+        unlisten = null
+      }
     }
   })
 </script>
@@ -164,9 +184,9 @@
       {#each Array(4) as _}
         <div class="rounded-lg {headerBg} px-4 py-3">
           <div class="flex items-center gap-3">
-            <div class="h-3 w-3 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-            <div class="h-3 w-40 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-            <div class="h-2.5 w-20 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse ml-auto"></div>
+            <div class="h-3 w-3 rounded {loadingDotBg} animate-pulse"></div>
+            <div class="h-3 w-40 rounded {loadingTitleBg} animate-pulse"></div>
+            <div class="h-2.5 w-20 rounded {loadingMetaBg} animate-pulse ml-auto"></div>
           </div>
         </div>
       {/each}
@@ -189,7 +209,7 @@
     {#if dataErrors.length > 0}
       <div class="px-5 pt-4 pb-2 space-y-1 shrink-0" data-testid="history-errors">
         {#each dataErrors as message}
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {warningRowClass}">
             <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
@@ -244,7 +264,7 @@
             {#if session.enrichment_warnings?.length > 0}
               <span
                 class="inline-flex items-center justify-center rounded px-1 py-0.5 text-[10px] font-semibold
-                  {dark ? 'bg-warning-300/15 text-warning-300' : 'bg-warning-50 text-warning-600'}"
+                  {warningChipClass}"
                 data-testid="session-enrichment-warning"
                 title={session.enrichment_warnings.join('\n')}
               >
@@ -275,7 +295,7 @@
               {#if session.enrichment_warnings?.length > 0}
                 <div class="mb-3 space-y-1" data-testid="session-enrichment-warnings">
                   {#each session.enrichment_warnings as warning}
-                    <div class="flex items-center gap-2 px-2 py-1 rounded text-[10px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
+                    <div class="flex items-center gap-2 px-2 py-1 rounded text-[10px] {warningRowClass}">
                       <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                       </svg>
@@ -293,7 +313,7 @@
                     {@const archiveChip = archiveChipLabel(task)}
                     <button
                       class="w-full text-left flex items-center gap-2 px-2 py-1 rounded transition-colors cursor-pointer
-                        {dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80'}"
+                        {taskHoverClass}"
                       data-testid="history-task"
                       onclick={() => onSelectTask?.(task)}
                     >
@@ -313,7 +333,7 @@
                     </button>
                     {#if archiveChip}
                       <div class="ml-7 -mt-0.5 mb-1">
-                        <span class="inline-flex rounded px-1.5 py-0.5 text-[10px] {dark ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-600'}" data-testid="history-archive-chip">
+                        <span class="inline-flex rounded px-1.5 py-0.5 text-[10px] {archiveChipClass}" data-testid="history-archive-chip">
                           {archiveChip}
                         </span>
                       </div>
@@ -327,8 +347,8 @@
                 <div class="mb-3 space-y-1" data-testid="session-commits-loading">
                   {#each Array(3) as _}
                     <div class="flex items-center gap-2 h-[22px]">
-                      <div class="h-2 w-14 rounded {dark ? 'bg-zinc-800' : 'bg-zinc-200'} animate-pulse"></div>
-                      <div class="h-2 flex-1 rounded {dark ? 'bg-zinc-800/50' : 'bg-zinc-100'} animate-pulse"></div>
+                      <div class="h-2 w-14 rounded {loadingCommitHashBg} animate-pulse"></div>
+                      <div class="h-2 flex-1 rounded {loadingCommitLineBg} animate-pulse"></div>
                     </div>
                   {/each}
                 </div>

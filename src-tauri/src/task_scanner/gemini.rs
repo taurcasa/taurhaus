@@ -19,6 +19,22 @@ use std::path::{Path, PathBuf};
 const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
 const GEMINI_SOURCE_KEY: &str = "gemini-todo";
 
+#[derive(Debug, Default)]
+struct CheckboxParseOutcome {
+    tasks: Vec<UnifiedTask>,
+    had_errors: bool,
+    first_error: Option<String>,
+}
+
+impl CheckboxParseOutcome {
+    fn record_error(&mut self, message: String) {
+        self.had_errors = true;
+        if self.first_error.is_none() {
+            self.first_error = Some(message);
+        }
+    }
+}
+
 /// Get tasks from a project's TODO.md file.
 ///
 /// Returns an empty vec (not an error) if the file doesn't exist.
@@ -55,12 +71,18 @@ fn get_tasks_from_with_source_key(
         Err(e) => return ScanOutcome::Unavailable(format!("Failed to read TODO.md: {e}")),
     };
 
-    let tasks = parse_checkboxes_with_source_key(&content, source_key);
-    if tasks.is_empty() {
-        ScanOutcome::DefinitivelyEmpty
-    } else {
-        ScanOutcome::Data(tasks)
+    let parsed = parse_checkboxes_with_source_key_diagnostics(&content, source_key);
+    if !parsed.tasks.is_empty() {
+        return ScanOutcome::Data(parsed.tasks);
     }
+    if parsed.had_errors {
+        return ScanOutcome::Unavailable(
+            parsed
+                .first_error
+                .unwrap_or_else(|| "Malformed checkbox entries in TODO.md".to_string()),
+        );
+    }
+    ScanOutcome::DefinitivelyEmpty
 }
 
 /// Parse markdown checkbox lines into UnifiedTasks.
@@ -76,22 +98,39 @@ pub fn parse_checkboxes(content: &str) -> Vec<UnifiedTask> {
 }
 
 fn parse_checkboxes_with_source_key(content: &str, source_key: &str) -> Vec<UnifiedTask> {
-    content
-        .lines()
-        .enumerate()
-        .filter_map(|(line_num, line)| parse_checkbox_line(line, line_num, source_key))
-        .collect()
+    parse_checkboxes_with_source_key_diagnostics(content, source_key).tasks
+}
+
+fn parse_checkboxes_with_source_key_diagnostics(
+    content: &str,
+    source_key: &str,
+) -> CheckboxParseOutcome {
+    let mut outcome = CheckboxParseOutcome::default();
+    for (line_num, line) in content.lines().enumerate() {
+        match parse_checkbox_line(line, line_num, source_key) {
+            Ok(Some(task)) => outcome.tasks.push(task),
+            Ok(None) => {}
+            Err(e) => outcome.record_error(format!("Line {}: {e}", line_num + 1)),
+        }
+    }
+    outcome
 }
 
 /// Try to parse a single line as a markdown checkbox.
 ///
 /// Expected format: optional whitespace, then `- [`, then ` `, `x`, or `X`,
 /// then `] `, then the task text.
-fn parse_checkbox_line(line: &str, line_num: usize, source_key: &str) -> Option<UnifiedTask> {
+fn parse_checkbox_line(
+    line: &str,
+    line_num: usize,
+    source_key: &str,
+) -> Result<Option<UnifiedTask>, String> {
     let trimmed = line.trim_start();
 
     // Must start with "- ["
-    let rest = trimmed.strip_prefix("- [")?;
+    let Some(rest) = trimmed.strip_prefix("- [") else {
+        return Ok(None);
+    };
 
     // Next char determines status
     let (status, rest) = if let Some(rest) = rest.strip_prefix(' ') {
@@ -101,18 +140,20 @@ fn parse_checkbox_line(line: &str, line_num: usize, source_key: &str) -> Option<
     } else if let Some(rest) = rest.strip_prefix('X') {
         (TaskStatus::Completed, rest)
     } else {
-        return None;
+        return Err("Invalid checkbox marker (expected ' ', 'x', or 'X')".to_string());
     };
 
     // Must be followed by "] "
-    let rest = rest.strip_prefix("] ")?;
+    let Some(rest) = rest.strip_prefix("] ") else {
+        return Err("Missing closing '] ' after checkbox marker".to_string());
+    };
 
     let subject = rest.trim();
     if subject.is_empty() {
-        return None;
+        return Err("Checkbox task text is empty".to_string());
     }
 
-    Some(UnifiedTask {
+    Ok(Some(UnifiedTask {
         id: format!("todo-{line_num}"),
         source_key: source_key.to_string(),
         subject: subject.to_string(),
@@ -129,7 +170,7 @@ fn parse_checkbox_line(line: &str, line_num: usize, source_key: &str) -> Option<
         archived_at: None,
         last_status: None,
         archived_reason: None,
-    })
+    }))
 }
 
 /// Resolve Gemini transcript time range for a session identity.
@@ -412,6 +453,30 @@ mod tests {
         let tasks = parse_checkboxes(content);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Valid");
+    }
+
+    #[test]
+    fn malformed_checkbox_without_survivors_is_unavailable() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("TODO.md");
+        std::fs::write(&path, "- [y] Broken checkbox\n").unwrap();
+
+        let outcome = get_tasks_from(&path);
+        assert!(matches!(outcome, ScanOutcome::Unavailable(_)));
+    }
+
+    #[test]
+    fn malformed_checkbox_with_survivors_returns_data() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("TODO.md");
+        std::fs::write(&path, "- [y] Broken checkbox\n- [ ] Valid task\n").unwrap();
+
+        let tasks = match get_tasks_from(&path) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected partial data, got {other:?}"),
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Valid task");
     }
 
     #[test]

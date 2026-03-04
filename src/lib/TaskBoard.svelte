@@ -67,24 +67,41 @@
     return Array.isArray(task.blocked_by) ? task.blocked_by.length : 0
   }
 
+  function taskSortIdentity(task) {
+    const source = task?.source || ''
+    const sourceKey = task?.source_key || ''
+    const sourceTaskId = task?.id || task?.source_task_id || ''
+    return `${source}/${sourceKey}/${sourceTaskId}`
+  }
+
   // Group + sort tasks by status
   const grouped = $derived({
     in_progress: tasks
       .filter(t => t.status === 'in_progress')
       .slice()
-      .sort((a, b) => recencyTimeMs(b) - recencyTimeMs(a)),
+      .sort((a, b) => {
+        const recencyDelta = recencyTimeMs(b) - recencyTimeMs(a)
+        if (recencyDelta !== 0) return recencyDelta
+        return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
+      }),
     pending: tasks
       .filter(t => t.status === 'pending')
       .slice()
       .sort((a, b) => {
         const depDelta = dependencyCount(b) - dependencyCount(a)
         if (depDelta !== 0) return depDelta
-        return recencyTimeMs(b) - recencyTimeMs(a)
+        const recencyDelta = recencyTimeMs(b) - recencyTimeMs(a)
+        if (recencyDelta !== 0) return recencyDelta
+        return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
       }),
     completed: tasks
       .filter(t => t.status === 'completed')
       .slice()
-      .sort((a, b) => parseTimeMs(b.updated_at) - parseTimeMs(a.updated_at)),
+      .sort((a, b) => {
+        const updatedDelta = parseTimeMs(b.updated_at) - parseTimeMs(a.updated_at)
+        if (updatedDelta !== 0) return updatedDelta
+        return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
+      }),
   })
 
   // Pending restore target — applied once tasks finish loading
@@ -127,7 +144,7 @@
   // In Vite-only mode, fall back to polling for mock data.
   $effect(() => {
     if (!projectPath) return
-    let cancelled = false
+    let destroyed = false
     let unlisten = null
     let interval = null
 
@@ -138,12 +155,18 @@
     const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (isTauriEnv) {
       import('@tauri-apps/api/event').then(({ listen }) => {
-        if (cancelled) return
+        if (destroyed) return
         listen('project-tasks-changed', (event) => {
           const eventProjectId = event?.payload?.project_id ?? null
           const projectMatches = !projectId || !eventProjectId || eventProjectId === projectId
-          if (!cancelled && !document.hidden && isActive && projectMatches) fetchTasks()
-        }).then(fn => { unlisten = fn })
+          if (!destroyed && !document.hidden && isActive && projectMatches) fetchTasks()
+        }).then(fn => {
+          if (destroyed) {
+            fn()
+            return
+          }
+          unlisten = fn
+        })
       })
     } else {
       // Vite-only mode — poll for mock data
@@ -155,20 +178,23 @@
     async function fetchTasks() {
       try {
         const result = await getProjectTasks(projectPath)
-        if (cancelled) return
+        if (destroyed) return
         tasks = result.tasks || []
         errors = result.errors || []
         loading = false
       } catch (e) {
-        if (cancelled) return
+        if (destroyed) return
         errors = [['fetch', e.message || 'Failed to load tasks']]
         loading = false
       }
     }
 
     return () => {
-      cancelled = true
-      if (unlisten) unlisten()
+      destroyed = true
+      if (unlisten) {
+        unlisten()
+        unlisten = null
+      }
       if (interval) clearInterval(interval)
     }
   })

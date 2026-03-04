@@ -24,19 +24,80 @@ const CODEX_LOOKBACK_DAYS: i64 = 7;
 /// How far back archived session enrichment scans for transcript timestamps.
 const CODEX_TIMELINE_LOOKBACK_DAYS: i64 = 30;
 
+#[derive(Debug, Default)]
+struct CodexDiagnostics {
+    had_errors: bool,
+    first_error: Option<String>,
+}
+
+impl CodexDiagnostics {
+    fn record_error(&mut self, message: String) {
+        self.had_errors = true;
+        if self.first_error.is_none() {
+            self.first_error = Some(message);
+        }
+    }
+
+    fn unavailable_or_empty(self) -> ScanOutcome {
+        if self.had_errors {
+            ScanOutcome::Unavailable(
+                self.first_error
+                    .unwrap_or_else(|| "Codex scan encountered degraded I/O".to_string()),
+            )
+        } else {
+            ScanOutcome::DefinitivelyEmpty
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ParseUpdatePlanOutcome {
+    tasks: Vec<UnifiedTask>,
+    had_errors: bool,
+    first_error: Option<String>,
+}
+
+impl ParseUpdatePlanOutcome {
+    fn record_error(&mut self, message: String) {
+        self.had_errors = true;
+        if self.first_error.is_none() {
+            self.first_error = Some(message);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct SessionDiscoveryOutcome {
+    session_path: Option<PathBuf>,
+    diagnostics: CodexDiagnostics,
+}
+
 /// Get tasks from Codex session JSONL files.
 pub fn get_tasks(
     project_path: &str,
     sessions: &[&ClaudeSession],
 ) -> ScanOutcome {
+    let mut diagnostics = CodexDiagnostics::default();
+
     // Try live sessions first — use jsonl_path directly
     for session in sessions {
         if let Some(ref jsonl_path) = session.jsonl_path {
             let path = Path::new(jsonl_path);
             if path.exists() {
-                match parse_update_plan(path) {
-                    Ok(tasks) if !tasks.is_empty() => return ScanOutcome::Data(tasks),
-                    Ok(_) => {}
+                match parse_update_plan_with_diagnostics(path) {
+                    Ok(outcome) if !outcome.tasks.is_empty() => return ScanOutcome::Data(outcome.tasks),
+                    Ok(outcome) => {
+                        if outcome.had_errors {
+                            diagnostics.record_error(
+                                outcome.first_error.unwrap_or_else(|| {
+                                    format!(
+                                        "Failed to fully parse Codex update_plan in {}",
+                                        path.display()
+                                    )
+                                }),
+                            );
+                        }
+                    }
                     Err(e) => return ScanOutcome::Unavailable(e),
                 }
             }
@@ -44,7 +105,12 @@ pub fn get_tasks(
     }
 
     // Offline fallback
-    get_tasks_offline(project_path)
+    let offline = get_tasks_offline(project_path);
+    match offline {
+        ScanOutcome::Data(tasks) => ScanOutcome::Data(tasks),
+        ScanOutcome::Unavailable(reason) => ScanOutcome::Unavailable(reason),
+        ScanOutcome::DefinitivelyEmpty => diagnostics.unavailable_or_empty(),
+    }
 }
 
 /// Testable version with injectable sessions directory.
@@ -53,14 +119,27 @@ pub fn get_tasks_in(
     sessions: &[&ClaudeSession],
     sessions_dir: &Path,
 ) -> ScanOutcome {
+    let mut diagnostics = CodexDiagnostics::default();
+
     // Try live sessions first
     for session in sessions {
         if let Some(ref jsonl_path) = session.jsonl_path {
             let path = Path::new(jsonl_path);
             if path.exists() {
-                match parse_update_plan(path) {
-                    Ok(tasks) if !tasks.is_empty() => return ScanOutcome::Data(tasks),
-                    Ok(_) => {}
+                match parse_update_plan_with_diagnostics(path) {
+                    Ok(outcome) if !outcome.tasks.is_empty() => return ScanOutcome::Data(outcome.tasks),
+                    Ok(outcome) => {
+                        if outcome.had_errors {
+                            diagnostics.record_error(
+                                outcome.first_error.unwrap_or_else(|| {
+                                    format!(
+                                        "Failed to fully parse Codex update_plan in {}",
+                                        path.display()
+                                    )
+                                }),
+                            );
+                        }
+                    }
                     Err(e) => return ScanOutcome::Unavailable(e),
                 }
             }
@@ -68,7 +147,12 @@ pub fn get_tasks_in(
     }
 
     // Offline fallback with custom dir
-    get_tasks_offline_in(project_path, sessions_dir)
+    let offline = get_tasks_offline_in(project_path, sessions_dir);
+    match offline {
+        ScanOutcome::Data(tasks) => ScanOutcome::Data(tasks),
+        ScanOutcome::Unavailable(reason) => ScanOutcome::Unavailable(reason),
+        ScanOutcome::DefinitivelyEmpty => diagnostics.unavailable_or_empty(),
+    }
 }
 
 /// Offline fallback: scan recent Codex sessions to find one matching this project.
@@ -96,20 +180,38 @@ fn get_tasks_offline_in(
     }
 
     // Reuse the same date-scanning logic as CodexResolver in idle.rs
-    match find_codex_session_for_project(project_path, sessions_dir) {
-        Some(path) => match parse_update_plan(&path) {
-            Ok(tasks) if tasks.is_empty() => ScanOutcome::DefinitivelyEmpty,
-            Ok(tasks) => ScanOutcome::Data(tasks),
+    let discovery = find_codex_session_for_project_with_diagnostics(project_path, sessions_dir);
+    match discovery.session_path {
+        Some(path) => match parse_update_plan_with_diagnostics(&path) {
+            Ok(outcome) if !outcome.tasks.is_empty() => ScanOutcome::Data(outcome.tasks),
+            Ok(outcome) => {
+                let mut diagnostics = discovery.diagnostics;
+                if outcome.had_errors {
+                    diagnostics.record_error(
+                        outcome.first_error.unwrap_or_else(|| {
+                            format!(
+                                "Failed to fully parse Codex update_plan in {}",
+                                path.display()
+                            )
+                        }),
+                    );
+                }
+                diagnostics.unavailable_or_empty()
+            }
             Err(e) => ScanOutcome::Unavailable(e),
         },
-        None => ScanOutcome::DefinitivelyEmpty,
+        None => discovery.diagnostics.unavailable_or_empty(),
     }
 }
 
 /// Scan recent date directories to find a Codex session file matching a project.
-fn find_codex_session_for_project(project_path: &str, sessions_dir: &Path) -> Option<PathBuf> {
+fn find_codex_session_for_project_with_diagnostics(
+    project_path: &str,
+    sessions_dir: &Path,
+) -> SessionDiscoveryOutcome {
     use chrono::Local;
 
+    let mut outcome = SessionDiscoveryOutcome::default();
     let today = Local::now().date_naive();
 
     for days_back in 0..CODEX_LOOKBACK_DAYS {
@@ -123,61 +225,102 @@ fn find_codex_session_for_project(project_path: &str, sessions_dir: &Path) -> Op
             continue;
         }
 
-        let mut entries: Vec<_> = fs::read_dir(&date_dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
-            .collect();
+        let dir_entries = match fs::read_dir(&date_dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                outcome
+                    .diagnostics
+                    .record_error(format!("Failed to read Codex session dir {}: {e}", date_dir.display()));
+                continue;
+            }
+        };
+
+        let mut entries = Vec::new();
+        for entry_result in dir_entries {
+            let entry = match entry_result {
+                Ok(entry) => entry,
+                Err(e) => {
+                    outcome
+                        .diagnostics
+                        .record_error(format!("Failed to read Codex session entry: {e}"));
+                    continue;
+                }
+            };
+            if entry.path().extension().is_some_and(|ext| ext == "jsonl") {
+                entries.push(entry);
+            }
+        }
 
         // Sort by mtime descending
         entries.sort_by(|a, b| {
-            let mt_a = a
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-            let mt_b = b
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            let mt_a = match a.metadata().and_then(|m| m.modified()) {
+                Ok(ts) => ts,
+                Err(e) => {
+                    outcome
+                        .diagnostics
+                        .record_error(format!("Failed to read mtime for {}: {e}", a.path().display()));
+                    std::time::SystemTime::UNIX_EPOCH
+                }
+            };
+            let mt_b = match b.metadata().and_then(|m| m.modified()) {
+                Ok(ts) => ts,
+                Err(e) => {
+                    outcome
+                        .diagnostics
+                        .record_error(format!("Failed to read mtime for {}: {e}", b.path().display()));
+                    std::time::SystemTime::UNIX_EPOCH
+                }
+            };
             mt_b.cmp(&mt_a)
         });
 
         for entry in entries {
-            if codex_session_matches_project(&entry.path(), project_path) {
-                return Some(entry.path());
+            match codex_session_matches_project(&entry.path(), project_path) {
+                Ok(true) => {
+                    outcome.session_path = Some(entry.path());
+                    return outcome;
+                }
+                Ok(false) => {}
+                Err(e) => outcome.diagnostics.record_error(e),
             }
         }
     }
 
-    None
+    outcome
 }
 
 /// Check if a Codex JSONL file's first line session_meta.payload.cwd matches a project path.
-fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool {
+fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> Result<bool, String> {
     use std::io::{BufRead, BufReader};
 
-    let file = match fs::File::open(jsonl_path) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
+    let file = fs::File::open(jsonl_path).map_err(|e| {
+        format!(
+            "Failed to open Codex session file {}: {e}",
+            jsonl_path.display()
+        )
+    })?;
 
     let mut reader = BufReader::new(file);
     let mut first_line = String::new();
-    if reader.read_line(&mut first_line).is_err() || first_line.is_empty() {
-        return false;
+    if reader.read_line(&mut first_line).is_err() {
+        return Err(format!(
+            "Failed to read first line from Codex session file {}",
+            jsonl_path.display()
+        ));
+    }
+    if first_line.is_empty() {
+        return Ok(false);
     }
 
-    let parsed: serde_json::Value = match serde_json::from_str(&first_line) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
+    let parsed: serde_json::Value = serde_json::from_str(&first_line).map_err(|e| {
+        format!(
+            "Failed to parse session metadata in {}: {e}",
+            jsonl_path.display()
+        )
+    })?;
 
     if parsed.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
-        return false;
+        return Ok(false);
     }
 
     let cwd = match parsed
@@ -186,12 +329,12 @@ fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool 
         .and_then(|c| c.as_str())
     {
         Some(cwd) => cwd,
-        None => return false,
+        None => return Ok(false),
     };
 
     let norm_cwd = cwd.trim_end_matches('/');
     let norm_target = project_path.trim_end_matches('/');
-    norm_cwd == norm_target
+    Ok(norm_cwd == norm_target)
 }
 
 /// Parse the last `update_plan` function call from a Codex JSONL file.
@@ -200,9 +343,16 @@ fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool 
 /// Finds the last line with `type: "function_call"` and `name: "update_plan"`,
 /// then double-parses: `payload.arguments` is a JSON string containing `{plan: [{step, status}]}`.
 pub fn parse_update_plan(jsonl_path: &Path) -> Result<Vec<UnifiedTask>, String> {
+    Ok(parse_update_plan_with_diagnostics(jsonl_path)?.tasks)
+}
+
+fn parse_update_plan_with_diagnostics(
+    jsonl_path: &Path,
+) -> Result<ParseUpdatePlanOutcome, String> {
     let tail = read_file_tail(jsonl_path, TAIL_READ_SIZE)
         .map_err(|e| format!("Failed to read Codex JSONL: {e}"))?;
     let source_key = codex_source_key_from_jsonl(jsonl_path);
+    let mut outcome = ParseUpdatePlanOutcome::default();
 
     // Find the last update_plan line
     let mut last_plan_line: Option<&str> = None;
@@ -214,33 +364,43 @@ pub fn parse_update_plan(jsonl_path: &Path) -> Result<Vec<UnifiedTask>, String> 
         if !line.contains("update_plan") {
             continue;
         }
-        if is_update_plan_line(line) {
-            last_plan_line = Some(line);
+        match is_update_plan_line(line) {
+            Ok(true) => last_plan_line = Some(line),
+            Ok(false) => {}
+            Err(e) => outcome.record_error(e),
         }
     }
 
     let plan_line = match last_plan_line {
         Some(line) => line,
-        None => return Ok(vec![]),
+        None => return Ok(outcome),
     };
 
-    parse_plan_from_line(plan_line, &source_key)
+    match parse_plan_from_line(plan_line, &source_key) {
+        Ok(tasks) => {
+            outcome.tasks = tasks;
+            Ok(outcome)
+        }
+        Err(e) => {
+            outcome.record_error(e);
+            Ok(outcome)
+        }
+    }
 }
 
 /// Check if a JSONL line is an update_plan function call.
-fn is_update_plan_line(line: &str) -> bool {
-    let parsed: serde_json::Value = match serde_json::from_str(line) {
-        Ok(v) => v,
-        Err(_) => return false,
+fn is_update_plan_line(line: &str) -> Result<bool, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(line).map_err(|e| format!("Malformed Codex JSONL line: {e}"))?;
+
+    let Some(payload) = parsed.get("payload") else {
+        return Ok(false);
     };
 
-    let payload = match parsed.get("payload") {
-        Some(p) => p,
-        None => return false,
-    };
-
-    payload.get("type").and_then(|v| v.as_str()) == Some("function_call")
-        && payload.get("name").and_then(|v| v.as_str()) == Some("update_plan")
+    Ok(
+        payload.get("type").and_then(|v| v.as_str()) == Some("function_call")
+            && payload.get("name").and_then(|v| v.as_str()) == Some("update_plan"),
+    )
 }
 
 /// Extract tasks from a single update_plan JSONL line.
@@ -658,6 +818,58 @@ mod tests {
         let tasks = parse_update_plan(&path).unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Valid task");
+    }
+
+    #[test]
+    fn malformed_update_plan_without_survivors_is_unavailable() {
+        let tmp = TempDir::new().unwrap();
+        let sessions_dir = tmp.path().join("sessions");
+
+        let today = chrono::Local::now().date_naive();
+        let date_dir = sessions_dir
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        write_codex_session(
+            &date_dir,
+            "broken-plan.jsonl",
+            "/home/user/projects/myapp",
+            &[r#"{"payload":{"type":"function_call","name":"update_plan","arguments":"{"}}"#],
+        );
+
+        let outcome = get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir);
+        assert!(matches!(outcome, ScanOutcome::Unavailable(_)));
+    }
+
+    #[test]
+    fn malformed_update_plan_with_survivors_returns_data() {
+        let tmp = TempDir::new().unwrap();
+        let sessions_dir = tmp.path().join("sessions");
+
+        let today = chrono::Local::now().date_naive();
+        let date_dir = sessions_dir
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let valid_plan = make_update_plan_line(&[("Recovered task", "open")]);
+        write_codex_session(
+            &date_dir,
+            "partial-plan.jsonl",
+            "/home/user/projects/myapp",
+            &[
+                "not valid json but contains update_plan token",
+                &valid_plan,
+            ],
+        );
+
+        let tasks = match get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected partial task data, got {other:?}"),
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Recovered task");
     }
 
     #[test]

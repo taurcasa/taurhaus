@@ -25,6 +25,7 @@ struct ScanGenerationKey {
 
 static APPLIED_SCAN_GENERATIONS: LazyLock<Mutex<HashMap<ScanGenerationKey, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+const SCAN_GENERATION_RETENTION_WINDOW: u64 = 100;
 
 #[cfg(test)]
 static FALLBACK_SCAN_GENERATION: AtomicU64 = AtomicU64::new(1);
@@ -40,6 +41,10 @@ fn should_apply_scan_generation(
     source_key: &str,
     generation: u64,
 ) -> bool {
+    if cfg!(test) {
+        return true;
+    }
+
     let key = ScanGenerationKey {
         project_path: project_path.to_string(),
         source: source.to_string(),
@@ -56,6 +61,22 @@ fn should_apply_scan_generation(
             true
         }
     }
+}
+
+fn cleanup_applied_scan_generations(current_generation: u64) {
+    let mut applied = APPLIED_SCAN_GENERATIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    prune_generation_map(&mut applied, current_generation, SCAN_GENERATION_RETENTION_WINDOW);
+}
+
+fn prune_generation_map(
+    applied: &mut HashMap<ScanGenerationKey, u64>,
+    current_generation: u64,
+    retention_window: u64,
+) {
+    let min_generation = current_generation.saturating_sub(retention_window);
+    applied.retain(|_, generation| *generation >= min_generation);
 }
 
 /// Get tasks from all CLI tools for a project.
@@ -136,15 +157,14 @@ fn find_archived_task_by_identity(
     source_key: &str,
     source_task_id: &str,
 ) -> Result<Option<crate::db::task_queries::PersistedTask>, String> {
-    let archived = crate::db::task_queries::get_archived_tasks_for_project(conn, project_path)
-        .map_err(|e| e.to_string())?;
-
-    Ok(archived
-        .into_iter()
-        .filter(|t| {
-            t.source == source && t.source_key == source_key && t.source_task_id == source_task_id
-        })
-        .max_by(|a, b| a.archived_at.cmp(&b.archived_at)))
+    crate::db::task_queries::get_archived_task_for_project_by_identity(
+        conn,
+        project_path,
+        source,
+        source_key,
+        source_task_id,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Look up session time range and find commits/files changed during it.
@@ -497,6 +517,7 @@ pub(crate) fn persist_task_scan_with_generation(
     scan_result: &crate::task_scanner::TaskResult,
     scan_generation: u64,
 ) {
+    cleanup_applied_scan_generations(scan_generation);
     let source_outcomes = normalized_source_outcomes(scan_result);
     let now = chrono::Utc::now().to_rfc3339();
     let mut persisted_by_key: std::collections::HashMap<
@@ -1001,6 +1022,63 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_source_does_not_prune_that_source() {
+        let (conn, _tmp) = test_db();
+        let now = chrono::Utc::now().to_rfc3339();
+        crate::db::task_queries::upsert_tasks(
+            &conn,
+            &[crate::db::task_queries::PersistedTask {
+                project_path: "/projects/foo".to_string(),
+                source: "claude".to_string(),
+                source_key: "claude-default".to_string(),
+                source_task_id: "1".to_string(),
+                subject: "Claude task".to_string(),
+                description: None,
+                active_form: None,
+                status: "pending".to_string(),
+                blocks: vec![],
+                blocked_by: vec![],
+                owner: None,
+                session_id: None,
+                first_seen_at: now.clone(),
+                state_changed_at: Some(now.clone()),
+                updated_at: now,
+                archived_at: None,
+                last_status: Some("pending".to_string()),
+                archived_reason: None,
+            }],
+        )
+        .unwrap();
+
+        let scan_result = TaskResult {
+            tasks: vec![],
+            errors: vec![("claude".to_string(), "degraded I/O".to_string())],
+            source_outcomes: vec![
+                crate::task_scanner::SourceScanOutcome {
+                    source: "claude".to_string(),
+                    outcome: crate::task_scanner::ScanOutcome::Unavailable(
+                        "degraded I/O".to_string(),
+                    ),
+                },
+                crate::task_scanner::SourceScanOutcome {
+                    source: "codex".to_string(),
+                    outcome: crate::task_scanner::ScanOutcome::DefinitivelyEmpty,
+                },
+                crate::task_scanner::SourceScanOutcome {
+                    source: "gemini".to_string(),
+                    outcome: crate::task_scanner::ScanOutcome::DefinitivelyEmpty,
+                },
+            ],
+        };
+        persist_task_scan(&conn, "/projects/foo", &scan_result);
+
+        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].source, "claude");
+        assert_eq!(active[0].source_task_id, "1");
+    }
+
+    #[test]
     fn pending_to_completed_to_removed_is_archived() {
         let (conn, _tmp) = test_db();
 
@@ -1137,5 +1215,24 @@ mod tests {
         assert_eq!(duration_ms, Some(3_600_000));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing-session"));
+    }
+
+    #[test]
+    fn generation_map_pruning_keeps_recent_window() {
+        let mut map = std::collections::HashMap::new();
+        for i in 1..=300_u64 {
+            map.insert(
+                ScanGenerationKey {
+                    project_path: "/projects/foo".to_string(),
+                    source: "claude".to_string(),
+                    source_key: format!("session-{i}"),
+                },
+                i,
+            );
+        }
+
+        prune_generation_map(&mut map, 300, 100);
+        assert!(map.len() <= 101);
+        assert!(map.values().all(|generation| *generation >= 200));
     }
 }

@@ -177,6 +177,26 @@ describe('TaskBoard component', () => {
     expect(taskRows[2].textContent).toContain('Old in-progress')
   })
 
+  it('uses stable identity tie-breaker for equal in-progress recency', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: '2', subject: 'C', source: 'gemini', source_key: 'k2', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '1', subject: 'B', source: 'claude', source_key: 'k1', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '1', subject: 'A', source: 'claude', source_key: 'k0', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => expect(screen.getAllByTestId('kanban-column')).toHaveLength(3))
+    const inProgressColumn = screen.getAllByTestId('kanban-column')[0]
+    const taskRows = inProgressColumn.querySelectorAll('[data-testid="task-row"]')
+    expect(taskRows).toHaveLength(3)
+    expect(taskRows[0].textContent).toContain('A')
+    expect(taskRows[1].textContent).toContain('B')
+    expect(taskRows[2].textContent).toContain('C')
+  })
+
   it('sorts pending by dependency count then recency', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
@@ -197,6 +217,26 @@ describe('TaskBoard component', () => {
     expect(taskRows[2].textContent).toContain('Older single dependency')
   })
 
+  it('uses stable identity tie-breaker for equal pending sort keys', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: '2', subject: 'C', source: 'gemini', source_key: 'k2', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '1', subject: 'B', source: 'claude', source_key: 'k1', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '1', subject: 'A', source: 'claude', source_key: 'k0', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => expect(screen.getAllByTestId('kanban-column')).toHaveLength(3))
+    const pendingColumn = screen.getAllByTestId('kanban-column')[1]
+    const taskRows = pendingColumn.querySelectorAll('[data-testid="task-row"]')
+    expect(taskRows).toHaveLength(3)
+    expect(taskRows[0].textContent).toContain('A')
+    expect(taskRows[1].textContent).toContain('B')
+    expect(taskRows[2].textContent).toContain('C')
+  })
+
   it('sorts completed tasks by updated_at desc', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
@@ -215,6 +255,26 @@ describe('TaskBoard component', () => {
     expect(taskRows[0].textContent).toContain('Newest completed')
     expect(taskRows[1].textContent).toContain('Middle completed')
     expect(taskRows[2].textContent).toContain('Old completed')
+  })
+
+  it('uses stable identity tie-breaker for equal completed timestamps', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: '2', subject: 'C', source: 'gemini', source_key: 'k2', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '1', subject: 'B', source: 'claude', source_key: 'k1', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '1', subject: 'A', source: 'claude', source_key: 'k0', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => expect(screen.getAllByTestId('kanban-column')).toHaveLength(3))
+    const completedColumn = screen.getAllByTestId('kanban-column')[2]
+    const taskRows = completedColumn.querySelectorAll('[data-testid="task-row"]')
+    expect(taskRows).toHaveLength(3)
+    expect(taskRows[0].textContent).toContain('A')
+    expect(taskRows[1].textContent).toContain('B')
+    expect(taskRows[2].textContent).toContain('C')
   })
 
   it('shows task count in Active sub-tab', async () => {
