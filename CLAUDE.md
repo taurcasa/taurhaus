@@ -172,6 +172,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |
 | `CHANGELOG.md` | Shipped milestones and release history |
+| `docs/design-workflow.md` | Design-first loop for UI specialist collaboration |
 
 ## Development Workflow (Phase 5)
 
@@ -207,6 +208,7 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 - Full test suite on every task. E2E at milestones.
 - Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
 - Visual dual review: self-review + Gemini Pro 3 cross-review. Lower score wins, Claude is final arbiter with justified override.
+- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See [`docs/design-workflow.md`](docs/design-workflow.md). The UI specialist (Gemini) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.
 
 ### Tasks
 - Claude Code native task format (subject, description, status, blocks/blockedBy, metadata)

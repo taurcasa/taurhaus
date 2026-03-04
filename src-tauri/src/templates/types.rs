@@ -798,7 +798,7 @@ mod tests {
     #[test]
     fn role_templates_deserialize_and_validate() {
         let roles = load_role_templates();
-        assert_eq!(roles.len(), 5, "expected five built-in role templates");
+        assert_eq!(roles.len(), 6, "expected six built-in role templates");
 
         for role in &roles {
             role.validate()
