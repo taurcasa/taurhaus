@@ -48,7 +48,7 @@
     if (normalizedStatus === 'idle' || normalizedStatus === 'offline') {
       return 'var(--mesh-connection-color-dim)'
     }
-    if (!dark) return 'rgba(13, 148, 136, 0.35)'
+    if (!dark) return 'rgba(13, 148, 136, 0.55)'
     return 'var(--mesh-connection-color)'
   })
 
