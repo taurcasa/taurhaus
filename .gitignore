@@ -42,8 +42,9 @@ npm-debug.log*
 # Build artifacts (macOS/Windows binaries, DMGs, installers)
 builds/
 
-# Bundled daemon binary (built artifact, copied before Windows build)
-src-tauri/resources/
+# Bundled binaries (built artifacts, copied before platform builds)
+src-tauri/resources/*
+!src-tauri/resources/templates/
 
 # Development screenshots (Playwright captures, visual reviews)
 *.png

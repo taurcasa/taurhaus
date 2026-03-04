@@ -36,6 +36,8 @@ pub mod terminal;
 
 pub mod platform;
 
+pub mod templates;
+
 #[cfg(test)]
 mod test_support;
 

@@ -1,0 +1,23 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: review-team
+name: Review Team
+description: Claude orchestrator with two Claude reviewers for parallel code review.
+version: 1.0.0
+
+lead_role_id: claude-orchestrator
+
+agent_slots:
+  - role_id: claude-reviewer
+    count: 2
+    project_binding: lead_project
+    overrides:
+      name_pattern: reviewer-{n}
+      instructions_append: |
+        Split review scope to avoid duplication and cover risk areas in parallel.
+
+defaults:
+  team_name_pattern: "{project}-review-team"
+  tmux_layout: tiled
