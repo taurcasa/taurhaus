@@ -1,4 +1,7 @@
 <script>
+  import { composeTeam, getTeamPreset, listTeamPresets } from '../ipc.js'
+  import TeamComposer from './TeamComposer.svelte'
+  import TemplateCatalog from './TemplateCatalog.svelte'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -11,6 +14,11 @@
 
   const t = $derived(themeTokens(dark))
   const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
+  const neutralTone = $derived(
+    dark
+      ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
+      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+  )
 
   const toolOptions = [
     { value: 'claude', label: 'Claude' },
@@ -70,9 +78,28 @@
   let teamDescription = $state('')
   let onboardingDismissed = $state(false)
   let showCustomize = $state(false)
+  let templateMode = $state('blank')
+  let templatePresetsLoading = $state(false)
+  let templateError = $state('')
+  let templateNotice = $state('')
+  let presetSummaries = $state([])
+  let selectedPresetId = $state('')
+  let selectedPreset = $state(null)
+  let showTeamComposer = $state(false)
+  let showTemplateCatalog = $state(false)
+  const quickPresetIds = ['fullstack-dev', 'research-dev', 'review-team']
 
-  const leadName = 'team-lead'
-  const leadModel = 'opus'
+  function defaultLead() {
+    return {
+      name: 'team-lead',
+      cliTool: 'claude',
+      model: 'opus',
+      description: 'Team lead',
+      projectId: projectPath,
+    }
+  }
+
+  let lead = $state(defaultLead())
 
   function defaultAgentProjectId() {
     const match = projectOptions.find((p) => p.id === projectPath)
@@ -94,6 +121,200 @@
 
   let agents = $state([defaultAgent()])
 
+  const quickPresets = $derived.by(() => {
+    return quickPresetIds.map((presetId) => {
+      const preset = presetSummaries.find((entry) => entry.presetId === presetId)
+      if (preset) return { ...preset, missing: false }
+      return {
+        presetId,
+        name: presetId,
+        description: 'Unavailable in current catalog',
+        leadRoleId: '',
+        missing: true,
+      }
+    })
+  })
+
+  function toolLabel(tool) {
+    const option = toolOptions.find((entry) => entry.value === tool)
+    return option?.label ?? String(tool || '')
+  }
+
+  function normalizePresetSummary(value) {
+    return {
+      presetId: value?.presetId ?? value?.preset_id ?? '',
+      name: value?.name ?? '',
+      description: value?.description ?? '',
+      leadRoleId: value?.leadRoleId ?? value?.lead_role_id ?? '',
+    }
+  }
+
+  function normalizePreset(value) {
+    if (!value || typeof value !== 'object') return null
+    const agentSlots = value?.agentSlots ?? value?.agent_slots ?? []
+    return {
+      presetId: value?.presetId ?? value?.preset_id ?? '',
+      name: value?.name ?? '',
+      description: value?.description ?? '',
+      leadRoleId: value?.leadRoleId ?? value?.lead_role_id ?? '',
+      agentSlots: Array.isArray(agentSlots)
+        ? agentSlots.map((slot) => ({
+            roleId: slot?.roleId ?? slot?.role_id ?? '',
+            count: Number(slot?.count ?? 0),
+            projectBinding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
+            overrides: slot?.overrides ?? null,
+          }))
+        : [],
+    }
+  }
+
+  function normalizeResolvedMember(value) {
+    return {
+      name: value?.name ?? '',
+      roleId: value?.roleId ?? value?.role_id ?? '',
+      roleKind: String(value?.roleKind ?? value?.role_kind ?? 'agent').toLowerCase(),
+      cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'codex').toLowerCase(),
+      model: value?.model ?? '',
+      instructions: value?.instructions ?? '',
+      projectId: value?.projectId ?? value?.project_id ?? '',
+    }
+  }
+
+  function mapAgentFromPayload(agent) {
+    return {
+      id: nextAgentId++,
+      name: String(agent?.name ?? '').trim(),
+      cliTool: String(agent?.cliTool ?? agent?.cli_tool ?? 'codex').toLowerCase(),
+      model: String(agent?.model ?? modelOptionsByTool.codex[0]),
+      projectId: String(agent?.projectId ?? agent?.project_id ?? projectPath ?? ''),
+      description: String(agent?.description ?? ''),
+    }
+  }
+
+  function applyInitializedPayload(payload, notice) {
+    if (payload?.lead) {
+      lead = {
+        name: String(payload.lead.name ?? 'team-lead'),
+        cliTool: String(payload.lead.cliTool ?? payload.lead.cli_tool ?? 'claude').toLowerCase(),
+        model: String(payload.lead.model ?? 'opus'),
+        description: String(payload.lead.description ?? 'Team lead'),
+        projectId: String(payload.lead.projectId ?? payload.lead.project_id ?? projectPath ?? ''),
+      }
+    } else {
+      lead = defaultLead()
+    }
+
+    if (Array.isArray(payload?.agents)) {
+      agents = payload.agents.map(mapAgentFromPayload)
+    } else {
+      agents = [defaultAgent()]
+    }
+
+    if (notice) templateNotice = notice
+    showTeamComposer = false
+    showTemplateCatalog = false
+  }
+
+  function applyComposedRoster(composed, notice) {
+    const roster = Array.isArray(composed?.roster) ? composed.roster.map(normalizeResolvedMember) : []
+    const leadMember = roster.find((entry) => entry.roleKind === 'lead')
+    const agentMembers = roster.filter((entry) => entry.roleKind !== 'lead')
+
+    applyInitializedPayload(
+      {
+        lead: leadMember
+          ? {
+              name: leadMember.name || 'team-lead',
+              cliTool: leadMember.cliTool || 'claude',
+              model: leadMember.model || 'opus',
+              projectId: leadMember.projectId || projectPath,
+              description: leadMember.roleId || 'Team lead',
+            }
+          : defaultLead(),
+        agents: agentMembers.map((entry) => ({
+          name: entry.name,
+          cliTool: entry.cliTool,
+          model: entry.model,
+          projectId: entry.projectId || projectPath,
+          description: entry.roleId || null,
+        })),
+      },
+      notice
+    )
+  }
+
+  async function loadTemplatePresets() {
+    templatePresetsLoading = true
+    templateError = ''
+    try {
+      const presets = await listTeamPresets()
+      presetSummaries = (presets ?? []).map(normalizePresetSummary).filter((entry) => entry.presetId)
+    } catch (error) {
+      presetSummaries = []
+      templateError = error?.message || 'Failed to load templates.'
+    } finally {
+      templatePresetsLoading = false
+    }
+  }
+
+  function startBlankSlate() {
+    templateMode = 'blank'
+    selectedPresetId = ''
+    selectedPreset = null
+    showTeamComposer = false
+    showTemplateCatalog = false
+    templateError = ''
+    templateNotice = ''
+    lead = defaultLead()
+    agents = [defaultAgent()]
+  }
+
+  async function applyPreset(presetId) {
+    templateMode = 'preset'
+    templateError = ''
+    templateNotice = ''
+    selectedPresetId = presetId
+    showTeamComposer = false
+    showTemplateCatalog = false
+    try {
+      const preset = normalizePreset(await getTeamPreset(presetId))
+      if (!preset) {
+        templateError = 'Preset not found.'
+        return
+      }
+      selectedPreset = preset
+      const composed = await composeTeam({
+        leadRoleId: preset.leadRoleId,
+        agentSlots: preset.agentSlots ?? [],
+        projectName,
+      })
+      applyComposedRoster(composed, `Applied preset: ${preset.name}`)
+    } catch (error) {
+      templateError = error?.message || 'Failed to apply preset.'
+    }
+  }
+
+  function startCustomTemplateFlow() {
+    templateMode = 'custom'
+    templateError = ''
+    templateNotice = ''
+    showTemplateCatalog = false
+    showTeamComposer = true
+  }
+
+  function openTemplateCatalog() {
+    templateMode = 'catalog'
+    templateError = ''
+    templateNotice = ''
+    showTeamComposer = false
+    showTemplateCatalog = true
+  }
+
+  function applyCompositionPayload(payload, notice = 'Applied composed team') {
+    templateMode = 'custom'
+    applyInitializedPayload(payload, notice)
+  }
+
   $effect(() => {
     if (!teamName.trim()) {
       teamName = inferTeamName(projectPath)
@@ -101,9 +322,22 @@
   })
 
   $effect(() => {
+    if (!lead.projectId && projectPath) {
+      lead = {
+        ...lead,
+        projectId: projectPath,
+      }
+    }
+  })
+
+  $effect(() => {
     try {
       onboardingDismissed = localStorage.getItem('mesh-onboarding-dismissed') === 'true'
     } catch {}
+  })
+
+  $effect(() => {
+    void loadTemplatePresets()
   })
 
   function modelsForTool(tool) {
@@ -154,7 +388,7 @@
 
   const duplicateNames = $derived.by(() => {
     const counts = new Map()
-    const names = [leadName, ...agents.map((a) => a.name)]
+    const names = [lead.name, ...agents.map((a) => a.name)]
       .map((n) => n.trim().toLowerCase())
       .filter(Boolean)
     for (const name of names) {
@@ -175,11 +409,11 @@
       teamDescription: teamDescription.trim() || null,
       leadMode: 'launch_new',
       lead: {
-        name: leadName,
-        cliTool: 'claude',
-        model: leadModel,
-        projectId: projectPath,
-        description: 'Team lead',
+        name: lead.name.trim() || 'team-lead',
+        cliTool: lead.cliTool,
+        model: lead.model,
+        projectId: lead.projectId || projectPath,
+        description: lead.description || 'Team lead',
       },
       agents: agents.map((agent, i) => ({
         name: agentDisplayName(agent, i),
@@ -235,6 +469,103 @@
     </div>
   {/if}
 
+  <section
+    class="space-y-2 rounded-lg border p-3 {dark ? 'border-zinc-700/60 bg-white/[0.02]' : 'border-zinc-300 bg-white shadow-sm'}"
+    data-testid="mesh-template-picker"
+  >
+    <header class="space-y-0.5">
+      <h3 class="text-xs font-semibold uppercase tracking-wide {t.textSecondary}">
+        Start from template
+      </h3>
+      <p class="text-[11px] {t.textMuted}">
+        Apply a preset, browse catalog templates, or compose a custom team before editing.
+      </p>
+    </header>
+
+    <div class="flex flex-wrap gap-1.5">
+      <button
+        class="rounded-md border px-2 py-1 text-[11px] {templateMode === 'blank' ? 'bg-brand-600 text-white border-brand-600' : neutralTone}"
+        type="button"
+        onclick={startBlankSlate}
+        data-testid="mesh-template-blank-slate"
+      >
+        Blank slate
+      </button>
+      <button
+        class="rounded-md border px-2 py-1 text-[11px] {templateMode === 'catalog' ? 'bg-brand-600 text-white border-brand-600' : neutralTone}"
+        type="button"
+        onclick={openTemplateCatalog}
+        data-testid="mesh-template-browse-catalog"
+      >
+        Browse catalog
+      </button>
+      <button
+        class="rounded-md border px-2 py-1 text-[11px] {templateMode === 'custom' ? 'bg-brand-600 text-white border-brand-600' : neutralTone}"
+        type="button"
+        onclick={startCustomTemplateFlow}
+        data-testid="mesh-template-build-custom"
+      >
+        Build custom team
+      </button>
+    </div>
+
+    <div class="space-y-1">
+      <p class="text-[10px] uppercase tracking-wide {t.textMuted}">Quick presets</p>
+      <div class="flex flex-wrap gap-1">
+        {#each quickPresets as preset}
+          <button
+            class="rounded-md border px-2 py-1 text-[11px] {selectedPresetId === preset.presetId ? 'bg-brand-600 text-white border-brand-600' : neutralTone} disabled:cursor-not-allowed disabled:opacity-60"
+            type="button"
+            onclick={() => {
+              void applyPreset(preset.presetId)
+            }}
+            disabled={preset.missing}
+            data-testid={`mesh-template-preset-${preset.presetId}`}
+          >
+            {preset.name}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    {#if templatePresetsLoading}
+      <p class="text-xs {t.textMuted}" data-testid="mesh-template-loading">Loading templates...</p>
+    {/if}
+    {#if templateError}
+      <p class="text-xs text-danger-500" data-testid="mesh-template-error">{templateError}</p>
+    {/if}
+    {#if templateNotice}
+      <p class="text-xs text-brand-500" data-testid="mesh-template-notice">{templateNotice}</p>
+    {/if}
+  </section>
+
+  {#if showTemplateCatalog}
+    <TemplateCatalog
+      dark={dark}
+      onComposeApply={(payload) => {
+        applyCompositionPayload(payload, 'Applied catalog composition')
+      }}
+      onSaveComposedPreset={async () => {
+        await loadTemplatePresets()
+      }}
+    />
+  {/if}
+
+  {#if showTeamComposer}
+    <TeamComposer
+      dark={dark}
+      projectPath={projectPath}
+      projectName={projectName}
+      initialPreset={selectedPreset}
+      onApply={(payload) => {
+        applyCompositionPayload(payload)
+      }}
+      onClose={() => {
+        showTeamComposer = false
+      }}
+    />
+  {/if}
+
   <div
     class="rounded-lg border {dark ? 'border-zinc-700/60 bg-white/[0.02]' : 'border-zinc-300 bg-white shadow-sm'}"
     data-testid="mesh-roster-preview"
@@ -252,8 +583,10 @@
         <svg class="h-3.5 w-3.5 text-brand-500 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="m8 2 1.6 3.3 3.6.5-2.6 2.5.6 3.5L8 10.1 4.8 11.8l.6-3.5L2.8 5.8l3.6-.5L8 2Z" fill="currentColor" />
         </svg>
-        <span class="text-xs font-medium {t.textPrimary}">You</span>
-        <span class="text-xs {dark ? 'text-zinc-400' : 'text-zinc-600'}">Claude · {leadModel}</span>
+        <span class="text-xs font-medium {t.textPrimary}">{lead.name || 'team-lead'}</span>
+        <span class="text-xs {dark ? 'text-zinc-400' : 'text-zinc-600'}">
+          {toolLabel(lead.cliTool)} · {lead.model}
+        </span>
         <span
           class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded {dark ? 'bg-white/[0.06] text-zinc-400' : 'bg-zinc-100 text-zinc-500'}"
         >Lead</span>

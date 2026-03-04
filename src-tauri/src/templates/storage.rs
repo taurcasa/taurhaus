@@ -28,7 +28,8 @@ pub struct TemplateCatalog {
     pub presets: Vec<TeamPreset>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TemplateSource {
     BuiltIn,
     User,

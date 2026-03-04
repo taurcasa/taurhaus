@@ -219,6 +219,9 @@ pub fn run() {
             };
 
             app.manage(DbState(Mutex::new(conn)));
+            app.manage(commands::templates::TemplateStoreState::new(
+                data_dir.clone(),
+            ));
 
             let daemon_addr = daemon_provider.as_ref().map(|d| d.addr().to_string());
 
@@ -527,6 +530,24 @@ pub fn run() {
             commands::tasks::get_commit_files,
             commands::tasks::get_commit_diff,
             commands::tasks::get_commits_in_range,
+            commands::templates::templates_list_roles,
+            commands::templates::templates_get_role,
+            commands::templates::templates_upsert_role,
+            commands::templates::templates_delete_role,
+            commands::templates::templates_list_presets,
+            commands::templates::templates_get_preset,
+            commands::templates::templates_upsert_preset,
+            commands::templates::templates_delete_preset,
+            commands::templates::templates_compose_team,
+            commands::templates::templates_validate_composition,
+            commands::templates::templates_get_storage_status,
+            commands::templates::templates_get_history,
+            commands::templates::templates_get_diff,
+            commands::templates::templates_revert,
+            commands::templates::templates_flush_pending,
+            commands::templates::templates_import,
+            #[cfg(feature = "mesh-bridged-backend")]
+            commands::templates::templates_apply_composition,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_create_team,
             #[cfg(feature = "mesh-bridged-backend")]

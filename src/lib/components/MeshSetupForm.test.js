@@ -2,6 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
+vi.mock('../ipc.js', () => ({
+  listTeamPresets: vi.fn(),
+  getTeamPreset: vi.fn(),
+  composeTeam: vi.fn(),
+  listRoleTemplates: vi.fn(),
+  getRoleTemplate: vi.fn(),
+}))
+
+const { listTeamPresets, getTeamPreset, composeTeam, listRoleTemplates, getRoleTemplate } =
+  await import('../ipc.js')
+
 import MeshSetupForm from './MeshSetupForm.svelte'
 
 async function openCustomize() {
@@ -18,7 +29,206 @@ describe('MeshSetupForm', () => {
   ]
 
   beforeEach(() => {
+    vi.clearAllMocks()
     localStorage.clear()
+
+    const roleCatalog = {
+      'claude-orchestrator': {
+        roleId: 'claude-orchestrator',
+        kind: 'lead',
+        cliTool: 'claude',
+        model: 'claude-opus-4-6',
+        instructions: 'Lead instructions',
+      },
+      'codex-developer': {
+        roleId: 'codex-developer',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.3-codex',
+        instructions: 'Implement code',
+      },
+      'claude-reviewer': {
+        roleId: 'claude-reviewer',
+        kind: 'agent',
+        cliTool: 'claude',
+        model: 'claude-opus-4-6',
+        instructions: 'Review changes',
+      },
+      'research-dev': {
+        roleId: 'research-dev',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: 'gemini-2.5-pro',
+        instructions: 'Research and summarize',
+      },
+    }
+
+    const presets = [
+      {
+        presetId: 'fullstack-dev',
+        name: 'Fullstack Dev',
+        leadRoleId: 'claude-orchestrator',
+        agentSlots: [{ roleId: 'codex-developer', count: 2, projectBinding: 'lead_project' }],
+      },
+      {
+        presetId: 'review-team',
+        name: 'Review Team',
+        leadRoleId: 'claude-orchestrator',
+        agentSlots: [{ roleId: 'claude-reviewer', count: 2, projectBinding: 'lead_project' }],
+      },
+      {
+        presetId: 'research-dev',
+        name: 'Research Dev',
+        leadRoleId: 'claude-orchestrator',
+        agentSlots: [{ roleId: 'research-dev', count: 1, projectBinding: 'lead_project' }],
+      },
+    ]
+
+    listTeamPresets.mockResolvedValue(
+      presets.map((preset) => ({
+        presetId: preset.presetId,
+        name: preset.name,
+        leadRoleId: preset.leadRoleId,
+      }))
+    )
+    getTeamPreset.mockImplementation(async (presetId) => {
+      const preset = presets.find((entry) => entry.presetId === presetId)
+      return preset ? { ...preset } : null
+    })
+
+    composeTeam.mockImplementation(async (request) => {
+      const leadRole = roleCatalog[request?.leadRoleId] ?? roleCatalog['claude-orchestrator']
+      const roster = [
+        {
+          name: 'team-lead',
+          roleId: leadRole.roleId,
+          roleKind: 'lead',
+          cliTool: leadRole.cliTool,
+          model: leadRole.model,
+          instructions: leadRole.instructions,
+          projectId: '/projects/taurhaus',
+        },
+      ]
+
+      for (const slot of request?.agentSlots ?? []) {
+        const role = roleCatalog[slot.roleId] ?? roleCatalog['codex-developer']
+        const count = Number(slot.count ?? 0)
+        for (let i = 0; i < count; i += 1) {
+          roster.push({
+            name: `${role.roleId}-${i + 1}`,
+            roleId: role.roleId,
+            roleKind: 'agent',
+            cliTool: role.cliTool,
+            model: role.model,
+            instructions: role.instructions,
+            projectId: '/projects/taurhaus',
+          })
+        }
+      }
+
+      return {
+        roster,
+        warnings: [],
+        validationErrors: [],
+      }
+    })
+
+    listRoleTemplates.mockResolvedValue(
+      Object.values(roleCatalog).map((role) => ({
+        roleId: role.roleId,
+        name: role.roleId,
+        kind: role.kind,
+        cliTool: role.cliTool,
+        model: role.model,
+        capabilities: [],
+      }))
+    )
+    getRoleTemplate.mockResolvedValue({
+      roleId: 'claude-orchestrator',
+      name: 'claude-orchestrator',
+      instructions: 'Lead instructions',
+      behavioralContract: { communication: [], execution: [], escalation: [] },
+    })
+  })
+
+  it('renders template picker controls', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-picker')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('mesh-template-preset-fullstack-dev')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-template-browse-catalog')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-template-build-custom')).toBeInTheDocument()
+  })
+
+  it('preset quick-select populates the editable roster', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-preset-fullstack-dev')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-fullstack-dev'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-notice')).toHaveTextContent('Applied preset')
+    })
+    expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(2)
+    expect(screen.getByTestId('mesh-agent-tool-select-0')).toHaveValue('codex')
+  })
+
+  it('blank slate resets roster after template application', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-preset-review-team')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-review-team'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(2)
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-blank-slate'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(1)
+    })
+  })
+
+  it('build custom team opens TeamComposer flow', async () => {
+    render(MeshSetupForm, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        availableProjects,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-composer')).toBeInTheDocument()
+    })
   })
 
   it('shows roster-style team preview with lead and default agent', async () => {
@@ -31,7 +241,7 @@ describe('MeshSetupForm', () => {
     })
 
     expect(screen.getByTestId('mesh-roster-preview')).toBeInTheDocument()
-    expect(screen.getByText('You')).toBeInTheDocument()
+    expect(screen.getByText('team-lead')).toBeInTheDocument()
     expect(screen.getByText('Lead')).toBeInTheDocument()
     expect(screen.getAllByTestId('mesh-agent-card')).toHaveLength(1)
     expect(screen.queryByTestId('mesh-lead-card')).not.toBeInTheDocument()
