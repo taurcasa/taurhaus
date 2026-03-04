@@ -40,25 +40,25 @@
   const isLead = $derived(String(role ?? '').toLowerCase() === 'lead')
   const icon = $derived(getToolIcon(draft.tool))
   const cardTone = $derived(
-    dark ? 'border-zinc-700/70 text-zinc-100' : 'border-zinc-200 text-zinc-900'
+    dark ? 'border-zinc-700/70 text-zinc-100' : 'border-[#b2d8d0] text-brand-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
   )
-  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
+  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
   const nodeTone = $derived(
     dark
       ? 'bg-linear-to-b from-[var(--mesh-node-gradient-from)] to-[var(--mesh-node-gradient-to)]'
-      : 'bg-linear-to-b from-zinc-50 to-white'
+      : 'bg-linear-to-b from-brand-50 to-[#e6f7f4]'
   )
   const inputTone = $derived(
     dark
       ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500'
-      : 'border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500'
+      : 'border-brand-200 bg-white text-brand-900 placeholder:text-brand-700/60'
   )
   const ghostTone = $derived(
     dark
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+      : 'border-brand-200 text-brand-700 hover:bg-brand-50'
   )
-  const labelTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
+  const labelTone = $derived(dark ? 'text-zinc-500' : 'text-brand-700')
   const normalizedTool = $derived(toolOptions.includes(draft.tool) ? draft.tool : 'claude')
   const modelOptions = $derived(modelOptionsByTool[normalizedTool] ?? modelOptionsByTool.claude)
 

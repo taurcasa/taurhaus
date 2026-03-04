@@ -20,7 +20,7 @@
   })
   const isActive = $derived(normalizedStatus === 'active')
   const glowStyle = $derived(isActive
-    ? `box-shadow: ${dark ? '0 0 6px rgba(74,222,128,0.4)' : '0 0 4px rgba(74,222,128,0.25)'};`
+    ? `box-shadow: ${dark ? '0 0 6px rgba(74,222,128,0.4)' : '0 0 3px rgba(74,222,128,0.18)'};`
     : '')
 </script>
 

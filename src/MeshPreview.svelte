@@ -1,16 +1,5 @@
 <script>
-  import MeshSetupForm from './lib/components/MeshSetupForm.svelte'
-
   let dark = $state(true)
-
-  const mockProjects = [
-    { id: '/home/mstie/projects/taurhaus', name: 'taurhaus' },
-    { id: '/home/mstie/projects/mesh', name: 'mesh' },
-  ]
-
-  function handleInit(payload) {
-    console.log('Initialize:', JSON.stringify(payload, null, 2))
-  }
 </script>
 
 <div class="min-h-screen transition-colors {dark ? 'bg-brand-950' : 'bg-zinc-100'}">
@@ -24,13 +13,9 @@
 
   <div class="max-w-2xl mx-auto p-6">
     <div class="rounded-xl {dark ? 'bg-zinc-900' : 'bg-white'} p-6">
-      <MeshSetupForm
-        {dark}
-        projectPath="/home/mstie/projects/taurhaus"
-        availableProjects={mockProjects}
-        preflightWarnings={[]}
-        oninitialize={handleInit}
-      />
+      <p class="text-sm {dark ? 'text-zinc-300' : 'text-zinc-700'}">
+        Mesh setup preview moved to the integrated Mesh tab flow.
+      </p>
     </div>
   </div>
 </div>

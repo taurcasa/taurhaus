@@ -47,7 +47,7 @@
   const ghostButtonTone = $derived(
     dark
       ? 'text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/70'
-      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+      : 'text-brand-700 hover:text-brand-900 hover:bg-brand-100/70'
   )
   const dangerGhostTone = $derived(
     dark
@@ -57,23 +57,33 @@
   const closeTone = $derived(
     dark
       ? 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/70'
-      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
+      : 'text-brand-700/70 hover:text-brand-900 hover:bg-brand-100/70'
   )
+  const detailTitleTone = $derived(dark ? t.textPrimary : 'text-brand-900')
+  const detailMutedTone = $derived(dark ? t.textMuted : 'text-brand-700')
+  const detailBodyTone = $derived(dark ? t.textSecondary : 'text-brand-700')
+  const detailKeyline = $derived(dark ? t.keyline : 'border-brand-200')
+  const detailStyle = $derived.by(() => {
+    if (dark) {
+      return 'background: linear-gradient(180deg, var(--mesh-node-gradient-from), var(--mesh-node-gradient-to)); border: 1px solid var(--mesh-node-border); box-shadow: var(--mesh-node-shadow);'
+    }
+    return 'background: linear-gradient(180deg, #f0fdfa, #e6f7f4); border: 1px solid #b2d8d0; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);'
+  })
 </script>
 
 <aside
   class="absolute left-1/2 top-full mt-3 -translate-x-1/2 z-20 w-[240px] rounded-xl p-3 mesh-node-detail animate-[mesh-detail-enter_160ms_ease-out]"
-  style="background: linear-gradient(180deg, var(--mesh-node-gradient-from), var(--mesh-node-gradient-to)); border: 1px solid var(--mesh-node-border); box-shadow: var(--mesh-node-shadow);"
+  style={detailStyle}
   data-testid="mesh-node-detail"
 >
   <header class="flex items-start gap-2">
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-1.5 min-w-0">
-        <h3 class="text-[14px] font-semibold truncate {t.textPrimary}" data-testid="mesh-node-detail-name">{name}</h3>
+        <h3 class="text-[14px] font-semibold truncate {detailTitleTone}" data-testid="mesh-node-detail-name">{name}</h3>
         <StatusBadge status={normalizedStatus} size="md" {dark} />
-        <span class="text-[10px] {t.textMuted}" data-testid="mesh-node-detail-status">{statusLabel}</span>
+        <span class="text-[10px] {detailMutedTone}" data-testid="mesh-node-detail-status">{statusLabel}</span>
       </div>
-      <p class="mt-1 text-[12px] truncate {t.textMuted}" data-testid="mesh-node-detail-tool-model">
+      <p class="mt-1 text-[12px] truncate {detailMutedTone}" data-testid="mesh-node-detail-tool-model">
         {toolLabel} {model ? `· ${model}` : ''}
       </p>
     </div>
@@ -87,15 +97,15 @@
     </button>
   </header>
 
-  <p class="mt-1 text-[12px] truncate {t.textMuted}" data-testid="mesh-node-detail-project">{projectId || 'n/a'}</p>
+  <p class="mt-1 text-[12px] truncate {detailMutedTone}" data-testid="mesh-node-detail-project">{projectId || 'n/a'}</p>
 
   {#if description && description.trim().length > 0}
-    <p class="mt-2 text-[12px] leading-relaxed {t.textSecondary} line-clamp-3" data-testid="mesh-node-detail-description">
+    <p class="mt-2 text-[12px] leading-relaxed {detailBodyTone} line-clamp-3" data-testid="mesh-node-detail-description">
       {description}
     </p>
   {/if}
 
-  <div class="mt-3 pt-2 border-t {t.keyline}">
+  <div class="mt-3 pt-2 border-t {detailKeyline}">
     <div class="flex items-center gap-1.5">
       {#if normalizedMode === 'setup'}
         <button

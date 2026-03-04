@@ -8,12 +8,12 @@
     onReset = () => {},
   } = $props()
 
-  const borderTone = $derived(dark ? 'border-zinc-700/70' : 'border-zinc-200')
-  const nameTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
+  const borderTone = $derived(dark ? 'border-zinc-700/70' : 'border-brand-200')
+  const nameTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
   const neutralGhost = $derived(
     dark
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+      : 'border-brand-200 text-brand-700 hover:bg-brand-50'
   )
 </script>
 

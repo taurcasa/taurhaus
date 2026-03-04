@@ -48,20 +48,12 @@
     const left = Number(position?.x ?? 0) - Number(width) / 2
     const top = Number(position?.y ?? 0) - Number(nodeHeight) / 2
 
-    const styles = [
+    return [
       `left: ${left}px`,
       `top: ${top}px`,
       `width: ${Number(width)}px`,
       `height: ${Number(nodeHeight)}px`,
-    ]
-
-    if (!dark) {
-      styles.push('background: linear-gradient(180deg, #f8fcfb 0%, #edf6f5 100%)')
-      styles.push('border-color: #c9dfdc')
-      styles.push('color: #0f172a')
-    }
-
-    return styles.join('; ')
+    ].join('; ')
   })
 </script>
 
@@ -154,7 +146,37 @@
   }
 
   .mesh-node.is-light {
-    color: #0f172a;
+    background: linear-gradient(180deg, #f0fdfa 0%, #e6f7f4 100%);
+    border-color: #b2d8d0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    color: #134e4a;
+  }
+
+  .mesh-node.is-light:hover {
+    border-color: #8ec5ba;
+    background: linear-gradient(180deg, #effbf9 0%, #ddf3ef 100%);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  }
+
+  .mesh-node.is-light.is-lead {
+    border-color: rgba(13, 148, 136, 0.5);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 8px rgba(13, 148, 136, 0.15);
+  }
+
+  .mesh-node.is-light.is-lead:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 0 8px rgba(13, 148, 136, 0.15);
+  }
+
+  .mesh-node.is-light.is-selected {
+    border-color: rgba(13, 148, 136, 0.65);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 0 0 2px rgba(13, 148, 136, 0.15);
+  }
+
+  .mesh-node.is-light.is-lead.is-selected {
+    box-shadow:
+      0 4px 14px rgba(0, 0, 0, 0.12),
+      0 0 8px rgba(13, 148, 136, 0.15),
+      0 0 0 2px rgba(13, 148, 136, 0.15);
   }
 
   .mesh-node-status {
@@ -206,10 +228,14 @@
   }
 
   .mesh-node.is-light .mesh-node-model {
-    color: #5f7876;
+    color: #0f766e;
   }
 
   .mesh-node.is-light .mesh-node-tool {
-    color: #4a6663;
+    color: #0f766e;
+  }
+
+  .mesh-node.is-light .mesh-node-status {
+    box-shadow: 0 0 4px rgba(13, 148, 136, 0.2);
   }
 </style>

@@ -9,15 +9,15 @@
     onStartCustom = () => {},
   } = $props()
 
-  const titleTone = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const subtitleTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
+  const titleTone = $derived(dark ? 'text-zinc-100' : 'text-brand-900')
+  const subtitleTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
   const browseTone = $derived(
     dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700'
   )
   const scratchTone = $derived(
     dark
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+      : 'border-brand-200 text-brand-700 hover:bg-brand-50'
   )
 
   const normalizedPresets = $derived.by(() => {

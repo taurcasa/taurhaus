@@ -17,17 +17,17 @@
   const surfaceTone = $derived(
     dark
       ? 'bg-zinc-800/50 border-zinc-700/50 hover:border-brand-500/40'
-      : 'bg-white border-zinc-200 hover:border-brand-500/40'
+      : 'bg-linear-to-b from-brand-50 to-[#e6f7f4] border-[#b2d8d0] hover:border-[#8ec5ba] shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_14px_rgba(0,0,0,0.12)]'
   )
-  const titleTone = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
-  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
+  const titleTone = $derived(dark ? 'text-zinc-100' : 'text-brand-900')
+  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
   const badgeTone = $derived(
-    dark ? 'bg-zinc-700/60 text-zinc-200' : 'bg-zinc-100 text-zinc-700'
+    dark ? 'bg-zinc-700/60 text-zinc-200' : 'bg-brand-100 text-brand-700'
   )
   const inspectTone = $derived(
     dark
       ? 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50'
-      : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100'
+      : 'text-brand-700/60 hover:text-brand-900 hover:bg-brand-100/70'
   )
 
   const normalizedTools = $derived.by(() => {

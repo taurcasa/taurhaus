@@ -21,11 +21,13 @@
   )
   const issueCount = $derived(normalizedIssues.length)
   const summaryTone = $derived(
-    dark ? 'border-zinc-700 bg-zinc-900/80 text-zinc-200' : 'border-zinc-200 bg-zinc-50 text-zinc-700'
+    dark
+      ? 'border-zinc-700 bg-zinc-900/80 text-zinc-200'
+      : 'border-brand-200 bg-linear-to-b from-brand-50 to-[#e6f7f4] text-brand-900'
   )
-  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
-  const chevronTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
-  const errorBadgeTone = $derived(dark ? 'bg-danger-500/20 text-danger-300' : 'bg-danger-50 text-danger-600')
+  const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
+  const chevronTone = $derived(dark ? 'text-zinc-500' : 'text-brand-700/70')
+  const errorBadgeTone = $derived(dark ? 'bg-danger-500/20 text-danger-300' : 'bg-danger-50 text-danger-600 border border-danger-200')
 
   function summaryText() {
     if (issueCount === 0) return '0 issues'
@@ -69,13 +71,13 @@
   </button>
 
   {#if expanded && issueCount > 0}
-    <ul class="border-t px-2.5 py-2 space-y-1.5 {dark ? 'border-zinc-700' : 'border-zinc-200'}" data-testid="validation-bar-list">
+    <ul class="border-t px-2.5 py-2 space-y-1.5 {dark ? 'border-zinc-700' : 'border-brand-200'}" data-testid="validation-bar-list">
       {#each normalizedIssues as issue, index}
         <li class="flex items-start gap-2 text-xs {mutedTone}" data-testid={`validation-issue-${index}`}>
           <span class={issue.severity === 'error' ? 'text-danger-500' : 'text-warning-500'} aria-hidden="true">
             ●
           </span>
-          <span class="font-medium {dark ? 'text-zinc-200' : 'text-zinc-800'}">
+          <span class="font-medium {dark ? 'text-zinc-200' : 'text-brand-900'}">
             {issue.member || 'Team'}:
           </span>
           <span>{issue.message}</span>
