@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The app checks this on connect. If the daemon's protocol version is
 /// lower than what the app expects, it warns the user to rebuild the daemon.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -126,6 +126,15 @@ pub struct PingResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PathParams {
     pub path: String,
+}
+
+/// `get_project_tasks` params.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProjectTasksParams {
+    pub path: String,
+    /// Optional scan cycle identifier for per-cycle daemon cache reuse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scan_cycle_id: Option<u64>,
 }
 
 /// `git_log` params

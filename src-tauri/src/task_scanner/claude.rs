@@ -13,7 +13,7 @@
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
 use crate::task_scanner::claude_index::{build_claude_source_index_in, ClaudeSourceIndex};
-use crate::task_scanner::types::{TaskStatus, UnifiedTask};
+use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use std::fs;
 use std::path::Path;
 
@@ -41,15 +41,38 @@ struct RawClaudeTask {
 pub fn get_tasks(
     project_path: &str,
     sessions: &[&ClaudeSession],
-) -> Result<Vec<UnifiedTask>, String> {
+) -> ScanOutcome {
     let Some(home) = dirs::home_dir() else {
-        return Ok(vec![]);
+        return ScanOutcome::Unavailable("Could not resolve home directory".to_string());
     };
     let tasks_base = home.join(".claude").join("tasks");
     let projects_base = home.join(".claude").join("projects");
     let teams_base = home.join(".claude").join("teams");
 
     get_tasks_in(project_path, sessions, &tasks_base, &projects_base, &teams_base)
+}
+
+/// Get tasks for a project with an optional pre-built source index.
+pub fn get_tasks_with_index(
+    project_path: &str,
+    sessions: &[&ClaudeSession],
+    prebuilt_index: Option<&ClaudeSourceIndex>,
+) -> ScanOutcome {
+    let Some(home) = dirs::home_dir() else {
+        return ScanOutcome::Unavailable("Could not resolve home directory".to_string());
+    };
+    let tasks_base = home.join(".claude").join("tasks");
+    let projects_base = home.join(".claude").join("projects");
+    let teams_base = home.join(".claude").join("teams");
+
+    get_tasks_in_with_index(
+        project_path,
+        sessions,
+        &tasks_base,
+        &projects_base,
+        &teams_base,
+        prebuilt_index,
+    )
 }
 
 /// Testable version with injectable directories.
@@ -59,16 +82,54 @@ pub fn get_tasks_in(
     tasks_base: &Path,
     projects_base: &Path,
     teams_base: &Path,
-) -> Result<Vec<UnifiedTask>, String> {
+) -> ScanOutcome {
+    get_tasks_in_with_index(
+        project_path,
+        sessions,
+        tasks_base,
+        projects_base,
+        teams_base,
+        None,
+    )
+}
+
+pub fn get_tasks_in_with_index(
+    project_path: &str,
+    sessions: &[&ClaudeSession],
+    tasks_base: &Path,
+    projects_base: &Path,
+    teams_base: &Path,
+    prebuilt_index: Option<&ClaudeSourceIndex>,
+) -> ScanOutcome {
+    if !tasks_base.exists() {
+        return ScanOutcome::Unavailable(format!(
+            "Claude tasks base does not exist: {}",
+            tasks_base.display()
+        ));
+    }
     if !tasks_base.is_dir() {
-        return Ok(vec![]);
+        return ScanOutcome::Unavailable(format!(
+            "Claude tasks base is not a directory: {}",
+            tasks_base.display()
+        ));
     }
 
     let live_sessions: Vec<ClaudeSession> = sessions.iter().map(|s| (*s).clone()).collect();
-    let index =
-        build_claude_source_index_in(&live_sessions, tasks_base, projects_base, teams_base);
+    let built_index;
+    let index = match prebuilt_index {
+        Some(i) => i,
+        None => {
+            built_index =
+                build_claude_source_index_in(&live_sessions, tasks_base, projects_base, teams_base);
+            &built_index
+        }
+    };
 
-    scan_all_task_directories(project_path, tasks_base, &index)
+    match scan_all_task_directories(project_path, tasks_base, index) {
+        Ok(tasks) if tasks.is_empty() => ScanOutcome::DefinitivelyEmpty,
+        Ok(tasks) => ScanOutcome::Data(tasks),
+        Err(e) => ScanOutcome::Unavailable(e),
+    }
 }
 
 fn scan_all_task_directories(
@@ -229,7 +290,7 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> Result<Option<Vec<Unifi
 ///
 /// Returns `Ok(None)` for deleted tasks (status: "deleted") so they are
 /// silently excluded from the board without logging a warning.
-fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<Option<UnifiedTask>, String> {
+fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<UnifiedTask>, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Read error: {e}"))?;
     let raw: RawClaudeTask =
         serde_json::from_str(&content).map_err(|e| format!("Parse error: {e}"))?;
@@ -245,8 +306,10 @@ fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<Option<Uni
         _ => TaskStatus::Pending, // "pending" and anything unknown → Pending
     };
 
+    let task_source_key = source_key.unwrap_or_else(|| "legacy-claude".to_string());
     Ok(Some(UnifiedTask {
         id: raw.id,
+        source_key: task_source_key.clone(),
         subject: raw.subject,
         description: raw.description,
         active_form: raw.active_form,
@@ -255,7 +318,12 @@ fn parse_task_file(path: &Path, session_id: Option<String>) -> Result<Option<Uni
         blocks: raw.blocks,
         blocked_by: raw.blocked_by,
         owner: raw.owner,
-        session_id,
+        session_id: Some(task_source_key),
+        state_changed_at: None,
+        updated_at: None,
+        archived_at: None,
+        last_status: None,
+        archived_reason: None,
     }))
 }
 
@@ -607,14 +675,16 @@ mod tests {
 
         let live_session = make_live_session("live-session", "/home/user/projects/myapp");
 
-        let tasks = get_tasks_in(
+        let tasks = match get_tasks_in(
             "/home/user/projects/myapp",
             &[&live_session],
             &tasks_base,
             &projects_base,
             &teams_base,
-        )
-        .unwrap();
+        ) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected task data, got {other:?}"),
+        };
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Live session task");
@@ -641,14 +711,16 @@ mod tests {
         );
         write_team_config(&teams_base, team_name, "/home/user/projects/myapp");
 
-        let tasks = get_tasks_in(
+        let tasks = match get_tasks_in(
             "/home/user/projects/myapp",
             &[],
             &tasks_base,
             &projects_base,
             &teams_base,
-        )
-        .unwrap();
+        ) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected task data, got {other:?}"),
+        };
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "27");
@@ -681,16 +753,15 @@ mod tests {
         fs::create_dir_all(&empty_team_dir).unwrap();
         write_team_config(&teams_base, empty_team_name, "/home/user/projects/myapp");
 
-        let tasks = get_tasks_in(
+        let outcome = get_tasks_in(
             "/home/user/projects/myapp",
             &[],
             &tasks_base,
             &projects_base,
             &teams_base,
-        )
-        .unwrap();
+        );
 
-        assert!(tasks.is_empty());
+        assert_eq!(outcome, ScanOutcome::DefinitivelyEmpty);
     }
 
     #[test]
@@ -730,26 +801,30 @@ mod tests {
         );
         write_team_config(&teams_base, team_name, "/home/user/projects/b");
 
-        let a_tasks = get_tasks_in(
+        let a_tasks = match get_tasks_in(
             "/home/user/projects/a",
             &[],
             &tasks_base,
             &projects_base,
             &teams_base,
-        )
-        .unwrap();
+        ) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected task data, got {other:?}"),
+        };
         assert_eq!(a_tasks.len(), 1);
         assert_eq!(a_tasks[0].subject, "Session A task");
         assert_eq!(a_tasks[0].session_id.as_deref(), Some(session_id));
 
-        let b_tasks = get_tasks_in(
+        let b_tasks = match get_tasks_in(
             "/home/user/projects/b",
             &[],
             &tasks_base,
             &projects_base,
             &teams_base,
-        )
-        .unwrap();
+        ) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected task data, got {other:?}"),
+        };
         assert_eq!(b_tasks.len(), 1);
         assert_eq!(b_tasks[0].subject, "Team B task");
         assert_eq!(b_tasks[0].session_id.as_deref(), Some(team_name));

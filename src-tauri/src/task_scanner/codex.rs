@@ -9,9 +9,10 @@
 
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
-use crate::task_scanner::types::{TaskStatus, UnifiedTask};
+use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
+use chrono::{DateTime, Utc};
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 /// How many bytes from the end of file to read when searching for update_plan.
@@ -20,20 +21,23 @@ const TAIL_READ_SIZE: u64 = 256 * 1024;
 
 /// How many days back to scan for offline sessions (matches idle.rs).
 const CODEX_LOOKBACK_DAYS: i64 = 7;
+/// How far back archived session enrichment scans for transcript timestamps.
+const CODEX_TIMELINE_LOOKBACK_DAYS: i64 = 30;
 
 /// Get tasks from Codex session JSONL files.
 pub fn get_tasks(
     project_path: &str,
     sessions: &[&ClaudeSession],
-) -> Result<Vec<UnifiedTask>, String> {
+) -> ScanOutcome {
     // Try live sessions first — use jsonl_path directly
     for session in sessions {
         if let Some(ref jsonl_path) = session.jsonl_path {
             let path = Path::new(jsonl_path);
             if path.exists() {
-                let tasks = parse_update_plan(path)?;
-                if !tasks.is_empty() {
-                    return Ok(tasks);
+                match parse_update_plan(path) {
+                    Ok(tasks) if !tasks.is_empty() => return ScanOutcome::Data(tasks),
+                    Ok(_) => {}
+                    Err(e) => return ScanOutcome::Unavailable(e),
                 }
             }
         }
@@ -48,15 +52,16 @@ pub fn get_tasks_in(
     project_path: &str,
     sessions: &[&ClaudeSession],
     sessions_dir: &Path,
-) -> Result<Vec<UnifiedTask>, String> {
+) -> ScanOutcome {
     // Try live sessions first
     for session in sessions {
         if let Some(ref jsonl_path) = session.jsonl_path {
             let path = Path::new(jsonl_path);
             if path.exists() {
-                let tasks = parse_update_plan(path)?;
-                if !tasks.is_empty() {
-                    return Ok(tasks);
+                match parse_update_plan(path) {
+                    Ok(tasks) if !tasks.is_empty() => return ScanOutcome::Data(tasks),
+                    Ok(_) => {}
+                    Err(e) => return ScanOutcome::Unavailable(e),
                 }
             }
         }
@@ -67,10 +72,10 @@ pub fn get_tasks_in(
 }
 
 /// Offline fallback: scan recent Codex sessions to find one matching this project.
-fn get_tasks_offline(project_path: &str) -> Result<Vec<UnifiedTask>, String> {
+fn get_tasks_offline(project_path: &str) -> ScanOutcome {
     let sessions_dir = match dirs::home_dir() {
         Some(h) => h.join(".codex").join("sessions"),
-        None => return Ok(vec![]),
+        None => return ScanOutcome::Unavailable("Could not resolve home directory".to_string()),
     };
     get_tasks_offline_in(project_path, &sessions_dir)
 }
@@ -79,15 +84,25 @@ fn get_tasks_offline(project_path: &str) -> Result<Vec<UnifiedTask>, String> {
 fn get_tasks_offline_in(
     project_path: &str,
     sessions_dir: &Path,
-) -> Result<Vec<UnifiedTask>, String> {
+) -> ScanOutcome {
+    if !sessions_dir.exists() {
+        return ScanOutcome::DefinitivelyEmpty;
+    }
     if !sessions_dir.is_dir() {
-        return Ok(vec![]);
+        return ScanOutcome::Unavailable(format!(
+            "Codex sessions root is not a directory: {}",
+            sessions_dir.display()
+        ));
     }
 
     // Reuse the same date-scanning logic as CodexResolver in idle.rs
     match find_codex_session_for_project(project_path, sessions_dir) {
-        Some(path) => parse_update_plan(&path),
-        None => Ok(vec![]),
+        Some(path) => match parse_update_plan(&path) {
+            Ok(tasks) if tasks.is_empty() => ScanOutcome::DefinitivelyEmpty,
+            Ok(tasks) => ScanOutcome::Data(tasks),
+            Err(e) => ScanOutcome::Unavailable(e),
+        },
+        None => ScanOutcome::DefinitivelyEmpty,
     }
 }
 
@@ -187,6 +202,7 @@ fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool 
 pub fn parse_update_plan(jsonl_path: &Path) -> Result<Vec<UnifiedTask>, String> {
     let tail = read_file_tail(jsonl_path, TAIL_READ_SIZE)
         .map_err(|e| format!("Failed to read Codex JSONL: {e}"))?;
+    let source_key = codex_source_key_from_jsonl(jsonl_path);
 
     // Find the last update_plan line
     let mut last_plan_line: Option<&str> = None;
@@ -208,7 +224,7 @@ pub fn parse_update_plan(jsonl_path: &Path) -> Result<Vec<UnifiedTask>, String> 
         None => return Ok(vec![]),
     };
 
-    parse_plan_from_line(plan_line)
+    parse_plan_from_line(plan_line, &source_key)
 }
 
 /// Check if a JSONL line is an update_plan function call.
@@ -231,7 +247,7 @@ fn is_update_plan_line(line: &str) -> bool {
 ///
 /// Structure: `{"payload":{"type":"function_call","name":"update_plan","arguments":"{\"plan\":[{\"step\":\"...\",\"status\":\"...\"}]}"}}`
 /// Note: `arguments` is a JSON-encoded string, so we need to double-parse.
-fn parse_plan_from_line(line: &str) -> Result<Vec<UnifiedTask>, String> {
+fn parse_plan_from_line(line: &str, source_key: &str) -> Result<Vec<UnifiedTask>, String> {
     let parsed: serde_json::Value =
         serde_json::from_str(line).map_err(|e| format!("Parse error: {e}"))?;
 
@@ -268,6 +284,7 @@ fn parse_plan_from_line(line: &str) -> Result<Vec<UnifiedTask>, String> {
 
             Some(UnifiedTask {
                 id: format!("codex-{idx}"),
+                source_key: source_key.to_string(),
                 subject: description.to_string(),
                 description: None,
                 active_form: None,
@@ -276,12 +293,222 @@ fn parse_plan_from_line(line: &str) -> Result<Vec<UnifiedTask>, String> {
                 blocks: vec![],
                 blocked_by: vec![],
                 owner: None,
-                session_id: None,
+                session_id: Some(source_key.to_string()),
+                state_changed_at: None,
+                updated_at: None,
+                archived_at: None,
+                last_status: None,
+                archived_reason: None,
             })
         })
         .collect();
 
     Ok(tasks)
+}
+
+/// Derive a stable source key for Codex tasks.
+///
+/// Primary source: session id in early metadata lines (`payload.id`, `sessionId`,
+/// or `payload.sessionId`).
+/// Fallback: JSONL filename stem.
+fn codex_source_key_from_jsonl(path: &Path) -> String {
+    let fallback = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("legacy-codex")
+        .to_string();
+
+    codex_session_meta(path)
+        .and_then(|meta| meta.session_id())
+        .unwrap_or(fallback)
+}
+
+/// Resolve Codex transcript time range for a given project/session identity.
+pub fn session_time_range(
+    project_path: &Path,
+    session_id: &str,
+) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+    let sessions_dir = dirs::home_dir()?.join(".codex").join("sessions");
+    session_time_range_in(project_path, session_id, &sessions_dir)
+}
+
+fn session_time_range_in(
+    project_path: &Path,
+    session_id: &str,
+    sessions_dir: &Path,
+) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+    let jsonl_path = find_codex_session_by_id(project_path, session_id, sessions_dir)?;
+    codex_time_range_from_file(&jsonl_path)
+}
+
+fn find_codex_session_by_id(
+    project_path: &Path,
+    session_id: &str,
+    sessions_dir: &Path,
+) -> Option<PathBuf> {
+    use chrono::Local;
+
+    let today = Local::now().date_naive();
+    let normalized_project = project_path.to_string_lossy().trim_end_matches('/').to_string();
+
+    for days_back in 0..CODEX_TIMELINE_LOOKBACK_DAYS {
+        let date = today - chrono::Duration::days(days_back);
+        let date_dir = sessions_dir
+            .join(date.format("%Y").to_string())
+            .join(date.format("%m").to_string())
+            .join(date.format("%d").to_string());
+
+        if !date_dir.is_dir() {
+            continue;
+        }
+
+        let mut entries: Vec<_> = fs::read_dir(&date_dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
+            .collect();
+
+        entries.sort_by(|a, b| {
+            let mt_a = a
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            let mt_b = b
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            mt_b.cmp(&mt_a)
+        });
+
+        for entry in entries {
+            let path = entry.path();
+            let Some(meta) = codex_session_meta(&path) else {
+                continue;
+            };
+
+            let project_matches = meta
+                .cwd
+                .as_deref()
+                .map(|cwd| cwd.trim_end_matches('/') == normalized_project)
+                .unwrap_or(false);
+            if !project_matches {
+                continue;
+            }
+
+            let stem_matches = path.file_stem().and_then(|s| s.to_str()) == Some(session_id);
+            let id_matches = meta
+                .session_id()
+                .map(|id| id == session_id)
+                .unwrap_or(false);
+            if stem_matches || id_matches {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+fn codex_time_range_from_file(jsonl_path: &Path) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+    let file = fs::File::open(jsonl_path).ok()?;
+    let reader = BufReader::new(file);
+
+    let mut start: Option<DateTime<Utc>> = None;
+    let mut end: Option<DateTime<Utc>> = None;
+
+    for line in reader.lines().map_while(Result::ok) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let Some(ts_str) = value.get("timestamp").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Ok(ts) = ts_str.parse::<DateTime<Utc>>() else {
+            continue;
+        };
+        if start.is_none() {
+            start = Some(ts);
+        }
+        end = Some(ts);
+    }
+
+    let start = start?;
+    let mut end = end.unwrap_or(start);
+    if end < start {
+        end = start;
+    }
+    Some((start, end))
+}
+
+#[derive(Debug, Clone, Default)]
+struct CodexSessionMeta {
+    cwd: Option<String>,
+    payload_id: Option<String>,
+    session_id: Option<String>,
+}
+
+impl CodexSessionMeta {
+    fn session_id(self) -> Option<String> {
+        self.payload_id
+            .or(self.session_id)
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty())
+    }
+}
+
+fn codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
+    let file = fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    let mut meta = CodexSessionMeta::default();
+
+    for line in reader.lines().map_while(Result::ok).take(20) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+
+        if meta.cwd.is_none() {
+            meta.cwd = parsed
+                .get("payload")
+                .and_then(|p| p.get("cwd"))
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+        }
+        if meta.payload_id.is_none() {
+            meta.payload_id = parsed
+                .get("payload")
+                .and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+        }
+        if meta.session_id.is_none() {
+            meta.session_id = parsed
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    parsed
+                        .get("payload")
+                        .and_then(|p| p.get("sessionId"))
+                        .and_then(|v| v.as_str())
+                })
+                .map(ToString::to_string);
+        }
+        if meta.cwd.is_some() && (meta.payload_id.is_some() || meta.session_id.is_some()) {
+            return Some(meta);
+        }
+    }
+
+    Some(meta)
 }
 
 /// Read the last N bytes of a file as a UTF-8 string.
@@ -372,6 +599,8 @@ mod tests {
         assert_eq!(tasks[1].status, TaskStatus::InProgress);
         assert_eq!(tasks[2].id, "codex-2");
         assert_eq!(tasks[2].status, TaskStatus::Pending);
+        assert_eq!(tasks[0].source_key, "test-id");
+        assert_eq!(tasks[0].session_id.as_deref(), Some("test-id"));
     }
 
     #[test]
@@ -476,7 +705,10 @@ mod tests {
             &[&plan_line],
         );
 
-        let tasks = get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
+        let tasks = match get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir) {
+            ScanOutcome::Data(tasks) => tasks,
+            other => panic!("expected task data, got {other:?}"),
+        };
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Offline task");
     }
@@ -500,8 +732,8 @@ mod tests {
             &[&plan_line],
         );
 
-        let tasks = get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir).unwrap();
-        assert!(tasks.is_empty());
+        let outcome = get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir);
+        assert_eq!(outcome, ScanOutcome::DefinitivelyEmpty);
     }
 
     #[test]
@@ -537,5 +769,41 @@ mod tests {
             first_line.starts_with("line "),
             "First line should be complete, got: {first_line}"
         );
+    }
+
+    #[test]
+    fn parse_update_plan_source_key_falls_back_to_session_id_field() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("session-fallback.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"sessionId":"fallback-123","payload":{{"cwd":"/home/user/project"}}}}"#
+        )
+        .unwrap();
+        let plan = make_update_plan_line(&[("Task", "open")]);
+        writeln!(f, "{plan}").unwrap();
+        f.sync_all().unwrap();
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].source_key, "fallback-123");
+        assert_eq!(tasks[0].session_id.as_deref(), Some("fallback-123"));
+    }
+
+    #[test]
+    fn parse_update_plan_source_key_falls_back_to_filename_stem() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("stem-session.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(f, r#"{{"type":"session_meta","payload":{{"cwd":"/home/user/project"}}}}"#).unwrap();
+        let plan = make_update_plan_line(&[("Task", "open")]);
+        writeln!(f, "{plan}").unwrap();
+        f.sync_all().unwrap();
+
+        let tasks = parse_update_plan(&path).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].source_key, "stem-session");
+        assert_eq!(tasks[0].session_id.as_deref(), Some("stem-session"));
     }
 }

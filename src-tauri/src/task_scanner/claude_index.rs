@@ -37,6 +37,21 @@ pub fn build_claude_source_index() -> ClaudeSourceIndex {
     build_claude_source_index_in(&live_sessions, &tasks_base, &projects_base, &teams_base)
 }
 
+/// Build Claude source index using caller-provided live sessions.
+pub fn build_claude_source_index_with_live_sessions(
+    live_sessions: &[ClaudeSession],
+) -> ClaudeSourceIndex {
+    let Some(home) = dirs::home_dir() else {
+        return ClaudeSourceIndex::default();
+    };
+
+    let tasks_base = home.join(".claude").join("tasks");
+    let projects_base = home.join(".claude").join("projects");
+    let teams_base = home.join(".claude").join("teams");
+
+    build_claude_source_index_in(live_sessions, &tasks_base, &projects_base, &teams_base)
+}
+
 /// Build Claude source index from injectable inputs (testable variant).
 pub fn build_claude_source_index_in(
     live_sessions: &[ClaudeSession],

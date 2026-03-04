@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct PersistedTask {
     pub project_path: String,
     pub source: String,
+    pub source_key: String,
     pub source_task_id: String,
     pub subject: String,
     pub description: Option<String>,
@@ -33,9 +34,13 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
         serde_json::to_string(&task.blocked_by).unwrap_or_else(|_| "[]".to_string());
 
     conn.execute(
-        "INSERT INTO tasks (project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL, ?15, NULL)
-         ON CONFLICT (project_path, source, source_task_id) DO UPDATE SET
+        "INSERT INTO tasks (
+            project_path, source, source_key, source_task_id, subject, description, active_form, status,
+            blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at,
+            last_status, archived_reason
+        )
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, NULL, ?16, NULL)
+         ON CONFLICT (project_path, source, source_key, source_task_id) WHERE archived_at IS NULL DO UPDATE SET
             subject = excluded.subject,
             description = excluded.description,
             active_form = excluded.active_form,
@@ -55,6 +60,7 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
         params![
             task.project_path,
             task.source,
+            task.source_key,
             task.source_task_id,
             task.subject,
             task.description,
@@ -82,40 +88,41 @@ pub fn upsert_tasks(conn: &Connection, tasks: &[PersistedTask]) -> Result<(), ru
     tx.commit()
 }
 
-/// Get all tasks for a project, ordered by source then source_task_id.
+/// Get all active tasks for a project, ordered by source/source_key/source_task_id.
 pub fn get_tasks_for_project(
     conn: &Connection,
     project_path: &str,
 ) -> Result<Vec<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
          FROM tasks
          WHERE project_path = ?1 AND archived_at IS NULL
-         ORDER BY source, source_task_id",
+         ORDER BY source, source_key, source_task_id",
     )?;
 
     let tasks = stmt
         .query_map([project_path], |row| {
-            let blocks_str: String = row.get(7)?;
-            let blocked_by_str: String = row.get(8)?;
+            let blocks_str: String = row.get(8)?;
+            let blocked_by_str: String = row.get(9)?;
             Ok(PersistedTask {
                 project_path: row.get(0)?,
                 source: row.get(1)?,
-                source_task_id: row.get(2)?,
-                subject: row.get(3)?,
-                description: row.get(4)?,
-                active_form: row.get(5)?,
-                status: row.get(6)?,
+                source_key: row.get(2)?,
+                source_task_id: row.get(3)?,
+                subject: row.get(4)?,
+                description: row.get(5)?,
+                active_form: row.get(6)?,
+                status: row.get(7)?,
                 blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
                 blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
-                owner: row.get(9)?,
-                session_id: row.get(10)?,
-                first_seen_at: row.get(11)?,
-                state_changed_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                archived_at: row.get(14)?,
-                last_status: row.get(15)?,
-                archived_reason: row.get(16)?,
+                owner: row.get(10)?,
+                session_id: row.get(11)?,
+                first_seen_at: row.get(12)?,
+                state_changed_at: row.get(13)?,
+                updated_at: row.get(14)?,
+                archived_at: row.get(15)?,
+                last_status: row.get(16)?,
+                archived_reason: row.get(17)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -123,11 +130,72 @@ pub fn get_tasks_for_project(
     Ok(tasks)
 }
 
-/// Handle stale tasks for a project+source that are NOT in the given set of IDs.
+/// Get all distinct active source keys for a project/source pair.
+pub fn get_active_source_keys_for_project_source(
+    conn: &Connection,
+    project_path: &str,
+    source: &str,
+) -> Result<Vec<String>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT source_key
+         FROM tasks
+         WHERE project_path = ?1 AND source = ?2 AND archived_at IS NULL
+         ORDER BY source_key",
+    )?;
+
+    let rows = stmt.query_map(params![project_path, source], |row| row.get(0))?;
+    rows.collect::<Result<Vec<String>, _>>()
+}
+
+/// Get one active task by its full identity key.
+pub fn get_task_for_project_by_identity(
+    conn: &Connection,
+    project_path: &str,
+    source: &str,
+    source_key: &str,
+    source_task_id: &str,
+) -> Result<Option<PersistedTask>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+         FROM tasks
+         WHERE project_path = ?1 AND source = ?2 AND source_key = ?3 AND source_task_id = ?4 AND archived_at IS NULL
+         LIMIT 1",
+    )?;
+
+    let mut rows = stmt.query(params![project_path, source, source_key, source_task_id])?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+
+    let blocks_str: String = row.get(8)?;
+    let blocked_by_str: String = row.get(9)?;
+    Ok(Some(PersistedTask {
+        project_path: row.get(0)?,
+        source: row.get(1)?,
+        source_key: row.get(2)?,
+        source_task_id: row.get(3)?,
+        subject: row.get(4)?,
+        description: row.get(5)?,
+        active_form: row.get(6)?,
+        status: row.get(7)?,
+        blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
+        blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+        owner: row.get(10)?,
+        session_id: row.get(11)?,
+        first_seen_at: row.get(12)?,
+        state_changed_at: row.get(13)?,
+        updated_at: row.get(14)?,
+        archived_at: row.get(15)?,
+        last_status: row.get(16)?,
+        archived_reason: row.get(17)?,
+    }))
+}
+
+/// Handle stale tasks for a project+source+source_key that are NOT in the given set of IDs.
 ///
-/// Used after scanning: if the scanner returned tasks `{1, 3, 5}` for Claude,
-/// any Claude tasks in DB with IDs not in that set are stale (deleted from disk
-/// or status changed to "deleted").
+/// Used after scanning: if the scanner returned tasks `{1, 3, 5}` for a specific
+/// source key, any rows in DB with IDs not in that set are stale (deleted from
+/// disk or status changed to "deleted").
 ///
 /// - **Completed** stale tasks are archived (`archived_at` set to now) — they
 ///   represent finished work and should be preserved for history.
@@ -137,25 +205,30 @@ pub fn archive_or_delete_stale_tasks(
     conn: &Connection,
     project_path: &str,
     source: &str,
+    source_key: &str,
     active_ids: &[&str],
 ) -> Result<StaleTaskResult, rusqlite::Error> {
     let stale_filter = if active_ids.is_empty() {
         String::new()
     } else {
         let placeholders: Vec<String> = (0..active_ids.len())
-            .map(|i| format!("?{}", i + 3))
+            .map(|i| format!("?{}", i + 4))
             .collect();
         format!("AND source_task_id NOT IN ({})", placeholders.join(", "))
     };
 
-    let mut sql_params: Vec<String> = vec![project_path.to_string(), source.to_string()];
+    let mut sql_params: Vec<String> = vec![
+        project_path.to_string(),
+        source.to_string(),
+        source_key.to_string(),
+    ];
     sql_params.extend(active_ids.iter().map(|id| id.to_string()));
 
     // Archive completed stale tasks
     let now = chrono::Utc::now().to_rfc3339();
     let archive_sql = format!(
         "UPDATE tasks SET archived_at = '{now}', last_status = status, archived_reason = 'completed_and_removed' \
-         WHERE project_path = ?1 AND source = ?2 \
+         WHERE project_path = ?1 AND source = ?2 AND source_key = ?3 \
          {stale_filter} \
          AND status = 'completed' AND archived_at IS NULL"
     );
@@ -164,7 +237,7 @@ pub fn archive_or_delete_stale_tasks(
     // Delete non-completed stale tasks
     let delete_sql = format!(
         "DELETE FROM tasks \
-         WHERE project_path = ?1 AND source = ?2 \
+         WHERE project_path = ?1 AND source = ?2 AND source_key = ?3 \
          {stale_filter} \
          AND status != 'completed' AND archived_at IS NULL"
     );
@@ -180,7 +253,7 @@ pub struct StaleTaskResult {
     pub deleted: usize,
 }
 
-/// Get archived tasks for a project, ordered by session_id then source_task_id.
+/// Get archived tasks for a project, ordered by session/source/source_key/task.
 ///
 /// Returns tasks where `archived_at IS NOT NULL`. The caller groups these by
 /// `session_id` to build the session history timeline.
@@ -189,34 +262,35 @@ pub fn get_archived_tasks_for_project(
     project_path: &str,
 ) -> Result<Vec<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
          FROM tasks
          WHERE project_path = ?1 AND archived_at IS NOT NULL
-         ORDER BY session_id, source, source_task_id",
+         ORDER BY session_id, source, source_key, source_task_id",
     )?;
 
     let tasks = stmt
         .query_map([project_path], |row| {
-            let blocks_str: String = row.get(7)?;
-            let blocked_by_str: String = row.get(8)?;
+            let blocks_str: String = row.get(8)?;
+            let blocked_by_str: String = row.get(9)?;
             Ok(PersistedTask {
                 project_path: row.get(0)?,
                 source: row.get(1)?,
-                source_task_id: row.get(2)?,
-                subject: row.get(3)?,
-                description: row.get(4)?,
-                active_form: row.get(5)?,
-                status: row.get(6)?,
+                source_key: row.get(2)?,
+                source_task_id: row.get(3)?,
+                subject: row.get(4)?,
+                description: row.get(5)?,
+                active_form: row.get(6)?,
+                status: row.get(7)?,
                 blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
                 blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
-                owner: row.get(9)?,
-                session_id: row.get(10)?,
-                first_seen_at: row.get(11)?,
-                state_changed_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                archived_at: row.get(14)?,
-                last_status: row.get(15)?,
-                archived_reason: row.get(16)?,
+                owner: row.get(10)?,
+                session_id: row.get(11)?,
+                first_seen_at: row.get(12)?,
+                state_changed_at: row.get(13)?,
+                updated_at: row.get(14)?,
+                archived_at: row.get(15)?,
+                last_status: row.get(16)?,
+                archived_reason: row.get(17)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -254,6 +328,7 @@ mod tests {
         PersistedTask {
             project_path: "/projects/foo".to_string(),
             source: source.to_string(),
+            source_key: default_source_key(source),
             source_task_id: id.to_string(),
             subject: subject.to_string(),
             description: None,
@@ -270,6 +345,10 @@ mod tests {
             last_status: Some(status.to_string()),
             archived_reason: None,
         }
+    }
+
+    fn default_source_key(source: &str) -> String {
+        format!("{source}-default")
     }
 
     #[test]
@@ -327,6 +406,26 @@ mod tests {
         assert_eq!(tasks[0].source, "claude");
         assert_eq!(tasks[1].source, "codex");
         assert_eq!(tasks[2].source, "gemini");
+    }
+
+    #[test]
+    fn same_source_task_id_in_different_source_keys_do_not_collide() {
+        let (conn, _tmp) = test_db();
+
+        let mut task_a = make_task("claude", "1", "Session task", "pending");
+        task_a.source_key = "session-aaa".to_string();
+        upsert_task(&conn, &task_a).unwrap();
+
+        let mut task_b = make_task("claude", "1", "Team task", "in_progress");
+        task_b.source_key = "team-ops".to_string();
+        upsert_task(&conn, &task_b).unwrap();
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].source_key, "session-aaa");
+        assert_eq!(tasks[0].subject, "Session task");
+        assert_eq!(tasks[1].source_key, "team-ops");
+        assert_eq!(tasks[1].subject, "Team task");
     }
 
     #[test]
@@ -435,7 +534,7 @@ mod tests {
 
         // Scan returns only task 1 — task 2 (in_progress) should be deleted
         let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
         assert_eq!(result.deleted, 1);
         assert_eq!(result.archived, 0);
 
@@ -457,7 +556,7 @@ mod tests {
 
         // Scan returns only task 1 — task 2 (completed) should be archived
         let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
         assert_eq!(result.archived, 1);
         assert_eq!(result.deleted, 0);
 
@@ -487,7 +586,7 @@ mod tests {
 
         // Scan returns only task 1 — task 2 archived, task 3 deleted
         let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
         assert_eq!(result.archived, 1);
         assert_eq!(result.deleted, 1);
 
@@ -518,7 +617,7 @@ mod tests {
         .unwrap();
 
         let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
         assert_eq!(result.deleted, 0);
         assert_eq!(result.archived, 0);
 
@@ -535,7 +634,7 @@ mod tests {
 
         let empty: Vec<&str> = vec![];
         let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &empty).unwrap();
+            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &empty).unwrap();
         assert_eq!(result.archived, 1);
         assert_eq!(result.deleted, 1);
 
@@ -578,24 +677,36 @@ mod tests {
     }
 
     #[test]
-    fn upsert_unarchives_a_previously_archived_task() {
+    fn upsert_preserves_archived_row_and_inserts_new_active_row() {
         let (conn, _tmp) = test_db();
 
         // Create and archive a completed task
         upsert_task(&conn, &make_task("claude", "1", "Done task", "completed")).unwrap();
         upsert_task(&conn, &make_task("claude", "2", "Active", "in_progress")).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["2"]).unwrap();
 
         // Task 1 should be archived (not visible)
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(tasks.len(), 1);
 
-        // Now task 1 reappears in a scan — upsert should un-archive it
+        // Now task 1 reappears in a scan.
         upsert_task(&conn, &make_task("claude", "1", "Done task", "completed")).unwrap();
 
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(tasks.len(), 2);
-        assert!(tasks.iter().all(|t| t.archived_at.is_none()));
+
+        let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].source_task_id, "1");
+
+        let all_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE project_path = '/projects/foo'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(all_count, 3);
     }
 
     #[test]
@@ -606,11 +717,11 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "2", "Active", "in_progress")).unwrap();
 
         // First archive
-        let r1 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
+        let r1 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["2"]).unwrap();
         assert_eq!(r1.archived, 1);
 
         // Second call — task 1 is already archived, should not re-archive
-        let r2 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["2"]).unwrap();
+        let r2 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["2"]).unwrap();
         assert_eq!(r2.archived, 0);
     }
 
@@ -626,7 +737,7 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "3", "Abandoned", "pending")).unwrap();
 
         // Archive task 2, delete task 3
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["1"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 1);
@@ -672,7 +783,7 @@ mod tests {
         // Keep one active so we can archive the others
         upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 3);
@@ -707,8 +818,8 @@ mod tests {
         )
         .unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &["todo-99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &default_source_key("gemini"), &["todo-99"]).unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 2);
@@ -746,8 +857,8 @@ mod tests {
         })
         .unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/bar", "claude", &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/bar", "claude", &default_source_key("claude"), &["99"]).unwrap();
 
         let foo_archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(foo_archived.len(), 1);
@@ -787,9 +898,9 @@ mod tests {
         )
         .unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &["99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "codex", &["codex-99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &["todo-99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "codex", &default_source_key("codex"), &["codex-99"]).unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &default_source_key("gemini"), &["todo-99"]).unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 3);

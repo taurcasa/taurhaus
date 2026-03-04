@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use notify::RecommendedWatcher;
@@ -9,6 +9,18 @@ use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
 use crate::daemon::watch::{handle_unwatch, handle_watch};
 use crate::provider::local::LocalProvider;
 use crate::provider::ProjectProvider;
+use crate::task_scanner::claude_index::{
+    build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
+};
+
+#[derive(Debug, Clone)]
+struct ProjectTaskScanCache {
+    cycle_id: u64,
+    sessions: Vec<crate::session_scanner::ClaudeSession>,
+    claude_index: ClaudeSourceIndex,
+}
+
+static PROJECT_TASK_SCAN_CACHE: OnceLock<Mutex<Option<ProjectTaskScanCache>>> = OnceLock::new();
 
 /// Dispatch a request to the appropriate handler.
 pub(crate) fn dispatch(
@@ -347,18 +359,57 @@ pub(crate) fn handle_navigate_to_session(id: &str, params: &serde_json::Value) -
 }
 
 pub(crate) fn handle_get_project_tasks(id: &str, params: &serde_json::Value) -> DaemonResponse {
-    let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
+    let params: protocol::ProjectTasksParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+        Err(_) => match serde_json::from_value::<protocol::PathParams>(params.clone()) {
+            Ok(p) => protocol::ProjectTasksParams {
+                path: p.path,
+                scan_cycle_id: None,
+            },
+            Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
+        },
     };
 
-    // Get sessions from the daemon-local scanner, filter to this project
-    let all_sessions = crate::session_scanner::scan_sessions();
+    let (all_sessions, claude_index) = load_project_task_scan_inputs(params.scan_cycle_id);
     let project_sessions: Vec<crate::session_scanner::ClaudeSession> = all_sessions
         .into_iter()
         .filter(|s| s.project_path == params.path)
         .collect();
 
-    let result = crate::task_scanner::get_tasks_for_project(&params.path, &project_sessions);
+    let result = crate::task_scanner::get_tasks_for_project_with_index(
+        &params.path,
+        &project_sessions,
+        Some(&claude_index),
+    );
     DaemonResponse::ok(id, result)
+}
+
+fn load_project_task_scan_inputs(
+    cycle_id: Option<u64>,
+) -> (
+    Vec<crate::session_scanner::ClaudeSession>,
+    ClaudeSourceIndex,
+) {
+    if let Some(cycle_id) = cycle_id {
+        let cache = PROJECT_TASK_SCAN_CACHE.get_or_init(|| Mutex::new(None));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(ref cached) = *guard {
+            if cached.cycle_id == cycle_id {
+                return (cached.sessions.clone(), cached.claude_index.clone());
+            }
+        }
+
+        let sessions = crate::session_scanner::scan_sessions();
+        let claude_index = build_claude_source_index_with_live_sessions(&sessions);
+        *guard = Some(ProjectTaskScanCache {
+            cycle_id,
+            sessions: sessions.clone(),
+            claude_index: claude_index.clone(),
+        });
+        return (sessions, claude_index);
+    }
+
+    let sessions = crate::session_scanner::scan_sessions();
+    let claude_index = build_claude_source_index_with_live_sessions(&sessions);
+    (sessions, claude_index)
 }

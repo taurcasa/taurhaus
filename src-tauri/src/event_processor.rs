@@ -39,7 +39,8 @@ pub(crate) fn process_watch_events(
     const MAX_WAIT: Duration = Duration::from_millis(2000);
 
     // Spawn task scan thread with trailing-edge debounce (unchanged).
-    let (task_trigger_tx, task_trigger_rx) = std::sync::mpsc::channel::<()>();
+    let (task_trigger_tx, task_trigger_rx) =
+        std::sync::mpsc::channel::<crate::bootstrap::TaskScanTrigger>();
     let app_for_tasks = app.clone();
     std::thread::spawn(move || {
         bootstrap::task_scan_loop(task_trigger_rx, app_for_tasks);
@@ -102,7 +103,7 @@ pub(crate) fn process_watch_events(
 
         // Fast-path: internal watch events (task directory) bypass batching.
         if is_internal_event(&first) {
-            let _ = task_trigger_tx.send(());
+            let _ = task_trigger_tx.send(internal_task_trigger(&first));
             continue;
         }
 
@@ -120,7 +121,7 @@ pub(crate) fn process_watch_events(
             match rx.recv_timeout(timeout) {
                 Ok(event) => {
                     if is_internal_event(&event) {
-                        let _ = task_trigger_tx.send(());
+                        let _ = task_trigger_tx.send(internal_task_trigger(&event));
                     } else {
                         batch.accumulate(event);
                     }
@@ -323,6 +324,16 @@ pub(crate) fn process_watch_events(
                 "gitignore changed — watch rebuild not yet implemented"
             );
         }
+    }
+}
+
+fn internal_task_trigger(event: &fs::watcher::WatchEvent) -> crate::bootstrap::TaskScanTrigger {
+    use fs::watcher::WatchEvent;
+    match event {
+        WatchEvent::FileChanged { project_id, paths } if project_id == "__claude_tasks__" => {
+            crate::bootstrap::TaskScanTrigger::ClaudeTaskPaths(paths.clone())
+        }
+        _ => crate::bootstrap::TaskScanTrigger::Full,
     }
 }
 

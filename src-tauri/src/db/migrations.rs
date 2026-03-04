@@ -35,6 +35,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "task_archive_metadata",
         include_str!("migrations/008_task_archive_metadata.sql"),
     ),
+    (
+        9,
+        "task_source_key_identity",
+        include_str!("migrations/009_task_source_key_identity.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

@@ -27,9 +27,11 @@ impl std::fmt::Display for TaskStatus {
 
 /// A task normalized from any CLI tool's native format.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct UnifiedTask {
+pub struct ScannedTask {
     /// Tool-specific ID: "1", "codex-0", "todo-3".
     pub id: String,
+    /// Source-directory/session key used for identity disambiguation.
+    pub source_key: String,
     /// Short task description.
     pub subject: String,
     /// Longer description (Claude only).
@@ -49,6 +51,43 @@ pub struct UnifiedTask {
     /// Session UUID that created this task (Claude only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// Latest status transition time (ISO 8601), when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_changed_at: Option<String>,
+    /// Last update/write timestamp from source persistence (ISO 8601), when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    /// Archive timestamp if task was archived (ISO 8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<String>,
+    /// Last persisted status before archival.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_status: Option<String>,
+    /// Reason code for archival.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_reason: Option<String>,
+}
+
+/// Backward-compatible alias used by existing command/frontend code.
+pub type UnifiedTask = ScannedTask;
+
+/// Tri-state scanner outcome for one tool source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum ScanOutcome {
+    /// Scanner successfully loaded task data for this source.
+    Data(Vec<UnifiedTask>),
+    /// Scanner successfully checked this source and found no tasks.
+    DefinitivelyEmpty,
+    /// Scanner could not reliably inspect this source (I/O, permissions, etc.).
+    Unavailable(String),
+}
+
+/// One source's scan outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceScanOutcome {
+    pub source: String,
+    pub outcome: ScanOutcome,
 }
 
 /// Result of scanning tasks for a project.
@@ -61,6 +100,9 @@ pub struct TaskResult {
     pub tasks: Vec<UnifiedTask>,
     /// Per-source errors: (source_name, error_message).
     pub errors: Vec<(String, String)>,
+    /// Per-source tri-state outcomes for pruning and reconciliation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_outcomes: Vec<SourceScanOutcome>,
 }
 
 impl TaskResult {
@@ -69,6 +111,7 @@ impl TaskResult {
         Self {
             tasks: vec![],
             errors: vec![],
+            source_outcomes: vec![],
         }
     }
 }
@@ -102,8 +145,8 @@ pub struct SessionInfo {
 /// Returned by the `get_archived_sessions` IPC command for the History sub-tab.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchivedSession {
-    /// Session UUID (or "ungrouped" for tasks without a session_id).
-    pub session_id: String,
+    /// Session UUID when available; null for tasks without a session grouping key.
+    pub session_id: Option<String>,
     /// Session start time (ISO 8601).
     pub started_at: Option<String>,
     /// Session end time (ISO 8601).
@@ -120,6 +163,9 @@ pub struct ArchivedSession {
     pub sources: Vec<String>,
     /// When tasks were most recently archived into this session group (ISO 8601).
     pub last_archived_at: Option<String>,
+    /// Per-session enrichment warnings (timeline/commit lookup fallbacks).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub enrichment_warnings: Vec<String>,
 }
 
 /// Result of querying archived sessions for a project.
