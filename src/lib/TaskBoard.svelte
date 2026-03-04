@@ -49,11 +49,42 @@
     completed: dark ? 'bg-zinc-600' : 'bg-zinc-400',
   })
 
-  // Group tasks by status
+  function parseTimeMs(iso) {
+    if (!iso) return 0
+    const ms = new Date(iso).getTime()
+    return Number.isFinite(ms) ? ms : 0
+  }
+
+  function recencyTimeMs(task) {
+    return Math.max(
+      parseTimeMs(task.state_changed_at),
+      parseTimeMs(task.updated_at),
+      parseTimeMs(task.archived_at),
+    )
+  }
+
+  function dependencyCount(task) {
+    return Array.isArray(task.blocked_by) ? task.blocked_by.length : 0
+  }
+
+  // Group + sort tasks by status
   const grouped = $derived({
-    in_progress: tasks.filter(t => t.status === 'in_progress'),
-    pending: tasks.filter(t => t.status === 'pending'),
-    completed: tasks.filter(t => t.status === 'completed'),
+    in_progress: tasks
+      .filter(t => t.status === 'in_progress')
+      .slice()
+      .sort((a, b) => recencyTimeMs(b) - recencyTimeMs(a)),
+    pending: tasks
+      .filter(t => t.status === 'pending')
+      .slice()
+      .sort((a, b) => {
+        const depDelta = dependencyCount(b) - dependencyCount(a)
+        if (depDelta !== 0) return depDelta
+        return recencyTimeMs(b) - recencyTimeMs(a)
+      }),
+    completed: tasks
+      .filter(t => t.status === 'completed')
+      .slice()
+      .sort((a, b) => parseTimeMs(b.updated_at) - parseTimeMs(a.updated_at)),
   })
 
   // Pending restore target — applied once tasks finish loading
@@ -65,6 +96,7 @@
       activeSubTab,
       selectedTaskId: selectedTask?.id ?? null,
       selectedTaskSource: selectedTask?.source ?? null,
+      selectedTaskSourceKey: selectedTask?.source_key ?? null,
     }
   })
 
@@ -73,7 +105,11 @@
     if (!navTarget) return
     if (navTarget.activeSubTab) activeSubTab = navTarget.activeSubTab
     if (navTarget.selectedTaskId) {
-      pendingRestore = { id: navTarget.selectedTaskId, source: navTarget.selectedTaskSource }
+      pendingRestore = {
+        id: navTarget.selectedTaskId,
+        source: navTarget.selectedTaskSource,
+        source_key: navTarget.selectedTaskSourceKey ?? null,
+      }
     }
     onClearNavTarget?.()
   })
@@ -81,7 +117,7 @@
   // Apply pending restore once tasks are loaded
   $effect(() => {
     if (!pendingRestore || loading || tasks.length === 0) return
-    const match = tasks.find(t => t.id === pendingRestore.id && t.source === pendingRestore.source)
+    const match = tasks.find(t => isSameTaskIdentity(t, pendingRestore))
     if (match) selectTask(match)
     pendingRestore = null
   })
@@ -139,7 +175,7 @@
 
   /** Handle card click: toggle selection and fetch detail. */
   function selectTask(task) {
-    if (selectedTask && selectedTask.id === task.id && selectedTask.source === task.source) {
+    if (isSameTaskIdentity(selectedTask, task)) {
       // Clicking same card again — deselect
       selectedTask = null
       taskDetail = null
@@ -153,14 +189,15 @@
   /** Fetch enriched detail for a task. */
   async function fetchDetail(task) {
     try {
-      const detail = await getTaskDetail(projectPath, task.id, task.source)
+      const sourceKey = task.source_key || `legacy-${task.source}`
+      const detail = await getTaskDetail(projectPath, task.id, task.source, sourceKey)
       // Only apply if this task is still selected
-      if (selectedTask && selectedTask.id === task.id && selectedTask.source === task.source) {
+      if (isSameTaskIdentity(selectedTask, task)) {
         taskDetail = detail
       }
     } catch (e) {
       // Silently fail — panel shows header without detail sections
-      if (selectedTask && selectedTask.id === task.id && selectedTask.source === task.source) {
+      if (isSameTaskIdentity(selectedTask, task)) {
         taskDetail = { task, session: null, commits: [], files_changed: [] }
       }
     }
@@ -182,7 +219,16 @@
 
   /** Check if a task is currently selected. */
   function isSelected(task) {
-    return selectedTask && selectedTask.id === task.id && selectedTask.source === task.source
+    return isSameTaskIdentity(selectedTask, task)
+  }
+
+  function isSameTaskIdentity(a, b) {
+    if (!a || !b) return false
+    if (a.id !== b.id || a.source !== b.source) return false
+    const aKey = a.source_key || null
+    const bKey = b.source_key || null
+    if (aKey && bKey) return aKey === bKey
+    return true
   }
 
   /** Switch sub-tab, clearing any open detail panel. */
@@ -294,7 +340,16 @@
   {:else}
     <!-- History sub-tab — SessionHistory accordion -->
     <div class="flex-1 overflow-hidden" data-testid="history-tab-content">
-      <SessionHistory {projectPath} {dark} onSelectTask={selectTask} {onNavigateToCommit} {onNavigateToFile} {onNavigateToCommitRange} />
+      <SessionHistory
+        {projectPath}
+        {dark}
+        {projectId}
+        isActive={isActive && activeSubTab === 'history'}
+        onSelectTask={selectTask}
+        {onNavigateToCommit}
+        {onNavigateToFile}
+        {onNavigateToCommitRange}
+      />
     </div>
   {/if}
   </div>
@@ -332,6 +387,10 @@
       </span>
       <span class="text-[13px] leading-snug {task.status === 'completed' ? `${t.textMuted} line-through` : t.textBody}">{task.subject}</span>
     </div>
+
+    {#if task.status === 'in_progress' && task.active_form}
+      <p class="text-[11px] {t.textTertiary} mt-1 ml-[22px] truncate" data-testid="task-active-form">{task.active_form}</p>
+    {/if}
 
     <!-- Description -->
     {#if task.description}

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/svelte'
+import { render, screen, waitFor, within } from '@testing-library/svelte'
 import { statusBadgeClass, statusLabel } from './taskHelpers.js'
 
 // Mock markdown rendering (MarkdownRenderer depends on shiki/WASM)
@@ -79,6 +79,7 @@ function mockArchivedSessions(sessions = []) {
 function makeTask(overrides = {}) {
   return {
     id: '1',
+    source_key: 'claude-default',
     subject: 'Test task',
     description: null,
     active_form: null,
@@ -87,6 +88,11 @@ function makeTask(overrides = {}) {
     blocks: [],
     blocked_by: [],
     owner: null,
+    state_changed_at: null,
+    updated_at: null,
+    archived_at: null,
+    archived_reason: null,
+    last_status: null,
     ...overrides,
   }
 }
@@ -151,6 +157,66 @@ describe('TaskBoard component', () => {
     expect(screen.getByText('Done task')).toBeTruthy()
   })
 
+  it('sorts in-progress tasks by most recent state_changed_at', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: 'a', subject: 'Old in-progress', status: 'in_progress', state_changed_at: '2026-03-01T09:00:00Z' }),
+        makeTask({ id: 'b', subject: 'Newest in-progress', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: 'c', subject: 'Middle in-progress', status: 'in_progress', state_changed_at: '2026-03-01T10:00:00Z' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => expect(screen.getAllByTestId('kanban-column')).toHaveLength(3))
+    const inProgressColumn = screen.getAllByTestId('kanban-column')[0]
+    const taskRows = inProgressColumn.querySelectorAll('[data-testid="task-row"]')
+    expect(taskRows).toHaveLength(3)
+    expect(taskRows[0].textContent).toContain('Newest in-progress')
+    expect(taskRows[1].textContent).toContain('Middle in-progress')
+    expect(taskRows[2].textContent).toContain('Old in-progress')
+  })
+
+  it('sorts pending by dependency count then recency', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: 'a', subject: 'Most blocked', status: 'pending', blocked_by: ['1', '2'], state_changed_at: '2026-03-01T08:00:00Z' }),
+        makeTask({ id: 'b', subject: 'Recent single dependency', status: 'pending', blocked_by: ['1'], state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: 'c', subject: 'Older single dependency', status: 'pending', blocked_by: ['1'], state_changed_at: '2026-03-01T10:00:00Z' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => expect(screen.getAllByTestId('kanban-column')).toHaveLength(3))
+    const pendingColumn = screen.getAllByTestId('kanban-column')[1]
+    const taskRows = pendingColumn.querySelectorAll('[data-testid="task-row"]')
+    expect(taskRows).toHaveLength(3)
+    expect(taskRows[0].textContent).toContain('Most blocked')
+    expect(taskRows[1].textContent).toContain('Recent single dependency')
+    expect(taskRows[2].textContent).toContain('Older single dependency')
+  })
+
+  it('sorts completed tasks by updated_at desc', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({ id: 'a', subject: 'Old completed', status: 'completed', updated_at: '2026-03-01T08:00:00Z' }),
+        makeTask({ id: 'b', subject: 'Newest completed', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: 'c', subject: 'Middle completed', status: 'completed', updated_at: '2026-03-01T10:00:00Z' }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => expect(screen.getAllByTestId('kanban-column')).toHaveLength(3))
+    const completedColumn = screen.getAllByTestId('kanban-column')[2]
+    const taskRows = completedColumn.querySelectorAll('[data-testid="task-row"]')
+    expect(taskRows).toHaveLength(3)
+    expect(taskRows[0].textContent).toContain('Newest completed')
+    expect(taskRows[1].textContent).toContain('Middle completed')
+    expect(taskRows[2].textContent).toContain('Old completed')
+  })
+
   it('shows task count in Active sub-tab', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
@@ -188,6 +254,19 @@ describe('TaskBoard component', () => {
     render(TaskBoard, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
       expect(screen.getByText('Some detail here')).toBeTruthy()
+    })
+  })
+
+  it('shows active_form as secondary text for in-progress tasks', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'in_progress', active_form: 'Implementing parser', subject: 'Parser task' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByText('Parser task')).toBeTruthy()
+      expect(screen.getByTestId('task-active-form').textContent).toContain('Implementing parser')
     })
   })
 

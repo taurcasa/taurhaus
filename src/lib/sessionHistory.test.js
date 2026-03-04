@@ -8,6 +8,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/svelte'
 
+const { eventListenMock, emitProjectTasksChanged } = vi.hoisted(() => {
+  let handler = null
+  return {
+    eventListenMock: vi.fn(async (_event, cb) => {
+      handler = cb
+      return () => {}
+    }),
+    emitProjectTasksChanged: (payload) => {
+      if (handler) handler({ payload })
+    },
+  }
+})
+
 // Mock markdown rendering (MarkdownRenderer depends on shiki/WASM)
 vi.mock('./markdown.js', () => ({
   renderMarkdown: vi.fn((source) => Promise.resolve(
@@ -20,6 +33,9 @@ vi.mock('./ipc.js', () => ({
   getArchivedSessions: vi.fn(),
   getCommitsInRange: vi.fn(),
 }))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: eventListenMock,
+}))
 
 const { getArchivedSessions, getCommitsInRange } = await import('./ipc.js')
 
@@ -31,12 +47,13 @@ function makeSession(overrides = {}) {
     ended_at: '2026-02-20T12:15:00Z',
     duration_ms: 8100000,
     tasks: [
-      { id: '1', subject: 'Task one', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null },
-      { id: '2', subject: 'Task two', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null },
+      { id: '1', source_key: 'sess-aaa', subject: 'Task one', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null, archived_reason: null, archived_at: null, last_status: null },
+      { id: '2', source_key: 'sess-aaa', subject: 'Task two', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null, archived_reason: null, archived_at: null, last_status: null },
     ],
     commit_count: 5,
     file_count: 3,
     sources: ['claude'],
+    enrichment_warnings: [],
     ...overrides,
   }
 }
@@ -46,6 +63,7 @@ import SessionHistory from './SessionHistory.svelte'
 describe('SessionHistory component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete window.__TAURI_INTERNALS__
     // Default: getCommitsInRange never resolves (keeps loading state)
     getCommitsInRange.mockReturnValue(new Promise(() => {}))
   })
@@ -271,6 +289,60 @@ describe('SessionHistory component', () => {
     render(SessionHistory, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
       expect(screen.getByTestId('history-errors')).toBeTruthy()
+    })
+  })
+
+  it('shows enrichment warning badge when session has warning metadata', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession({ enrichment_warnings: ['Could not resolve transcript range'] })],
+      errors: [],
+    })
+
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-enrichment-warning')).toBeTruthy()
+    })
+  })
+
+  it('renders archive reason/time chip on archived task rows', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession({
+        tasks: [
+          { id: '1', source_key: 'sess-aaa', subject: 'Archived task', status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, description: null, active_form: null, archived_reason: 'completed_and_removed', archived_at: new Date(Date.now() - 7200000).toISOString(), last_status: 'completed' },
+        ],
+      })],
+      errors: [],
+    })
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+    await waitFor(() => {
+      expect(screen.getByTestId('session-header')).toBeTruthy()
+    })
+    await fireEvent.click(screen.getByTestId('session-header'))
+    await waitFor(() => {
+      const chip = screen.getByTestId('history-archive-chip')
+      expect(chip.textContent).toContain('Archived: source removed')
+    })
+  })
+
+  it('re-fetches archived sessions on project-tasks-changed event while active', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    getArchivedSessions
+      .mockResolvedValueOnce({ sessions: [makeSession()], errors: [] })
+      .mockResolvedValueOnce({ sessions: [makeSession({ session_id: 'sess-bbb' })], errors: [] })
+
+    render(SessionHistory, { props: { projectPath: '/test', projectId: 'proj-1', isActive: true, dark: false } })
+    await waitFor(() => {
+      expect(getArchivedSessions).toHaveBeenCalledTimes(1)
+    })
+    await waitFor(() => {
+      expect(eventListenMock).toHaveBeenCalled()
+    })
+
+    emitProjectTasksChanged({ project_id: 'proj-1' })
+    await waitFor(() => {
+      expect(getArchivedSessions).toHaveBeenCalledTimes(2)
     })
   })
 

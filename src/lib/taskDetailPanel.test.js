@@ -24,6 +24,7 @@ import TaskDetailPanel from './TaskDetailPanel.svelte'
 /** A full task with all fields populated. */
 const FULL_TASK = {
   id: '1',
+  source_key: 'sess-abc',
   subject: 'Add task scanner backend',
   description: 'Parse tasks from all three CLI tools',
   active_form: 'Adding task scanner',
@@ -33,11 +34,17 @@ const FULL_TASK = {
   blocked_by: ['0'],
   owner: 'researcher',
   session_id: 'abc-123-def',
+  state_changed_at: null,
+  updated_at: '2026-02-22T04:30:00.000Z',
+  archived_at: null,
+  last_status: null,
+  archived_reason: null,
 }
 
 /** A sparse task (Gemini TODO item — only subject + status). */
 const SPARSE_TASK = {
   id: 'todo-5',
+  source_key: 'gemini-todo',
   subject: 'Write unit tests',
   description: null,
   active_form: null,
@@ -47,6 +54,11 @@ const SPARSE_TASK = {
   blocked_by: [],
   owner: null,
   session_id: null,
+  state_changed_at: null,
+  updated_at: null,
+  archived_at: null,
+  last_status: null,
+  archived_reason: null,
 }
 
 /** Full detail response with all sections populated. */
@@ -188,6 +200,25 @@ describe('Session section', () => {
   it('hides session section when null', () => {
     renderPanel({ task: SPARSE_TASK, detail: SPARSE_DETAIL })
     expect(screen.queryByTestId('detail-session')).toBeNull()
+  })
+})
+
+describe('Archive context section', () => {
+  it('shows archive context for archived task metadata', () => {
+    const archivedTask = {
+      ...FULL_TASK,
+      archived_at: new Date(Date.now() - 3600000).toISOString(),
+      archived_reason: 'completed_and_removed',
+      last_status: 'completed',
+    }
+    renderPanel({
+      task: archivedTask,
+      detail: { ...FULL_DETAIL, task: archivedTask },
+    })
+
+    expect(screen.getByTestId('detail-archive-context')).toBeTruthy()
+    expect(screen.getByText(/source removed/)).toBeTruthy()
+    expect(screen.getByText(/Last status:/)).toBeTruthy()
   })
 })
 

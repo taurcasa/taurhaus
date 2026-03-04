@@ -331,24 +331,25 @@ export function recordSessionActivity(projectPath, cliTool, startedAt, endedAt, 
 export function getProjectTasks(projectPath) {
   return invokeOrMock('get_project_tasks', { projectPath }, () => ({
     tasks: [
-      { id: '1', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: 'Adding task scanner', status: 'in_progress', source: 'claude', blocks: ['2'], blocked_by: [], owner: null },
-      { id: '2', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'pending', source: 'claude', blocks: [], blocked_by: ['1'], owner: null },
-      { id: '3', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-      { id: 'codex-0', subject: 'Initialize project structure', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
-      { id: 'codex-1', subject: 'Implement CLI parsing', description: null, active_form: null, status: 'in_progress', source: 'codex', blocks: [], blocked_by: [], owner: null },
-      { id: 'codex-2', subject: 'Add error handling', description: null, active_form: null, status: 'pending', source: 'codex', blocks: [], blocked_by: [], owner: null },
-      { id: 'todo-1', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'gemini', blocks: [], blocked_by: [], owner: null },
-      { id: 'todo-2', subject: 'Update documentation', description: null, active_form: null, status: 'completed', source: 'gemini', blocks: [], blocked_by: [], owner: null },
+      { id: '1', source_key: 'sess-aaa-111', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: 'Adding task scanner', status: 'in_progress', source: 'claude', blocks: ['2'], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 300000).toISOString(), updated_at: new Date(Date.now() - 300000).toISOString() },
+      { id: '2', source_key: 'sess-aaa-111', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'pending', source: 'claude', blocks: [], blocked_by: ['1'], owner: null, state_changed_at: new Date(Date.now() - 3600000).toISOString(), updated_at: new Date(Date.now() - 3600000).toISOString() },
+      { id: '3', source_key: 'sess-aaa-111', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 7200000).toISOString(), updated_at: new Date(Date.now() - 7200000).toISOString() },
+      { id: 'codex-0', source_key: 'legacy-codex', subject: 'Initialize project structure', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 10800000).toISOString(), updated_at: new Date(Date.now() - 10800000).toISOString() },
+      { id: 'codex-1', source_key: 'legacy-codex', subject: 'Implement CLI parsing', description: null, active_form: 'Implementing CLI parsing', status: 'in_progress', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 900000).toISOString(), updated_at: new Date(Date.now() - 900000).toISOString() },
+      { id: 'codex-2', source_key: 'legacy-codex', subject: 'Add error handling', description: null, active_form: null, status: 'pending', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 5400000).toISOString(), updated_at: new Date(Date.now() - 5400000).toISOString() },
+      { id: 'todo-1', source_key: 'gemini-todo', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'gemini', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 1800000).toISOString(), updated_at: new Date(Date.now() - 1800000).toISOString() },
+      { id: 'todo-2', source_key: 'gemini-todo', subject: 'Update documentation', description: null, active_form: null, status: 'completed', source: 'gemini', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 14400000).toISOString(), updated_at: new Date(Date.now() - 14400000).toISOString() },
     ],
     errors: [],
   }))
 }
 
 /** Get enriched detail for a single task: full data + session info + commits + files changed. */
-export function getTaskDetail(projectPath, taskId, source) {
-  return invokeOrMock('get_task_detail', { projectPath, taskId, source }, () => ({
+export function getTaskDetail(projectPath, taskId, source, sourceKey) {
+  return invokeOrMock('get_task_detail', { projectPath, taskId, source, sourceKey }, () => ({
     task: {
       id: taskId,
+      source_key: sourceKey || (source === 'gemini' ? 'gemini-todo' : source === 'codex' ? 'legacy-codex' : 'legacy-claude'),
       subject: 'Add task scanner backend',
       description: 'Parse tasks from all three CLI tools and present them in a unified task board.',
       active_form: 'Adding task scanner',
@@ -358,6 +359,11 @@ export function getTaskDetail(projectPath, taskId, source) {
       blocked_by: [],
       owner: null,
       session_id: 'abc-123-def',
+      state_changed_at: new Date(Date.now() - 3600000).toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+      last_status: 'in_progress',
+      archived_reason: null,
     },
     session: {
       id: 'abc-123-def',
@@ -389,16 +395,17 @@ export function getArchivedSessions(projectPath) {
         ended_at: new Date(Date.now() - 2 * 86400000 + 8100000).toISOString(),
         duration_ms: 8100000,
         tasks: [
-          { id: '10', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: null, status: 'completed', source: 'claude', blocks: ['11'], blocked_by: [], owner: null },
-          { id: '11', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: ['10'], owner: null },
-          { id: '12', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: 'todo-5', subject: 'Update README with task board docs', description: null, active_form: null, status: 'completed', source: 'gemini', blocks: [], blocked_by: [], owner: null },
-          { id: 'codex-3', subject: 'Lint and format codebase', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
+          { id: '10', source_key: 'sess-aaa-111', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: null, status: 'completed', source: 'claude', blocks: ['11'], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 3600000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '11', source_key: 'sess-aaa-111', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: ['10'], owner: null, archived_at: new Date(Date.now() - 3500000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '12', source_key: 'sess-aaa-111', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 3400000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: 'todo-5', source_key: 'sess-aaa-111', subject: 'Update README with task board docs', description: null, active_form: null, status: 'completed', source: 'gemini', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 3300000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: 'codex-3', source_key: 'sess-aaa-111', subject: 'Lint and format codebase', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 3200000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
         ],
         commit_count: 12,
         file_count: 8,
         sources: ['claude', 'codex', 'gemini'],
         last_archived_at: new Date(Date.now() - 3600000).toISOString(), // 1h ago
+        enrichment_warnings: [],
       },
       {
         session_id: 'sess-bbb-222',
@@ -406,14 +413,15 @@ export function getArchivedSessions(projectPath) {
         ended_at: new Date(Date.now() - 5 * 86400000 + 6120000).toISOString(),
         duration_ms: 6120000,
         tasks: [
-          { id: '7', subject: 'Implement session scanner', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '8', subject: 'Add idle detection', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '9', subject: 'Wire up IPC commands', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
+          { id: '7', source_key: 'sess-bbb-222', subject: 'Implement session scanner', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 5 * 86400000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '8', source_key: 'sess-bbb-222', subject: 'Add idle detection', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 5 * 86400000 + 60000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '9', source_key: 'sess-bbb-222', subject: 'Wire up IPC commands', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 5 * 86400000 + 120000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
         ],
         commit_count: 7,
         file_count: 5,
         sources: ['claude'],
         last_archived_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+        enrichment_warnings: [],
       },
       {
         session_id: 'sess-ccc-333',
@@ -421,19 +429,20 @@ export function getArchivedSessions(projectPath) {
         ended_at: new Date(Date.now() - 12 * 86400000 + 11100000).toISOString(),
         duration_ms: 11100000,
         tasks: [
-          { id: '1', subject: 'Set up project scaffold', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '2', subject: 'Configure Tauri + Svelte', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '3', subject: 'Add SQLite storage layer', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '4', subject: 'Build sidebar and navigation', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '5', subject: 'Implement git integration', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: '6', subject: 'Add file tree component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null },
-          { id: 'codex-0', subject: 'Initialize project dependencies', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
-          { id: 'codex-1', subject: 'Set up CI pipeline', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null },
+          { id: '1', source_key: 'sess-ccc-333', subject: 'Set up project scaffold', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '2', source_key: 'sess-ccc-333', subject: 'Configure Tauri + Svelte', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 60000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '3', source_key: 'sess-ccc-333', subject: 'Add SQLite storage layer', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 120000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '4', source_key: 'sess-ccc-333', subject: 'Build sidebar and navigation', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 180000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '5', source_key: 'sess-ccc-333', subject: 'Implement git integration', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 240000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '6', source_key: 'sess-ccc-333', subject: 'Add file tree component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 300000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: 'codex-0', source_key: 'sess-ccc-333', subject: 'Initialize project dependencies', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 360000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: 'codex-1', source_key: 'sess-ccc-333', subject: 'Set up CI pipeline', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null, archived_at: new Date(Date.now() - 12 * 86400000 + 420000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
         ],
         commit_count: 15,
         file_count: 12,
         sources: ['claude', 'codex'],
         last_archived_at: new Date(Date.now() - 12 * 86400000).toISOString(),
+        enrichment_warnings: ['Could not resolve transcript time range for session sess-ccc-333; using task timestamp fallback.'],
       },
     ],
     errors: [],

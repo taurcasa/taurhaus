@@ -4,8 +4,8 @@
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
   import { themeTokens } from './themeTokens.js'
 
-  /** @type {{ projectPath: string, dark: boolean, onSelectTask?: (task: any) => void, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
-  let { projectPath, dark, onSelectTask, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
+  /** @type {{ projectPath: string, projectId?: string|null, isActive?: boolean, dark: boolean, onSelectTask?: (task: any) => void, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
+  let { projectPath, projectId = null, isActive = true, dark, onSelectTask, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange } = $props()
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -44,6 +44,10 @@
   async function loadSessionDetail(sessionId) {
     const session = sessions.find(s => s.session_id === sessionId)
     if (!session) return
+    if (!session.started_at || !session.ended_at) {
+      expandedData = new Map(expandedData).set(sessionId, { commits: [], files: [], loading: false, error: null })
+      return
+    }
     expandedData = new Map(expandedData).set(sessionId, { commits: [], files: [], loading: true, error: null })
     try {
       const result = await getCommitsInRange(projectPath, session.started_at, session.ended_at)
@@ -96,28 +100,60 @@
     }
   }
 
-  // Fetch on mount
-  $effect(() => {
-    if (!projectPath) return
-    let cancelled = false
+  function formatArchivedReason(reason) {
+    if (!reason) return null
+    if (reason === 'completed_and_removed') return 'source removed'
+    return String(reason).replaceAll('_', ' ')
+  }
 
-    async function fetchData() {
-      try {
-        const result = await getArchivedSessions(projectPath)
-        if (cancelled) return
-        sessions = result.sessions || []
-        dataErrors = result.errors || []
-        loading = false
-      } catch (e) {
-        if (cancelled) return
-        dataErrors = [e.message || 'Failed to load session history']
-        loading = false
-      }
+  function archiveChipLabel(task) {
+    const reason = formatArchivedReason(task.archived_reason)
+    if (!reason) return null
+    const rel = formatRelativeTime(task.archived_at)
+    return rel ? `Archived: ${reason} · ${rel}` : `Archived: ${reason}`
+  }
+
+  async function fetchData(cancelledRef) {
+    try {
+      const result = await getArchivedSessions(projectPath)
+      if (cancelledRef.cancelled) return
+      sessions = result.sessions || []
+      dataErrors = result.errors || []
+      expandedData = new Map()
+      loading = false
+    } catch (e) {
+      if (cancelledRef.cancelled) return
+      dataErrors = [e.message || 'Failed to load session history']
+      loading = false
+    }
+  }
+
+  // Fetch + live-refresh while history is active.
+  $effect(() => {
+    if (!projectPath || !isActive) return
+    const cancelledRef = { cancelled: false }
+    let unlisten = null
+    loading = true
+    fetchData(cancelledRef)
+
+    const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+    if (isTauriEnv) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        if (cancelledRef.cancelled) return
+        listen('project-tasks-changed', (event) => {
+          const eventProjectId = event?.payload?.project_id ?? null
+          const projectMatches = !projectId || !eventProjectId || eventProjectId === projectId
+          if (!cancelledRef.cancelled && document.visibilityState !== 'hidden' && projectMatches) {
+            fetchData(cancelledRef)
+          }
+        }).then(fn => { unlisten = fn })
+      })
     }
 
-    fetchData()
-
-    return () => { cancelled = true }
+    return () => {
+      cancelledRef.cancelled = true
+      if (unlisten) unlisten()
+    }
   })
 </script>
 
@@ -165,15 +201,16 @@
 
     <!-- Session accordion list -->
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1.5">
-      {#each sessions as session (session.session_id)}
-        {@const open = isExpanded(session.session_id)}
+      {#each sessions as session, idx (session.session_id ?? `unknown-${idx}`)}
+        {@const sessionKey = session.session_id ?? `unknown-${idx}`}
+        {@const open = isExpanded(sessionKey)}
         <div class="rounded-lg overflow-hidden border {t.keyline}">
           <!-- Session header (click target) -->
           <button
             class="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg transition-colors cursor-pointer
               {headerBg} {headerHover} {t.textPrimary}"
             data-testid="session-header"
-            onclick={() => toggleSession(session.session_id)}
+            onclick={() => toggleSession(sessionKey)}
             aria-expanded={open}
           >
             <!-- Chevron -->
@@ -204,6 +241,16 @@
             <span class="text-[11px] {t.textTertiary}">
               {session.commit_count} commit{session.commit_count !== 1 ? 's' : ''}
             </span>
+            {#if session.enrichment_warnings?.length > 0}
+              <span
+                class="inline-flex items-center justify-center rounded px-1 py-0.5 text-[10px] font-semibold
+                  {dark ? 'bg-warning-300/15 text-warning-300' : 'bg-warning-50 text-warning-600'}"
+                data-testid="session-enrichment-warning"
+                title={session.enrichment_warnings.join('\n')}
+              >
+                warn
+              </span>
+            {/if}
 
             <!-- Source tool icons -->
             {#each session.sources as source}
@@ -220,16 +267,30 @@
 
           <!-- Expandable detail (CSS grid animation) -->
           {#if open}
-            {@const detail = expandedData.get(session.session_id)}
+            {@const detail = expandedData.get(sessionKey)}
             <div
               class="px-4 pb-3 pt-1 {detailBg} rounded-b-lg"
               data-testid="session-detail"
             >
+              {#if session.enrichment_warnings?.length > 0}
+                <div class="mb-3 space-y-1" data-testid="session-enrichment-warnings">
+                  {#each session.enrichment_warnings as warning}
+                    <div class="flex items-center gap-2 px-2 py-1 rounded text-[10px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
+                      <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                      </svg>
+                      <span>{warning}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
               <!-- Tasks sub-section -->
               <div class="mb-3">
                 <h4 class="text-[10px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-1.5">Tasks</h4>
                 <div class="space-y-1">
                   {#each session.tasks as task}
+                    {@const archiveChip = archiveChipLabel(task)}
                     <button
                       class="w-full text-left flex items-center gap-2 px-2 py-1 rounded transition-colors cursor-pointer
                         {dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80'}"
@@ -250,6 +311,13 @@
                         </span>
                       {/if}
                     </button>
+                    {#if archiveChip}
+                      <div class="ml-7 -mt-0.5 mb-1">
+                        <span class="inline-flex rounded px-1.5 py-0.5 text-[10px] {dark ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-600'}" data-testid="history-archive-chip">
+                          {archiveChip}
+                        </span>
+                      </div>
+                    {/if}
                   {/each}
                 </div>
               </div>

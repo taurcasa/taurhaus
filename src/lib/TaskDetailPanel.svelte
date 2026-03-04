@@ -60,6 +60,29 @@
       return `${start} - ${end}`
     }
   }
+
+  function formatRelativeTime(iso) {
+    if (!iso) return null
+    try {
+      const ms = Date.now() - new Date(iso).getTime()
+      if (ms < 0) return null
+      const mins = Math.floor(ms / 60000)
+      if (mins < 1) return 'just now'
+      if (mins < 60) return `${mins}m ago`
+      const hours = Math.floor(mins / 60)
+      if (hours < 24) return `${hours}h ago`
+      const days = Math.floor(hours / 24)
+      return `${days}d ago`
+    } catch {
+      return null
+    }
+  }
+
+  function formatArchivedReason(reason) {
+    if (!reason) return null
+    if (reason === 'completed_and_removed') return 'source removed'
+    return String(reason).replaceAll('_', ' ')
+  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -134,6 +157,29 @@
               <div class="text-[11px] {t.textMuted}">
                 {formatTimeRange(detail.session.started_at, detail.session.ended_at)}
               </div>
+            </div>
+          </section>
+        {/if}
+
+        {#if detail.task.archived_at || detail.task.archived_reason || detail.task.last_status}
+          <section class="py-3" data-testid="detail-archive-context">
+            <h4 class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary} mb-2">Archive Context</h4>
+            <div class="{sectionBg} rounded-md px-3 py-2 space-y-1.5">
+              {#if formatArchivedReason(detail.task.archived_reason)}
+                <div class="text-[11px] {t.textMuted}">
+                  Archived reason: <span class="{t.textBody}">{formatArchivedReason(detail.task.archived_reason)}</span>
+                </div>
+              {/if}
+              {#if detail.task.archived_at}
+                <div class="text-[11px] {t.textMuted}">
+                  Archived at: <span class="{t.textBody}">{formatRelativeTime(detail.task.archived_at) || detail.task.archived_at}</span>
+                </div>
+              {/if}
+              {#if detail.task.last_status}
+                <div class="text-[11px] {t.textMuted}">
+                  Last status: <span class="{t.textBody}">{statusLabel(detail.task.last_status)}</span>
+                </div>
+              {/if}
             </div>
           </section>
         {/if}
