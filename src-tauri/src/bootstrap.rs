@@ -262,10 +262,6 @@ pub(crate) fn sync_all_project_tasks(app: &AppHandle) {
         // Scan tasks from files (daemon or local)
         let scan_result = commands::tasks::scan_tasks_from_files(&provider_state, &project.path);
 
-        if scan_result.tasks.is_empty() {
-            continue;
-        }
-
         // Normalize path for DB storage
         let normalized_path =
             provider::path::to_linux(&project.path).unwrap_or_else(|| project.path.clone());
