@@ -149,15 +149,24 @@ impl DaemonProvider {
         })?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
-        if let Ok(mut guard) = self.conn.lock() {
-            *guard = Some(Connection { stream, reader });
+        match self.conn.lock() {
+            Ok(mut guard) => {
+                *guard = Some(Connection { stream, reader });
+                self.connected.store(true, Ordering::Relaxed);
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "daemon reconnect: conn mutex poisoned, connection not stored");
+            }
         }
 
-        self.connected.store(true, Ordering::Relaxed);
-
         // Re-read auth token — daemon may have restarted with a new one.
-        if let Ok(mut guard) = self.auth_token.lock() {
-            *guard = Self::read_auth_token();
+        match self.auth_token.lock() {
+            Ok(mut guard) => {
+                *guard = Self::read_auth_token();
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "daemon reconnect: auth_token mutex poisoned");
+            }
         }
 
         tracing::debug!(addr = %self.addr, "Daemon reconnected");
@@ -207,9 +216,8 @@ impl DaemonProvider {
     /// Mark the provider as disconnected (clears the TCP connection).
     fn mark_disconnected(&self) {
         self.connected.store(false, Ordering::Relaxed);
-        if let Ok(mut guard) = self.conn.lock() {
-            *guard = None;
-        }
+        let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = None;
     }
 
     /// Generate a unique request ID.

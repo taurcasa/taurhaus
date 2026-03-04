@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::commands::projects::DbState;
 use crate::db::relationship_queries;
+use crate::errors::SanitizeErr;
 use crate::models::Relationship;
 
 #[tauri::command]
@@ -9,21 +10,37 @@ pub fn get_relationships(
     db: State<'_, DbState>,
     project_id: String,
 ) -> Result<Vec<Relationship>, String> {
+    get_relationships_impl(db.inner(), project_id)
+}
+
+fn get_relationships_impl(db: &DbState, project_id: String) -> Result<Vec<Relationship>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    relationship_queries::list_relationships(&conn, &project_id).map_err(|e| e.to_string())
+    relationship_queries::list_relationships(&conn, &project_id).sanitize_err()
 }
 
 #[tauri::command]
 pub fn dismiss_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
+    dismiss_relationship_impl(db.inner(), relationship_id)
+}
+
+fn dismiss_relationship_impl(db: &DbState, relationship_id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    relationship_queries::dismiss_relationship(&conn, &relationship_id)
-        .map_err(|e| e.to_string())?;
+    relationship_queries::dismiss_relationship(&conn, &relationship_id).sanitize_err()?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn create_relationship(
     db: State<'_, DbState>,
+    source_id: String,
+    target_id: String,
+    relationship_type: String,
+) -> Result<Relationship, String> {
+    create_relationship_impl(db.inner(), source_id, target_id, relationship_type)
+}
+
+fn create_relationship_impl(
+    db: &DbState,
     source_id: String,
     target_id: String,
     relationship_type: String,
@@ -42,14 +59,111 @@ pub fn create_relationship(
         last_seen_at: now,
     };
 
-    relationship_queries::insert_relationship(&conn, &rel).map_err(|e| e.to_string())?;
+    relationship_queries::insert_relationship(&conn, &rel).sanitize_err()?;
     Ok(rel)
 }
 
 #[tauri::command]
 pub fn remove_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
+    remove_relationship_impl(db.inner(), relationship_id)
+}
+
+fn remove_relationship_impl(db: &DbState, relationship_id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    relationship_queries::remove_relationship(&conn, &relationship_id)
-        .map_err(|e| e.to_string())?;
+    relationship_queries::remove_relationship(&conn, &relationship_id).sanitize_err()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use tempfile::NamedTempFile;
+
+    fn test_db_state() -> (DbState, NamedTempFile) {
+        let tmp = NamedTempFile::new().expect("temp db");
+        let conn = crate::db::init_db(tmp.path()).expect("init db");
+        (DbState(Mutex::new(conn)), tmp)
+    }
+
+    fn insert_project(db: &DbState, id: &str, path: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let project = crate::models::Project {
+            id: id.to_string(),
+            name: format!("project-{id}"),
+            path: path.to_string(),
+            description: None,
+            last_activity_at: None,
+            hero_preference: None,
+            created_at: now.clone(),
+            updated_at: now,
+            cached_branch: None,
+            cached_is_dirty: None,
+        };
+
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::insert_project(&conn, &project).expect("insert project");
+    }
+
+    #[test]
+    fn relationship_commands_crud_round_trip() {
+        let (db, _tmp) = test_db_state();
+        insert_project(&db, "p1", "/tmp/project-1");
+        insert_project(&db, "p2", "/tmp/project-2");
+
+        let created = create_relationship_impl(
+            &db,
+            "p1".to_string(),
+            "p2".to_string(),
+            "depends_on".to_string(),
+        )
+        .expect("create relationship");
+
+        let listed = get_relationships_impl(&db, "p1".to_string()).expect("list relationships");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, created.id);
+        assert_eq!(listed[0].relationship_type, "depends_on");
+
+        dismiss_relationship_impl(&db, created.id.clone()).expect("dismiss relationship");
+        let listed_after_dismiss = get_relationships_impl(&db, "p1".to_string())
+            .expect("list relationships after dismiss");
+        assert!(listed_after_dismiss.is_empty());
+
+        remove_relationship_impl(&db, created.id.clone()).expect("remove relationship");
+        remove_relationship_impl(&db, created.id).expect("remove missing relationship is ok");
+    }
+
+    #[test]
+    fn create_relationship_reports_invalid_project_error() {
+        let (db, _tmp) = test_db_state();
+        insert_project(&db, "p1", "/tmp/project-1");
+
+        let err = create_relationship_impl(
+            &db,
+            "p1".to_string(),
+            "missing-project".to_string(),
+            "depends_on".to_string(),
+        )
+        .expect_err("invalid project should fail");
+
+        assert!(
+            err.to_lowercase().contains("foreign key"),
+            "expected foreign-key error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn get_relationships_reports_db_lock_failure() {
+        let db = DbState(Mutex::new(
+            rusqlite::Connection::open_in_memory().expect("open memory db"),
+        ));
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = db.0.lock().expect("lock");
+            panic!("poison lock");
+        }));
+
+        let err =
+            get_relationships_impl(&db, "p1".to_string()).expect_err("poisoned lock should fail");
+        assert!(err.to_lowercase().contains("poison"));
+    }
 }

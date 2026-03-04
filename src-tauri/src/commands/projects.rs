@@ -5,7 +5,7 @@ use serde::Deserialize;
 use tauri::{Emitter, State};
 
 use crate::db::{queries, settings_queries};
-use crate::errors::sanitize_error;
+use crate::errors::{sanitize_error, SanitizeErr};
 use crate::models::{ProjectDetail, ProjectSummary};
 use crate::services::project;
 use crate::{ProviderState, SearchState};
@@ -44,15 +44,15 @@ pub struct DiscoveredProject {
 #[tauri::command]
 pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
-    project::list_projects(&conn, &settings.thresholds).map_err(|e| e.to_string())
+    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+    project::list_projects(&conn, &settings.thresholds).sanitize_err()
 }
 
 #[tauri::command]
 pub fn get_project(db: State<'_, DbState>, project_id: String) -> Result<ProjectDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
-    project::get_project(&conn, &project_id, &settings.thresholds).map_err(|e| e.to_string())
+    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+    project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()
 }
 
 #[tauri::command]
@@ -65,9 +65,9 @@ pub fn register_project(
     let expanded = expand_tilde(&path);
     let detail = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds)
-            .map_err(|e| e.to_string())?
+            .sanitize_err()?
     }; // conn dropped here — lock released
 
     // Correct last_activity_at from git (needs its own lock)
@@ -83,7 +83,7 @@ pub fn update_project(
     fields: UpdateProjectFields,
 ) -> Result<ProjectDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
     let thresholds = settings.thresholds;
 
     project::update_project(
@@ -93,10 +93,10 @@ pub fn update_project(
         fields.description.as_ref().map(|d| d.as_deref()),
         fields.hero_preference.as_ref().map(|h| h.as_deref()),
     )
-    .map_err(|e| e.to_string())?;
+    .sanitize_err()?;
 
     // Return the updated project.
-    project::get_project(&conn, &project_id, &thresholds).map_err(|e| e.to_string())
+    project::get_project(&conn, &project_id, &thresholds).sanitize_err()
 }
 
 #[tauri::command]
@@ -106,12 +106,19 @@ pub fn remove_project(
     project_id: String,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    project::remove_project(&conn, &project_id).map_err(|e| e.to_string())?;
+    project::remove_project(&conn, &project_id).sanitize_err()?;
 
     // Clean up search index entries for this project
-    if let Ok(mut index) = search.0.lock() {
-        index.remove_by_project(&project_id);
-        let _ = index.commit();
+    match search.0.lock() {
+        Ok(mut index) => {
+            index.remove_by_project(&project_id);
+            if let Err(e) = index.commit() {
+                tracing::warn!(project_id, error = %e, "search index commit failed after project removal");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(project_id, error = %e, "search index lock failed during project removal");
+        }
     }
     Ok(())
 }
@@ -119,7 +126,7 @@ pub fn remove_project(
 #[tauri::command]
 pub fn is_first_run(db: State<'_, DbState>) -> Result<bool, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let count = crate::db::queries::project_count(&conn).map_err(|e| e.to_string())?;
+    let count = crate::db::queries::project_count(&conn).sanitize_err()?;
     Ok(count == 0)
 }
 
@@ -142,7 +149,7 @@ pub fn register_projects_batch(
 ) -> Result<Vec<BatchRegistrationResult>, String> {
     let results = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = settings_queries::get_all_settings(&conn).map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         let total = paths.len();
         let mut results = Vec::with_capacity(total);
 
@@ -154,7 +161,7 @@ pub fn register_projects_batch(
                         let _ = app.emit(
                             "batch-registration-progress",
                             serde_json::json!({
-                                "project_name": detail.name,
+                                "projectName": detail.name,
                                 "index": index,
                                 "total": total,
                             }),
@@ -200,13 +207,20 @@ fn reseed_activity_for_project(
 
     // Cache branch + dirty status so sidebar shows them immediately
     if let Ok(status) = provider.git_status(project_path) {
-        if let Ok(conn) = db.0.lock() {
-            let _ = queries::update_cached_git_status(
-                &conn,
-                project_id,
-                status.branch.as_deref(),
-                status.is_dirty,
-            );
+        match db.0.lock() {
+            Ok(conn) => {
+                if let Err(e) = queries::update_cached_git_status(
+                    &conn,
+                    project_id,
+                    status.branch.as_deref(),
+                    status.is_dirty,
+                ) {
+                    tracing::warn!(project_id, error = %e, "reseed: failed to cache git status");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(project_id, error = %e, "reseed: db lock failed for git status cache");
+            }
         }
     }
 
@@ -214,16 +228,23 @@ fn reseed_activity_for_project(
         Ok(Some(commit_time)) => {
             let commit_ts = commit_time.to_rfc3339();
             tracing::info!(project_id, %commit_ts, "reseed: updating last_activity_at from git");
-            if let Ok(conn) = db.0.lock() {
-                let _ = queries::update_project(
-                    &conn,
-                    project_id,
-                    None,
-                    None,
-                    None,
-                    Some(Some(&commit_ts)),
-                    None,
-                );
+            match db.0.lock() {
+                Ok(conn) => {
+                    if let Err(e) = queries::update_project(
+                        &conn,
+                        project_id,
+                        None,
+                        None,
+                        None,
+                        Some(Some(&commit_ts)),
+                        None,
+                    ) {
+                        tracing::warn!(project_id, error = %e, "reseed: failed to update last_activity_at");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(project_id, error = %e, "reseed: db lock failed for activity update");
+                }
             }
         }
         Ok(None) => {
@@ -420,8 +441,7 @@ pub fn validate_project_path(
     let is_git_repo = git2::Repository::open(dir).is_ok();
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let is_registered =
-        queries::project_exists_at_path(&conn, &expanded).map_err(|e| e.to_string())?;
+    let is_registered = queries::project_exists_at_path(&conn, &expanded).sanitize_err()?;
 
     Ok(PathValidation {
         exists,

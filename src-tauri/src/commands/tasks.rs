@@ -11,7 +11,7 @@ use std::sync::{LazyLock, Mutex};
 use tauri::State;
 
 use crate::commands::projects::DbState;
-use crate::errors::sanitize_error;
+use crate::errors::{sanitize_error, SanitizeErr};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
 use crate::ProviderState;
@@ -97,8 +97,8 @@ pub fn get_project_tasks(
         crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let db_tasks = crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path)
-        .map_err(|e| e.to_string())?;
+    let db_tasks =
+        crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path).sanitize_err()?;
 
     let tasks: Vec<crate::task_scanner::UnifiedTask> =
         db_tasks.into_iter().map(persisted_to_unified).collect();
@@ -130,7 +130,7 @@ pub fn get_task_detail(
         &source_key,
         &task_id,
     )
-    .map_err(|e| e.to_string())?
+    .sanitize_err()?
     {
         Some(task) => task,
         None => {
@@ -170,7 +170,7 @@ fn find_archived_task_by_identity(
         source_key,
         source_task_id,
     )
-    .map_err(|e| e.to_string())
+    .sanitize_err()
 }
 
 /// Look up session time range and find commits/files changed during it.
@@ -222,7 +222,7 @@ pub fn get_archived_sessions(
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let db_tasks = crate::db::task_queries::get_archived_tasks_for_project(&conn, &normalized_path)
-        .map_err(|e| e.to_string())?;
+        .sanitize_err()?;
 
     if db_tasks.is_empty() {
         return Ok(crate::task_scanner::ArchivedSessionsResult {
@@ -516,11 +516,7 @@ fn persisted_to_unified(
             "completed" => crate::task_scanner::TaskStatus::Completed,
             _ => crate::task_scanner::TaskStatus::Pending,
         },
-        source: match t.source.as_str() {
-            "codex" => CliTool::Codex,
-            "gemini" => CliTool::Gemini,
-            _ => CliTool::Claude,
-        },
+        source: t.source.parse::<CliTool>().unwrap_or(CliTool::Claude),
         blocks: t.blocks,
         blocked_by: t.blocked_by,
         owner: t.owner,

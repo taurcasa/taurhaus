@@ -53,22 +53,31 @@ pub(crate) fn startup_reseed_activity(app: &AppHandle) {
         // Brief DB lock per project to write results
         let conn = match db_state.0.lock() {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::warn!(project_id = project.id, error = %e, "reseed: db lock poisoned, skipping project");
+                continue;
+            }
         };
 
         if let Some(status) = git_status {
-            let _ = db::queries::update_cached_git_status(
+            if let Err(err) = db::queries::update_cached_git_status(
                 &conn,
                 &project.id,
                 status.branch.as_deref(),
                 status.is_dirty,
-            );
+            ) {
+                tracing::warn!(
+                    project_id = project.id.as_str(),
+                    error = %err,
+                    "reseed: failed to update cached git status"
+                );
+            }
         }
 
         if let Some(commit_time) = commit_time {
             let commit_ts = commit_time.to_rfc3339();
             if project.last_activity_at.as_deref() != Some(&commit_ts) {
-                let _ = db::queries::update_project(
+                if let Err(err) = db::queries::update_project(
                     &conn,
                     &project.id,
                     None,
@@ -76,8 +85,15 @@ pub(crate) fn startup_reseed_activity(app: &AppHandle) {
                     None,
                     Some(Some(&commit_ts)),
                     None,
-                );
-                updated += 1;
+                ) {
+                    tracing::warn!(
+                        project_id = project.id.as_str(),
+                        error = %err,
+                        "reseed: failed to update project activity timestamp"
+                    );
+                } else {
+                    updated += 1;
+                }
             }
         }
         // conn lock dropped here — frontend can interleave
@@ -182,7 +198,10 @@ pub(crate) fn startup_session_scan(app: &AppHandle) {
         // Brief lock per project for the import operation
         let conn = match db_state.0.lock() {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::warn!(project_id = project.id, error = %e, "session import: db lock poisoned, skipping project");
+                continue;
+            }
         };
 
         match services::session_import::scan_and_import_sessions(&conn, &project.id, project_root) {
@@ -457,7 +476,10 @@ fn sync_project_tasks_for_projects(
         let (before_sig, after_sig) = {
             let conn = match db_state.0.lock() {
                 Ok(c) => c,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::warn!(error = %e, "task scan: db lock poisoned, skipping project");
+                    continue;
+                }
             };
             let before = load_active_task_signature(&conn, &normalized_path);
             commands::tasks::persist_task_scan_with_generation(

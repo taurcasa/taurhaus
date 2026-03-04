@@ -38,6 +38,7 @@ pub struct DisbandTeamResponse {
 
 /// Team-lead startup mode selected by the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Intentionally snake_case: persisted/requested by established mesh coordination IPC payloads.
 #[serde(rename_all = "snake_case")]
 pub enum LeadMode {
     AttachExisting,
@@ -46,6 +47,7 @@ pub enum LeadMode {
 
 /// Role descriptor shown in the live team roster.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Intentionally snake_case: runtime mesh status payload contract consumed by existing frontend code.
 #[serde(rename_all = "snake_case")]
 pub enum AgentRole {
     Lead,
@@ -54,6 +56,7 @@ pub enum AgentRole {
 
 /// Session runtime status for one roster member.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Intentionally snake_case: runtime mesh status payload contract consumed by existing frontend code.
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
     Starting,
@@ -64,6 +67,7 @@ pub enum SessionStatus {
 
 /// Step status used by initialize/hot-add progress models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Intentionally snake_case: progress status values are part of the long-lived mesh event contract.
 #[serde(rename_all = "snake_case")]
 pub enum StepStatus {
     Pending,
@@ -129,6 +133,7 @@ pub struct AddAgentRequest {
 
 /// Context mode for resume operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Intentionally snake_case: IPC request contract already published to clients.
 #[serde(rename_all = "snake_case")]
 pub enum ResumeContextMode {
     Continue,

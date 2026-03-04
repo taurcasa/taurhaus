@@ -803,12 +803,19 @@ impl CoordinationOrchestrator {
                     MemberRuntimeStore::load(&self.teams_dir, &team_name_owned, &member_name_owned)
                 {
                     runtime.last_seen_at = Some(Utc::now());
-                    let _ = MemberRuntimeStore::save(
+                    if let Err(err) = MemberRuntimeStore::save(
                         &self.teams_dir,
                         &team_name_owned,
                         &member_name_owned,
                         &runtime,
-                    );
+                    ) {
+                        tracing::warn!(
+                            team_name = %team_name_owned,
+                            member_name = %member_name_owned,
+                            error = %err,
+                            "failed to persist runtime last_seen after successful delivery"
+                        );
+                    }
                 }
 
                 Ok(result)

@@ -6,6 +6,7 @@ use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::commands::terminal_settings::load_terminal_settings;
 use crate::daemon::protocol::{self, LaunchMode};
+use crate::errors::SanitizeErr;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
 use crate::session_scanner::ClaudeSession;
@@ -73,6 +74,24 @@ pub fn launch_claude_session(
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
 ) -> Result<protocol::LaunchSessionResult, String> {
+    launch_claude_session_impl(
+        db.inner(),
+        provider.inner(),
+        log_file.inner(),
+        project_id,
+        mode,
+        cli_tool,
+    )
+}
+
+fn launch_claude_session_impl(
+    db: &DbState,
+    provider: &ProviderState,
+    log_file: &LogFileState,
+    project_id: String,
+    mode: LaunchMode,
+    cli_tool: Option<CliTool>,
+) -> Result<protocol::LaunchSessionResult, String> {
     let tool = cli_tool.unwrap_or(CliTool::Claude);
 
     if let Ok(mut f) = log_file.0.lock() {
@@ -82,7 +101,7 @@ pub fn launch_claude_session(
     let project_path = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let project = crate::db::queries::get_project(&conn, &project_id)
-            .map_err(|e| e.to_string())?
+            .sanitize_err()?
             .ok_or_else(|| format!("Project not found: {project_id}"))?;
         project.path
     };
@@ -100,7 +119,7 @@ pub fn launch_claude_session(
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "launch-session";
-            let ts = load_terminal_settings(&db);
+            let ts = load_terminal_settings(db);
             let tool_cmd = resolve_configured_tool_command(&ts.cli_commands, tool, mode);
             let request = protocol::DaemonRequest::new(
                 id,
@@ -126,7 +145,7 @@ pub fn launch_claude_session(
                     }
 
                     let tmux_session = result.tmux_session.as_deref().unwrap_or(TMUX_SESSION_NAME);
-                    let ts = load_terminal_settings(&db);
+                    let ts = load_terminal_settings(db);
                     let _ = crate::terminal::handle_terminal(
                         crate::terminal::TerminalIntent::EnsureOpen {
                             distro: provider.wsl_distro.clone(),
@@ -160,7 +179,7 @@ pub fn launch_claude_session(
     if let Ok(mut f) = log_file.0.lock() {
         let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
     }
-    let ts = load_terminal_settings(&db);
+    let ts = load_terminal_settings(db);
     let tool_cmd = resolve_configured_tool_command(&ts.cli_commands, tool, mode);
     let (session, window, pane) = crate::session_scanner::control::launch_in_tmux_with_layout(
         &linux_path,
@@ -191,6 +210,14 @@ pub fn launch_claude_session(
 #[tauri::command]
 pub fn stop_claude_session(
     provider: State<'_, ProviderState>,
+    tmux_pane: String,
+    cli_tool: Option<CliTool>,
+) -> Result<(), String> {
+    stop_claude_session_impl(provider.inner(), tmux_pane, cli_tool)
+}
+
+fn stop_claude_session_impl(
+    provider: &ProviderState,
     tmux_pane: String,
     cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
@@ -294,13 +321,34 @@ pub fn navigate_to_session(
 pub fn record_session_activity(
     db: State<'_, DbState>,
     project_path: String,
-    cli_tool: String,
+    cli_tool: CliTool,
+    started_at: String,
+    ended_at: String,
+    active_duration_ms: i64,
+    total_duration_ms: i64,
+) -> Result<(), String> {
+    record_session_activity_impl(
+        db.inner(),
+        project_path,
+        cli_tool,
+        started_at,
+        ended_at,
+        active_duration_ms,
+        total_duration_ms,
+    )
+}
+
+fn record_session_activity_impl(
+    db: &DbState,
+    project_path: String,
+    cli_tool: CliTool,
     started_at: String,
     ended_at: String,
     active_duration_ms: i64,
     total_duration_ms: i64,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let cli_tool = cli_tool.to_string();
     crate::db::activity_queries::insert_session_activity(
         &conn,
         &project_path,
@@ -310,7 +358,7 @@ pub fn record_session_activity(
         active_duration_ms,
         total_duration_ms,
     )
-    .map_err(|e| e.to_string())
+    .sanitize_err()
 }
 
 #[tauri::command]
@@ -319,8 +367,7 @@ pub fn get_project_activity(
     project_path: String,
 ) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::activity_queries::get_project_activity(&conn, &project_path)
-        .map_err(|e| e.to_string())
+    crate::db::activity_queries::get_project_activity(&conn, &project_path).sanitize_err()
 }
 
 fn decode_daemon_session_list(
@@ -348,7 +395,118 @@ fn decode_daemon_launch_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
     use std::sync::Mutex;
+    use std::thread;
+    use tempfile::NamedTempFile;
+
+    struct StubDaemon {
+        addr: String,
+        last_request: std::sync::Arc<Mutex<Option<protocol::DaemonRequest>>>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Drop for StubDaemon {
+        fn drop(&mut self) {
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn setup_db_with_project(project_id: &str, project_path: &str) -> (DbState, NamedTempFile) {
+        let tmp = NamedTempFile::new().expect("temp db");
+        let conn = crate::db::init_db(tmp.path()).expect("init db");
+
+        let now = chrono::Utc::now().to_rfc3339();
+        crate::db::queries::insert_project(
+            &conn,
+            &crate::models::Project {
+                id: project_id.to_string(),
+                name: "test-project".to_string(),
+                path: project_path.to_string(),
+                description: None,
+                last_activity_at: None,
+                hero_preference: None,
+                created_at: now.clone(),
+                updated_at: now,
+                cached_branch: None,
+                cached_is_dirty: None,
+            },
+        )
+        .expect("insert project");
+
+        (DbState(Mutex::new(conn)), tmp)
+    }
+
+    fn setup_log_file() -> (LogFileState, NamedTempFile) {
+        let tmp = NamedTempFile::new().expect("temp log");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(tmp.path())
+            .expect("open log");
+        (LogFileState(Mutex::new(file)), tmp)
+    }
+
+    fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub daemon");
+        let addr = listener.local_addr().expect("stub daemon addr");
+        let addr_string = format!("127.0.0.1:{}", addr.port());
+        let request_slot = std::sync::Arc::new(Mutex::new(None));
+        let request_slot_clone = request_slot.clone();
+
+        let handle = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept daemon client");
+            let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("read request");
+
+            let request: protocol::DaemonRequest =
+                serde_json::from_str(&line).expect("parse daemon request");
+            if let Ok(mut slot) = request_slot_clone.lock() {
+                *slot = Some(request.clone());
+            }
+
+            let mut resp = response;
+            if let Some(map) = resp.as_object_mut() {
+                map.insert("id".to_string(), serde_json::Value::String(request.id));
+            }
+
+            let mut writer = stream;
+            let payload = serde_json::to_string(&resp).expect("serialize daemon response");
+            writer
+                .write_all(payload.as_bytes())
+                .expect("write daemon response");
+            writer.write_all(b"\n").expect("write newline");
+            writer.flush().expect("flush daemon response");
+        });
+
+        StubDaemon {
+            addr: addr_string,
+            last_request: request_slot,
+            handle: Some(handle),
+        }
+    }
+
+    fn start_unreachable_stub_daemon() -> StubDaemon {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind unreachable daemon");
+        let addr = listener.local_addr().expect("unreachable daemon addr");
+        let addr_string = format!("127.0.0.1:{}", addr.port());
+        let request_slot = std::sync::Arc::new(Mutex::new(None));
+
+        let handle = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept daemon client");
+            drop(stream);
+        });
+
+        StubDaemon {
+            addr: addr_string,
+            last_request: request_slot,
+            handle: Some(handle),
+        }
+    }
 
     #[test]
     fn launch_mode_deserializes_valid_values_and_rejects_invalid() {
@@ -469,6 +627,182 @@ mod tests {
         assert_eq!(
             load_terminal_settings(&poisoned),
             crate::models::TerminalSettings::default()
+        );
+    }
+
+    #[test]
+    fn launch_claude_session_uses_daemon_success_response() {
+        let daemon = start_stub_daemon(serde_json::json!({
+            "result": {
+                "tmux_session": "taurhaus",
+                "tmux_window": "2",
+                "tmux_pane": "%7"
+            },
+            "error": null
+        }));
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: None,
+        };
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let (log_file, _log_file) = setup_log_file();
+
+        let result = launch_claude_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            "p1".to_string(),
+            LaunchMode::Fresh,
+            Some(CliTool::Claude),
+        )
+        .expect("daemon launch should succeed");
+
+        assert_eq!(result.tmux_session.as_deref(), Some("taurhaus"));
+        assert_eq!(result.tmux_window, "2");
+        assert_eq!(result.tmux_pane, "%7");
+
+        let request = daemon
+            .last_request
+            .lock()
+            .expect("request slot")
+            .clone()
+            .expect("captured request");
+        assert_eq!(request.method, protocol::method::LAUNCH_SESSION);
+    }
+
+    #[test]
+    fn launch_claude_session_surfaces_daemon_error_message() {
+        let daemon = start_stub_daemon(serde_json::json!({
+            "result": null,
+            "error": {
+                "code": "LAUNCH_ERROR",
+                "message": "simulated launch failure"
+            }
+        }));
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: None,
+        };
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let (log_file, _log_file) = setup_log_file();
+
+        let err = launch_claude_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            "p1".to_string(),
+            LaunchMode::Fresh,
+            Some(CliTool::Claude),
+        )
+        .expect_err("daemon launch should return error");
+
+        assert!(err.contains("simulated launch failure"));
+    }
+
+    #[test]
+    fn stop_claude_session_surfaces_daemon_error_message() {
+        let daemon = start_stub_daemon(serde_json::json!({
+            "result": null,
+            "error": {
+                "code": "STOP_ERROR",
+                "message": "cannot stop session"
+            }
+        }));
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: None,
+        };
+
+        let err = stop_claude_session_impl(&provider, "%10".to_string(), Some(CliTool::Codex))
+            .expect_err("daemon stop should return error");
+        assert!(err.contains("cannot stop session"));
+    }
+
+    #[test]
+    fn record_session_activity_persists_lowercase_cli_tool_from_enum() {
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        record_session_activity_impl(
+            &db,
+            "/tmp/project".to_string(),
+            CliTool::Gemini,
+            "2026-03-04T10:00:00Z".to_string(),
+            "2026-03-04T11:00:00Z".to_string(),
+            1_000,
+            2_000,
+        )
+        .expect("record activity");
+
+        let conn = db.0.lock().expect("db lock");
+        let stored_tool: String = conn
+            .query_row("SELECT cli_tool FROM session_activity LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query cli_tool");
+        assert_eq!(stored_tool, "gemini");
+    }
+
+    #[test]
+    fn launch_codex_resume_returns_project_not_found_for_invalid_project_id() {
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: None,
+            wsl_distro: None,
+        };
+        let (log_file, _log_file) = setup_log_file();
+
+        let err = launch_claude_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            "missing-project".to_string(),
+            LaunchMode::Resume,
+            Some(CliTool::Codex),
+        )
+        .expect_err("missing project should fail");
+
+        assert_eq!(err, "Project not found: missing-project");
+    }
+
+    #[test]
+    fn launch_codex_resume_surfaces_fallback_error_when_daemon_is_unreachable() {
+        let daemon = start_unreachable_stub_daemon();
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: None,
+        };
+        let (db, _db_file) = setup_db_with_project("p1", "/path/that/does/not/exist");
+        let (log_file, _log_file) = setup_log_file();
+
+        let err = launch_claude_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            "p1".to_string(),
+            LaunchMode::Resume,
+            Some(CliTool::Codex),
+        )
+        .expect_err("daemon-unreachable fallback should still fail with useful error");
+
+        assert!(
+            err.contains("Failed to launch session: Project path does not exist"),
+            "unexpected error: {err}"
         );
     }
 }

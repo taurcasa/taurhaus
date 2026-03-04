@@ -16,6 +16,127 @@ pub(crate) fn get_project_path(app: &AppHandle, project_id: &str) -> Option<Stri
     Some(project.path)
 }
 
+/// Refresh one project's cached git status and emit sidebar update events.
+///
+/// Returns `Ok(true)` when branch/dirty changed from cached values.
+pub(crate) fn refresh_project_git_status(
+    app: &AppHandle,
+    project_id: &str,
+    emit_when_unchanged: bool,
+) -> Result<bool, String> {
+    let (project_path, cached_branch, cached_is_dirty) = {
+        let db_state = app.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|e| format!("db lock failed for project '{project_id}': {e}"))?;
+        let project = db::queries::get_project(&conn, project_id)
+            .map_err(|e| format!("project lookup failed for '{project_id}': {e}"))?
+            .ok_or_else(|| format!("project '{project_id}' not found"))?;
+        (project.path, project.cached_branch, project.cached_is_dirty)
+    };
+
+    let provider_state = app.state::<ProviderState>();
+    let provider = provider_state.resolve(&project_path);
+    let status = provider
+        .git_status(&project_path)
+        .map_err(|e| format!("git_status failed for '{project_id}' ({project_path}): {e}"))?;
+    let changed = cached_branch != status.branch || cached_is_dirty != Some(status.is_dirty);
+
+    {
+        let db_state = app.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|e| format!("db lock failed for project '{project_id}': {e}"))?;
+        db::queries::update_cached_git_status(
+            &conn,
+            project_id,
+            status.branch.as_deref(),
+            status.is_dirty,
+        )
+        .map_err(|e| format!("cached git status update failed for '{project_id}': {e}"))?;
+    }
+
+    if emit_when_unchanged || changed {
+        let _ = app.emit(
+            "project-git-changed",
+            serde_json::json!({
+                "project_id": project_id,
+                "branch": status.branch,
+                "is_dirty": status.is_dirty,
+            }),
+        );
+    }
+
+    Ok(changed)
+}
+
+fn schedule_git_status_retry(app: AppHandle, project_id: String) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        if let Err(err) = refresh_project_git_status(&app, &project_id, true) {
+            tracing::error!(
+                project_id = project_id,
+                error = %err,
+                "git status retry failed after initial watcher refresh error"
+            );
+        }
+    });
+}
+
+/// One-shot git status reseed for daemon-watched (WSL) projects.
+pub(crate) fn reseed_daemon_watched_git_status(app: &AppHandle) {
+    let projects = {
+        let db_state = app.state::<DbState>();
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(err) => {
+                tracing::warn!(error = %err, "daemon reconnect reseed skipped: db lock failed");
+                return;
+            }
+        };
+        match db::queries::list_projects(&conn) {
+            Ok(list) => list,
+            Err(err) => {
+                tracing::warn!(error = %err, "daemon reconnect reseed skipped: project list failed");
+                return;
+            }
+        }
+    };
+
+    let mut attempted = 0usize;
+    let mut changed = 0usize;
+    let mut failed = 0usize;
+
+    for project in projects
+        .iter()
+        .filter(|project| crate::provider::path::is_wsl_path(&project.path))
+    {
+        attempted += 1;
+        match refresh_project_git_status(app, &project.id, false) {
+            Ok(true) => changed += 1,
+            Ok(false) => {}
+            Err(err) => {
+                failed += 1;
+                tracing::warn!(
+                    project_id = project.id,
+                    path = project.path,
+                    error = %err,
+                    "daemon reconnect git status reseed failed for project"
+                );
+            }
+        }
+    }
+
+    tracing::info!(
+        attempted = attempted,
+        changed = changed,
+        failed = failed,
+        "daemon reconnect git status reseed finished"
+    );
+}
+
 /// Process file watcher events on a background thread.
 ///
 /// Uses **batch-and-flush** to coalesce the rapid event bursts that `notify`
@@ -149,9 +270,20 @@ pub(crate) fn process_watch_events(
 
         // Bump last_activity_at once per project.
         let db = app.state::<DbState>();
-        if let Ok(conn) = db.0.lock() {
-            for pid in &batch.activity_projects {
-                let _ = services::project::touch_activity(&conn, pid);
+        match db.0.lock() {
+            Ok(conn) => {
+                for pid in &batch.activity_projects {
+                    if let Err(e) = services::project::touch_activity(&conn, pid) {
+                        tracing::warn!(project_id = pid.as_str(), error = %e, "failed to touch activity");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    projects = batch.activity_projects.len(),
+                    "db lock failed for activity batch — timestamps not updated"
+                );
             }
         }
 
@@ -162,35 +294,22 @@ pub(crate) fn process_watch_events(
             };
             let path = std::path::Path::new(&project_path);
 
-            let provider_state = app.state::<ProviderState>();
-            let provider = provider_state.resolve(&project_path);
-            if let Ok(status) = provider.git_status(&project_path) {
-                let db = app.state::<DbState>();
-                let conn = match db.0.lock() {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                let _ = db::queries::update_cached_git_status(
-                    &conn,
-                    project_id,
-                    status.branch.as_deref(),
-                    status.is_dirty,
+            if let Err(err) = refresh_project_git_status(&app, project_id, true) {
+                tracing::warn!(
+                    project_id = project_id,
+                    error = %err,
+                    "git status refresh failed for watcher event; scheduling one retry"
                 );
-                drop(conn);
-                let _ = app.emit(
-                    "project-git-changed",
-                    serde_json::json!({
-                        "project_id": project_id,
-                        "branch": status.branch,
-                        "is_dirty": status.is_dirty,
-                    }),
-                );
+                schedule_git_status_retry(app.clone(), project_id.clone());
             }
 
             let ss = app.state::<SearchState>();
             let mut index = match ss.0.lock() {
                 Ok(i) => i,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::warn!(project_id = project_id.as_str(), error = %e, "search index lock failed for git reindex");
+                    continue;
+                }
             };
             match search::indexer::reindex_commits(&mut index, project_id, path, 50) {
                 Ok(count) if count > 0 => {

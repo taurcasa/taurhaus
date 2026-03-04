@@ -328,11 +328,20 @@ fn write_response(writer: &mut TcpStream, response: &DaemonResponse) -> std::io:
 /// Silently drops the event if the writer lock is poisoned or the write fails
 /// (the connection will be cleaned up by the handler thread).
 pub(crate) fn push_event(writer: &Arc<Mutex<TcpStream>>, event: &DaemonEvent) {
-    if let Ok(json) = serde_json::to_string(event) {
-        if let Ok(mut w) = writer.lock() {
-            let _ = w.write_all(json.as_bytes());
-            let _ = w.write_all(b"\n");
-            let _ = w.flush();
+    match serde_json::to_string(event) {
+        Ok(json) => {
+            if let Ok(mut w) = writer.lock() {
+                let _ = w.write_all(json.as_bytes());
+                let _ = w.write_all(b"\n");
+                let _ = w.flush();
+            }
+        }
+        Err(err) => {
+            tracing::debug!(
+                event = %event.event,
+                error = %err,
+                "failed to serialize daemon push event"
+            );
         }
     }
 }
@@ -439,6 +448,9 @@ mod tests {
     fn server_wait_session_updates_returns_typed_payload() {
         let server = start_test_server();
         let port = server.port;
+        let expected_version = crate::daemon::session_activity::SessionActivityHub::global()
+            .snapshot()
+            .version;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
         stream
@@ -460,7 +472,7 @@ mod tests {
         let payload: protocol::WaitSessionUpdatesResult =
             serde_json::from_value(resp.result.unwrap()).unwrap();
         assert!(!payload.changed);
-        assert_eq!(payload.version, 0);
+        assert_eq!(payload.version, expected_version);
 
         server.shutdown.store(true, Ordering::Relaxed);
     }
@@ -788,5 +800,129 @@ mod tests {
         assert_eq!(resp.id, "r1");
 
         server.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn server_dispatches_all_registered_methods_without_unknown_method() {
+        let server = start_test_server();
+        let port = server.port;
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        let methods = [
+            protocol::method::PING,
+            protocol::method::GIT_STATUS,
+            protocol::method::GIT_LOG,
+            protocol::method::GIT_LATEST_COMMIT_TIME,
+            protocol::method::FILE_TREE,
+            protocol::method::READ_FILE,
+            protocol::method::READ_README,
+            protocol::method::READ_ASSET,
+            protocol::method::SCAN_SESSIONS,
+            protocol::method::LIST_CLAUDE_SESSIONS,
+            protocol::method::WAIT_SESSION_UPDATES,
+            protocol::method::LAUNCH_SESSION,
+            protocol::method::STOP_SESSION,
+            protocol::method::NAVIGATE_TO_SESSION,
+            protocol::method::GET_PROJECT_TASKS,
+            protocol::method::GIT_COMMITS_IN_RANGE,
+            protocol::method::GIT_COMMIT_FILES,
+            protocol::method::GIT_COMMIT_DIFF,
+            protocol::method::WATCH,
+            protocol::method::UNWATCH,
+        ];
+
+        for (idx, method) in methods.into_iter().enumerate() {
+            let req =
+                DaemonRequest::new(format!("dispatch-{idx}"), method, serde_json::Value::Null);
+            let resp = send_request(&mut stream, &mut reader, &req);
+            assert_eq!(resp.id, format!("dispatch-{idx}"));
+            assert!(
+                resp.error
+                    .as_ref()
+                    .is_none_or(|error| error.code != "UNKNOWN_METHOD"),
+                "dispatch returned UNKNOWN_METHOD for {method}"
+            );
+        }
+
+        server.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn server_allows_new_connection_after_client_disconnect() {
+        let server = start_test_server();
+        let port = server.port;
+
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+            let resp = send_request(&mut stream, &mut reader, &DaemonRequest::ping("first"));
+            assert!(resp.is_ok());
+        }
+
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+            let resp = send_request(&mut stream, &mut reader, &DaemonRequest::ping("second"));
+            assert!(resp.is_ok());
+        }
+
+        server.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn push_event_ignores_lock_poisoning_and_write_failures() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let _client = TcpStream::connect(addr).expect("connect client");
+        let (server_stream, _) = listener.accept().expect("accept");
+        let writer = Arc::new(Mutex::new(server_stream));
+
+        let poison_target = writer.clone();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = poison_target.lock().expect("lock");
+            panic!("poison writer lock");
+        }));
+
+        let event = DaemonEvent {
+            event: "git_changed".to_string(),
+            data: serde_json::json!({"path": "/tmp/project"}),
+        };
+
+        let poisoned_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            push_event(&writer, &event);
+        }));
+        assert!(
+            poisoned_result.is_ok(),
+            "push_event should not panic on poisoned lock"
+        );
+
+        // Create a fresh writer and close its peer so writes fail.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind second");
+        let addr = listener.local_addr().expect("addr second");
+        let client = TcpStream::connect(addr).expect("connect second client");
+        let (server_stream, _) = listener.accept().expect("accept second");
+        drop(client);
+        let writer = Arc::new(Mutex::new(server_stream));
+
+        let write_fail_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            push_event(&writer, &event);
+        }));
+        assert!(
+            write_fail_result.is_ok(),
+            "push_event should not panic when stream writes fail"
+        );
     }
 }

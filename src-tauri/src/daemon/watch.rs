@@ -50,9 +50,12 @@ pub(crate) fn handle_watch(
     let debounce_clone = git_debounce.clone();
 
     let watcher_result = RecommendedWatcher::new(
-        move |res: Result<NotifyEvent, notify::Error>| {
-            if let Ok(event) = res {
+        move |res: Result<NotifyEvent, notify::Error>| match res {
+            Ok(event) => {
                 forward_watch_event(&writer_clone, &watch_path, &debounce_clone, event);
+            }
+            Err(e) => {
+                tracing::warn!(path = %watch_path, error = %e, "file watcher error");
             }
         },
         Config::default(),

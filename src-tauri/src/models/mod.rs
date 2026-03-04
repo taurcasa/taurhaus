@@ -318,6 +318,8 @@ impl Default for DaemonSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DaemonStatus {
     /// "connected", "disconnected", "not_configured", "reconnecting"
+    /// Status string values intentionally remain snake_case for IPC compatibility
+    /// with existing frontend event/status handling.
     pub status: String,
     pub version: Option<String>,
     /// Protocol version reported by the daemon (0 = old daemon without versioning).
@@ -425,15 +427,6 @@ pub struct DiffHunk {
     pub new_start: u32,
     pub new_lines: u32,
     pub lines: Vec<DiffLine>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SearchResult {
-    pub project_id: String,
-    pub entity_type: String,
-    pub file_path: Option<String>,
-    pub snippet: String,
-    pub score: f32,
 }
 
 // ---------------------------------------------------------------------------

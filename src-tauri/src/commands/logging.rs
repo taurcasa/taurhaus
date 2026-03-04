@@ -13,7 +13,6 @@ pub fn frontend_log(level: String, message: String, log_file: tauri::State<LogFi
         "debug" => "DBG",
         _ => "INF",
     };
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[{timestamp}] [{tag}] [frontend] {message}");
-    }
+    let mut f = log_file.0.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = writeln!(f, "[{timestamp}] [{tag}] [frontend] {message}");
 }

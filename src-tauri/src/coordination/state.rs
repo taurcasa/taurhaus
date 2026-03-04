@@ -142,7 +142,16 @@ fn default_teams_dir() -> PathBuf {
     if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
         return path;
     }
-    let base = dirs::home_dir().unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"));
+    let base = if let Some(home_dir) = dirs::home_dir() {
+        home_dir
+    } else {
+        let fallback = std::env::temp_dir().join("taurhaus-home");
+        tracing::warn!(
+            fallback = %fallback.display(),
+            "home directory unavailable; falling back to temp directory for coordination teams path"
+        );
+        fallback
+    };
     base.join(".claude").join("teams")
 }
 

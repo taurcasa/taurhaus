@@ -223,7 +223,7 @@ fn handle_notify_event(
         match class {
             EventClass::GitInternal => {
                 // Debounce: only emit if enough time has passed
-                let mut state = debounce.lock().unwrap();
+                let mut state = debounce.lock().unwrap_or_else(|e| e.into_inner());
                 let now = Instant::now();
                 let should_emit = state.get(project_id).is_none_or(|last| {
                     now.duration_since(*last) >= Duration::from_secs(GIT_DEBOUNCE_SECS)

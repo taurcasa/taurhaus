@@ -49,7 +49,8 @@ pub fn import_handoff(
             }
         } else if combined.is_null() {
             // frontmatter had no metadata, use sidecar as-is
-            combined = serde_json::to_value(meta).unwrap_or(serde_json::Value::Null);
+            combined =
+                serde_json::to_value(meta).expect("SessionMeta should always serialize to JSON");
         }
         combined
     } else {

@@ -38,6 +38,18 @@ pub fn sanitize_error(msg: &str) -> String {
     }
 }
 
+/// Extension trait for `Result` to sanitize error messages for IPC responses.
+/// Replaces absolute home directory paths with `~` before returning to frontend.
+pub trait SanitizeErr<T> {
+    fn sanitize_err(self) -> Result<T, String>;
+}
+
+impl<T, E: std::fmt::Display> SanitizeErr<T> for Result<T, E> {
+    fn sanitize_err(self) -> Result<T, String> {
+        self.map_err(|e| sanitize_error(&e.to_string()))
+    }
+}
+
 /// Serializable form for IPC responses.
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

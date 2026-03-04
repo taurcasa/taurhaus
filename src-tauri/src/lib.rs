@@ -360,10 +360,21 @@ pub fn run() {
                 let daemon_addr = daemon_addr.expect("daemon_addr must be set when connected");
                 let distro = wsl_distro.clone();
                 let event_tx_clone = event_tx.clone();
-                let db_projects = db::queries::list_projects(
-                    &app.state::<commands::projects::DbState>().0.lock().unwrap(),
-                )
-                .unwrap_or_default();
+                let db_state = app.state::<commands::projects::DbState>();
+                let db_projects_guard = db_state.0.lock().unwrap_or_else(|err| {
+                    tracing::warn!(
+                        error = %err,
+                        "DB lock poisoned while collecting projects for daemon watch bootstrap; recovering"
+                    );
+                    err.into_inner()
+                });
+                let db_projects = db::queries::list_projects(&db_projects_guard).unwrap_or_else(|err| {
+                    tracing::warn!(
+                        error = %err,
+                        "Failed to list projects for daemon watch bootstrap"
+                    );
+                    Vec::new()
+                });
 
                 std::thread::spawn(move || {
                     daemon_lifecycle::start_daemon_watches(
@@ -403,10 +414,20 @@ pub fn run() {
             // Without daemon: ALL projects need local watches.
             {
                 let db_state = app.state::<DbState>();
-                let projects = db::queries::list_projects(
-                    &db_state.0.lock().unwrap(),
-                )
-                .unwrap_or_default();
+                let db_guard = db_state.0.lock().unwrap_or_else(|err| {
+                    tracing::warn!(
+                        error = %err,
+                        "DB lock poisoned while collecting projects for local watch bootstrap; recovering"
+                    );
+                    err.into_inner()
+                });
+                let projects = db::queries::list_projects(&db_guard).unwrap_or_else(|err| {
+                    tracing::warn!(
+                        error = %err,
+                        "Failed to list projects for local watch bootstrap"
+                    );
+                    Vec::new()
+                });
 
                 let watcher_state = app.state::<WatcherState>();
                 let mut watcher_guard = watcher_state.0.lock().unwrap();
