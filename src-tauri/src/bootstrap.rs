@@ -261,7 +261,6 @@ pub(crate) fn task_scan_loop(rx: std::sync::mpsc::Receiver<TaskScanTrigger>, app
     const DEBOUNCE: Duration = Duration::from_secs(2);
 
     while let Ok(first) = rx.recv() {
-
         let mut full_scan = false;
         let mut claude_paths: Vec<PathBuf> = Vec::new();
         apply_task_scan_trigger(first, &mut full_scan, &mut claude_paths);
@@ -287,7 +286,11 @@ pub(crate) fn task_scan_loop(rx: std::sync::mpsc::Receiver<TaskScanTrigger>, app
     }
 }
 
-fn apply_task_scan_trigger(trigger: TaskScanTrigger, full_scan: &mut bool, claude_paths: &mut Vec<PathBuf>) {
+fn apply_task_scan_trigger(
+    trigger: TaskScanTrigger,
+    full_scan: &mut bool,
+    claude_paths: &mut Vec<PathBuf>,
+) {
     match trigger {
         TaskScanTrigger::Full => *full_scan = true,
         TaskScanTrigger::ClaudeTaskPaths(paths) => claude_paths.extend(paths),
@@ -581,10 +584,7 @@ mod tests {
             "team-x".to_string(),
             vec![PathBuf::from("/home/user/projects/b")],
         );
-        let source_keys = BTreeSet::from([
-            "session-1".to_string(),
-            "team-x".to_string(),
-        ]);
+        let source_keys = BTreeSet::from(["session-1".to_string(), "team-x".to_string()]);
 
         let affected = resolve_affected_project_ids(&projects, &source_keys, &index).unwrap();
         assert_eq!(affected.len(), 2);
@@ -599,6 +599,9 @@ mod tests {
         let changed = vec![make_task("claude", "s1", "1", "completed")];
 
         assert_eq!(task_status_signature(&base), task_status_signature(&same));
-        assert_ne!(task_status_signature(&base), task_status_signature(&changed));
+        assert_ne!(
+            task_status_signature(&base),
+            task_status_signature(&changed)
+        );
     }
 }

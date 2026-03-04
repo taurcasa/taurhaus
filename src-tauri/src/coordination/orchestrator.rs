@@ -336,12 +336,14 @@ impl CoordinationOrchestrator {
                     cleanup_is_partial,
                     warnings.len(),
                 );
-                match self.backend.deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
-                    member_name: lead_name.clone(),
-                    team_name: team_name.to_string(),
-                    message: notice,
-                    sender_name: None,
-                })) {
+                match self.backend.deliver(DeliveryRequest::OperatorNotice(
+                    OperatorNoticeDelivery {
+                        member_name: lead_name.clone(),
+                        team_name: team_name.to_string(),
+                        message: notice,
+                        sender_name: None,
+                    },
+                )) {
                     Ok(_) => {
                         steps.push(step_succeeded(
                             "notify_lead",
@@ -517,9 +519,10 @@ impl CoordinationOrchestrator {
                     .warnings
                     .push(format!("failed to terminate daemon pid {pid}: {err}"));
             } else {
-                diagnostics
-                    .steps
-                    .push(step_succeeded("terminate_daemon", format!("daemon pid {pid} terminated")));
+                diagnostics.steps.push(step_succeeded(
+                    "terminate_daemon",
+                    format!("daemon pid {pid} terminated"),
+                ));
             }
         } else {
             diagnostics
@@ -598,7 +601,9 @@ impl CoordinationOrchestrator {
                             ));
                             diagnostics.steps.push(step_failed(
                                 "kill_pane",
-                                format!("skipped pane kill for {pane_id} due to ownership mismatch"),
+                                format!(
+                                    "skipped pane kill for {pane_id} due to ownership mismatch"
+                                ),
                             ));
                         }
                         Err(err) => {
@@ -640,9 +645,10 @@ impl CoordinationOrchestrator {
                 }
             }
         } else {
-            diagnostics
-                .steps
-                .push(step_succeeded("verify_pane_ownership", "no pane id recorded"));
+            diagnostics.steps.push(step_succeeded(
+                "verify_pane_ownership",
+                "no pane id recorded",
+            ));
             diagnostics
                 .steps
                 .push(step_succeeded("kill_pane", "no pane id recorded"));
@@ -824,7 +830,10 @@ fn render_member_removed_notice(
     warning_count: usize,
 ) -> String {
     let cleanup = if cleanup_is_partial {
-        format!("partial ({warning_count} warning{})", if warning_count == 1 { "" } else { "s" })
+        format!(
+            "partial ({warning_count} warning{})",
+            if warning_count == 1 { "" } else { "s" }
+        )
     } else {
         "complete".to_string()
     };

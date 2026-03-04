@@ -67,7 +67,11 @@ fn cleanup_applied_scan_generations(current_generation: u64) {
     let mut applied = APPLIED_SCAN_GENERATIONS
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    prune_generation_map(&mut applied, current_generation, SCAN_GENERATION_RETENTION_WINDOW);
+    prune_generation_map(
+        &mut applied,
+        current_generation,
+        SCAN_GENERATION_RETENTION_WINDOW,
+    );
 }
 
 fn prune_generation_map(
@@ -129,8 +133,10 @@ pub fn get_task_detail(
     .map_err(|e| e.to_string())?
     {
         Some(task) => task,
-        None => find_archived_task_by_identity(&conn, &normalized_path, &source, &source_key, &task_id)?
-            .ok_or_else(|| format!("Task not found: {source}/{source_key}/{task_id}"))?,
+        None => {
+            find_archived_task_by_identity(&conn, &normalized_path, &source, &source_key, &task_id)?
+                .ok_or_else(|| format!("Task not found: {source}/{source_key}/{task_id}"))?
+        }
     };
 
     let session_id_for_enrich = db_task.session_id.clone();
@@ -977,11 +983,13 @@ mod tests {
         let scan_result = make_task_result(vec![], vec![("codex", "failed"), ("gemini", "failed")]);
         persist_task_scan(&conn, "/projects/foo", &scan_result);
 
-        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        let active =
+            crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert!(active.is_empty());
 
         let archived =
-            crate::db::task_queries::get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+            crate::db::task_queries::get_archived_tasks_for_project(&conn, "/projects/foo")
+                .unwrap();
         assert_eq!(archived.len(), 1);
         assert_eq!(archived[0].source, "claude");
         assert_eq!(archived[0].source_task_id, "1");
@@ -1044,10 +1052,12 @@ mod tests {
         .unwrap();
 
         // Claude scan succeeded with no tasks; Codex/Gemini failed this cycle.
-        let scan_result = make_task_result(vec![], vec![("codex", "timeout"), ("gemini", "timeout")]);
+        let scan_result =
+            make_task_result(vec![], vec![("codex", "timeout"), ("gemini", "timeout")]);
         persist_task_scan(&conn, "/projects/foo", &scan_result);
 
-        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        let active =
+            crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].source, "codex");
         assert_eq!(active[0].source_task_id, "codex-1");
@@ -1104,7 +1114,8 @@ mod tests {
         };
         persist_task_scan(&conn, "/projects/foo", &scan_result);
 
-        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        let active =
+            crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].source, "claude");
         assert_eq!(active[0].source_task_id, "1");
@@ -1121,19 +1132,26 @@ mod tests {
         persist_task_scan(&conn, "/projects/foo", &pending_scan);
 
         let completed_scan = make_task_result(
-            vec![make_unified_task(CliTool::Claude, "1", TaskStatus::Completed)],
+            vec![make_unified_task(
+                CliTool::Claude,
+                "1",
+                TaskStatus::Completed,
+            )],
             vec![("codex", "not-run"), ("gemini", "not-run")],
         );
         persist_task_scan(&conn, "/projects/foo", &completed_scan);
 
-        let removed_scan = make_task_result(vec![], vec![("codex", "not-run"), ("gemini", "not-run")]);
+        let removed_scan =
+            make_task_result(vec![], vec![("codex", "not-run"), ("gemini", "not-run")]);
         persist_task_scan(&conn, "/projects/foo", &removed_scan);
 
-        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        let active =
+            crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert!(active.is_empty());
 
         let archived =
-            crate::db::task_queries::get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
+            crate::db::task_queries::get_archived_tasks_for_project(&conn, "/projects/foo")
+                .unwrap();
         assert_eq!(archived.len(), 1);
         assert_eq!(archived[0].source, "claude");
         assert_eq!(archived[0].source_task_id, "1");
@@ -1215,7 +1233,8 @@ mod tests {
         );
         persist_task_scan(&conn, "/projects/foo", &scan_result);
 
-        let active = crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        let active =
+            crate::db::task_queries::get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].source, "claude");
         assert_eq!(active[0].source_key, "session-aaa");

@@ -49,10 +49,7 @@ pub fn get_tasks_from(todo_path: &Path) -> ScanOutcome {
     get_tasks_from_with_source_key(todo_path, GEMINI_SOURCE_KEY)
 }
 
-fn get_tasks_from_with_source_key(
-    todo_path: &Path,
-    source_key: &str,
-) -> ScanOutcome {
+fn get_tasks_from_with_source_key(todo_path: &Path, source_key: &str) -> ScanOutcome {
     if !todo_path.exists() {
         return ScanOutcome::DefinitivelyEmpty;
     }
@@ -201,7 +198,10 @@ fn find_gemini_session_file(project_path: &Path, session_id: Option<&str>) -> Op
     let base_dir = home.join(".gemini").join("tmp");
 
     let project_str = project_path.to_string_lossy();
-    let dir_name = project_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let dir_name = project_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
     let hash = hex::encode(Sha256::digest(project_str.as_bytes()));
 
     let chats_dir_by_name = base_dir.join(dir_name).join("chats");
@@ -299,11 +299,7 @@ fn gemini_time_range_from_file(path: &Path) -> Option<(DateTime<Utc>, DateTime<U
         .and_then(|m| m.modified().ok())
         .map(DateTime::<Utc>::from);
 
-    let start = timestamps
-        .first()
-        .cloned()
-        .or(start_from_name)
-        .or(mtime)?;
+    let start = timestamps.first().cloned().or(start_from_name).or(mtime)?;
     let mut end = timestamps.last().cloned().or(mtime).unwrap_or(start);
     if end < start {
         end = start;

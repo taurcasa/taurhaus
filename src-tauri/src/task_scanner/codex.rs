@@ -73,10 +73,7 @@ struct SessionDiscoveryOutcome {
 }
 
 /// Get tasks from Codex session JSONL files.
-pub fn get_tasks(
-    project_path: &str,
-    sessions: &[&ClaudeSession],
-) -> ScanOutcome {
+pub fn get_tasks(project_path: &str, sessions: &[&ClaudeSession]) -> ScanOutcome {
     let mut diagnostics = CodexDiagnostics::default();
 
     // Try live sessions first — use jsonl_path directly
@@ -85,17 +82,17 @@ pub fn get_tasks(
             let path = Path::new(jsonl_path);
             if path.exists() {
                 match parse_update_plan_with_diagnostics(path) {
-                    Ok(outcome) if !outcome.tasks.is_empty() => return ScanOutcome::Data(outcome.tasks),
+                    Ok(outcome) if !outcome.tasks.is_empty() => {
+                        return ScanOutcome::Data(outcome.tasks)
+                    }
                     Ok(outcome) => {
                         if outcome.had_errors {
-                            diagnostics.record_error(
-                                outcome.first_error.unwrap_or_else(|| {
-                                    format!(
-                                        "Failed to fully parse Codex update_plan in {}",
-                                        path.display()
-                                    )
-                                }),
-                            );
+                            diagnostics.record_error(outcome.first_error.unwrap_or_else(|| {
+                                format!(
+                                    "Failed to fully parse Codex update_plan in {}",
+                                    path.display()
+                                )
+                            }));
                         }
                     }
                     Err(e) => return ScanOutcome::Unavailable(e),
@@ -127,17 +124,17 @@ pub fn get_tasks_in(
             let path = Path::new(jsonl_path);
             if path.exists() {
                 match parse_update_plan_with_diagnostics(path) {
-                    Ok(outcome) if !outcome.tasks.is_empty() => return ScanOutcome::Data(outcome.tasks),
+                    Ok(outcome) if !outcome.tasks.is_empty() => {
+                        return ScanOutcome::Data(outcome.tasks)
+                    }
                     Ok(outcome) => {
                         if outcome.had_errors {
-                            diagnostics.record_error(
-                                outcome.first_error.unwrap_or_else(|| {
-                                    format!(
-                                        "Failed to fully parse Codex update_plan in {}",
-                                        path.display()
-                                    )
-                                }),
-                            );
+                            diagnostics.record_error(outcome.first_error.unwrap_or_else(|| {
+                                format!(
+                                    "Failed to fully parse Codex update_plan in {}",
+                                    path.display()
+                                )
+                            }));
                         }
                     }
                     Err(e) => return ScanOutcome::Unavailable(e),
@@ -165,10 +162,7 @@ fn get_tasks_offline(project_path: &str) -> ScanOutcome {
 }
 
 /// Offline fallback with injectable directory.
-fn get_tasks_offline_in(
-    project_path: &str,
-    sessions_dir: &Path,
-) -> ScanOutcome {
+fn get_tasks_offline_in(project_path: &str, sessions_dir: &Path) -> ScanOutcome {
     if !sessions_dir.exists() {
         return ScanOutcome::DefinitivelyEmpty;
     }
@@ -187,14 +181,12 @@ fn get_tasks_offline_in(
             Ok(outcome) => {
                 let mut diagnostics = discovery.diagnostics;
                 if outcome.had_errors {
-                    diagnostics.record_error(
-                        outcome.first_error.unwrap_or_else(|| {
-                            format!(
-                                "Failed to fully parse Codex update_plan in {}",
-                                path.display()
-                            )
-                        }),
-                    );
+                    diagnostics.record_error(outcome.first_error.unwrap_or_else(|| {
+                        format!(
+                            "Failed to fully parse Codex update_plan in {}",
+                            path.display()
+                        )
+                    }));
                 }
                 diagnostics.unavailable_or_empty()
             }
@@ -228,9 +220,10 @@ fn find_codex_session_for_project_with_diagnostics(
         let dir_entries = match fs::read_dir(&date_dir) {
             Ok(entries) => entries,
             Err(e) => {
-                outcome
-                    .diagnostics
-                    .record_error(format!("Failed to read Codex session dir {}: {e}", date_dir.display()));
+                outcome.diagnostics.record_error(format!(
+                    "Failed to read Codex session dir {}: {e}",
+                    date_dir.display()
+                ));
                 continue;
             }
         };
@@ -256,18 +249,20 @@ fn find_codex_session_for_project_with_diagnostics(
             let mt_a = match a.metadata().and_then(|m| m.modified()) {
                 Ok(ts) => ts,
                 Err(e) => {
-                    outcome
-                        .diagnostics
-                        .record_error(format!("Failed to read mtime for {}: {e}", a.path().display()));
+                    outcome.diagnostics.record_error(format!(
+                        "Failed to read mtime for {}: {e}",
+                        a.path().display()
+                    ));
                     std::time::SystemTime::UNIX_EPOCH
                 }
             };
             let mt_b = match b.metadata().and_then(|m| m.modified()) {
                 Ok(ts) => ts,
                 Err(e) => {
-                    outcome
-                        .diagnostics
-                        .record_error(format!("Failed to read mtime for {}: {e}", b.path().display()));
+                    outcome.diagnostics.record_error(format!(
+                        "Failed to read mtime for {}: {e}",
+                        b.path().display()
+                    ));
                     std::time::SystemTime::UNIX_EPOCH
                 }
             };
@@ -346,9 +341,7 @@ pub fn parse_update_plan(jsonl_path: &Path) -> Result<Vec<UnifiedTask>, String> 
     Ok(parse_update_plan_with_diagnostics(jsonl_path)?.tasks)
 }
 
-fn parse_update_plan_with_diagnostics(
-    jsonl_path: &Path,
-) -> Result<ParseUpdatePlanOutcome, String> {
+fn parse_update_plan_with_diagnostics(jsonl_path: &Path) -> Result<ParseUpdatePlanOutcome, String> {
     let tail = read_file_tail(jsonl_path, TAIL_READ_SIZE)
         .map_err(|e| format!("Failed to read Codex JSONL: {e}"))?;
     let source_key = codex_source_key_from_jsonl(jsonl_path);
@@ -510,7 +503,10 @@ fn find_codex_session_by_id(
     use chrono::Local;
 
     let today = Local::now().date_naive();
-    let normalized_project = project_path.to_string_lossy().trim_end_matches('/').to_string();
+    let normalized_project = project_path
+        .to_string_lossy()
+        .trim_end_matches('/')
+        .to_string();
 
     for days_back in 0..CODEX_TIMELINE_LOOKBACK_DAYS {
         let date = today - chrono::Duration::days(days_back);
@@ -858,10 +854,7 @@ mod tests {
             &date_dir,
             "partial-plan.jsonl",
             "/home/user/projects/myapp",
-            &[
-                "not valid json but contains update_plan token",
-                &valid_plan,
-            ],
+            &["not valid json but contains update_plan token", &valid_plan],
         );
 
         let tasks = match get_tasks_in("/home/user/projects/myapp", &[], &sessions_dir) {
@@ -1008,7 +1001,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("stem-session.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(f, r#"{{"type":"session_meta","payload":{{"cwd":"/home/user/project"}}}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"session_meta","payload":{{"cwd":"/home/user/project"}}}}"#
+        )
+        .unwrap();
         let plan = make_update_plan_line(&[("Task", "open")]);
         writeln!(f, "{plan}").unwrap();
         f.sync_all().unwrap();

@@ -70,10 +70,7 @@ struct RawClaudeTask {
 }
 
 /// Get tasks for a project from Claude Code's task storage.
-pub fn get_tasks(
-    project_path: &str,
-    sessions: &[&ClaudeSession],
-) -> ScanOutcome {
+pub fn get_tasks(project_path: &str, sessions: &[&ClaudeSession]) -> ScanOutcome {
     let Some(home) = dirs::home_dir() else {
         return ScanOutcome::Unavailable("Could not resolve home directory".to_string());
     };
@@ -81,7 +78,13 @@ pub fn get_tasks(
     let projects_base = home.join(".claude").join("projects");
     let teams_base = home.join(".claude").join("teams");
 
-    get_tasks_in(project_path, sessions, &tasks_base, &projects_base, &teams_base)
+    get_tasks_in(
+        project_path,
+        sessions,
+        &tasks_base,
+        &projects_base,
+        &teams_base,
+    )
 }
 
 /// Get tasks for a project with an optional pre-built source index.
@@ -163,8 +166,9 @@ pub fn get_tasks_in_with_index(
     }
     if scan.had_errors {
         return ScanOutcome::Unavailable(
-            scan.first_error
-                .unwrap_or_else(|| "Claude task scan had degraded I/O or parse failures".to_string()),
+            scan.first_error.unwrap_or_else(|| {
+                "Claude task scan had degraded I/O or parse failures".to_string()
+            }),
         );
     }
     ScanOutcome::DefinitivelyEmpty
@@ -213,11 +217,12 @@ fn scan_all_task_directories(
 
         let parsed = parse_task_directory(&task_dir, source_key);
         if parsed.had_errors {
-            outcome.record_error(
-                parsed.first_error.unwrap_or_else(|| {
-                    format!("Failed to parse one or more task files in {}", task_dir.display())
-                }),
-            );
+            outcome.record_error(parsed.first_error.unwrap_or_else(|| {
+                format!(
+                    "Failed to parse one or more task files in {}",
+                    task_dir.display()
+                )
+            }));
         }
         outcome.tasks.extend(parsed.tasks);
     }
@@ -239,11 +244,7 @@ fn scan_all_task_directories(
     outcome
 }
 
-fn source_matches_project(
-    source_key: &str,
-    project_key: &str,
-    index: &ClaudeSourceIndex,
-) -> bool {
+fn source_matches_project(source_key: &str, project_key: &str, index: &ClaudeSourceIndex) -> bool {
     if let Some(session_project) = index.sessions.get(source_key) {
         return normalize_project_path(&session_project.to_string_lossy()) == project_key;
     }
@@ -395,7 +396,10 @@ mod tests {
     }
 
     fn parse_task_directory_for_test(dir: &Path) -> Vec<UnifiedTask> {
-        let source_key = dir.file_name().and_then(|n| n.to_str()).unwrap_or("test-source");
+        let source_key = dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("test-source");
         parse_task_directory(dir, source_key).tasks
     }
 
@@ -667,7 +671,11 @@ mod tests {
         let project_dir = projects_base.join(slug);
         fs::create_dir_all(&project_dir).unwrap();
         let mut f = File::create(project_dir.join(format!("{session_id}.jsonl"))).unwrap();
-        writeln!(f, r#"{{"type":"user","sessionId":"{session_id}","cwd":"{cwd}"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","sessionId":"{session_id}","cwd":"{cwd}"}}"#
+        )
+        .unwrap();
         f.sync_all().unwrap();
     }
 

@@ -501,27 +501,15 @@ mod tests {
         let mut first = make_task("claude", "1", "First archive", "completed");
         first.source_key = "session-aaa".to_string();
         upsert_task(&conn, &first).unwrap();
-        archive_or_delete_stale_tasks(
-            &conn,
-            "/projects/foo",
-            "claude",
-            "session-aaa",
-            &[],
-        )
-        .unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", "session-aaa", &[])
+            .unwrap();
 
         let mut second = make_task("claude", "1", "Second archive", "completed");
         second.source_key = "session-aaa".to_string();
         second.updated_at = "2026-02-22T12:00:00Z".to_string();
         upsert_task(&conn, &second).unwrap();
-        archive_or_delete_stale_tasks(
-            &conn,
-            "/projects/foo",
-            "claude",
-            "session-aaa",
-            &[],
-        )
-        .unwrap();
+        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", "session-aaa", &[])
+            .unwrap();
 
         let archived = get_archived_task_for_project_by_identity(
             &conn,
@@ -635,8 +623,14 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "2", "Task 2", "in_progress")).unwrap();
 
         // Scan returns only task 1 — task 2 (in_progress) should be deleted
-        let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
+        let result = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["1"],
+        )
+        .unwrap();
         assert_eq!(result.deleted, 1);
         assert_eq!(result.archived, 0);
 
@@ -657,8 +651,14 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "2", "Done task", "completed")).unwrap();
 
         // Scan returns only task 1 — task 2 (completed) should be archived
-        let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
+        let result = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["1"],
+        )
+        .unwrap();
         assert_eq!(result.archived, 1);
         assert_eq!(result.deleted, 0);
 
@@ -687,8 +687,14 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "3", "Abandoned", "pending")).unwrap();
 
         // Scan returns only task 1 — task 2 archived, task 3 deleted
-        let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
+        let result = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["1"],
+        )
+        .unwrap();
         assert_eq!(result.archived, 1);
         assert_eq!(result.deleted, 1);
 
@@ -718,8 +724,14 @@ mod tests {
         )
         .unwrap();
 
-        let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
+        let result = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["1"],
+        )
+        .unwrap();
         assert_eq!(result.deleted, 0);
         assert_eq!(result.archived, 0);
 
@@ -735,8 +747,14 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "2", "Task 2", "pending")).unwrap();
 
         let empty: Vec<&str> = vec![];
-        let result =
-            archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &empty).unwrap();
+        let result = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &empty,
+        )
+        .unwrap();
         assert_eq!(result.archived, 1);
         assert_eq!(result.deleted, 1);
 
@@ -766,7 +784,10 @@ mod tests {
         upsert_task(&conn, &task).unwrap();
 
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
-        assert_eq!(tasks[0].state_changed_at.as_deref(), Some("2026-02-22T10:00:00Z"));
+        assert_eq!(
+            tasks[0].state_changed_at.as_deref(),
+            Some("2026-02-22T10:00:00Z")
+        );
 
         // Status transition; state_changed_at should update to current updated_at.
         task.status = "completed".to_string();
@@ -774,7 +795,10 @@ mod tests {
         upsert_task(&conn, &task).unwrap();
 
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
-        assert_eq!(tasks[0].state_changed_at.as_deref(), Some("2026-02-22T10:10:00Z"));
+        assert_eq!(
+            tasks[0].state_changed_at.as_deref(),
+            Some("2026-02-22T10:10:00Z")
+        );
         assert_eq!(tasks[0].last_status.as_deref(), Some("completed"));
     }
 
@@ -785,7 +809,14 @@ mod tests {
         // Create and archive a completed task
         upsert_task(&conn, &make_task("claude", "1", "Done task", "completed")).unwrap();
         upsert_task(&conn, &make_task("claude", "2", "Active", "in_progress")).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["2"]).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["2"],
+        )
+        .unwrap();
 
         // Task 1 should be archived (not visible)
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
@@ -819,11 +850,25 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "2", "Active", "in_progress")).unwrap();
 
         // First archive
-        let r1 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["2"]).unwrap();
+        let r1 = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["2"],
+        )
+        .unwrap();
         assert_eq!(r1.archived, 1);
 
         // Second call — task 1 is already archived, should not re-archive
-        let r2 = archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["2"]).unwrap();
+        let r2 = archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["2"],
+        )
+        .unwrap();
         assert_eq!(r2.archived, 0);
     }
 
@@ -839,7 +884,14 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "3", "Abandoned", "pending")).unwrap();
 
         // Archive task 2, delete task 3
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["1"]).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["1"],
+        )
+        .unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 1);
@@ -885,7 +937,14 @@ mod tests {
         // Keep one active so we can archive the others
         upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["99"],
+        )
+        .unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 3);
@@ -920,8 +979,22 @@ mod tests {
         )
         .unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &default_source_key("gemini"), &["todo-99"]).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["99"],
+        )
+        .unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "gemini",
+            &default_source_key("gemini"),
+            &["todo-99"],
+        )
+        .unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 2);
@@ -959,8 +1032,22 @@ mod tests {
         })
         .unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/bar", "claude", &default_source_key("claude"), &["99"]).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["99"],
+        )
+        .unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/bar",
+            "claude",
+            &default_source_key("claude"),
+            &["99"],
+        )
+        .unwrap();
 
         let foo_archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(foo_archived.len(), 1);
@@ -1000,9 +1087,30 @@ mod tests {
         )
         .unwrap();
 
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "claude", &default_source_key("claude"), &["99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "codex", &default_source_key("codex"), &["codex-99"]).unwrap();
-        archive_or_delete_stale_tasks(&conn, "/projects/foo", "gemini", &default_source_key("gemini"), &["todo-99"]).unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "claude",
+            &default_source_key("claude"),
+            &["99"],
+        )
+        .unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "codex",
+            &default_source_key("codex"),
+            &["codex-99"],
+        )
+        .unwrap();
+        archive_or_delete_stale_tasks(
+            &conn,
+            "/projects/foo",
+            "gemini",
+            &default_source_key("gemini"),
+            &["todo-99"],
+        )
+        .unwrap();
 
         let archived = get_archived_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(archived.len(), 3);

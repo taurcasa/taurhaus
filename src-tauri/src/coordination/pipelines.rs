@@ -575,8 +575,11 @@ impl CoordinationOrchestrator {
 
     fn join_mesh(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
         if should_use_mesh_sidecar(&request.lead)? {
-            self.runtime
-                .join_mesh(&request.team_name, &request.lead.name, &request.lead.project_id)?;
+            self.runtime.join_mesh(
+                &request.team_name,
+                &request.lead.name,
+                &request.lead.project_id,
+            )?;
         }
         for agent in &request.agents {
             if should_use_mesh_sidecar(agent)? {
@@ -843,13 +846,15 @@ impl CoordinationOrchestrator {
             runtime_state.member_added = true;
         }
 
-        let mut runtime =
-            match MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)
-            {
-                Ok(runtime) => runtime,
-                Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.agent.name),
-                Err(err) => return Err(err),
-            };
+        let mut runtime = match MemberRuntimeStore::load(
+            &self.teams_dir,
+            &request.team_name,
+            &request.agent.name,
+        ) {
+            Ok(runtime) => runtime,
+            Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.agent.name),
+            Err(err) => return Err(err),
+        };
         runtime.pane_id = runtime_state.pane_id.clone();
         runtime.session_id = runtime_state.session_id.clone();
         runtime.daemon_pid = runtime_state.daemon_pid;

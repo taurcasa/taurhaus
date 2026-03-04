@@ -138,7 +138,10 @@ pub fn get_git_status(
 }
 
 #[tauri::command]
-pub fn get_remote_url(db: State<'_, DbState>, project_id: String) -> Result<Option<String>, String> {
+pub fn get_remote_url(
+    db: State<'_, DbState>,
+    project_id: String,
+) -> Result<Option<String>, String> {
     let path = resolve_project_path(&db, &project_id)?;
     let repo = git2::Repository::open(&path).map_err(|e| sanitize_error(&e.to_string()))?;
     Ok(resolve_normalized_remote_url(&repo))

@@ -159,10 +159,12 @@ fn extract_project_path_from_jsonl(jsonl_path: &Path) -> Option<PathBuf> {
 }
 
 fn extract_cwd_from_value(value: &Value) -> Option<&str> {
-    value
-        .get("cwd")
-        .and_then(|v| v.as_str())
-        .or_else(|| value.get("payload").and_then(|p| p.get("cwd")).and_then(|v| v.as_str()))
+    value.get("cwd").and_then(|v| v.as_str()).or_else(|| {
+        value
+            .get("payload")
+            .and_then(|p| p.get("cwd"))
+            .and_then(|v| v.as_str())
+    })
 }
 
 fn build_team_map(tasks_base: &Path, teams_base: &Path) -> HashMap<String, Vec<PathBuf>> {

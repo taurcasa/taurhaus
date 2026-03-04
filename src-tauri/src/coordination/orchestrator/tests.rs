@@ -10,7 +10,9 @@ use crate::commands::coordination_types::{
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::MemberRole;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
-use crate::coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall};
+use crate::coordination::runtime::{
+    CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
+};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
@@ -80,7 +82,11 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         self.inner.create_aitx_pane(project_id, tmux_layout)
     }
 
-    fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str) -> Result<(), CoordinationError> {
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
         self.inner.send_tmux_keys_with_enter(pane_id, keys)
     }
 
@@ -101,7 +107,11 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         self.inner.join_mesh(team_name, member_name, project_id)?;
 
         let mut config = TeamConfigStore::load(&self.teams_dir, team_name)?;
-        if !config.members.iter().any(|member| member.name == member_name) {
+        if !config
+            .members
+            .iter()
+            .any(|member| member.name == member_name)
+        {
             config.members.push(Member {
                 name: member_name.to_string(),
                 role: MemberRole::Agent,
@@ -120,7 +130,8 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError> {
-        self.inner.spawn_mesh_daemon(pane_id, team_name, member_name)
+        self.inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)
     }
 
     fn pane_belongs_to_project(
@@ -172,7 +183,11 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
         self.inner.create_aitx_pane(project_id, tmux_layout)
     }
 
-    fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str) -> Result<(), CoordinationError> {
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
         self.inner.send_tmux_keys_with_enter(pane_id, keys)
     }
 
@@ -199,7 +214,8 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError> {
-        self.inner.spawn_mesh_daemon(pane_id, team_name, member_name)
+        self.inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)
     }
 
     fn pane_belongs_to_project(
@@ -528,7 +544,10 @@ fn remove_member_cleans_runtime() {
         .expect("remove should succeed");
     assert!(report.removed);
     assert!(report.steps.iter().any(|step| step.step == "update_config"));
-    assert!(report.steps.iter().any(|step| step.step == "delete_runtime"));
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "delete_runtime"));
 
     let status = orchestrator
         .get_team_status(team_name)
@@ -577,24 +596,18 @@ fn remove_member_tears_down_runtime_resources() {
         .remove_member(team_name, member_name, Some("cleanup".to_string()))
         .expect("remove should succeed");
     assert!(report.removed);
-    assert!(
-        report
-            .steps
-            .iter()
-            .any(|step| step.step == "verify_pane_ownership" && step.success)
-    );
-    assert!(
-        report
-            .steps
-            .iter()
-            .any(|step| step.step == "kill_pane" && step.success)
-    );
-    assert!(
-        report
-            .steps
-            .iter()
-            .any(|step| step.step == "notify_lead" && step.success)
-    );
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "verify_pane_ownership" && step.success));
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "kill_pane" && step.success));
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "notify_lead" && step.success));
     assert_eq!(
         fake.call_counts(),
         (0, 1, 0, 1),
@@ -689,25 +702,19 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
         .remove_member(team_name, member_name, Some("cleanup".to_string()))
         .expect("remove should succeed");
 
-    assert!(
-        report
-            .steps
-            .iter()
-            .any(|step| step.step == "verify_pane_ownership" && !step.success)
-    );
-    assert!(
-        report
-            .steps
-            .iter()
-            .any(|step| step.step == "kill_pane" && !step.success)
-    );
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "verify_pane_ownership" && !step.success));
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "kill_pane" && !step.success));
     assert!(!report.warnings.is_empty());
-    assert!(
-        report
-            .steps
-            .iter()
-            .any(|step| step.step == "notify_lead" && step.success)
-    );
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "notify_lead" && step.success));
 
     let calls = runtime.calls();
     assert!(
