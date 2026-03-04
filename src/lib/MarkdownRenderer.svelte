@@ -5,7 +5,15 @@
   import * as assetCache from './assetCache.js'
   import { resolveRelativePath } from './pathUtils.js'
 
-  let { source = '', dark = false, codeTheme = 'github-light', projectId = null, filePath = null, onNavigate = null } = $props()
+  let {
+    source = '',
+    dark = false,
+    codeTheme = 'github-light',
+    projectId = null,
+    filePath = null,
+    scrollToAnchor = null,
+    onNavigate = null,
+  } = $props()
 
   let html = $state('')
   let loading = $state(true)
@@ -123,6 +131,19 @@
     }
   })
 
+  // Cross-file anchor navigation: scroll to target heading after render.
+  $effect(() => {
+    if (!scrollToAnchor || loading || !container) return
+
+    const escaped = globalThis.CSS?.escape
+      ? globalThis.CSS.escape(scrollToAnchor)
+      : scrollToAnchor.replace(/["\\#.:/\\[\\]]/g, '\\$&')
+    const target = container.querySelector(`#${escaped}`)
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth' })
+    }
+  })
+
   // Intercept link clicks inside rendered markdown
   function handleClick(e) {
     const anchor = e.target.closest('a')
@@ -146,9 +167,7 @@
 
     // Relative path — navigate to file in the viewer
     if (onNavigate) {
-      // Strip any anchor fragment from the path
-      const path = href.replace(/#.*$/, '')
-      if (path) onNavigate(resolveImagePath(path))
+      onNavigate(href)
     }
   }
 </script>

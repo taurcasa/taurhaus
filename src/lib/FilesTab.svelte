@@ -38,6 +38,7 @@
   let imageDataUri = $state(null)
   let expandedDirs = $state(new Set())
   let targetLineNumber = $state(null)
+  let targetAnchor = $state(null)
   let fileTreeRefreshInFlight = false
   let fileTreeRefreshPending = false
 
@@ -52,12 +53,14 @@
     refreshFileTree(selectedProject.id)
   })
 
-  // Watch navTarget and open the requested file
+  // Watch navTarget and open the requested file/directory
   $effect(() => {
     if (!navTarget) return
-    const { file, lineNumber } = navTarget
-    if (file) {
-      openFile(file, lineNumber ?? null)
+    const { file, lineNumber, anchor, directory } = navTarget
+    if (directory !== undefined && directory !== null) {
+      openDirectory(directory)
+    } else if (file) {
+      openFile(file, lineNumber ?? null, anchor ?? null)
     }
     onClearNavTarget?.()
   })
@@ -134,6 +137,76 @@
     return null
   }
 
+  function findNodeByPath(nodes, targetPath) {
+    for (const node of nodes) {
+      if (node.path === targetPath) return node
+      if (node.is_dir && node.children) {
+        const found = findNodeByPath(node.children, targetPath)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  function findReadmeInDirectory(node) {
+    if (!node?.children) return null
+    return node.children.find((child) => !child.is_dir && /^readme\.md$/i.test(child.name)) || null
+  }
+
+  function clearSelection() {
+    selectedFile = null
+    targetLineNumber = null
+    targetAnchor = null
+    fileContent = null
+    fileContentLoading = false
+    fileError = null
+    fileType = null
+    imageDataUri = null
+  }
+
+  async function openDirectory(relativePath) {
+    if (!selectedProject) return
+
+    const directoryPath = (relativePath || '').replace(/\/+$/, '')
+    const next = new Set(expandedDirs)
+    if (directoryPath) {
+      const parts = directoryPath.split('/').filter(Boolean)
+      let dir = ''
+      for (const part of parts) {
+        dir = dir ? `${dir}/${part}` : part
+        next.add(dir)
+      }
+    }
+    expandedDirs = next
+
+    let tree = fileTree
+    if (tree.length === 0) {
+      try {
+        tree = await getFileTree(selectedProject.id)
+        fileTree = tree
+      } catch {
+        tree = []
+      }
+    }
+
+    const directoryNode = directoryPath
+      ? findNodeByPath(tree, directoryPath)
+      : { is_dir: true, children: tree }
+
+    if (!directoryNode || !directoryNode.is_dir) {
+      console.warn(`[file] directory target not found in tree: ${directoryPath}`)
+      return
+    }
+
+    const readme = findReadmeInDirectory(directoryNode)
+    if (readme) {
+      await openFile(readme.path)
+      return
+    }
+
+    clearSelection()
+  }
+
   function toggleDir(path) {
     const next = new Set(expandedDirs)
     if (next.has(path)) {
@@ -144,10 +217,11 @@
     expandedDirs = next
   }
 
-  async function openFile(relativePath, lineNumber = null) {
+  async function openFile(relativePath, lineNumber = null, anchor = null) {
     if (!selectedProject) return
     selectedFile = relativePath
     targetLineNumber = lineNumber
+    targetAnchor = anchor
 
     // Auto-expand parent directories so the file is visible in the tree
     const parts = relativePath.split('/')
@@ -340,7 +414,15 @@
         {:else if fileContent}
           {#if fileType === 'markdown'}
             <div class="p-6 overflow-auto">
-              <MarkdownRenderer source={fileContent.content} {dark} {codeTheme} projectId={selectedProject?.id} filePath={selectedFile} onNavigate={onMarkdownNavigate} />
+              <MarkdownRenderer
+                source={fileContent.content}
+                {dark}
+                {codeTheme}
+                projectId={selectedProject?.id}
+                filePath={selectedFile}
+                scrollToAnchor={targetAnchor}
+                onNavigate={onMarkdownNavigate}
+              />
             </div>
           {:else}
             <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} {codeTheme} scrollToLine={targetLineNumber} />

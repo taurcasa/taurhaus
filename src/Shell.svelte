@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl } from './lib/ipc.js'
   import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
@@ -78,7 +78,7 @@
   let showAllCommits = $state(false)
 
   // Cross-tab navigation state for Files tab
-  let filesNavTarget = $state(null) // { file: string, lineNumber?: number } | null
+  let filesNavTarget = $state(null) // { file: string, lineNumber?: number, anchor?: string|null } | { directory: string } | null
   let filesPosition = $state(null)
 
   // File change signal — set by the central project-files-changed listener,
@@ -596,43 +596,120 @@
     }
   })
 
-  function handleMarkdownNavigate(relativePath) {
-    if (!selectedProject) return
-
-    // Resolve relative path against the currently viewed file's directory.
-    // If viewing a file like "docs/design-brief.md" and clicking "./foo.md",
-    // resolve to "docs/foo.md".
-    let resolved = relativePath
-
-    // Strip leading ./ for normalization
+  function normalizeMarkdownTarget(relativePath, contextFile) {
+    let resolved = relativePath.replace(/#.*$/, '')
+    if (!resolved) return null
     resolved = resolved.replace(/^\.\//, '')
 
-    // If we have a current file context, resolve relative to its directory
-    const contextFile = filesPosition?.selectedFile || (readmeContent?.path)
+    const prefixParts = []
     if (contextFile && !resolved.startsWith('/')) {
       const dir = contextFile.includes('/') ? contextFile.replace(/\/[^/]+$/, '') : ''
-      if (dir) {
-        resolved = dir + '/' + resolved
-      }
+      if (dir) prefixParts.push(...dir.split('/'))
     }
 
-    // Normalize ../ segments
-    const parts = resolved.split('/')
     const normalized = []
-    for (const part of parts) {
+    const platformSegments = []
+    let escapedAboveRoot = false
+
+    for (const part of [...prefixParts, ...resolved.split('/')]) {
+      if (!part || part === '.') continue
       if (part === '..') {
-        normalized.pop()
-      } else if (part !== '.' && part !== '') {
+        if (escapedAboveRoot) {
+          if (platformSegments.length > 0) platformSegments.pop()
+        } else if (normalized.length > 0) {
+          normalized.pop()
+        } else {
+          escapedAboveRoot = true
+        }
+        continue
+      }
+      if (escapedAboveRoot) {
+        platformSegments.push(part)
+      } else {
         normalized.push(part)
       }
     }
-    resolved = normalized.join('/')
 
-    console.log(`[markdown] navigate: "${relativePath}" → "${resolved}"`)
+    return {
+      resolvedPath: normalized.join('/'),
+      escapedAboveRoot,
+      platformSegments,
+    }
+  }
 
-    // Switch to files tab and navigate via FilesTab
-    filesNavTarget = { file: resolved }
-    switchTab('files', { tab: 'files', file: resolved })
+  function buildPlatformRouteUrl(remoteUrl, routeSegments) {
+    if (!remoteUrl) return null
+    const base = remoteUrl.replace(/\/+$/, '')
+    const route = routeSegments.filter(Boolean).join('/')
+    return route ? `${base}/${route}` : base
+  }
+
+  async function handleMarkdownNavigate(relativePath) {
+    if (!selectedProject) return
+
+    // Ignore in-document anchors.
+    if (!relativePath || relativePath.startsWith('#')) return
+
+    const fragmentMatch = relativePath.match(/#(.+)$/)
+    const anchor = fragmentMatch ? fragmentMatch[1] : null
+
+    // In Overview, resolve links against README path.
+    // In Files, resolve against the selected file.
+    const contextFile = activeTab === 'overview'
+      ? readmeContent?.path
+      : (filesPosition?.selectedFile || readmeContent?.path)
+
+    const normalized = normalizeMarkdownTarget(relativePath, contextFile)
+    if (!normalized) return
+
+    const { resolvedPath, escapedAboveRoot, platformSegments } = normalized
+
+    if (escapedAboveRoot) {
+      let remoteUrl = null
+      try {
+        remoteUrl = await getRemoteUrl(selectedProject.id)
+      } catch (err) {
+        console.warn('[markdown] failed to resolve remote URL for platform route', err)
+        return
+      }
+
+      if (!remoteUrl) {
+        console.warn(`[markdown] platform route detected but no remote available: "${relativePath}"`)
+        return
+      }
+
+      const externalUrl = buildPlatformRouteUrl(remoteUrl, platformSegments)
+      if (!externalUrl) return
+      console.log(`[markdown] navigate platform route: "${relativePath}" → "${externalUrl}"`)
+      openExternalUrl(externalUrl).catch((err) => {
+        console.error(`[markdown] failed to open platform route URL: ${externalUrl}`, err)
+      })
+      return
+    }
+
+    let pathType = 'not_found'
+    try {
+      pathType = await checkPathType(selectedProject.id, resolvedPath)
+    } catch (err) {
+      console.warn(`[markdown] failed to classify path: "${resolvedPath}"`, err)
+      return
+    }
+
+    if (pathType === 'directory') {
+      console.log(`[markdown] navigate directory: "${relativePath}" → "${resolvedPath}"`)
+      filesNavTarget = { directory: resolvedPath }
+      switchTab('files', { tab: 'files' })
+      return
+    }
+
+    if (pathType === 'file') {
+      console.log(`[markdown] navigate: "${relativePath}" → "${resolvedPath}"${anchor ? ` #${anchor}` : ''}`)
+      filesNavTarget = { file: resolvedPath, anchor }
+      switchTab('files', { tab: 'files', file: resolvedPath })
+      return
+    }
+
+    console.warn(`[markdown] unresolved markdown path (not_found): "${relativePath}" → "${resolvedPath}"`)
   }
 
   async function handleSearchNavigate(action) {

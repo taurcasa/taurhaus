@@ -17,6 +17,9 @@ vi.mock('./ipc.js', () => ({
   getDaemonStatus: vi.fn(),
   checkDaemonInstallStatus: vi.fn(),
   installDaemon: vi.fn(),
+  getRemoteUrl: vi.fn(),
+  checkPathType: vi.fn(),
+  openExternalUrl: vi.fn(),
 }))
 
 // ---------------------------------------------------------------------------
@@ -52,6 +55,120 @@ function resolveMarkdownPath(relativePath, contextFile) {
   return normalized.join('/')
 }
 
+function resolveMarkdownNavigateTarget(relativePath, activeTab, selectedFile, readmePath) {
+  if (!relativePath || relativePath.startsWith('#')) return null
+
+  const fragmentMatch = relativePath.match(/#(.+)$/)
+  const anchor = fragmentMatch ? fragmentMatch[1] : null
+
+  let resolved = relativePath.replace(/#.*$/, '')
+  if (!resolved) return null
+
+  resolved = resolved.replace(/^\.\//, '')
+
+  const contextFile = activeTab === 'overview'
+    ? readmePath
+    : (selectedFile || readmePath)
+
+  return {
+    file: resolveMarkdownPath(resolved, contextFile),
+    anchor,
+  }
+}
+
+function normalizeMarkdownPathWithEscape(relativePath, contextFile) {
+  let resolved = relativePath.replace(/#.*$/, '')
+  if (!resolved) return null
+  resolved = resolved.replace(/^\.\//, '')
+
+  const prefixParts = []
+  if (contextFile && !resolved.startsWith('/')) {
+    const dir = contextFile.includes('/') ? contextFile.replace(/\/[^/]+$/, '') : ''
+    if (dir) prefixParts.push(...dir.split('/'))
+  }
+
+  const normalized = []
+  const platformSegments = []
+  let escapedAboveRoot = false
+
+  for (const part of [...prefixParts, ...resolved.split('/')]) {
+    if (!part || part === '.') continue
+    if (part === '..') {
+      if (escapedAboveRoot) {
+        if (platformSegments.length > 0) platformSegments.pop()
+      } else if (normalized.length > 0) {
+        normalized.pop()
+      } else {
+        escapedAboveRoot = true
+      }
+      continue
+    }
+    if (escapedAboveRoot) {
+      platformSegments.push(part)
+    } else {
+      normalized.push(part)
+    }
+  }
+
+  return {
+    resolvedPath: normalized.join('/'),
+    escapedAboveRoot,
+    platformSegments,
+  }
+}
+
+function buildPlatformRouteUrl(remoteUrl, routeSegments) {
+  if (!remoteUrl) return null
+  const base = remoteUrl.replace(/\/+$/, '')
+  const route = routeSegments.filter(Boolean).join('/')
+  return route ? `${base}/${route}` : base
+}
+
+function classifyMarkdownNavigateAction({
+  relativePath,
+  activeTab,
+  selectedFile,
+  readmePath,
+  pathType,
+  remoteUrl,
+}) {
+  if (!relativePath || relativePath.startsWith('#')) return null
+  const fragmentMatch = relativePath.match(/#(.+)$/)
+  const anchor = fragmentMatch ? fragmentMatch[1] : null
+
+  const contextFile = activeTab === 'overview'
+    ? readmePath
+    : (selectedFile || readmePath)
+
+  const normalized = normalizeMarkdownPathWithEscape(relativePath, contextFile)
+  if (!normalized) return null
+
+  if (normalized.escapedAboveRoot) {
+    if (!remoteUrl) return null
+    return {
+      type: 'external',
+      url: buildPlatformRouteUrl(remoteUrl, normalized.platformSegments),
+    }
+  }
+
+  if (pathType === 'directory') {
+    return {
+      type: 'directory',
+      directory: normalized.resolvedPath,
+    }
+  }
+
+  if (pathType === 'file') {
+    return {
+      type: 'file',
+      file: normalized.resolvedPath,
+      anchor,
+    }
+  }
+
+  return null
+}
+
 describe('resolveMarkdownPath', () => {
   it('resolves simple relative path from root context', () => {
     expect(resolveMarkdownPath('README.md', null)).toBe('README.md')
@@ -69,8 +186,16 @@ describe('resolveMarkdownPath', () => {
     expect(resolveMarkdownPath('./bar.md', 'docs/design-brief.md')).toBe('docs/bar.md')
   })
 
+  it('resolves image path from docs markdown context', () => {
+    expect(resolveMarkdownPath('./images/arch.png', 'docs/design-brief.md')).toBe('docs/images/arch.png')
+  })
+
   it('resolves ../ from nested context', () => {
     expect(resolveMarkdownPath('../README.md', 'docs/sessions/session.md')).toBe('docs/README.md')
+  })
+
+  it('resolves parent markdown link from nested docs context', () => {
+    expect(resolveMarkdownPath('../design-brief.md', 'docs/architecture/daemon.md')).toBe('docs/design-brief.md')
   })
 
   it('resolves multiple ../ segments', () => {
@@ -85,12 +210,139 @@ describe('resolveMarkdownPath', () => {
     expect(resolveMarkdownPath('/absolute/path.md', 'docs/ctx.md')).toBe('absolute/path.md')
   })
 
+  it('resolves docs path from root README context', () => {
+    expect(resolveMarkdownPath('docs/foo.md', 'README.md')).toBe('docs/foo.md')
+  })
+
+  it('resolves root-level sibling markdown from README context', () => {
+    expect(resolveMarkdownPath('ARCHITECTURE.md', 'README.md')).toBe('ARCHITECTURE.md')
+  })
+
   it('normalizes redundant segments', () => {
     expect(resolveMarkdownPath('docs/./nested/../file.md', null)).toBe('docs/file.md')
   })
 
   it('handles path without context file', () => {
     expect(resolveMarkdownPath('docs/guide.md', null)).toBe('docs/guide.md')
+  })
+})
+
+describe('resolveMarkdownNavigateTarget', () => {
+  it('uses README path in overview even when a file was previously selected', () => {
+    expect(resolveMarkdownNavigateTarget(
+      'docs/getting-started.md',
+      'overview',
+      'docs/features/mesh.md',
+      'README.md'
+    )).toEqual({ file: 'docs/getting-started.md', anchor: null })
+  })
+
+  it('uses selected file path in files tab', () => {
+    expect(resolveMarkdownNavigateTarget(
+      './session-management.md',
+      'files',
+      'docs/features/command-center.md',
+      'README.md'
+    )).toEqual({ file: 'docs/features/session-management.md', anchor: null })
+  })
+
+  it('captures fragment identifier as anchor while keeping path resolution unchanged', () => {
+    expect(resolveMarkdownNavigateTarget(
+      'docs/README.md#features',
+      'overview',
+      null,
+      'README.md'
+    )).toEqual({ file: 'docs/README.md', anchor: 'features' })
+  })
+
+  it('returns null for anchor-only links', () => {
+    expect(resolveMarkdownNavigateTarget(
+      '#install-taurhaus',
+      'overview',
+      null,
+      'README.md'
+    )).toBeNull()
+  })
+})
+
+describe('classifyMarkdownNavigateAction', () => {
+  it('above-root route with remote builds external URL', () => {
+    const action = classifyMarkdownNavigateAction({
+      relativePath: '../../releases',
+      activeTab: 'overview',
+      selectedFile: null,
+      readmePath: 'README.md',
+      pathType: 'not_found',
+      remoteUrl: 'https://github.com/user/repo',
+    })
+
+    expect(action).toEqual({
+      type: 'external',
+      url: 'https://github.com/user/repo/releases',
+    })
+  })
+
+  it('above-root route without remote is a no-op', () => {
+    const action = classifyMarkdownNavigateAction({
+      relativePath: '../../issues',
+      activeTab: 'overview',
+      selectedFile: null,
+      readmePath: 'README.md',
+      pathType: 'not_found',
+      remoteUrl: null,
+    })
+
+    expect(action).toBeNull()
+  })
+
+  it('directory link returns directory nav target', () => {
+    const action = classifyMarkdownNavigateAction({
+      relativePath: 'docs/',
+      activeTab: 'overview',
+      selectedFile: null,
+      readmePath: 'README.md',
+      pathType: 'directory',
+      remoteUrl: null,
+    })
+
+    expect(action).toEqual({
+      type: 'directory',
+      directory: 'docs',
+    })
+  })
+
+  it('extensionless file link returns file nav target', () => {
+    const action = classifyMarkdownNavigateAction({
+      relativePath: 'LICENSE',
+      activeTab: 'overview',
+      selectedFile: null,
+      readmePath: 'README.md',
+      pathType: 'file',
+      remoteUrl: null,
+    })
+
+    expect(action).toEqual({
+      type: 'file',
+      file: 'LICENSE',
+      anchor: null,
+    })
+  })
+
+  it('overshoot typo that does not go negative remains a file target', () => {
+    const action = classifyMarkdownNavigateAction({
+      relativePath: '../../../foo.md',
+      activeTab: 'files',
+      selectedFile: 'a/b/c/readme.md',
+      readmePath: 'README.md',
+      pathType: 'file',
+      remoteUrl: null,
+    })
+
+    expect(action).toEqual({
+      type: 'file',
+      file: 'foo.md',
+      anchor: null,
+    })
   })
 })
 
