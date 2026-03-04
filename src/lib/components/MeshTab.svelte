@@ -6,6 +6,8 @@
     coordinationListTeams,
     coordinationRemoveMember,
     coordinationResumeMember,
+    listRoleTemplates,
+    upsertRoleTemplate,
   } from '../ipc.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
@@ -96,6 +98,10 @@
   let runtimeMessage = $state('')
   let confirmContext = $state(null)
 
+  let roleTemplates = $state([])
+  let loadingRoles = $state(false)
+  let captureRoleDialog = $state(null)
+
   let gateBootstrapping = false
   let discoverySequence = 0
   let runtimeMessageTimer = null
@@ -152,6 +158,20 @@
       String(draft.tool || '').trim().length > 0 &&
       String(draft.model || '').trim().length > 0 &&
       String(draft.projectId || '').trim().length > 0
+    )
+  })
+
+  const captureRoleDraft = $derived(
+    captureRoleDialog && typeof captureRoleDialog === 'object' ? captureRoleDialog : null
+  )
+
+  const canSaveCapturedRole = $derived.by(() => {
+    const draft = captureRoleDraft
+    if (!draft) return false
+    if (draft.submitting) return false
+    return (
+      String(draft.name || '').trim().length > 0 &&
+      String(draft.roleId || '').trim().length > 0
     )
   })
 
@@ -347,6 +367,10 @@
       projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
       description: member?.description ?? null,
       paneId: member?.paneId ?? member?.pane_id ?? null,
+      roleId: member?.roleId ?? member?.role_id ?? null,
+      instructions: member?.instructions ?? null,
+      behavioralContract: member?.behavioralContract ?? member?.behavioral_contract ?? null,
+      capabilities: Array.isArray(member?.capabilities) ? member.capabilities : null,
     }))
 
     const leadMember = normalizedMembers.find((member) => member.role === 'lead')
@@ -361,6 +385,10 @@
       projectId: leadMember?.projectId ?? projectPath,
       description: leadMember?.description ?? 'Team lead',
       paneId: leadMember?.paneId ?? null,
+      roleId: leadMember?.roleId ?? null,
+      instructions: leadMember?.instructions ?? null,
+      behavioralContract: leadMember?.behavioralContract ?? null,
+      capabilities: leadMember?.capabilities ?? null,
     })
 
     const agents = normalizedMembers
@@ -374,6 +402,10 @@
         projectId: member.projectId,
         description: member.description,
         paneId: member.paneId,
+        roleId: member.roleId,
+        instructions: member.instructions,
+        behavioralContract: member.behavioralContract,
+        capabilities: member.capabilities,
       }))
 
     return {
@@ -641,6 +673,7 @@
     const defaultProject = projectOptions[0]?.id || projectPath || ''
     slideOver = 'addAgent'
     slideOverContext = {
+      roleId: '',
       name: '',
       tool: 'codex',
       model: defaultModelForTool('codex'),
@@ -648,6 +681,54 @@
       description: '',
       submitting: false,
       error: '',
+      isLocked: false,
+    }
+    void loadRoleTemplates()
+  }
+
+  async function loadRoleTemplates() {
+    loadingRoles = true
+    try {
+      roleTemplates = await listRoleTemplates()
+    } catch (error) {
+      console.error('Failed to load role templates:', error)
+    } finally {
+      loadingRoles = false
+    }
+  }
+
+  function handleRoleChange(selectedRoleId) {
+    const draft = addAgentDraft
+    if (!draft) return
+
+    if (!selectedRoleId) {
+      slideOverContext = {
+        ...draft,
+        roleId: '',
+        isLocked: false,
+      }
+      return
+    }
+
+    const role = roleTemplates.find((r) => r.roleId === selectedRoleId)
+    if (role) {
+      slideOverContext = {
+        ...draft,
+        roleId: selectedRoleId,
+        tool: normalizeTool(role.cliTool),
+        model: role.model || defaultModelForTool(role.cliTool),
+        description: role.instructions || '',
+        isLocked: true,
+      }
+    }
+  }
+
+  function toggleAddAgentLock() {
+    const draft = addAgentDraft
+    if (!draft) return
+    slideOverContext = {
+      ...draft,
+      isLocked: !draft.isLocked,
     }
   }
 
@@ -662,6 +743,211 @@
       next.model = defaultModelForTool(value)
     }
     slideOverContext = next
+  }
+
+  function slugifyRoleId(value) {
+    const slug = String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s_-]+/g, '')
+      .replace(/[\s_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    return slug || 'captured-role'
+  }
+
+  function normalizeBehavioralContract(value) {
+    const base = {
+      communication: [],
+      execution: [],
+      escalation: [],
+    }
+
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const key of Object.keys(base)) {
+        if (Array.isArray(value[key])) {
+          base[key] = value[key].map((entry) => String(entry || '').trim()).filter(Boolean)
+        }
+      }
+      return base
+    }
+
+    if (Array.isArray(value)) {
+      base.communication = value
+        .map((entry) => {
+          if (typeof entry === 'string') return entry.trim()
+          if (!entry || typeof entry !== 'object') return ''
+          const rule = String(entry.rule ?? entry.text ?? '').trim()
+          const enabled = entry.enabled === undefined ? true : Boolean(entry.enabled)
+          return enabled ? rule : ''
+        })
+        .filter(Boolean)
+      return base
+    }
+
+    return base
+  }
+
+  function contractHasRules(contract) {
+    return (
+      contract.communication.length > 0 ||
+      contract.execution.length > 0 ||
+      contract.escalation.length > 0
+    )
+  }
+
+  function defaultBehavioralContract(roleName) {
+    const safeName = String(roleName || 'agent').trim() || 'agent'
+    return {
+      communication: [`Report concise progress as ${safeName} and escalate blockers quickly.`],
+      execution: ['Execute scoped tasks and verify outcomes before handoff.'],
+      escalation: ['Escalate ambiguous requirements before taking risky actions.'],
+    }
+  }
+
+  function normalizeCapabilities(capabilities, tool) {
+    if (Array.isArray(capabilities)) {
+      const normalized = capabilities
+        .map((entry) => String(entry || '').trim().toLowerCase())
+        .filter(Boolean)
+      if (normalized.length > 0) return [...new Set(normalized)]
+    }
+    return [`${normalizeTool(tool)}-workflow`]
+  }
+
+  function openCaptureRoleDialog() {
+    if (!selectedNode || mode !== 'runtime') return
+
+    const roleName = String(selectedNode.name || '').trim() || 'captured-role'
+    const normalizedContract = normalizeBehavioralContract(selectedNode.behavioralContract)
+    const hasBehavioralContract = contractHasRules(normalizedContract)
+    const description = String(selectedNode.description || '').trim()
+
+    captureRoleDialog = {
+      roleKind: selectedNode.role === 'lead' ? 'lead' : 'agent',
+      name: roleName,
+      roleId: slugifyRoleId(roleName),
+      manualRoleId: false,
+      tool: normalizeTool(selectedNode.tool),
+      model: String(selectedNode.model || '').trim() || defaultModelForTool(selectedNode.tool),
+      description,
+      includeInstructions: description.length > 0,
+      includeBehavioralContract: hasBehavioralContract,
+      behavioralContract: normalizedContract,
+      capabilities: Array.isArray(selectedNode.capabilities) ? selectedNode.capabilities : [],
+      submitting: false,
+      error: '',
+    }
+  }
+
+  function closeCaptureRoleDialog() {
+    captureRoleDialog = null
+  }
+
+  function updateCaptureRoleName(value) {
+    const draft = captureRoleDraft
+    if (!draft) return
+
+    const name = String(value || '')
+    captureRoleDialog = {
+      ...draft,
+      name,
+      roleId: draft.manualRoleId ? draft.roleId : slugifyRoleId(name),
+    }
+  }
+
+  function updateCaptureRoleId(value) {
+    const draft = captureRoleDraft
+    if (!draft) return
+    captureRoleDialog = {
+      ...draft,
+      roleId: String(value || ''),
+      manualRoleId: true,
+    }
+  }
+
+  function toggleCaptureRoleFlag(field) {
+    const draft = captureRoleDraft
+    if (!draft) return
+    captureRoleDialog = {
+      ...draft,
+      [field]: !draft[field],
+    }
+  }
+
+  function buildCapturedRoleTemplate(draft) {
+    const roleKind = draft.roleKind === 'lead' ? 'lead' : 'agent'
+    const trimmedName = String(draft.name || '').trim()
+    const normalizedRoleId = slugifyRoleId(draft.roleId)
+    const includeInstructions = Boolean(draft.includeInstructions)
+    const includeBehavioralContract = Boolean(draft.includeBehavioralContract)
+
+    const instructionsFromNode = includeInstructions ? String(draft.description || '').trim() : ''
+    const instructions = instructionsFromNode || `Captured runtime role for ${trimmedName}.`
+
+    const currentContract = normalizeBehavioralContract(draft.behavioralContract)
+    const behavioralContract = includeBehavioralContract && contractHasRules(currentContract)
+      ? currentContract
+      : defaultBehavioralContract(trimmedName)
+
+    return {
+      schema: {
+        kind: 'role_template',
+        version: 1,
+      },
+      roleId: normalizedRoleId,
+      name: trimmedName,
+      version: '1.0.0',
+      kind: roleKind,
+      defaults: {
+        cliTool: normalizeTool(draft.tool),
+        model: String(draft.model || '').trim() || defaultModelForTool(draft.tool),
+        defaultNamePattern: roleKind === 'lead' ? 'team-lead' : 'agent-{n}',
+      },
+      instructions,
+      behavioralContract,
+      capabilities: normalizeCapabilities(draft.capabilities, draft.tool),
+      constraints: roleKind === 'lead'
+        ? {
+          minInstances: 1,
+          maxInstances: 1,
+          requiresLeadTool: null,
+          allowedProjectBinding: 'lead_project',
+        }
+        : {
+          minInstances: 0,
+          maxInstances: 8,
+          requiresLeadTool: null,
+          allowedProjectBinding: 'any',
+        },
+    }
+  }
+
+  async function submitCaptureRole() {
+    const draft = captureRoleDraft
+    if (!draft || !canSaveCapturedRole) return
+
+    captureRoleDialog = {
+      ...draft,
+      submitting: true,
+      error: '',
+    }
+
+    try {
+      const payload = buildCapturedRoleTemplate(draft)
+      await upsertRoleTemplate(payload)
+      runtimeMessage = 'Role saved to catalog'
+      closeCaptureRoleDialog()
+      void loadRoleTemplates()
+    } catch (error) {
+      const latest = captureRoleDraft
+      if (!latest) return
+      captureRoleDialog = {
+        ...latest,
+        submitting: false,
+        error: error?.message || 'Failed to save role to catalog.',
+      }
+    }
   }
 
   async function submitAddAgent() {
@@ -822,6 +1108,7 @@
     teamConfig = null
     slideOver = null
     slideOverContext = null
+    captureRoleDialog = null
     selectedNodeId = null
     initProgress = null
     errorMessage = ''
@@ -831,9 +1118,13 @@
   })
 
   $effect(() => {
-    if (!selectedNodeId) return
+    if (!selectedNodeId) {
+      captureRoleDialog = null
+      return
+    }
     if (!selectedNode) {
       selectedNodeId = null
+      captureRoleDialog = null
     }
   })
 
@@ -1042,6 +1333,7 @@
               onResume={handleResumeSelected}
               onStop={handleStopSelected}
               onFocusPane={handleFocusSelectedPane}
+              onCapture={openCaptureRoleDialog}
               onClose={() => {
                 selectedNodeId = null
               }}
@@ -1087,6 +1379,28 @@
       <section class="space-y-4" data-testid="mesh-add-agent-form">
         <p class="text-sm {t.textMuted}">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
 
+        <div class="space-y-1.5">
+          <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">PICK FROM ROLE (OPTIONAL)</p>
+          <select
+            class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 6px center"
+            value={addAgentDraft?.roleId ?? ''}
+            onchange={(event) => handleRoleChange(event.currentTarget.value)}
+            disabled={addAgentDraft?.submitting}
+            data-testid="mesh-add-agent-role-select"
+          >
+            <option value="">Manual configuration</option>
+            {#each roleTemplates as role}
+              <option value={role.roleId}>{role.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div class="h-px bg-zinc-200/50 dark:bg-zinc-800/50 my-1"></div>
+
+        <div class="space-y-3">
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">AGENT NAME</p>
             <input
@@ -1094,43 +1408,58 @@
               placeholder="Agent name"
               value={addAgentDraft?.name ?? ''}
               oninput={(event) => updateAddAgentField('name', event.currentTarget.value)}
-            data-testid="mesh-add-agent-name-input"
-          />
-        </div>
+              disabled={addAgentDraft?.submitting}
+              data-testid="mesh-add-agent-name-input"
+            />
+          </div>
 
           <div class="space-y-1.5">
-            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">TOOL</p>
+            <div class="flex items-center justify-between">
+              <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">TOOL</p>
+              {#if addAgentDraft?.roleId}
+                <button
+                  type="button"
+                  class="text-[10px] font-medium uppercase text-brand-500 hover:text-brand-600"
+                  onclick={toggleAddAgentLock}
+                  data-testid="mesh-add-agent-unlock-toggle"
+                >
+                  {addAgentDraft.isLocked ? 'Unlock/Edit' : 'Lock'}
+                </button>
+              {/if}
+            </div>
             <select
-              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme} {addAgentDraft?.isLocked ? 'opacity-60 cursor-not-allowed' : ''}"
               style:background-image={chevronSvg}
               style:background-repeat="no-repeat"
               style:background-position="right 6px center"
-            value={addAgentDraft?.tool ?? 'codex'}
-            onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
-            data-testid="mesh-add-agent-tool-select"
-          >
-            <option value="claude">Claude</option>
-            <option value="codex">Codex</option>
-            <option value="gemini">Gemini</option>
-          </select>
-        </div>
+              value={addAgentDraft?.tool ?? 'codex'}
+              onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
+              disabled={addAgentDraft?.submitting || addAgentDraft?.isLocked}
+              data-testid="mesh-add-agent-tool-select"
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">MODEL</p>
             <select
-              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme} {addAgentDraft?.isLocked ? 'opacity-60 cursor-not-allowed' : ''}"
               style:background-image={chevronSvg}
               style:background-repeat="no-repeat"
               style:background-position="right 6px center"
-            value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
-            onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
-            data-testid="mesh-add-agent-model-select"
-          >
-            {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
-              <option value={model}>{model}</option>
-            {/each}
-          </select>
-        </div>
+              value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
+              onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
+              disabled={addAgentDraft?.submitting || addAgentDraft?.isLocked}
+              data-testid="mesh-add-agent-model-select"
+            >
+              {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </select>
+          </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">PROJECT</p>
@@ -1139,26 +1468,29 @@
               style:background-image={chevronSvg}
               style:background-repeat="no-repeat"
               style:background-position="right 6px center"
-            value={addAgentDraft?.projectId ?? ''}
-            onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
-            data-testid="mesh-add-agent-project-select"
-          >
-            <option value="">Select project</option>
-            {#each projectOptions as project}
-              <option value={project.id}>{project.label}</option>
-            {/each}
-          </select>
-        </div>
+              value={addAgentDraft?.projectId ?? ''}
+              onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
+              disabled={addAgentDraft?.submitting}
+              data-testid="mesh-add-agent-project-select"
+            >
+              <option value="">Select project</option>
+              {#each projectOptions as project}
+                <option value={project.id}>{project.label}</option>
+              {/each}
+            </select>
+          </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">DESCRIPTION</p>
             <input
-              class="h-9 w-full rounded-[12px] border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
+              class="h-9 w-full rounded-[12px] border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone} {addAgentDraft?.isLocked ? 'opacity-60 cursor-not-allowed' : ''}"
               placeholder="Description (optional)"
               value={addAgentDraft?.description ?? ''}
               oninput={(event) => updateAddAgentField('description', event.currentTarget.value)}
-            data-testid="mesh-add-agent-description-input"
-          />
+              disabled={addAgentDraft?.submitting || addAgentDraft?.isLocked}
+              data-testid="mesh-add-agent-description-input"
+            />
+          </div>
         </div>
 
         {#if addAgentDraft?.error}
@@ -1183,6 +1515,127 @@
             data-testid="mesh-add-agent-submit"
           >
             {addAgentDraft?.submitting ? 'Adding...' : 'Add Agent'}
+          </button>
+        </div>
+      </section>
+    {/snippet}
+  </SlideOver>
+
+  <SlideOver
+    open={Boolean(captureRoleDraft)}
+    title="Capture as Role"
+    width={360}
+    {dark}
+    onClose={closeCaptureRoleDialog}
+  >
+    {#snippet children()}
+      <section class="space-y-4" data-testid="mesh-capture-role-form">
+        <p class="text-sm {t.textMuted}">
+          Save the selected runtime member as a reusable catalog role.
+        </p>
+
+        <div class="space-y-1.5">
+          <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">NEW ROLE NAME</p>
+          <input
+            class="h-10 w-full rounded-[12px] border px-2.5 text-base transition-colors focus:outline-none {fieldTone}"
+            value={captureRoleDraft?.name ?? ''}
+            oninput={(event) => updateCaptureRoleName(event.currentTarget.value)}
+            disabled={captureRoleDraft?.submitting}
+            data-testid="mesh-capture-role-name-input"
+          />
+        </div>
+
+        <div class="space-y-1.5">
+          <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">ROLE ID</p>
+          <input
+            class="h-9 w-full rounded-[12px] border px-2.5 text-sm transition-colors focus:outline-none {fieldTone}"
+            value={captureRoleDraft?.roleId ?? ''}
+            oninput={(event) => updateCaptureRoleId(event.currentTarget.value)}
+            disabled={captureRoleDraft?.submitting}
+            data-testid="mesh-capture-role-id-input"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <label class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">TOOL</p>
+            <input
+              class="h-9 w-full rounded-[12px] border px-2.5 text-sm transition-colors focus:outline-none {fieldTone}"
+              value={captureRoleDraft?.tool ?? ''}
+              readonly
+              disabled
+              data-testid="mesh-capture-role-tool-input"
+            />
+          </label>
+          <label class="space-y-1.5">
+            <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">MODEL</p>
+            <input
+              class="h-9 w-full rounded-[12px] border px-2.5 text-sm transition-colors focus:outline-none {fieldTone}"
+              value={captureRoleDraft?.model ?? ''}
+              readonly
+              disabled
+              data-testid="mesh-capture-role-model-input"
+            />
+          </label>
+        </div>
+
+        <div class="space-y-1.5">
+          <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">CURRENT DESCRIPTION</p>
+          <textarea
+            class="w-full rounded-[12px] border px-2.5 py-2 text-sm transition-colors focus:outline-none {fieldTone}"
+            rows="3"
+            value={captureRoleDraft?.description ?? ''}
+            readonly
+            disabled
+            data-testid="mesh-capture-role-description-input"
+          ></textarea>
+        </div>
+
+        <div class="space-y-1.5 rounded-[12px] border p-2.5 {t.keyline}">
+          <label class="flex items-center gap-2 text-xs {t.textSecondary}">
+            <input
+              type="checkbox"
+              checked={Boolean(captureRoleDraft?.includeInstructions)}
+              onchange={() => toggleCaptureRoleFlag('includeInstructions')}
+              disabled={captureRoleDraft?.submitting}
+              data-testid="mesh-capture-role-include-instructions"
+            />
+            Include current instructions
+          </label>
+          <label class="flex items-center gap-2 text-xs {t.textSecondary}">
+            <input
+              type="checkbox"
+              checked={Boolean(captureRoleDraft?.includeBehavioralContract)}
+              onchange={() => toggleCaptureRoleFlag('includeBehavioralContract')}
+              disabled={captureRoleDraft?.submitting}
+              data-testid="mesh-capture-role-include-behavioral-contract"
+            />
+            Include behavioral contract
+          </label>
+        </div>
+
+        {#if captureRoleDraft?.error}
+          <p class="text-xs text-danger-500" data-testid="mesh-capture-role-error">{captureRoleDraft.error}</p>
+        {/if}
+
+        <div class="flex items-center justify-end gap-2 border-t pt-3 {t.keyline}">
+          <button
+            class="rounded-[12px] border px-3 py-1.5 text-xs {actionSecondary}"
+            type="button"
+            onclick={closeCaptureRoleDialog}
+            disabled={captureRoleDraft?.submitting}
+            data-testid="mesh-capture-role-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            class="rounded-[12px] bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            onclick={submitCaptureRole}
+            disabled={!canSaveCapturedRole}
+            data-testid="mesh-capture-role-save"
+          >
+            {captureRoleDraft?.submitting ? 'Saving...' : 'Save to Catalog'}
           </button>
         </div>
       </section>

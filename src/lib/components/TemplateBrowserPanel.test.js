@@ -5,8 +5,12 @@ import '@testing-library/jest-dom/vitest'
 vi.mock('../ipc.js', () => ({
   listRoleTemplates: vi.fn(),
   getRoleTemplate: vi.fn(),
+  upsertRoleTemplate: vi.fn(),
+  deleteRoleTemplate: vi.fn(),
   listTeamPresets: vi.fn(),
   getTeamPreset: vi.fn(),
+  upsertTeamPreset: vi.fn(),
+  deleteTeamPreset: vi.fn(),
   getTemplateStorageStatus: vi.fn(),
   getTemplateHistory: vi.fn(),
   getTemplateDiff: vi.fn(),
@@ -16,8 +20,12 @@ vi.mock('../ipc.js', () => ({
 const {
   listRoleTemplates,
   getRoleTemplate,
+  upsertRoleTemplate,
+  deleteRoleTemplate,
   listTeamPresets,
   getTeamPreset,
+  upsertTeamPreset,
+  deleteTeamPreset,
   getTemplateStorageStatus,
   getTemplateHistory,
   getTemplateDiff,
@@ -38,6 +46,8 @@ describe('TemplateBrowserPanel', () => {
         cliTool: 'claude',
         model: 'claude-opus-4-6',
         capabilities: ['planning', 'coordination'],
+        builtIn: true,
+        readOnly: true,
       },
       {
         roleId: 'custom-doc-writer',
@@ -46,6 +56,8 @@ describe('TemplateBrowserPanel', () => {
         cliTool: 'gemini',
         model: 'gemini-2.5-pro',
         capabilities: ['documentation', 'research'],
+        builtIn: false,
+        readOnly: false,
       },
     ])
 
@@ -64,15 +76,46 @@ describe('TemplateBrowserPanel', () => {
         roleCount: 1,
         agentCount: 2,
         tools: ['claude'],
+        builtIn: true,
+      },
+      {
+        presetId: 'backend-sprint-team',
+        name: 'Backend Sprint Team',
+        description: 'Lead plus two backend agents',
+        leadRoleId: 'claude-orchestrator',
+        roleCount: 1,
+        agentCount: 2,
+        tools: ['claude', 'codex'],
+        builtIn: false,
       },
     ])
 
-    getTeamPreset.mockImplementation(async (id) => ({
-      presetId: id,
-      name: 'Review Team',
-      description: 'Preset details',
-      agentSlots: [],
-    }))
+    getTeamPreset.mockImplementation(async (id) => {
+      if (id === 'backend-sprint-team') {
+        return {
+          presetId: id,
+          name: 'Backend Sprint Team',
+          description: 'Preset details',
+          leadRoleId: 'claude-orchestrator',
+          agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
+          defaults: {
+            teamNamePattern: '{project}-team',
+            tmuxLayout: 'tiled',
+          },
+        }
+      }
+      return {
+        presetId: id,
+        name: 'Review Team',
+        description: 'Preset details',
+        leadRoleId: 'claude-orchestrator',
+        agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
+        defaults: {
+          teamNamePattern: '{project}-team',
+          tmuxLayout: 'tiled',
+        },
+      }
+    })
 
     getTemplateStorageStatus.mockResolvedValue({
       mode: 'git',
@@ -91,6 +134,24 @@ describe('TemplateBrowserPanel', () => {
       stats: { filesChanged: 0, insertions: 0, deletions: 0 },
     })
     revertTemplateVersion.mockResolvedValue()
+    upsertRoleTemplate.mockResolvedValue({
+      roleId: 'custom-doc-writer',
+      name: 'Documentation Writer',
+      kind: 'agent',
+      builtIn: false,
+      readOnly: false,
+    })
+    deleteRoleTemplate.mockResolvedValue({
+      roleId: 'custom-doc-writer',
+      deleted: true,
+    })
+    upsertTeamPreset.mockResolvedValue({
+      presetId: 'backend-sprint-team',
+    })
+    deleteTeamPreset.mockResolvedValue({
+      presetId: 'backend-sprint-team',
+      deleted: true,
+    })
   })
 
   it('renders in SlideOver when open=true and hidden when open=false', async () => {
@@ -209,5 +270,263 @@ describe('TemplateBrowserPanel', () => {
       expect(screen.getByTestId('slideover-panel')).toBeInTheDocument()
     })
     expect(screen.getByTestId('slideover-panel')).toHaveStyle({ width: '420px' })
+  })
+
+  it('shows preset CRUD actions only for custom presets', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-list')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('template-preset-edit-backend-sprint-team')).toBeInTheDocument()
+    expect(screen.getByTestId('template-preset-duplicate-backend-sprint-team')).toBeInTheDocument()
+    expect(screen.getByTestId('template-preset-delete-backend-sprint-team')).toBeInTheDocument()
+
+    expect(screen.queryByTestId('template-preset-edit-review-team')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('template-preset-duplicate-review-team')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('template-preset-delete-review-team')).not.toBeInTheDocument()
+  })
+
+  it('opens TeamCustomizerPanel from the + Create preset action', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-create')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('template-preset-create'))
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
+    })
+  })
+
+  it('duplicate preset opens editor with copy name', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-duplicate-backend-sprint-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-duplicate-backend-sprint-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-name-input')).toHaveValue('Copy of Backend Sprint Team')
+    })
+  })
+
+  it('delete preset requires confirm and refreshes list after delete', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-delete-backend-sprint-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-delete-backend-sprint-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(deleteTeamPreset).toHaveBeenCalledWith('backend-sprint-team')
+      expect(listTeamPresets.mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('edit preset save calls upsert and refreshes presets', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-sprint-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-sprint-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+      expect(listTeamPresets.mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('shows create/edit/delete actions only for custom roles', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-template-card-claude-orchestrator')).toBeInTheDocument()
+      expect(screen.getByTestId('role-template-card-custom-doc-writer')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('role-create-button')).toBeInTheDocument()
+    expect(screen.getByTestId('role-inspect-claude-orchestrator')).toBeInTheDocument()
+    expect(screen.getByTestId('role-use-claude-orchestrator')).toBeInTheDocument()
+    expect(screen.queryByTestId('role-edit-claude-orchestrator')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('role-delete-claude-orchestrator')).not.toBeInTheDocument()
+
+    expect(screen.getByTestId('role-inspect-custom-doc-writer')).toBeInTheDocument()
+    expect(screen.getByTestId('role-use-custom-doc-writer')).toBeInTheDocument()
+    expect(screen.getByTestId('role-edit-custom-doc-writer')).toBeInTheDocument()
+    expect(screen.getByTestId('role-delete-custom-doc-writer')).toBeInTheDocument()
+  })
+
+  it('opens role editor from create and edit actions and saves through upsertRoleTemplate', async () => {
+    getRoleTemplate.mockImplementation(async (id) => {
+      if (id === 'frontend-dev') {
+        return {
+          roleId: 'frontend-dev',
+          name: 'Frontend Developer',
+          tool: 'codex',
+          model: 'gpt-5.3-codex',
+          instructions: 'Frontend role details',
+          capabilities: ['ui'],
+        }
+      }
+      return {
+        roleId: id,
+        name: 'Claude Orchestrator',
+        instructions: 'Detailed role instructions',
+      }
+    })
+
+    listRoleTemplates
+      .mockResolvedValueOnce([
+        {
+          roleId: 'claude-orchestrator',
+          name: 'Claude Orchestrator',
+          kind: 'lead',
+          cliTool: 'claude',
+          model: 'claude-opus-4-6',
+          capabilities: ['planning'],
+          builtIn: true,
+          readOnly: true,
+        },
+      ])
+      .mockResolvedValue([
+        {
+          roleId: 'claude-orchestrator',
+          name: 'Claude Orchestrator',
+          kind: 'lead',
+          cliTool: 'claude',
+          model: 'claude-opus-4-6',
+          capabilities: ['planning'],
+          builtIn: true,
+          readOnly: true,
+        },
+        {
+          roleId: 'frontend-dev',
+          name: 'Frontend Developer',
+          kind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.3-codex',
+          capabilities: ['ui'],
+          builtIn: false,
+          readOnly: false,
+        },
+      ])
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-create-button')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-create-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('role-editor-container')).toBeInTheDocument()
+    })
+
+    await fireEvent.input(screen.getByTestId('role-editor-name-input'), {
+      target: { value: 'Frontend Developer' },
+    })
+    await fireEvent.click(screen.getByTestId('role-editor-save'))
+
+    await waitFor(() => {
+      expect(upsertRoleTemplate).toHaveBeenCalled()
+    })
+    expect(listRoleTemplates.mock.calls.length).toBeGreaterThanOrEqual(2)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-edit-frontend-dev')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('role-edit-frontend-dev'))
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Frontend Developer')).toBeInTheDocument()
+    })
+  })
+
+  it('requires delete confirmation before calling deleteRoleTemplate and refreshes roles', async () => {
+    listRoleTemplates
+      .mockResolvedValueOnce([
+        {
+          roleId: 'custom-doc-writer',
+          name: 'Documentation Writer',
+          kind: 'agent',
+          cliTool: 'gemini',
+          model: 'gemini-2.5-pro',
+          capabilities: ['documentation'],
+          builtIn: false,
+          readOnly: false,
+        },
+      ])
+      .mockResolvedValue([])
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-delete-custom-doc-writer')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-delete-custom-doc-writer'))
+    expect(deleteRoleTemplate).not.toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(deleteRoleTemplate).toHaveBeenCalledWith('custom-doc-writer')
+    })
+    expect(listRoleTemplates.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows empty custom roles message when no custom roles exist', async () => {
+    listRoleTemplates.mockResolvedValue([
+      {
+        roleId: 'claude-orchestrator',
+        name: 'Claude Orchestrator',
+        kind: 'lead',
+        cliTool: 'claude',
+        model: 'claude-opus-4-6',
+        capabilities: ['planning'],
+        builtIn: true,
+        readOnly: true,
+      },
+    ])
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-custom-empty-state')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText('No custom roles yet. Create one or capture from a live team.')
+    ).toBeInTheDocument()
+  })
+
+  it('renders tool and capability badges on role cards', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-tool-badge-custom-doc-writer')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('role-model-badge-custom-doc-writer')).toBeInTheDocument()
+    expect(screen.getByTestId('role-capability-custom-doc-writer-documentation')).toBeInTheDocument()
   })
 })

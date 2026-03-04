@@ -53,6 +53,7 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-focus')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
   })
 
   it('calls action callbacks', async () => {
@@ -61,6 +62,7 @@ describe('MeshNodeDetail', () => {
     const onResume = vi.fn()
     const onStop = vi.fn()
     const onFocusPane = vi.fn()
+    const onCapture = vi.fn()
     const onClose = vi.fn()
 
     const view = renderDetail({
@@ -90,14 +92,17 @@ describe('MeshNodeDetail', () => {
       onResume,
       onStop,
       onFocusPane,
+      onCapture,
     })
 
     await fireEvent.click(screen.getByTestId('mesh-node-detail-resume'))
     await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
     await fireEvent.click(screen.getByTestId('mesh-node-detail-focus'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-capture'))
     expect(onResume).toHaveBeenCalledTimes(1)
     expect(onStop).toHaveBeenCalledTimes(1)
     expect(onFocusPane).toHaveBeenCalledTimes(1)
+    expect(onCapture).toHaveBeenCalledTimes(1)
   })
 
   it('shows description when provided and hides when empty', () => {

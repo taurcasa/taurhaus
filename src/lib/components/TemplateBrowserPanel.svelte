@@ -1,14 +1,21 @@
 <script>
   import {
+    deleteTeamPreset,
+    deleteRoleTemplate,
     getRoleTemplate,
     getTeamPreset,
     listRoleTemplates,
     listTeamPresets,
+    upsertTeamPreset,
+    upsertRoleTemplate,
   } from '../ipc.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { themeTokens } from '../themeTokens.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
   import PresetCard from './PresetCard.svelte'
+  import RoleEditor from './RoleEditor.svelte'
   import SlideOver from './SlideOver.svelte'
+  import TeamCustomizerPanel from './TeamCustomizerPanel.svelte'
   import TemplateHistoryPanel from './TemplateHistoryPanel.svelte'
 
   let {
@@ -53,6 +60,16 @@
   let selectedPreset = $state(null)
   let historyTemplateId = $state('')
   let historyTemplateKind = $state('')
+  let roleEditorOpen = $state(false)
+  let roleEditorRole = $state(null)
+  let deleteRoleId = $state('')
+  let deleteRoleName = $state('')
+  let presetEditorOpen = $state(false)
+  let presetEditorMode = $state('create')
+  let presetEditorDraft = $state(null)
+  let presetEditorTeamConfig = $state(null)
+  let deletePresetId = $state('')
+  let deletePresetName = $state('')
 
   const filteredRoleTemplates = $derived.by(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -65,6 +82,8 @@
       )
     })
   })
+
+  const hasCustomRoles = $derived.by(() => roleTemplates.some((role) => !role.builtIn))
 
   const filteredTeamPresets = $derived.by(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -86,6 +105,11 @@
       cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'claude').toLowerCase(),
       model: value?.model ?? '',
       capabilities: Array.isArray(value?.capabilities) ? value.capabilities : [],
+      instructions: value?.instructions ?? '',
+      behavioralContract:
+        value?.behavioralContract ?? value?.behavioral_contract ?? [],
+      builtIn: Boolean(value?.builtIn ?? value?.built_in),
+      readOnly: Boolean(value?.readOnly ?? value?.read_only),
     }
   }
 
@@ -100,6 +124,7 @@
       tools: Array.isArray(value?.tools) ? value.tools : [],
       capabilities: Array.isArray(value?.capabilities) ? value.capabilities : [],
       builtIn: Boolean(value?.builtIn ?? value?.built_in),
+      readOnly: Boolean(value?.readOnly ?? value?.read_only),
     }
   }
 
@@ -110,24 +135,361 @@
     detailLoading = false
   }
 
+  function resetRoleEditor() {
+    roleEditorOpen = false
+    roleEditorRole = null
+  }
+
   function setTab(tab) {
     activeTab = tab
     resetDetail()
+  }
+
+  function isCustomRole(role) {
+    return !Boolean(role?.builtIn)
+  }
+
+  function isCustomPreset(preset) {
+    return !Boolean(preset?.builtIn || preset?.readOnly)
+  }
+
+  function toSlug(value) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  function ensureUniquePresetId(baseId, currentId = '') {
+    const normalizedBase = toSlug(baseId) || 'custom-preset'
+    const existing = new Set((teamPresets ?? []).map((preset) => preset?.presetId).filter(Boolean))
+    existing.delete(currentId)
+
+    if (!existing.has(normalizedBase)) {
+      return normalizedBase
+    }
+
+    let idx = 2
+    while (existing.has(`${normalizedBase}-${idx}`)) {
+      idx += 1
+    }
+    return `${normalizedBase}-${idx}`
+  }
+
+  function resolveRoleById(roleId) {
+    return roleTemplates.find((role) => role.roleId === roleId) ?? null
+  }
+
+  function defaultLeadRoleId() {
+    return (
+      roleTemplates.find((role) => role.kind === 'lead')?.roleId ??
+      roleTemplates[0]?.roleId ??
+      'claude-orchestrator'
+    )
+  }
+
+  function defaultAgentRoleId() {
+    return (
+      roleTemplates.find((role) => role.kind === 'agent')?.roleId ??
+      roleTemplates.find((role) => role.roleId !== defaultLeadRoleId())?.roleId ??
+      roleTemplates[0]?.roleId ??
+      'codex-developer'
+    )
+  }
+
+  function normalizePresetDraft(source = {}) {
+    const leadRoleId = source?.leadRoleId ?? source?.lead_role_id ?? defaultLeadRoleId()
+    const slots = Array.isArray(source?.agentSlots ?? source?.agent_slots)
+      ? (source?.agentSlots ?? source?.agent_slots)
+      : []
+    const agentSlots = slots.length > 0
+      ? slots.map((slot) => ({
+        roleId: slot?.roleId ?? slot?.role_id ?? defaultAgentRoleId(),
+        count: Math.max(1, Number(slot?.count ?? 1)),
+        projectBinding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
+        projectId: slot?.projectId ?? slot?.project_id ?? null,
+      }))
+      : [{
+        roleId: defaultAgentRoleId(),
+        count: 1,
+        projectBinding: 'lead_project',
+        projectId: null,
+      }]
+
+    return {
+      presetId: source?.presetId ?? source?.preset_id ?? ensureUniquePresetId('custom-preset'),
+      name: source?.name ?? 'New Preset',
+      description: source?.description ?? 'Custom team preset',
+      version: source?.version ?? '1.0.0',
+      leadRoleId,
+      agentSlots,
+      defaults: {
+        teamNamePattern: source?.defaults?.teamNamePattern ?? source?.defaults?.team_name_pattern ?? '{project}-team',
+        tmuxLayout: source?.defaults?.tmuxLayout ?? source?.defaults?.tmux_layout ?? 'tiled',
+      },
+    }
+  }
+
+  function presetDraftToTeamConfig(presetDraft) {
+    const draft = normalizePresetDraft(presetDraft)
+    const leadRole = resolveRoleById(draft.leadRoleId)
+    const agentRoleCounts = new Map()
+    const agents = []
+    let nextAgent = 1
+
+    for (const slot of draft.agentSlots) {
+      const role = resolveRoleById(slot.roleId)
+      for (let idx = 0; idx < slot.count; idx += 1) {
+        const previous = agentRoleCounts.get(slot.roleId) ?? 0
+        agentRoleCounts.set(slot.roleId, previous + 1)
+        const roleSequence = agentRoleCounts.get(slot.roleId)
+        const roleName = role?.name || 'agent'
+        agents.push({
+          id: `agent-${nextAgent}`,
+          name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
+          tool: role?.cliTool ?? 'codex',
+          model: role?.model ?? 'gpt-5.3-codex',
+          projectId: '',
+          description: slot.roleId,
+        })
+        nextAgent += 1
+      }
+    }
+
+    return {
+      teamName: draft.name,
+      description: draft.description,
+      presetId: draft.presetId,
+      lead: {
+        id: 'lead',
+        name: leadRole?.name || 'team-lead',
+        tool: leadRole?.cliTool ?? 'claude',
+        model: leadRole?.model ?? 'claude-opus-4-6',
+        projectId: '',
+        description: draft.leadRoleId,
+      },
+      agents,
+    }
+  }
+
+  function capabilityTestId(roleId, capability) {
+    const normalized = String(capability ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return `role-capability-${roleId}-${normalized}`
+  }
+
+  async function refreshRoles() {
+    const roles = await listRoleTemplates()
+    roleTemplates = (roles ?? []).map(normalizeRoleTemplate)
+  }
+
+  async function refreshPresets() {
+    const presets = await listTeamPresets()
+    teamPresets = (presets ?? []).map(normalizeTeamPreset)
   }
 
   async function loadCatalog() {
     loading = true
     errorMessage = ''
     try {
-      const [roles, presets] = await Promise.all([listRoleTemplates(), listTeamPresets()])
-      roleTemplates = (roles ?? []).map(normalizeRoleTemplate)
-      teamPresets = (presets ?? []).map(normalizeTeamPreset)
+      await Promise.all([refreshRoles(), refreshPresets()])
     } catch (error) {
       roleTemplates = []
       teamPresets = []
       errorMessage = error?.message || 'Failed to load template catalog.'
     } finally {
       loading = false
+    }
+  }
+
+  function openCreateRoleEditor() {
+    resetDetail()
+    roleEditorRole = null
+    roleEditorOpen = true
+  }
+
+  async function openEditRoleEditor(role) {
+    resetDetail()
+    errorMessage = ''
+    try {
+      const detail = await getRoleTemplate(role.roleId)
+      const merged = normalizeRoleTemplate({ ...role, ...detail })
+      roleEditorRole = {
+        ...merged,
+        tool: merged.cliTool,
+      }
+    } catch {
+      roleEditorRole = {
+        ...role,
+        tool: role.cliTool,
+      }
+    }
+    roleEditorOpen = true
+  }
+
+  async function handleRoleSave(roleData) {
+    errorMessage = ''
+    try {
+      await upsertRoleTemplate(roleData)
+      resetRoleEditor()
+      await refreshRoles()
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to save role template.'
+    }
+  }
+
+  function requestRoleDelete(role) {
+    deleteRoleId = role.roleId
+    deleteRoleName = role.name
+  }
+
+  function cancelRoleDelete() {
+    deleteRoleId = ''
+    deleteRoleName = ''
+  }
+
+  async function confirmRoleDelete() {
+    if (!deleteRoleId) return
+
+    const targetRoleId = deleteRoleId
+    cancelRoleDelete()
+    errorMessage = ''
+    try {
+      await deleteRoleTemplate(targetRoleId)
+      if (selectedRole?.roleId === targetRoleId) {
+        resetDetail()
+      }
+      await refreshRoles()
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to delete role template.'
+    }
+  }
+
+  function closePresetEditor() {
+    presetEditorOpen = false
+    presetEditorMode = 'create'
+    presetEditorDraft = null
+    presetEditorTeamConfig = null
+  }
+
+  function openCreatePresetEditor() {
+    resetDetail()
+    const draft = normalizePresetDraft({
+      presetId: ensureUniquePresetId('custom-preset'),
+      name: 'New Preset',
+      description: 'Custom team preset',
+      leadRoleId: defaultLeadRoleId(),
+      agentSlots: [{
+        roleId: defaultAgentRoleId(),
+        count: 1,
+        projectBinding: 'lead_project',
+        projectId: null,
+      }],
+    })
+    presetEditorMode = 'create'
+    presetEditorDraft = draft
+    presetEditorTeamConfig = presetDraftToTeamConfig(draft)
+    presetEditorOpen = true
+  }
+
+  async function openPresetEditorForMutation(preset, mode) {
+    if (!preset?.presetId) return
+
+    resetDetail()
+    errorMessage = ''
+    let detail = null
+    try {
+      detail = await getTeamPreset(preset.presetId)
+    } catch {
+      detail = null
+    }
+
+    const merged = normalizePresetDraft({
+      ...preset,
+      ...(detail ?? {}),
+    })
+    if (mode === 'duplicate') {
+      merged.name = `Copy of ${merged.name}`
+      merged.presetId = ensureUniquePresetId(`copy-of-${merged.presetId || merged.name}`)
+    }
+    if (mode === 'create') {
+      merged.presetId = ensureUniquePresetId(merged.presetId || merged.name)
+    }
+
+    presetEditorMode = mode
+    presetEditorDraft = merged
+    presetEditorTeamConfig = presetDraftToTeamConfig(merged)
+    presetEditorOpen = true
+  }
+
+  async function savePresetFromCustomizer(payload) {
+    if (!presetEditorDraft) return
+
+    const name = String(payload?.teamName ?? presetEditorDraft.name ?? '').trim() || 'New Preset'
+    const description = String(payload?.description ?? presetEditorDraft.description ?? '').trim() || 'Custom team preset'
+    const currentId = presetEditorMode === 'edit' ? presetEditorDraft.presetId : ''
+    const desiredId = presetEditorMode === 'edit'
+      ? (presetEditorDraft.presetId || ensureUniquePresetId(name))
+      : ensureUniquePresetId(name, currentId)
+
+    const draft = normalizePresetDraft({
+      ...presetEditorDraft,
+      presetId: desiredId,
+      name,
+      description,
+    })
+
+    errorMessage = ''
+    try {
+      await upsertTeamPreset({
+        schema: {
+          kind: 'team_preset',
+          version: 1,
+        },
+        presetId: draft.presetId,
+        name: draft.name,
+        description: draft.description,
+        version: draft.version,
+        leadRoleId: draft.leadRoleId,
+        agentSlots: draft.agentSlots,
+        defaults: draft.defaults,
+      })
+      closePresetEditor()
+      await refreshPresets()
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to save team preset.'
+    }
+  }
+
+  function requestPresetDelete(preset) {
+    if (!preset?.presetId || !isCustomPreset(preset)) return
+    deletePresetId = preset.presetId
+    deletePresetName = preset.name
+  }
+
+  function cancelPresetDelete() {
+    deletePresetId = ''
+    deletePresetName = ''
+  }
+
+  async function confirmPresetDelete() {
+    if (!deletePresetId) return
+
+    const targetPresetId = deletePresetId
+    cancelPresetDelete()
+    errorMessage = ''
+    try {
+      await deleteTeamPreset(targetPresetId)
+      if (selectedPreset?.presetId === targetPresetId) {
+        resetDetail()
+      }
+      await refreshPresets()
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to delete team preset.'
     }
   }
 
@@ -278,6 +640,23 @@
             No role templates match the current filter.
           </p>
         {:else}
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-medium {t.textSecondary}">Role Templates</p>
+            <button
+              class="rounded border px-2 py-1 text-[11px] font-medium {actionSecondary}"
+              onclick={openCreateRoleEditor}
+              data-testid="role-create-button"
+            >
+              + Create
+            </button>
+          </div>
+
+          {#if !hasCustomRoles}
+            <p class="rounded-md border px-2 py-2 text-xs {t.textMuted} {cardTone}" data-testid="role-custom-empty-state">
+              No custom roles yet. Create one or capture from a live team.
+            </p>
+          {/if}
+
           <div class="space-y-2" data-testid="template-role-list">
             {#each filteredRoleTemplates as role}
               <article class="rounded-md border p-2 transition-colors {cardTone}" data-testid={`role-template-card-${role.roleId}`}>
@@ -289,22 +668,43 @@
                   <span class="rounded-full px-1.5 py-0.5 text-[10px] {roleKindBadgeTone(role.kind)}">{role.kind}</span>
                 </div>
 
-                <div class="mt-1 flex items-center gap-1 text-[11px] {t.textSecondary}">
-                  <svg class="h-3 w-3 shrink-0" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={getToolIcon(role.cliTool).path}></path>
-                  </svg>
-                  <span>{getToolName(role.cliTool)}</span>
-                  <span class={t.textMuted}>|</span>
-                  <span>{role.model}</span>
+                <div class="mt-1 flex flex-wrap items-center gap-1 text-[11px] {t.textSecondary}">
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] {capabilityChipTone()}"
+                    data-testid={`role-tool-badge-${role.roleId}`}
+                  >
+                    <svg class="h-3 w-3 shrink-0" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                      <path d={getToolIcon(role.cliTool).path}></path>
+                    </svg>
+                    <span>{getToolName(role.cliTool)}</span>
+                  </span>
+                  <span
+                    class="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] {capabilityChipTone()}"
+                    data-testid={`role-model-badge-${role.roleId}`}
+                  >
+                    {role.model || 'unspecified'}
+                  </span>
                 </div>
 
                 <div class="mt-1 flex flex-wrap gap-1">
                   {#each role.capabilities as capability}
-                    <span class="rounded-full px-1.5 py-0.5 text-[10px] {capabilityChipTone()}">{capability}</span>
+                    <span
+                      class="rounded-full px-1.5 py-0.5 text-[10px] {capabilityChipTone()}"
+                      data-testid={capabilityTestId(role.roleId, capability)}
+                    >
+                      {capability}
+                    </span>
                   {/each}
                 </div>
 
-                <div class="mt-2 flex justify-end">
+                <div class="mt-2 flex flex-wrap justify-end gap-1">
+                  <button
+                    class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                    onclick={() => onSelectRole(role)}
+                    data-testid={`role-use-${role.roleId}`}
+                  >
+                    Use
+                  </button>
                   <button
                     class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
                     onclick={() => {
@@ -314,6 +714,24 @@
                   >
                     Inspect
                   </button>
+                  {#if isCustomRole(role)}
+                    <button
+                      class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                      onclick={() => {
+                        void openEditRoleEditor(role)
+                      }}
+                      data-testid={`role-edit-${role.roleId}`}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      class="rounded border px-1.5 py-0.5 text-[10px] border-danger-400/50 text-danger-500 hover:bg-danger-500/10"
+                      onclick={() => requestRoleDelete(role)}
+                      data-testid={`role-delete-${role.roleId}`}
+                    >
+                      Delete
+                    </button>
+                  {/if}
                 </div>
               </article>
             {/each}
@@ -351,31 +769,92 @@
               </button>
             {/if}
           </section>
-        {:else if filteredTeamPresets.length === 0}
-          <p class="rounded-md border px-2 py-2 text-xs {t.textMuted} {cardTone}">
-            No team presets match the current filter.
-          </p>
         {:else}
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="template-preset-list">
-            {#each filteredTeamPresets as preset}
-              <PresetCard
-                dark={dark}
-                name={preset.name}
-                description={preset.description}
-                leadCount={Math.max(1, Number(preset.roleCount ?? 1) - Number(preset.agentCount ?? 0))}
-                agentCount={preset.agentCount}
-                tools={preset.tools}
-                builtIn={preset.builtIn}
-                onSelect={() => {
-                  onSelectPreset(preset)
-                }}
-                onInspect={() => {
-                  void inspectPreset(preset)
-                }}
-                testId={`template-browser-preset-${preset.presetId}`}
-              />
-            {/each}
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-medium {t.textSecondary}">Team Presets</p>
+            <button
+              class="rounded border px-2 py-1 text-[11px] font-medium {actionSecondary}"
+              onclick={openCreatePresetEditor}
+              data-testid="template-preset-create"
+            >
+              + Create
+            </button>
           </div>
+
+          {#if filteredTeamPresets.length === 0}
+            <p class="rounded-md border px-2 py-2 text-xs {t.textMuted} {cardTone}">
+              No team presets match the current filter.
+            </p>
+          {:else}
+            <div class="space-y-2" data-testid="template-preset-list">
+              {#each filteredTeamPresets as preset}
+                <article class="space-y-1.5 rounded-md border p-2 transition-colors {cardTone}">
+                  <PresetCard
+                    dark={dark}
+                    name={preset.name}
+                    description={preset.description}
+                    leadCount={Math.max(1, Number(preset.roleCount ?? 1) - Number(preset.agentCount ?? 0))}
+                    agentCount={preset.agentCount}
+                    tools={preset.tools}
+                    builtIn={preset.builtIn}
+                    onSelect={() => {
+                      onSelectPreset(preset)
+                    }}
+                    onInspect={() => {
+                      void inspectPreset(preset)
+                    }}
+                    testId={`template-browser-preset-${preset.presetId}`}
+                  />
+
+                  <div class="flex flex-wrap justify-end gap-1">
+                    <button
+                      class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                      onclick={() => onSelectPreset(preset)}
+                      data-testid={`template-preset-use-${preset.presetId}`}
+                    >
+                      Use
+                    </button>
+                    <button
+                      class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                      onclick={() => {
+                        void inspectPreset(preset)
+                      }}
+                      data-testid={`template-preset-inspect-${preset.presetId}`}
+                    >
+                      Inspect
+                    </button>
+                    {#if isCustomPreset(preset)}
+                      <button
+                        class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                        onclick={() => {
+                          void openPresetEditorForMutation(preset, 'edit')
+                        }}
+                        data-testid={`template-preset-edit-${preset.presetId}`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                        onclick={() => {
+                          void openPresetEditorForMutation(preset, 'duplicate')
+                        }}
+                        data-testid={`template-preset-duplicate-${preset.presetId}`}
+                      >
+                        Duplicate
+                      </button>
+                      <button
+                        class="rounded border px-1.5 py-0.5 text-[10px] border-danger-400/50 text-danger-500 hover:bg-danger-500/10"
+                        onclick={() => requestPresetDelete(preset)}
+                        data-testid={`template-preset-delete-${preset.presetId}`}
+                      >
+                        Delete
+                      </button>
+                    {/if}
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
         {/if}
       {:else}
         <TemplateHistoryPanel
@@ -387,3 +866,51 @@
     </section>
   {/snippet}
 </SlideOver>
+
+<RoleEditor
+  open={roleEditorOpen}
+  {dark}
+  role={roleEditorRole}
+  onSave={handleRoleSave}
+  onCancel={resetRoleEditor}
+  onDelete={(roleId) => {
+    const role = roleTemplates.find((entry) => entry.roleId === roleId)
+    if (role) requestRoleDelete(role)
+    resetRoleEditor()
+  }}
+/>
+
+<TeamCustomizerPanel
+  open={presetEditorOpen}
+  {dark}
+  teamConfig={presetEditorTeamConfig}
+  onClose={closePresetEditor}
+  onSave={savePresetFromCustomizer}
+  onReset={closePresetEditor}
+/>
+
+{#if deleteRoleId}
+  <ConfirmDialog
+    {dark}
+    open={true}
+    title="Delete role template?"
+    message={`Delete ${deleteRoleName || deleteRoleId}? This cannot be undone.`}
+    confirmLabel="Delete"
+    variant="danger"
+    onconfirm={confirmRoleDelete}
+    oncancel={cancelRoleDelete}
+  />
+{/if}
+
+{#if deletePresetId}
+  <ConfirmDialog
+    {dark}
+    open={true}
+    title="Delete team preset?"
+    message={`Delete ${deletePresetName || deletePresetId}? This cannot be undone.`}
+    confirmLabel="Delete"
+    variant="danger"
+    onconfirm={confirmPresetDelete}
+    oncancel={cancelPresetDelete}
+  />
+{/if}

@@ -5,6 +5,7 @@
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
+  import { upsertTeamPreset } from '../ipc.js'
 
   let {
     open = false,
@@ -42,6 +43,12 @@
   let nextAgentId = $state(1)
   let hydratedConfig = $state(null)
 
+  let showSavePresetDialog = $state(false)
+  let newPresetName = $state('')
+  let newPresetDescription = $state('')
+  let isSavingPreset = $state(false)
+  let presetSaveMessage = $state('')
+
   const projectOptions = $derived.by(() =>
     (availableProjects ?? [])
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
@@ -56,6 +63,7 @@
       model: 'opus',
       projectId: projectPath || projectOptions[0]?.id || '',
       description: 'Team lead',
+      roleId: null,
     }
   }
 
@@ -67,6 +75,7 @@
       model: 'gpt-5.3-codex',
       projectId: projectPath || projectOptions[0]?.id || '',
       description: '',
+      roleId: null,
     }
   }
 
@@ -83,6 +92,7 @@
           model: String(incomingLead.model ?? 'opus'),
           projectId: String(incomingLead.projectId ?? incomingLead.project_id ?? projectPath ?? ''),
           description: String(incomingLead.description ?? 'Team lead'),
+          roleId: incomingLead.roleId ?? null,
         }
       : defaultLead()
 
@@ -94,6 +104,7 @@
       model: String(agent.model ?? 'gpt-5.3-codex'),
       projectId: String(agent.projectId ?? agent.project_id ?? projectPath ?? ''),
       description: String(agent.description ?? ''),
+      roleId: agent.roleId ?? null,
     }))
     nextAgentId = agents.length + 1
   }
@@ -133,6 +144,47 @@
 
   function removeAgent(id) {
     agents = agents.filter((agent) => agent.id !== id)
+  }
+
+  async function handleSaveAsPreset() {
+    if (hasErrors || !newPresetName.trim()) return
+    isSavingPreset = true
+    presetSaveMessage = ''
+
+    try {
+      const agentSlots = []
+      for (const agent of agents) {
+        agentSlots.push({
+          roleId: agent.roleId || 'agent-default',
+          count: 1,
+          overrides: {
+            name: agent.name,
+            cliTool: agent.tool,
+            model: agent.model,
+            description: agent.description,
+          }
+        })
+      }
+
+      await upsertTeamPreset({
+        name: newPresetName.trim(),
+        description: newPresetDescription.trim(),
+        leadRoleId: lead?.roleId || null,
+        agentSlots,
+      })
+
+      presetSaveMessage = 'Preset saved to catalog'
+      setTimeout(() => {
+        showSavePresetDialog = false
+        presetSaveMessage = ''
+        newPresetName = ''
+        newPresetDescription = ''
+      }, 2000)
+    } catch (err) {
+      presetSaveMessage = `Error: ${err.message || 'Failed to save'}`
+    } finally {
+      isSavingPreset = false
+    }
   }
 
   function handleSave(payload) {
@@ -240,6 +292,71 @@
       >
         + Agent
       </button>
+
+      {#if !showSavePresetDialog}
+        <div class="pt-2">
+          <button
+            class="w-full rounded-[12px] border border-dashed py-3 text-xs font-medium transition-colors {ghostTone}"
+            onclick={() => {
+              showSavePresetDialog = true
+              newPresetName = localTeamName
+            }}
+            disabled={hasErrors}
+            data-testid="team-customizer-save-preset-trigger"
+          >
+            Save as New Preset
+          </button>
+        </div>
+      {:else}
+        <div class="space-y-3 rounded-[12px] border p-3 {sectionTone}" data-testid="save-preset-dialog">
+          <p class="text-[10px] font-bold uppercase tracking-wider {t.textMuted}">Save as New Preset</p>
+          <label class="space-y-1 block">
+            <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Preset Name*</span>
+            <input
+              class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
+              bind:value={newPresetName}
+              placeholder="e.g. My Feature Team"
+              data-testid="save-preset-name-input"
+            />
+          </label>
+          <label class="space-y-1 block">
+            <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Description</span>
+            <input
+              class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
+              bind:value={newPresetDescription}
+              placeholder="Optional description"
+              data-testid="save-preset-description-input"
+            />
+          </label>
+          
+          {#if presetSaveMessage}
+            <p class="text-xs font-medium {presetSaveMessage.startsWith('Error') ? 'text-danger-500' : 'text-success-600'}" data-testid="save-preset-feedback">
+              {presetSaveMessage}
+            </p>
+          {/if}
+
+          <div class="flex justify-end gap-2 pt-1">
+            <button
+              class="rounded-[12px] px-3 py-1.5 text-xs transition-colors {ghostTone}"
+              onclick={() => {
+                showSavePresetDialog = false
+                presetSaveMessage = ''
+              }}
+              data-testid="save-preset-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              class="rounded-[12px] bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+              onclick={handleSaveAsPreset}
+              disabled={!newPresetName.trim() || isSavingPreset}
+              data-testid="save-preset-confirm"
+            >
+              {isSavingPreset ? 'Saving...' : 'Save Preset'}
+            </button>
+          </div>
+        </div>
+      {/if}
 
       <div class="flex justify-end gap-2 border-t pt-3 {t.keyline}">
         <button

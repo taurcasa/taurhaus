@@ -19,6 +19,7 @@ vi.mock('../ipc.js', () => ({
   listRoleTemplates: vi.fn(),
   listTeamPresets: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
+  upsertRoleTemplate: vi.fn(),
 }))
 
 const {
@@ -38,6 +39,7 @@ const {
   listRoleTemplates,
   listTeamPresets,
   onCoordinationStepProgress,
+  upsertRoleTemplate,
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
@@ -109,6 +111,7 @@ describe('MeshTab', () => {
           cliTool: 'codex',
           model: 'gpt-5.3-codex',
           projectId: 'proj-web',
+          description: 'Implements UI surface details for the mesh canvas.',
           sessionStatus: 'idle',
           paneId: '%2',
         },
@@ -198,6 +201,13 @@ describe('MeshTab', () => {
     })
 
     onCoordinationStepProgress.mockResolvedValue(() => {})
+    upsertRoleTemplate.mockResolvedValue({
+      roleId: 'frontend-dev',
+      name: 'frontend-dev',
+      kind: 'agent',
+      builtIn: false,
+      readOnly: false,
+    })
   })
 
   it('renders availability gate in gate mode before resolving project team state', () => {
@@ -440,5 +450,99 @@ describe('MeshTab', () => {
         })
       )
     })
+  })
+
+  it('captures runtime node as role and saves through upsertRoleTemplate', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-capture'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-capture-role-form')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('mesh-capture-role-name-input')).toHaveValue('frontend-dev')
+    expect(screen.getByTestId('mesh-capture-role-id-input')).toHaveValue('frontend-dev')
+    expect(screen.getByTestId('mesh-capture-role-tool-input')).toHaveValue('codex')
+    expect(screen.getByTestId('mesh-capture-role-model-input')).toHaveValue('gpt-5.3-codex')
+    expect(screen.getByTestId('mesh-capture-role-description-input')).toHaveValue(
+      'Implements UI surface details for the mesh canvas.'
+    )
+
+    await fireEvent.input(screen.getByTestId('mesh-capture-role-name-input'), {
+      target: { value: 'Frontend Specialist' },
+    })
+    expect(screen.getByTestId('mesh-capture-role-id-input')).toHaveValue('frontend-specialist')
+
+    await fireEvent.input(screen.getByTestId('mesh-capture-role-id-input'), {
+      target: { value: 'custom-frontend-role' },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-capture-role-save'))
+
+    await waitFor(() => {
+      expect(upsertRoleTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roleId: 'custom-frontend-role',
+          name: 'Frontend Specialist',
+          kind: 'agent',
+          defaults: expect.objectContaining({
+            cliTool: 'codex',
+            model: 'gpt-5.3-codex',
+          }),
+        })
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent('Role saved to catalog')
+    })
+    expect(screen.getByTestId('slideover-panel').className).toContain('slideover-panel-exit')
+  })
+
+  it('cancels capture dialog without saving', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-capture'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-capture-role-form')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-capture-role-cancel'))
+
+    expect(screen.getByTestId('slideover-panel').className).toContain('slideover-panel-exit')
+    expect(upsertRoleTemplate).not.toHaveBeenCalled()
   })
 })

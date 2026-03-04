@@ -17,6 +17,7 @@
     onResume = () => {},
     onStop = () => {},
     onFocusPane = () => {},
+    onCapture = () => {},
     onClose = () => {},
   } = $props()
 
@@ -138,6 +139,13 @@
           data-testid="mesh-node-detail-stop"
         >
           Stop
+        </button>
+        <button
+          class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
+          onclick={onCapture}
+          data-testid="mesh-node-detail-capture"
+        >
+          Capture
         </button>
         <button
           class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"

@@ -863,6 +863,33 @@ export function getRoleTemplate(id) {
   })
 }
 
+function normalizeRoleTemplateInput(roleData) {
+  if (roleData && typeof roleData === 'object' && roleData.template) {
+    return roleData.template
+  }
+  return roleData
+}
+
+/** Create or update a role template. */
+export function upsertRoleTemplate(roleData) {
+  const template = normalizeRoleTemplateInput(roleData)
+  return invokeOrMock('templates_upsert_role', { request: { template } }, () => ({
+    roleId: template?.roleId ?? template?.role_id ?? null,
+    name: template?.name ?? '',
+    kind: template?.kind ?? 'agent',
+    builtIn: false,
+    readOnly: false,
+  }))
+}
+
+/** Delete a custom role template by ID. */
+export function deleteRoleTemplate(roleId) {
+  return invokeOrMock('templates_delete_role', { roleId }, () => ({
+    roleId,
+    deleted: true,
+  }))
+}
+
 /** List team preset summaries for the template catalog. */
 export async function listTeamPresets() {
   if (isTauri()) {
@@ -924,6 +951,28 @@ export function getTeamPreset(id) {
     const preset = MOCK_TEAM_PRESETS.find((entry) => entry.presetId === id)
     return preset ? { ...preset } : null
   })
+}
+
+/** Create or update a team preset. */
+export function upsertTeamPreset(presetData) {
+  return invokeOrMock('templates_upsert_preset', { presetData }, () => ({
+    presetId: presetData?.presetId ?? presetData?.preset_id ?? null,
+    name: presetData?.name ?? '',
+    leadRoleId: presetData?.leadRoleId ?? presetData?.lead_role_id ?? '',
+    agentSlots: Array.isArray(presetData?.agentSlots)
+      ? presetData.agentSlots
+      : (Array.isArray(presetData?.agent_slots) ? presetData.agent_slots : []),
+    builtIn: false,
+    readOnly: false,
+  }))
+}
+
+/** Delete a custom team preset by ID. */
+export function deleteTeamPreset(presetId) {
+  return invokeOrMock('templates_delete_preset', { presetId }, () => ({
+    presetId,
+    deleted: true,
+  }))
 }
 
 /** Compose a team from role/preset selections and overrides. */

@@ -113,7 +113,7 @@ pub fn parse_ps_output(output: &str) -> Vec<(u32, String, CliTool)> {
 /// Matches:
 /// - **Codex**: `codex`, `/path/to/codex`
 /// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, `node .../@anthropic-ai/claude-code/...`
-/// - **Gemini**: `node .../@google/gemini-cli/...`
+/// - **Gemini**: `gemini`, `/path/to/gemini`, `node .../@google/gemini-cli/...`
 ///
 /// Excludes:
 /// - `grep claude`, `ps -eo ...`, `claude-something-else`, `vim claude.md`, etc.
@@ -121,48 +121,66 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
     let first = args.split_whitespace().next().unwrap_or("");
 
     // Codex: native Rust binary "codex" or "/path/to/codex"
-    if first == "codex" || first.ends_with("/codex") {
+    if token_is_codex(first) {
         return Some(CliTool::Codex);
     }
 
     // Claude: bare "claude" or "/path/to/claude"
-    if first == "claude" || first.ends_with("/claude") {
+    if token_is_claude(first) {
         return Some(CliTool::Claude);
     }
 
     // Gemini: bare "gemini" or "/path/to/gemini"
-    if first == "gemini" || first.ends_with("/gemini") {
+    if token_is_gemini(first) {
         return Some(CliTool::Gemini);
     }
 
-    // Node-launched tools: `node /path/to/tool` or `/path/to/node /path/to/tool`
+    // Node-launched tools: `node /path/to/tool` or `/path/to/node /path/to/tool`.
+    // Newer Node invocations can include runtime flags before the script path
+    // (e.g. `node --no-warnings=DEP0040 /run/.../gemini --yolo`).
     if first == "node" || first.ends_with("/node") {
-        let second = args.split_whitespace().nth(1).unwrap_or("");
+        let tokens: Vec<&str> = args.split_whitespace().skip(1).collect();
 
-        // Codex via node shim: `node /path/to/bin/codex`
-        // or via package path: `node .../@openai/codex/...`
-        if second == "codex" || second.ends_with("/codex") || second.contains("@openai/codex") {
-            return Some(CliTool::Codex);
+        // Prefer the first non-flag token as the script path, then fall back to
+        // checking all tokens to tolerate unusual Node flag/value combinations.
+        if let Some(script_token) = tokens.iter().copied().find(|token| !token.starts_with('-')) {
+            if token_is_codex(script_token) {
+                return Some(CliTool::Codex);
+            }
+            if token_is_claude(script_token) {
+                return Some(CliTool::Claude);
+            }
+            if token_is_gemini(script_token) {
+                return Some(CliTool::Gemini);
+            }
         }
 
-        // Claude via node: `node /path/to/claude` or `node .../claude-code/...`
-        if second == "claude"
-            || second.ends_with("/claude")
-            || second.contains("@anthropic-ai/claude-code")
-        {
-            return Some(CliTool::Claude);
-        }
-
-        // Gemini via node: `node /path/to/gemini` or `node .../@google/gemini-cli/...`
-        if second == "gemini"
-            || second.ends_with("/gemini")
-            || second.contains("@google/gemini-cli")
-        {
-            return Some(CliTool::Gemini);
+        for token in tokens {
+            if token_is_codex(token) {
+                return Some(CliTool::Codex);
+            }
+            if token_is_claude(token) {
+                return Some(CliTool::Claude);
+            }
+            if token_is_gemini(token) {
+                return Some(CliTool::Gemini);
+            }
         }
     }
 
     None
+}
+
+fn token_is_codex(token: &str) -> bool {
+    token == "codex" || token.ends_with("/codex") || token.contains("@openai/codex")
+}
+
+fn token_is_claude(token: &str) -> bool {
+    token == "claude" || token.ends_with("/claude") || token.contains("@anthropic-ai/claude-code")
+}
+
+fn token_is_gemini(token: &str) -> bool {
+    token == "gemini" || token.ends_with("/gemini") || token.contains("@google/gemini-cli")
 }
 
 /// Read process CWD and TTY via platform-specific APIs.
@@ -370,6 +388,15 @@ mod tests {
             detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
             Some(CliTool::Gemini)
         );
+        // Newer observed launch includes node runtime flags before script path.
+        assert_eq!(
+            detect_cli_tool("node --no-warnings=DEP0040 /run/user/1000/fnm_multishells/764222_1772661944031/bin/gemini --yolo"),
+            Some(CliTool::Gemini)
+        );
+        assert_eq!(
+            detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node --no-warnings=DEP0040 /run/user/1000/fnm_multishells/764222_1772661944031/bin/gemini --yolo"),
+            Some(CliTool::Gemini)
+        );
     }
 
     #[test]
@@ -381,6 +408,10 @@ mod tests {
         assert_eq!(detect_cli_tool("ps -eo pid,args"), None);
         assert_eq!(detect_cli_tool("vim claude.md"), None);
         assert_eq!(detect_cli_tool("node server.js"), None);
+        assert_eq!(
+            detect_cli_tool("node --no-warnings=DEP0040 server.js"),
+            None
+        );
         assert_eq!(detect_cli_tool("node /path/to/other-app/cli.js"), None);
     }
 

@@ -1007,6 +1007,116 @@ describe('ipc module', () => {
     })
   })
 
+  describe('role/preset CRUD template wrappers', () => {
+    it('upsertRoleTemplate returns sensible mock defaults when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.upsertRoleTemplate({
+        roleId: 'custom-role',
+        name: 'Custom Role',
+        kind: 'agent',
+      })
+
+      expect(result).toEqual({
+        roleId: 'custom-role',
+        name: 'Custom Role',
+        kind: 'agent',
+        builtIn: false,
+        readOnly: false,
+      })
+    })
+
+    it('upsertRoleTemplate calls templates_upsert_role in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const roleData = { roleId: 'custom-role', name: 'Custom Role' }
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+
+      await ipc.upsertRoleTemplate(roleData)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_role', {
+        request: { template: roleData },
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('deleteRoleTemplate returns deterministic mock result when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.deleteRoleTemplate('custom-role')
+
+      expect(result).toEqual({
+        roleId: 'custom-role',
+        deleted: true,
+      })
+    })
+
+    it('deleteRoleTemplate calls templates_delete_role in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.deleteRoleTemplate('custom-role')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_delete_role', {
+        roleId: 'custom-role',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('upsertTeamPreset returns sensible mock defaults when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.upsertTeamPreset({
+        presetId: 'custom-preset',
+        name: 'Custom Preset',
+        leadRoleId: 'claude-orchestrator',
+        agentSlots: [],
+      })
+
+      expect(result).toEqual({
+        presetId: 'custom-preset',
+        name: 'Custom Preset',
+        leadRoleId: 'claude-orchestrator',
+        agentSlots: [],
+        builtIn: false,
+        readOnly: false,
+      })
+    })
+
+    it('upsertTeamPreset calls templates_upsert_preset in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const presetData = { presetId: 'custom-preset', name: 'Custom Preset' }
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+
+      await ipc.upsertTeamPreset(presetData)
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_preset', { presetData })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('deleteTeamPreset returns deterministic mock result when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.deleteTeamPreset('custom-preset')
+
+      expect(result).toEqual({
+        presetId: 'custom-preset',
+        deleted: true,
+      })
+    })
+
+    it('deleteTeamPreset calls templates_delete_preset in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.deleteTeamPreset('custom-preset')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_delete_preset', {
+        presetId: 'custom-preset',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
   // -----------------------------------------------------------------------
   // Coordination IPC wrappers (frontend-only task surface)
   // -----------------------------------------------------------------------
