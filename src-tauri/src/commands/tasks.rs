@@ -4,7 +4,7 @@
 //! workflows separated.
 
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -225,6 +225,8 @@ pub fn get_archived_sessions(
         });
     }
 
+    let claude_team_names = known_claude_team_names();
+
     // Group raw persisted tasks by nullable session id.
     let mut groups: std::collections::BTreeMap<
         Option<String>,
@@ -237,7 +239,9 @@ pub fn get_archived_sessions(
 
     let mut sessions: Vec<crate::task_scanner::ArchivedSession> = groups
         .iter()
-        .map(|(key, raw)| build_archived_session(key, raw, provider, &project_path))
+        .map(|(key, raw)| {
+            build_archived_session(key, raw, provider, &project_path, &claude_team_names)
+        })
         .collect();
 
     // Sort reverse-chronological: sessions with started_at first (newest first),
@@ -261,6 +265,7 @@ fn build_archived_session(
     raw_tasks: &[crate::db::task_queries::PersistedTask],
     provider: &dyn crate::provider::ProjectProvider,
     project_path: &str,
+    claude_team_names: &HashSet<String>,
 ) -> crate::task_scanner::ArchivedSession {
     let tasks: Vec<crate::task_scanner::UnifiedTask> = raw_tasks
         .iter()
@@ -275,6 +280,7 @@ fn build_archived_session(
         raw_tasks,
         &sources,
         project_path,
+        claude_team_names,
         &mut enrichment_warnings,
     );
 
@@ -318,12 +324,17 @@ fn derive_archive_time_range(
     tasks: &[crate::db::task_queries::PersistedTask],
     sources: &[String],
     project_path: &str,
+    claude_team_names: &HashSet<String>,
     warnings: &mut Vec<String>,
 ) -> (Option<String>, Option<String>, Option<i64>) {
     let fallback = time_range_from_tasks(tasks);
     let Some(session_id) = session_key.as_deref() else {
         return fallback;
     };
+
+    if is_team_scoped_claude_group(session_id, tasks, claude_team_names) {
+        return fallback;
+    }
 
     if let Some((start, end)) = transcript_time_range(project_path, session_id, sources) {
         return to_iso_range(start, end);
@@ -333,6 +344,27 @@ fn derive_archive_time_range(
         "Could not resolve transcript time range for session {session_id}; using task timestamp fallback."
     ));
     fallback
+}
+
+fn is_team_scoped_claude_group(
+    session_id: &str,
+    tasks: &[crate::db::task_queries::PersistedTask],
+    claude_team_names: &HashSet<String>,
+) -> bool {
+    if !claude_team_names.contains(session_id) {
+        return false;
+    }
+
+    tasks
+        .iter()
+        .any(|task| task.source == "claude" && task.source_key == session_id)
+}
+
+fn known_claude_team_names() -> HashSet<String> {
+    crate::task_scanner::claude_index::build_claude_source_index()
+        .teams
+        .into_keys()
+        .collect()
 }
 
 fn transcript_time_range(
@@ -1207,6 +1239,7 @@ mod tests {
             &tasks,
             &sources,
             "/projects/does-not-exist",
+            &HashSet::new(),
             &mut warnings,
         );
 
@@ -1215,6 +1248,65 @@ mod tests {
         assert_eq!(duration_ms, Some(3_600_000));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing-session"));
+    }
+
+    #[test]
+    fn team_scoped_claude_session_skips_transcript_warning() {
+        let tasks = vec![make_archived_task(
+            "claude",
+            "taurhaus-team",
+            Some("taurhaus-team"),
+            "2026-03-01T10:00:00Z",
+            "2026-03-01T11:00:00Z",
+        )];
+        let sources = vec!["claude".to_string()];
+        let mut warnings = Vec::new();
+        let claude_team_names = HashSet::from(["taurhaus-team".to_string()]);
+
+        let (started_at, ended_at, duration_ms) = derive_archive_time_range(
+            &Some("taurhaus-team".to_string()),
+            &tasks,
+            &sources,
+            "/projects/does-not-exist",
+            &claude_team_names,
+            &mut warnings,
+        );
+
+        assert_eq!(started_at.as_deref(), Some("2026-03-01T10:00:00Z"));
+        assert_eq!(ended_at.as_deref(), Some("2026-03-01T11:00:00Z"));
+        assert_eq!(duration_ms, Some(3_600_000));
+        assert!(
+            warnings.is_empty(),
+            "team-scoped Claude groups should use fallback timestamps silently"
+        );
+    }
+
+    #[test]
+    fn non_claude_group_named_like_team_keeps_warning_behavior() {
+        let tasks = vec![make_archived_task(
+            "codex",
+            "different-source-key",
+            Some("taurhaus-team"),
+            "2026-03-01T10:00:00Z",
+            "2026-03-01T11:00:00Z",
+        )];
+        let sources = vec!["codex".to_string()];
+        let mut warnings = Vec::new();
+        let claude_team_names = HashSet::from(["taurhaus-team".to_string()]);
+
+        let (started_at, ended_at, duration_ms) = derive_archive_time_range(
+            &Some("taurhaus-team".to_string()),
+            &tasks,
+            &sources,
+            "/projects/does-not-exist",
+            &claude_team_names,
+            &mut warnings,
+        );
+
+        assert_eq!(started_at.as_deref(), Some("2026-03-01T10:00:00Z"));
+        assert_eq!(ended_at.as_deref(), Some("2026-03-01T11:00:00Z"));
+        assert_eq!(duration_ms, Some(3_600_000));
+        assert_eq!(warnings.len(), 1);
     }
 
     #[test]
