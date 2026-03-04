@@ -13,7 +13,7 @@ use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     DeliveryRequest, OperatorNoticeDelivery, TeardownMode, TeardownRequest,
 };
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
 };
@@ -576,11 +576,12 @@ impl CoordinationOrchestrator {
     fn join_mesh(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
         if should_use_mesh_sidecar(&request.lead)? {
             self.runtime
-                .join_mesh(&request.team_name, &request.lead.name)?;
+                .join_mesh(&request.team_name, &request.lead.name, &request.lead.project_id)?;
         }
         for agent in &request.agents {
             if should_use_mesh_sidecar(agent)? {
-                self.runtime.join_mesh(&request.team_name, &agent.name)?;
+                self.runtime
+                    .join_mesh(&request.team_name, &agent.name, &agent.project_id)?;
             }
         }
         Ok(())
@@ -753,8 +754,11 @@ impl CoordinationOrchestrator {
         if !should_use_mesh_sidecar(&request.agent)? {
             return Ok(());
         }
-        self.runtime
-            .join_mesh(&request.team_name, &request.agent.name)?;
+        self.runtime.join_mesh(
+            &request.team_name,
+            &request.agent.name,
+            &request.agent.project_id,
+        )?;
         runtime_state.mesh_joined = true;
         Ok(())
     }
@@ -823,12 +827,29 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
-        let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
-        self.add_member(&request.team_name, member)?;
-        runtime_state.member_added = true;
+        let desired_member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
+        let mut config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+
+        if let Some(existing) = config
+            .members
+            .iter_mut()
+            .find(|member| member.name == desired_member.name)
+        {
+            *existing = desired_member;
+            TeamConfigStore::save(&self.teams_dir, &request.team_name, &config)?;
+            runtime_state.member_added = false;
+        } else {
+            self.add_member(&request.team_name, desired_member)?;
+            runtime_state.member_added = true;
+        }
 
         let mut runtime =
-            MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)?;
+            match MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)
+            {
+                Ok(runtime) => runtime,
+                Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.agent.name),
+                Err(err) => return Err(err),
+            };
         runtime.pane_id = runtime_state.pane_id.clone();
         runtime.session_id = runtime_state.session_id.clone();
         runtime.daemon_pid = runtime_state.daemon_pid;
@@ -952,6 +973,20 @@ fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
         other => Err(CoordinationError::Validation(format!(
             "unsupported cli tool '{other}'"
         ))),
+    }
+}
+
+fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
+    MemberRuntimeRecord {
+        schema_version: 1,
+        member_name: member_name.to_string(),
+        pane_id: None,
+        session_id: None,
+        daemon_pid: None,
+        health: HealthState::SessionDead,
+        delivery_lease: None,
+        attached_at: None,
+        last_seen_at: None,
     }
 }
 

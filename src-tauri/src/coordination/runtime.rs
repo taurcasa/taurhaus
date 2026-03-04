@@ -33,7 +33,12 @@ pub trait CoordinationRuntime: Send + Sync {
         pane_id: &str,
         cli_tool: CliTool,
     ) -> Result<Option<String>, CoordinationError>;
-    fn join_mesh(&self, team_name: &str, member_name: &str) -> Result<(), CoordinationError>;
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError>;
     fn spawn_mesh_daemon(
         &self,
         pane_id: &str,
@@ -82,8 +87,17 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         Ok(())
     }
 
-    fn join_mesh(&self, team_name: &str, member_name: &str) -> Result<(), CoordinationError> {
-        run_mesh(&["join", "--team", team_name, "--name", member_name]).map(|_| ())
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        run_mesh(
+            &["join", "--team", team_name, "--name", member_name],
+            Some(project_id),
+        )
+        .map(|_| ())
     }
 
     fn detect_session_id(
@@ -258,6 +272,7 @@ pub enum RuntimeCall {
     JoinMesh {
         team_name: String,
         member_name: String,
+        project_id: String,
     },
     SpawnDaemon {
         pane_id: String,
@@ -334,10 +349,16 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         Ok(Some(format!("session-{pane_id}")))
     }
 
-    fn join_mesh(&self, team_name: &str, member_name: &str) -> Result<(), CoordinationError> {
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
         self.push_call(RuntimeCall::JoinMesh {
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),
+            project_id: project_id.to_string(),
         });
         Ok(())
     }
@@ -418,9 +439,23 @@ fn spawn_system_command(
     child.map_err(CoordinationError::Io)
 }
 
-fn run_mesh(args: &[&str]) -> Result<String, CoordinationError> {
+fn run_mesh(args: &[&str], cwd: Option<&str>) -> Result<String, CoordinationError> {
     let invocation = mesh_command_invocation(args);
-    let output = run_system_command(&invocation)?;
+    let output = if invocation.program == "wsl" {
+        let mut cmd = mesh_cli::wsl_command_for_coordination();
+        if let Some(project_id) = cwd {
+            cmd.args(["--cd", project_id]);
+        }
+        cmd.args(&invocation.args).output()
+    } else {
+        let mut cmd = Command::new(&invocation.program);
+        cmd.args(&invocation.args);
+        if let Some(project_id) = cwd {
+            cmd.current_dir(project_id);
+        }
+        cmd.output()
+    }
+    .map_err(CoordinationError::Io)?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     if output.status.success() {
@@ -687,7 +722,9 @@ mod tests {
         runtime
             .send_tmux_keys_with_enter(&pane, "codex --yolo")
             .expect("keys");
-        runtime.join_mesh("alpha", "agent-a").expect("join");
+        runtime
+            .join_mesh("alpha", "agent-a", "/tmp/project")
+            .expect("join");
         runtime.terminate_process_by_pid(pid).expect("terminate");
         runtime.kill_aitx_pane(&pane).expect("kill pane");
         assert!(!runtime.is_process_running_by_pid(pid).expect("check pid"));
@@ -711,7 +748,8 @@ mod tests {
                 },
                 RuntimeCall::JoinMesh {
                     team_name: "alpha".to_string(),
-                    member_name: "agent-a".to_string()
+                    member_name: "agent-a".to_string(),
+                    project_id: "/tmp/project".to_string(),
                 },
                 RuntimeCall::TerminatePid { pid: 10000 },
                 RuntimeCall::KillPane {

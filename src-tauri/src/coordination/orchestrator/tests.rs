@@ -10,8 +10,8 @@ use crate::commands::coordination_types::{
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::MemberRole;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
-use crate::coordination::runtime::RecordingCoordinationRuntime;
-use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore};
+use crate::coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall};
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {
@@ -40,6 +40,100 @@ fn new_orchestrator_with_backend(
         backend,
         Arc::new(RecordingCoordinationRuntime::default()),
     )
+}
+
+fn new_orchestrator_with_recording_runtime(
+    tmp: &TempDir,
+) -> (CoordinationOrchestrator, Arc<RecordingCoordinationRuntime>) {
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        Arc::new(FakeBackend::default()),
+        runtime.clone(),
+    );
+    (orchestrator, runtime)
+}
+
+#[derive(Debug)]
+struct MeshPreAddRuntime {
+    inner: RecordingCoordinationRuntime,
+    teams_dir: PathBuf,
+    preadded_project_path: PathBuf,
+}
+
+impl MeshPreAddRuntime {
+    fn new(teams_dir: PathBuf, preadded_project_path: PathBuf) -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+            teams_dir,
+            preadded_project_path,
+        }
+    }
+}
+
+impl CoordinationRuntime for MeshPreAddRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.join_mesh(team_name, member_name, project_id)?;
+
+        let mut config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        if !config.members.iter().any(|member| member.name == member_name) {
+            config.members.push(Member {
+                name: member_name.to_string(),
+                role: MemberRole::Agent,
+                instructions: None,
+                project_path: self.preadded_project_path.clone(),
+                cli_tool: CliTool::Codex,
+            });
+            TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
+        }
+        Ok(())
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
 }
 
 fn initialize_request(team_name: &str) -> InitializeTeamRequest {
@@ -1035,6 +1129,86 @@ fn add_agent_to_team_full_success() {
         .members
         .iter()
         .any(|member| member.name == "new-agent"));
+}
+
+#[test]
+fn add_agent_join_mesh_uses_selected_project_path() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final-hot-add-join-path";
+    create_running_team(&mut orchestrator, team_name);
+    let mut request = add_agent_request(team_name, "new-agent", "codex");
+    request.agent.project_id = "/tmp/selected-project".to_string();
+
+    let report = orchestrator
+        .add_agent_to_team(&request)
+        .expect("pipeline should return report");
+    assert!(report.failed_step.is_none());
+
+    let join_call = runtime
+        .calls()
+        .into_iter()
+        .find_map(|call| match call {
+            RuntimeCall::JoinMesh {
+                team_name,
+                member_name,
+                project_id,
+            } => Some((team_name, member_name, project_id)),
+            _ => None,
+        })
+        .expect("join_mesh call should be recorded");
+    assert_eq!(join_call.0, team_name);
+    assert_eq!(join_call.1, "new-agent");
+    assert_eq!(join_call.2, "/tmp/selected-project");
+}
+
+#[test]
+fn add_agent_update_roster_is_idempotent_when_mesh_preadds_member() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(MeshPreAddRuntime::new(
+        tmp.path().to_path_buf(),
+        PathBuf::from("/tmp/app-data-fallback"),
+    ));
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    let team_name = "architecture-final-hot-add-idempotent";
+    create_running_team(&mut orchestrator, team_name);
+    let mut request = add_agent_request(team_name, "new-agent", "codex");
+    request.agent.project_id = "/tmp/selected-project".to_string();
+
+    let report = orchestrator
+        .add_agent_to_team(&request)
+        .expect("pipeline should return report");
+    assert!(
+        report.failed_step.is_none(),
+        "add-agent should succeed even if mesh pre-added member: {}",
+        report.message
+    );
+
+    let status = orchestrator
+        .get_team_status(team_name)
+        .expect("status should load");
+    let matching_members: Vec<&Member> = status
+        .config
+        .members
+        .iter()
+        .filter(|member| member.name == "new-agent")
+        .collect();
+    assert_eq!(matching_members.len(), 1, "member should not be duplicated");
+    assert_eq!(
+        matching_members[0].project_path,
+        PathBuf::from("/tmp/selected-project"),
+        "project path should reflect user-selected dropdown value"
+    );
+
+    let runtime_record = MemberRuntimeStore::load(tmp.path(), team_name, "new-agent")
+        .expect("runtime state should exist");
+    assert_eq!(
+        runtime_record.pane_id.as_deref(),
+        Some("test-pane-1"),
+        "runtime should still capture pane created during hot-add"
+    );
 }
 
 #[test]
