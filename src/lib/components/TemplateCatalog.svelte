@@ -298,7 +298,7 @@
 
   <div class="grid grid-cols-1 gap-2 md:grid-cols-3" data-testid="template-catalog-filters">
     <label class="flex flex-col gap-1">
-      <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Search</span>
+      <span class="text-xs uppercase tracking-wide {t.textMuted}">Search</span>
       <input
         class="h-8 rounded-md border px-2 text-xs {inputTone}"
         placeholder="Filter by name, id, or model"
@@ -311,7 +311,7 @@
     </label>
 
     <label class="flex flex-col gap-1">
-      <span class="text-[10px] uppercase tracking-wide {t.textMuted}">CLI Tool</span>
+      <span class="text-xs uppercase tracking-wide {t.textMuted}">CLI Tool</span>
       <select
         class="h-8 rounded-md border px-2 text-xs {inputTone}"
         value={selectedTool}
@@ -327,7 +327,7 @@
     </label>
 
     <label class="flex flex-col gap-1">
-      <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Capability</span>
+      <span class="text-xs uppercase tracking-wide {t.textMuted}">Capability</span>
       <select
         class="h-8 rounded-md border px-2 text-xs {inputTone}"
         value={selectedCapability}

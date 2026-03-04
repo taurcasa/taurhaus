@@ -665,7 +665,10 @@ mod tests {
         Member {
             name: name.to_string(),
             role: MemberRole::Agent,
+            role_id: None,
             instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
         }

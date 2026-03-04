@@ -398,10 +398,25 @@ fn coordination_reonboard_impl(
                 .find(|member| member.role == MemberRole::Lead)
                 .map(|member| member.name.clone())
                 .unwrap_or_else(|| "team-lead".to_string());
+            let member = team
+                .config
+                .members
+                .iter()
+                .find(|member| member.name == request.member_name)
+                .ok_or_else(|| {
+                    CoordinationError::NotFound(format!(
+                        "member '{}' not found in team '{}'",
+                        request.member_name, request.team_name
+                    ))
+                })?;
             let message = DeliveryRenderer::render_onboarding(
                 &request.team_name,
                 &request.member_name,
                 &lead_name,
+                member.role_id.as_deref(),
+                member.instructions.as_deref(),
+                member.behavioral_contract.as_ref(),
+                member.capabilities.as_deref(),
             );
 
             orchestrator.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
@@ -529,7 +544,10 @@ fn coordination_add_member_impl(
     let member = Member {
         name: member_name,
         role: MemberRole::Agent,
+        role_id: None,
         instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
         project_path: default_project_path(),
         cli_tool,
     };

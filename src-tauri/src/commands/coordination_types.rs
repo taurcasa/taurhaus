@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::templates::types::BehavioralContract;
+
 /// Lightweight team list entry returned to the frontend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +81,10 @@ pub struct AgentSetupConfig {
     pub model: String,
     pub project_id: String,
     pub description: Option<String>,
+    pub role_id: Option<String>,
+    pub instructions: Option<String>,
+    pub behavioral_contract: Option<BehavioralContract>,
+    pub capabilities: Option<Vec<String>>,
 }
 
 /// IPC request for one-click team initialization.

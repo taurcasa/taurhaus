@@ -18,6 +18,12 @@ mod models {
     pub use taurhaus_lib::models::*;
 }
 
+mod templates {
+    pub mod types {
+        pub use taurhaus_lib::templates::types::BehavioralContract;
+    }
+}
+
 mod session_scanner {
     pub mod cli_tool {
         use serde::{Deserialize, Serialize};
@@ -173,6 +179,10 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
             model: "opus".to_string(),
             project_id: "proj-core".to_string(),
             description: Some("lead".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -181,6 +191,10 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 model: "gpt-5.3".to_string(),
                 project_id: "proj-web".to_string(),
                 description: Some("ui".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -188,6 +202,10 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 model: "pro".to_string(),
                 project_id: "proj-api".to_string(),
                 description: None,
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
         ],
     }

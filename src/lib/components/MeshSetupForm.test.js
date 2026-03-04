@@ -484,6 +484,10 @@ describe('MeshSetupForm', () => {
         model: 'opus',
         projectId: '/projects/taurhaus',
         description: 'Team lead',
+        roleId: null,
+        instructions: null,
+        behavioralContract: null,
+        capabilities: null,
       },
       agents: [
         {
@@ -492,6 +496,10 @@ describe('MeshSetupForm', () => {
           model: 'gpt-5.3-codex',
           projectId: '/projects/taurhaus',
           description: null,
+          roleId: null,
+          instructions: null,
+          behavioralContract: null,
+          capabilities: null,
         },
       ],
     })

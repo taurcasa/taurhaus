@@ -47,6 +47,10 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             model: "opus".to_string(),
             project_id: "proj-core".to_string(),
             description: Some("Own orchestration".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -55,6 +59,10 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 model: "gpt-5.3".to_string(),
                 project_id: "proj-web".to_string(),
                 description: Some("UI implementation".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -62,6 +70,10 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 model: "pro".to_string(),
                 project_id: "proj-api".to_string(),
                 description: None,
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
         ],
     }
@@ -76,6 +88,10 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
             model: "gpt-5.3".to_string(),
             project_id: "proj-api".to_string(),
             description: Some("API ownership".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
     }
 }
@@ -464,6 +480,10 @@ fn add_agent_and_reonboard_validate_empty_strings() {
                 model: "gpt-5.3".to_string(),
                 project_id: "".to_string(),
                 description: None,
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
         },
     )
@@ -801,6 +821,10 @@ fn initialize_team_request_round_trip() {
             model: "opus".to_string(),
             project_id: "proj-core".to_string(),
             description: Some("Own orchestration".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -809,6 +833,10 @@ fn initialize_team_request_round_trip() {
                 model: "gpt-5.3".to_string(),
                 project_id: "proj-web".to_string(),
                 description: Some("UI implementation".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -816,6 +844,10 @@ fn initialize_team_request_round_trip() {
                 model: "pro".to_string(),
                 project_id: "proj-api".to_string(),
                 description: None,
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
         ],
     };
@@ -868,6 +900,10 @@ fn add_agent_request_and_report_round_trip() {
             model: "gpt-5.3".to_string(),
             project_id: "proj-api".to_string(),
             description: Some("API ownership".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
     };
     let req_json = serde_json::to_string(&request).expect("serialize add-agent request");

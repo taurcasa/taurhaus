@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::types::BehavioralContract;
 
 /// Managed team configuration document.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,7 +22,10 @@ pub struct Team {
 pub struct Member {
     pub name: String,
     pub role: MemberRole,
+    pub role_id: Option<String>,
     pub instructions: Option<String>,
+    pub behavioral_contract: Option<BehavioralContract>,
+    pub capabilities: Option<Vec<String>>,
     pub project_path: PathBuf,
     pub cli_tool: CliTool,
 }
@@ -98,7 +102,14 @@ mod tests {
         let member = Member {
             name: "codex-reviewer".to_string(),
             role: MemberRole::Agent,
+            role_id: Some("codex-reviewer".to_string()),
             instructions: Some("Review architecture tasks".to_string()),
+            behavioral_contract: Some(BehavioralContract {
+                communication: vec!["share concise updates".to_string()],
+                execution: vec!["review and patch".to_string()],
+                escalation: vec!["raise blockers".to_string()],
+            }),
+            capabilities: Some(vec!["review".to_string(), "testing".to_string()]),
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
         };

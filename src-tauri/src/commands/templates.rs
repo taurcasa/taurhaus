@@ -11,12 +11,13 @@ use crate::git::commits::{get_commit_diff, get_commit_files};
 use crate::models::DiffHunk;
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
-    PendingAction, TeamPresetRecord, TemplateSource, TemplateStore, TemplateStoreError,
+    PendingAction, TeamPresetRecord, TemplateFileMutation, TemplateSource, TemplateStore,
+    TemplateStoreError,
 };
-use crate::templates::types::{AgentSlot, RoleKind, RoleTemplate, TeamPreset};
+use crate::templates::types::{
+    AgentSlot, ProjectBinding, RoleKind, RoleTemplate, SlotOverrides, TeamPreset,
+};
 
-#[cfg(feature = "mesh-bridged-backend")]
-use tauri::AppHandle;
 #[cfg(feature = "mesh-bridged-backend")]
 use crate::commands::coordination;
 #[cfg(feature = "mesh-bridged-backend")]
@@ -25,6 +26,8 @@ use crate::commands::coordination_types::{InitializeReport, InitializeTeamReques
 use crate::commands::projects::DbState;
 #[cfg(feature = "mesh-bridged-backend")]
 use crate::coordination::state::CoordinationState;
+#[cfg(feature = "mesh-bridged-backend")]
+use tauri::AppHandle;
 
 pub struct TemplateStoreState(pub TemplateStore);
 
@@ -77,10 +80,37 @@ pub struct TemplatesUpsertPresetRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TemplatesComposeTeamRequest {
-    pub lead_role_id: String,
+pub struct TemplatesComposeAgentSlotRequest {
+    #[serde(alias = "role_id")]
+    pub role_id: String,
+    pub count: u32,
+    #[serde(alias = "project_binding")]
+    pub project_binding: ProjectBinding,
+    #[serde(default, alias = "project_id")]
+    pub project_id: Option<String>,
     #[serde(default)]
-    pub agent_slots: Vec<AgentSlot>,
+    pub overrides: Option<SlotOverrides>,
+}
+
+impl From<TemplatesComposeAgentSlotRequest> for AgentSlot {
+    fn from(value: TemplatesComposeAgentSlotRequest) -> Self {
+        Self {
+            role_id: value.role_id,
+            count: value.count,
+            project_binding: value.project_binding,
+            project_id: value.project_id,
+            overrides: value.overrides,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplatesComposeTeamRequest {
+    #[serde(alias = "lead_role_id")]
+    pub lead_role_id: String,
+    #[serde(default, alias = "agent_slots")]
+    pub agent_slots: Vec<TemplatesComposeAgentSlotRequest>,
     #[serde(default)]
     pub overrides: CompositionOverrides,
 }
@@ -281,7 +311,9 @@ pub fn templates_delete_preset(
     preset_id: String,
 ) -> Result<(), String> {
     let store = &state.0;
-    store.delete_preset(&preset_id).map_err(map_template_error)?;
+    store
+        .delete_preset(&preset_id)
+        .map_err(map_template_error)?;
     Ok(())
 }
 
@@ -292,9 +324,10 @@ pub fn templates_compose_team(
 ) -> Result<CompositionResult, String> {
     let store = &state.0;
     let catalog = store.load_catalog().map_err(map_template_error)?;
+    let agent_slots: Vec<AgentSlot> = request.agent_slots.into_iter().map(Into::into).collect();
     Ok(compose_team(
         &request.lead_role_id,
-        &request.agent_slots,
+        &agent_slots,
         &catalog.roles,
         &request.overrides,
     ))
@@ -316,7 +349,12 @@ pub fn templates_apply_composition(
     coordination_state: State<'_, CoordinationState>,
     request: TemplatesApplyCompositionRequest,
 ) -> Result<InitializeReport, String> {
-    coordination::coordination_initialize_team(app, db, coordination_state, request.initialize_request)
+    coordination::coordination_initialize_team(
+        app,
+        db,
+        coordination_state,
+        request.initialize_request,
+    )
 }
 
 #[tauri::command]
@@ -369,8 +407,11 @@ pub fn templates_get_history(
         });
     }
 
-    let repo = Repository::open(store.templates_dir()).map_err(|err| sanitize_error(&err.to_string()))?;
-    let mut revwalk = repo.revwalk().map_err(|err| sanitize_error(&err.to_string()))?;
+    let repo =
+        Repository::open(store.templates_dir()).map_err(|err| sanitize_error(&err.to_string()))?;
+    let mut revwalk = repo
+        .revwalk()
+        .map_err(|err| sanitize_error(&err.to_string()))?;
     if revwalk.push_head().is_err() {
         return Ok(TemplateCommitPage {
             commits: Vec::new(),
@@ -498,14 +539,17 @@ pub fn templates_revert(
     let store = &state.0;
     store.ensure_directories().map_err(map_template_error)?;
 
-    let repo = Repository::open(store.templates_dir()).map_err(|err| sanitize_error(&err.to_string()))?;
+    let repo =
+        Repository::open(store.templates_dir()).map_err(|err| sanitize_error(&err.to_string()))?;
     let object = repo
         .revparse_single(&request.commit_hash)
         .map_err(|err| sanitize_error(&err.to_string()))?;
     let commit = object
         .peel_to_commit()
         .map_err(|err| sanitize_error(&err.to_string()))?;
-    let tree = commit.tree().map_err(|err| sanitize_error(&err.to_string()))?;
+    let tree = commit
+        .tree()
+        .map_err(|err| sanitize_error(&err.to_string()))?;
 
     let candidates = [
         format!("roles/{}.yaml", request.id),
@@ -513,6 +557,7 @@ pub fn templates_revert(
     ];
 
     let mut touched = Vec::new();
+    let mut mutations = Vec::new();
     for rel in candidates {
         let rel_path = PathBuf::from(&rel);
         if let Ok(entry) = tree.get_path(Path::new(&rel)) {
@@ -520,9 +565,10 @@ pub fn templates_revert(
                 .to_object(&repo)
                 .map_err(|err| sanitize_error(&err.to_string()))?;
             if let Some(blob) = obj.as_blob() {
-                store
-                    .write_template_file(&rel_path, blob.content())
-                    .map_err(map_template_error)?;
+                mutations.push(TemplateFileMutation::write(
+                    rel_path.clone(),
+                    blob.content().to_vec(),
+                ));
                 touched.push(rel_path);
             }
             continue;
@@ -530,7 +576,7 @@ pub fn templates_revert(
 
         let abs = store.templates_dir().join(&rel_path);
         if abs.exists() {
-            fs::remove_file(&abs).map_err(|err| sanitize_error(&err.to_string()))?;
+            mutations.push(TemplateFileMutation::delete(rel_path.clone()));
             touched.push(rel_path);
         }
     }
@@ -541,8 +587,8 @@ pub fn templates_revert(
 
     let short = format!("{:.8}", commit.id());
     let _ = store
-        .commit_paths(
-            &touched,
+        .mutate_and_commit(
+            &mutations,
             &format!("templates: revert template {} to {}", request.id, short),
         )
         .map_err(map_template_error)?;
@@ -571,30 +617,43 @@ pub fn templates_import(
     let source = PathBuf::from(path);
     let raw = fs::read_to_string(&source).map_err(|err| sanitize_error(&err.to_string()))?;
 
-    if let Ok(role) = serde_yaml::from_str::<RoleTemplate>(&raw) {
-        if role.validate().is_ok() {
-            store.import_role(&source).map_err(map_template_error)?;
-            let imported = store
-                .get_role(&role.role_id)
-                .map_err(map_template_error)?
-                .template;
-            return Ok(TemplateImportResult::Role { template: imported });
-        }
-    }
+    let role_error = match serde_yaml::from_str::<RoleTemplate>(&raw) {
+        Ok(role) => match role.validate() {
+            Ok(()) => {
+                store.import_role(&source).map_err(map_template_error)?;
+                let imported = store
+                    .get_role(&role.role_id)
+                    .map_err(map_template_error)?
+                    .template;
+                return Ok(TemplateImportResult::Role { template: imported });
+            }
+            Err(err) => format!("role validation failed: {err}"),
+        },
+        Err(err) => format!("role parse failed: {err}"),
+    };
 
-    if let Ok(preset) = serde_yaml::from_str::<TeamPreset>(&raw) {
-        let role_catalog = store.load_catalog().map_err(map_template_error)?.roles;
-        if preset.validate_with_role_catalog(&role_catalog).is_ok() {
-            store.import_preset(&source).map_err(map_template_error)?;
-            let imported = store
-                .get_preset(&preset.preset_id)
-                .map_err(map_template_error)?
-                .template;
-            return Ok(TemplateImportResult::Preset { preset: imported });
+    let preset_error = match serde_yaml::from_str::<TeamPreset>(&raw) {
+        Ok(preset) => {
+            let role_catalog = store.load_catalog().map_err(map_template_error)?.roles;
+            match preset.validate_with_role_catalog(&role_catalog) {
+                Ok(()) => {
+                    store.import_preset(&source).map_err(map_template_error)?;
+                    let imported = store
+                        .get_preset(&preset.preset_id)
+                        .map_err(map_template_error)?
+                        .template;
+                    return Ok(TemplateImportResult::Preset { preset: imported });
+                }
+                Err(err) => format!("preset validation failed: {err}"),
+            }
         }
-    }
+        Err(err) => format!("preset parse failed: {err}"),
+    };
 
-    Err("file is neither a valid role template nor team preset".to_string())
+    Err(sanitize_error(&format!(
+        "file is neither a valid role template nor team preset ({}; {})",
+        role_error, preset_error
+    )))
 }
 
 fn map_preset_summary(record: TeamPresetRecord) -> TeamPresetSummary {
@@ -628,12 +687,9 @@ fn has_managed_dirty_status(repo: &Repository) -> Result<bool, git2::Error> {
     opts.include_untracked(true).recurse_untracked_dirs(true);
 
     let statuses = repo.statuses(Some(&mut opts))?;
-    Ok(statuses.iter().any(|entry| {
-        entry
-            .path()
-            .map(is_managed_template_path)
-            .unwrap_or(false)
-    }))
+    Ok(statuses
+        .iter()
+        .any(|entry| entry.path().map(is_managed_template_path).unwrap_or(false)))
 }
 
 fn commit_changed_template_paths(
@@ -714,5 +770,49 @@ mod tests {
         let summary = map_preset_summary(record);
         assert_eq!(summary.source, TemplateSource::BuiltIn);
         assert!(summary.read_only);
+    }
+
+    #[test]
+    fn compose_request_accepts_camel_case_agent_slot_fields() {
+        let value = serde_json::json!({
+            "leadRoleId": "claude-orchestrator",
+            "agentSlots": [
+                {
+                    "roleId": "codex-developer",
+                    "count": 2,
+                    "projectBinding": "lead_project",
+                    "projectId": null
+                }
+            ]
+        });
+
+        let request: TemplatesComposeTeamRequest =
+            serde_json::from_value(value).expect("request should deserialize");
+        assert_eq!(request.agent_slots.len(), 1);
+        assert_eq!(request.agent_slots[0].role_id, "codex-developer");
+        assert_eq!(
+            request.agent_slots[0].project_binding,
+            ProjectBinding::LeadProject
+        );
+    }
+
+    #[test]
+    fn compose_request_accepts_snake_case_agent_slot_aliases() {
+        let value = serde_json::json!({
+            "lead_role_id": "claude-orchestrator",
+            "agent_slots": [
+                {
+                    "role_id": "codex-developer",
+                    "count": 1,
+                    "project_binding": "lead_project",
+                    "project_id": null
+                }
+            ]
+        });
+
+        let request: TemplatesComposeTeamRequest =
+            serde_json::from_value(value).expect("request should deserialize");
+        assert_eq!(request.lead_role_id, "claude-orchestrator");
+        assert_eq!(request.agent_slots[0].role_id, "codex-developer");
     }
 }

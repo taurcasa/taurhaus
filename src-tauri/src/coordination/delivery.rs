@@ -3,6 +3,7 @@
 use crate::coordination::requests::{
     BootstrapDelivery, DeliveryRequest, OperatorNoticeDelivery, RecoveryNudgeDelivery,
 };
+use crate::templates::types::BehavioralContract;
 
 /// Renders typed delivery payloads into deterministic tmux text.
 #[derive(Debug, Default)]
@@ -10,8 +11,16 @@ pub struct DeliveryRenderer;
 
 impl DeliveryRenderer {
     /// Render a deterministic onboarding template for non-Claude agents.
-    pub fn render_onboarding(team_name: &str, member_name: &str, lead_name: &str) -> String {
-        format!(
+    pub fn render_onboarding(
+        team_name: &str,
+        member_name: &str,
+        lead_name: &str,
+        role_id: Option<&str>,
+        instructions: Option<&str>,
+        behavioral_contract: Option<&BehavioralContract>,
+        capabilities: Option<&[String]>,
+    ) -> String {
+        let mut rendered = format!(
             concat!(
                 "[taurhaus] onboarding\n",
                 "Identity:\n",
@@ -38,7 +47,53 @@ impl DeliveryRenderer {
             team_name = team_name,
             member_name = member_name,
             lead_name = lead_name
-        )
+        );
+        Self::append_role_context_sections(
+            &mut rendered,
+            role_id,
+            instructions,
+            behavioral_contract,
+            capabilities,
+        );
+        rendered
+    }
+
+    /// Render role context for Claude agents as an initial team message.
+    pub fn render_claude_role_context(
+        team_name: &str,
+        member_name: &str,
+        lead_name: &str,
+        role_id: Option<&str>,
+        instructions: Option<&str>,
+        behavioral_contract: Option<&BehavioralContract>,
+        capabilities: Option<&[String]>,
+    ) -> String {
+        let mut rendered = format!(
+            concat!(
+                "[taurhaus] role_context\n",
+                "Identity:\n",
+                "You are \"{member_name}\" on team \"{team_name}\". Your team lead is \"{lead_name}\".\n",
+                "\n",
+                "Use internal team tools (for example TaskList/SendMessage) to coordinate work.\n",
+                "\n",
+                "Work contract:\n",
+                "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+                "\n",
+                "Escalation:\n",
+                "If blocked, send blocker details to {lead_name} immediately. Do not stall silently."
+            ),
+            team_name = team_name,
+            member_name = member_name,
+            lead_name = lead_name
+        );
+        Self::append_role_context_sections(
+            &mut rendered,
+            role_id,
+            instructions,
+            behavioral_contract,
+            capabilities,
+        );
+        rendered
     }
 
     /// Render an OperatorNotice into a tmux-injectable string.
@@ -71,6 +126,84 @@ impl DeliveryRenderer {
             DeliveryRequest::Bootstrap(payload) => Self::render_bootstrap(payload),
             DeliveryRequest::RecoveryNudge(payload) => Self::render_recovery_nudge(payload),
             DeliveryRequest::OperatorNotice(payload) => Self::render_operator_notice(payload),
+        }
+    }
+
+    fn append_role_context_sections(
+        rendered: &mut String,
+        role_id: Option<&str>,
+        instructions: Option<&str>,
+        behavioral_contract: Option<&BehavioralContract>,
+        capabilities: Option<&[String]>,
+    ) {
+        let role_id = role_id.map(str::trim).filter(|value| !value.is_empty());
+        let instructions = instructions
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let behavioral_contract = behavioral_contract.filter(|contract| {
+            !contract.communication.is_empty()
+                || !contract.execution.is_empty()
+                || !contract.escalation.is_empty()
+        });
+        let has_capabilities = capabilities
+            .map(|items| items.iter().any(|item| !item.trim().is_empty()))
+            .unwrap_or(false);
+
+        if role_id.is_none()
+            && instructions.is_none()
+            && behavioral_contract.is_none()
+            && !has_capabilities
+        {
+            return;
+        }
+
+        if let Some(role_id) = role_id {
+            rendered.push_str("\n\nRole: ");
+            rendered.push_str(role_id);
+        }
+
+        if let Some(instructions) = instructions {
+            rendered.push_str("\n\nInstructions:\n");
+            rendered.push_str(instructions);
+        }
+
+        if let Some(contract) = behavioral_contract {
+            rendered.push_str("\n\nBehavioral Contract:");
+            Self::append_titled_bullets(rendered, "Communication", &contract.communication);
+            Self::append_titled_bullets(rendered, "Execution", &contract.execution);
+            Self::append_titled_bullets(rendered, "Escalation", &contract.escalation);
+        }
+
+        if let Some(capabilities) = capabilities {
+            if has_capabilities {
+                rendered.push_str("\n\nCapabilities:");
+                Self::append_bullets(rendered, capabilities);
+            }
+        }
+    }
+
+    fn append_titled_bullets(rendered: &mut String, title: &str, items: &[String]) {
+        if !items.iter().any(|item| !item.trim().is_empty()) {
+            return;
+        }
+        rendered.push('\n');
+        rendered.push_str(title);
+        rendered.push_str(":\n");
+        Self::append_bullets(rendered, items);
+    }
+
+    fn append_bullets(rendered: &mut String, items: &[String]) {
+        for item in items {
+            let item = item.trim();
+            if item.is_empty() {
+                continue;
+            }
+            rendered.push_str("- ");
+            rendered.push_str(item);
+            rendered.push('\n');
+        }
+        if rendered.ends_with('\n') {
+            rendered.pop();
         }
     }
 }
@@ -164,6 +297,10 @@ mod tests {
             "architecture-final",
             "codex-reviewer",
             "team-lead",
+            None,
+            None,
+            None,
+            None,
         );
 
         assert!(rendered.contains("You are \"codex-reviewer\" on team \"architecture-final\"."));
@@ -184,6 +321,10 @@ mod tests {
             "architecture-final",
             "codex-reviewer",
             "team-lead",
+            None,
+            None,
+            None,
+            None,
         );
 
         let expected = concat!(
@@ -211,5 +352,65 @@ mod tests {
         );
 
         assert_eq!(rendered, expected);
+    }
+
+    #[test]
+    fn render_onboarding_appends_role_context_when_present() {
+        let contract = BehavioralContract {
+            communication: vec!["Post concise updates.".to_string()],
+            execution: vec!["Ship reviewed patches.".to_string()],
+            escalation: vec!["Escalate blockers quickly.".to_string()],
+        };
+        let capabilities = vec!["code-review".to_string(), "testing".to_string()];
+
+        let rendered = DeliveryRenderer::render_onboarding(
+            "architecture-final",
+            "codex-reviewer",
+            "team-lead",
+            Some("codex-reviewer"),
+            Some("Review architecture patches and propose fixes."),
+            Some(&contract),
+            Some(&capabilities),
+        );
+
+        assert!(rendered.contains("Role: codex-reviewer"));
+        assert!(rendered.contains("Instructions:\nReview architecture patches and propose fixes."));
+        assert!(rendered.contains("Behavioral Contract:"));
+        assert!(rendered.contains("Communication:\n- Post concise updates."));
+        assert!(rendered.contains("Execution:\n- Ship reviewed patches."));
+        assert!(rendered.contains("Escalation:\n- Escalate blockers quickly."));
+        assert!(rendered.contains("Capabilities:"));
+        assert!(rendered.contains("- code-review"));
+        assert!(rendered.contains("- testing"));
+        assert!(rendered.contains(
+            "mesh read --unread --mark-read --team architecture-final --name codex-reviewer"
+        ));
+    }
+
+    #[test]
+    fn render_claude_role_context_uses_internal_tools_and_role_sections() {
+        let contract = BehavioralContract {
+            communication: vec!["Share progress updates.".to_string()],
+            execution: vec!["Implement scoped fixes.".to_string()],
+            escalation: vec!["Raise blockers immediately.".to_string()],
+        };
+        let capabilities = vec!["implementation".to_string()];
+
+        let rendered = DeliveryRenderer::render_claude_role_context(
+            "architecture-final",
+            "claude-dev",
+            "team-lead",
+            Some("claude-developer"),
+            Some("Implement role-specific changes."),
+            Some(&contract),
+            Some(&capabilities),
+        );
+
+        assert!(rendered.contains("[taurhaus] role_context"));
+        assert!(rendered.contains("Use internal team tools"));
+        assert!(rendered.contains("Role: claude-developer"));
+        assert!(rendered.contains("Capabilities:"));
+        assert!(rendered.contains("- implementation"));
+        assert!(!rendered.contains("mesh read --unread"));
     }
 }

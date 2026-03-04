@@ -276,39 +276,48 @@ pub struct AgentSlot {
 impl AgentSlot {
     fn validate(&self, slot_index: usize, errors: &mut Vec<String>) {
         let prefix = format!("agent_slots[{slot_index}]");
-        validate_non_empty(&format!("{prefix}.role_id"), &self.role_id, errors);
-
-        if self.count == 0 {
-            errors.push(format!("{prefix}.count must be >= 1"));
-        }
-
-        match self.project_binding {
-            ProjectBinding::ExplicitProject => {
-                if self
-                    .project_id
-                    .as_deref()
-                    .map(str::trim)
-                    .unwrap_or("")
-                    .is_empty()
-                {
-                    errors.push(format!(
-                        "{prefix}.project_id is required when project_binding is explicit_project"
-                    ));
-                }
-            }
-            ProjectBinding::LeadProject | ProjectBinding::Any => {
-                if let Some(project_id) = self.project_id.as_deref() {
-                    if !project_id.trim().is_empty() {
-                        errors.push(format!(
-                            "{prefix}.project_id must be omitted unless project_binding is explicit_project"
-                        ));
-                    }
-                }
-            }
-        }
+        validate_agent_slot_common(self, slot_index, errors);
 
         if let Some(overrides) = self.overrides.as_ref() {
             overrides.validate(&format!("{prefix}.overrides"), errors);
+        }
+    }
+}
+
+pub(crate) fn validate_agent_slot_common(
+    slot: &AgentSlot,
+    slot_index: usize,
+    errors: &mut Vec<String>,
+) {
+    let prefix = format!("agent_slots[{slot_index}]");
+    validate_non_empty(&format!("{prefix}.role_id"), &slot.role_id, errors);
+
+    if slot.count == 0 {
+        errors.push(format!("{prefix}.count must be >= 1"));
+    }
+
+    match slot.project_binding {
+        ProjectBinding::ExplicitProject => {
+            if slot
+                .project_id
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty()
+            {
+                errors.push(format!(
+                    "{prefix}.project_id is required when project_binding is explicit_project"
+                ));
+            }
+        }
+        ProjectBinding::LeadProject | ProjectBinding::Any => {
+            if let Some(project_id) = slot.project_id.as_deref() {
+                if !project_id.trim().is_empty() {
+                    errors.push(format!(
+                        "{prefix}.project_id must be omitted unless project_binding is explicit_project"
+                    ));
+                }
+            }
         }
     }
 }

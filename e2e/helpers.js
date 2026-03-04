@@ -103,7 +103,26 @@ export async function ensureMainApp() {
   // Step 3: Register projects
   const registerBtn = await $('[data-testid="register-button"]')
   await registerBtn.waitForExist({ timeout: 30_000 })
-  await registerBtn.click()
+  await browser.waitUntil(
+    async () => browser.execute(() => {
+      const register = document.querySelector('[data-testid="register-button"]')
+      if (!register) return false
+      if (!register.disabled) return true
+
+      // If nothing is selected, force-select all discovered projects.
+      const selectAll = Array.from(
+        document.querySelectorAll('[data-testid="wizard-step-4"] button')
+      ).find((button) => button.textContent?.trim() === 'Select all')
+      if (selectAll) selectAll.click()
+
+      return !register.disabled
+    }),
+    { timeout: 10_000, interval: POLL_WIZARD, timeoutMsg: 'Register button stayed disabled in wizard step 4' }
+  )
+
+  await browser.execute(() => {
+    document.querySelector('[data-testid="register-button"]')?.click()
+  })
 
   // Step 4 → 5: Wait for indexing → completion → click dashboard
   const dashboardBtn = await $('[data-testid="go-to-dashboard"]')

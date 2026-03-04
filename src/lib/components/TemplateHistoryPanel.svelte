@@ -46,6 +46,7 @@
   let commits = $state([])
   let nextCursor = $state(null)
   let selectedCommitId = $state('')
+  let diffLoadSequence = 0
   let diff = $state({
     commitId: '',
     files: [],
@@ -177,7 +178,9 @@
   }
 
   async function loadDiff(commitId) {
+    const sequence = ++diffLoadSequence
     if (!commitId) {
+      loadingDiff = false
       diff = {
         commitId: '',
         files: [],
@@ -190,9 +193,11 @@
     loadingDiff = true
     try {
       const result = normalizeDiff(await getTemplateDiff(commitId))
+      if (sequence !== diffLoadSequence) return
       diff = result
       selectedDiffPath = result.files[0]?.path ?? ''
     } catch (error) {
+      if (sequence !== diffLoadSequence) return
       diff = {
         commitId,
         files: [],
@@ -201,7 +206,9 @@
       selectedDiffPath = ''
       errorMessage = error?.message || 'Failed to load template diff.'
     } finally {
-      loadingDiff = false
+      if (sequence === diffLoadSequence) {
+        loadingDiff = false
+      }
     }
   }
 
@@ -342,8 +349,8 @@
               data-testid={`template-history-commit-${commit.shortId}`}
             >
               <div class="flex items-center justify-between gap-2">
-                <span class="font-mono text-[10px] {t.textMuted}">{commit.shortId}</span>
-                <span class="text-[10px] {t.textMuted}">{formatTimestamp(commit.timestamp)}</span>
+                <span class="font-mono text-xs {t.textMuted}">{commit.shortId}</span>
+                <span class="text-xs {t.textMuted}">{formatTimestamp(commit.timestamp)}</span>
               </div>
               <p class="mt-1 text-[12px] font-medium {t.textPrimary} line-clamp-2">{commit.message}</p>
               <p class="mt-1 text-[10px] {t.textMuted}">{commit.author}</p>

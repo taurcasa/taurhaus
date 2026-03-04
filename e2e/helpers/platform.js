@@ -17,13 +17,22 @@ const isMac = process.platform === 'darwin'
  */
 export const MOD_KEY = isMac ? 'Meta' : 'Control'
 
+const defaultTaurhausProjectPath = isMac
+  ? resolve(homedir(), 'projects', 'taurhaus')
+  : '/home/mstie/projects/taurhaus'
+
+/**
+ * The taurhaus project's own path — guaranteed to be a git repo on dev machines.
+ * Used as a stable onboarding target and duplicate-path validation input.
+ */
+export const TAURHAUS_PROJECT_PATH = process.env.E2E_TAURHAUS_PROJECT_PATH || defaultTaurhausProjectPath
+
 /**
  * Directory to scan for projects in the first-run wizard.
- * Must exist and contain git repos on the test machine.
+ * Defaults to taurhaus itself for deterministic/fast onboarding.
+ * Set E2E_PROJECTS_DIR to override for multi-repo scenarios.
  */
-export const PROJECTS_DIR = isMac
-  ? resolve(homedir(), 'projects')
-  : '/home/mstie/projects'
+export const PROJECTS_DIR = process.env.E2E_PROJECTS_DIR || TAURHAUS_PROJECT_PATH
 
 /**
  * A path that definitely does not exist — for "invalid path" validation tests.
@@ -34,11 +43,3 @@ export const NONEXISTENT_PATH = '/nonexistent/path/xyz123'
  * A real directory that is NOT a git repo — for "not a git repository" tests.
  */
 export const NON_GIT_DIR = '/tmp'
-
-/**
- * The taurhaus project's own path — guaranteed to be registered after wizard.
- * Used for "already registered" duplicate-path validation tests.
- */
-export const TAURHAUS_PROJECT_PATH = isMac
-  ? resolve(homedir(), 'projects', 'taurhaus')
-  : '/home/mstie/projects/taurhaus'

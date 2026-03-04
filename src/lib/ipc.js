@@ -813,10 +813,33 @@ export async function listRoleTemplates() {
         if (!roleId) return summary
         try {
           const detail = await invoke('templates_get_role', { roleId })
+          const resolvedRoleId = detail?.roleId ?? detail?.role_id ?? roleId
+          const resolvedCliTool =
+            detail?.cliTool ??
+            detail?.cli_tool ??
+            detail?.defaults?.cliTool ??
+            detail?.defaults?.cli_tool ??
+            summary?.cliTool ??
+            summary?.cli_tool ??
+            null
+          const resolvedModel =
+            detail?.model ??
+            detail?.defaults?.model ??
+            summary?.model ??
+            null
+          const resolvedCapabilities =
+            Array.isArray(detail?.capabilities)
+              ? detail.capabilities
+              : Array.isArray(summary?.capabilities)
+                ? summary.capabilities
+                : []
           return {
             ...summary,
             ...detail,
-            roleId,
+            roleId: resolvedRoleId,
+            cliTool: resolvedCliTool,
+            model: resolvedModel,
+            capabilities: resolvedCapabilities,
             builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
             readOnly: Boolean(summary?.readOnly ?? summary?.read_only),
           }
@@ -898,9 +921,17 @@ export function getTeamPreset(id) {
 
 /** Compose a team from role/preset selections and overrides. */
 export function composeTeam(request) {
+  const normalizedAgentSlots = (request?.agentSlots ?? request?.agent_slots ?? []).map((slot) => ({
+    role_id: slot?.roleId ?? slot?.role_id ?? '',
+    count: Number(slot?.count ?? 0),
+    project_binding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
+    project_id: slot?.projectId ?? slot?.project_id ?? null,
+    overrides: slot?.overrides ?? null,
+  }))
+
   const normalizedRequest = {
     leadRoleId: request?.leadRoleId ?? request?.lead_role_id ?? '',
-    agentSlots: request?.agentSlots ?? request?.agent_slots ?? [],
+    agentSlots: normalizedAgentSlots,
     overrides: {
       ...(request?.overrides ?? {}),
       ...(request?.projectName ? { projectName: request.projectName } : {}),
@@ -928,9 +959,16 @@ export function composeTeam(request) {
           projectId: null,
         },
       ],
-      warnings: request?.agentSlots?.length ? [] : ['No agent slots selected; roster includes lead only.'],
+      warnings: normalizedAgentSlots.length ? [] : ['No agent slots selected; roster includes lead only.'],
       validationErrors: [],
     }
+  }).catch((error) => {
+    const message =
+      error?.message
+      || (typeof error === 'string' ? error : '')
+      || (error ? JSON.stringify(error) : '')
+      || 'templates_compose_team failed'
+    throw new Error(message)
   })
 }
 
@@ -1012,10 +1050,44 @@ export function coordinationGetTeamStatus(teamName) {
   }))
 }
 
+function normalizeBehavioralContractPayload(value) {
+  if (!value || typeof value !== 'object') return null
+  return {
+    communication: Array.isArray(value.communication) ? value.communication : [],
+    execution: Array.isArray(value.execution) ? value.execution : [],
+    escalation: Array.isArray(value.escalation) ? value.escalation : [],
+  }
+}
+
+function normalizeAgentSetupPayload(value) {
+  if (!value || typeof value !== 'object') return value
+  return {
+    ...value,
+    roleId: value?.roleId ?? value?.role_id ?? null,
+    instructions: value?.instructions ?? null,
+    behavioralContract: normalizeBehavioralContractPayload(
+      value?.behavioralContract ?? value?.behavioral_contract
+    ),
+    capabilities: Array.isArray(value?.capabilities) ? value.capabilities : null,
+  }
+}
+
+function normalizeInitializeTeamPayload(request) {
+  if (!request || typeof request !== 'object') return request
+  return {
+    ...request,
+    lead: normalizeAgentSetupPayload(request.lead),
+    agents: Array.isArray(request.agents)
+      ? request.agents.map((agent) => normalizeAgentSetupPayload(agent))
+      : [],
+  }
+}
+
 /** Initialize a team with lead/agent setup configuration. */
 export function coordinationInitializeTeam(request) {
-  return invokeOrMock('coordination_initialize_team', { request }, () => ({
-    teamName: request?.teamName ?? '',
+  const payload = normalizeInitializeTeamPayload(request)
+  return invokeOrMock('coordination_initialize_team', { request: payload }, () => ({
+    teamName: payload?.teamName ?? '',
     succeededSteps: [
       'validate_configuration',
       'create_team',

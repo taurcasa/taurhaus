@@ -170,6 +170,8 @@
       cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'claude').toLowerCase(),
       model: value?.model ?? '',
       instructions: value?.instructions ?? '',
+      behavioralContract: value?.behavioralContract ?? value?.behavioral_contract ?? null,
+      capabilities: Array.isArray(value?.capabilities) ? value.capabilities : [],
       projectBinding: value?.projectBinding ?? value?.project_binding ?? 'lead_project',
       projectId: value?.projectId ?? value?.project_id ?? '',
     }
@@ -349,9 +351,14 @@
       saveError = 'Preset name is required.'
       return
     }
+    const presetId = slugifyPresetId(trimmedName)
+    if (!presetId) {
+      saveError = 'Preset name must include at least one letter or number.'
+      return
+    }
 
     const payload = {
-      presetId: slugifyPresetId(trimmedName),
+      presetId,
       name: trimmedName,
       description: saveDescription.trim(),
       leadRoleId,
@@ -383,6 +390,10 @@
         model: leadMember.model,
         projectId: leadMember.projectId || projectPath,
         description: leadMember.roleId || null,
+        roleId: leadMember.roleId || null,
+        instructions: leadMember.instructions || null,
+        behavioralContract: leadMember.behavioralContract ?? null,
+        capabilities: leadMember.capabilities?.length ? leadMember.capabilities : null,
       },
       agents: agents.map((member, index) => ({
         name: normalizedMemberName(member, index + 1),
@@ -390,6 +401,10 @@
         model: member.model,
         projectId: member.projectId || projectPath,
         description: member.roleId || null,
+        roleId: member.roleId || null,
+        instructions: member.instructions || null,
+        behavioralContract: member.behavioralContract ?? null,
+        capabilities: member.capabilities?.length ? member.capabilities : null,
       })),
       roster: editedRoster.map((member, index) => ({
         name: normalizedMemberName(member, index),
@@ -398,6 +413,8 @@
         cliTool: member.cliTool,
         model: member.model,
         instructions: member.instructions,
+        behavioralContract: member.behavioralContract ?? null,
+        capabilities: member.capabilities,
         projectBinding: member.projectBinding,
         projectId: member.projectId || projectPath,
       })),
@@ -462,7 +479,7 @@
   <section class="rounded-md border p-2 {sectionTone}" data-testid="lead-role-picker">
     <h3 class="text-xs font-semibold uppercase tracking-wide {t.textSecondary}">Lead Role Picker</h3>
     <label class="mt-2 flex flex-col gap-1">
-      <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Lead role</span>
+      <span class="text-xs uppercase tracking-wide {t.textMuted}">Lead role</span>
       <select
         class="h-8 rounded-md border px-2 text-xs {inputTone}"
         value={leadRoleId}
@@ -551,7 +568,7 @@
 
             <div class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
               <label class="flex flex-col gap-1">
-                <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Name</span>
+                <span class="text-xs uppercase tracking-wide {t.textMuted}">Name</span>
                 <input
                   class="h-8 rounded-md border px-2 text-xs {inputTone}"
                   value={member.name}
@@ -562,7 +579,7 @@
                 />
               </label>
               <label class="flex flex-col gap-1">
-                <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Tool</span>
+                <span class="text-xs uppercase tracking-wide {t.textMuted}">Tool</span>
                 <select
                   class="h-8 rounded-md border px-2 text-xs {inputTone}"
                   value={member.cliTool}
@@ -577,7 +594,7 @@
                 </select>
               </label>
               <label class="flex flex-col gap-1">
-                <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Model</span>
+                <span class="text-xs uppercase tracking-wide {t.textMuted}">Model</span>
                 <input
                   class="h-8 rounded-md border px-2 text-xs {inputTone}"
                   value={member.model}
@@ -588,7 +605,7 @@
                 />
               </label>
               <label class="flex flex-col gap-1">
-                <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Project ID</span>
+                <span class="text-xs uppercase tracking-wide {t.textMuted}">Project ID</span>
                 <input
                   class="h-8 rounded-md border px-2 text-xs {inputTone}"
                   value={member.projectId || projectPath}
@@ -601,7 +618,7 @@
             </div>
 
             <label class="mt-2 flex flex-col gap-1">
-              <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Instructions</span>
+              <span class="text-xs uppercase tracking-wide {t.textMuted}">Instructions</span>
               <textarea
                 class="min-h-16 rounded-md border px-2 py-1.5 text-xs {inputTone}"
                 value={member.instructions}
@@ -685,7 +702,7 @@
     <div class="rounded-md border p-2 {sectionTone}" data-testid="composer-save-dialog">
       <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
         <label class="flex flex-col gap-1">
-          <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Preset name</span>
+          <span class="text-xs uppercase tracking-wide {t.textMuted}">Preset name</span>
           <input
             class="h-8 rounded-md border px-2 text-xs {inputTone}"
             value={saveName}
@@ -696,7 +713,7 @@
           />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-[10px] uppercase tracking-wide {t.textMuted}">Description</span>
+          <span class="text-xs uppercase tracking-wide {t.textMuted}">Description</span>
           <input
             class="h-8 rounded-md border px-2 text-xs {inputTone}"
             value={saveDescription}

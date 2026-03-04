@@ -15,6 +15,7 @@ use crate::session_scanner::cli_tool::CliTool;
 type BackendFactory =
     dyn Fn(BackendKind) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> + Send + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
+const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
@@ -133,6 +134,11 @@ fn default_runtime_factory() -> Arc<dyn CoordinationRuntime> {
 }
 
 fn default_teams_dir() -> PathBuf {
+    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
+        if !path.is_empty() {
+            return PathBuf::from(path).join("teams");
+        }
+    }
     if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
         return path;
     }
@@ -144,12 +150,15 @@ fn default_teams_dir() -> PathBuf {
 mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::LazyLock;
+    use std::sync::{Arc, Mutex};
 
     use tempfile::TempDir;
 
     use super::*;
     use crate::coordination::backend::fake::FakeBackend;
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn fake_factory_with_counter(counter: Arc<AtomicUsize>) -> Arc<BackendFactory> {
         Arc::new(move |_kind| {
@@ -254,5 +263,26 @@ mod tests {
             other => panic!("expected backend error, got {other:?}"),
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn default_teams_dir_uses_claude_override_when_set() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let override_dir = TempDir::new().expect("tempdir");
+        std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, override_dir.path());
+        let resolved = default_teams_dir();
+        std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
+
+        assert_eq!(resolved, override_dir.path().join("teams"));
+    }
+
+    #[test]
+    fn default_teams_dir_ignores_empty_override() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, "");
+        let resolved = default_teams_dir();
+        std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
+
+        assert!(resolved.ends_with(PathBuf::from(".claude").join("teams")));
     }
 }

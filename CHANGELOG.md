@@ -6,17 +6,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-03-04
+
 ### Added
 
 **Team Template System**
 - Git-backed template command surface: role/preset CRUD, composition/validation, storage status, history, diff, revert, import, and pending flush endpoints (`templates_*`)
 - Template catalog and composition UI: role/preset browsing, quick compose preview, editable roster composition, and mesh-setup integration
 - Template history UX: global/selected-template commit history, commit detail metadata, diff hunk view, dirty-state indicator, and revert action
+- Template E2E workflow coverage (`e2e/specs/templates.js`) for catalog flow, composer validation, and role/preset CRUD paths
+
+**Role Context Delivery**
+- Template-launched agents now receive role-specific instructions, behavioral contract, and capabilities in their onboarding
+- Dual delivery path: Codex/Gemini agents receive role context in tmux onboarding message; Claude agents receive it as first team message after session detection
+- Role metadata persisted in member config for restart resilience
+
+**E2E Isolation**
+- Session-level E2E sandboxing in WebdriverIO: per-session temp roots for app data + Claude data, plus an isolated fixture git project for deterministic onboarding
 
 ### Changed
 
 - Mesh setup now supports template-first onboarding paths (preset quick-select, catalog browse, custom composition) while preserving manual blank-slate fallback
 - Frontend IPC layer migrated template calls from temporary mock command names to backend `templates_*` commands
+- Runtime path resolution now supports `TAURHAUS_DATA_DIR` (app data) and `TAURHAUS_CLAUDE_DIR` (Claude tasks/teams roots) overrides for isolated runs
+- E2E recipes (`just test-e2e*`) are now safe-by-default and do not auto-run `install-daemon`; opt in with `E2E_INSTALL_DAEMON=1`
+- Template backend writes now use an atomic mutation pipeline (`mutate_and_commit`), shared agent-slot validation, and direct ID-path lookups for role/preset reads
+- Compose IPC request handling now accepts camelCase/snake_case DTO aliases for agent slot fields
+- Template UI polish: accessibility labels on agent controls, duplicate-name submit enforcement, sequence guards for async preset/diff races, save-as-preset slug validation, 12px label sizing, and shared derived surface tokens
+
+### Fixed
+
+- Template import failures now report detailed parse/validation context for role and preset attempts instead of a generic invalid-file error
+- Template catalog CLI tool filter now correctly reads nested `defaults.cli_tool` field; previously all templates appeared as Claude regardless of actual tool
 
 ### Documentation
 

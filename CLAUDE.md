@@ -96,10 +96,13 @@ E2E tests launch the real app binary via tauri-driver + WebDriverIO. They run on
 
 | Recipe | Where it runs | What it does |
 |--------|--------------|-------------|
-| `just test-e2e` | Linux (WSL) | Tier 1 E2E — builds Linux debug binary, runs specs locally. |
-| `just test-e2e-full` | Linux (WSL) | Tier 1 + Tier 2 (requires daemon running) |
-| `just test-e2e-spec SPEC` | Linux (WSL) | Single spec file (e.g. `just test-e2e-spec search-workflow`) |
+| `just test-e2e` | Linux (WSL) | Tier 1 E2E — safe-by-default (does not auto-run `install-daemon`), builds Linux debug binary, runs specs locally. |
+| `just test-e2e-full` | Linux (WSL) | Tier 1 + Tier 2 (requires daemon running), safe-by-default daemon handling |
+| `just test-e2e-spec SPEC` | Linux (WSL) | Single spec file (e.g. `just test-e2e-spec search-workflow`), safe-by-default daemon handling |
 | `just test-macos-e2e` | **macOS** via SSH | macOS E2E test suite on remote Mac Mini. |
+
+For local runs that should rebuild/reinstall the daemon first, opt in explicitly: `E2E_INSTALL_DAEMON=1 just test-e2e`.
+E2E sessions also use isolated roots via `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR`, plus fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH`.
 
 **Platform builds (run natively on target OS):**
 
@@ -138,7 +141,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 ## Architecture Summary
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
-- **Data location**: Tauri `app_data_dir()` — platform-appropriate
+- **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
 - **IPC**: Fine-grained commands (~25). One per operation. Frontend calls in parallel.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.

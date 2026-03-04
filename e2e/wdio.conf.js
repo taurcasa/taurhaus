@@ -28,9 +28,10 @@
  *   E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js  (skip build)
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
-import { readdirSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -75,6 +76,7 @@ function buildSpecList() {
 }
 
 let tauriDriver
+let sessionTempRoot = null
 
 export const config = {
   // ── Runner ──────────────────────────────────────────────────────────────
@@ -151,7 +153,34 @@ export const config = {
    */
   async beforeSession() {
     return new Promise((resolve) => {
+      sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
+      const tauriDataDir = `${sessionTempRoot}/app-data`
+      const tauriClaudeDir = `${sessionTempRoot}/claude`
+      const e2eProjectsDir = `${sessionTempRoot}/projects`
+      const taurhausFixtureProject = `${e2eProjectsDir}/taurhaus`
+      mkdirSync(tauriDataDir, { recursive: true })
+      mkdirSync(tauriClaudeDir, { recursive: true })
+      mkdirSync(taurhausFixtureProject, { recursive: true })
+      writeFileSync(`${taurhausFixtureProject}/README.md`, '# taurhaus e2e fixture\n')
+      writeFileSync(`${taurhausFixtureProject}/fixture.txt`, 'e2e fixture project\n')
+
+      const gitInit = spawnSync('git', ['init', '-q'], {
+        cwd: taurhausFixtureProject,
+        stdio: 'ignore',
+      })
+      if (gitInit.status !== 0) {
+        throw new Error('Failed to initialize e2e fixture git repository')
+      }
+
+      process.env.E2E_PROJECTS_DIR = e2eProjectsDir
+      process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
+
       tauriDriver = spawn('tauri-driver', [], {
+        env: {
+          ...process.env,
+          TAURHAUS_DATA_DIR: tauriDataDir,
+          TAURHAUS_CLAUDE_DIR: tauriClaudeDir,
+        },
         stdio: [null, process.stdout, process.stderr],
       })
 
@@ -167,6 +196,10 @@ export const config = {
     if (tauriDriver) {
       tauriDriver.kill()
       tauriDriver = null
+    }
+    if (sessionTempRoot) {
+      rmSync(sessionTempRoot, { recursive: true, force: true })
+      sessionTempRoot = null
     }
   },
 }

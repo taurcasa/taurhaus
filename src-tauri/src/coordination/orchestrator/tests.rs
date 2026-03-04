@@ -19,7 +19,10 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {
         name: name.to_string(),
         role: MemberRole::Agent,
+        role_id: None,
         instructions: Some("focus on implementation".to_string()),
+        behavioral_contract: None,
+        capabilities: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: tool,
     }
@@ -115,7 +118,10 @@ impl CoordinationRuntime for MeshPreAddRuntime {
             config.members.push(Member {
                 name: member_name.to_string(),
                 role: MemberRole::Agent,
+                role_id: None,
                 instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: self.preadded_project_path.clone(),
                 cli_tool: CliTool::Codex,
             });
@@ -275,6 +281,10 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             model: "opus".to_string(),
             project_id: "/tmp/lead".to_string(),
             description: Some("lead".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -283,6 +293,10 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 model: "gpt-5.3".to_string(),
                 project_id: "/tmp/frontend".to_string(),
                 description: Some("frontend".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -290,6 +304,10 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 model: "pro".to_string(),
                 project_id: "/tmp/reviewer".to_string(),
                 description: Some("review".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
         ],
     }
@@ -304,6 +322,10 @@ fn add_agent_request(team_name: &str, agent_name: &str, cli_tool: &str) -> AddAg
             model: "model".to_string(),
             project_id: format!("/tmp/{agent_name}"),
             description: Some("hot-added".to_string()),
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
         },
     }
 }
@@ -318,7 +340,10 @@ fn create_running_team(orchestrator: &mut CoordinationOrchestrator, team_name: &
             Member {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
+                role_id: None,
                 instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -554,7 +579,10 @@ fn remove_member_cleans_runtime() {
             Member {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
+                role_id: None,
                 instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -600,7 +628,10 @@ fn remove_member_tears_down_runtime_resources() {
             Member {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
+                role_id: None,
                 instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -666,7 +697,10 @@ fn remove_member_rejects_lead_removal() {
             Member {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
+                role_id: None,
                 instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -706,7 +740,10 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
             Member {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
+                role_id: None,
                 instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },

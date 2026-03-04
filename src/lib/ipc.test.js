@@ -920,6 +920,51 @@ describe('ipc module', () => {
     })
   })
 
+  describe('listRoleTemplates()', () => {
+    it('maps role defaults.cli_tool/defaults.model into top-level fields in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke
+        .mockResolvedValueOnce([
+          {
+            role_id: 'codex-developer',
+            name: 'Codex Developer',
+            version: '1.0.0',
+            kind: 'agent',
+            source: 'built_in',
+            read_only: true,
+          },
+        ])
+        .mockResolvedValueOnce({
+          role_id: 'codex-developer',
+          name: 'Codex Developer',
+          kind: 'agent',
+          defaults: {
+            cli_tool: 'codex',
+            model: 'gpt-5.3-codex',
+          },
+          capabilities: ['implementation'],
+        })
+
+      const result = await ipc.listRoleTemplates()
+
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(1, 'templates_list_roles')
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(2, 'templates_get_role', {
+        roleId: 'codex-developer',
+      })
+      expect(result).toEqual([
+        expect.objectContaining({
+          roleId: 'codex-developer',
+          cliTool: 'codex',
+          model: 'gpt-5.3-codex',
+          capabilities: ['implementation'],
+          builtIn: true,
+          readOnly: true,
+        }),
+      ])
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
   // -----------------------------------------------------------------------
   // Coordination IPC wrappers (frontend-only task surface)
   // -----------------------------------------------------------------------
@@ -933,7 +978,19 @@ describe('ipc module', () => {
 
       const result = await ipc.coordinationInitializeTeam(request)
 
-      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_initialize_team', { request })
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_initialize_team', {
+        request: {
+          teamName: 'arch',
+          lead: {
+            name: 'team-lead',
+            roleId: null,
+            instructions: null,
+            behavioralContract: null,
+            capabilities: null,
+          },
+          agents: [],
+        },
+      })
       expect(result).toEqual(report)
       delete window.__TAURI_INTERNALS__
     })

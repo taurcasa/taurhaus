@@ -114,21 +114,36 @@ build-e2e:
     npx tauri build --debug --no-bundle
 
 # Run E2E tests — Tier 1 only.
-# Ensures the installed daemon matches the current source first, then runs tests.
+# By default this does NOT run install-daemon (to avoid killing/restarting
+# a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
-test-e2e: install-daemon
+test-e2e: e2e-prepare-daemon
     npx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
-# Ensures the installed daemon matches the current source first.
-test-e2e-full: install-daemon
+# By default this does NOT run install-daemon (to avoid killing/restarting
+# a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
+test-e2e-full: e2e-prepare-daemon
     npx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
-# Ensures the installed daemon matches the current source first.
+# By default this does NOT run install-daemon (to avoid killing/restarting
+# a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
-test-e2e-spec SPEC: install-daemon
+test-e2e-spec SPEC: e2e-prepare-daemon
     npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+
+# Optional daemon prep for E2E runs.
+# Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 to rebuild/reinstall daemon.
+e2e-prepare-daemon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${E2E_INSTALL_DAEMON:-0}" = "1" ]; then
+        echo "▸ E2E_INSTALL_DAEMON=1 -> running install-daemon"
+        just install-daemon
+    else
+        echo "▸ Skipping install-daemon for E2E (set E2E_INSTALL_DAEMON=1 to enable)"
+    fi
 
 # Reset database (delete SQLite file)
 db-reset:

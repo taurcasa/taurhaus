@@ -55,6 +55,28 @@ pub struct TemplateMutationResult {
     pub committed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TemplateFileMutation {
+    pub relative_path: PathBuf,
+    pub contents: Option<Vec<u8>>,
+}
+
+impl TemplateFileMutation {
+    pub fn write(relative_path: PathBuf, contents: Vec<u8>) -> Self {
+        Self {
+            relative_path,
+            contents: Some(contents),
+        }
+    }
+
+    pub fn delete(relative_path: PathBuf) -> Self {
+        Self {
+            relative_path,
+            contents: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct TemplateStoreState {
     #[serde(default)]
@@ -166,7 +188,11 @@ impl DebounceState {
             existing.last_seen_at = now_ts;
             for path in changed_paths {
                 let path_str = path.to_string_lossy().to_string();
-                if !existing.changed_paths.iter().any(|existing| existing == &path_str) {
+                if !existing
+                    .changed_paths
+                    .iter()
+                    .any(|existing| existing == &path_str)
+                {
                     existing.changed_paths.push(path_str);
                 }
             }
@@ -195,7 +221,10 @@ impl DebounceState {
     }
 
     fn shutdown_message(&self) -> String {
-        format!("templates: shutdown flush {} changes", self.pending_actions.len())
+        format!(
+            "templates: shutdown flush {} changes",
+            self.pending_actions.len()
+        )
     }
 
     fn take_changed_paths(&self) -> Vec<PathBuf> {
@@ -334,6 +363,13 @@ impl TemplateStore {
     }
 
     pub fn load_catalog(&self) -> Result<TemplateCatalog, TemplateStoreError> {
+        let roles = self.load_role_catalog()?;
+        let presets = self.load_preset_catalog(&roles)?;
+
+        Ok(TemplateCatalog { roles, presets })
+    }
+
+    fn load_role_catalog(&self) -> Result<Vec<RoleTemplate>, TemplateStoreError> {
         self.ensure_directories()?;
 
         let mut roles_by_id: BTreeMap<String, RoleTemplate> = BTreeMap::new();
@@ -349,6 +385,14 @@ impl TemplateStore {
             role.validate()
                 .map_err(|err| TemplateStoreError::Parse(err.to_string()))?;
         }
+        Ok(roles)
+    }
+
+    fn load_preset_catalog(
+        &self,
+        role_catalog: &[RoleTemplate],
+    ) -> Result<Vec<TeamPreset>, TemplateStoreError> {
+        self.ensure_directories()?;
 
         let mut presets_by_id: BTreeMap<String, TeamPreset> = BTreeMap::new();
         for preset in self.load_presets_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))? {
@@ -361,11 +405,11 @@ impl TemplateStore {
         let presets = presets_by_id.into_values().collect::<Vec<_>>();
         for preset in &presets {
             preset
-                .validate_with_role_catalog(&roles)
+                .validate_with_role_catalog(role_catalog)
                 .map_err(|err| TemplateStoreError::Parse(err.to_string()))?;
         }
 
-        Ok(TemplateCatalog { roles, presets })
+        Ok(presets)
     }
 
     pub fn list_roles(&self) -> Result<Vec<RoleTemplateRecord>, TemplateStoreError> {
@@ -406,11 +450,37 @@ impl TemplateStore {
     }
 
     pub fn get_role(&self, role_id: &str) -> Result<RoleTemplateRecord, TemplateStoreError> {
-        let roles = self.list_roles()?;
-        roles
-            .into_iter()
-            .find(|record| record.template.role_id == role_id)
-            .ok_or_else(|| TemplateStoreError::NotFound(format!("role '{role_id}' not found")))
+        self.ensure_directories()?;
+
+        if let Some(role_file) = self.load_role_file_by_id(&self.roles_dir(), role_id)? {
+            role_file
+                .template
+                .validate()
+                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            return Ok(RoleTemplateRecord {
+                template: role_file.template,
+                source: TemplateSource::User,
+                read_only: false,
+            });
+        }
+
+        if let Some(role_file) =
+            self.load_role_file_by_id(&self.builtins_dir.join(ROLES_DIRNAME), role_id)?
+        {
+            role_file
+                .template
+                .validate()
+                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            return Ok(RoleTemplateRecord {
+                template: role_file.template,
+                source: TemplateSource::BuiltIn,
+                read_only: true,
+            });
+        }
+
+        Err(TemplateStoreError::NotFound(format!(
+            "role '{role_id}' not found"
+        )))
     }
 
     pub fn create_role(
@@ -441,12 +511,16 @@ impl TemplateStore {
 
         let relative_path = self.role_file_path(&template.role_id);
         let payload = serde_yaml::to_string(template).map_err(|err| {
-            TemplateStoreError::Parse(format!("failed to serialize role '{}': {err}", template.role_id))
+            TemplateStoreError::Parse(format!(
+                "failed to serialize role '{}': {err}",
+                template.role_id
+            ))
         })?;
-        self.write_template_file(&relative_path, payload.as_bytes())?;
-
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::write(
+                relative_path,
+                payload.into_bytes(),
+            )],
             &format!("templates: create role {}", template.role_id),
         )?;
         Ok(TemplateMutationResult {
@@ -486,10 +560,11 @@ impl TemplateStore {
         let payload = serde_yaml::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize role '{role_id}': {err}"))
         })?;
-        self.write_template_file(&relative_path, payload.as_bytes())?;
-
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::write(
+                relative_path,
+                payload.into_bytes(),
+            )],
             &format!("templates: update role {role_id}"),
         )?;
         Ok(TemplateMutationResult {
@@ -530,12 +605,8 @@ impl TemplateStore {
             )));
         }
 
-        let _lock = self.acquire_lock()?;
-        fs::remove_file(&absolute_path)?;
-        drop(_lock);
-
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::delete(relative_path)],
             &format!("templates: delete role {role_id}"),
         )?;
         Ok(TemplateMutationResult {
@@ -568,9 +639,8 @@ impl TemplateStore {
         };
 
         let relative_path = self.role_file_path(&role_id);
-        self.write_template_file(&relative_path, raw.as_bytes())?;
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::write(relative_path, raw.into_bytes())],
             &format!("templates: {action} role {role_id}"),
         )?;
 
@@ -582,10 +652,12 @@ impl TemplateStore {
 
     pub fn list_presets(&self) -> Result<Vec<TeamPresetRecord>, TemplateStoreError> {
         self.ensure_directories()?;
-        let role_catalog = self.load_catalog()?.roles;
+        let role_catalog = self.load_role_catalog()?;
 
         let mut merged: BTreeMap<String, TeamPresetRecord> = BTreeMap::new();
-        for preset_file in self.load_preset_files_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))? {
+        for preset_file in
+            self.load_preset_files_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))?
+        {
             preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
@@ -619,10 +691,38 @@ impl TemplateStore {
     }
 
     pub fn get_preset(&self, preset_id: &str) -> Result<TeamPresetRecord, TemplateStoreError> {
-        self.list_presets()?
-            .into_iter()
-            .find(|record| record.template.preset_id == preset_id)
-            .ok_or_else(|| TemplateStoreError::NotFound(format!("preset '{preset_id}' not found")))
+        self.ensure_directories()?;
+        let role_catalog = self.load_role_catalog()?;
+
+        if let Some(preset_file) = self.load_preset_file_by_id(&self.presets_dir(), preset_id)? {
+            preset_file
+                .template
+                .validate_with_role_catalog(&role_catalog)
+                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            return Ok(TeamPresetRecord {
+                template: preset_file.template,
+                source: TemplateSource::User,
+                read_only: false,
+            });
+        }
+
+        if let Some(preset_file) =
+            self.load_preset_file_by_id(&self.builtins_dir.join(PRESETS_DIRNAME), preset_id)?
+        {
+            preset_file
+                .template
+                .validate_with_role_catalog(&role_catalog)
+                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            return Ok(TeamPresetRecord {
+                template: preset_file.template,
+                source: TemplateSource::BuiltIn,
+                read_only: true,
+            });
+        }
+
+        Err(TemplateStoreError::NotFound(format!(
+            "preset '{preset_id}' not found"
+        )))
     }
 
     pub fn create_preset(
@@ -630,7 +730,7 @@ impl TemplateStore {
         template: &TeamPreset,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         validate_template_id(&template.preset_id, "preset")?;
-        let roles = self.load_catalog()?.roles;
+        let roles = self.load_role_catalog()?;
         template
             .validate_with_role_catalog(&roles)
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
@@ -659,10 +759,11 @@ impl TemplateStore {
                 template.preset_id
             ))
         })?;
-        self.write_template_file(&relative_path, payload.as_bytes())?;
-
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::write(
+                relative_path,
+                payload.into_bytes(),
+            )],
             &format!("templates: create preset {}", template.preset_id),
         )?;
         Ok(TemplateMutationResult {
@@ -684,7 +785,7 @@ impl TemplateStore {
         }
         validate_template_id(preset_id, "preset")?;
 
-        let roles = self.load_catalog()?.roles;
+        let roles = self.load_role_catalog()?;
         template
             .validate_with_role_catalog(&roles)
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
@@ -704,10 +805,11 @@ impl TemplateStore {
         let payload = serde_yaml::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize preset '{preset_id}': {err}"))
         })?;
-        self.write_template_file(&relative_path, payload.as_bytes())?;
-
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::write(
+                relative_path,
+                payload.into_bytes(),
+            )],
             &format!("templates: update preset {preset_id}"),
         )?;
         Ok(TemplateMutationResult {
@@ -738,12 +840,8 @@ impl TemplateStore {
             )));
         }
 
-        let _lock = self.acquire_lock()?;
-        fs::remove_file(&absolute_path)?;
-        drop(_lock);
-
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::delete(relative_path)],
             &format!("templates: delete preset {preset_id}"),
         )?;
         Ok(TemplateMutationResult {
@@ -765,7 +863,7 @@ impl TemplateStore {
         })?;
 
         validate_template_id(&template.preset_id, "preset")?;
-        let roles = self.load_catalog()?.roles;
+        let roles = self.load_role_catalog()?;
         template
             .validate_with_role_catalog(&roles)
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
@@ -778,9 +876,8 @@ impl TemplateStore {
         };
 
         let relative_path = self.preset_file_path(&preset_id);
-        self.write_template_file(&relative_path, raw.as_bytes())?;
-        let commit_id = self.commit_paths(
-            std::slice::from_ref(&relative_path),
+        let commit_id = self.mutate_and_commit(
+            &[TemplateFileMutation::write(relative_path, raw.into_bytes())],
             &format!("templates: {action} preset {preset_id}"),
         )?;
 
@@ -817,7 +914,51 @@ impl TemplateStore {
     ) -> Result<Option<String>, TemplateStoreError> {
         self.ensure_directories()?;
         let _lock = self.acquire_lock()?;
+        self.commit_paths_unlocked(changed_paths, message)
+    }
 
+    pub fn mutate_and_commit(
+        &self,
+        mutations: &[TemplateFileMutation],
+        message: &str,
+    ) -> Result<Option<String>, TemplateStoreError> {
+        self.ensure_directories()?;
+        let _lock = self.acquire_lock()?;
+
+        if mutations.is_empty() {
+            return Ok(None);
+        }
+
+        let mut changed_paths = Vec::with_capacity(mutations.len());
+        for mutation in mutations {
+            let relative = normalize_relative_path(&mutation.relative_path)?;
+            if !is_managed_template_path(&relative) {
+                return Err(TemplateStoreError::InvalidTemplatePath(format!(
+                    "{} is outside managed template scope",
+                    relative.display()
+                )));
+            }
+
+            let target = self.templates_dir().join(&relative);
+            match mutation.contents.as_ref() {
+                Some(contents) => write_atomic_file(&target, contents)?,
+                None => {
+                    if target.exists() {
+                        fs::remove_file(&target)?;
+                    }
+                }
+            }
+            changed_paths.push(relative);
+        }
+
+        self.commit_paths_unlocked(&changed_paths, message)
+    }
+
+    fn commit_paths_unlocked(
+        &self,
+        changed_paths: &[PathBuf],
+        message: &str,
+    ) -> Result<Option<String>, TemplateStoreError> {
         let Some(repo) = self.ensure_repo_for_mutation()? else {
             return Ok(None);
         };
@@ -839,15 +980,11 @@ impl TemplateStore {
 
         let now_ts = current_timestamp();
         let mut persisted_state = self.load_state_unlocked()?;
-        let mut state = DebounceState::from_store(persisted_state.clone(), self.debounce_window_secs);
+        let mut state =
+            DebounceState::from_store(persisted_state.clone(), self.debounce_window_secs);
 
-        let stale_commit = self.flush_debounce_if_needed_with_repo(
-            &repo,
-            &mut state,
-            false,
-            false,
-            now_ts,
-        )?;
+        let stale_commit =
+            self.flush_debounce_if_needed_with_repo(&repo, &mut state, false, false, now_ts)?;
 
         let descriptor = parse_mutation_descriptor(message).unwrap_or_else(|| MutationDescriptor {
             action: "update".to_string(),
@@ -856,13 +993,8 @@ impl TemplateStore {
         });
         state.enqueue(descriptor, &normalized_paths, now_ts);
 
-        let followup_commit = self.flush_debounce_if_needed_with_repo(
-            &repo,
-            &mut state,
-            false,
-            false,
-            now_ts,
-        )?;
+        let followup_commit =
+            self.flush_debounce_if_needed_with_repo(&repo, &mut state, false, false, now_ts)?;
 
         persisted_state.pending_actions = state.pending_actions;
         if stale_commit.is_some() || followup_commit.is_some() {
@@ -913,8 +1045,9 @@ impl TemplateStore {
     }
 
     fn save_state_unlocked(&self, state: &TemplateStoreState) -> Result<(), TemplateStoreError> {
-        let payload = serde_json::to_vec_pretty(state)
-            .map_err(|err| TemplateStoreError::Parse(format!("failed to serialize state: {err}")))?;
+        let payload = serde_json::to_vec_pretty(state).map_err(|err| {
+            TemplateStoreError::Parse(format!("failed to serialize state: {err}"))
+        })?;
         write_atomic_file(&self.state_path(), &payload)
     }
 
@@ -1065,7 +1198,11 @@ impl TemplateStore {
         Ok(())
     }
 
-    fn copy_missing_from_dir(&self, source_dir: &Path, target_dir: &Path) -> Result<(), TemplateStoreError> {
+    fn copy_missing_from_dir(
+        &self,
+        source_dir: &Path,
+        target_dir: &Path,
+    ) -> Result<(), TemplateStoreError> {
         if !source_dir.exists() {
             return Ok(());
         }
@@ -1108,7 +1245,10 @@ impl TemplateStore {
         PathBuf::from(PRESETS_DIRNAME).join(format!("{preset_id}.yaml"))
     }
 
-    fn load_role_templates_from_dir(&self, dir: &Path) -> Result<Vec<RoleTemplate>, TemplateStoreError> {
+    fn load_role_templates_from_dir(
+        &self,
+        dir: &Path,
+    ) -> Result<Vec<RoleTemplate>, TemplateStoreError> {
         Ok(self
             .load_role_files_from_dir(dir)?
             .into_iter()
@@ -1116,7 +1256,10 @@ impl TemplateStore {
             .collect())
     }
 
-    fn load_role_files_from_dir(&self, dir: &Path) -> Result<Vec<RoleTemplateFile>, TemplateStoreError> {
+    fn load_role_files_from_dir(
+        &self,
+        dir: &Path,
+    ) -> Result<Vec<RoleTemplateFile>, TemplateStoreError> {
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -1141,6 +1284,22 @@ impl TemplateStore {
         Ok(roles)
     }
 
+    fn load_role_file_by_id(
+        &self,
+        dir: &Path,
+        role_id: &str,
+    ) -> Result<Option<RoleTemplateFile>, TemplateStoreError> {
+        let path = dir.join(format!("{role_id}.yaml"));
+        if !path.exists() {
+            return Ok(None);
+        }
+        let raw = fs::read_to_string(&path)?;
+        let parsed = serde_yaml::from_str::<RoleTemplate>(&raw).map_err(|err| {
+            TemplateStoreError::Parse(format!("failed to parse role {}: {err}", path.display()))
+        })?;
+        Ok(Some(RoleTemplateFile { template: parsed }))
+    }
+
     fn load_presets_from_dir(&self, dir: &Path) -> Result<Vec<TeamPreset>, TemplateStoreError> {
         Ok(self
             .load_preset_files_from_dir(dir)?
@@ -1149,7 +1308,10 @@ impl TemplateStore {
             .collect())
     }
 
-    fn load_preset_files_from_dir(&self, dir: &Path) -> Result<Vec<TeamPresetFile>, TemplateStoreError> {
+    fn load_preset_files_from_dir(
+        &self,
+        dir: &Path,
+    ) -> Result<Vec<TeamPresetFile>, TemplateStoreError> {
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -1166,12 +1328,31 @@ impl TemplateStore {
             }
             let raw = fs::read_to_string(&path)?;
             let parsed = serde_yaml::from_str::<TeamPreset>(&raw).map_err(|err| {
-                TemplateStoreError::Parse(format!("failed to parse preset {}: {err}", path.display()))
+                TemplateStoreError::Parse(format!(
+                    "failed to parse preset {}: {err}",
+                    path.display()
+                ))
             })?;
             presets.push(TeamPresetFile { template: parsed });
         }
 
         Ok(presets)
+    }
+
+    fn load_preset_file_by_id(
+        &self,
+        dir: &Path,
+        preset_id: &str,
+    ) -> Result<Option<TeamPresetFile>, TemplateStoreError> {
+        let path = dir.join(format!("{preset_id}.yaml"));
+        if !path.exists() {
+            return Ok(None);
+        }
+        let raw = fs::read_to_string(&path)?;
+        let parsed = serde_yaml::from_str::<TeamPreset>(&raw).map_err(|err| {
+            TemplateStoreError::Parse(format!("failed to parse preset {}: {err}", path.display()))
+        })?;
+        Ok(Some(TeamPresetFile { template: parsed }))
     }
 
     fn acquire_lock(&self) -> Result<File, TemplateStoreError> {
@@ -1190,7 +1371,10 @@ impl TemplateStore {
         Ok(file)
     }
 
-    fn collect_managed_changes(&self, repo: &Repository) -> Result<Vec<PathChange>, TemplateStoreError> {
+    fn collect_managed_changes(
+        &self,
+        repo: &Repository,
+    ) -> Result<Vec<PathChange>, TemplateStoreError> {
         let mut opts = StatusOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(true)
@@ -1210,13 +1394,7 @@ impl TemplateStore {
 
             let status = entry.status();
             let deleted = is_deleted_status(status);
-            by_path.insert(
-                rel.clone(),
-                PathChange {
-                    path: rel,
-                    deleted,
-                },
-            );
+            by_path.insert(rel.clone(), PathChange { path: rel, deleted });
         }
 
         Ok(by_path.into_values().collect())
@@ -1406,9 +1584,7 @@ fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreErr
 }
 
 fn is_deleted_status(status: Status) -> bool {
-    status.intersects(
-        Status::INDEX_DELETED | Status::WT_DELETED | Status::CONFLICTED,
-    )
+    status.intersects(Status::INDEX_DELETED | Status::WT_DELETED | Status::CONFLICTED)
 }
 
 #[cfg(test)]
@@ -1551,7 +1727,10 @@ mod tests {
         fs::create_dir_all(app_data.join("templates").join(".git")).expect("create fake git dir");
 
         let repo = store.ensure_repo_for_mutation().expect("ensure repo");
-        assert!(repo.is_none(), "invalid git dir should trigger plain filesystem fallback");
+        assert!(
+            repo.is_none(),
+            "invalid git dir should trigger plain filesystem fallback"
+        );
     }
 
     #[test]
@@ -1574,7 +1753,10 @@ mod tests {
             .find(|role| role.role_id == "dev")
             .expect("dev role exists");
         assert_eq!(dev.instructions, "dev user override");
-        assert!(catalog.presets.iter().any(|preset| preset.preset_id == "base"));
+        assert!(catalog
+            .presets
+            .iter()
+            .any(|preset| preset.preset_id == "base"));
     }
 
     #[test]
@@ -1647,7 +1829,10 @@ mod tests {
             .expect("modify role");
 
         let recovery_commit = store.recover_dirty_tree().expect("recovery run");
-        assert!(recovery_commit.is_some(), "dirty tree should auto-commit on recovery");
+        assert!(
+            recovery_commit.is_some(),
+            "dirty tree should auto-commit on recovery"
+        );
 
         let repo = Repository::open(app_data.join("templates")).expect("open repo");
         let mut opts = StatusOptions::new();
@@ -2049,7 +2234,9 @@ mod tests {
         seed_valid_catalog(&builtins);
         let store = TemplateStore::with_builtins_dir(app_data, builtins);
 
-        let err = store.delete_preset("base").expect_err("built-in delete blocked");
+        let err = store
+            .delete_preset("base")
+            .expect_err("built-in delete blocked");
         assert!(matches!(err, TemplateStoreError::ReadOnly(_)));
     }
 
@@ -2143,7 +2330,12 @@ mod tests {
         let qa = parse_role(&agent_role_yaml("qa", "qa role"));
         let preset = parse_preset(&preset_yaml_with_agent("qa-team", "qa"));
         assert!(!store.create_role(&qa).expect("create role").committed);
-        assert!(!store.create_preset(&preset).expect("create preset").committed);
+        assert!(
+            !store
+                .create_preset(&preset)
+                .expect("create preset")
+                .committed
+        );
 
         let state = store.load_state().expect("load state");
         assert_eq!(state.pending_actions.len(), 2);
@@ -2226,7 +2418,10 @@ mod tests {
         assert!(!store.create_role(&qa).expect("create role").committed);
 
         write(
-            &app_data.join("templates").join("presets").join("invalid.yaml"),
+            &app_data
+                .join("templates")
+                .join("presets")
+                .join("invalid.yaml"),
             "not: valid: yaml",
         );
         age_pending_actions(&store, 31);

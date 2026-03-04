@@ -13,6 +13,7 @@ use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::types::BehavioralContract;
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
@@ -50,7 +51,13 @@ struct MeshCompatibleTeamConfigWire {
 struct MeshCompatibleMemberWire {
     name: String,
     role: MemberRole,
+    #[serde(rename = "roleId", skip_serializing_if = "Option::is_none")]
+    role_id: Option<String>,
     instructions: Option<String>,
+    #[serde(rename = "behavioralContract", skip_serializing_if = "Option::is_none")]
+    behavioral_contract: Option<BehavioralContract>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capabilities: Option<Vec<String>>,
     project_path: PathBuf,
     cli_tool: CliTool,
     #[serde(rename = "agentId")]
@@ -111,6 +118,12 @@ struct MeshMemberWire {
     agent_type: Option<String>,
     #[serde(default)]
     instructions: Option<String>,
+    #[serde(default, alias = "roleId")]
+    role_id: Option<String>,
+    #[serde(default, alias = "behavioralContract")]
+    behavioral_contract: Option<BehavioralContract>,
+    #[serde(default)]
+    capabilities: Option<Vec<String>>,
     #[serde(default)]
     cli_tool: Option<CliTool>,
     #[serde(rename = "projectPath", default)]
@@ -314,7 +327,10 @@ fn mesh_compatible_wire(
             MeshCompatibleMemberWire {
                 name: member.name.clone(),
                 role: member.role,
+                role_id: member.role_id.clone(),
                 instructions: member.instructions.clone(),
+                behavioral_contract: member.behavioral_contract.clone(),
+                capabilities: member.capabilities.clone(),
                 project_path: project_path.clone(),
                 cli_tool: member.cli_tool,
                 agent_id: mesh_agent_id(&config.name, &member.name),
@@ -458,7 +474,10 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
     Ok(Member {
         name: member.name,
         role,
+        role_id: member.role_id,
         instructions: member.instructions,
+        behavioral_contract: member.behavioral_contract,
+        capabilities: member.capabilities,
         project_path,
         cli_tool,
     })
@@ -516,9 +535,35 @@ mod tests {
             members: vec![Member {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
+                role_id: None,
                 instructions: Some("Own orchestration".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Claude,
+            }],
+        }
+    }
+
+    fn sample_config_with_role_metadata(team_name: &str) -> TeamConfig {
+        TeamConfig {
+            schema_version: 1,
+            name: team_name.to_string(),
+            description: Some("Architecture team".to_string()),
+            created_at: test_timestamp(),
+            members: vec![Member {
+                name: "codex-dev".to_string(),
+                role: MemberRole::Agent,
+                role_id: Some("codex-developer".to_string()),
+                instructions: Some("Implement safely".to_string()),
+                behavioral_contract: Some(BehavioralContract {
+                    communication: vec!["share updates".to_string()],
+                    execution: vec!["ship patches".to_string()],
+                    escalation: vec!["raise blockers".to_string()],
+                }),
+                capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
+                project_path: PathBuf::from("/tmp/taurhaus"),
+                cli_tool: CliTool::Codex,
             }],
         }
     }
@@ -588,6 +633,51 @@ mod tests {
         assert!(
             members[0].get("projectPath").is_some(),
             "projectPath compatibility field should be present"
+        );
+    }
+
+    #[test]
+    fn save_serializes_role_template_context_fields() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "templated-team";
+        let config = sample_config_with_role_metadata(team_name);
+
+        TeamConfigStore::save(teams_dir, team_name, &config).expect("save should succeed");
+        let raw =
+            fs::read_to_string(config_path(teams_dir, team_name)).expect("read serialized config");
+        let value: Value = serde_json::from_str(&raw).expect("parse serialized config");
+
+        let members = value
+            .get("members")
+            .and_then(Value::as_array)
+            .expect("members array");
+        let member = &members[0];
+
+        assert_eq!(
+            member.get("roleId").and_then(Value::as_str),
+            Some("codex-developer")
+        );
+        assert_eq!(
+            member.get("instructions").and_then(Value::as_str),
+            Some("Implement safely")
+        );
+        assert_eq!(
+            member
+                .get("behavioralContract")
+                .and_then(|contract| contract.get("execution"))
+                .and_then(Value::as_array)
+                .and_then(|steps| steps.first())
+                .and_then(Value::as_str),
+            Some("ship patches")
+        );
+        assert_eq!(
+            member
+                .get("capabilities")
+                .and_then(Value::as_array)
+                .and_then(|capabilities| capabilities.first())
+                .and_then(Value::as_str),
+            Some("implementation")
         );
     }
 
@@ -740,8 +830,16 @@ mod tests {
         assert_eq!(config.members.len(), 2);
         assert_eq!(config.members[0].role, MemberRole::Lead);
         assert_eq!(config.members[0].cli_tool, CliTool::Claude);
+        assert_eq!(config.members[0].role_id, None);
+        assert_eq!(config.members[0].instructions, None);
+        assert_eq!(config.members[0].behavioral_contract, None);
+        assert_eq!(config.members[0].capabilities, None);
         assert_eq!(config.members[1].role, MemberRole::Agent);
         assert_eq!(config.members[1].cli_tool, CliTool::Codex);
+        assert_eq!(config.members[1].role_id, None);
+        assert_eq!(config.members[1].instructions, None);
+        assert_eq!(config.members[1].behavioral_contract, None);
+        assert_eq!(config.members[1].capabilities, None);
     }
 
     #[test]
@@ -771,6 +869,54 @@ mod tests {
         let config = TeamConfigStore::load(tmp.path(), team_name).expect("load should succeed");
         assert_eq!(config.members.len(), 1);
         assert_eq!(config.members[0].role, MemberRole::Lead);
+    }
+
+    #[test]
+    fn load_mesh_format_preserves_role_template_context_fields() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "templated-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+
+        let mesh_json = r#"{
+  "name": "templated-team",
+  "createdAt": 1772399806546,
+  "members": [
+    {
+      "name": "codex-dev",
+      "agentType": "general-purpose",
+      "model": "gpt-5.3-codex",
+      "cwd": "/home/mstie/projects/taurhaus",
+      "roleId": "codex-developer",
+      "instructions": "Implement safely",
+      "behavioralContract": {
+        "communication": ["updates"],
+        "execution": ["test"],
+        "escalation": ["blockers"]
+      },
+      "capabilities": ["implementation", "testing"]
+    }
+  ]
+}"#;
+        fs::write(dir.join(CONFIG_FILENAME), mesh_json).expect("write mesh config");
+
+        let config = TeamConfigStore::load(tmp.path(), team_name).expect("load should succeed");
+        assert_eq!(config.members.len(), 1);
+        let member = &config.members[0];
+        assert_eq!(member.role_id.as_deref(), Some("codex-developer"));
+        assert_eq!(member.instructions.as_deref(), Some("Implement safely"));
+        assert_eq!(
+            member
+                .behavioral_contract
+                .as_ref()
+                .map(|contract| contract.communication.clone())
+                .unwrap_or_default(),
+            vec!["updates".to_string()]
+        );
+        assert_eq!(
+            member.capabilities.as_ref().cloned().unwrap_or_default(),
+            vec!["implementation".to_string(), "testing".to_string()]
+        );
     }
 
     #[test]
@@ -853,7 +999,10 @@ mod tests {
             members: vec![Member {
                 name: "member-a".to_string(),
                 role: MemberRole::Agent,
+                role_id: None,
                 instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/agent-a"),
                 cli_tool: CliTool::Codex,
             }],

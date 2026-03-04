@@ -19,6 +19,12 @@
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
       : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
   )
+  const frameTone = $derived(
+    dark ? 'border-zinc-700/70 bg-zinc-900/60' : 'border-zinc-200 bg-zinc-50/80'
+  )
+  const panelTone = $derived(
+    dark ? 'border-zinc-700/60 bg-zinc-900/40' : 'border-zinc-200 bg-white'
+  )
 
   const toolOptions = [
     { value: 'claude', label: 'Claude' },
@@ -87,6 +93,7 @@
   let selectedPreset = $state(null)
   let showTeamComposer = $state(false)
   let showTemplateCatalog = $state(false)
+  let applyPresetSequence = 0
   const quickPresetIds = ['fullstack-dev', 'research-dev', 'review-team']
 
   function defaultLead() {
@@ -96,6 +103,10 @@
       model: 'opus',
       description: 'Team lead',
       projectId: projectPath,
+      roleId: null,
+      instructions: null,
+      behavioralContract: null,
+      capabilities: null,
     }
   }
 
@@ -116,6 +127,10 @@
       model: modelOptionsByTool.codex[0],
       projectId: defaultAgentProjectId(),
       description: '',
+      roleId: null,
+      instructions: null,
+      behavioralContract: null,
+      capabilities: null,
     }
   }
 
@@ -176,6 +191,8 @@
       cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'codex').toLowerCase(),
       model: value?.model ?? '',
       instructions: value?.instructions ?? '',
+      behavioralContract: value?.behavioralContract ?? value?.behavioral_contract ?? null,
+      capabilities: Array.isArray(value?.capabilities) ? value.capabilities : [],
       projectId: value?.projectId ?? value?.project_id ?? '',
     }
   }
@@ -188,6 +205,10 @@
       model: String(agent?.model ?? modelOptionsByTool.codex[0]),
       projectId: String(agent?.projectId ?? agent?.project_id ?? projectPath ?? ''),
       description: String(agent?.description ?? ''),
+      roleId: agent?.roleId ?? agent?.role_id ?? null,
+      instructions: agent?.instructions ?? null,
+      behavioralContract: agent?.behavioralContract ?? agent?.behavioral_contract ?? null,
+      capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
     }
   }
 
@@ -199,6 +220,11 @@
         model: String(payload.lead.model ?? 'opus'),
         description: String(payload.lead.description ?? 'Team lead'),
         projectId: String(payload.lead.projectId ?? payload.lead.project_id ?? projectPath ?? ''),
+        roleId: payload.lead.roleId ?? payload.lead.role_id ?? null,
+        instructions: payload.lead.instructions ?? null,
+        behavioralContract:
+          payload.lead.behavioralContract ?? payload.lead.behavioral_contract ?? null,
+        capabilities: Array.isArray(payload.lead.capabilities) ? payload.lead.capabilities : null,
       }
     } else {
       lead = defaultLead()
@@ -229,6 +255,10 @@
               model: leadMember.model || 'opus',
               projectId: leadMember.projectId || projectPath,
               description: leadMember.roleId || 'Team lead',
+              roleId: leadMember.roleId || null,
+              instructions: leadMember.instructions || null,
+              behavioralContract: leadMember.behavioralContract ?? null,
+              capabilities: leadMember.capabilities?.length ? leadMember.capabilities : null,
             }
           : defaultLead(),
         agents: agentMembers.map((entry) => ({
@@ -237,6 +267,10 @@
           model: entry.model,
           projectId: entry.projectId || projectPath,
           description: entry.roleId || null,
+          roleId: entry.roleId || null,
+          instructions: entry.instructions || null,
+          behavioralContract: entry.behavioralContract ?? null,
+          capabilities: entry.capabilities?.length ? entry.capabilities : null,
         })),
       },
       notice
@@ -258,6 +292,7 @@
   }
 
   function startBlankSlate() {
+    applyPresetSequence += 1
     templateMode = 'blank'
     selectedPresetId = ''
     selectedPreset = null
@@ -270,14 +305,17 @@
   }
 
   async function applyPreset(presetId) {
+    const sequence = ++applyPresetSequence
     templateMode = 'preset'
     templateError = ''
     templateNotice = ''
     selectedPresetId = presetId
+    selectedPreset = null
     showTeamComposer = false
     showTemplateCatalog = false
     try {
       const preset = normalizePreset(await getTeamPreset(presetId))
+      if (sequence !== applyPresetSequence) return
       if (!preset) {
         templateError = 'Preset not found.'
         return
@@ -288,13 +326,16 @@
         agentSlots: preset.agentSlots ?? [],
         projectName,
       })
+      if (sequence !== applyPresetSequence) return
       applyComposedRoster(composed, `Applied preset: ${preset.name}`)
     } catch (error) {
+      if (sequence !== applyPresetSequence) return
       templateError = error?.message || 'Failed to apply preset.'
     }
   }
 
   function startCustomTemplateFlow() {
+    applyPresetSequence += 1
     templateMode = 'custom'
     templateError = ''
     templateNotice = ''
@@ -303,6 +344,7 @@
   }
 
   function openTemplateCatalog() {
+    applyPresetSequence += 1
     templateMode = 'catalog'
     templateError = ''
     templateNotice = ''
@@ -311,6 +353,7 @@
   }
 
   function applyCompositionPayload(payload, notice = 'Applied composed team') {
+    applyPresetSequence += 1
     templateMode = 'custom'
     applyInitializedPayload(payload, notice)
   }
@@ -404,6 +447,7 @@
   }
 
   function startTeam() {
+    if (hasDuplicateNames) return
     oninitialize({
       teamName: teamName.trim() || inferTeamName(projectPath),
       teamDescription: teamDescription.trim() || null,
@@ -414,6 +458,10 @@
         model: lead.model,
         projectId: lead.projectId || projectPath,
         description: lead.description || 'Team lead',
+        roleId: lead.roleId,
+        instructions: lead.instructions,
+        behavioralContract: lead.behavioralContract,
+        capabilities: lead.capabilities,
       },
       agents: agents.map((agent, i) => ({
         name: agentDisplayName(agent, i),
@@ -421,6 +469,10 @@
         model: agent.model,
         projectId: agent.projectId || projectPath,
         description: agent.description.trim() || null,
+        roleId: agent.roleId,
+        instructions: agent.instructions,
+        behavioralContract: agent.behavioralContract,
+        capabilities: agent.capabilities,
       })),
     })
   }
@@ -450,7 +502,7 @@
 
   {#if !onboardingDismissed}
     <div
-      class="relative flex items-start gap-2 rounded-md px-3 py-2 text-[11px] leading-relaxed {dark ? 'bg-white/[0.03] text-zinc-500' : 'bg-zinc-50 text-zinc-500 border border-zinc-200'}"
+      class="relative flex items-start gap-2 rounded-md border px-3 py-2 text-xs leading-relaxed {frameTone} {t.textMuted}"
       data-testid="mesh-onboarding-banner"
     >
       <span class="shrink-0 mt-px {dark ? 'text-brand-400/70' : 'text-brand-600'}">ℹ</span>
@@ -470,7 +522,7 @@
   {/if}
 
   <section
-    class="space-y-2 rounded-lg border p-3 {dark ? 'border-zinc-700/60 bg-white/[0.02]' : 'border-zinc-300 bg-white shadow-sm'}"
+    class="space-y-2 rounded-lg border p-3 {panelTone}"
     data-testid="mesh-template-picker"
   >
     <header class="space-y-0.5">
@@ -567,11 +619,11 @@
   {/if}
 
   <div
-    class="rounded-lg border {dark ? 'border-zinc-700/60 bg-white/[0.02]' : 'border-zinc-300 bg-white shadow-sm'}"
+    class="rounded-lg border {panelTone}"
     data-testid="mesh-roster-preview"
   >
-    <div class="px-3 py-1.5 border-b {dark ? 'border-zinc-700/40' : 'border-zinc-200'}">
-      <span class="text-xs font-medium {dark ? 'text-zinc-400' : 'text-zinc-600'}">
+    <div class="px-3 py-1.5 border-b {t.keyline}">
+      <span class="text-xs font-medium {t.textMuted}">
         Your team
       </span>
     </div>
@@ -606,6 +658,7 @@
             value={agent.name}
             placeholder={agentDisplayName(agent, index)}
             oninput={(e) => updateAgent(index, { name: e.currentTarget.value })}
+            aria-label={`Agent ${index + 1} name`}
             data-testid={`mesh-agent-name-input-${index}`}
           />
           <select
@@ -615,6 +668,7 @@
             style:background-position="right 4px center"
             value={agent.cliTool}
             onchange={(e) => updateAgentTool(index, e.currentTarget.value)}
+            aria-label={`Agent ${index + 1} tool`}
             data-testid={`mesh-agent-tool-select-${index}`}
           >
             {#each toolOptions as tool}
@@ -628,6 +682,7 @@
             style:background-position="right 4px center"
             value={agent.model}
             onchange={(e) => updateAgent(index, { model: e.currentTarget.value })}
+            aria-label={`Agent ${index + 1} model`}
             data-testid={`mesh-agent-model-select-${index}`}
           >
             {#each modelsForTool(agent.cliTool) as model}
@@ -641,6 +696,7 @@
             style:background-position="right 4px center"
             value={agent.projectId}
             onchange={(e) => updateAgent(index, { projectId: e.currentTarget.value })}
+            aria-label={`Agent ${index + 1} project`}
             data-testid={`mesh-agent-project-select-${index}`}
           >
             <option value="">Select project</option>
@@ -729,9 +785,10 @@
 
     <div class="flex justify-end">
       <button
-        class="h-8 inline-flex items-center rounded-md bg-brand-600 px-4 text-xs font-medium text-white hover:bg-brand-500 transition-colors"
+        class="h-8 inline-flex items-center rounded-md bg-brand-600 px-4 text-xs font-medium text-white hover:bg-brand-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         type="button"
         onclick={startTeam}
+        disabled={hasDuplicateNames}
         data-testid="mesh-create-team-button"
       >Start Team</button>
     </div>

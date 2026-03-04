@@ -80,6 +80,34 @@ Frontend tests run from the project root (not `src-tauri/`). Vitest is configure
 
 If you add imports to source files included by integration shims (for example `coordination/pipelines.rs`), update shim modules in `src-tauri/tests/` and rerun `just agent-quality` to catch test-crate scope breakage early.
 
+### E2E Testing
+
+Run E2E from the project root:
+
+```bash
+just test-e2e
+just test-e2e-full
+just test-e2e-spec search-workflow
+```
+
+E2E recipes are safe-by-default: they no longer force `install-daemon` (which can kill/restart a live daemon). To opt in explicitly:
+
+```bash
+E2E_INSTALL_DAEMON=1 just test-e2e
+```
+
+Session isolation is enabled in `e2e/wdio.conf.js`:
+
+- `TAURHAUS_DATA_DIR` is set to a per-session temp app-data directory
+- `TAURHAUS_CLAUDE_DIR` is set to a per-session temp Claude root
+- A per-session fixture git repo is created for deterministic onboarding and validation flows
+
+Useful E2E env knobs:
+
+- `E2E_PROJECTS_DIR` — project scan root used by E2E helpers
+- `E2E_TAURHAUS_PROJECT_PATH` — stable taurhaus fixture path used in duplicate-path tests
+- `E2E_INSTALL_DAEMON=1` — opt-in daemon reinstall for E2E recipes
+
 ### Regression Testing
 
 Every regression fix **must** include a test that would have caught the regression:

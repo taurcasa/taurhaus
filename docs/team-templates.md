@@ -37,6 +37,8 @@ Managed layout:
     state.json
 ```
 
+For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_DIR`, so template storage resolves under `<TAURHAUS_DATA_DIR>/templates/`.
+
 ## Using Templates in Setup
 
 In Mesh setup, use **Start from template**:

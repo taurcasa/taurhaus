@@ -21,7 +21,10 @@ fn coordination_modules_are_visible_from_crate_root() {
     let _member = taurhaus_lib::coordination::domain::Member {
         name: "codex-reviewer".to_string(),
         role: taurhaus_lib::coordination::domain::MemberRole::Agent,
+        role_id: None,
         instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: taurhaus_lib::session_scanner::cli_tool::CliTool::Codex,
     };

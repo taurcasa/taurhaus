@@ -47,6 +47,9 @@ use commands::projects::DbState;
 use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
 
+const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
+const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+
 /// Managed state: holds the project provider for filesystem/git operations.
 /// Routes operations to LocalProvider or DaemonProvider based on project path.
 pub struct ProviderState {
@@ -87,6 +90,35 @@ fn disable_git_owner_validation() {
     unsafe {
         let _ = git2::opts::set_verify_owner_validation(false);
     }
+}
+
+fn env_path_override(var: &str) -> Option<std::path::PathBuf> {
+    let value = std::env::var_os(var)?;
+    if value.is_empty() {
+        return None;
+    }
+    Some(std::path::PathBuf::from(value))
+}
+
+fn resolve_app_data_dir(app: tauri::AppHandle) -> std::path::PathBuf {
+    if let Some(path) = env_path_override(DATA_DIR_OVERRIDE_ENV) {
+        tracing::info!(
+            env = DATA_DIR_OVERRIDE_ENV,
+            path = %path.display(),
+            "Using app data dir override"
+        );
+        return path;
+    }
+    app.path()
+        .app_data_dir()
+        .expect("failed to resolve app_data_dir")
+}
+
+fn resolve_claude_tasks_dir() -> Option<std::path::PathBuf> {
+    if let Some(path) = env_path_override(CLAUDE_DIR_OVERRIDE_ENV) {
+        return Some(path.join("tasks"));
+    }
+    dirs::home_dir().map(|home| home.join(".claude").join("tasks"))
 }
 
 pub fn run() {
@@ -166,10 +198,7 @@ pub fn run() {
         .setup(|app| {
             tracing::info!("taurhaus starting");
 
-            let data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("failed to resolve app_data_dir");
+            let data_dir = resolve_app_data_dir(app.handle().clone());
             std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
 
             // Open append-only log file for frontend + backend logs.
@@ -432,8 +461,7 @@ pub fn run() {
                 // this via WSL. On macOS/Linux, always watch locally because
                 // the daemon doesn't have WSL path context.
                 if !has_daemon || daemon::launcher::is_native_daemon() {
-                    if let Some(home) = dirs::home_dir() {
-                        let tasks_dir = home.join(".claude").join("tasks");
+                    if let Some(tasks_dir) = resolve_claude_tasks_dir() {
                         if tasks_dir.is_dir() {
                             if let Err(e) = watcher_guard.watch_project(
                                 "__claude_tasks__".to_string(),

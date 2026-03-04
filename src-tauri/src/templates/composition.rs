@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::session_scanner::cli_tool::CliTool;
 use crate::templates::types::{
-    AgentSlot, BehavioralContract, ProjectBinding, RoleKind, RoleTemplate, SlotOverrides,
+    validate_agent_slot_common, AgentSlot, BehavioralContract, ProjectBinding, RoleKind,
+    RoleTemplate, SlotOverrides,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -313,41 +314,7 @@ fn index_instance_overrides<'a>(
 }
 
 fn validate_agent_slot(slot: &AgentSlot, slot_index: usize, result: &mut CompositionResult) {
-    if slot.role_id.trim().is_empty() {
-        result.validation_errors.push(format!(
-            "agent_slots[{slot_index}].role_id must not be empty"
-        ));
-    }
-    if slot.count == 0 {
-        result
-            .validation_errors
-            .push(format!("agent_slots[{slot_index}].count must be >= 1"));
-    }
-
-    match slot.project_binding {
-        ProjectBinding::ExplicitProject => {
-            if slot
-                .project_id
-                .as_deref()
-                .map(str::trim)
-                .unwrap_or("")
-                .is_empty()
-            {
-                result.validation_errors.push(format!(
-                    "agent_slots[{slot_index}].project_id is required when project_binding is explicit_project"
-                ));
-            }
-        }
-        ProjectBinding::LeadProject | ProjectBinding::Any => {
-            if let Some(project_id) = slot.project_id.as_deref() {
-                if !project_id.trim().is_empty() {
-                    result.validation_errors.push(format!(
-                        "agent_slots[{slot_index}].project_id must be omitted unless project_binding is explicit_project"
-                    ));
-                }
-            }
-        }
-    }
+    validate_agent_slot_common(slot, slot_index, &mut result.validation_errors);
 }
 
 fn resolve_fields(

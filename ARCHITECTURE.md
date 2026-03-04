@@ -96,6 +96,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 - **SQLite** (`rusqlite`): 6 tables — `projects`, `sessions`, `session_activity`, `relationships`, `tasks`, `settings`. Source of truth for structured data.
 - **tantivy**: Full-text search index over files, commits, sessions. Rebuilt from filesystem on startup.
 - **Filesystem**: Source of truth for content. SQLite stores metadata; files are always read fresh.
+- **Path overrides**: `TAURHAUS_DATA_DIR` overrides Tauri `app_data_dir()` resolution; `TAURHAUS_CLAUDE_DIR` overrides Claude-derived roots used by task/coordination watchers.
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
@@ -117,14 +118,14 @@ Grouped by domain:
 - **Settings** (2): get, update
 - **Coordination** (13): create/disband/list teams, add/remove members, team status, initialize, add agent, resume member, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
 - **Templates** (17): role/preset CRUD, composition + validation, storage status, history, diff, revert, import, flush pending, apply composition
-- **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in `app_data_dir()`. Backend uses `tracing` crate. Single log file, truncated per launch.
+- **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in the resolved app-data root (`app_data_dir()` by default, or `TAURHAUS_DATA_DIR` when set). Backend uses `tracing` crate. Single log file, truncated per launch.
 
 ### Coordination (Mesh View)
 
 The `coordination/` subsystem powers multi-agent team orchestration and is gated by the `mesh-bridged-backend` Cargo feature (enabled by default).
 
 - **State bootstrap**: `CoordinationState` is app-managed and lazily builds the orchestrator on first coordination IPC use (no startup hard dependency on mesh availability).
-- **Persistence**: team definitions are stored in `~/.claude/teams/<team>/config.json` (`TeamConfigStore`), while runtime attachment state lives in `~/.claude/teams/<team>/runtime/*.json` (`MemberRuntimeStore`).
+- **Persistence**: by default, team definitions are stored in `~/.claude/teams/<team>/config.json` (`TeamConfigStore`), while runtime attachment state lives in `~/.claude/teams/<team>/runtime/*.json` (`MemberRuntimeStore`). If `TAURHAUS_CLAUDE_DIR` is set, coordination uses `<TAURHAUS_CLAUDE_DIR>/teams/...` instead.
 - **Pipelines**: `coordination/pipelines.rs` drives initialize, hot-add, and resume flows (validate -> create/resolve panes -> launch sessions -> mesh join -> daemon start -> onboarding delivery).
 - **Resume lifecycle**: offline members are resumed via `coordination_resume_member` with mode-aware commands (`Continue` or `Fresh`) and step-level reporting.
 - **Liveness reconciliation**: live-status reads call orchestrator write-on-drift reconciliation (missing pane, dead pane, or shell-returned pane via `pane_is_shell`) before returning UI status. Offline drift clears stale session IDs and cleans non-Claude daemon PIDs.
@@ -137,6 +138,7 @@ See [coordination architecture](docs/coordination-architecture.md) for deeper de
 The template system provides reusable role templates and team presets, with composition and history integrated into mesh setup.
 
 - **Storage model**: built-in templates ship read-only from resources; user templates are YAML files in the app-managed templates directory (`roles/`, `presets/`, `_meta/`).
+- **Storage roots**: template files live under the resolved app-data directory (`app_data_dir()/templates` by default, or `<TAURHAUS_DATA_DIR>/templates` when overridden).
 - **Git-backed state**: template writes are committed through `TemplateStore`, enabling history (`templates_get_history`), diff (`templates_get_diff`), and forward revert (`templates_revert`).
 - **Composition engine**: `templates::composition::compose_team` resolves lead and agent slots into a concrete roster, returning `warnings` and `validation_errors`.
 - **Frontend pipeline**: `TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm` -> `coordination_initialize_team` (initialize payload shape remains unchanged).
@@ -211,6 +213,8 @@ The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`)
 7. **Task scan** — seed task database from live CLI tool sources
 
 Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
+
+Claude task-directory watching follows the same override rules: default `~/.claude/tasks`, or `<TAURHAUS_CLAUDE_DIR>/tasks` when `TAURHAUS_CLAUDE_DIR` is set.
 
 ## Data Flow
 

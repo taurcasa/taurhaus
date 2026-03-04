@@ -273,7 +273,10 @@ mod tests {
             member: Member {
                 name: "agent-1".to_string(),
                 role: MemberRole::Agent,
+                role_id: None,
                 instructions: Some("Focus on implementation".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
             },
