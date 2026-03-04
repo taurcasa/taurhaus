@@ -1,0 +1,107 @@
+import { describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/svelte'
+import '@testing-library/jest-dom/vitest'
+
+import AgentCard from './AgentCard.svelte'
+
+describe('AgentCard', () => {
+  it('renders name, tool, and model in read mode', () => {
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+        name: 'dev-1',
+        tool: 'codex',
+        model: 'gpt-5.3-codex',
+        projectId: '/projects/taurhaus',
+      },
+    })
+
+    expect(screen.getByTestId('agent-card-name')).toHaveTextContent('dev-1')
+    expect(screen.getByTestId('agent-card-tool-model')).toHaveTextContent('Codex · gpt-5.3-codex')
+    expect(screen.getByTestId('agent-card-project')).toHaveTextContent('/projects/taurhaus')
+  })
+
+  it('edit mode shows input fields', async () => {
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+
+    expect(screen.getByTestId('agent-card-edit-form')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-card-name-input')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-card-tool-select')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-card-model-select')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-card-project-input')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-card-description-input')).toBeInTheDocument()
+  })
+
+  it('lead cards do not show remove button', () => {
+    render(AgentCard, {
+      props: {
+        testId: 'lead-card',
+        role: 'lead',
+      },
+    })
+
+    expect(screen.queryByTestId('lead-card-remove')).not.toBeInTheDocument()
+  })
+
+  it('save callback fires with edited config', async () => {
+    const onSave = vi.fn()
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+        name: 'dev-1',
+        tool: 'codex',
+        model: 'gpt-5.3-codex',
+        projectId: '/projects/taurhaus',
+        description: 'Initial',
+        onSave,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+    await fireEvent.input(screen.getByTestId('agent-card-name-input'), {
+      target: { value: 'api-dev' },
+    })
+    await fireEvent.change(screen.getByTestId('agent-card-tool-select'), {
+      target: { value: 'gemini' },
+    })
+    await fireEvent.change(screen.getByTestId('agent-card-model-select'), {
+      target: { value: 'gemini-2.5-pro' },
+    })
+    await fireEvent.input(screen.getByTestId('agent-card-project-input'), {
+      target: { value: '/projects/api' },
+    })
+    await fireEvent.input(screen.getByTestId('agent-card-description-input'), {
+      target: { value: 'Own API tasks' },
+    })
+    await fireEvent.click(screen.getByTestId('agent-card-save'))
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith({
+      name: 'api-dev',
+      tool: 'gemini',
+      model: 'gemini-2.5-pro',
+      projectId: '/projects/api',
+      description: 'Own API tasks',
+    })
+  })
+
+  it('cancel returns to read mode', async () => {
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+    expect(screen.getByTestId('agent-card-edit-form')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('agent-card-cancel'))
+    expect(screen.queryByTestId('agent-card-edit-form')).not.toBeInTheDocument()
+  })
+})

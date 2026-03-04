@@ -2,18 +2,23 @@
   import {
     coordinationAddAgent,
     coordinationDisbandTeam,
+    coordinationGetLiveTeamStatus,
     coordinationListTeams,
     coordinationRemoveMember,
     coordinationResumeMember,
   } from '../ipc.js'
-  import MeshSetupForm from './MeshSetupForm.svelte'
-  import MeshInitProgress from './MeshInitProgress.svelte'
-  import MeshAvailabilityGate from './MeshAvailabilityGate.svelte'
-  import MeshTeamRoster from './MeshTeamRoster.svelte'
-  import ConfirmDialog from './ConfirmDialog.svelte'
-  import { createAsyncGuard } from '../asyncGuard.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
+  import MeshActionBar from './MeshActionBar.svelte'
+  import MeshAvailabilityGate from './MeshAvailabilityGate.svelte'
+  import MeshCanvas from './MeshCanvas.svelte'
+  import MeshEmptyState from './MeshEmptyState.svelte'
+  import MeshInitProgress from './MeshInitProgress.svelte'
+  import MeshNodeDetail from './MeshNodeDetail.svelte'
+  import SlideOver from './SlideOver.svelte'
+  import TeamCustomizerPanel from './TeamCustomizerPanel.svelte'
+  import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
 
   let {
     dark = false,
@@ -26,78 +31,22 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
-  const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
+  const actionSecondary = $derived(
+    dark
+      ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
+      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+  )
   const fieldTone = $derived(
     dark
-      ? 'border-zinc-700/80 text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500'
-      : 'border-zinc-300 text-zinc-900 placeholder:text-zinc-400 focus:border-brand-500'
+      ? 'border-zinc-700/80 bg-zinc-900 text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500'
+      : 'border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400 focus:border-brand-500'
   )
-  const neutralGhost = $derived(
-    dark
-      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70'
-      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
-  )
-  const formFieldBase =
-    'w-full bg-transparent border-b rounded-none px-1 py-1.5 text-sm transition-colors focus:outline-none'
-  const primaryCta = 'h-8 inline-flex items-center rounded-md bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50'
+  const selectScheme = $derived(dark ? '[color-scheme:dark]' : '[color-scheme:light]')
   const chevronSvg = $derived(
     dark
       ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M3 4l2 2 2-2' fill='none' stroke='%2371717a' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
       : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M3 4l2 2 2-2' fill='none' stroke='%2352525b' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
   )
-  const inlineSelect = $derived(
-    dark
-      ? `appearance-none bg-zinc-800/80 text-xs text-zinc-300 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
-      : `appearance-none bg-zinc-200/80 text-xs text-zinc-700 rounded px-1.5 py-1 pr-4 border-none focus:ring-1 focus:ring-brand-500 focus:outline-none ${selectScheme} cursor-pointer`
-  )
-  const cleanupBadgeCurrent = $derived(
-    dark
-      ? 'border border-success-500/40 bg-success-500/10 text-success-300'
-      : 'border border-success-300 bg-success-100 text-success-700'
-  )
-  const cleanupBadgeOther = $derived(
-    dark
-      ? 'border border-zinc-600 bg-zinc-800 text-zinc-300'
-      : 'border border-zinc-300 bg-zinc-100 text-zinc-600'
-  )
-  const cleanupDisbandTone = $derived(
-    dark
-      ? 'text-danger-300 hover:text-danger-200 hover:bg-danger-500/10'
-      : 'text-danger-600 hover:text-danger-700 hover:bg-danger-50'
-  )
-
-  let mode = $state('setup')
-  let teamName = $state('')
-  let loading = $state(false)
-  let errorMessage = $state('')
-  let showInitProgress = $state(false)
-  let initializeRequest = $state(null)
-  let runtimeMessage = $state('')
-  let showAddAgentForm = $state(false)
-  let addAgentSubmitting = $state(false)
-  let addAgentProgress = $state(null)
-  let addAgentError = $state('')
-  let addAgentName = $state('')
-  let addAgentTool = $state('codex')
-  let addAgentModel = $state('gpt-5.3-codex')
-  let addAgentProjectId = $state('')
-  let addAgentDescription = $state('')
-  let rosterRefreshNonce = $state(0)
-  let removingMembers = $state(new Set())
-  let resumingMembers = $state(new Set())
-  let removeMemberPending = $state('')
-  let showRemoveMemberConfirm = $state(false)
-  let disbanding = $state(false)
-  let showDisbandConfirm = $state(false)
-  let discoveredTeams = $state([])
-  let discoveryWarnings = $state([])
-  let showCleanupPanel = $state(false)
-  let cleanupError = $state('')
-  let cleanupTargetTeam = $state('')
-  let showCleanupConfirm = $state(false)
-  let runtimeMessageTimer = null
-  let errorMessageTimer = null
-  const teamDiscoveryGuard = createAsyncGuard()
 
   const modelOptionsByTool = {
     claude: ['opus', 'sonnet', 'haiku'],
@@ -105,7 +54,53 @@
     gemini: ['gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 
-  const projectOptions = $derived(
+  const quickPresets = [
+    {
+      presetId: 'fullstack-dev',
+      name: 'Full Stack Dev Team',
+      description: 'Lead with implementation and review agents',
+      leadCount: 1,
+      agentCount: 3,
+      tools: ['claude', 'codex', 'gemini'],
+      builtIn: true,
+    },
+    {
+      presetId: 'research-dev',
+      name: 'Research + Development Team',
+      description: 'Lead with research and implementation collaboration',
+      leadCount: 1,
+      agentCount: 3,
+      tools: ['claude', 'gemini', 'codex'],
+      builtIn: true,
+    },
+    {
+      presetId: 'review-team',
+      name: 'Review Team',
+      description: 'Lead with focused implementation and QA reviewers',
+      leadCount: 1,
+      agentCount: 2,
+      tools: ['claude', 'codex'],
+      builtIn: true,
+    },
+  ]
+
+  let mode = $state('gate')
+  let teamName = $state('')
+  let teamConfig = $state(null)
+  let slideOver = $state(null)
+  let slideOverContext = $state(null)
+  let selectedNodeId = $state(null)
+  let initProgress = $state(null)
+  let errorMessage = $state('')
+  let runtimeMessage = $state('')
+  let confirmContext = $state(null)
+
+  let gateBootstrapping = false
+  let discoverySequence = 0
+  let runtimeMessageTimer = null
+  let errorMessageTimer = null
+
+  const projectOptions = $derived.by(() =>
     (availableProjects ?? [])
       .map((project) =>
         normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' })
@@ -113,13 +108,86 @@
       .filter((project) => project.id)
   )
 
-  const canSubmitAddAgent = $derived(
-    !addAgentSubmitting &&
-      addAgentName.trim().length > 0 &&
-      addAgentTool.trim().length > 0 &&
-      addAgentModel.trim().length > 0 &&
-      addAgentProjectId.trim().length > 0
+  const selectedNode = $derived.by(() => {
+    const config = teamConfig
+    if (!config || !selectedNodeId) return null
+
+    if (String(config.lead?.id ?? 'lead') === String(selectedNodeId)) {
+      return {
+        ...config.lead,
+        id: String(config.lead?.id ?? 'lead'),
+        role: 'lead',
+      }
+    }
+
+    const agent = (config.agents ?? []).find((entry) => String(entry.id) === String(selectedNodeId))
+    if (!agent) return null
+
+    return {
+      ...agent,
+      role: 'agent',
+    }
+  })
+
+  const canInitialize = $derived.by(() => {
+    const config = teamConfig
+    if (!config?.lead) return false
+    return Array.isArray(config.agents)
+  })
+
+  const addAgentDraft = $derived(
+    slideOver === 'addAgent' && slideOverContext && typeof slideOverContext === 'object'
+      ? slideOverContext
+      : null
   )
+
+  const canSubmitAddAgent = $derived.by(() => {
+    const draft = addAgentDraft
+    if (!draft) return false
+    if (draft.submitting) return false
+
+    return (
+      String(draft.name || '').trim().length > 0 &&
+      String(draft.tool || '').trim().length > 0 &&
+      String(draft.model || '').trim().length > 0 &&
+      String(draft.projectId || '').trim().length > 0
+    )
+  })
+
+  function normalizeTool(tool) {
+    const value = String(tool || '').trim().toLowerCase()
+    if (value === 'claude' || value === 'codex' || value === 'gemini') return value
+    return 'claude'
+  }
+
+  function normalizeStatus(status) {
+    const value = String(status || '').trim().toLowerCase()
+    if (value === 'active' || value === 'idle') return value
+    return 'offline'
+  }
+
+  function inferTeamName(path) {
+    const segments = String(path || '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean)
+    const project = segments.at(-1) || 'project'
+    return `${project}-team`
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+  }
+
+  function defaultModelForTool(tool) {
+    const normalized = normalizeTool(tool)
+    return modelOptionsByTool[normalized]?.[0] ?? 'default'
+  }
+
+  function coerceTeams(response) {
+    if (Array.isArray(response)) return response
+    return Array.isArray(response?.teams) ? response.teams : []
+  }
 
   function normalizeTeamName(team) {
     return team?.teamName ?? team?.team_name ?? ''
@@ -127,16 +195,6 @@
 
   function normalizeLeadPath(team) {
     return team?.leadProjectPath ?? team?.lead_project_path ?? null
-  }
-
-  function coerceTeams(response) {
-    if (Array.isArray(response)) return response
-    return response?.teams ?? []
-  }
-
-  function coerceWarnings(response) {
-    if (Array.isArray(response)) return []
-    return Array.isArray(response?.warnings) ? response.warnings : []
   }
 
   function normalizeLinuxPath(path) {
@@ -153,6 +211,7 @@
   function wslUncToLinux(path) {
     const normalized = String(path || '').trim().replace(/\//g, '\\')
     const lower = normalized.toLowerCase()
+
     let prefix = ''
     if (lower.startsWith('\\\\wsl$\\')) {
       prefix = '\\\\wsl$\\'
@@ -195,214 +254,587 @@
     return isSameProjectPath(normalizeLeadPath(team), currentProjectPath)
   }
 
-  function sanitizeTeamNameForTestId(name) {
-    return String(name || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '-')
-  }
-
-  async function refreshTeamDiscovery(currentProjectPath, sequence = teamDiscoveryGuard.next()) {
-    const response = await coordinationListTeams()
-    if (!teamDiscoveryGuard.isCurrent(sequence)) return
-    const teams = coerceTeams(response)
-    discoveredTeams = teams
-    discoveryWarnings = coerceWarnings(response)
-    const matchingTeam = teams.find((team) => teamMatchesProject(team, currentProjectPath))
-    if (!teamDiscoveryGuard.isCurrent(sequence)) return
-    if (matchingTeam) {
-      teamName = normalizeTeamName(matchingTeam)
-      mode = 'runtime'
-    } else if (!showInitProgress) {
-      teamName = ''
-      mode = 'setup'
+  function createLead(overrides = {}) {
+    return {
+      id: String(overrides.id ?? 'lead'),
+      name: String(overrides.name ?? 'team-lead'),
+      tool: normalizeTool(overrides.tool ?? overrides.cliTool),
+      model: String(overrides.model ?? defaultModelForTool(overrides.tool ?? overrides.cliTool)),
+      status: normalizeStatus(overrides.status),
+      projectId: String(overrides.projectId ?? projectPath ?? ''),
+      description: overrides.description ?? 'Team lead',
+      paneId: overrides.paneId ?? null,
+      roleId: overrides.roleId ?? null,
+      instructions: overrides.instructions ?? null,
+      behavioralContract: overrides.behavioralContract ?? null,
+      capabilities: Array.isArray(overrides.capabilities) ? overrides.capabilities : null,
     }
   }
 
-  function handleInitialize(request) {
-    initializeRequest = request
-    showInitProgress = true
+  function createAgent(index, overrides = {}) {
+    const normalizedTool = normalizeTool(overrides.tool ?? overrides.cliTool ?? 'codex')
+    return {
+      id: String(overrides.id ?? `agent-${index + 1}`),
+      name: String(overrides.name ?? `agent-${index + 1}`),
+      tool: normalizedTool,
+      model: String(overrides.model ?? defaultModelForTool(normalizedTool)),
+      status: normalizeStatus(overrides.status),
+      projectId: String(overrides.projectId ?? projectPath ?? ''),
+      description: overrides.description ?? null,
+      paneId: overrides.paneId ?? null,
+      roleId: overrides.roleId ?? null,
+      instructions: overrides.instructions ?? null,
+      behavioralContract: overrides.behavioralContract ?? null,
+      capabilities: Array.isArray(overrides.capabilities) ? overrides.capabilities : null,
+    }
   }
 
-  function handleProgressBack() {
-    showInitProgress = false
+  function buildTeamConfigFromPreset(preset) {
+    const tools = Array.isArray(preset?.tools) && preset.tools.length > 0
+      ? preset.tools.map((entry) => normalizeTool(entry))
+      : ['claude', 'codex', 'gemini']
+
+    const lead = createLead({
+      id: 'lead',
+      name: 'team-lead',
+      tool: tools[0] ?? 'claude',
+      status: 'offline',
+      projectId: projectPath,
+    })
+
+    const agentCount = Math.max(
+      1,
+      Number(preset?.agentCount ?? Math.max(0, Number(preset?.roleCount ?? 1) - 1) ?? 1)
+    )
+
+    const agents = Array.from({ length: agentCount }, (_, index) => {
+      const tool = tools[(index + 1) % tools.length] ?? 'codex'
+      return createAgent(index, {
+        id: `agent-${index + 1}`,
+        name: `agent-${index + 1}`,
+        tool,
+        status: 'offline',
+        projectId: projectPath,
+      })
+    })
+
+    return {
+      lead,
+      agents,
+      presetId: preset?.presetId ?? '',
+      presetName: preset?.name ?? '',
+      composition: {
+        presetId: preset?.presetId ?? '',
+        name: preset?.name ?? '',
+        leadRoleId: preset?.leadRoleId ?? preset?.lead_role_id ?? '',
+        agentSlots: Array.isArray(preset?.agentSlots ?? preset?.agent_slots)
+          ? (preset?.agentSlots ?? preset?.agent_slots)
+          : [],
+      },
+    }
   }
 
-  function handleProgressSuccess(result) {
-    teamName = result?.teamName ?? initializeRequest?.teamName ?? teamName
-    mode = 'runtime'
-    showInitProgress = false
-    runtimeMessage = result?.openedExisting
-      ? 'Opened existing team.'
-      : 'Team initialized successfully.'
+  function buildTeamConfigFromRuntimeStatus(status) {
+    const members = Array.isArray(status?.members) ? status.members : []
+    const normalizedMembers = members.map((member, index) => ({
+      ...member,
+      name: String(member?.name ?? `member-${index + 1}`),
+      role: String(member?.role ?? '').toLowerCase(),
+      tool: normalizeTool(member?.cliTool ?? member?.cli_tool),
+      model: String(member?.model ?? ''),
+      status: normalizeStatus(member?.sessionStatus ?? member?.session_status),
+      projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
+      description: member?.description ?? null,
+      paneId: member?.paneId ?? member?.pane_id ?? null,
+    }))
+
+    const leadMember = normalizedMembers.find((member) => member.role === 'lead')
+    const fallbackLeadName = status?.leadName ?? status?.lead_name ?? 'team-lead'
+
+    const lead = createLead({
+      id: String(leadMember?.name ?? 'lead'),
+      name: leadMember?.name ?? fallbackLeadName,
+      tool: leadMember?.tool ?? 'claude',
+      model: leadMember?.model ?? defaultModelForTool(leadMember?.tool ?? 'claude'),
+      status: leadMember?.status ?? 'active',
+      projectId: leadMember?.projectId ?? projectPath,
+      description: leadMember?.description ?? 'Team lead',
+      paneId: leadMember?.paneId ?? null,
+    })
+
+    const agents = normalizedMembers
+      .filter((member) => member.role !== 'lead')
+      .map((member, index) => createAgent(index, {
+        id: member.name,
+        name: member.name,
+        tool: member.tool,
+        model: member.model,
+        status: member.status,
+        projectId: member.projectId,
+        description: member.description,
+        paneId: member.paneId,
+      }))
+
+    return {
+      lead,
+      agents,
+      presetId: '',
+      presetName: '',
+      composition: null,
+    }
   }
 
-  function modelsForTool(tool) {
-    return modelOptionsByTool[tool] ?? ['default']
+  function composeConfigFromPayload(payload) {
+    const lead = createLead({
+      id: String(payload?.lead?.name ?? 'lead'),
+      name: payload?.lead?.name ?? 'team-lead',
+      tool: payload?.lead?.cliTool ?? payload?.lead?.cli_tool,
+      model: payload?.lead?.model,
+      status: 'offline',
+      projectId: payload?.lead?.projectId ?? payload?.lead?.project_id ?? projectPath,
+      description: payload?.lead?.description ?? 'Team lead',
+      roleId: payload?.lead?.roleId ?? payload?.lead?.role_id ?? null,
+      instructions: payload?.lead?.instructions ?? null,
+      behavioralContract: payload?.lead?.behavioralContract ?? payload?.lead?.behavioral_contract ?? null,
+      capabilities: Array.isArray(payload?.lead?.capabilities) ? payload.lead.capabilities : null,
+    })
+
+    const rawAgents = Array.isArray(payload?.agents) ? payload.agents : []
+    const agents = rawAgents.map((agent, index) =>
+      createAgent(index, {
+        id: String(agent?.name ?? `agent-${index + 1}`),
+        name: agent?.name ?? `agent-${index + 1}`,
+        tool: agent?.cliTool ?? agent?.cli_tool,
+        model: agent?.model,
+        status: 'offline',
+        projectId: agent?.projectId ?? agent?.project_id ?? projectPath,
+        description: agent?.description ?? null,
+        roleId: agent?.roleId ?? agent?.role_id ?? null,
+        instructions: agent?.instructions ?? null,
+        behavioralContract: agent?.behavioralContract ?? agent?.behavioral_contract ?? null,
+        capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
+      })
+    )
+
+    return {
+      lead,
+      agents,
+      presetId: '',
+      presetName: '',
+      composition: {
+        presetId: payload?.presetId ?? '',
+        name: payload?.presetName ?? '',
+        leadRoleId: payload?.leadRoleId ?? payload?.lead_role_id ?? '',
+        agentSlots: Array.isArray(payload?.agentSlots ?? payload?.agent_slots)
+          ? (payload?.agentSlots ?? payload?.agent_slots)
+          : [],
+      },
+    }
   }
 
-  function resetAddAgentForm() {
-    addAgentName = ''
-    addAgentTool = 'codex'
-    addAgentModel = modelsForTool('codex')[0]
-    addAgentProjectId = projectOptions[0]?.id ?? ''
-    addAgentDescription = ''
-    addAgentError = ''
+  function buildInitializationRequest(config) {
+    const lead = config?.lead
+    const agents = Array.isArray(config?.agents) ? config.agents : []
+
+    return {
+      teamName: teamName.trim() || inferTeamName(projectPath),
+      teamDescription: null,
+      leadMode: 'launch_new',
+      lead: {
+        name: lead?.name ?? 'team-lead',
+        cliTool: normalizeTool(lead?.tool),
+        model: lead?.model ?? defaultModelForTool(lead?.tool),
+        projectId: lead?.projectId || projectPath,
+        description: lead?.description ?? 'Team lead',
+        roleId: lead?.roleId ?? null,
+        instructions: lead?.instructions ?? null,
+        behavioralContract: lead?.behavioralContract ?? null,
+        capabilities: Array.isArray(lead?.capabilities) ? lead.capabilities : null,
+      },
+      agents: agents.map((agent, index) => ({
+        name: agent?.name || `agent-${index + 1}`,
+        cliTool: normalizeTool(agent?.tool),
+        model: agent?.model ?? defaultModelForTool(agent?.tool),
+        projectId: agent?.projectId || projectPath,
+        description: agent?.description ?? null,
+        roleId: agent?.roleId ?? null,
+        instructions: agent?.instructions ?? null,
+        behavioralContract: agent?.behavioralContract ?? null,
+        capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
+      })),
+    }
   }
 
-  function updateAddAgentTool(tool) {
-    addAgentTool = tool
-    addAgentModel = modelsForTool(tool)[0] ?? ''
+  async function refreshRuntimeTeamConfig(nextTeamName, sequence) {
+    const report = await coordinationGetLiveTeamStatus(nextTeamName)
+    if (sequence !== discoverySequence) return
+    teamConfig = buildTeamConfigFromRuntimeStatus(report)
   }
 
-  function openAddAgentForm() {
+  async function bootstrapFromGate() {
+    const sequence = ++discoverySequence
+    errorMessage = ''
     runtimeMessage = ''
-    showAddAgentForm = true
-    if (!addAgentProjectId) {
-      addAgentProjectId = projectOptions[0]?.id ?? ''
+
+    try {
+      const response = await coordinationListTeams()
+      if (sequence !== discoverySequence) return
+
+      const teams = coerceTeams(response)
+      const matchingTeam = teams.find((team) => teamMatchesProject(team, projectPath))
+
+      if (matchingTeam) {
+        const matchedTeamName = normalizeTeamName(matchingTeam)
+        teamName = matchedTeamName
+        mode = 'runtime'
+        selectedNodeId = null
+        initProgress = null
+        await refreshRuntimeTeamConfig(matchedTeamName, sequence)
+        return
+      }
+
+      teamName = inferTeamName(projectPath)
+      teamConfig = null
+      selectedNodeId = null
+      initProgress = null
+      mode = 'empty'
+    } catch (error) {
+      if (sequence !== discoverySequence) return
+      errorMessage = error?.message || 'Failed to load Mesh team state.'
+      teamName = inferTeamName(projectPath)
+      mode = 'empty'
     }
+  }
+
+  function ensureGateReady() {
+    if (mode !== 'gate' || gateBootstrapping) return ''
+    gateBootstrapping = true
+    void bootstrapFromGate().finally(() => {
+      gateBootstrapping = false
+    })
+    return ''
+  }
+
+  function triggerGateReady() {
+    ensureGateReady()
+    return {}
+  }
+
+  function closeSlideOver() {
+    slideOver = null
+    slideOverContext = null
+  }
+
+  function handlePresetSelect(preset) {
+    teamConfig = buildTeamConfigFromPreset(preset)
+    teamName = inferTeamName(projectPath)
+    selectedNodeId = null
+    mode = 'setup'
+    closeSlideOver()
+    runtimeMessage = ''
+  }
+
+  function handlePresetFromBrowser(preset) {
+    handlePresetSelect(preset)
+    closeSlideOver()
+  }
+
+  function handleRoleFromBrowser(role) {
+    slideOver = 'customizer'
+    slideOverContext = {
+      selectedRole: role,
+    }
+  }
+
+  function handleStartCustom() {
+    teamConfig = {
+      lead: createLead({ id: 'lead', name: 'team-lead', tool: 'claude', status: 'offline' }),
+      agents: [
+        createAgent(0, { id: 'agent-1', name: 'agent-1', tool: 'codex', status: 'offline' }),
+      ],
+      presetId: '',
+      presetName: '',
+      composition: null,
+    }
+    teamName = inferTeamName(projectPath)
+    selectedNodeId = null
+    mode = 'setup'
+    closeSlideOver()
+    runtimeMessage = ''
+  }
+
+  function handleNodeClick(nodeId) {
+    selectedNodeId = String(selectedNodeId) === String(nodeId) ? null : String(nodeId)
+  }
+
+  function handleInitialize() {
+    if (!canInitialize) return
+    initProgress = buildInitializationRequest(teamConfig)
+    mode = 'initializing'
+    selectedNodeId = null
+    runtimeMessage = ''
+  }
+
+  function handleInitializeBack() {
+    mode = 'setup'
+  }
+
+  async function handleInitializeSuccess(result) {
+    const nextTeamName = (
+      result?.teamName ??
+      result?.team_name ??
+      initProgress?.teamName ??
+      initProgress?.team_name ??
+      teamName
+    ) || inferTeamName(projectPath)
+    teamName = nextTeamName
+    runtimeMessage = result?.openedExisting ? 'Opened existing team.' : 'Team initialized successfully.'
+    mode = 'runtime'
+    selectedNodeId = null
+    closeSlideOver()
+
+    const sequence = ++discoverySequence
+    try {
+      await refreshRuntimeTeamConfig(nextTeamName, sequence)
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to load runtime team status.'
+      teamConfig = {
+        lead: createLead({ id: 'lead', name: 'team-lead', tool: 'claude', status: 'active' }),
+        agents: [],
+        presetId: '',
+        presetName: '',
+        composition: null,
+      }
+    }
+  }
+
+  function handleReset() {
+    teamConfig = null
+    selectedNodeId = null
+    initProgress = null
+    mode = 'empty'
+    runtimeMessage = ''
+    errorMessage = ''
+    closeSlideOver()
+  }
+
+  function openCustomizer() {
+    if (!teamConfig) return
+    slideOver = 'customizer'
+    slideOverContext = {
+      ...slideOverContext,
+    }
+  }
+
+  function handleTeamSave(payload) {
+    teamConfig = composeConfigFromPayload(payload)
+    if (!teamName.trim()) {
+      teamName = inferTeamName(projectPath)
+    }
+    selectedNodeId = null
+    mode = 'setup'
+    closeSlideOver()
+  }
+
+  function openAddAgentPanel() {
+    const defaultProject = projectOptions[0]?.id || projectPath || ''
+    slideOver = 'addAgent'
+    slideOverContext = {
+      name: '',
+      tool: 'codex',
+      model: defaultModelForTool('codex'),
+      projectId: defaultProject,
+      description: '',
+      submitting: false,
+      error: '',
+    }
+  }
+
+  function updateAddAgentField(field, value) {
+    const draft = addAgentDraft
+    if (!draft) return
+    const next = {
+      ...draft,
+      [field]: value,
+    }
+    if (field === 'tool') {
+      next.model = defaultModelForTool(value)
+    }
+    slideOverContext = next
   }
 
   async function submitAddAgent() {
-    if (!canSubmitAddAgent || !teamName) return
-    addAgentSubmitting = true
-    addAgentError = ''
-    addAgentProgress = { status: 'running', report: null }
+    const draft = addAgentDraft
+    if (!draft || !canSubmitAddAgent) return
+
+    slideOverContext = {
+      ...draft,
+      submitting: true,
+      error: '',
+    }
+
     try {
       const report = await coordinationAddAgent({
         teamName,
         agent: {
-          name: addAgentName.trim(),
-          cliTool: addAgentTool,
-          model: addAgentModel,
-          projectId: addAgentProjectId,
-          description: addAgentDescription.trim() || null,
+          name: String(draft.name || '').trim(),
+          cliTool: normalizeTool(draft.tool),
+          model: String(draft.model || '').trim(),
+          projectId: String(draft.projectId || '').trim(),
+          description: String(draft.description || '').trim() || null,
         },
       })
-      addAgentProgress = { status: 'succeeded', report }
+
       onAddAgentProp(report)
-      rosterRefreshNonce += 1
-      runtimeMessage = `Agent '${report?.memberName ?? addAgentName.trim()}' added.`
-      showAddAgentForm = false
-      resetAddAgentForm()
-    } catch (err) {
-      const message = err?.message || 'Failed to add agent.'
-      addAgentError = message
-      addAgentProgress = { status: 'failed', report: null, message }
-    } finally {
-      addAgentSubmitting = false
+      runtimeMessage = `Agent '${report?.memberName ?? String(draft.name || '').trim()}' added.`
+      closeSlideOver()
+
+      const sequence = ++discoverySequence
+      await refreshRuntimeTeamConfig(teamName, sequence)
+    } catch (error) {
+      const latest = addAgentDraft
+      if (!latest) return
+      slideOverContext = {
+        ...latest,
+        submitting: false,
+        error: error?.message || 'Failed to add agent.',
+      }
     }
   }
 
-  function handleRuntimeDisband() {
-    if (!teamName || disbanding) return
-    showDisbandConfirm = true
-  }
-
-  async function confirmRuntimeDisband() {
-    if (!teamName || disbanding) return
-    disbanding = true
-    try {
-      const result = await coordinationDisbandTeam(teamName)
-      mode = 'setup'
-      runtimeMessage = result?.alreadyDisbanded
-        ? 'Team was already disbanded.'
-        : 'Team disbanded and active sessions were stopped.'
-      teamName = ''
-      showInitProgress = false
-      showAddAgentForm = false
-      showDisbandConfirm = false
-      showRemoveMemberConfirm = false
-      removeMemberPending = ''
-      initializeRequest = null
-      addAgentProgress = null
-      onDisbandProp(result)
-      await refreshTeamDiscovery(projectPath)
-    } catch (err) {
-      errorMessage = err?.message || 'Failed to disband team.'
-    } finally {
-      disbanding = false
+  function requestDisband() {
+    if (!teamName) return
+    confirmContext = {
+      kind: 'disband',
     }
   }
 
-  function requestRemoveMember(memberName) {
-    if (!teamName || !memberName || removingMembers.has(memberName) || disbanding) return
-    removeMemberPending = memberName
-    showRemoveMemberConfirm = true
-  }
-
-  async function confirmRuntimeRemoveMember() {
-    if (!teamName || !removeMemberPending || removingMembers.has(removeMemberPending)) return
-    const memberName = removeMemberPending
-    removingMembers = new Set([...removingMembers, memberName])
-    showRemoveMemberConfirm = false
-    removeMemberPending = ''
-    try {
-      const report = await coordinationRemoveMember(teamName, memberName)
-      const warningCount = Array.isArray(report?.warnings) ? report.warnings.length : 0
-      runtimeMessage = warningCount > 0
-        ? `Removed '${memberName}' with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
-        : `Removed '${memberName}'.`
-      onRemoveAgentProp(report)
-      rosterRefreshNonce += 1
-    } catch (err) {
-      errorMessage = err?.message || `Failed to remove member '${memberName}'.`
-    } finally {
-      const next = new Set(removingMembers)
-      next.delete(memberName)
-      removingMembers = next
+  function requestRemoveSelected() {
+    if (!selectedNode || selectedNode.role !== 'agent') return
+    confirmContext = {
+      kind: 'remove',
+      memberName: selectedNode.name,
     }
   }
 
-  async function requestResumeMember(memberName, contextMode = 'continue') {
-    if (
-      !teamName ||
-      !memberName ||
-      disbanding ||
-      removingMembers.has(memberName) ||
-      resumingMembers.has(memberName)
-    ) {
+  async function handleConfirmAction() {
+    if (!confirmContext) return
+    const action = confirmContext
+
+    confirmContext = null
+
+    if (action.kind === 'disband') {
+      try {
+        const result = await coordinationDisbandTeam(teamName)
+        onDisbandProp(result)
+        runtimeMessage = result?.alreadyDisbanded
+          ? 'Team was already disbanded.'
+          : 'Team disbanded and active sessions were stopped.'
+        mode = 'empty'
+        selectedNodeId = null
+        teamConfig = null
+      } catch (error) {
+        errorMessage = error?.message || 'Failed to disband team.'
+      }
       return
     }
-    const normalizedMode = contextMode === 'fresh' ? 'fresh' : 'continue'
-    resumingMembers = new Set([...resumingMembers, memberName])
+
+    if (action.kind === 'remove' && action.memberName) {
+      try {
+        const report = await coordinationRemoveMember(teamName, action.memberName)
+        onRemoveAgentProp(report)
+        runtimeMessage = `Removed '${action.memberName}'.`
+        selectedNodeId = null
+        const sequence = ++discoverySequence
+        await refreshRuntimeTeamConfig(teamName, sequence)
+      } catch (error) {
+        errorMessage = error?.message || `Failed to remove member '${action.memberName}'.`
+      }
+    }
+  }
+
+  async function handleResumeSelected(contextMode = 'continue') {
+    if (!selectedNode || selectedNode.role !== 'agent') return
     try {
-      const report = await coordinationResumeMember(teamName, memberName, normalizedMode)
+      const report = await coordinationResumeMember(
+        teamName,
+        selectedNode.name,
+        contextMode === 'fresh' ? 'fresh' : 'continue'
+      )
+
       if (!report?.resumed) {
-        errorMessage = report?.message || `Failed to resume member '${memberName}'.`
+        errorMessage = report?.message || `Failed to resume member '${selectedNode.name}'.`
         return
       }
-      const warningCount = Array.isArray(report?.warnings) ? report.warnings.length : 0
-      runtimeMessage = warningCount > 0
-        ? `Resumed '${memberName}' with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
-        : `Resumed '${memberName}'.`
-      rosterRefreshNonce += 1
-    } catch (err) {
-      errorMessage = err?.message || `Failed to resume member '${memberName}'.`
-    } finally {
-      const next = new Set(resumingMembers)
-      next.delete(memberName)
-      resumingMembers = next
+
+      runtimeMessage = `Resumed '${selectedNode.name}'.`
+      const sequence = ++discoverySequence
+      await refreshRuntimeTeamConfig(teamName, sequence)
+    } catch (error) {
+      errorMessage = error?.message || `Failed to resume member '${selectedNode.name}'.`
     }
   }
 
-  function requestCleanupDisband(team) {
-    cleanupError = ''
-    cleanupTargetTeam = normalizeTeamName(team)
-    showCleanupConfirm = Boolean(cleanupTargetTeam)
+  function handleStopSelected() {
+    if (!selectedNode) return
+    if (selectedNode.role === 'lead') {
+      requestDisband()
+      return
+    }
+    requestRemoveSelected()
   }
 
-  async function confirmCleanupDisband() {
-    if (!cleanupTargetTeam) return
-    try {
-      await coordinationDisbandTeam(cleanupTargetTeam)
-      runtimeMessage = `Team "${cleanupTargetTeam}" disbanded.`
-      showCleanupConfirm = false
-      cleanupTargetTeam = ''
-      await refreshTeamDiscovery(projectPath)
-    } catch (err) {
-      cleanupError = err?.message || 'Failed to disband selected team.'
-    }
+  function handleFocusSelectedPane() {
+    if (!selectedNode?.paneId) return
+    onFocusPaneProp(selectedNode.paneId)
   }
+
+  function modelsForTool(tool) {
+    return modelOptionsByTool[normalizeTool(tool)] ?? ['default']
+  }
+
+  function confirmDialogTitle() {
+    if (!confirmContext) return 'Confirm action'
+    if (confirmContext.kind === 'disband') return 'Disband team?'
+    return 'Remove agent?'
+  }
+
+  function confirmDialogMessage() {
+    if (!confirmContext) return ''
+    if (confirmContext.kind === 'disband') {
+      return `Disband team "${teamName}"? This removes mesh state and stops active agent sessions.`
+    }
+    return `Remove agent "${confirmContext.memberName}" from "${teamName}"?`
+  }
+
+  function confirmDialogLabel() {
+    if (!confirmContext) return 'Confirm'
+    return confirmContext.kind === 'disband' ? 'Disband' : 'Remove'
+  }
+
+  $effect(() => {
+    const currentProjectPath = projectPath
+    void currentProjectPath
+
+    mode = 'gate'
+    teamName = ''
+    teamConfig = null
+    slideOver = null
+    slideOverContext = null
+    selectedNodeId = null
+    initProgress = null
+    errorMessage = ''
+    runtimeMessage = ''
+    confirmContext = null
+    gateBootstrapping = false
+  })
+
+  $effect(() => {
+    if (!selectedNodeId) return
+    if (!selectedNode) {
+      selectedNodeId = null
+    }
+  })
 
   $effect(() => {
     if (runtimeMessageTimer) clearTimeout(runtimeMessageTimer)
@@ -425,360 +857,329 @@
       if (errorMessageTimer) clearTimeout(errorMessageTimer)
     }
   })
-
-  $effect(() => {
-    const currentProjectPath = projectPath
-    const sequence = teamDiscoveryGuard.next()
-
-    loading = true
-    errorMessage = ''
-    runtimeMessage = ''
-    showAddAgentForm = false
-    addAgentProgress = null
-    addAgentError = ''
-    disbanding = false
-    showDisbandConfirm = false
-    showCleanupPanel = false
-    cleanupError = ''
-    cleanupTargetTeam = ''
-    showCleanupConfirm = false
-    removeMemberPending = ''
-    showRemoveMemberConfirm = false
-    removingMembers = new Set()
-    resumingMembers = new Set()
-    teamName = ''
-    mode = 'setup'
-    discoveredTeams = []
-    discoveryWarnings = []
-
-    refreshTeamDiscovery(currentProjectPath, sequence)
-      .catch((err) => {
-        if (!teamDiscoveryGuard.isCurrent(sequence)) return
-        errorMessage = err?.message || 'Failed to load Mesh setup state'
-      })
-      .finally(() => {
-        if (teamDiscoveryGuard.isCurrent(sequence)) {
-          loading = false
-        }
-      })
-
-    return () => {
-      teamDiscoveryGuard.invalidate()
-    }
-  })
 </script>
 
 <section class="flex-1 min-h-0 overflow-y-auto {t.mainBg}" data-testid="mesh-tab">
   <div class="max-w-3xl px-7 pt-4 pb-6 space-y-4">
-    {#if loading}
-      <p class="text-sm {t.textMuted}" data-testid="mesh-loading">Checking Mesh team state...</p>
-    {:else}
-      {#if errorMessage}
-        <div class="relative overflow-hidden border-l-2 border-danger-400 pl-3 pr-2 py-1 text-xs text-danger-600/95 flex items-center justify-between gap-2" data-testid="mesh-error">
-          <span class="min-w-0">{errorMessage}</span>
-          <button
-            class="text-xs opacity-60 hover:opacity-100 ml-2"
-            onclick={() => {
-              errorMessage = ''
-            }}
-            data-testid="mesh-dismiss-error-message"
-          >
-            ✕
-          </button>
-          <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-danger-400/50 animate-[shrink_8s_linear_forwards]" style="width: 100%"></div>
-        </div>
-      {/if}
-
-      {#if runtimeMessage}
-        <div class="relative overflow-hidden border-l-2 border-success-400 pl-3 pr-2 py-1 text-xs text-success-600/95 flex items-center justify-between gap-2" data-testid="mesh-runtime-message">
-          <span class="min-w-0">{runtimeMessage}</span>
-          <button
-            class="text-xs opacity-60 hover:opacity-100 ml-2"
-            onclick={() => {
-              runtimeMessage = ''
-            }}
-            data-testid="mesh-dismiss-runtime-message"
-          >
-            ✕
-          </button>
-          <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-success-400/50 animate-[shrink_5s_linear_forwards]" style="width: 100%"></div>
-        </div>
-      {/if}
-
-      <MeshAvailabilityGate {dark} {projectPath}>
-        {#snippet children(agentWarnings)}
-          {#key mode}
-            <div class="animate-[meshfade_180ms_ease-out]">
-              {#if mode === 'runtime'}
-                {#if showAddAgentForm}
-                  <section class="pt-4 border-t {t.keyline} space-y-3" data-testid="mesh-add-agent-form">
-                    <div class="flex items-center gap-2">
-                      <span class="h-3 w-0.5 rounded-full bg-brand-500/80"></span>
-                      <p class="text-[11px] uppercase {t.textMuted}">Add Agent</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <input
-                        class="{formFieldBase} {fieldTone}"
-                        placeholder="Agent name"
-                        bind:value={addAgentName}
-                        data-testid="mesh-add-agent-name-input"
-                      />
-                      <select
-                        class={inlineSelect}
-                        style:background-image={chevronSvg}
-                        style:background-repeat="no-repeat"
-                        style:background-position="right 4px center"
-                        value={addAgentTool}
-                        onchange={(event) => updateAddAgentTool(event.currentTarget.value)}
-                        data-testid="mesh-add-agent-tool-select"
-                      >
-                        <option value="claude">Claude</option>
-                        <option value="codex">Codex</option>
-                        <option value="gemini">Gemini</option>
-                      </select>
-                      <select
-                        class={inlineSelect}
-                        style:background-image={chevronSvg}
-                        style:background-repeat="no-repeat"
-                        style:background-position="right 4px center"
-                        bind:value={addAgentModel}
-                        data-testid="mesh-add-agent-model-select"
-                      >
-                        {#each modelsForTool(addAgentTool) as model}
-                          <option value={model}>{model}</option>
-                        {/each}
-                      </select>
-                      <select
-                        class={inlineSelect}
-                        style:background-image={chevronSvg}
-                        style:background-repeat="no-repeat"
-                        style:background-position="right 4px center"
-                        bind:value={addAgentProjectId}
-                        data-testid="mesh-add-agent-project-select"
-                      >
-                        <option value="">Select project</option>
-                        {#each projectOptions as project}
-                          <option value={project.id}>{project.label}</option>
-                        {/each}
-                      </select>
-                    </div>
-
-                    <input
-                      class="{formFieldBase} {fieldTone}"
-                      placeholder="Description (optional)"
-                      bind:value={addAgentDescription}
-                      data-testid="mesh-add-agent-description-input"
-                    />
-
-                    {#if addAgentError}
-                      <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentError}</p>
-                    {/if}
-
-                    <div class="flex justify-end gap-2">
-                      <button
-                        class="rounded-md px-2 py-1 text-[11px] transition-colors {neutralGhost}"
-                        onclick={() => {
-                          showAddAgentForm = false
-                          addAgentError = ''
-                        }}
-                        disabled={addAgentSubmitting}
-                        data-testid="mesh-add-agent-cancel"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        class={primaryCta}
-                        onclick={submitAddAgent}
-                        disabled={!canSubmitAddAgent}
-                        data-testid="mesh-add-agent-submit"
-                      >
-                        <span class={addAgentSubmitting ? 'animate-pulse' : ''}>
-                          {addAgentSubmitting ? 'Adding...' : 'Add Agent'}
-                        </span>
-                      </button>
-                    </div>
-                  </section>
-                {/if}
-
-                {#if addAgentProgress}
-                  <section class="pt-2 border-t {t.keyline} space-y-1.5" data-testid="mesh-add-agent-progress">
-                    <p class="text-[11px] uppercase {t.textMuted}">
-                      Adding agent... {addAgentProgress.status}
-                    </p>
-                    {#if addAgentProgress.report?.steps?.length}
-                      <ul class="space-y-1">
-                        {#each addAgentProgress.report.steps as progress}
-                          <li class="text-xs {t.textMuted}" data-testid={`mesh-add-agent-step-${progress.step}`}>
-                            {progress.step}: {progress.status}
-                          </li>
-                        {/each}
-                      </ul>
-                    {/if}
-                  </section>
-                {/if}
-
-                <MeshTeamRoster
-                  {dark}
-                  {teamName}
-                  refreshNonce={rosterRefreshNonce}
-                  {disbanding}
-                  removingMembers={[...removingMembers]}
-                  resumingMembers={[...resumingMembers]}
-                  onAddAgent={openAddAgentForm}
-                  onDisband={handleRuntimeDisband}
-                  onRemoveAgent={requestRemoveMember}
-                  onResumeAgent={requestResumeMember}
-                  onFocusPane={onFocusPaneProp}
-                />
-              {:else}
-                {#if showInitProgress}
-                  <MeshInitProgress
-                    {dark}
-                    request={initializeRequest}
-                    onsuccess={handleProgressSuccess}
-                    onback={handleProgressBack}
-                  />
-                {:else}
-                  <div class="space-y-3">
-                    <MeshSetupForm
-                      {dark}
-                      {projectPath}
-                      {availableProjects}
-                      preflightWarnings={agentWarnings}
-                      oninitialize={handleInitialize}
-                    />
-
-                    {#if discoveredTeams.length > 0 || discoveryWarnings.length > 0}
-                      <section
-                        class="rounded-lg border {t.keyline} p-3 space-y-2"
-                        data-testid="mesh-cleanup-panel"
-                      >
-                        <header class="flex items-center justify-between gap-3">
-                          <div class="min-w-0">
-                            <p class="text-[11px] uppercase tracking-[0.14em] {t.textMuted}">
-                              Team Cleanup
-                            </p>
-                            <p class="text-xs {t.textSecondary}">
-                              Review existing teams before starting a new one.
-                            </p>
-                          </div>
-                          <button
-                            class="rounded-md px-2 py-1 text-[11px] transition-colors {neutralGhost}"
-                            onclick={() => {
-                              showCleanupPanel = !showCleanupPanel
-                            }}
-                            data-testid="mesh-cleanup-toggle"
-                          >
-                            {showCleanupPanel ? 'Hide' : 'Show'}{discoveredTeams.length > 0 ? ` (${discoveredTeams.length})` : ''}
-                          </button>
-                        </header>
-
-                        {#if showCleanupPanel}
-                          {#if cleanupError}
-                            <p class="text-xs text-danger-500" data-testid="mesh-cleanup-error">
-                              {cleanupError}
-                            </p>
-                          {/if}
-
-                          {#if discoveryWarnings.length > 0}
-                            <div class="rounded-md border border-warning-400/30 bg-warning-400/10 px-2 py-1.5" data-testid="mesh-cleanup-warnings">
-                              <p class="text-[11px] font-medium text-warning-500">Discovery warnings</p>
-                              <ul class="mt-1 space-y-1">
-                                {#each discoveryWarnings as warning}
-                                  <li class="text-[11px] {t.textMuted}">{warning}</li>
-                                {/each}
-                              </ul>
-                            </div>
-                          {/if}
-
-                          {#if discoveredTeams.length === 0}
-                            <p class="text-xs {t.textMuted}">
-                              No valid teams found.
-                            </p>
-                          {:else}
-                            <div class="space-y-1.5" data-testid="mesh-cleanup-team-list">
-                              {#each discoveredTeams as team}
-                                {@const currentTeamName = normalizeTeamName(team)}
-                                {@const leadPath = normalizeLeadPath(team)}
-                                {@const isCurrentProject = teamMatchesProject(team, projectPath)}
-                                <article
-                                  class="rounded-md border {t.keyline} px-2.5 py-2 flex items-start justify-between gap-2"
-                                  data-testid={`mesh-cleanup-team-${sanitizeTeamNameForTestId(currentTeamName)}`}
-                                >
-                                  <div class="min-w-0 space-y-0.5">
-                                    <p class="text-xs font-medium {t.textPrimary}">
-                                      {currentTeamName}
-                                    </p>
-                                    <p class="text-[11px] truncate {t.textMuted}">
-                                      {leadPath || 'No lead project path recorded'}
-                                    </p>
-                                    <span
-                                      class={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] ${isCurrentProject ? cleanupBadgeCurrent : cleanupBadgeOther}`}
-                                    >
-                                      {isCurrentProject ? 'Current project' : 'Different project'}
-                                    </span>
-                                  </div>
-                                  <button
-                                    class="rounded-md px-2 py-1 text-[11px] transition-colors {cleanupDisbandTone}"
-                                    onclick={() => requestCleanupDisband(team)}
-                                    data-testid={`mesh-cleanup-disband-${sanitizeTeamNameForTestId(currentTeamName)}`}
-                                  >
-                                    Disband
-                                  </button>
-                                </article>
-                              {/each}
-                            </div>
-                          {/if}
-                        {/if}
-                      </section>
-                    {/if}
-                  </div>
-                {/if}
-              {/if}
-            </div>
-          {/key}
-        {/snippet}
-      </MeshAvailabilityGate>
-
-      {#if showDisbandConfirm}
-        <ConfirmDialog
-          {dark}
-          bind:open={showDisbandConfirm}
-          title="Disband team?"
-          message={`Disband team "${teamName}"? This will remove mesh state and stop active agent sessions (panes, daemons, and mesh membership).`}
-          confirmLabel="Disband"
-          variant="danger"
-          onconfirm={confirmRuntimeDisband}
-        />
-      {/if}
-
-      {#if showRemoveMemberConfirm}
-        <ConfirmDialog
-          {dark}
-          bind:open={showRemoveMemberConfirm}
-          title="Remove agent?"
-          message={`Remove agent "${removeMemberPending}" from "${teamName}"? This stops managed resources (mesh presence, daemon, and pane) when possible.`}
-          confirmLabel="Remove"
-          variant="danger"
-          onconfirm={confirmRuntimeRemoveMember}
-          oncancel={() => {
-            removeMemberPending = ''
+    {#if errorMessage}
+      <div class="relative overflow-hidden border-l-2 border-danger-400 pl-3 pr-2 py-1 text-xs text-danger-600/95 flex items-center justify-between gap-2" data-testid="mesh-error">
+        <span class="min-w-0">{errorMessage}</span>
+        <button
+          class="text-xs opacity-60 hover:opacity-100 ml-2"
+          onclick={() => {
+            errorMessage = ''
           }}
-        />
-      {/if}
+          data-testid="mesh-dismiss-error-message"
+        >
+          ✕
+        </button>
+        <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-danger-400/50 animate-[shrink_8s_linear_forwards]" style="width: 100%"></div>
+      </div>
+    {/if}
 
-      {#if showCleanupConfirm}
-        <ConfirmDialog
+    {#if runtimeMessage}
+      <div class="relative overflow-hidden border-l-2 border-success-400 pl-3 pr-2 py-1 text-xs text-success-600/95 flex items-center justify-between gap-2" data-testid="mesh-runtime-message">
+        <span class="min-w-0">{runtimeMessage}</span>
+        <button
+          class="text-xs opacity-60 hover:opacity-100 ml-2"
+          onclick={() => {
+            runtimeMessage = ''
+          }}
+          data-testid="mesh-dismiss-runtime-message"
+        >
+          ✕
+        </button>
+        <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-success-400/50 animate-[shrink_5s_linear_forwards]" style="width: 100%"></div>
+      </div>
+    {/if}
+
+    {#if mode === 'gate'}
+      <div data-testid="mesh-mode-gate">
+        <MeshAvailabilityGate {dark} {projectPath}>
+          {#snippet children(_agentWarnings)}
+            <p class="text-xs {t.textMuted}" data-testid="mesh-gate-ready" use:triggerGateReady>
+              Checking project team state...
+            </p>
+          {/snippet}
+        </MeshAvailabilityGate>
+      </div>
+    {:else if mode === 'empty'}
+      <div class="animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-empty">
+        <MeshEmptyState
           {dark}
-          bind:open={showCleanupConfirm}
-          title="Disband selected team?"
-          message={`Disband team "${cleanupTargetTeam}"? This removes mesh state and stops active sessions tied to it.`}
-          confirmLabel="Disband"
-          variant="danger"
-          onconfirm={confirmCleanupDisband}
+          presets={quickPresets}
+          onSelectPreset={handlePresetSelect}
+          onBrowseTemplates={() => {
+            slideOver = 'templates'
+            slideOverContext = null
+          }}
+          onStartCustom={handleStartCustom}
         />
-      {/if}
+      </div>
+    {:else if mode === 'setup'}
+      <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-setup">
+        <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-setup-canvas-frame">
+          <MeshCanvas
+            lead={teamConfig?.lead ?? null}
+            agents={teamConfig?.agents ?? []}
+            mode="setup"
+            {dark}
+            onNodeClick={handleNodeClick}
+            onAddClick={openCustomizer}
+            {selectedNodeId}
+          />
+        </div>
+
+        {#if selectedNode}
+          <div class="relative h-0" data-testid="mesh-node-detail-host">
+            <MeshNodeDetail
+              name={selectedNode.name}
+              role={selectedNode.role}
+              tool={selectedNode.tool}
+              model={selectedNode.model}
+              status={selectedNode.status}
+              projectId={selectedNode.projectId}
+              description={selectedNode.description || ''}
+              mode="setup"
+              {dark}
+              onEdit={openCustomizer}
+              onRemove={() => {
+                if (selectedNode.role !== 'agent') return
+                teamConfig = {
+                  ...teamConfig,
+                  agents: (teamConfig?.agents ?? []).filter((entry) => entry.id !== selectedNode.id),
+                }
+                selectedNodeId = null
+              }}
+              onClose={() => {
+                selectedNodeId = null
+              }}
+            />
+          </div>
+        {/if}
+
+        <MeshActionBar
+          canInitialize={canInitialize}
+          {teamName}
+          {dark}
+          onInitialize={handleInitialize}
+          onOpenCustomizer={openCustomizer}
+          onReset={handleReset}
+        />
+      </div>
+    {:else if mode === 'initializing'}
+      <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-initializing">
+        <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-initializing-canvas-frame">
+          <MeshCanvas
+            lead={teamConfig?.lead ?? null}
+            agents={teamConfig?.agents ?? []}
+            mode="initializing"
+            {dark}
+            onNodeClick={() => {}}
+            onAddClick={() => {}}
+          />
+        </div>
+
+        <MeshInitProgress
+          {dark}
+          request={initProgress}
+          onsuccess={handleInitializeSuccess}
+          onback={handleInitializeBack}
+        />
+      </div>
+    {:else}
+      <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-runtime">
+        <header class="flex items-center justify-between gap-2">
+          <h2 class="text-sm font-semibold {t.textPrimary}" data-testid="mesh-runtime-title">{teamName}</h2>
+          <div class="flex items-center gap-1.5" data-testid="mesh-runtime-controls">
+            <button
+              class="rounded border px-2 py-1 text-xs {actionSecondary}"
+              onclick={openAddAgentPanel}
+              data-testid="mesh-runtime-add-agent"
+            >
+              Add Agent
+            </button>
+            <button
+              class="rounded border px-2 py-1 text-xs border-danger-500/40 text-danger-400 hover:bg-danger-500/10"
+              onclick={requestDisband}
+              data-testid="mesh-runtime-disband"
+            >
+              Disband
+            </button>
+          </div>
+        </header>
+
+        <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-runtime-canvas-frame">
+          <MeshCanvas
+            lead={teamConfig?.lead ?? null}
+            agents={teamConfig?.agents ?? []}
+            mode="runtime"
+            {dark}
+            onNodeClick={handleNodeClick}
+            onAddClick={() => {}}
+            {selectedNodeId}
+          />
+        </div>
+
+        {#if selectedNode}
+          <div class="relative h-0" data-testid="mesh-node-detail-host">
+            <MeshNodeDetail
+              name={selectedNode.name}
+              role={selectedNode.role}
+              tool={selectedNode.tool}
+              model={selectedNode.model}
+              status={selectedNode.status}
+              projectId={selectedNode.projectId}
+              description={selectedNode.description || ''}
+              mode="runtime"
+              {dark}
+              onResume={handleResumeSelected}
+              onStop={handleStopSelected}
+              onFocusPane={handleFocusSelectedPane}
+              onClose={() => {
+                selectedNodeId = null
+              }}
+            />
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if slideOver === 'templates'}
+      <TemplateBrowserPanel
+        open={true}
+        {dark}
+        onClose={closeSlideOver}
+        onSelectPreset={handlePresetFromBrowser}
+        onSelectRole={handleRoleFromBrowser}
+      />
+    {/if}
+
+    {#if slideOver === 'customizer'}
+      <TeamCustomizerPanel
+        open={true}
+        {dark}
+        {projectPath}
+        {availableProjects}
+        {teamConfig}
+        context={slideOverContext}
+        onClose={closeSlideOver}
+        onSave={handleTeamSave}
+        onReset={handleReset}
+      />
+    {/if}
+
+    <SlideOver
+      open={slideOver === 'addAgent'}
+      title="Add Agent"
+      width={420}
+      {dark}
+      onClose={closeSlideOver}
+    >
+      {#snippet children()}
+        <section class="space-y-3" data-testid="mesh-add-agent-form">
+          <p class="text-xs {t.textMuted}">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
+
+          <input
+            class="w-full rounded-md border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
+            placeholder="Agent name"
+            value={addAgentDraft?.name ?? ''}
+            oninput={(event) => updateAddAgentField('name', event.currentTarget.value)}
+            data-testid="mesh-add-agent-name-input"
+          />
+
+          <select
+            class="h-8 w-full rounded-md border px-2 pr-6 text-xs transition-colors focus:outline-none {fieldTone} {selectScheme}"
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 6px center"
+            value={addAgentDraft?.tool ?? 'codex'}
+            onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
+            data-testid="mesh-add-agent-tool-select"
+          >
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+            <option value="gemini">Gemini</option>
+          </select>
+
+          <select
+            class="h-8 w-full rounded-md border px-2 pr-6 text-xs transition-colors focus:outline-none {fieldTone} {selectScheme}"
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 6px center"
+            value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
+            onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
+            data-testid="mesh-add-agent-model-select"
+          >
+            {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
+              <option value={model}>{model}</option>
+            {/each}
+          </select>
+
+          <select
+            class="h-8 w-full rounded-md border px-2 pr-6 text-xs transition-colors focus:outline-none {fieldTone} {selectScheme}"
+            style:background-image={chevronSvg}
+            style:background-repeat="no-repeat"
+            style:background-position="right 6px center"
+            value={addAgentDraft?.projectId ?? ''}
+            onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
+            data-testid="mesh-add-agent-project-select"
+          >
+            <option value="">Select project</option>
+            {#each projectOptions as project}
+              <option value={project.id}>{project.label}</option>
+            {/each}
+          </select>
+
+          <input
+            class="w-full rounded-md border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
+            placeholder="Description (optional)"
+            value={addAgentDraft?.description ?? ''}
+            oninput={(event) => updateAddAgentField('description', event.currentTarget.value)}
+            data-testid="mesh-add-agent-description-input"
+          />
+
+          {#if addAgentDraft?.error}
+            <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentDraft.error}</p>
+          {/if}
+
+          <div class="flex items-center justify-end gap-2">
+            <button
+              class="rounded-md border px-2 py-1 text-xs {actionSecondary}"
+              type="button"
+              onclick={closeSlideOver}
+              disabled={addAgentDraft?.submitting}
+              data-testid="mesh-add-agent-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              class="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onclick={submitAddAgent}
+              disabled={!canSubmitAddAgent}
+              data-testid="mesh-add-agent-submit"
+            >
+              {addAgentDraft?.submitting ? 'Adding...' : 'Add Agent'}
+            </button>
+          </div>
+        </section>
+      {/snippet}
+    </SlideOver>
+
+    {#if confirmContext}
+      <ConfirmDialog
+        {dark}
+        open={true}
+        title={confirmDialogTitle()}
+        message={confirmDialogMessage()}
+        confirmLabel={confirmDialogLabel()}
+        variant="danger"
+        onconfirm={handleConfirmAction}
+        oncancel={() => {
+          confirmContext = null
+        }}
+      />
     {/if}
   </div>
 </section>

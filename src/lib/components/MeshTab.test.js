@@ -1,38 +1,48 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('../ipc.js', () => ({
   checkMeshInstallStatus: vi.fn(),
+  composeTeam: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
   coordinationGetLiveTeamStatus: vi.fn(),
-  coordinationListTeams: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
+  coordinationListTeams: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
   coordinationRemoveMember: vi.fn(),
   coordinationResumeMember: vi.fn(),
+  getRoleTemplate: vi.fn(),
+  getTeamPreset: vi.fn(),
   installMesh: vi.fn(),
+  listRoleTemplates: vi.fn(),
+  listTeamPresets: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
 }))
 
 const {
   checkMeshInstallStatus,
+  composeTeam,
   coordinationAddAgent,
   coordinationDisbandTeam,
   coordinationGetLiveTeamStatus,
-  coordinationListTeams,
   coordinationInitializeTeam,
+  coordinationListTeams,
   coordinationPreflightCheck,
   coordinationRemoveMember,
   coordinationResumeMember,
+  getRoleTemplate,
+  getTeamPreset,
   installMesh,
+  listRoleTemplates,
+  listTeamPresets,
   onCoordinationStepProgress,
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
 
-function createDeferred() {
+function deferred() {
   let resolve
   let reject
   const promise = new Promise((res, rej) => {
@@ -42,9 +52,29 @@ function createDeferred() {
   return { promise, resolve, reject }
 }
 
+let previousResizeObserver
+
+beforeAll(() => {
+  previousResizeObserver = globalThis.ResizeObserver
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+})
+
+afterAll(() => {
+  if (previousResizeObserver) {
+    globalThis.ResizeObserver = previousResizeObserver
+    return
+  }
+  delete globalThis.ResizeObserver
+})
+
 describe('MeshTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+
     checkMeshInstallStatus.mockResolvedValue({
       installed: true,
       version: '0.1.0',
@@ -53,34 +83,13 @@ describe('MeshTab', () => {
       environment_available: true,
       error: null,
     })
-    coordinationAddAgent.mockResolvedValue({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      failedStep: null,
-      message: 'agent added',
-      steps: [],
+    coordinationPreflightCheck.mockResolvedValue({
+      blockingErrors: [],
+      agentWarnings: [],
     })
-    coordinationRemoveMember.mockResolvedValue({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      removed: true,
-      message: 'member removed',
-      steps: [],
-      warnings: [],
-    })
-    coordinationResumeMember.mockResolvedValue({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      resumed: true,
-      succeededSteps: ['validate', 'launch_session', 'update_runtime'],
-      failedStep: null,
-      retryable: false,
-      message: 'member resumed',
-      steps: [],
-      warnings: [],
-      paneId: '%2',
-      reusedPane: true,
-    })
+    installMesh.mockResolvedValue('Mesh installed successfully: mesh 0.1.0')
+
+    coordinationListTeams.mockResolvedValue([])
     coordinationGetLiveTeamStatus.mockResolvedValue({
       teamName: 'architecture-final',
       leadName: 'team-lead',
@@ -91,33 +100,21 @@ describe('MeshTab', () => {
           cliTool: 'claude',
           model: 'opus',
           projectId: 'proj-core',
-          description: 'lead',
           sessionStatus: 'active',
           paneId: '%1',
         },
         {
-          name: 'backend-dev',
+          name: 'frontend-dev',
           role: 'member',
           cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: 'proj-api',
-          description: 'api',
+          model: 'gpt-5.3-codex',
+          projectId: 'proj-web',
           sessionStatus: 'idle',
           paneId: '%2',
         },
       ],
     })
-    coordinationPreflightCheck.mockResolvedValue({
-      blockingErrors: [],
-      agentWarnings: [],
-    })
-    coordinationListTeams.mockResolvedValue([])
-    coordinationDisbandTeam.mockResolvedValue({
-      teamName: 'architecture-final',
-      disbanded: true,
-      alreadyDisbanded: false,
-      message: 'team disbanded',
-    })
+
     coordinationInitializeTeam.mockResolvedValue({
       teamName: 'architecture-final',
       failedStep: null,
@@ -125,11 +122,96 @@ describe('MeshTab', () => {
       message: 'team initialized',
       steps: [{ step: 'validate_configuration', status: 'succeeded', message: 'ok' }],
     })
-    installMesh.mockResolvedValue('Mesh installed successfully: mesh 0.1.0')
+
+    coordinationAddAgent.mockResolvedValue({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      failedStep: null,
+      message: 'agent added',
+      steps: [],
+    })
+
+    coordinationDisbandTeam.mockResolvedValue({
+      teamName: 'architecture-final',
+      disbanded: true,
+      alreadyDisbanded: false,
+      message: 'team disbanded',
+    })
+
+    coordinationRemoveMember.mockResolvedValue({
+      teamName: 'architecture-final',
+      memberName: 'frontend-dev',
+      removed: true,
+      message: 'member removed',
+      steps: [],
+      warnings: [],
+    })
+
+    coordinationResumeMember.mockResolvedValue({
+      teamName: 'architecture-final',
+      memberName: 'frontend-dev',
+      resumed: true,
+      failedStep: null,
+      message: 'member resumed',
+      steps: [],
+      warnings: [],
+    })
+
+    listRoleTemplates.mockResolvedValue([
+      { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
+      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.3-codex' },
+    ])
+    listTeamPresets.mockResolvedValue([
+      {
+        presetId: 'fullstack-dev',
+        name: 'Full Stack Dev Team',
+        description: 'Lead + agents',
+        leadRoleId: 'lead-default',
+        roleCount: 3,
+        agentCount: 2,
+        tools: ['claude', 'codex'],
+      },
+    ])
+    getRoleTemplate.mockResolvedValue({ roleId: 'lead-default', instructions: 'Lead the team.' })
+    getTeamPreset.mockResolvedValue({
+      presetId: 'fullstack-dev',
+      leadRoleId: 'lead-default',
+      agentSlots: [{ roleId: 'agent-default', count: 2 }],
+    })
+
+    composeTeam.mockResolvedValue({
+      roster: [
+        {
+          name: 'team-lead',
+          roleId: 'lead-default',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          instructions: '',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: '/projects/taurhaus',
+        },
+      ],
+      warnings: [],
+      validationErrors: [],
+    })
+
     onCoordinationStepProgress.mockResolvedValue(() => {})
   })
 
-  it('renders setup mode when no teams exist', async () => {
+  it('renders availability gate in gate mode before resolving project team state', () => {
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-mode-gate')).toBeInTheDocument()
+  })
+
+  it('transitions to empty mode when no existing team matches project', async () => {
     coordinationListTeams.mockResolvedValueOnce([])
 
     render(MeshTab, {
@@ -140,40 +222,15 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
-
-    expect(screen.getByTestId('mesh-setup-description')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-create-team-button')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-empty-state')).toBeInTheDocument()
   })
 
-  it('renders missing-binary setup prompt and disables initialize CTA', async () => {
-    coordinationPreflightCheck.mockResolvedValue({
-      blockingErrors: ['Mesh CLI not found. Install it to enable multi-agent collaboration.'],
-      agentWarnings: [],
-    })
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-availability-title')).toBeInTheDocument()
-    })
-
-    expect(screen.getByTestId('mesh-availability-error')).toHaveTextContent(
-      'Mesh CLI not found. Install it to enable multi-agent collaboration.'
-    )
-    expect(screen.queryByTestId('mesh-create-team-button')).not.toBeInTheDocument()
-  })
-
-  it('renders runtime mode when team exists for current project', async () => {
+  it('transitions to runtime mode when matching project team exists', async () => {
     coordinationListTeams.mockResolvedValueOnce([
       { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-      { teamName: 'ops', leadProjectPath: '/projects/ops' },
+      { teamName: 'ops-team', leadProjectPath: '/projects/ops' },
     ])
 
     render(MeshTab, {
@@ -184,38 +241,13 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('mesh-runtime-placeholder')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
   })
 
-  it('matches Linux team path against UNC project path', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/home/mstie/projects/taurhaus/' },
-    ])
-
+  it('empty -> setup transition via start custom', async () => {
     render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\mstie\\projects\\taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-  })
-
-  it('switches mode when project changes', async () => {
-    coordinationListTeams
-      .mockResolvedValueOnce([
-        { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-      ])
-      .mockResolvedValueOnce([
-        { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-      ])
-
-    const view = render(MeshTab, {
       props: {
         dark: false,
         projectPath: '/projects/taurhaus',
@@ -223,25 +255,21 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await view.rerender({
-      dark: false,
-      projectPath: '/projects/different-project',
-    })
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
-
-    expect(coordinationListTeams).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('mesh-canvas')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-action-bar')).toBeInTheDocument()
   })
 
-  it('shows cleanup panel in setup mode and disbands selected team', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'ops-team', leadProjectPath: '/projects/ops' },
-    ])
+  it('setup -> initializing -> runtime transition works through initialize flow', async () => {
+    const init = deferred()
+    coordinationInitializeTeam.mockReturnValueOnce(init.promise)
 
     render(MeshTab, {
       props: {
@@ -251,27 +279,124 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('mesh-cleanup-panel')).toBeInTheDocument()
 
-    await fireEvent.click(screen.getByTestId('mesh-cleanup-toggle'))
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-cleanup-team-list')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-cleanup-disband-ops-team'))
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-initializing')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-init-progress')).toBeInTheDocument()
+    })
+
+    init.resolve({
+      teamName: 'architecture-final',
+      failedStep: null,
+      retryable: false,
+      message: 'team initialized',
+      steps: [{ step: 'validate_configuration', status: 'succeeded', message: 'ok' }],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+  })
+
+  it('opens and closes template, customizer, and add-agent slideovers', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-cancel'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
     await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
 
     await waitFor(() => {
-      expect(coordinationDisbandTeam).toHaveBeenCalledWith('ops-team')
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getAllByTestId('slideover-close').at(-1))
+    await waitFor(() => {
+      expect(screen.queryByTestId('template-browser-panel')).not.toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-action-customize'))
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getAllByTestId('slideover-close').at(-1))
+    await waitFor(() => {
+      expect(screen.queryByTestId('team-customizer-panel')).not.toBeInTheDocument()
     })
   })
 
-  it('add agent shows form and submitting calls coordinationAddAgent', async () => {
+  it('reset returns setup state back to empty mode', async () => {
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-action-reset'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+  })
+
+  it('submits add-agent flow in runtime mode', async () => {
     coordinationListTeams.mockResolvedValueOnce([
       { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
     ])
@@ -285,21 +410,21 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
-    expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
-    const toolLabels = Array.from(
-      screen.getByTestId('mesh-add-agent-tool-select').querySelectorAll('option')
-    ).map((option) => option.textContent)
-    expect(toolLabels).toEqual(['Claude', 'Codex', 'Gemini'])
+    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    })
+
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'backend-dev' },
     })
     await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
       target: { value: 'proj-api' },
     })
+
     await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
 
     await waitFor(() => {
@@ -313,515 +438,5 @@ describe('MeshTab', () => {
         })
       )
     })
-  })
-
-  it('shows add-agent loading text while submission is in progress', async () => {
-    const deferred = createDeferred()
-    coordinationAddAgent.mockReturnValueOnce(deferred.promise)
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-        availableProjects: [{ id: 'proj-api', name: 'API' }],
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
-    await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
-      target: { value: 'backend-dev' },
-    })
-    await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
-      target: { value: 'proj-api' },
-    })
-    await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-add-agent-submit')).toHaveTextContent('Adding...')
-      expect(screen.getByTestId('mesh-add-agent-submit')).toBeDisabled()
-    })
-
-    deferred.resolve({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      failedStep: null,
-      message: 'agent added',
-      steps: [],
-    })
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('mesh-add-agent-form')).not.toBeInTheDocument()
-    })
-  })
-
-  it('disband confirms, calls coordinationDisbandTeam, and returns to setup view', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
-    await fireEvent.click(screen.getByTestId('mesh-disband-button'))
-    await waitFor(() => {
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
-
-    await waitFor(() => {
-      expect(coordinationDisbandTeam).toHaveBeenCalledWith('architecture-final')
-      expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
-    })
-  })
-
-  it('shows disband loading state while disband call is running', async () => {
-    const deferred = createDeferred()
-    coordinationDisbandTeam.mockReturnValueOnce(deferred.promise)
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
-    await fireEvent.click(screen.getByTestId('mesh-disband-button'))
-    await waitFor(() => {
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
-    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-disband-button')).toHaveTextContent('Disbanding...')
-      expect(screen.getByTestId('mesh-disband-button')).toBeDisabled()
-    })
-
-    deferred.resolve({
-      teamName: 'architecture-final',
-      disbanded: true,
-      alreadyDisbanded: false,
-      message: 'team disbanded',
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-setup-title')).toBeInTheDocument()
-    })
-  })
-
-  it('disband cancelled does nothing', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-overflow-menu-button'))
-    await fireEvent.click(screen.getByTestId('mesh-disband-button'))
-    await waitFor(() => {
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
-
-    expect(coordinationDisbandTeam).not.toHaveBeenCalled()
-    expect(screen.getByTestId('mesh-runtime-title')).toBeInTheDocument()
-  })
-
-  it('dismisses runtime success message when close button is clicked', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-        availableProjects: [{ id: 'proj-api', name: 'API' }],
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-add-agent-button'))
-    await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
-      target: { value: 'backend-dev' },
-    })
-    await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
-      target: { value: 'proj-api' },
-    })
-    await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-message')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-dismiss-runtime-message'))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('mesh-runtime-message')).not.toBeInTheDocument()
-    })
-  })
-
-  it('remove agent confirms and calls coordinationRemoveMember', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    })
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-remove-member-backend-dev')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-remove-member-backend-dev'))
-    await waitFor(() => {
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
-
-    await waitFor(() => {
-      expect(coordinationRemoveMember).toHaveBeenCalledWith('architecture-final', 'backend-dev')
-    })
-  })
-
-  it('resume calls coordinationResumeMember with default continue mode', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          description: 'lead',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'backend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: 'proj-api',
-          description: 'api',
-          sessionStatus: 'offline',
-          paneId: '%2',
-        },
-      ],
-    })
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
-
-    await waitFor(() => {
-      expect(coordinationResumeMember).toHaveBeenCalledWith(
-        'architecture-final',
-        'backend-dev',
-        'continue'
-      )
-    })
-  })
-
-  it('resume propagates fresh mode selection to IPC call', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          description: 'lead',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'backend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: 'proj-api',
-          description: 'api',
-          sessionStatus: 'offline',
-          paneId: '%2',
-        },
-      ],
-    })
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-resume-mode-backend-dev')).toBeInTheDocument()
-    })
-    await fireEvent.change(screen.getByTestId('mesh-resume-mode-backend-dev'), {
-      target: { value: 'fresh' },
-    })
-    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
-
-    await waitFor(() => {
-      expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'backend-dev', 'fresh')
-    })
-  })
-
-  it('resume shows in-flight row state while request is running', async () => {
-    const deferred = createDeferred()
-    coordinationResumeMember.mockReturnValueOnce(deferred.promise)
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          description: 'lead',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'backend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: 'proj-api',
-          description: 'api',
-          sessionStatus: 'offline',
-          paneId: '%2',
-        },
-      ],
-    })
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toHaveTextContent('Resuming...')
-      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeDisabled()
-      expect(screen.getByTestId('mesh-remove-member-backend-dev')).toBeDisabled()
-    })
-
-    deferred.resolve({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      resumed: true,
-      succeededSteps: ['validate', 'launch_session', 'update_runtime'],
-      failedStep: null,
-      retryable: false,
-      message: 'member resumed',
-      steps: [],
-      warnings: [],
-      paneId: '%2',
-      reusedPane: true,
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent("Resumed 'backend-dev'.")
-    })
-  })
-
-  it('resume success with warnings includes warning count in toast', async () => {
-    coordinationResumeMember.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      resumed: true,
-      succeededSteps: ['validate', 'launch_session', 'update_runtime'],
-      failedStep: null,
-      retryable: false,
-      message: 'member resumed',
-      steps: [],
-      warnings: ['stale daemon pid', 'pane recreated'],
-      paneId: '%2',
-      reusedPane: false,
-    })
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          description: 'lead',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'backend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: 'proj-api',
-          description: 'api',
-          sessionStatus: 'offline',
-          paneId: '%2',
-        },
-      ],
-    })
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
-        "Resumed 'backend-dev' with 2 warnings."
-      )
-    })
-  })
-
-  it('resume failure shows error and keeps roster responsive', async () => {
-    coordinationResumeMember.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      memberName: 'backend-dev',
-      resumed: false,
-      succeededSteps: ['validate'],
-      failedStep: 'launch_session',
-      retryable: true,
-      message: 'resume launch failed',
-      steps: [],
-      warnings: [],
-      paneId: '%2',
-      reusedPane: true,
-    })
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
-    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          description: 'lead',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'backend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.3',
-          projectId: 'proj-api',
-          description: 'api',
-          sessionStatus: 'offline',
-          paneId: '%2',
-        },
-      ],
-    })
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-resume-member-backend-dev')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('mesh-resume-member-backend-dev'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-error')).toHaveTextContent('resume launch failed')
-    })
-    expect(screen.getByTestId('mesh-resume-member-backend-dev')).toHaveTextContent('Resume')
-    expect(screen.getByTestId('mesh-resume-member-backend-dev')).not.toBeDisabled()
   })
 })
