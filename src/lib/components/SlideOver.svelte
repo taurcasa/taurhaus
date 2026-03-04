@@ -12,7 +12,11 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
-  const panelTone = $derived(dark ? 'bg-brand-950 border-l border-zinc-800 text-zinc-100' : 'bg-white border-l border-zinc-200 text-zinc-900')
+  const panelTone = $derived(
+    dark
+      ? 'bg-brand-950 border-l border-white/10 text-zinc-100'
+      : 'bg-white border-l border-brand-200 text-zinc-900'
+  )
   const headerTone = $derived(dark ? 'bg-brand-950 border-zinc-800' : 'bg-white border-zinc-200')
   const closeTone = $derived(
     dark
@@ -155,7 +159,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
     <aside
       bind:this={panelElement}
-      class="fixed top-0 right-0 bottom-0 z-[45] flex flex-col pointer-events-auto {panelTone} {closing ? 'slideover-panel-exit' : 'slideover-panel-enter'}"
+      class="fixed top-0 right-0 bottom-0 z-[45] flex flex-col pointer-events-auto shadow-2xl {panelTone} {closing ? 'slideover-panel-exit' : 'slideover-panel-enter'}"
       style={`width: ${width}px;`}
       role="dialog"
       aria-modal="true"

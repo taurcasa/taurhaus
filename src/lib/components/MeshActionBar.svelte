@@ -18,7 +18,7 @@
 </script>
 
 <footer
-  class="flex h-12 items-center justify-between gap-2 border-t px-3 {borderTone}"
+  class="mt-3 flex h-12 items-center justify-between gap-2 border-t px-3 {borderTone}"
   data-testid="mesh-action-bar"
 >
   <span class="truncate text-xs {nameTone}" data-testid="mesh-action-team-name">

@@ -11,13 +11,10 @@
 
   const titleTone = $derived(dark ? 'text-zinc-100' : 'text-brand-900')
   const subtitleTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
-  const browseTone = $derived(
-    dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700'
-  )
-  const scratchTone = $derived(
+  const actionTone = $derived(
     dark
-      ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-      : 'border-brand-200 text-brand-700 hover:bg-brand-50'
+      ? 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800'
+      : 'border-brand-200 bg-white/80 text-brand-700 hover:border-brand-300 hover:bg-brand-50'
   )
 
   const normalizedPresets = $derived.by(() => {
@@ -26,16 +23,16 @@
   })
 </script>
 
-<section class="flex flex-col items-center justify-center gap-4 py-4" data-testid="mesh-empty-state">
-  <header class="space-y-1 text-center">
-    <h3 class="text-base font-semibold {titleTone}">Compose your team</h3>
-    <p class="text-[13px] {subtitleTone}">
+<section class="flex min-h-[420px] flex-col items-center justify-center gap-6 py-6" data-testid="mesh-empty-state">
+  <header class="max-w-xl space-y-1.5 text-center">
+    <h3 class="text-lg font-semibold {titleTone}">Start a Team</h3>
+    <p class="text-sm {subtitleTone}">
       Choose a preset to start, or build from scratch
     </p>
   </header>
 
   {#if normalizedPresets.length > 0}
-    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="grid w-full max-w-5xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {#each normalizedPresets as preset}
         <PresetCard
           name={preset.name}
@@ -53,22 +50,22 @@
     </div>
   {/if}
 
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center justify-center gap-2">
     <button
-      class="rounded-md px-2 py-1 text-xs font-medium transition-colors {browseTone}"
+      class="rounded-[12px] border px-3 py-1.5 text-xs font-medium transition-colors {actionTone}"
       type="button"
       onclick={() => onBrowseTemplates()}
       data-testid="mesh-template-browse-catalog"
     >
-      Browse all templates
+      Browse Catalog
     </button>
     <button
-      class="rounded-md border px-2 py-1 text-xs transition-colors {scratchTone}"
+      class="rounded-[12px] border px-3 py-1.5 text-xs font-medium transition-colors {actionTone}"
       type="button"
       onclick={() => onStartCustom()}
       data-testid="mesh-template-build-custom"
     >
-      Start from scratch
+      Build Custom
     </button>
   </div>
 </section>

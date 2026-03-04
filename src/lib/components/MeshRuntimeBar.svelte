@@ -10,7 +10,8 @@
 
   let showOverflowMenu = $state(false)
 
-  const panelTone = $derived(dark ? 'border-zinc-700/70 bg-zinc-900/60' : 'border-zinc-200 bg-brand-50/80')
+  const panelTone = $derived(dark ? 'bg-zinc-900/80 backdrop-blur-sm' : 'bg-white/80 backdrop-blur-sm')
+  const borderTone = $derived(dark ? 'border-b border-white/8' : 'border-b border-brand-200/60')
   const titleTone = $derived(dark ? 'text-zinc-200' : 'text-zinc-900')
   const statusPillTone = $derived(
     dark
@@ -68,44 +69,32 @@
 <svelte:window onclick={handleWindowClick} />
 
 <footer
-  class="flex items-center gap-3 rounded-lg border px-4 py-2.5 {panelTone}"
+  class="flex w-full min-h-12 items-center justify-between gap-3 rounded-lg px-4 py-2.5 {panelTone} {borderTone}"
   data-testid="mesh-runtime-bar"
 >
-  <div class="min-w-0 flex-1">
-    <h2 class="truncate text-[15px] font-semibold leading-tight {titleTone}" data-testid="mesh-runtime-title">
+  <div class="min-w-0 flex flex-1 items-center gap-2.5">
+    <h2 class="truncate text-sm font-semibold leading-tight {titleTone}" data-testid="mesh-runtime-title">
       {teamName.trim() || 'Untitled Team'}
     </h2>
-  </div>
 
-  <div class="flex flex-wrap items-center justify-center gap-1.5" data-testid="mesh-runtime-summary">
-    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
-      <span class="h-1.5 w-1.5 rounded-full bg-success-400"></span>
-      {statusCounts.active} active
-    </span>
-    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
-      <span class="h-1.5 w-1.5 rounded-full bg-warning-400"></span>
-      {statusCounts.idle} idle
-    </span>
-    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
-      <span class="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
-      {statusCounts.offline} offline
-    </span>
-    <span class="sr-only">{statusSummary}</span>
+    <div class="flex flex-wrap items-center gap-1.5" data-testid="mesh-runtime-summary">
+      <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
+        <span class="h-1.5 w-1.5 rounded-full bg-success-400"></span>
+        {statusCounts.active} Active
+      </span>
+      <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
+        <span class="h-1.5 w-1.5 rounded-full bg-warning-400"></span>
+        {statusCounts.idle} Idle
+      </span>
+      <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium {statusPillTone}">
+        <span class="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
+        {statusCounts.offline} Offline
+      </span>
+      <span class="sr-only">{statusSummary}</span>
+    </div>
   </div>
 
   <div class="flex items-center gap-2">
-    <button
-      class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
-      type="button"
-      onclick={() => {
-        showOverflowMenu = false
-        onAddAgent()
-      }}
-      data-testid="mesh-runtime-add-agent"
-    >
-      + Add Agent
-    </button>
-
     <div class="relative">
       <button
         class="rounded-md border px-3 py-1.5 text-xs transition-colors {secondaryTone}"
@@ -114,7 +103,7 @@
         aria-label="Runtime menu"
         data-testid="mesh-runtime-overflow-button"
       >
-        ⋯
+        ⚙
       </button>
 
       {#if showOverflowMenu}
@@ -136,5 +125,17 @@
         </div>
       {/if}
     </div>
+
+    <button
+      class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+      type="button"
+      onclick={() => {
+        showOverflowMenu = false
+        onAddAgent()
+      }}
+      data-testid="mesh-runtime-add-agent"
+    >
+      + Add Agent
+    </button>
   </div>
 </footer>

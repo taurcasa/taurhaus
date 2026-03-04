@@ -44,7 +44,7 @@
 </script>
 
 <article
-  class="relative w-40 rounded-xl border p-2.5 text-left transition-colors {surfaceTone}"
+  class="relative w-full rounded-[12px] border p-2.5 text-left transition-colors {surfaceTone}"
 >
   <div class="flex items-start gap-1.5">
     <button

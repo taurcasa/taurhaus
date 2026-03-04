@@ -61,8 +61,8 @@ describe('MeshEmptyState', () => {
       },
     })
 
-    expect(screen.getByRole('button', { name: 'Browse all templates' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start from scratch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Browse Catalog' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Build Custom' })).toBeInTheDocument()
   })
 
   it('renders browse and scratch actions when presets are empty', () => {
@@ -73,7 +73,7 @@ describe('MeshEmptyState', () => {
     })
 
     expect(screen.queryByTestId('mesh-template-preset-fullstack-dev')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Browse all templates' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start from scratch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Browse Catalog' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Build Custom' })).toBeInTheDocument()
   })
 })

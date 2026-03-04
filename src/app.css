@@ -52,10 +52,18 @@
   --mesh-node-gradient-hover-to: #15302f;
   --mesh-node-border: #2a4a48;
   --mesh-node-border-hover: #3a5a58;
-  --mesh-node-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.24), 0 14px 32px rgba(0, 0, 0, 0.2);
-  --mesh-node-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.28), 0 10px 24px rgba(0, 0, 0, 0.24), 0 20px 44px rgba(0, 0, 0, 0.22);
-  --mesh-node-shadow-light: 0 1px 2px rgba(15, 23, 42, 0.1), 0 5px 14px rgba(15, 23, 42, 0.11), 0 14px 30px rgba(15, 23, 42, 0.12);
-  --mesh-node-shadow-light-hover: 0 2px 4px rgba(15, 23, 42, 0.11), 0 8px 18px rgba(15, 23, 42, 0.13), 0 18px 38px rgba(15, 23, 42, 0.14);
+  --mesh-node-shadow: 0 3px 10px rgba(0, 0, 0, 0.28), 0 10px 22px rgba(0, 0, 0, 0.2);
+  --mesh-node-shadow-hover: 0 6px 14px rgba(0, 0, 0, 0.32), 0 14px 30px rgba(0, 0, 0, 0.22);
+  --mesh-node-shadow-light: 0 2px 8px rgba(15, 23, 42, 0.1), 0 8px 20px rgba(15, 23, 42, 0.11);
+  --mesh-node-shadow-light-hover: 0 4px 12px rgba(15, 23, 42, 0.12), 0 12px 28px rgba(15, 23, 42, 0.13);
+
+  /* Mesh Canvas — Surface depth */
+  --mesh-canvas-bg-dark: #0c1114;
+  --mesh-canvas-border-dark: rgba(255, 255, 255, 0.06);
+  --mesh-canvas-bg-light: #f8fcfb;
+  --mesh-canvas-border-light: rgba(13, 148, 136, 0.12);
+  --mesh-canvas-shadow: 0 12px 28px rgba(2, 6, 23, 0.35);
+  --mesh-canvas-shadow-light: 0 10px 24px rgba(15, 23, 42, 0.11);
 
   /* Mesh Canvas — Lead node emphasis */
   --mesh-lead-border: rgba(45, 212, 191, 0.6);

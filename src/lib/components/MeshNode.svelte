@@ -9,19 +9,18 @@
     status = 'offline',
     selected = false,
     position = { x: 0, y: 0 },
-    width = 140,
+    width = 180,
     dark = false,
     onClick = () => {},
   } = $props()
 
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
   const isLead = $derived(normalizedRole === 'lead')
-  const nodeHeight = $derived(isLead ? 58 : 52)
+  const nodeHeight = $derived(isLead ? 72 : 64)
 
   const safeName = $derived(String(name || '').trim() || 'unnamed')
   const safeModel = $derived(String(model || '').trim())
   const hasModel = $derived(safeModel.length > 0)
-  const allowNameWrap = $derived(safeName.length < 20)
 
   const safeTool = $derived.by(() => {
     const value = String(tool || '').trim().toLowerCase()
@@ -73,29 +72,27 @@
   onclick={onClick}
   style={surfaceStyle}
 >
-  <span class="mesh-node-status" style={`background-color: ${statusColor};`}></span>
-
   <span class="mesh-node-content">
     <span class="mesh-node-title-row">
-      <svg
-        class="mesh-node-tool"
-        width="12"
-        height="12"
-        viewBox={icon.viewBox}
-        fill="none"
-        aria-hidden="true"
-        data-testid={`mesh-node-icon-${normalizedRole}`}
-      >
-        <path d={icon.path} fill="currentColor"></path>
-      </svg>
-      <span
-        class="mesh-node-name"
-        class:mesh-node-name-wrap={allowNameWrap}
-        data-testid={`mesh-node-name-${normalizedRole}`}
-      >
-        {isLead ? '★ ' : ''}{safeName}
+      <span class="mesh-node-title-left">
+        <svg
+          class="mesh-node-tool"
+          width="12"
+          height="12"
+          viewBox={icon.viewBox}
+          fill="none"
+          aria-hidden="true"
+          data-testid={`mesh-node-icon-${normalizedRole}`}
+        >
+          <path d={icon.path} fill="currentColor"></path>
+        </svg>
+        <span class="mesh-node-name" data-testid={`mesh-node-name-${normalizedRole}`}>
+          {isLead ? '★ ' : ''}{safeName}
+        </span>
       </span>
+      <span class="mesh-node-status" style={`background-color: ${statusColor};`}></span>
     </span>
+
     {#if hasModel}
       <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
     {/if}
@@ -105,139 +102,124 @@
 <style>
   .mesh-node {
     position: absolute;
-    border: 1px solid var(--mesh-node-border);
-    border-radius: 28px;
-    background: linear-gradient(
-      180deg,
-      var(--mesh-node-gradient-from) 0%,
-      var(--mesh-node-gradient-to) 100%
-    );
-    box-shadow: var(--mesh-node-shadow);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
     color: #e7f5f2;
-    transition: all 150ms ease-out;
+    transition: border-color 150ms ease-out, transform 150ms ease-out, box-shadow 150ms ease-out;
     cursor: pointer;
-    padding: 8px 14px;
+    padding: 12px 16px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     animation: mesh-node-enter 160ms ease-out;
   }
 
   .mesh-node:hover {
     transform: translateY(-1px);
-    border-color: var(--mesh-node-border-hover);
-    background: linear-gradient(
-      180deg,
-      var(--mesh-node-gradient-hover-from) 0%,
-      var(--mesh-node-gradient-hover-to) 100%
-    );
-    box-shadow: var(--mesh-node-shadow-hover);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32), 0 2px 5px rgba(0, 0, 0, 0.22);
   }
 
   .mesh-node.is-lead {
     border-width: 1.5px;
-    border-color: var(--mesh-lead-border);
-    box-shadow: var(--mesh-node-shadow), var(--mesh-lead-glow);
+    border-color: rgba(13, 148, 136, 0.42);
   }
 
   .mesh-node.is-lead:hover {
-    box-shadow: var(--mesh-node-shadow-hover), var(--mesh-lead-glow);
+    border-color: rgba(13, 148, 136, 0.56);
   }
 
   .mesh-node.is-selected {
     border-width: 1.5px;
-    border-color: var(--mesh-selected-border);
-    box-shadow: var(--mesh-node-shadow-hover), var(--mesh-selected-glow);
+    border-color: rgba(13, 148, 136, 0.5);
+    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2), 0 8px 18px rgba(0, 0, 0, 0.3);
   }
 
   .mesh-node.is-lead.is-selected {
-    box-shadow: var(--mesh-node-shadow-hover), var(--mesh-lead-glow), var(--mesh-selected-glow);
+    border-color: rgba(13, 148, 136, 0.6);
   }
 
   .mesh-node.is-light {
-    background: linear-gradient(180deg, #f8fefd 0%, #ecf7f4 46%, #dcefe9 100%);
-    border-color: #b2d8d0;
+    border: 1px solid rgba(13, 148, 136, 0.15);
+    background: rgba(255, 255, 255, 0.9);
     box-shadow: var(--mesh-node-shadow-light);
     color: #134e4a;
   }
 
   .mesh-node.is-light:hover {
-    border-color: #8ec5ba;
-    background: linear-gradient(180deg, #fcfffe 0%, #e8f7f3 44%, #d4ece6 100%);
+    border-color: rgba(13, 148, 136, 0.28);
     box-shadow: var(--mesh-node-shadow-light-hover);
   }
 
   .mesh-node.is-light.is-lead {
-    border-color: rgba(13, 148, 136, 0.5);
-    box-shadow: var(--mesh-node-shadow-light), 0 0 10px rgba(13, 148, 136, 0.2);
+    border-color: rgba(13, 148, 136, 0.3);
   }
 
   .mesh-node.is-light.is-lead:hover {
-    box-shadow: var(--mesh-node-shadow-light-hover), 0 0 12px rgba(13, 148, 136, 0.22);
+    border-color: rgba(13, 148, 136, 0.42);
   }
 
   .mesh-node.is-light.is-selected {
-    border-color: rgba(13, 148, 136, 0.65);
-    box-shadow: var(--mesh-node-shadow-light-hover), 0 0 0 2px rgba(13, 148, 136, 0.18);
+    border-color: rgba(13, 148, 136, 0.5);
+    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2), var(--mesh-node-shadow-light-hover);
   }
 
   .mesh-node.is-light.is-lead.is-selected {
-    box-shadow:
-      var(--mesh-node-shadow-light-hover),
-      0 0 12px rgba(13, 148, 136, 0.22),
-      0 0 0 2px rgba(13, 148, 136, 0.18);
+    border-color: rgba(13, 148, 136, 0.58);
   }
 
   .mesh-node-status {
-    position: absolute;
-    top: 7px;
-    right: 7px;
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 9999px;
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+    flex: 0 0 auto;
+    margin-top: 5px;
     pointer-events: none;
   }
 
   .mesh-node-content {
-    min-width: 0;
+    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
+    min-width: 0;
   }
 
   .mesh-node-title-row {
     display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mesh-node-title-left {
+    display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     min-width: 0;
   }
 
   .mesh-node-tool {
-    color: rgba(136, 168, 166, 0.95);
+    color: rgba(156, 214, 206, 0.9);
     flex: 0 0 auto;
   }
 
   .mesh-node-name {
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .mesh-node-name.mesh-node-name-wrap {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
   .mesh-node-model {
     font-size: 11px;
-    line-height: 1.2;
-    color: #a6c1bd;
+    line-height: 1.25;
+    color: #9cb3b1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -252,6 +234,6 @@
   }
 
   .mesh-node.is-light .mesh-node-status {
-    box-shadow: 0 0 8px rgba(13, 148, 136, 0.3);
+    box-shadow: 0 0 6px rgba(13, 148, 136, 0.28);
   }
 </style>

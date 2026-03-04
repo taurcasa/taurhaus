@@ -259,7 +259,7 @@
   })
 </script>
 
-<section class="space-y-3" data-testid="mesh-init-progress">
+<section class="mt-3 space-y-3" data-testid="mesh-init-progress">
   <header class="pb-3 border-b {t.keyline}">
     <div class="flex items-center">
       <h2 class="text-sm font-semibold {t.textPrimary}">Initializing{activeTeamName ? ` ${activeTeamName}` : ''}...</h2>

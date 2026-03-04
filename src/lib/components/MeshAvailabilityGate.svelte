@@ -40,7 +40,7 @@
         {
           name: 'gemini-check',
           cliTool: 'gemini',
-          model: 'gemini-2.5-pro',
+          model: 'gemini-3.1-pro',
           projectId,
           description: null,
         },

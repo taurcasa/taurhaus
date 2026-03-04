@@ -52,7 +52,7 @@
   const modelOptionsByTool = {
     claude: ['opus', 'sonnet', 'haiku'],
     codex: ['gpt-5.3-codex', 'gpt-5-mini'],
-    gemini: ['gemini-2.5-pro', 'gemini-2.0-flash'],
+    gemini: ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 
   const quickPresets = [
@@ -861,7 +861,7 @@
 </script>
 
 <section class="flex-1 min-h-0 overflow-y-auto {t.mainBg}" data-testid="mesh-tab">
-  <div class="max-w-3xl px-7 pt-4 pb-6 space-y-4">
+  {#snippet modeMessages()}
     {#if errorMessage}
       <div class="relative overflow-hidden border-l-2 border-danger-400 pl-3 pr-2 py-1 text-xs text-danger-600/95 flex items-center justify-between gap-2" data-testid="mesh-error">
         <span class="min-w-0">{errorMessage}</span>
@@ -893,8 +893,11 @@
         <div class="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-success-400/50 animate-[shrink_5s_linear_forwards]" style="width: 100%"></div>
       </div>
     {/if}
+  {/snippet}
 
-    {#if mode === 'gate'}
+  {#if mode === 'gate'}
+    <div class="max-w-2xl mx-auto px-6 pt-4 pb-6 space-y-4">
+      {@render modeMessages()}
       <div data-testid="mesh-mode-gate">
         <MeshAvailabilityGate {dark} {projectPath}>
           {#snippet children(_agentWarnings)}
@@ -904,7 +907,10 @@
           {/snippet}
         </MeshAvailabilityGate>
       </div>
-    {:else if mode === 'empty'}
+    </div>
+  {:else if mode === 'empty'}
+    <div class="max-w-2xl mx-auto px-6 pt-4 pb-6 space-y-4">
+      {@render modeMessages()}
       <div class="animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-empty">
         <MeshEmptyState
           {dark}
@@ -917,9 +923,12 @@
           onStartCustom={handleStartCustom}
         />
       </div>
-    {:else if mode === 'setup'}
+    </div>
+  {:else if mode === 'setup'}
+    <div class="px-4 pt-2 pb-4 space-y-3">
+      {@render modeMessages()}
       <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-setup">
-        <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-setup-canvas-frame">
+        <div data-testid="mesh-setup-canvas-frame">
           <MeshCanvas
             lead={teamConfig?.lead ?? null}
             agents={teamConfig?.agents ?? []}
@@ -968,9 +977,12 @@
           onReset={handleReset}
         />
       </div>
-    {:else if mode === 'initializing'}
+    </div>
+  {:else if mode === 'initializing'}
+    <div class="px-4 pt-2 pb-4 space-y-3">
+      {@render modeMessages()}
       <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-initializing">
-        <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-initializing-canvas-frame">
+        <div data-testid="mesh-initializing-canvas-frame">
           <MeshCanvas
             lead={teamConfig?.lead ?? null}
             agents={teamConfig?.agents ?? []}
@@ -989,9 +1001,21 @@
           onback={handleInitializeBack}
         />
       </div>
-    {:else}
+    </div>
+  {:else}
+    <div class="px-4 pt-2 pb-4 space-y-3">
+      {@render modeMessages()}
       <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-runtime">
-        <div class="rounded-lg border {t.keyline} p-3 min-h-[320px]" data-testid="mesh-runtime-canvas-frame">
+        <MeshRuntimeBar
+          teamName={teamName}
+          agents={teamConfig?.agents ?? []}
+          {dark}
+          onAddAgent={openAddAgentPanel}
+          onDisband={requestDisband}
+          onOverflow={() => {}}
+        />
+
+        <div data-testid="mesh-runtime-canvas-frame">
           <MeshCanvas
             lead={teamConfig?.lead ?? null}
             agents={teamConfig?.agents ?? []}
@@ -1002,15 +1026,6 @@
             {selectedNodeId}
           />
         </div>
-
-        <MeshRuntimeBar
-          teamName={teamName}
-          agents={teamConfig?.agents ?? []}
-          {dark}
-          onAddAgent={openAddAgentPanel}
-          onDisband={requestDisband}
-          onOverflow={() => {}}
-        />
 
         {#if selectedNode}
           <div class="relative h-0" data-testid="mesh-node-detail-host">
@@ -1034,160 +1049,160 @@
           </div>
         {/if}
       </div>
-    {/if}
+    </div>
+  {/if}
 
-    {#if slideOver === 'templates'}
-      <TemplateBrowserPanel
-        open={true}
-        {dark}
-        onClose={closeSlideOver}
-        onSelectPreset={handlePresetFromBrowser}
-        onSelectRole={handleRoleFromBrowser}
-      />
-    {/if}
-
-    {#if slideOver === 'customizer'}
-      <TeamCustomizerPanel
-        open={true}
-        {dark}
-        {projectPath}
-        {availableProjects}
-        {teamConfig}
-        context={slideOverContext}
-        onClose={closeSlideOver}
-        onSave={handleTeamSave}
-        onReset={handleReset}
-      />
-    {/if}
-
-    <SlideOver
-      open={slideOver === 'addAgent'}
-      title="Add Agent"
-      width={420}
+  {#if slideOver === 'templates'}
+    <TemplateBrowserPanel
+      open={true}
       {dark}
       onClose={closeSlideOver}
-    >
-      {#snippet children()}
-        <section class="space-y-4" data-testid="mesh-add-agent-form">
-          <p class="text-sm {t.textMuted}">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
+      onSelectPreset={handlePresetFromBrowser}
+      onSelectRole={handleRoleFromBrowser}
+    />
+  {/if}
+
+  {#if slideOver === 'customizer'}
+    <TeamCustomizerPanel
+      open={true}
+      {dark}
+      {projectPath}
+      {availableProjects}
+      {teamConfig}
+      context={slideOverContext}
+      onClose={closeSlideOver}
+      onSave={handleTeamSave}
+      onReset={handleReset}
+    />
+  {/if}
+
+  <SlideOver
+    open={slideOver === 'addAgent'}
+    title="Add Agent"
+    width={420}
+    {dark}
+    onClose={closeSlideOver}
+  >
+    {#snippet children()}
+      <section class="space-y-4" data-testid="mesh-add-agent-form">
+        <p class="text-sm {t.textMuted}">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">AGENT NAME</p>
             <input
-              class="h-10 w-full rounded-md border px-2.5 text-base transition-colors focus:outline-none {fieldTone}"
+              class="h-10 w-full rounded-[12px] border px-2.5 text-base transition-colors focus:outline-none {fieldTone}"
               placeholder="Agent name"
               value={addAgentDraft?.name ?? ''}
               oninput={(event) => updateAddAgentField('name', event.currentTarget.value)}
-              data-testid="mesh-add-agent-name-input"
-            />
-          </div>
+            data-testid="mesh-add-agent-name-input"
+          />
+        </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">TOOL</p>
             <select
-              class="h-9 w-full rounded-md border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
               style:background-image={chevronSvg}
               style:background-repeat="no-repeat"
               style:background-position="right 6px center"
-              value={addAgentDraft?.tool ?? 'codex'}
-              onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
-              data-testid="mesh-add-agent-tool-select"
-            >
-              <option value="claude">Claude</option>
-              <option value="codex">Codex</option>
-              <option value="gemini">Gemini</option>
-            </select>
-          </div>
+            value={addAgentDraft?.tool ?? 'codex'}
+            onchange={(event) => updateAddAgentField('tool', event.currentTarget.value)}
+            data-testid="mesh-add-agent-tool-select"
+          >
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+            <option value="gemini">Gemini</option>
+          </select>
+        </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">MODEL</p>
             <select
-              class="h-9 w-full rounded-md border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
               style:background-image={chevronSvg}
               style:background-repeat="no-repeat"
               style:background-position="right 6px center"
-              value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
-              onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
-              data-testid="mesh-add-agent-model-select"
-            >
-              {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
-                <option value={model}>{model}</option>
-              {/each}
-            </select>
-          </div>
+            value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
+            onchange={(event) => updateAddAgentField('model', event.currentTarget.value)}
+            data-testid="mesh-add-agent-model-select"
+          >
+            {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
+              <option value={model}>{model}</option>
+            {/each}
+          </select>
+        </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">PROJECT</p>
             <select
-              class="h-9 w-full rounded-md border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
+              class="h-9 w-full rounded-[12px] border px-2 pr-6 text-sm transition-colors focus:outline-none {fieldTone} {selectScheme}"
               style:background-image={chevronSvg}
               style:background-repeat="no-repeat"
               style:background-position="right 6px center"
-              value={addAgentDraft?.projectId ?? ''}
-              onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
-              data-testid="mesh-add-agent-project-select"
-            >
-              <option value="">Select project</option>
-              {#each projectOptions as project}
-                <option value={project.id}>{project.label}</option>
-              {/each}
-            </select>
-          </div>
+            value={addAgentDraft?.projectId ?? ''}
+            onchange={(event) => updateAddAgentField('projectId', event.currentTarget.value)}
+            data-testid="mesh-add-agent-project-select"
+          >
+            <option value="">Select project</option>
+            {#each projectOptions as project}
+              <option value={project.id}>{project.label}</option>
+            {/each}
+          </select>
+        </div>
 
           <div class="space-y-1.5">
             <p class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">DESCRIPTION</p>
             <input
-              class="h-9 w-full rounded-md border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
+              class="h-9 w-full rounded-[12px] border px-2 py-1.5 text-sm transition-colors focus:outline-none {fieldTone}"
               placeholder="Description (optional)"
               value={addAgentDraft?.description ?? ''}
               oninput={(event) => updateAddAgentField('description', event.currentTarget.value)}
-              data-testid="mesh-add-agent-description-input"
-            />
-          </div>
+            data-testid="mesh-add-agent-description-input"
+          />
+        </div>
 
-          {#if addAgentDraft?.error}
-            <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentDraft.error}</p>
-          {/if}
+        {#if addAgentDraft?.error}
+          <p class="text-xs text-danger-500" data-testid="mesh-add-agent-error">{addAgentDraft.error}</p>
+        {/if}
 
-          <div class="flex items-center justify-end gap-2">
-            <button
-              class="rounded-md border px-3 py-1.5 text-xs {actionSecondary}"
-              type="button"
-              onclick={closeSlideOver}
-              disabled={addAgentDraft?.submitting}
-              data-testid="mesh-add-agent-cancel"
-            >
-              Cancel
-            </button>
-            <button
-              class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-              type="button"
-              onclick={submitAddAgent}
-              disabled={!canSubmitAddAgent}
-              data-testid="mesh-add-agent-submit"
-            >
-              {addAgentDraft?.submitting ? 'Adding...' : 'Add Agent'}
-            </button>
-          </div>
-        </section>
-      {/snippet}
-    </SlideOver>
+        <div class="flex items-center justify-end gap-2 border-t pt-3 {t.keyline}">
+          <button
+            class="rounded-[12px] border px-3 py-1.5 text-xs {actionSecondary}"
+            type="button"
+            onclick={closeSlideOver}
+            disabled={addAgentDraft?.submitting}
+            data-testid="mesh-add-agent-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            class="rounded-[12px] bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            onclick={submitAddAgent}
+            disabled={!canSubmitAddAgent}
+            data-testid="mesh-add-agent-submit"
+          >
+            {addAgentDraft?.submitting ? 'Adding...' : 'Add Agent'}
+          </button>
+        </div>
+      </section>
+    {/snippet}
+  </SlideOver>
 
-    {#if confirmContext}
-      <ConfirmDialog
-        {dark}
-        open={true}
-        title={confirmDialogTitle()}
-        message={confirmDialogMessage()}
-        confirmLabel={confirmDialogLabel()}
-        variant="danger"
-        onconfirm={handleConfirmAction}
-        oncancel={() => {
-          confirmContext = null
-        }}
-      />
-    {/if}
-  </div>
+  {#if confirmContext}
+    <ConfirmDialog
+      {dark}
+      open={true}
+      title={confirmDialogTitle()}
+      message={confirmDialogMessage()}
+      confirmLabel={confirmDialogLabel()}
+      variant="danger"
+      onconfirm={handleConfirmAction}
+      oncancel={() => {
+        confirmContext = null
+      }}
+    />
+  {/if}
 </section>
 
 <style>

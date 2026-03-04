@@ -169,11 +169,11 @@
 <SlideOver {open} title="Customize Team" width={460} {dark} onClose={onClose}>
   {#snippet children()}
     <section class="space-y-3" data-testid="team-customizer-panel">
-      <div class="space-y-2 rounded-lg border p-3 {sectionTone}" data-testid="team-customizer-header">
+      <div class="space-y-2 rounded-[12px] border p-3 {sectionTone}" data-testid="team-customizer-header">
         <label class="space-y-1 block">
           <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Team name</span>
           <input
-            class="w-full rounded-md border px-2 py-1.5 text-xs {inputTone}"
+            class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
             value={localTeamName}
             oninput={(event) => {
               localTeamName = event.currentTarget.value
@@ -184,7 +184,7 @@
         <label class="space-y-1 block">
           <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Description</span>
           <input
-            class="w-full rounded-md border px-2 py-1.5 text-xs {inputTone}"
+            class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
             value={localDescription}
             oninput={(event) => {
               localDescription = event.currentTarget.value
@@ -234,23 +234,23 @@
       </section>
 
       <button
-        class="rounded-md border px-2 py-1 text-xs transition-colors {ghostTone}"
+        class="rounded-[12px] border px-3 py-1.5 text-xs transition-colors {ghostTone}"
         onclick={addAgent}
         data-testid="team-customizer-add-agent"
       >
         + Agent
       </button>
 
-      <div class="flex justify-end gap-2 border-t pt-2 {t.keyline}">
+      <div class="flex justify-end gap-2 border-t pt-3 {t.keyline}">
         <button
-          class="rounded-md border px-2 py-1 text-xs transition-colors {ghostTone}"
+          class="rounded-[12px] border px-3 py-1.5 text-xs transition-colors {ghostTone}"
           onclick={onReset}
           data-testid="team-customizer-reset"
         >
           Reset to Empty
         </button>
         <button
-          class="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded-[12px] bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           onclick={handleSave}
           disabled={hasErrors}
           data-testid="team-customizer-save"

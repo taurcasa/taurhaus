@@ -160,19 +160,20 @@
         y,
       },
       width: nodeW,
+      height: 64,
     }))
   }
 
   const layout = $derived.by(() => {
     const cw = containerWidth || 600
-    const ch = Math.max(420, containerHeight || 0)
+    const ch = Math.max(460, containerHeight || 0)
     const leadData = normalizedLead
     if (!leadData) return { lead: null, agents: [], connections: [], addNode: null }
 
     const members = normalizedAgents
     const count = members.length
-    const gap = 24
-    const nodeW = count <= 3 ? 140 : (count <= 5 ? 130 : 118)
+    const gap = 28
+    const nodeW = count >= 7 ? 140 : (count >= 5 ? 160 : 180)
     const leadPos = { x: cw / 2, y: Math.round(ch * 0.3) }
     const primaryAgentY = Math.round(ch * 0.65)
 
@@ -197,6 +198,7 @@
           y: primaryAgentY,
         },
         width: nodeW,
+        height: 64,
       }))
     }
 
@@ -204,6 +206,7 @@
       id: agent.id,
       from: leadPos,
       to: agent.position,
+      nodeHeight: Math.round((72 + Number(agent.height ?? 64)) / 2),
       status: normalizedMode === 'runtime' ? agent.status : normalizedMode,
       delay: normalizedMode === 'initializing' ? index * 200 : 0,
       duration: normalizedMode === 'initializing' ? 400 : 0,
@@ -226,7 +229,8 @@
       lead: {
         ...leadData,
         position: leadPos,
-        width: Math.max(140, nodeW),
+        width: Math.max(180, nodeW),
+        height: 72,
       },
       agents: positionedAgents,
       connections,
@@ -235,13 +239,13 @@
   })
 
   const canvasHeight = $derived.by(() => {
-    const minHeight = Math.max(420, containerHeight || 0)
+    const minHeight = Math.max(460, containerHeight || 0)
     const current = layout
     if (!current.lead) return minHeight
 
-    let maxY = current.lead.position.y + 60
+    let maxY = current.lead.position.y + 72
     for (const agent of current.agents) {
-      maxY = Math.max(maxY, agent.position.y + 70)
+      maxY = Math.max(maxY, agent.position.y + 64)
     }
 
     if (current.addNode) {
@@ -287,7 +291,7 @@
           delay={connection.delay}
           duration={connection.duration}
           glowFilterId={connectionGlowFilterId}
-          nodeHeight={58}
+          nodeHeight={connection.nodeHeight}
           {dark}
         />
       {/each}
@@ -343,16 +347,27 @@
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 420px;
+    min-height: 460px;
+    border-radius: 12px;
+    border: 1px solid var(--mesh-canvas-border-dark);
+    background-color: var(--mesh-canvas-bg-dark);
+    background-image:
+      radial-gradient(ellipse at 50% 40%, rgba(13, 148, 136, 0.06) 0%, transparent 70%),
+      radial-gradient(circle, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: auto, 20px 20px;
+    box-shadow: var(--mesh-canvas-shadow);
+    overflow: hidden;
   }
 
   .mesh-canvas.is-light {
-    background-color: #f8fcfb;
+    background-color: var(--mesh-canvas-bg-light);
     background-image:
       radial-gradient(circle at 1px 1px, rgba(13, 148, 136, 0.08) 1px, transparent 0),
       linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 249, 247, 0.9) 100%);
     background-size: 16px 16px, 100% 100%;
-    border-radius: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--mesh-canvas-border-light);
+    box-shadow: var(--mesh-canvas-shadow-light);
   }
 
   .mesh-canvas-connections {
