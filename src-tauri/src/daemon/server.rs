@@ -460,7 +460,7 @@ mod tests {
         let payload: protocol::WaitSessionUpdatesResult =
             serde_json::from_value(resp.result.unwrap()).unwrap();
         assert!(!payload.changed);
-        assert!(payload.version > 0);
+        assert_eq!(payload.version, 0);
 
         server.shutdown.store(true, Ordering::Relaxed);
     }
