@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
+
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands;
@@ -15,6 +18,18 @@ pub(crate) fn extract_wsl_home(linux_path: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn derive_wsl_home_from_projects(projects: &[models::Project]) -> Option<String> {
+    projects
+        .iter()
+        .filter(|project| provider::path::is_wsl_path(&project.path))
+        .filter_map(|project| provider::path::wsl_unc_to_linux(&project.path))
+        .find_map(|linux_path| extract_wsl_home(&linux_path))
+}
+
+fn claude_tasks_watch_dir(projects: &[models::Project]) -> Option<String> {
+    derive_wsl_home_from_projects(projects).map(|home| format!("{home}/.claude/tasks"))
 }
 
 /// Convert daemon-emitted Linux session paths to frontend-visible Windows paths
@@ -38,12 +53,277 @@ fn normalize_sessions_for_frontend(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaemonWatchTarget {
+    project_id: String,
+    project_name: String,
+    linux_path: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DaemonWatchPlan {
+    project_targets: Vec<DaemonWatchTarget>,
+    claude_tasks_dir: Option<String>,
+}
+
+impl DaemonWatchPlan {
+    fn is_empty(&self) -> bool {
+        self.project_targets.is_empty() && self.claude_tasks_dir.is_none()
+    }
+}
+
+#[derive(Default)]
+struct DaemonWatchRuntime {
+    plan: Option<DaemonWatchPlan>,
+    stop_signal: Option<Arc<AtomicBool>>,
+}
+
+static DAEMON_WATCH_RUNTIME: LazyLock<Mutex<DaemonWatchRuntime>> =
+    LazyLock::new(|| Mutex::new(DaemonWatchRuntime::default()));
+
+fn build_daemon_watch_plan_at(
+    projects: &[models::Project],
+    thresholds: &models::ActivityThresholds,
+    now: chrono::DateTime<chrono::Utc>,
+) -> DaemonWatchPlan {
+    let mut project_targets = Vec::new();
+
+    for project in projects {
+        if !provider::path::is_wsl_path(&project.path) {
+            continue;
+        }
+
+        let activity_state =
+            models::ActivityState::compute(project.last_activity_at.as_deref(), thresholds, now);
+        if !matches!(
+            activity_state,
+            models::ActivityState::Active | models::ActivityState::Recent
+        ) {
+            continue;
+        }
+
+        let Some(linux_path) = provider::path::wsl_unc_to_linux(&project.path) else {
+            tracing::warn!(
+                project = project.name,
+                path = %project.path,
+                "Cannot convert WSL path to Linux while planning daemon watches"
+            );
+            continue;
+        };
+
+        project_targets.push(DaemonWatchTarget {
+            project_id: project.id.clone(),
+            project_name: project.name.clone(),
+            linux_path,
+        });
+    }
+
+    project_targets.sort_by(|left, right| {
+        left.project_id
+            .cmp(&right.project_id)
+            .then_with(|| left.linux_path.cmp(&right.linux_path))
+    });
+
+    DaemonWatchPlan {
+        project_targets,
+        claude_tasks_dir: claude_tasks_watch_dir(projects),
+    }
+}
+
+fn build_daemon_watch_plan(
+    projects: &[models::Project],
+    thresholds: &models::ActivityThresholds,
+) -> DaemonWatchPlan {
+    build_daemon_watch_plan_at(projects, thresholds, chrono::Utc::now())
+}
+
+fn stop_daemon_watch_runtime(reason: &str) {
+    let stop_signal = {
+        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Daemon watch runtime lock poisoned while stopping; recovering"
+            );
+            error.into_inner()
+        });
+        runtime.plan = None;
+        runtime.stop_signal.take()
+    };
+
+    if let Some(signal) = stop_signal {
+        signal.store(true, Ordering::Relaxed);
+    }
+}
+
+fn apply_daemon_watch_plan(
+    daemon_addr: String,
+    event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
+    wsl_distro: Option<String>,
+    desired_plan: DaemonWatchPlan,
+    reason: &str,
+    force_restart: bool,
+) {
+    let unchanged = {
+        let runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Daemon watch runtime lock poisoned while checking watch plan; recovering"
+            );
+            error.into_inner()
+        });
+        !force_restart
+            && runtime
+                .plan
+                .as_ref()
+                .is_some_and(|current| current == &desired_plan)
+    };
+    if unchanged {
+        return;
+    }
+
+    stop_daemon_watch_runtime(reason);
+
+    if desired_plan.is_empty() {
+        return;
+    }
+
+    let mut listener =
+        match daemon::event_listener::DaemonEventListener::connect(&daemon_addr, event_tx) {
+            Ok(listener) => listener,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Failed to connect daemon event listener for reconciliation"
+                );
+                return;
+            }
+        };
+
+    let mut watched_project_count = 0usize;
+    for target in &desired_plan.project_targets {
+        if let Err(error) = listener.watch(&target.project_id, &target.linux_path) {
+            tracing::warn!(
+                project = target.project_name,
+                error = %error,
+                reason,
+                "Failed to register daemon watch"
+            );
+        } else {
+            watched_project_count += 1;
+        }
+    }
+
+    if let Some(claude_tasks_dir) = desired_plan.claude_tasks_dir.as_ref() {
+        if let Err(error) = listener.watch(CLAUDE_TASKS_PROJECT_ID, claude_tasks_dir) {
+            tracing::debug!(
+                error = %error,
+                path = %claude_tasks_dir,
+                reason,
+                "Could not watch Claude tasks directory (daemon)"
+            );
+        } else {
+            tracing::info!(
+                path = %claude_tasks_dir,
+                reason,
+                "Watching Claude tasks directory (daemon)"
+            );
+        }
+    }
+
+    if watched_project_count == 0 && desired_plan.claude_tasks_dir.is_none() {
+        return;
+    }
+
+    let stop_signal = Arc::new(AtomicBool::new(false));
+    {
+        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Daemon watch runtime lock poisoned while storing watch plan; recovering"
+            );
+            error.into_inner()
+        });
+        runtime.plan = Some(desired_plan.clone());
+        runtime.stop_signal = Some(stop_signal.clone());
+    }
+
+    tracing::info!(
+        watched = watched_project_count,
+        reason,
+        distro = ?wsl_distro,
+        "Daemon watching WSL projects"
+    );
+
+    std::thread::spawn(move || {
+        listener.run_until_stopped(stop_signal.clone());
+
+        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                "Daemon watch runtime lock poisoned while clearing exited listener; recovering"
+            );
+            error.into_inner()
+        });
+        if runtime
+            .stop_signal
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, &stop_signal))
+        {
+            runtime.plan = None;
+            runtime.stop_signal = None;
+        }
+    });
+}
+
+pub(crate) fn reconcile_daemon_activity_watches(
+    app: &AppHandle,
+    projects: &[models::Project],
+    thresholds: &models::ActivityThresholds,
+    reason: &str,
+) {
+    let (daemon_addr, distro) = {
+        let provider_state = app.state::<ProviderState>();
+        let Some(ref daemon) = provider_state.daemon else {
+            stop_daemon_watch_runtime(reason);
+            return;
+        };
+        if !daemon.is_connected() {
+            stop_daemon_watch_runtime(reason);
+            return;
+        }
+        (daemon.addr().to_string(), provider_state.wsl_distro.clone())
+    };
+
+    let event_tx = {
+        let watcher_state = app.state::<WatcherState>();
+        let sender = match watcher_state.0.lock() {
+            Ok(watcher) => watcher.event_sender(),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Failed to reconcile daemon watches: watcher lock poisoned"
+                );
+                return;
+            }
+        };
+        sender
+    };
+
+    let desired_plan = build_daemon_watch_plan(projects, thresholds);
+    apply_daemon_watch_plan(daemon_addr, event_tx, distro, desired_plan, reason, false);
+}
+
 /// Start daemon event listener for WSL projects.
 ///
 /// Opens a dedicated TCP connection to the daemon, sends `watch` commands for
-/// each WSL project, then runs the event loop. Events are forwarded to the
-/// shared watcher channel, where `process_watch_events` handles them identically
-/// to local watcher events.
+/// currently active/recent WSL projects, then spawns the listener event loop.
+/// Events are forwarded to the shared watcher channel, where
+/// `process_watch_events` handles them identically to local watcher events.
 ///
 /// On macOS/Linux (native daemon), this is a no-op — all project paths are local
 /// and the local watcher handles them. The function still runs for consistency
@@ -53,74 +333,10 @@ pub(crate) fn start_daemon_watches(
     event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
     wsl_distro: Option<String>,
     projects: Vec<models::Project>,
+    thresholds: models::ActivityThresholds,
 ) {
-    let mut listener =
-        match daemon::event_listener::DaemonEventListener::connect(&daemon_addr, event_tx) {
-            Ok(l) => l,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to connect daemon event listener");
-                return;
-            }
-        };
-
-    // Register watches for all WSL projects
-    let mut count = 0;
-    let mut wsl_home: Option<String> = None;
-    for project in &projects {
-        if !provider::path::is_wsl_path(&project.path) {
-            continue;
-        }
-
-        // Convert UNC path to Linux path for the daemon
-        let linux_path = match provider::path::wsl_unc_to_linux(&project.path) {
-            Some(p) => p,
-            None => {
-                tracing::warn!(path = %project.path, "Cannot convert WSL path to Linux");
-                continue;
-            }
-        };
-
-        // Extract WSL home from first successful conversion
-        if wsl_home.is_none() {
-            wsl_home = extract_wsl_home(&linux_path);
-        }
-
-        if let Err(e) = listener.watch(&project.id, &linux_path) {
-            tracing::warn!(
-                project = project.name,
-                error = %e,
-                "Failed to register daemon watch"
-            );
-        } else {
-            count += 1;
-        }
-    }
-
-    // Watch Claude task directories for event-driven task sync.
-    // Uses a special internal project ID that process_watch_events
-    // intercepts to trigger background task scanning instead of normal file handling.
-    if let Some(ref home) = wsl_home {
-        let claude_tasks_dir = format!("{home}/.claude/tasks");
-        if let Err(e) = listener.watch(CLAUDE_TASKS_PROJECT_ID, &claude_tasks_dir) {
-            tracing::debug!(
-                error = %e,
-                path = %claude_tasks_dir,
-                "Could not watch Claude tasks directory (may not exist yet)"
-            );
-        } else {
-            tracing::info!(path = %claude_tasks_dir, "Watching Claude tasks directory (daemon)");
-        }
-    }
-
-    if count > 0 || wsl_home.is_some() {
-        tracing::info!(
-            count,
-            distro = ?wsl_distro,
-            "Daemon watching WSL projects"
-        );
-        // Run blocks until daemon disconnects
-        listener.run();
-    }
+    let plan = build_daemon_watch_plan(&projects, &thresholds);
+    apply_daemon_watch_plan(daemon_addr, event_tx, wsl_distro, plan, "bootstrap", true);
 }
 
 /// Re-register all daemon watches after a reconnection.
@@ -150,16 +366,29 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
 
     let db_state = app.state::<commands::projects::DbState>();
     let projects = match db_state.0.lock() {
-        Ok(conn) => match db::queries::list_projects(&conn) {
-            Ok(list) => list,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "Failed to respawn daemon watches: project list query failed"
-                );
-                return;
-            }
-        },
+        Ok(conn) => {
+            let projects = match db::queries::list_projects(&conn) {
+                Ok(list) => list,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "Failed to respawn daemon watches: project list query failed"
+                    );
+                    return;
+                }
+            };
+            let thresholds = match crate::db::settings_queries::get_all_settings(&conn) {
+                Ok(settings) => settings.thresholds,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "Failed to load thresholds for daemon watch respawn; using defaults"
+                    );
+                    models::ActivityThresholds::default()
+                }
+            };
+            (projects, thresholds)
+        }
         Err(error) => {
             tracing::warn!(
                 error = %error,
@@ -169,13 +398,14 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
         }
     };
 
+    let (projects, thresholds) = projects;
     tracing::info!(
         project_count = projects.len(),
         "Re-registering daemon watches after reconnection"
     );
 
     std::thread::spawn(move || {
-        start_daemon_watches(daemon_addr, event_tx, distro, projects);
+        start_daemon_watches(daemon_addr, event_tx, distro, projects, thresholds);
     });
 
     // Also re-scan sessions that may have been missed while disconnected
@@ -472,6 +702,31 @@ mod tests {
     use super::*;
     use crate::session_scanner::cli_tool::CliTool;
     use crate::session_scanner::{ActivityAttribution, ActivityConfidence, SessionState};
+    use chrono::{Duration, Utc};
+
+    fn test_project(path: &str, last_activity_at: Option<String>) -> models::Project {
+        test_project_with("p1", "Project", path, last_activity_at)
+    }
+
+    fn test_project_with(
+        id: &str,
+        name: &str,
+        path: &str,
+        last_activity_at: Option<String>,
+    ) -> models::Project {
+        models::Project {
+            id: id.to_string(),
+            name: name.to_string(),
+            path: path.to_string(),
+            description: None,
+            last_activity_at,
+            hero_preference: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            cached_branch: None,
+            cached_is_dirty: None,
+        }
+    }
 
     fn test_session(path: &str) -> ClaudeSession {
         ClaudeSession {
@@ -517,5 +772,95 @@ mod tests {
         let mut sessions = vec![test_session(original)];
         normalize_sessions_for_frontend(&mut sessions, None, false);
         assert_eq!(sessions[0].project_path, original);
+    }
+
+    #[test]
+    fn derives_wsl_home_even_when_project_is_not_active_or_recent() {
+        let dormant = (Utc::now() - Duration::days(365)).to_rfc3339();
+        let projects = vec![test_project(
+            r"\\wsl.localhost\Ubuntu\home\dev\projects\taurhaus",
+            Some(dormant),
+        )];
+
+        let home = derive_wsl_home_from_projects(&projects);
+        let tasks_dir = claude_tasks_watch_dir(&projects);
+
+        assert_eq!(home.as_deref(), Some("/home/dev"));
+        assert_eq!(tasks_dir.as_deref(), Some("/home/dev/.claude/tasks"));
+    }
+
+    #[test]
+    fn daemon_watch_plan_only_includes_active_or_recent_wsl_projects() {
+        let now = Utc::now();
+        let thresholds = models::ActivityThresholds::default();
+        let projects = vec![
+            test_project_with(
+                "active",
+                "Active",
+                r"\\wsl.localhost\Ubuntu\home\dev\projects\active",
+                Some((now - Duration::days(1)).to_rfc3339()),
+            ),
+            test_project_with(
+                "recent",
+                "Recent",
+                r"\\wsl.localhost\Ubuntu\home\dev\projects\recent",
+                Some((now - Duration::days(15)).to_rfc3339()),
+            ),
+            test_project_with(
+                "stale",
+                "Stale",
+                r"\\wsl.localhost\Ubuntu\home\dev\projects\stale",
+                Some((now - Duration::days(60)).to_rfc3339()),
+            ),
+            test_project_with(
+                "local",
+                "Local",
+                "/home/dev/projects/local",
+                Some((now - Duration::days(1)).to_rfc3339()),
+            ),
+        ];
+
+        let plan = build_daemon_watch_plan_at(&projects, &thresholds, now);
+        let watched_ids: Vec<&str> = plan
+            .project_targets
+            .iter()
+            .map(|target| target.project_id.as_str())
+            .collect();
+
+        assert_eq!(watched_ids, vec!["active", "recent"]);
+        assert!(plan
+            .project_targets
+            .iter()
+            .all(|target| target.linux_path.starts_with("/home/dev/projects/")));
+    }
+
+    #[test]
+    fn daemon_watch_plan_removes_dormant_projects_but_keeps_tasks_watch() {
+        let now = Utc::now();
+        let thresholds = models::ActivityThresholds::default();
+        let active_project = test_project_with(
+            "wsl",
+            "WSL",
+            r"\\wsl.localhost\Ubuntu\home\dev\projects\taurhaus",
+            Some((now - Duration::days(2)).to_rfc3339()),
+        );
+        let dormant_project = test_project_with(
+            "wsl",
+            "WSL",
+            r"\\wsl.localhost\Ubuntu\home\dev\projects\taurhaus",
+            Some((now - Duration::days(200)).to_rfc3339()),
+        );
+
+        let active_plan =
+            build_daemon_watch_plan_at(std::slice::from_ref(&active_project), &thresholds, now);
+        let dormant_plan =
+            build_daemon_watch_plan_at(std::slice::from_ref(&dormant_project), &thresholds, now);
+
+        assert_eq!(active_plan.project_targets.len(), 1);
+        assert!(dormant_plan.project_targets.is_empty());
+        assert_eq!(
+            dormant_plan.claude_tasks_dir.as_deref(),
+            Some("/home/dev/.claude/tasks")
+        );
     }
 }

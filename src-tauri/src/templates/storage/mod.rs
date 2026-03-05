@@ -3,9 +3,12 @@ use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use fs2::FileExt;
 use git2::{Oid, Repository, Signature, Status, StatusOptions};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
 use super::types::{RoleTemplate, TeamPreset};
@@ -24,11 +27,15 @@ const PRESETS_DIRNAME: &str = "presets";
 const META_DIRNAME: &str = "_meta";
 const GITIGNORE_FILENAME: &str = ".gitignore";
 const LOCK_FILENAME: &str = ".lock";
+const LOCK_FALLBACK_FILENAME: &str = ".lock.fallback";
 const STATE_FILENAME: &str = "state.json";
 const RECOVERY_COMMIT_MESSAGE: &str = "templates: recovery auto-commit";
 const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
+const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
+const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
+const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
 
-const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp\n.lock\n";
+const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n.lock\n.lock.fallback\n";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TemplateCatalog {
@@ -139,6 +146,9 @@ pub enum TemplateStoreError {
 
     #[error("Conflict: {0}")]
     Conflict(String),
+
+    #[error("Lock timeout: {0}")]
+    LockTimeout(String),
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +162,48 @@ struct MutationDescriptor {
     action: String,
     kind: String,
     id: String,
+}
+
+#[derive(Debug)]
+struct FallbackLockGuard {
+    path: PathBuf,
+    _file: File,
+}
+
+impl Drop for FallbackLockGuard {
+    fn drop(&mut self) {
+        if let Err(err) = fs::remove_file(&self.path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(
+                    lock_path = %self.path.display(),
+                    error = %err,
+                    "failed to remove template fallback lockfile"
+                );
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct TemplateStoreLockGuard {
+    _advisory_file: Option<File>,
+    _fallback_guard: Option<FallbackLockGuard>,
+}
+
+impl TemplateStoreLockGuard {
+    fn advisory(file: File) -> Self {
+        Self {
+            _advisory_file: Some(file),
+            _fallback_guard: None,
+        }
+    }
+
+    fn fallback(guard: FallbackLockGuard) -> Self {
+        Self {
+            _advisory_file: None,
+            _fallback_guard: Some(guard),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -635,9 +687,10 @@ fn is_yaml_file(path: &Path) -> bool {
 }
 
 fn temp_path_for(path: &Path) -> PathBuf {
+    let random_suffix = format!("{:016x}", rand::thread_rng().next_u64());
     match path.extension().and_then(OsStr::to_str) {
-        Some(ext) => path.with_extension(format!("{ext}.tmp")),
-        None => path.with_extension("tmp"),
+        Some(ext) => path.with_extension(format!("{ext}.tmp.{random_suffix}")),
+        None => path.with_extension(format!("tmp.{random_suffix}")),
     }
 }
 
@@ -645,8 +698,57 @@ fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
 
+#[cfg(test)]
+fn should_force_fallback_lock_for_tests() -> bool {
+    std::env::var_os("TAURHAUS_FORCE_TEMPLATE_LOCK_FALLBACK")
+        .map(|value| value == "1")
+        .unwrap_or(false)
+}
+
+#[cfg(not(test))]
+fn should_force_fallback_lock_for_tests() -> bool {
+    false
+}
+
 fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+}
+
+fn acquire_fallback_lock(
+    fallback_lock_path: &Path,
+) -> Result<FallbackLockGuard, TemplateStoreError> {
+    let mut last_conflict = None;
+    for _ in 0..FALLBACK_LOCK_RETRY_ATTEMPTS {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(fallback_lock_path)
+        {
+            Ok(mut file) => {
+                let pid = std::process::id();
+                let _ = writeln!(file, "{pid}");
+                file.sync_all()?;
+                return Ok(FallbackLockGuard {
+                    path: fallback_lock_path.to_path_buf(),
+                    _file: file,
+                });
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                last_conflict = Some(err);
+                thread::sleep(Duration::from_millis(FALLBACK_LOCK_RETRY_DELAY_MS));
+            }
+            Err(err) => return Err(TemplateStoreError::Io(err)),
+        }
+    }
+
+    let cause = last_conflict
+        .map(|err| err.to_string())
+        .unwrap_or_else(|| "unknown fallback lock contention".to_string());
+    Err(TemplateStoreError::LockTimeout(format!(
+        "timed out acquiring fallback lock {}: {}",
+        fallback_lock_path.display(),
+        cause
+    )))
 }
 
 fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreError> {
@@ -654,16 +756,46 @@ fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreErr
         fs::create_dir_all(parent)?;
     }
 
-    let tmp = temp_path_for(target);
-    {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
+    let mut tmp_open_error = None;
+    let mut selected_tmp = None;
+    let mut selected_file = None;
+    for _ in 0..TEMP_FILE_RANDOM_RETRY_ATTEMPTS {
+        let candidate = temp_path_for(target);
+        match OpenOptions::new()
+            .create_new(true)
             .write(true)
-            .open(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
+            .open(&candidate)
+        {
+            Ok(file) => {
+                selected_tmp = Some(candidate);
+                selected_file = Some(file);
+                break;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                tmp_open_error = Some(err);
+            }
+            Err(err) => return Err(TemplateStoreError::Io(err)),
+        }
     }
+
+    let tmp = selected_tmp.ok_or_else(|| {
+        let err = tmp_open_error.unwrap_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "failed to allocate unique temp path after {} attempts for {}",
+                    TEMP_FILE_RANDOM_RETRY_ATTEMPTS,
+                    target.display()
+                ),
+            )
+        });
+        TemplateStoreError::Io(err)
+    })?;
+
+    let mut file = selected_file.expect("selected tmp file should accompany selected path");
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
 
     if let Err(err) = fs::rename(&tmp, target) {
         if is_windows_unsupported_rename_error(&err) {

@@ -262,20 +262,38 @@ impl TemplateStore {
         }
     }
 
-    pub(super) fn acquire_lock(&self) -> Result<File, TemplateStoreError> {
+    pub(super) fn acquire_lock(&self) -> Result<TemplateStoreLockGuard, TemplateStoreError> {
         let lock_path = self.templates_dir().join(LOCK_FILENAME);
-        let file = File::create(&lock_path)?;
+        let fallback_lock_path = self.templates_dir().join(LOCK_FALLBACK_FILENAME);
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)?;
+
+        if should_force_fallback_lock_for_tests() {
+            tracing::warn!(
+                lock_path = %lock_path.display(),
+                fallback_lock_path = %fallback_lock_path.display(),
+                "forcing template fallback lock in test mode"
+            );
+            return acquire_fallback_lock(&fallback_lock_path)
+                .map(TemplateStoreLockGuard::fallback);
+        }
+
         match file.lock_exclusive() {
-            Ok(()) => {}
+            Ok(()) => Ok(TemplateStoreLockGuard::advisory(file)),
             Err(err) if is_windows_unsupported_lock_error(&err) => {
                 tracing::warn!(
                     lock_path = %lock_path.display(),
-                    "advisory file locks unsupported at template path; continuing unlocked"
+                    fallback_lock_path = %fallback_lock_path.display(),
+                    "advisory file locks unsupported at template path; switching to fallback lockfile"
                 );
+                acquire_fallback_lock(&fallback_lock_path).map(TemplateStoreLockGuard::fallback)
             }
-            Err(err) => return Err(TemplateStoreError::Io(err)),
+            Err(err) => Err(TemplateStoreError::Io(err)),
         }
-        Ok(file)
     }
 
     fn collect_managed_changes(

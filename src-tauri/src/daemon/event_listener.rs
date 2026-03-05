@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 use crate::daemon::protocol::{self, DaemonMessage, DaemonRequest, DaemonResponse};
@@ -167,13 +167,28 @@ impl DaemonEventListener {
     ///
     /// Call this on a background thread after all `watch()` calls are done.
     /// Events are forwarded to the `event_tx` channel as `WatchEvent`s.
-    pub fn run(mut self) {
+    pub fn run(self) {
+        self.run_inner(None);
+    }
+
+    /// Run the event loop until the connection drops or `stop_signal` is set.
+    pub fn run_until_stopped(self, stop_signal: Arc<AtomicBool>) {
+        self.run_inner(Some(stop_signal));
+    }
+
+    fn run_inner(mut self, stop_signal: Option<Arc<AtomicBool>>) {
         if let Err(error) = self.stream.set_read_timeout(Some(Duration::from_secs(5))) {
             tracing::warn!(error = %error, "Failed to set daemon event listener read timeout");
         }
 
         let mut line = String::new();
         loop {
+            if stop_signal
+                .as_ref()
+                .is_some_and(|signal| signal.load(Ordering::Relaxed))
+            {
+                break;
+            }
             line.clear();
             match self.reader.read_line(&mut line) {
                 Ok(0) => break, // Connection closed

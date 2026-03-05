@@ -1,4 +1,8 @@
 use super::*;
+use std::sync::mpsc;
+use std::sync::{Arc, Barrier};
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn ensure_directories_creates_expected_structure() {
@@ -94,9 +98,116 @@ fn write_template_file_is_atomic_and_writes_content() {
         .expect("write file");
 
     let path = app_data.join("templates").join(rel);
-    let tmp = path.with_extension("yaml.tmp");
     assert_eq!(fs::read_to_string(path).expect("read file"), "content-v1");
-    assert!(!tmp.exists(), "tmp file should be cleaned up");
+    let role_dir = app_data.join("templates").join("roles");
+    let tmp_entries: Vec<_> = fs::read_dir(&role_dir)
+        .expect("read role dir")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.contains(".tmp."))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert!(tmp_entries.is_empty(), "tmp file should be cleaned up");
+}
+
+#[test]
+fn write_atomic_file_supports_concurrent_writers_with_unique_temp_paths() {
+    let (_root, app_data, _builtins) = setup_dirs();
+    let target = app_data
+        .join("templates")
+        .join("roles")
+        .join("concurrent.yaml");
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+
+    const WRITERS: usize = 8;
+    const WRITES_PER_WRITER: usize = 25;
+    let start = Arc::new(Barrier::new(WRITERS));
+    let mut handles = Vec::with_capacity(WRITERS);
+
+    for writer_idx in 0..WRITERS {
+        let target_path = target.clone();
+        let start_barrier = start.clone();
+        handles.push(thread::spawn(move || -> Result<(), TemplateStoreError> {
+            start_barrier.wait();
+            for write_idx in 0..WRITES_PER_WRITER {
+                let payload = format!("writer-{writer_idx}-write-{write_idx}");
+                write_atomic_file(&target_path, payload.as_bytes())?;
+            }
+            Ok(())
+        }));
+    }
+
+    for handle in handles {
+        handle
+            .join()
+            .expect("writer thread should not panic")
+            .expect("concurrent atomic writes should succeed");
+    }
+
+    let final_payload = fs::read_to_string(&target).expect("read final payload");
+    assert!(
+        final_payload.starts_with("writer-"),
+        "final payload should be one fully written record"
+    );
+}
+
+#[test]
+fn lock_fallback_uses_lockfile_and_serializes_writers() {
+    let (_root, app_data, builtins) = setup_dirs();
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure directories");
+
+    let lockfile_path = app_data.join("templates").join(LOCK_FALLBACK_FILENAME);
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.previous.as_ref() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+    let env_restore = EnvRestore {
+        key: "TAURHAUS_FORCE_TEMPLATE_LOCK_FALLBACK",
+        previous: std::env::var_os("TAURHAUS_FORCE_TEMPLATE_LOCK_FALLBACK"),
+    };
+    std::env::set_var(env_restore.key, "1");
+
+    let guard = store.acquire_lock().expect("first lock acquisition");
+    assert!(lockfile_path.exists(), "fallback lockfile should exist");
+
+    let (tx, rx) = mpsc::channel();
+    let worker_store = store.clone();
+    let worker = thread::spawn(move || {
+        let _lock = worker_store
+            .acquire_lock()
+            .expect("second lock acquisition should eventually succeed");
+        tx.send(()).expect("signal lock acquisition");
+    });
+
+    thread::sleep(Duration::from_millis(120));
+    assert!(
+        rx.try_recv().is_err(),
+        "second writer should be blocked while first lock is held"
+    );
+
+    drop(guard);
+    rx.recv_timeout(Duration::from_secs(2))
+        .expect("second writer should acquire lock after release");
+    worker.join().expect("worker should join");
+
+    assert!(
+        !lockfile_path.exists(),
+        "fallback lockfile should be cleaned up after release"
+    );
 }
 
 #[test]

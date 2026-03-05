@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 use tauri::State;
@@ -9,11 +10,13 @@ use crate::daemon::protocol::{self, LaunchMode};
 use crate::errors::SanitizeErr;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::{ClaudeSession, SessionState};
 use crate::ProviderState;
 
 #[tauri::command]
 pub fn list_claude_sessions(
+    app: tauri::AppHandle,
+    db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
 ) -> Result<Vec<ClaudeSession>, String> {
     if let Some(ref daemon) = provider.daemon {
@@ -45,6 +48,7 @@ pub fn list_claude_sessions(
                         }
                     }
 
+                    promote_activity_from_sessions(&app, db.inner(), &sessions);
                     return Ok(sessions);
                 }
                 Ok(response) => {
@@ -62,7 +66,82 @@ pub fn list_claude_sessions(
         count = fallback.len(),
         "list_claude_sessions: fallback scan"
     );
+    promote_activity_from_sessions(&app, db.inner(), &fallback);
     Ok(fallback)
+}
+
+fn normalize_project_path_key(path: &str) -> String {
+    let normalized = path
+        .trim_end_matches('/')
+        .trim_end_matches('\\')
+        .to_string();
+    if cfg!(windows) {
+        normalized.to_ascii_lowercase()
+    } else {
+        normalized
+    }
+}
+
+fn promote_activity_from_sessions(
+    app: &tauri::AppHandle,
+    db: &DbState,
+    sessions: &[ClaudeSession],
+) {
+    match promote_activity_from_sessions_impl(db, sessions) {
+        Ok(promoted) if promoted > 0 => {
+            crate::startup::watchers::reconcile_activity_watches(app, "session_activity_detected");
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to promote project activity from session scan"
+            );
+        }
+    }
+}
+
+fn promote_activity_from_sessions_impl(
+    db: &DbState,
+    sessions: &[ClaudeSession],
+) -> Result<usize, String> {
+    let mut active_paths = HashSet::new();
+    for session in sessions {
+        if session.state != SessionState::Active {
+            continue;
+        }
+        active_paths.insert(normalize_project_path_key(&session.project_path));
+    }
+    if active_paths.is_empty() {
+        return Ok(0);
+    }
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::settings_queries::get_all_settings(&conn).sanitize_err()?;
+    let projects =
+        crate::services::project::list_projects(&conn, &settings.thresholds).sanitize_err()?;
+
+    let mut by_path = HashMap::new();
+    for project in projects {
+        by_path.insert(
+            normalize_project_path_key(&project.path),
+            (project.id, project.activity_state),
+        );
+    }
+
+    let mut promoted = 0usize;
+    for path in active_paths {
+        let Some((project_id, state)) = by_path.get(&path) else {
+            continue;
+        };
+        if *state == crate::models::ActivityState::Active {
+            continue;
+        }
+        crate::services::project::touch_activity(&conn, project_id).sanitize_err()?;
+        promoted += 1;
+    }
+
+    Ok(promoted)
 }
 
 #[tauri::command]
@@ -519,6 +598,40 @@ mod tests {
             assert_eq!(mode, expected);
         }
         assert!(serde_json::from_str::<LaunchMode>("\"invalid\"").is_err());
+    }
+
+    fn active_session_for(path: &str) -> ClaudeSession {
+        ClaudeSession {
+            pid: 1234,
+            project_path: path.to_string(),
+            tty: "/dev/pts/1".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("1".to_string()),
+            tmux_pane: Some("%1".to_string()),
+            tmux_window_name: Some("work".to_string()),
+            state: SessionState::Active,
+            session_id: Some("sid".to_string()),
+            jsonl_path: Some("/tmp/sid.jsonl".to_string()),
+            activity_confidence: crate::session_scanner::ActivityConfidence::High,
+            activity_attribution: crate::session_scanner::ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+        }
+    }
+
+    #[test]
+    fn promote_activity_from_sessions_touches_dormant_project_once() {
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let sessions = vec![active_session_for("/tmp/project")];
+
+        let promoted =
+            promote_activity_from_sessions_impl(&db, &sessions).expect("promote activity");
+        assert_eq!(promoted, 1);
+
+        let promoted_again =
+            promote_activity_from_sessions_impl(&db, &sessions).expect("promote activity again");
+        assert_eq!(promoted_again, 0);
     }
 
     #[test]

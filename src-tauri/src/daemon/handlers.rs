@@ -3,6 +3,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use ignore::gitignore::Gitignore;
 use notify::RecommendedWatcher;
 
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
@@ -24,14 +25,29 @@ pub(crate) struct ProjectTaskScanCacheState {
     cache: Mutex<Option<ProjectTaskScanCache>>,
 }
 
+pub(crate) struct WatchRuntime {
+    pub active_watches: HashMap<String, RecommendedWatcher>,
+    pub git_debounce: Arc<Mutex<HashMap<String, Instant>>>,
+    pub gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
+}
+
+impl WatchRuntime {
+    pub(crate) fn new() -> Self {
+        Self {
+            active_watches: HashMap::new(),
+            git_debounce: Arc::new(Mutex::new(HashMap::new())),
+            gitignores: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
 /// Dispatch a request to the appropriate handler.
 pub(crate) fn dispatch(
     request: &DaemonRequest,
     provider: &dyn ProjectProvider,
     start_time: Instant,
     writer: &Arc<Mutex<TcpStream>>,
-    active_watches: &mut HashMap<String, RecommendedWatcher>,
-    git_debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+    watch_runtime: &mut WatchRuntime,
     project_task_scan_cache: &ProjectTaskScanCacheState,
 ) -> DaemonResponse {
     tracing::info!(method = %request.method, id = %request.id, "Received request");
@@ -74,10 +90,16 @@ pub(crate) fn dispatch(
             &request.id,
             &request.params,
             writer,
-            active_watches,
-            git_debounce,
+            &mut watch_runtime.active_watches,
+            &watch_runtime.git_debounce,
+            &watch_runtime.gitignores,
         ),
-        protocol::method::UNWATCH => handle_unwatch(&request.id, &request.params, active_watches),
+        protocol::method::UNWATCH => handle_unwatch(
+            &request.id,
+            &request.params,
+            &mut watch_runtime.active_watches,
+            &watch_runtime.gitignores,
+        ),
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }

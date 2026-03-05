@@ -1,9 +1,15 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::Duration;
+
+use chrono::Utc;
 
 use tauri::Manager;
 
 use crate::commands::projects::DbState;
-use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
+use crate::db::settings_queries;
+use crate::models::{ActivityState, ActivityThresholds};
+use crate::sentinels::{CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX};
 use crate::{daemon_lifecycle, db, event_processor, platform, provider, WatcherState};
 
 use super::SetupContext;
@@ -36,6 +42,15 @@ pub(crate) fn initialize(
                     );
                     Vec::new()
                 });
+            let thresholds = settings_queries::get_all_settings(&db_projects_guard)
+                .map(|settings| settings.thresholds)
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        error = %error,
+                        "Failed to load activity thresholds for daemon watch bootstrap; using defaults"
+                    );
+                    ActivityThresholds::default()
+                });
 
             std::thread::spawn(move || {
                 daemon_lifecycle::start_daemon_watches(
@@ -43,6 +58,7 @@ pub(crate) fn initialize(
                     event_tx_clone,
                     distro,
                     db_projects,
+                    thresholds,
                 );
             });
         } else {
@@ -57,71 +73,163 @@ pub(crate) fn initialize(
         event_processor::process_watch_events(rx, handle);
     });
 
-    register_local_watches(app, context.daemon_connected_at_startup);
+    reconcile_activity_watches(app.handle(), "startup");
+    ensure_task_directory_watch(app, context.daemon_connected_at_startup);
+
+    let periodic_handle = app.handle().clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(60));
+        reconcile_activity_watches(&periodic_handle, "periodic");
+    });
+
     Ok(())
 }
 
-fn register_local_watches(app: &mut tauri::App, has_daemon: bool) {
-    let db_state = app.state::<DbState>();
-    let db_guard = db_state.0.lock().unwrap_or_else(|error| {
-        tracing::warn!(
-            error = %error,
-            "DB lock poisoned while collecting projects for local watch bootstrap; recovering"
-        );
-        error.into_inner()
-    });
-    let projects = db::queries::list_projects(&db_guard).unwrap_or_else(|error| {
-        tracing::warn!(
-            error = %error,
-            "Failed to list projects for local watch bootstrap"
-        );
-        Vec::new()
-    });
+fn should_watch_for_activity(state: ActivityState) -> bool {
+    matches!(state, ActivityState::Active | ActivityState::Recent)
+}
+
+fn evaluate_project_activity(
+    project: &crate::models::Project,
+    thresholds: &ActivityThresholds,
+) -> ActivityState {
+    ActivityState::compute(project.last_activity_at.as_deref(), thresholds, Utc::now())
+}
+
+pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
+    let (projects, thresholds, has_daemon) = {
+        let db_state = app.state::<DbState>();
+        let db_guard = match db_state.0.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "DB lock poisoned while reconciling activity watches; recovering"
+                );
+                error.into_inner()
+            }
+        };
+        let projects = db::queries::list_projects(&db_guard).unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Failed to list projects while reconciling activity watches"
+            );
+            Vec::new()
+        });
+        let thresholds = settings_queries::get_all_settings(&db_guard)
+            .map(|settings| settings.thresholds)
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Failed to load activity thresholds while reconciling activity watches; using defaults"
+                );
+                ActivityThresholds::default()
+            });
+
+        let provider_state = app.state::<crate::ProviderState>();
+        let has_daemon = provider_state
+            .daemon
+            .as_ref()
+            .is_some_and(|daemon| daemon.is_connected());
+        (projects, thresholds, has_daemon)
+    };
 
     let watcher_state = app.state::<WatcherState>();
-    let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
-        tracing::warn!(
-            error = %error,
-            "Watcher lock poisoned while bootstrapping local watches; recovering"
-        );
-        error.into_inner()
-    });
+    let mut watcher_guard = match watcher_state.0.lock() {
+        Ok(guard) => guard,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Watcher lock poisoned while reconciling activity watches; recovering"
+            );
+            error.into_inner()
+        }
+    };
+    let watched_ids: HashSet<String> = watcher_guard.watched_projects().into_iter().collect();
 
-    let mut count = 0;
-    let mut watch_limit_hit = false;
+    let mut by_id: HashMap<String, (String, String, ActivityState)> = HashMap::new();
     for project in &projects {
-        if has_daemon && provider::path::is_wsl_path(&project.path) {
+        by_id.insert(
+            project.id.clone(),
+            (
+                project.name.clone(),
+                project.path.clone(),
+                evaluate_project_activity(project, &thresholds),
+            ),
+        );
+    }
+
+    let mut watched = 0usize;
+    let mut unwatched = 0usize;
+    let mut watch_limit_hit = false;
+
+    for (project_id, (project_name, project_path, activity_state)) in &by_id {
+        if has_daemon && provider::path::is_wsl_path(project_path) {
             continue;
         }
 
-        let path = std::path::Path::new(&project.path);
-        if path.is_dir() {
-            match watcher_guard.watch_project(project.id.clone(), path.to_path_buf()) {
-                Ok(()) => count += 1,
+        let should_watch = should_watch_for_activity(*activity_state);
+        let is_watched = watched_ids.contains(project_id);
+        let path = std::path::Path::new(project_path);
+        let can_watch_path = path.is_dir();
+
+        if should_watch && can_watch_path && !is_watched {
+            match watcher_guard.watch_project(project_id.clone(), path.to_path_buf()) {
+                Ok(()) => watched += 1,
                 Err(error) => {
                     let msg = error.to_string();
                     if platform::is_watch_limit_error(&msg) {
                         tracing::warn!(
-                            project = project.name,
+                            project = project_name,
                             error = %error,
+                            reason,
                             "Watch limit reached — skipping project"
                         );
                         watch_limit_hit = true;
                     } else {
                         tracing::debug!(
-                            project = project.name,
+                            project = project_name,
                             error = %error,
+                            reason,
                             "Could not watch project directory (local)"
                         );
                     }
                 }
             }
+            continue;
+        }
+
+        if is_watched && (!should_watch || !can_watch_path) {
+            watcher_guard.unwatch_project(project_id);
+            unwatched += 1;
         }
     }
 
-    if count > 0 {
-        tracing::info!(count, "Watching project directories (local)");
+    for watched_id in watched_ids {
+        if watched_id.starts_with(INTERNAL_PROJECT_ID_PREFIX) {
+            continue;
+        }
+        if by_id.contains_key(&watched_id) {
+            continue;
+        }
+        watcher_guard.unwatch_project(&watched_id);
+        unwatched += 1;
     }
+
+    if watched > 0 || unwatched > 0 {
+        tracing::info!(
+            watched,
+            unwatched,
+            reason,
+            "Reconciled local project watches from activity state"
+        );
+    }
+    daemon_lifecycle::reconcile_daemon_activity_watches(app, &projects, &thresholds, reason);
+
     if watch_limit_hit {
         tracing::warn!(
             "Some projects could not be watched — watch limit reached. \
@@ -129,7 +237,17 @@ fn register_local_watches(app: &mut tauri::App, has_daemon: bool) {
             platform::watch_limit_help()
         );
     }
+}
 
+fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
+    let watcher_state = app.state::<WatcherState>();
+    let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
+        tracing::warn!(
+            error = %error,
+            "Watcher lock poisoned while bootstrapping task directory watch; recovering"
+        );
+        error.into_inner()
+    });
     if !has_daemon || crate::daemon::launcher::is_native_daemon() {
         if let Some(tasks_dir) = super::resolve_claude_tasks_dir() {
             if tasks_dir.is_dir() {
@@ -149,5 +267,18 @@ fn register_local_watches(app: &mut tauri::App, has_daemon: bool) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_watch_for_activity_only_active_and_recent() {
+        assert!(should_watch_for_activity(ActivityState::Active));
+        assert!(should_watch_for_activity(ActivityState::Recent));
+        assert!(!should_watch_for_activity(ActivityState::Stale));
+        assert!(!should_watch_for_activity(ActivityState::Dormant));
     }
 }

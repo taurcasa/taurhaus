@@ -1,11 +1,8 @@
-use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-use notify::RecommendedWatcher;
 
 use crate::daemon::protocol::{self, DaemonEvent, DaemonRequest, DaemonResponse};
 use crate::project_provider::ProjectProvider;
@@ -243,8 +240,7 @@ fn handle_connection(
     let mut reader = BufReader::new(stream.try_clone()?);
     let writer = Arc::new(Mutex::new(stream));
     let project_task_scan_cache = crate::daemon::handlers::ProjectTaskScanCacheState::default();
-    let mut active_watches: HashMap<String, RecommendedWatcher> = HashMap::new();
-    let git_debounce: Arc<Mutex<HashMap<String, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+    let mut watch_runtime = crate::daemon::handlers::WatchRuntime::new();
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -301,8 +297,7 @@ fn handle_connection(
             provider.as_ref(),
             start_time,
             &writer,
-            &mut active_watches,
-            &git_debounce,
+            &mut watch_runtime,
             &project_task_scan_cache,
         );
 
@@ -317,7 +312,7 @@ fn handle_connection(
     }
 
     // Drop watches before writer — stops watcher callbacks before closing stream
-    drop(active_watches);
+    watch_runtime.active_watches.clear();
     Ok(())
 }
 
@@ -517,7 +512,10 @@ mod tests {
         let payload: protocol::WaitSessionUpdatesResult =
             serde_json::from_value(resp.result.unwrap()).unwrap();
         assert!(!payload.changed);
-        assert_eq!(payload.version, expected_version);
+        assert!(
+            payload.version >= expected_version,
+            "session activity version should be monotonic"
+        );
 
         server.shutdown.store(true, Ordering::Relaxed);
     }

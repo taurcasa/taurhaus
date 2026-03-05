@@ -100,10 +100,92 @@ pub enum EventClass {
 /// Returns a matcher that can test whether a path is ignored. If the
 /// `.gitignore` file doesn't exist or can't be parsed, returns a no-op
 /// matcher that ignores nothing.
-fn build_gitignore(project_root: &Path) -> Gitignore {
+pub(crate) fn build_gitignore(project_root: &Path) -> Gitignore {
     let gitignore_path = project_root.join(".gitignore");
     let (gi, _err) = Gitignore::new(&gitignore_path);
     gi
+}
+
+/// Shared classification output for a single notify event.
+///
+/// This captures domain-level watch semantics while keeping transport emission
+/// (Tauri channel vs daemon socket) separate.
+#[derive(Debug, Default)]
+pub(crate) struct ClassifiedNotifyEvent {
+    pub emit_git_changed: bool,
+    pub session_files: Vec<PathBuf>,
+    pub regular_files: Vec<PathBuf>,
+    pub gitignore_changed: bool,
+}
+
+/// Classify and filter a notify event using shared watch rules.
+///
+/// - Applies Git event debounce using `watch_key`.
+/// - Rebuilds the gitignore matcher on `.gitignore` / `.taurhausignore` changes.
+/// - Filters regular files through `matched_path_or_any_parents`.
+/// - Optionally includes gitignore-file changes in `regular_files`.
+pub(crate) fn classify_notify_event(
+    watch_key: &str,
+    project_root: &Path,
+    debounce_window_secs: u64,
+    debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    event: &Event,
+    include_gitignore_in_regular_files: bool,
+) -> ClassifiedNotifyEvent {
+    match event.kind {
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
+        _ => return ClassifiedNotifyEvent::default(),
+    }
+
+    let mut classified = ClassifiedNotifyEvent::default();
+
+    for path in &event.paths {
+        let Some(class) = classify_event(project_root, path) else {
+            continue;
+        };
+
+        match class {
+            EventClass::GitInternal => {
+                let mut state = debounce.lock().unwrap_or_else(|e| e.into_inner());
+                let now = Instant::now();
+                let should_emit = state.get(watch_key).is_none_or(|last| {
+                    now.duration_since(*last) >= Duration::from_secs(debounce_window_secs)
+                });
+
+                if should_emit {
+                    state.insert(watch_key.to_string(), now);
+                    classified.emit_git_changed = true;
+                }
+            }
+            EventClass::SessionFile => {
+                if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+                    classified.session_files.push(path.clone());
+                }
+            }
+            EventClass::GitignoreChange => {
+                let gi = build_gitignore(project_root);
+                let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
+                gis.insert(watch_key.to_string(), gi);
+                classified.gitignore_changed = true;
+                if include_gitignore_in_regular_files {
+                    classified.regular_files.push(path.clone());
+                }
+            }
+            EventClass::RegularFile => {
+                let gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(gi) = gis.get(watch_key) {
+                    let is_dir = path.is_dir();
+                    if gi.matched_path_or_any_parents(path, is_dir).is_ignore() {
+                        continue;
+                    }
+                }
+                classified.regular_files.push(path.clone());
+            }
+        }
+    }
+
+    classified
 }
 
 /// Manages file watchers for registered projects.
@@ -209,72 +291,39 @@ fn handle_notify_event(
     gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
     event: Event,
 ) {
-    // Only care about create, modify, remove events
-    match event.kind {
-        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
-        _ => return,
+    let classified = classify_notify_event(
+        project_id,
+        project_root,
+        GIT_DEBOUNCE_SECS,
+        debounce,
+        gitignores,
+        &event,
+        false,
+    );
+
+    if classified.emit_git_changed {
+        let _ = tx.send(WatchEvent::GitChanged {
+            project_id: project_id.to_string(),
+        });
     }
 
-    let mut regular_paths = Vec::new();
-
-    for path in &event.paths {
-        let Some(class) = classify_event(project_root, path) else {
-            continue;
-        };
-
-        match class {
-            EventClass::GitInternal => {
-                // Debounce: only emit if enough time has passed
-                let mut state = debounce.lock().unwrap_or_else(|e| e.into_inner());
-                let now = Instant::now();
-                let should_emit = state.get(project_id).is_none_or(|last| {
-                    now.duration_since(*last) >= Duration::from_secs(GIT_DEBOUNCE_SECS)
-                });
-
-                if should_emit {
-                    state.insert(project_id.to_string(), now);
-                    let _ = tx.send(WatchEvent::GitChanged {
-                        project_id: project_id.to_string(),
-                    });
-                }
-            }
-            EventClass::SessionFile => {
-                if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
-                    let _ = tx.send(WatchEvent::SessionFileCreated {
-                        project_id: project_id.to_string(),
-                        path: path.clone(),
-                    });
-                }
-            }
-            EventClass::GitignoreChange => {
-                // Rebuild the gitignore matcher for this project
-                let gi = build_gitignore(project_root);
-                let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-                gis.insert(project_id.to_string(), gi);
-
-                let _ = tx.send(WatchEvent::GitignoreChanged {
-                    project_id: project_id.to_string(),
-                });
-            }
-            EventClass::RegularFile => {
-                // Skip gitignored files — they're build artifacts, runtime
-                // data, or generated output, not real user activity.
-                let gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(gi) = gis.get(project_id) {
-                    let is_dir = path.is_dir();
-                    if gi.matched_path_or_any_parents(path, is_dir).is_ignore() {
-                        continue;
-                    }
-                }
-                regular_paths.push(path.clone());
-            }
-        }
+    for path in classified.session_files {
+        let _ = tx.send(WatchEvent::SessionFileCreated {
+            project_id: project_id.to_string(),
+            path,
+        });
     }
 
-    if !regular_paths.is_empty() {
+    if classified.gitignore_changed {
+        let _ = tx.send(WatchEvent::GitignoreChanged {
+            project_id: project_id.to_string(),
+        });
+    }
+
+    if !classified.regular_files.is_empty() {
         let _ = tx.send(WatchEvent::FileChanged {
             project_id: project_id.to_string(),
-            paths: regular_paths,
+            paths: classified.regular_files,
         });
     }
 }

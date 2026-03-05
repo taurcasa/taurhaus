@@ -16,8 +16,14 @@ fn get_settings_impl(db: &DbState) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-pub fn update_settings(db: State<'_, DbState>, settings: Settings) -> Result<Settings, String> {
-    update_settings_impl(db.inner(), settings)
+pub fn update_settings(
+    app: tauri::AppHandle,
+    db: State<'_, DbState>,
+    settings: Settings,
+) -> Result<Settings, String> {
+    let updated = update_settings_impl(db.inner(), settings)?;
+    crate::startup::watchers::reconcile_activity_watches(&app, "settings_updated");
+    Ok(updated)
 }
 
 fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, String> {

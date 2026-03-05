@@ -113,6 +113,17 @@ fn schedule_git_status_retry(app: AppHandle, project_id: String) {
     });
 }
 
+fn rebuild_project_index_for_gitignore_change(
+    index: &mut search::indexer::SearchIndex,
+    conn: &rusqlite::Connection,
+    project_id: &str,
+    project_root: &std::path::Path,
+) -> Result<usize, crate::errors::AppError> {
+    let (files, sessions, commits) =
+        search::indexer::build_project_index(index, project_id, project_root, conn)?;
+    Ok(files + sessions + commits)
+}
+
 /// One-shot git status reseed for daemon-watched (WSL) projects.
 pub(crate) fn reseed_daemon_watched_git_status(app: &AppHandle) {
     let projects = {
@@ -497,10 +508,70 @@ pub(crate) fn process_watch_events(
 
         // Gitignore changes.
         for project_id in &batch.gitignore_projects {
-            tracing::info!(
+            let Some(project_path) = get_project_path(&app, project_id) else {
+                tracing::warn!(
+                    project_id = project_id.as_str(),
+                    "Skipping gitignore reindex: project path lookup failed"
+                );
+                continue;
+            };
+            let project_root = std::path::Path::new(&project_path);
+
+            let ss = app.state::<SearchState>();
+            let mut index = match ss.0.lock() {
+                Ok(i) => i,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Skipping gitignore reindex: search index lock poisoned"
+                    );
+                    continue;
+                }
+            };
+
+            let db_state = app.state::<DbState>();
+            let conn = match db_state.0.lock() {
+                Ok(c) => c,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Skipping gitignore reindex: db lock poisoned"
+                    );
+                    continue;
+                }
+            };
+
+            match rebuild_project_index_for_gitignore_change(
+                &mut index,
+                &conn,
                 project_id,
-                "gitignore changed — watch rebuild not yet implemented"
-            );
+                project_root,
+            ) {
+                Ok(updated) => {
+                    tracing::info!(
+                        project_id = project_id.as_str(),
+                        docs_updated = updated,
+                        "gitignore changed — rebuilt project search index"
+                    );
+                    let _ = app.emit(
+                        "search-index-updated",
+                        serde_json::json!({
+                            "project_id": project_id,
+                            "reason": "gitignore_changed",
+                            "docs_updated": updated,
+                        }),
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Failed to rebuild search index on gitignore change"
+                    );
+                }
+            }
         }
     }
 }
@@ -525,4 +596,79 @@ pub(crate) fn is_internal_event(event: &fs::watcher::WatchEvent) -> bool {
         | WatchEvent::GitChanged { project_id }
             if project_id.starts_with(INTERNAL_PROJECT_ID_PREFIX)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use tempfile::TempDir;
+
+    fn setup_project_db(
+        project_id: &str,
+        project_root: &std::path::Path,
+    ) -> (rusqlite::Connection, TempDir) {
+        let db_dir = TempDir::new().expect("temp db dir");
+        let db_path = db_dir.path().join("taurhaus.db");
+        let conn = crate::db::init_db(&db_path).expect("init db");
+        let project = crate::models::Project {
+            id: project_id.to_string(),
+            name: "test-project".to_string(),
+            path: project_root.to_string_lossy().to_string(),
+            description: None,
+            last_activity_at: Some("2026-03-05T00:00:00Z".to_string()),
+            hero_preference: None,
+            created_at: "2026-03-05T00:00:00Z".to_string(),
+            updated_at: "2026-03-05T00:00:00Z".to_string(),
+            cached_branch: None,
+            cached_is_dirty: None,
+        };
+        crate::db::queries::insert_project(&conn, &project).expect("insert project");
+        (conn, db_dir)
+    }
+
+    #[test]
+    fn gitignore_reindex_prunes_newly_ignored_files() {
+        let project_id = "p1";
+        let temp = TempDir::new().expect("temp project");
+        let project_root = temp.path();
+
+        std::fs::write(project_root.join("keep.md"), "visibletoken").expect("write keep file");
+        std::fs::write(project_root.join("secret.md"), "hiddentoken").expect("write secret file");
+        git2::Repository::init(project_root).expect("init git repo");
+
+        let (conn, _db_dir) = setup_project_db(project_id, project_root);
+        let mut index = search::indexer::SearchIndex::open_in_memory().expect("open index");
+
+        let initial_docs =
+            rebuild_project_index_for_gitignore_change(&mut index, &conn, project_id, project_root)
+                .expect("initial index");
+        assert_eq!(initial_docs, 2);
+        assert_eq!(index.doc_count().expect("doc count"), 2);
+        assert_eq!(
+            index
+                .search("hiddentoken", 10)
+                .expect("search hidden")
+                .len(),
+            1
+        );
+
+        std::fs::write(project_root.join(".gitignore"), "secret.md\n").expect("write gitignore");
+
+        let rebuilt_docs =
+            rebuild_project_index_for_gitignore_change(&mut index, &conn, project_id, project_root)
+                .expect("rebuild after gitignore");
+        assert_eq!(rebuilt_docs, 1);
+        assert_eq!(index.doc_count().expect("doc count"), 1);
+
+        let hidden_results = index.search("hiddentoken", 10).expect("search hidden");
+        assert!(
+            hidden_results.is_empty(),
+            "stale ignored file should be removed from index"
+        );
+
+        let visible_results = index.search("visibletoken", 10).expect("search visible");
+        assert_eq!(visible_results.len(), 1);
+        assert_eq!(visible_results[0].file_path, "keep.md");
+    }
 }

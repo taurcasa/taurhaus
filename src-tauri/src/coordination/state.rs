@@ -96,9 +96,11 @@ impl CoordinationState {
         if guard.is_none() {
             *guard = Some(self.build_orchestrator()?);
         }
-        let orchestrator = guard
-            .as_mut()
-            .expect("orchestrator should be initialized before invoking operation");
+        let orchestrator = guard.as_mut().ok_or_else(|| {
+            CoordinationError::StoreError(
+                "coordination orchestrator missing after initialization".to_string(),
+            )
+        })?;
         op(orchestrator)
     }
 

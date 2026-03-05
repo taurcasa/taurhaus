@@ -49,10 +49,20 @@ pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, Stri
 }
 
 #[tauri::command]
-pub fn get_project(db: State<'_, DbState>, project_id: String) -> Result<ProjectDetail, String> {
+pub fn get_project(
+    app: tauri::AppHandle,
+    db: State<'_, DbState>,
+    project_id: String,
+) -> Result<ProjectDetail, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-    project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()
+    // Project selection is explicit user activity; promote on read.
+    project::touch_activity(&conn, &project_id).sanitize_err()?;
+    let detail = project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()?;
+    drop(conn);
+
+    crate::startup::watchers::reconcile_activity_watches(&app, "project_selected");
+    Ok(detail)
 }
 
 #[tauri::command]
