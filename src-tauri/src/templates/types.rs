@@ -798,7 +798,11 @@ mod tests {
     #[test]
     fn role_templates_deserialize_and_validate() {
         let roles = load_role_templates();
-        assert_eq!(roles.len(), 6, "expected six built-in role templates");
+        assert_eq!(roles.len(), 7, "expected seven built-in role templates");
+        assert!(
+            roles.iter().any(|role| role.role_id == "codex-architect"),
+            "expected codex-architect role template in built-ins"
+        );
 
         for role in &roles {
             role.validate()
@@ -810,7 +814,11 @@ mod tests {
     fn team_presets_deserialize_and_validate_against_roles() {
         let roles = load_role_templates();
         let presets = load_team_presets();
-        assert_eq!(presets.len(), 3, "expected three built-in team presets");
+        assert_eq!(presets.len(), 4, "expected four built-in team presets");
+        assert!(
+            presets.iter().any(|preset| preset.preset_id == "standard-team"),
+            "expected standard-team preset in built-ins"
+        );
 
         for preset in &presets {
             preset

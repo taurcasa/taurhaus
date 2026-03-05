@@ -51,6 +51,8 @@ behavioral_contract:
     - Test in both dark and light mode. No hardcoded dark-only colors.
     - Keep animations subtle (150-200ms, small transforms). Taurhaus is
       snappy first, decorative second.
+    - "Frontend implementation only — never modify backend/Rust code"
+    - "If a task requires backend changes, flag it and hand back to a developer"
   escalation:
     - If functional requirements are ambiguous, ask for clarification
       before designing.
