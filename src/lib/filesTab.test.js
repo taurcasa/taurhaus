@@ -122,6 +122,46 @@ describe('FilesTab', () => {
     })
   })
 
+  it('keeps first file read result when selectedProject metadata updates with same project id', async () => {
+    const firstRead = createDeferred()
+    readFile.mockImplementation((_, path) => {
+      if (path === 'src/first.js') return firstRead.promise
+      return Promise.resolve({ content: '', language: 'javascript' })
+    })
+
+    const { rerender } = render(FilesTab, {
+      props: {
+        dark: false,
+        codeTheme: 'github-light',
+        selectedProject: { id: 'project-2', path: '/tmp/project-2', branch: 'main', is_dirty: false },
+        isActive: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('treeitem', { name: 'first.js' })).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByRole('treeitem', { name: 'first.js' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('filecontent-loading')).toBeInTheDocument()
+    })
+
+    // Simulates Shell replacing selectedProject with updated git metadata.
+    await rerender({
+      dark: false,
+      codeTheme: 'github-light',
+      selectedProject: { id: 'project-2', path: '/tmp/project-2', branch: 'feature/x', is_dirty: true },
+      isActive: true,
+    })
+
+    firstRead.resolve({ content: 'first-project-content', language: 'javascript' })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-code-viewer')).toHaveTextContent('first-project-content')
+    })
+  })
+
   it('clears loading when a project switch invalidates an in-flight file request', async () => {
     const firstRead = createDeferred()
     getFileTree.mockImplementation((projectId) => {

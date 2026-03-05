@@ -50,17 +50,44 @@
   let fileTreeRefreshPending = false
   const fileReadGuard = createAsyncGuard()
   let activeFileReadSequence = 0
+  let initializedProjectId = null
+  let wasActive = false
 
   // Sync position outward for Shell's per-project position memory
   $effect(() => {
     position = { selectedFile }
   })
 
-  // Load file tree on mount
+  // Load/refresh file tree on project switch or tab activation.
+  // Important: ignore selectedProject metadata-only updates (same project id),
+  // otherwise in-flight file reads get invalidated and legitimate results are discarded.
   $effect(() => {
-    if (!selectedProject?.id || !isActive) return
-    fileReadGuard.invalidate()
-    refreshFileTree(selectedProject.id)
+    const projectId = selectedProject?.id ?? null
+    const active = Boolean(isActive)
+    const becameActive = active && !wasActive
+    wasActive = active
+
+    if (!projectId) {
+      initializedProjectId = null
+      return
+    }
+    if (!active) return
+
+    const projectChanged = projectId !== initializedProjectId
+    if (!projectChanged && !becameActive) return
+
+    if (projectChanged) {
+      clearSelection()
+      fileTree = []
+      expandedDirs = new Set()
+      treeScrollTop = 0
+    } else {
+      fileReadGuard.invalidate()
+      activeFileReadSequence = 0
+    }
+
+    initializedProjectId = projectId
+    refreshFileTree(projectId)
   })
 
   $effect(() => {
