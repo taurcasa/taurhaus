@@ -50,7 +50,7 @@ When no team exists for the current project, the mesh tab shows the setup form.
 
 ### Team roster builder
 
-The setup form (`MeshSetupForm.svelte`) presents a visual roster:
+The setup form (`MeshSetupView.svelte`) presents a visual roster:
 
 - **Team lead** — fixed to Claude Code with the `opus` model. Displayed as a highlighted "You" card with a Lead badge. Not editable (reduces misconfiguration).
 - **Agent cards** — each agent has:
@@ -111,7 +111,7 @@ If initialization fails because the team already exists (`create_team` step), th
 
 ## Runtime roster
 
-After successful initialization, the mesh tab switches to runtime mode showing `MeshTeamRoster.svelte`.
+After successful initialization, the mesh tab switches to runtime mode showing `MeshRuntimeView.svelte`.
 
 ### Roster display
 
@@ -236,16 +236,16 @@ See [IPC command reference](../architecture/ipc-reference.md) for full signature
 | File | Purpose |
 |------|---------|
 | `src/lib/components/MeshTab.svelte` | Top-level mesh tab: mode switching (setup/runtime), team discovery, cleanup panel |
-| `src/lib/components/MeshSetupForm.svelte` | Team roster builder with agent cards and team config |
-| `src/lib/components/MeshTeamRoster.svelte` | Live runtime roster with status badges and member actions |
+| `src/lib/components/MeshSetupView.svelte` | Team roster builder with agent cards and team config |
+| `src/lib/components/MeshRuntimeView.svelte` | Live runtime roster with status badges and member actions |
+| `src/lib/components/MeshNodeDetail.svelte` | Per-node action panel (focus, resume, re-onboard, remove) in runtime canvas |
 | `src/lib/components/MeshInitProgress.svelte` | 7-step initialization progress with failure recovery |
 | `src/lib/components/MeshAvailabilityGate.svelte` | Prerequisite checks (mesh install + preflight) |
-| `src/lib/components/CoordinationPanel.svelte` | Low-level coordination CRUD panel (internal/debug) |
 | `src-tauri/src/commands/coordination.rs` | Coordination IPC command handlers |
 | `src-tauri/src/commands/coordination_types.rs` | Request/response types for coordination IPC |
 | `src-tauri/src/commands/mesh.rs` | Mesh install status and bundled install commands |
 | `src-tauri/src/coordination/orchestrator.rs` | Core team lifecycle (create, disband, add/remove member) |
-| `src-tauri/src/coordination/pipelines.rs` | Multi-step initialize and hot-add pipelines |
+| `src-tauri/src/coordination/pipelines/` | Multi-step initialize, hot-add, and resume pipeline modules |
 | `src-tauri/src/coordination/mesh_cli.rs` | Mesh binary resolution and WSL command helpers |
 
 ## Related documents

@@ -36,19 +36,19 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `App.svelte` | Entry point, splash screen gate |
 | `Shell.svelte` | Main layout: titlebar, tab routing, theme, position memory |
 | `Sidebar.svelte` | Project list, session indicators, context menu, hover cards |
-| `OverviewTab.svelte` | Project summary, README, recent commits, sessions |
-| `FilesTab.svelte` | File tree with syntax-highlighted code preview |
-| `GitTab.svelte` | Commit history, diffs, cross-tab navigation |
-| `TaskBoard.svelte` | Kanban board aggregating tasks from Claude Code, Codex, Gemini |
-| `TaskDetailPanel.svelte` | Task detail view with metadata and description |
-| `SearchOverlay.svelte` | Full-text search across all projects (Ctrl+K) |
-| `Settings.svelte` | App preferences and configuration |
-| `FirstRunWizard.svelte` | Onboarding flow: project discovery and registration |
-| `SplashScreen.svelte` | Startup splash with bootstrap chain progress |
-| `SessionHistory.svelte` | Session timeline with handoff summaries |
-| `components/MeshTab.svelte` | Mesh View orchestration surface (gate/setup/init/runtime states) |
-| `components/MeshCanvas.svelte` | Node-canvas runtime graph for lead/agents and connection state |
-| `components/MeshRuntimeBar.svelte` | Runtime status controls (add-agent/disband/summary pills) |
+| `src/lib/OverviewTab.svelte` | Project summary, README, recent commits, sessions |
+| `src/lib/FilesTab.svelte` | File tree with syntax-highlighted code preview |
+| `src/lib/GitTab.svelte` | Commit history, diffs, cross-tab navigation |
+| `src/lib/TaskBoard.svelte` | Kanban board aggregating tasks from Claude Code, Codex, Gemini |
+| `src/lib/TaskDetailPanel.svelte` | Task detail view with metadata and description |
+| `src/lib/SearchOverlay.svelte` | Full-text search across all projects (Ctrl+K) |
+| `src/lib/Settings.svelte` | App preferences and configuration |
+| `src/lib/FirstRunWizard.svelte` | Onboarding flow: project discovery and registration |
+| `src/lib/SplashScreen.svelte` | Startup splash with bootstrap chain progress |
+| `src/lib/SessionHistory.svelte` | Session timeline with handoff summaries |
+| `src/lib/components/MeshTab.svelte` | Mesh View orchestration surface (gate/setup/init/runtime states) |
+| `src/lib/components/MeshCanvas.svelte` | Node-canvas runtime graph for lead/agents and connection state |
+| `src/lib/components/MeshRuntimeBar.svelte` | Runtime status controls (add-agent/disband/summary pills) |
 
 **Key patterns:**
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`, `$props`) — no legacy stores
@@ -257,7 +257,7 @@ All builds use `just` recipes. Both Windows and macOS builds happen natively on 
 
 ```bash
 just dev              # Tauri dev mode (hot-reload)
-just build-windows    # Sync to D:\, npm install, cargo build natively via cmd.exe
+just build-windows    # Sync to D:\, bun install, cargo build natively via cmd.exe
 just build-macos      # Sync to Mac Mini, build ARM DMG via SSH
 just build-macos-intel # Build Intel (x86_64) DMG via SSH
 just check            # Full gate: fmt + lint + typecheck + just test

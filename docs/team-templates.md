@@ -12,7 +12,7 @@ Team templates let you define reusable team structure before launch:
 
 The template flow is:
 
-`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm` -> `coordination_initialize_team`
+`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView` -> `coordination_initialize_team`
 
 Manual setup remains available via **Blank slate**.
 
@@ -59,7 +59,7 @@ In Mesh setup, use **Start from template**:
 3. **Build custom team** to compose from role templates
 4. **Blank slate** to fall back to manual roster editing
 
-After composition, the roster is still editable in `MeshSetupForm` (names, tools, models, project binding, descriptions).
+After composition, the roster is still editable in `MeshSetupView` (names, tools, models, project binding, descriptions).
 
 ## Composition and Validation
 

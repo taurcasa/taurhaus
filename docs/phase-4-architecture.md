@@ -20,7 +20,7 @@ Phase 4 covers mesh-backed multi-agent orchestration in `src-tauri/src/coordinat
 - Request/report types: `ResumeMemberRequest`, `ResumeAgentReport`
 - Resume modes: `ResumeContextMode::{Continue, Fresh}`
 - Pipeline owner: `coordination/pipelines/`
-- UI entrypoint: `MeshTeamRoster` Resume action on offline rows
+- UI entrypoint: `MeshRuntimeView` + `MeshNodeDetail` Resume action on offline nodes
 
 Behavior summary:
 

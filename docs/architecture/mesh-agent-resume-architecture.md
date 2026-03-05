@@ -170,7 +170,7 @@ Add pane-state helpers to `CoordinationRuntime` (or equivalent internal helper m
 
 ## UI interaction design
 
-### MeshTeamRoster
+### MeshRuntimeView + MeshNodeDetail
 
 - Show `Resume` action only on offline rows (`statusToState(member.sessionStatus) === 'offline'`).
 - Lead is resume-eligible; keep `Remove` hidden for lead.
@@ -251,8 +251,8 @@ New command-building helper:
 ## TDD task split recommendation
 
 1. Backend contracts + command registration (`coordination_types.rs`, `coordination.rs`, `lib.rs`).
-2. Resume pipeline core + pane classification + cleanup semantics (`coordination/pipelines.rs`, `coordination/runtime.rs`).
-3. Frontend IPC wrapper + MeshTab/MeshTeamRoster resume UX + row in-flight state.
+2. Resume pipeline core + pane classification + cleanup semantics (`coordination/pipelines/`, `coordination/runtime.rs`).
+3. Frontend IPC wrapper + MeshTab/MeshRuntimeView/MeshNodeDetail resume UX + row in-flight state.
 4. Tests:
 - Rust pipeline tests for three scenarios + edge cases
 - Rust command tests for request validation + report mapping

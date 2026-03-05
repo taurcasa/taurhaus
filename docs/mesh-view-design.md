@@ -280,7 +280,7 @@ Single IPC command: `coordination_resume_member(team_name, member_name, mode) ->
 - `mode = Continue` resumes prior context when supported (`ResumeContextMode`)
 - `mode = Fresh` launches a new context for the same team member identity
 - Runtime output includes step-level progress (`ResumeMemberRequest` / `ResumeAgentReport`)
-- Frontend uses the command from `MeshTeamRoster` offline rows and refreshes roster state on success
+- Frontend uses the command from `MeshNodeDetail` resume actions on offline nodes and refreshes roster state on success
 
 Pipeline behavior mirrors initialize/add-agent for one member:
 1. Validate request + current member state
