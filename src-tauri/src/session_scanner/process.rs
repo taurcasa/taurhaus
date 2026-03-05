@@ -76,20 +76,34 @@ pub fn scan_process_ids_cached() -> Vec<u32> {
     pids
 }
 
-/// Count live process entries from `/proc` (Linux).
+/// Count live process entries for cache invalidation.
 fn system_process_count() -> Option<usize> {
-    let entries = std::fs::read_dir("/proc").ok()?;
-    Some(
-        entries
-            .filter_map(Result::ok)
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .chars()
-                    .all(|c| c.is_ascii_digit())
-            })
-            .count(),
-    )
+    #[cfg(target_os = "linux")]
+    {
+        let entries = std::fs::read_dir("/proc").ok()?;
+        Some(
+            entries
+                .filter_map(Result::ok)
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .chars()
+                        .all(|c| c.is_ascii_digit())
+                })
+                .count(),
+        )
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let output = run_with_timeout("ps", &["-A", "-o", "pid="])?;
+        Some(
+            output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count(),
+        )
+    }
 }
 
 /// Timeout for subprocess execution. If `ps` or similar hangs (e.g. stale
