@@ -202,7 +202,7 @@ Each tool stores session and task data differently:
 |------|---------|
 | `app_data_dir()/taurhaus.db` | SQLite database |
 | `app_data_dir()/search_index/` | tantivy index directory |
-| `app_data_dir()/taurhaus.log` | Unified log file (truncated per launch) |
+| `app_data_dir()/taurhaus.log.jsonl` | Unified structured JSONL log file (append-only with rotation) |
 
 `app_data_dir()` resolves to the platform-appropriate location via Tauri's path API.
 

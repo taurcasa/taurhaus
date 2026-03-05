@@ -85,7 +85,7 @@ In `search::indexer::update_file`:
 
 **Location**: `src-tauri/src/commands/logging.rs:17`
 
-**Reachability**: Frontend `console.*` calls -> `src/lib/logger.js:22` -> Tauri command `frontend_log` -> append to `taurhaus.log`.
+**Reachability**: Frontend `console.*` calls -> `src/lib/logger.js` -> Tauri command `frontend_log` -> structured JSONL sink (`taurhaus.log.jsonl`).
 
 **Description**:
 `frontend_log` writes user-provided `message` directly into line-oriented logs. Newlines and control characters are not escaped/filtered, so an attacker-controlled string can create forged additional log entries or corrupt log structure. This primarily impacts auditability and incident forensics.

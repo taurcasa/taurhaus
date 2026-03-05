@@ -121,7 +121,31 @@ Grouped by command module:
 - **Settings** (2): get/update
 - **Coordination** (13): team lifecycle + member lifecycle + live/preflight
 - **Templates** (19): role/preset CRUD, composition, storage status, history/diff/revert/import/flush/apply
-- **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in the resolved app-data root (`app_data_dir()` by default, or `TAURHAUS_DATA_DIR` when set). Backend uses `tracing` crate. Single log file, truncated per launch.
+- **Logging** (1): frontend `console.*` is bridged to `frontend_log` IPC with structured payloads. Backend emits structured events into a JSONL sink at `taurhaus.log.jsonl`.
+
+### Logging and Observability
+
+Logging is structured and machine-first:
+
+- **Canonical file**: `app_data_dir()/taurhaus.log.jsonl` (or `<TAURHAUS_DATA_DIR>/taurhaus.log.jsonl`).
+- **Schema**: JSONL records with required keys (`ts`, `level`, `component`, `event`, `run_id`) plus event fields.
+- **Sink architecture**: single-writer async pipeline (`src-tauri/src/commands/logging.rs`) with a bounded channel and one writer thread to prevent torn/interleaved lines.
+- **Rotation policy**: size-based rotation (20 MB segment threshold) with retention pruning (7 days).
+- **Frontend bridge**: `src/lib/logger.js` forwards structured payloads (`component`, `subsystem`, `event`, `message`, `context`) and emits drop telemetry (`frontend.logs.dropped`) under throttling.
+- **Lifecycle instrumentation**:
+  - startup phases: `startup.phase.started/completed/failed`
+  - IPC lifecycle: `ipc.command.received/completed/failed`, `ipc.lock.wait`
+  - daemon RPC lifecycle: `daemon.rpc.sent/response/timeout`
+
+Correlation model used across events:
+
+- `run_id`: per app run, attached to all records.
+- `interaction_id`: frontend user interaction chain.
+- `request_id`: frontend->backend IPC request lifecycle.
+- `daemon_request_id`: backend->daemon RPC lifecycle.
+
+Logging policy and level selection reference:
+- [`docs/architecture/log-level-guidelines.md`](docs/architecture/log-level-guidelines.md)
 
 ### Coordination (Mesh View)
 

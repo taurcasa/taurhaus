@@ -30,19 +30,37 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 
 ## Logging
 
-Unified logging pipeline — both frontend and backend write to a single `taurhaus.log` file in `app_data_dir()`. Truncated on each app launch.
+Unified structured logging pipeline:
+
+- Canonical sink: `app_data_dir()/taurhaus.log.jsonl` (or `<TAURHAUS_DATA_DIR>/taurhaus.log.jsonl` when overridden).
+- Format: newline-delimited JSON records (JSONL), one event per line.
+- Backend sink model: single async writer pipeline in `src-tauri/src/commands/logging.rs` (bounded channel + writer thread), append-only.
+- Rotation/retention: size-based rotation at 20 MB segments, 7-day retention for rotated files.
 
 | Layer | How to log | Where it goes |
 |-------|-----------|---------------|
-| **Frontend** | `console.log/warn/error/debug` | WebView console + backend log file via IPC |
-| **Backend** | `tracing::info/warn/error/debug` | stderr + log file |
-| **Daemon** | `tracing::info/warn/error/debug` | stderr (daemon's own process) |
+| **Frontend** | `console.log/warn/error/debug` | WebView console + structured IPC payload to JSONL sink |
+| **Backend** | `tracing::info/warn/error/debug` plus `emit_global(...)` structured events | stderr + JSONL sink |
+| **Daemon bridge points** | backend daemon RPC lifecycle emits `daemon.rpc.*` events | JSONL sink (`daemon_request_id`, `method`, `status`, timing fields) |
 
-**Frontend→backend bridge**: `src/lib/logger.js` (imported first in `main.js`) monkey-patches `console.*` to also call the `frontend_log` IPC command. This means `console.log` in frontend code already writes to the backend log file — no special import needed. Always use `console.log` for frontend logging, never a custom function.
+**Frontend→backend bridge**: `src/lib/logger.js` (imported first in `main.js`) monkey-patches `console.*` and sends structured payloads to `frontend_log` IPC. Payloads include `component`, `subsystem`, `event`, `message`, and optional context/correlation fields. Use `console.*`; do not create bypass loggers.
 
-**Log format**: `[HH:MM:SS.mmm] [INF|WRN|ERR|DBG] [frontend] message` for frontend lines, standard `tracing_subscriber` format for backend lines.
+**Correlation fields**:
 
-**Key files**: `src/lib/logger.js` (bridge), `src-tauri/src/commands/logging.rs` (IPC handler).
+- `run_id`: generated once per app run, attached to every JSONL record.
+- `request_id`: per IPC command lifecycle (`ipc.command.*`).
+- `interaction_id`: frontend interaction chain correlation (logger bridge).
+- `daemon_request_id`: backend->daemon RPC correlation (`daemon.rpc.*`).
+
+**Key files**:
+
+- `src/lib/logger.js` (frontend bridge + interaction correlation + drop telemetry)
+- `src-tauri/src/commands/logging.rs` (JSONL sink, global emitter, rotation, `frontend_log`)
+- `src-tauri/src/commands/lifecycle.rs` (`ipc.command.received/completed/failed`, `ipc.lock.wait`)
+- `src-tauri/src/startup/mod.rs` (`startup.phase.started/completed/failed`)
+- `src-tauri/src/daemon_api.rs` + `src-tauri/src/provider/daemon_client.rs` (`daemon.rpc.sent/response/timeout`)
+
+**Logging policy**: see [`docs/architecture/log-level-guidelines.md`](docs/architecture/log-level-guidelines.md).
 
 ## Svelte 5 Patterns
 
