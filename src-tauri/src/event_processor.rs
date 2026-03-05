@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager};
@@ -100,7 +101,61 @@ pub(crate) fn refresh_project_git_status(
     Ok(changed)
 }
 
+const MAX_PENDING_GIT_STATUS_RETRIES: usize = 32;
+
+fn pending_git_status_retries() -> &'static Mutex<HashSet<String>> {
+    static PENDING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn reserve_git_status_retry(project_id: &str) -> bool {
+    let pending = pending_git_status_retries();
+    let Ok(mut pending) = pending.lock() else {
+        tracing::warn!(
+            project_id,
+            "failed to reserve git status retry slot: pending retry lock poisoned"
+        );
+        return false;
+    };
+
+    if pending.contains(project_id) {
+        return false;
+    }
+
+    if pending.len() >= MAX_PENDING_GIT_STATUS_RETRIES {
+        tracing::warn!(
+            project_id,
+            pending = pending.len(),
+            cap = MAX_PENDING_GIT_STATUS_RETRIES,
+            "git status retry skipped due to pending retry backpressure cap"
+        );
+        return false;
+    }
+
+    pending.insert(project_id.to_string());
+    true
+}
+
+fn release_git_status_retry(project_id: &str) {
+    let pending = pending_git_status_retries();
+    if let Ok(mut pending) = pending.lock() {
+        pending.remove(project_id);
+    }
+}
+
+#[cfg(test)]
+fn clear_git_status_retry_reservations() {
+    let pending = pending_git_status_retries();
+    if let Ok(mut pending) = pending.lock() {
+        pending.clear();
+    }
+}
+
 fn schedule_git_status_retry(app: AppHandle, project_id: String) {
+    if !reserve_git_status_retry(&project_id) {
+        return;
+    }
+
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(1500));
         if let Err(err) = refresh_project_git_status(&app, &project_id, true) {
@@ -110,6 +165,7 @@ fn schedule_git_status_retry(app: AppHandle, project_id: String) {
                 "git status retry failed after initial watcher refresh error"
             );
         }
+        release_git_status_retry(&project_id);
     });
 }
 
@@ -602,7 +658,13 @@ pub(crate) fn is_internal_event(event: &fs::watcher::WatchEvent) -> bool {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
+
+    fn retry_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn setup_project_db(
         project_id: &str,
@@ -670,5 +732,38 @@ mod tests {
         let visible_results = index.search("visibletoken", 10).expect("search visible");
         assert_eq!(visible_results.len(), 1);
         assert_eq!(visible_results[0].file_path, "keep.md");
+    }
+
+    #[test]
+    fn git_status_retry_reservation_deduplicates_per_project() {
+        let _guard = retry_test_lock().lock().expect("retry test lock");
+        clear_git_status_retry_reservations();
+        release_git_status_retry("retry-dedupe");
+        assert!(reserve_git_status_retry("retry-dedupe"));
+        assert!(!reserve_git_status_retry("retry-dedupe"));
+        release_git_status_retry("retry-dedupe");
+        assert!(reserve_git_status_retry("retry-dedupe"));
+        release_git_status_retry("retry-dedupe");
+        clear_git_status_retry_reservations();
+    }
+
+    #[test]
+    fn git_status_retry_reservation_enforces_backpressure_cap() {
+        let _guard = retry_test_lock().lock().expect("retry test lock");
+        clear_git_status_retry_reservations();
+        let mut ids = Vec::new();
+        for idx in 0..MAX_PENDING_GIT_STATUS_RETRIES {
+            let project_id = format!("retry-cap-{idx}");
+            assert!(reserve_git_status_retry(&project_id));
+            ids.push(project_id);
+        }
+
+        assert!(!reserve_git_status_retry("retry-cap-overflow"));
+
+        for project_id in ids {
+            release_git_status_retry(&project_id);
+        }
+        release_git_status_retry("retry-cap-overflow");
+        clear_git_status_retry_reservations();
     }
 }

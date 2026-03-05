@@ -4,12 +4,12 @@
 //! and stage transitions.
 
 use std::collections::HashMap;
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -1007,12 +1007,16 @@ impl StallDetectorService {
             match stop_rx.recv_timeout(interval) {
                 Ok(_) | Err(RecvTimeoutError::Disconnected) => break,
                 Err(RecvTimeoutError::Timeout) => {
-                    polling_ticks.fetch_add(1, Ordering::Relaxed);
-                    let now = Utc::now();
                     let member_keys = member_states
                         .lock()
                         .map(|states| states.keys().cloned().collect::<Vec<_>>())
                         .unwrap_or_default();
+                    if member_keys.is_empty() {
+                        continue;
+                    }
+
+                    polling_ticks.fetch_add(1, Ordering::Relaxed);
+                    let now = Utc::now();
                     let snapshots = collect_signals_for_members(
                         &member_keys,
                         &member_signal_contexts,
@@ -1235,11 +1239,20 @@ fn collect_signals_for_members(
         return Vec::new();
     }
 
+    let probe_tmux_signals = host_supports_tmux_signals();
+    let probe_mesh_signals = host_supports_mesh_signals();
     let contexts = member_signal_contexts
         .lock()
         .map(|contexts| contexts.clone())
         .unwrap_or_default();
-    let sessions = session_scanner(now);
+    let any_session_context = contexts
+        .values()
+        .any(|context| context.pane_id.is_some() || context.project_path.is_some());
+    let sessions = if probe_tmux_signals && any_session_context {
+        session_scanner(now)
+    } else {
+        Vec::new()
+    };
     let sessions_by_pane: HashMap<String, SessionSignal> = sessions
         .iter()
         .filter_map(|signal| signal.pane_id.clone().map(|pane| (pane, signal.clone())))
@@ -1253,16 +1266,24 @@ fn collect_signals_for_members(
         let context = contexts.get(key).cloned().unwrap_or_default();
         let matched_session =
             matched_session_signal(&context, &sessions_by_pane, &sessions_by_project);
-        let mesh_signals = mesh_by_team
-            .entry(key.team_name.clone())
-            .or_insert_with(|| mesh_signal_reader(&key.team_name));
-        let mesh_signal = mesh_signals
-            .get(&key.member_name)
-            .cloned()
-            .unwrap_or_default();
+        let mesh_signal = if probe_mesh_signals && !key.team_name.trim().is_empty() {
+            let mesh_signals = mesh_by_team
+                .entry(key.team_name.clone())
+                .or_insert_with(|| mesh_signal_reader(&key.team_name));
+            mesh_signals
+                .get(&key.member_name)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            MeshMemberSignal::default()
+        };
 
-        let (pane_exists, pane_is_dead, pane_is_shell, pane_current_command) =
-            collect_pane_snapshot(runtime, context.pane_id.as_deref());
+        let (pane_exists, pane_is_dead, pane_is_shell, pane_current_command) = if probe_tmux_signals
+        {
+            collect_pane_snapshot(runtime, context.pane_id.as_deref())
+        } else {
+            (None, None, None, None)
+        };
 
         let mut snapshot = SignalSnapshot {
             team_name: key.team_name.clone(),
@@ -1295,6 +1316,10 @@ fn collect_pane_snapshot(
     runtime: &dyn CoordinationRuntime,
     pane_id: Option<&str>,
 ) -> (Option<bool>, Option<bool>, Option<bool>, Option<String>) {
+    if !host_supports_tmux_signals() {
+        return (None, None, None, None);
+    }
+
     let Some(pane_id) = pane_id else {
         return (None, None, None, None);
     };
@@ -1492,6 +1517,10 @@ fn apply_signal_snapshots_to_member_states(
 }
 
 fn default_session_scan(now: DateTime<Utc>) -> Vec<SessionSignal> {
+    if !host_supports_tmux_signals() {
+        return Vec::new();
+    }
+
     scan_sessions()
         .into_iter()
         .map(|session| SessionSignal {
@@ -1505,22 +1534,66 @@ fn default_session_scan(now: DateTime<Utc>) -> Vec<SessionSignal> {
 }
 
 fn default_mesh_signal_reader(team_name: &str) -> HashMap<String, MeshMemberSignal> {
+    if !host_supports_mesh_signals() || team_name.trim().is_empty() {
+        return HashMap::new();
+    }
+
     let Some(raw) = fetch_mesh_who_json(team_name) else {
         return HashMap::new();
     };
     parse_mesh_who_json(&raw)
 }
 
+const MESH_WHO_TIMEOUT: Duration = Duration::from_secs(2);
+const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> Option<Output> {
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+
+    let started_at = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(None) => {
+                if started_at.elapsed() >= timeout {
+                    tracing::warn!(
+                        timeout_ms = timeout.as_millis() as u64,
+                        "stall detector command timed out; terminating process"
+                    );
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                thread::sleep(COMMAND_POLL_INTERVAL);
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
 fn fetch_mesh_who_json(team_name: &str) -> Option<String> {
+    if !host_supports_mesh_signals() || team_name.trim().is_empty() {
+        return None;
+    }
+
     let invocation = mesh_cli::mesh_command_invocation(&["who", "--json", "--team", team_name]);
     let output = if invocation.program == "wsl" {
         let mut cmd = mesh_cli::wsl_command_for_coordination();
-        cmd.args(&invocation.args).output().ok()?
+        cmd.args(&invocation.args);
+        run_command_with_timeout(&mut cmd, MESH_WHO_TIMEOUT)?
     } else {
-        Command::new(&invocation.program)
-            .args(&invocation.args)
-            .output()
-            .ok()?
+        let mut cmd = Command::new(&invocation.program);
+        cmd.args(&invocation.args);
+        run_command_with_timeout(&mut cmd, MESH_WHO_TIMEOUT)?
     };
     if !output.status.success() {
         return None;
@@ -1588,6 +1661,14 @@ fn parse_mesh_status(raw: &str) -> Option<MeshMemberStatus> {
         "unknown" => Some(MeshMemberStatus::Unknown),
         _ => None,
     }
+}
+
+fn host_supports_tmux_signals() -> bool {
+    !cfg!(target_os = "windows")
+}
+
+fn host_supports_mesh_signals() -> bool {
+    !cfg!(target_os = "windows")
 }
 
 fn set_if_newer(target: &mut Option<DateTime<Utc>>, observed_at: DateTime<Utc>) {
@@ -1925,6 +2006,7 @@ mod tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -2343,6 +2425,31 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn run_command_with_timeout_returns_output_before_deadline() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "printf '{\"ok\":true}'"]);
+        let output =
+            run_command_with_timeout(&mut cmd, Duration::from_millis(500)).expect("command output");
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "{\"ok\":true}");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn run_command_with_timeout_terminates_hanging_process() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "sleep 2"]);
+        let started_at = Instant::now();
+        let output = run_command_with_timeout(&mut cmd, Duration::from_millis(100));
+        assert!(output.is_none());
+        assert!(
+            started_at.elapsed() < Duration::from_secs(2),
+            "timeout helper should return before command naturally exits"
+        );
+    }
+
     #[test]
     fn reload_config_from_team_config_json_updates_runtime_config() {
         let mut service = StallDetectorService::new(StallDetectorConfig::default());
@@ -2524,6 +2631,69 @@ mod tests {
             .member_state("team-a", "agent-a")
             .expect("member state");
         assert_eq!(state.stage, StallStage::SoftNudged);
+    }
+
+    #[test]
+    fn polling_loop_without_members_does_not_tick() {
+        let mut service = StallDetectorService::new(StallDetectorConfig {
+            poll_interval_secs: 1,
+            ..StallDetectorConfig::default()
+        });
+
+        service.start_polling().expect("start polling");
+        std::thread::sleep(Duration::from_millis(1200));
+        service.stop_polling().expect("stop polling");
+
+        assert_eq!(service.polling_tick_count(), 0);
+    }
+
+    #[test]
+    fn collect_signals_skips_session_scan_without_context() {
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let scanner_calls = Arc::new(AtomicUsize::new(0));
+        let scanner_calls_ref = scanner_calls.clone();
+        let service = StallDetectorService::new_with_dependencies(
+            StallDetectorConfig::default(),
+            runtime,
+            Arc::new(move |_| {
+                scanner_calls_ref.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }),
+            Arc::new(|_| HashMap::new()),
+        );
+
+        let now = ts("2026-03-05T13:40:00Z");
+        service.upsert_member("team-a", "agent-a", now);
+        let snapshots = service.collect_signals_at(now);
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(scanner_calls.load(Ordering::Relaxed), 0);
+        assert!(snapshots[0].session_state.is_none());
+    }
+
+    #[test]
+    fn blank_team_name_skips_mesh_signal_reader() {
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mesh_calls = Arc::new(AtomicUsize::new(0));
+        let mesh_calls_ref = mesh_calls.clone();
+        let service = StallDetectorService::new_with_dependencies(
+            StallDetectorConfig::default(),
+            runtime,
+            Arc::new(|_| Vec::new()),
+            Arc::new(move |_| {
+                mesh_calls_ref.fetch_add(1, Ordering::Relaxed);
+                HashMap::new()
+            }),
+        );
+
+        let now = ts("2026-03-05T13:50:00Z");
+        service.upsert_member("", "agent-a", now);
+        let snapshots = service.collect_signals_at(now);
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(mesh_calls.load(Ordering::Relaxed), 0);
+        assert!(snapshots[0].mesh_status.is_none());
+        assert!(snapshots[0].mesh_last_activity_at.is_none());
     }
 
     #[test]
