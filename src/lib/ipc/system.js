@@ -6,6 +6,64 @@ import {
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 
+function normalizeToolCommands(raw) {
+  const commands = raw && typeof raw === 'object' ? raw : {}
+  return {
+    continue_cmd: commands.continue_cmd ?? commands.continueCmd ?? '',
+    fresh: commands.fresh ?? '',
+    resume: commands.resume ?? '',
+  }
+}
+
+function normalizeSettings(raw) {
+  const settings = raw && typeof raw === 'object' ? raw : {}
+  const thresholds = settings.thresholds && typeof settings.thresholds === 'object' ? settings.thresholds : {}
+  const daemon = settings.daemon && typeof settings.daemon === 'object' ? settings.daemon : {}
+  const terminal = settings.terminal && typeof settings.terminal === 'object' ? settings.terminal : {}
+  const cliCommands =
+    terminal.cli_commands && typeof terminal.cli_commands === 'object'
+      ? terminal.cli_commands
+      : terminal.cliCommands && typeof terminal.cliCommands === 'object'
+        ? terminal.cliCommands
+        : {}
+  const codeTheme =
+    settings.code_theme && typeof settings.code_theme === 'object'
+      ? settings.code_theme
+      : settings.codeTheme && typeof settings.codeTheme === 'object'
+        ? settings.codeTheme
+        : {}
+
+  return {
+    scan_directories: settings.scan_directories ?? settings.scanDirectories ?? [],
+    thresholds: {
+      active_days: thresholds.active_days ?? thresholds.activeDays ?? 7,
+      recent_days: thresholds.recent_days ?? thresholds.recentDays ?? 30,
+      stale_days: thresholds.stale_days ?? thresholds.staleDays ?? 90,
+    },
+    ignore_patterns: settings.ignore_patterns ?? settings.ignorePatterns ?? [],
+    dark_mode: settings.dark_mode ?? settings.darkMode ?? false,
+    code_theme: {
+      light: codeTheme.light ?? 'github-light',
+      dark: codeTheme.dark ?? 'github-dark-dimmed',
+    },
+    daemon: {
+      port: daemon.port ?? 17233,
+      path: daemon.path ?? '',
+      auto_start: daemon.auto_start ?? daemon.autoStart ?? true,
+    },
+    terminal: {
+      emulator: terminal.emulator ?? 'default',
+      custom_command: terminal.custom_command ?? terminal.customCommand ?? '',
+      tmux_layout: terminal.tmux_layout ?? terminal.tmuxLayout ?? 'new_window',
+      cli_commands: {
+        claude: normalizeToolCommands(cliCommands.claude),
+        codex: normalizeToolCommands(cliCommands.codex),
+        gemini: normalizeToolCommands(cliCommands.gemini),
+      },
+    },
+  }
+}
+
 function normalizeDaemonStatus(raw) {
   const status = raw && typeof raw === 'object' ? raw : {}
   return {
@@ -70,14 +128,14 @@ export function rebuildIndex() {
 }
 
 export function getSettings() {
-  return invokeOrMock('get_settings', undefined, () => MOCK_SETTINGS)
+  return invokeOrMock('get_settings', undefined, () => MOCK_SETTINGS).then(normalizeSettings)
 }
 
 export function updateSettings(settings) {
   return invokeOrMock('update_settings', { settings }, () => ({
     ...MOCK_SETTINGS,
     ...settings,
-  }))
+  })).then(normalizeSettings)
 }
 
 export function openExternalUrl(url) {

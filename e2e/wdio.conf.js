@@ -39,6 +39,8 @@ const specsDir = resolve(import.meta.dirname, 'specs')
 
 const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')
 const wdioLogLevel = process.env.E2E_WDIO_LOG_LEVEL || 'error'
+const wdioPort = Number(process.env.E2E_WDIO_PORT || (4500 + (process.pid % 300)))
+const nativeWebDriverPort = Number(process.env.E2E_NATIVE_WEBDRIVER_PORT || (wdioPort + 1))
 
 // Spec groups by app layer. Each sub-array = one worker session = one app instance.
 // Groups are SEALED: new specs form new groups, never expand existing ones.
@@ -230,7 +232,7 @@ export const config = {
   // ── Runner ──────────────────────────────────────────────────────────────
   runner: 'local',
   hostname: '127.0.0.1',
-  port: 4444,
+  port: wdioPort,
   // Tauri startup + first-run onboarding can keep the WebDriver bridge busy for
   // >10s on CI and loaded dev machines; avoid transport false negatives.
   connectionRetryTimeout: 30_000,
@@ -319,7 +321,7 @@ export const config = {
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
 
-    tauriDriver = spawn('tauri-driver', [], {
+    tauriDriver = spawn('tauri-driver', ['--port', String(wdioPort), '--native-port', String(nativeWebDriverPort)], {
       env: {
         ...process.env,
         TAURHAUS_DATA_DIR: tauriDataDir,
@@ -328,7 +330,7 @@ export const config = {
       stdio: [null, process.stdout, process.stderr],
     })
 
-    await waitForWebDriverReady('127.0.0.1', 4444)
+    await waitForWebDriverReady('127.0.0.1', wdioPort)
   },
 
   /**

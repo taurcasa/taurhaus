@@ -467,7 +467,9 @@ describe('ipc module', () => {
       const result = await ipc.getLatestSession('p1')
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('get_latest_session', { projectId: 'p1' })
-      expect(result).toEqual(mockSession)
+      expect(result).toMatchObject(mockSession)
+      expect(result.next_steps).toEqual([])
+      expect(result.open_questions).toEqual([])
       delete window.__TAURI_INTERNALS__
     })
 
@@ -518,7 +520,9 @@ describe('ipc module', () => {
       const result = await ipc.getSession('s1')
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('get_session', { sessionId: 's1' })
-      expect(result).toEqual(mockSession)
+      expect(result).toMatchObject(mockSession)
+      expect(result.next_steps).toEqual([])
+      expect(result.open_questions).toEqual([])
       delete window.__TAURI_INTERNALS__
     })
 
@@ -614,7 +618,8 @@ describe('ipc module', () => {
       const result = await ipc.getRelationships('p1')
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('get_relationships', { projectId: 'p1' })
-      expect(result).toEqual(mockRels)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject(mockRels[0])
       delete window.__TAURI_INTERNALS__
     })
 
@@ -653,7 +658,7 @@ describe('ipc module', () => {
         targetId: 'p2',
         relationshipType: 'depends_on',
       })
-      expect(result).toEqual(mockRel)
+      expect(result).toMatchObject(mockRel)
       delete window.__TAURI_INTERNALS__
     })
 
@@ -692,7 +697,42 @@ describe('ipc module', () => {
       const result = await ipc.getSettings()
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('get_settings')
-      expect(result).toEqual(mockSettings)
+      expect(result).toMatchObject(mockSettings)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('normalizes camelCase settings from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        scanDirectories: ['~/work'],
+        thresholds: { activeDays: 5, recentDays: 14, staleDays: 60 },
+        ignorePatterns: ['node_modules'],
+        darkMode: true,
+        codeTheme: { light: 'solarized-light', dark: 'one-dark-pro' },
+        daemon: { port: 17233, path: '/tmp/daemon', autoStart: false },
+        terminal: {
+          emulator: 'default',
+          customCommand: '',
+          tmuxLayout: 'new_window',
+          cliCommands: {
+            claude: { continueCmd: 'claude --continue', fresh: 'claude', resume: 'claude --resume' },
+            codex: { continueCmd: 'codex resume --last --yolo', fresh: 'codex --yolo', resume: 'codex resume --yolo' },
+            gemini: { continueCmd: 'gemini --resume', fresh: 'gemini', resume: 'gemini --resume' },
+          },
+        },
+      })
+
+      const result = await ipc.getSettings()
+
+      expect(result.scan_directories).toEqual(['~/work'])
+      expect(result.thresholds).toEqual({ active_days: 5, recent_days: 14, stale_days: 60 })
+      expect(result.ignore_patterns).toEqual(['node_modules'])
+      expect(result.dark_mode).toBe(true)
+      expect(result.code_theme).toEqual({ light: 'solarized-light', dark: 'one-dark-pro' })
+      expect(result.daemon.auto_start).toBe(false)
+      expect(result.terminal.custom_command).toBe('')
+      expect(result.terminal.tmux_layout).toBe('new_window')
+      expect(result.terminal.cli_commands.claude.continue_cmd).toBe('claude --continue')
       delete window.__TAURI_INTERNALS__
     })
 
@@ -715,7 +755,7 @@ describe('ipc module', () => {
       const result = await ipc.updateSettings(newSettings)
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('update_settings', { settings: newSettings })
-      expect(result).toEqual(newSettings)
+      expect(result).toMatchObject(newSettings)
       delete window.__TAURI_INTERNALS__
     })
 
@@ -882,6 +922,43 @@ describe('ipc module', () => {
   })
 
   describe('task IPC contract fields', () => {
+    it('normalizes camelCase commit diff fields from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue([
+        {
+          oldStart: 1,
+          oldLines: 2,
+          newStart: 1,
+          newLines: 3,
+          lines: [{ origin: '+', content: 'line', oldLineno: null, newLineno: 1 }],
+        },
+      ])
+
+      const result = await ipc.getCommitDiff('/tmp/project', 'abc', 'src/main.rs')
+
+      expect(result[0].old_start).toBe(1)
+      expect(result[0].new_start).toBe(1)
+      expect(result[0].lines[0].old_lineno).toBeNull()
+      expect(result[0].lines[0].new_lineno).toBe(1)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('normalizes camelCase commits-in-range fields from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        commits: [],
+        files: [],
+        truncated: true,
+        totalCount: 7,
+      })
+
+      const result = await ipc.getCommitsInRange('/tmp/project', 'abc', 'def')
+
+      expect(result.truncated).toBe(true)
+      expect(result.total_count).toBe(7)
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('getProjectTasks mock includes source_outcomes', async () => {
       delete window.__TAURI_INTERNALS__
       const result = await ipc.getProjectTasks('/tmp/project')

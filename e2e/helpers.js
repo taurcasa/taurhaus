@@ -131,7 +131,11 @@ export async function ensureMainApp() {
   // Step 4 → 5: Wait for indexing → completion → click dashboard
   const dashboardBtn = await $('[data-testid="go-to-dashboard"]')
   await dashboardBtn.waitForExist({ timeout: 120_000 })
-  await dashboardBtn.click()
+  if (await dashboardBtn.isExisting()) {
+    await dashboardBtn.click()
+  }
+  // Wizard teardown + Shell hydration can briefly stall WebDriver.
+  await browser.pause(4_000)
 
   // Wait for main app using a fresh selector query.
   // Reusing an old element handle across wizard -> shell swap can become stale.

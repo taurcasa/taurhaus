@@ -7,6 +7,36 @@ import {
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 
+function normalizeFileTreeNode(node) {
+  if (!node || typeof node !== 'object') return null
+  const children = Array.isArray(node.children)
+    ? node.children.map(normalizeFileTreeNode).filter(Boolean)
+    : []
+  return {
+    ...node,
+    is_dir: node.is_dir ?? node.isDir ?? false,
+    children,
+  }
+}
+
+function normalizeFileTree(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw.map(normalizeFileTreeNode).filter(Boolean)
+}
+
+function normalizeRelationship(raw) {
+  const rel = raw && typeof raw === 'object' ? raw : {}
+  return {
+    ...rel,
+    source_project_id: rel.source_project_id ?? rel.sourceProjectId ?? null,
+    target_project_id: rel.target_project_id ?? rel.targetProjectId ?? null,
+    relationship_type: rel.relationship_type ?? rel.relationshipType ?? '',
+    detection_source: rel.detection_source ?? rel.detectionSource ?? '',
+    first_detected_at: rel.first_detected_at ?? rel.firstDetectedAt ?? null,
+    last_seen_at: rel.last_seen_at ?? rel.lastSeenAt ?? null,
+  }
+}
+
 export function listProjects() {
   return invokeOrMock('list_projects', undefined, () => MOCK_PROJECTS)
 }
@@ -88,7 +118,7 @@ export function getRemoteUrl(projectId) {
 }
 
 export function getFileTree(projectId) {
-  return invokeOrMock('get_file_tree', { projectId }, () => MOCK_FILE_TREE)
+  return invokeOrMock('get_file_tree', { projectId }, () => MOCK_FILE_TREE).then(normalizeFileTree)
 }
 
 export function readFile(projectId, relativePath) {
@@ -122,7 +152,9 @@ export function getReadme(projectId) {
 }
 
 export function getRelationships(projectId) {
-  return invokeOrMock('get_relationships', { projectId }, () => MOCK_RELATIONSHIPS)
+  return invokeOrMock('get_relationships', { projectId }, () => MOCK_RELATIONSHIPS).then((rels) =>
+    Array.isArray(rels) ? rels.map(normalizeRelationship) : []
+  )
 }
 
 export function dismissRelationship(relationshipId) {
@@ -130,16 +162,20 @@ export function dismissRelationship(relationshipId) {
 }
 
 export function createRelationship(sourceId, targetId, relationshipType) {
-  return invokeOrMock('create_relationship', { sourceId, targetId, relationshipType }, () => ({
-    id: 'rel-new',
-    source_project_id: sourceId,
-    target_project_id: targetId,
-    relationship_type: relationshipType,
-    detection_source: 'manual',
-    dismissed: false,
-    first_detected_at: new Date().toISOString(),
-    last_seen_at: new Date().toISOString(),
-  }))
+  return invokeOrMock(
+    'create_relationship',
+    { sourceId, targetId, relationshipType },
+    () => ({
+      id: 'rel-new',
+      source_project_id: sourceId,
+      target_project_id: targetId,
+      relationship_type: relationshipType,
+      detection_source: 'manual',
+      dismissed: false,
+      first_detected_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+    })
+  ).then(normalizeRelationship)
 }
 
 export function removeRelationship(relationshipId) {

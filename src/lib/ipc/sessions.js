@@ -5,21 +5,51 @@ import {
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 
+function normalizeSessionSummary(raw) {
+  const session = raw && typeof raw === 'object' ? raw : {}
+  return {
+    ...session,
+    project_id: session.project_id ?? session.projectId ?? '',
+  }
+}
+
+function normalizeSessionDetail(raw) {
+  if (!raw || typeof raw !== 'object') return raw
+  return {
+    ...raw,
+    project_id: raw.project_id ?? raw.projectId ?? '',
+    next_steps: Array.isArray(raw.next_steps)
+      ? raw.next_steps
+      : Array.isArray(raw.nextSteps)
+        ? raw.nextSteps
+        : [],
+    open_questions: Array.isArray(raw.open_questions)
+      ? raw.open_questions
+      : Array.isArray(raw.openQuestions)
+        ? raw.openQuestions
+        : [],
+    file_path: raw.file_path ?? raw.filePath ?? '',
+    created_at: raw.created_at ?? raw.createdAt ?? null,
+  }
+}
+
 export function getLatestSession(projectId) {
   return invokeOrMock('get_latest_session', { projectId }, () => {
     if (!projectId || projectId === 'missing-project') {
       return null
     }
     return MOCK_SESSION
-  })
+  }).then(normalizeSessionDetail)
 }
 
 export function listSessions(projectId, limit = 20, offset = 0) {
-  return invokeOrMock('list_sessions', { projectId, limit, offset }, () => MOCK_SESSIONS)
+  return invokeOrMock('list_sessions', { projectId, limit, offset }, () => MOCK_SESSIONS).then(
+    (sessions) => (Array.isArray(sessions) ? sessions.map(normalizeSessionSummary) : [])
+  )
 }
 
 export function getSession(sessionId) {
-  return invokeOrMock('get_session', { sessionId }, () => MOCK_SESSION)
+  return invokeOrMock('get_session', { sessionId }, () => MOCK_SESSION).then(normalizeSessionDetail)
 }
 
 export function listClaudeSessions() {
