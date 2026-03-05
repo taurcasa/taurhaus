@@ -76,19 +76,25 @@ export async function ensureMainApp() {
   // Step 2: Daemon setup — auto-proceeds if installed, otherwise skip
   const daemonStep = await $('[data-testid="wizard-step-2"]')
   if (await daemonStep.isExisting()) {
-    // Wait for auto-proceed (daemon already installed) or skip
-    const skipBtn = await $('[data-testid="daemon-skip-button"]')
     const browseStep = await $('[data-testid="wizard-step-3"]')
     await browser.waitUntil(
       async () => {
         if (await browseStep.isExisting()) return true
+
+        const checking = await $('[data-testid="daemon-checking"]')
+        if (await checking.isExisting()) return false
+
+        const skipBtn = await $('[data-testid="daemon-skip-button"]')
         if (await skipBtn.isExisting()) {
           await skipBtn.click()
-          return true
         }
-        return false
+        return await browseStep.isExisting()
       },
-      { timeout: 10_000, interval: POLL_WIZARD }
+      {
+        timeout: 15_000,
+        interval: POLL_WIZARD,
+        timeoutMsg: 'Wizard did not reach scan step from daemon setup'
+      }
     )
   }
 
@@ -120,17 +126,22 @@ export async function ensureMainApp() {
     { timeout: 10_000, interval: POLL_WIZARD, timeoutMsg: 'Register button stayed disabled in wizard step 4' }
   )
 
-  await browser.execute(() => {
-    document.querySelector('[data-testid="register-button"]')?.click()
-  })
+  await registerBtn.click()
 
   // Step 4 → 5: Wait for indexing → completion → click dashboard
   const dashboardBtn = await $('[data-testid="go-to-dashboard"]')
   await dashboardBtn.waitForExist({ timeout: 120_000 })
   await dashboardBtn.click()
 
-  // Wait for main app
-  await overviewTab.waitForExist({ timeout: 15_000 })
+  // Wait for main app using a fresh selector query.
+  // Reusing an old element handle across wizard -> shell swap can become stale.
+  await browser.waitUntil(
+    async () => {
+      const tab = await $('[data-testid="tab-overview"]')
+      return await tab.isExisting()
+    },
+    { timeout: 15_000, interval: POLL_WIZARD, timeoutMsg: 'Overview tab did not appear after wizard completion' }
+  )
   return true
 }
 
