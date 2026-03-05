@@ -1,10 +1,11 @@
 <script>
   import Shell from './Shell.svelte'
   import SplashScreen from './lib/SplashScreen.svelte'
-  import { isTauri } from './lib/ipc.js'
+  import { isTauri, startDaemon } from './lib/ipc.js'
 
   let showSplash = $state(true)
   let shellReady = $state(false)
+  let splashDaemonStatus = $state(undefined)
   let daemonRetryError = $state(null)
   let daemonRetryErrorTimer = null
 
@@ -37,7 +38,10 @@
     }
   })
 
-  function handleSplashComplete() {
+  function handleSplashComplete(payload = null) {
+    if (payload && typeof payload === 'object' && 'daemonStatus' in payload) {
+      splashDaemonStatus = payload.daemonStatus
+    }
     shellReady = true
     // Brief crossfade — splash fades out while Shell fades in
     setTimeout(() => { showSplash = false }, 300)
@@ -47,8 +51,7 @@
     // Re-trigger daemon startup via Tauri command
     if (isTauri()) {
       try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('start_daemon')
+        await startDaemon()
       } catch (error) {
         console.error('[splash] daemon retry failed:', error)
         showDaemonRetryError(error)
@@ -98,6 +101,6 @@
     class="h-full"
     style="opacity: {showSplash ? 0 : 1}; transition: opacity 300ms ease-out;"
   >
-    <Shell />
+    <Shell initialDaemonStatus={splashDaemonStatus} />
   </div>
 {/if}

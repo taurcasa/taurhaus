@@ -1,17 +1,20 @@
 <script>
   import { isTauri, getDaemonStatus } from './ipc.js'
 
-  let { onComplete = () => {}, onRetry = () => {}, onContinue = () => {} } = $props()
+  let { onComplete = () => {} } = $props()
 
   // Animation phase: 0=hidden, 1=foundation (feet), 2=walls, 3=crown (horns)
   // Each phase is driven by actual backend state, not timers.
   let phase = $state(0)
   let status = $state('')
-  let error = $state(null)
   let completed = $state(false)
+  let daemonStatus = $state(null)
 
   let splashStart = Date.now()
-  const MIN_DISPLAY_MS = 800
+  const MIN_DISPLAY_MS_FAST = 180
+  const MIN_DISPLAY_MS_SLOW = 420
+  const READY_BEAT_MS_FAST = 80
+  const READY_BEAT_MS_SLOW = 180
 
   // Clip-path inset from top — reveals image bottom-to-top
   const clips = {
@@ -37,97 +40,67 @@
     if (completed) return
     advancePhase(3, 'Ready')
 
-    // Enforce minimum display, then hold for the "built" beat
+    // Warm path keeps the beat short; cold path still gets a visible reveal.
     const elapsed = Date.now() - splashStart
-    const remaining = Math.max(0, MIN_DISPLAY_MS - elapsed)
-    const holdDelay = remaining + 300
+    const minDisplay = fastPath ? MIN_DISPLAY_MS_FAST : MIN_DISPLAY_MS_SLOW
+    const readyBeat = fastPath ? READY_BEAT_MS_FAST : READY_BEAT_MS_SLOW
+    const remaining = Math.max(0, minDisplay - elapsed)
+    const holdDelay = remaining + readyBeat
 
     setTimeout(() => {
       completed = true
-      onComplete()
+      onComplete({ daemonStatus })
     }, holdDelay)
   }
 
-  function showError(msg) {
-    error = msg
-    status = ''
-  }
-
-  // State-driven boot: query backend, then listen for events
+  // State-driven boot: sample daemon status, then finish splash.
   $effect(() => {
-    let cleanupListener = null
-    let timeoutId = null
+    let cancelled = false
 
     // Phase 1: we're querying the backend
     advancePhase(1, 'Checking daemon...')
 
     getDaemonStatus()
       .then((result) => {
+        if (cancelled) return
         const s = result?.status
+        daemonStatus = s ?? 'disconnected'
 
         if (s === 'connected') {
-          // Fast path: daemon already connected from setup()
-          // Reveal all phases in quick succession
           fastPath = true
           advancePhase(2, 'Connected')
-          setTimeout(() => completeAfterHold(), 100)
+          setTimeout(() => {
+            if (!cancelled) completeAfterHold()
+          }, 80)
           return
         }
 
         if (s === 'not_configured') {
-          // No daemon needed (local-only mode) — complete quickly
           fastPath = true
           advancePhase(2, 'Loading...')
-          setTimeout(() => completeAfterHold(), 100)
+          setTimeout(() => {
+            if (!cancelled) completeAfterHold()
+          }, 80)
           return
         }
 
-        // Slow path: daemon not connected, wait for health check
-        advancePhase(2, 'Waiting for daemon...')
-
-        if (isTauri()) {
-          import('@tauri-apps/api/event').then(({ listen }) => {
-            listen('daemon-status', (event) => {
-              const evStatus = event.payload?.status
-              if (evStatus === 'connected') {
-                completeAfterHold()
-              } else if (evStatus === 'failed') {
-                showError('Could not start daemon')
-              } else if (evStatus === 'reconnecting') {
-                status = 'Reconnecting...'
-              }
-            }).then(unlisten => {
-              cleanupListener = unlisten
-            })
-          })
-
-          // Timeout: 15s without connection → error
-          timeoutId = setTimeout(() => {
-            if (!completed && !error) {
-              showError('Could not start daemon — timed out')
-            }
-          }, 15000)
-        }
+        advancePhase(2, 'Loading shell...')
+        setTimeout(() => {
+          if (!cancelled) completeAfterHold()
+        }, 140)
       })
       .catch(() => {
-        // IPC failed entirely — complete anyway (degraded mode)
+        if (cancelled) return
+        daemonStatus = isTauri() ? 'disconnected' : 'not_configured'
         fastPath = true
+        advancePhase(2, 'Loading...')
         completeAfterHold()
       })
 
     return () => {
-      cleanupListener?.()
-      clearTimeout(timeoutId)
+      cancelled = true
     }
   })
-
-  function handleRetry() {
-    error = null
-    phase = 1
-    status = 'Retrying...'
-    splashStart = Date.now()
-    onRetry()
-  }
 
   const reducedMotion = typeof window !== 'undefined'
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -150,7 +123,7 @@
       height="100"
       class="block"
       style:clip-path={clipPath}
-      style:opacity={phase === 3 && !error ? 1 : phase > 0 ? 0.85 : 0}
+      style:opacity={phase === 3 ? 1 : phase > 0 ? 0.85 : 0}
       style:transform={completed ? 'scale(1.02)' : 'scale(1)'}
       style:transition="clip-path {reducedMotion ? '0ms' : transitionMs + 'ms'} ease-out, opacity {reducedMotion ? '0ms' : '300ms'} ease-out, transform {reducedMotion ? '0ms' : '200ms'} ease-out"
     />
@@ -169,20 +142,7 @@
 
   <!-- Status text / Error state -->
   <div class="mt-3 h-8 flex flex-col items-center justify-start" data-tauri-drag-region>
-    {#if error}
-      <p class="text-[13px] text-danger-400">{error}</p>
-      <div class="mt-4 flex gap-3">
-        <button
-          class="px-4 py-1.5 text-[12px] font-medium text-white/90 bg-white/10 rounded hover:bg-white/15 transition-colors"
-          onclick={handleRetry}
-        >Retry</button>
-        <button
-          data-testid="continue-anyway-btn"
-          class="px-4 py-1.5 text-[12px] font-medium text-white/40 hover:text-white/60 transition-colors"
-          onclick={onContinue}
-        >Continue anyway</button>
-      </div>
-    {:else if status}
+    {#if status}
       <p
         class="text-[12px] text-white/30"
         class:opacity-0={phase === 0}

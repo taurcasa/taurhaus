@@ -83,6 +83,10 @@ export function getPlatform() {
   return invokeOrMock('get_platform', undefined, () => 'linux')
 }
 
+export function startDaemon() {
+  return invokeOrMock('start_daemon', undefined, () => 'Daemon started')
+}
+
 export function checkDaemonInstallStatus() {
   return invokeOrMock('check_daemon_install_status', undefined, () => ({
     installed: true,
@@ -95,9 +99,10 @@ export function checkDaemonInstallStatus() {
 }
 
 export function installDaemon() {
-  return invokeOrMock('install_daemon', undefined, () =>
-    'Daemon installed successfully: taurhaus-daemon 0.3.1'
-  )
+  return invokeOrMock('install_daemon', undefined, () => ({
+    success: true,
+    message: 'Daemon installed successfully: taurhaus-daemon 0.3.1',
+  }))
 }
 
 export function checkMeshInstallStatus() {
@@ -112,7 +117,8 @@ export function checkMeshInstallStatus() {
 }
 
 export function installMesh() {
-  return invokeOrMock('install_mesh', undefined, () =>
-    'Mesh installed successfully: mesh 0.1.0'
-  )
+  return invokeOrMock('install_mesh', undefined, () => ({
+    success: true,
+    message: 'Mesh installed successfully: mesh 0.1.0',
+  }))
 }

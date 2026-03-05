@@ -42,12 +42,12 @@ export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane, openTermina
   return invokeOrMock('navigate_to_session', { tmuxSession, tmuxWindow, tmuxPane, openTerminal }, () => undefined)
 }
 
-export function recordSessionActivity(projectPath, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs) {
-  return invokeOrMock('record_session_activity', { projectPath, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs }, () => undefined)
+export function recordSessionActivity(projectId, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs) {
+  return invokeOrMock('record_session_activity', { projectId, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs }, () => undefined)
 }
 
-export function getProjectActivity(projectPath) {
-  return invokeOrMock('get_project_activity', { projectPath }, () => ({
+export function getProjectActivity(projectId) {
+  return invokeOrMock('get_project_activity', { projectId }, () => ({
     total_active_ms: 0,
     total_duration_ms: 0,
     session_count: 0,

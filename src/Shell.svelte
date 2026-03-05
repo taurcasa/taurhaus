@@ -16,13 +16,15 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createAsyncGuard } from './lib/asyncGuard.js'
-  import { loadProjectSelectionData } from './lib/projectSelection.js'
+  import { createProjectSelectionRequests } from './lib/projectSelection.js'
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
+
+  let { initialDaemonStatus = undefined } = $props()
 
   let dark = $state(false)
 
@@ -45,6 +47,7 @@
   // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
   let daemonStatusDismissTimer = $state(null)
+  let consumedInitialDaemonStatus = false
 
   // Daemon update banner state
   let daemonUpdateAvailable = $state(null)  // { version, bundled_version } or null
@@ -246,7 +249,7 @@
     showWizard = false
     loadProjects()
     loadCodeThemeFromSettings()
-    loadDaemonStatus()
+    loadDaemonStatus({ allowInitial: false })
     void syncWindowsStartupViewport()
   }
 
@@ -283,7 +286,19 @@
     }
   }
 
-  async function loadDaemonStatus() {
+  async function loadDaemonStatus({ allowInitial = true } = {}) {
+    if (allowInitial && !consumedInitialDaemonStatus && initialDaemonStatus !== undefined) {
+      consumedInitialDaemonStatus = true
+      if (initialDaemonStatus === 'connected' || initialDaemonStatus === 'not_configured') {
+        daemonStatus = null
+      } else {
+        daemonStatus = initialDaemonStatus
+      }
+
+      checkDaemonUpdate()
+      return
+    }
+
     try {
       const status = await getDaemonStatus()
       // Only show non-connected states (connected is the happy path, don't clutter)
@@ -469,7 +484,7 @@
       projects = await listProjects()
       // Auto-select first project if none selected
       if (!selectedProject && projects.length > 0) {
-        await selectProject(projects[0])
+        void selectProject(projects[0])
       }
       // Git status now comes from cached columns in list_projects (no extra IPC calls).
       // The cache is refreshed by the file watcher and startup reseed.
@@ -503,30 +518,10 @@
     const restoredTab = savedPosition?.tab || 'overview'
     const generation = selectLoadGuard.next()
 
-    // Fire all IPC calls in parallel — don't touch state yet
-    const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
-      getProject,
-      getRecentCommits,
-      getLatestSession,
-      listSessions,
-      getReadme,
-      getRelationships,
-    })
-
-    // Stale check — user clicked a different project while we were loading
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
-      .filter(result => !result.ok)
-      .map(result => ({ section: result.section, message: result.message }))
-    projectLoadIssues = loadIssues
-    if (loadIssues.length > 0) {
-      console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
-    }
-
-    // Commit everything in one synchronous block → single DOM repaint
-    selectedProject = detail.value ? { ...project, ...detail.value } : project
-    detailLoading = false
+    // Commit fast initial state so sidebar and tab shell are interactive immediately.
+    projectLoadIssues = []
+    selectedProject = project
+    detailLoading = true
     showAllCommits = false
     activeTab = restoredTab
     visitedTabs = savedPosition?.visitedTabs || new Set([restoredTab])
@@ -542,16 +537,90 @@
     }
     // Restore Task position via separate restoreTarget prop
     taskNavTarget = savedPosition?.taskPosition ?? null
-    recentCommits = commits.value
-    commitsLoading = false
-    latestSession = latest.value
-    sessionHistory = sessionList.value || []
-    sessionLoading = false
-    readmeContent = readme.value
-    relationships = rels.value
-    relationshipsLoading = false
+    // Reset detail panels so they reveal progressively as each section loads.
+    recentCommits = []
+    commitsLoading = true
+    latestSession = null
+    sessionHistory = []
+    sessionLoading = true
+    readmeContent = null
+    relationships = []
+    relationshipsLoading = true
     // Restore file position via navigateTarget — FilesTab loads its own tree
     filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
+
+    const requests = createProjectSelectionRequests(projectId, {
+      getProject,
+      getRecentCommits,
+      getLatestSession,
+      listSessions,
+      getReadme,
+      getRelationships,
+    })
+
+    function updateProjectLoadIssue(result) {
+      if (!result?.section) return
+      if (result.ok) {
+        projectLoadIssues = projectLoadIssues.filter((issue) => issue.section !== result.section)
+        return
+      }
+      projectLoadIssues = [
+        ...projectLoadIssues.filter((issue) => issue.section !== result.section),
+        { section: result.section, message: result.message },
+      ]
+    }
+
+    const detailTask = requests.detail.then((detail) => {
+      if (!selectLoadGuard.isCurrent(generation)) return
+      updateProjectLoadIssue(detail)
+      selectedProject = detail.value ? { ...project, ...detail.value } : project
+      detailLoading = false
+    })
+
+    const commitsTask = requests.commits.then((commits) => {
+      if (!selectLoadGuard.isCurrent(generation)) return
+      updateProjectLoadIssue(commits)
+      recentCommits = commits.value
+      commitsLoading = false
+    })
+
+    const sessionsTask = Promise.all([requests.latest, requests.sessionList]).then(
+      ([latest, sessionList]) => {
+        if (!selectLoadGuard.isCurrent(generation)) return
+        updateProjectLoadIssue(latest)
+        updateProjectLoadIssue(sessionList)
+        latestSession = latest.value
+        sessionHistory = sessionList.value || []
+        sessionLoading = false
+      }
+    )
+
+    const readmeTask = requests.readme.then((readme) => {
+      if (!selectLoadGuard.isCurrent(generation)) return
+      updateProjectLoadIssue(readme)
+      readmeContent = readme.value
+    })
+
+    const relationshipsTask = requests.rels.then((rels) => {
+      if (!selectLoadGuard.isCurrent(generation)) return
+      updateProjectLoadIssue(rels)
+      relationships = rels.value
+      relationshipsLoading = false
+    })
+
+    await Promise.allSettled([
+      detailTask,
+      commitsTask,
+      sessionsTask,
+      readmeTask,
+      relationshipsTask,
+    ])
+
+    if (!selectLoadGuard.isCurrent(generation)) return
+
+    if (projectLoadIssues.length > 0) {
+      console.warn(`[shell] project ${projectId} loaded with degraded data`, projectLoadIssues)
+    }
   }
 
   async function loadSessions(projectId) {
@@ -1008,6 +1077,21 @@
 
     <!-- ═══ MAIN PANEL ═══ -->
     <main class="flex-1 {t.mainBg} {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
+
+      <!-- Non-blocking daemon reconnect notice -->
+      {#if (daemonStatus === 'reconnecting' || daemonStatus === 'disconnected') && !settingsOpen}
+        <div
+          class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-brand-500/10 border-b border-brand-500/20' : 'bg-brand-50 border-b border-brand-200'}"
+          data-testid="daemon-connecting-banner"
+        >
+          <svg class="h-4 w-4 shrink-0 text-brand-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 1 0-5.657-2.343l1.414-1.414A6 6 0 1 1 10 16v2Zm1-11V4H9v5h5V7h-3Z" clip-rule="evenodd" />
+          </svg>
+          <span class="flex-1 text-[12px] {t.textSecondary}">
+            Connecting to daemon. The shell is available; session updates may be delayed.
+          </span>
+        </div>
+      {/if}
 
       <!-- Daemon update banner -->
       {#if daemonUpdateAvailable && !daemonUpdateDismissed && !settingsOpen}

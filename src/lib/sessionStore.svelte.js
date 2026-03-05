@@ -20,7 +20,8 @@
  *   getSessionsForProject('/home/user/proj')  // → ClaudeSession[]
  */
 
-import { listClaudeSessions, recordSessionActivity } from './ipc.js'
+import { listClaudeSessions, listProjects, recordSessionActivity } from './ipc.js'
+import { normalizeProjectPath } from './pathUtils.js'
 
 const POLL_INTERVAL_MS = 500
 
@@ -36,32 +37,51 @@ let timerId = null
 /**
  * In-memory activity trackers keyed by PID.
  * Not reactive — only used to compute enrichment fields on each poll.
- * @type {Map<number, {firstSeen: number, activeTicks: number, totalTicks: number, lastState: string, lastTransitionTime: number, projectPath: string, cliTool: string}>}
+ * @type {Map<number, {firstSeen: number, activeTicks: number, totalTicks: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string}>}
  */
 let trackers = new Map()
+let projectIdByPath = new Map()
 
-/**
- * Normalize path for consistent matching.
- * - Strips trailing slashes and backslashes
- * - Normalizes WSL UNC prefixes: \\wsl.localhost\ and \\wsl$\ → \\wsl$\
- *   (projects may be registered with either form)
- * - Normalizes Windows drive letters to uppercase (D:\foo, not d:\foo)
- */
-function normalizePath(path) {
-  let p = path
-  // Strip trailing separators
-  while (p.length > 1 && (p.endsWith('/') || p.endsWith('\\'))) {
-    p = p.slice(0, -1)
+async function resolveProjectId(projectPath) {
+  const key = normalizeProjectPath(projectPath)
+  if (projectIdByPath.has(key)) {
+    return projectIdByPath.get(key)
   }
-  // Normalize \\wsl.localhost\ → \\wsl$\ for consistent matching
-  if (p.toLowerCase().startsWith('\\\\wsl.localhost\\')) {
-    p = '\\\\wsl$\\' + p.slice('\\\\wsl.localhost\\'.length)
+
+  try {
+    const projects = await listProjects()
+    if (!Array.isArray(projects)) {
+      return null
+    }
+    for (const project of projects) {
+      if (!project?.id || !project?.path) continue
+      projectIdByPath.set(normalizeProjectPath(project.path), project.id)
+    }
+  } catch (error) {
+    console.warn('[sessionStore] failed to resolve project id for activity persistence:', error)
+    return null
   }
-  // Normalize Windows drive letter to uppercase (d:\foo → D:\foo)
-  if (/^[a-z]:[/\\]/.test(p)) {
-    p = p[0].toUpperCase() + p.slice(1)
+
+  return projectIdByPath.get(key) ?? null
+}
+
+async function persistSessionActivity(tracker, startedAt, endedAt, activeDurationMs, totalDurationMs) {
+  const projectId = tracker.projectId || await resolveProjectId(tracker.projectPath)
+  if (!projectId) {
+    console.warn('[sessionStore] skipping session activity persistence: unknown project id', {
+      projectPath: tracker.projectPath,
+    })
+    return
   }
-  return p
+
+  await recordSessionActivity(
+    projectId,
+    tracker.cliTool,
+    startedAt,
+    endedAt,
+    activeDurationMs,
+    totalDurationMs,
+  )
 }
 
 /** Perform a single poll and update the sessions map. */
@@ -100,9 +120,14 @@ function applySessions(result) {
         lastState: session.state,
         lastTransitionTime: now,
         projectPath: session.project_path,
+        projectId: session.project_id || null,
         cliTool: session.cli_tool || 'claude',
       }
       trackers.set(pid, tracker)
+    }
+
+    if (!tracker.projectId && session.project_id) {
+      tracker.projectId = session.project_id
     }
 
     tracker.totalTicks++
@@ -124,7 +149,7 @@ function applySessions(result) {
       : 0
     session._lastTransition = tracker.lastTransitionTime
 
-    const key = normalizePath(session.project_path)
+    const key = normalizeProjectPath(session.project_path)
     const list = next.get(key) || []
     list.push(session)
     next.set(key, list)
@@ -139,9 +164,8 @@ function applySessions(result) {
       const totalDurationMs = tracker.totalTicks * POLL_INTERVAL_MS
 
       // Fire-and-forget — don't block updates
-      recordSessionActivity(
-        tracker.projectPath,
-        tracker.cliTool,
+      void persistSessionActivity(
+        tracker,
         startedAt,
         endedAt,
         activeDurationMs,
@@ -185,6 +209,7 @@ export function stopPolling() {
     timerId = null
   }
   trackers.clear()
+  projectIdByPath.clear()
 }
 
 /**
@@ -218,7 +243,7 @@ export function getSessions() {
 
 /** Get all sessions for a project. Returns empty array if none. */
 export function getSessionsForProject(projectPath) {
-  const key = normalizePath(projectPath)
+  const key = normalizeProjectPath(projectPath)
   return sessions.get(key) ?? []
 }
 

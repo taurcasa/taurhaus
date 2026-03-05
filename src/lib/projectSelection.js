@@ -27,14 +27,30 @@ export async function withFallback(section, promise, fallback) {
 /**
  * Load Shell project sections in parallel with per-section fallbacks.
  */
+export function createProjectSelectionRequests(projectId, ipc) {
+  return {
+    detail: withFallback('Project details', ipc.getProject(projectId), null),
+    commits: withFallback('Recent commits', ipc.getRecentCommits(projectId, 10), []),
+    latest: withFallback('Latest session', ipc.getLatestSession(projectId), null),
+    sessionList: withFallback('Session history', ipc.listSessions(projectId, 10), []),
+    readme: withFallback('README', ipc.getReadme(projectId), null),
+    rels: withFallback('Relationships', ipc.getRelationships(projectId), []),
+  }
+}
+
+/**
+ * Load all project sections and return a resolved object.
+ * Keep this helper for call sites/tests that still need an all-at-once payload.
+ */
 export async function loadProjectSelectionData(projectId, ipc) {
+  const requests = createProjectSelectionRequests(projectId, ipc)
   const [detail, commits, latest, sessionList, readme, rels] = await Promise.all([
-    withFallback('Project details', ipc.getProject(projectId), null),
-    withFallback('Recent commits', ipc.getRecentCommits(projectId, 10), []),
-    withFallback('Latest session', ipc.getLatestSession(projectId), null),
-    withFallback('Session history', ipc.listSessions(projectId, 10), []),
-    withFallback('README', ipc.getReadme(projectId), null),
-    withFallback('Relationships', ipc.getRelationships(projectId), []),
+    requests.detail,
+    requests.commits,
+    requests.latest,
+    requests.sessionList,
+    requests.readme,
+    requests.rels,
   ])
 
   return { detail, commits, latest, sessionList, readme, rels }

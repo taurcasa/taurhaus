@@ -4,10 +4,7 @@ import '@testing-library/jest-dom/vitest'
 
 vi.mock('./lib/ipc.js', () => ({
   isTauri: vi.fn(() => true),
-}))
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
+  startDaemon: vi.fn(),
 }))
 
 vi.mock('./Shell.svelte', () => ({
@@ -70,7 +67,7 @@ vi.mock('./lib/SplashScreen.svelte', () => ({
 }))
 
 const { isTauri } = await import('./lib/ipc.js')
-const { invoke } = await import('@tauri-apps/api/core')
+const { startDaemon } = await import('./lib/ipc.js')
 import App from './App.svelte'
 
 describe('App orchestration', () => {
@@ -79,7 +76,7 @@ describe('App orchestration', () => {
     vi.setSystemTime(new Date('2026-03-05T00:00:00.000Z'))
     vi.clearAllMocks()
     isTauri.mockReturnValue(true)
-    invoke.mockResolvedValue(undefined)
+    startDaemon.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -108,7 +105,7 @@ describe('App orchestration', () => {
 
   it('shows a retry error banner when daemon restart fails', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    invoke.mockRejectedValueOnce(new Error('daemon unavailable'))
+    startDaemon.mockRejectedValueOnce(new Error('daemon unavailable'))
     render(App)
 
     await fireEvent.click(screen.getByTestId('splash-retry'))
@@ -128,7 +125,7 @@ describe('App orchestration', () => {
 
   it('allows dismissing the retry error banner', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    invoke.mockRejectedValueOnce(new Error('still down'))
+    startDaemon.mockRejectedValueOnce(new Error('still down'))
     render(App)
 
     await fireEvent.click(screen.getByTestId('splash-retry'))

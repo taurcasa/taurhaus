@@ -8,14 +8,34 @@ export function isTauri() {
 function normalizeInvokeError(error) {
   if (error instanceof Error) return error
 
-  if (error && typeof error === 'object') {
-    const code = typeof error.code === 'string' && error.code.trim() ? error.code : null
-    const message = formatUserFacingError(error, code ?? "Couldn't complete the request")
-    return new Error(message)
+  let parsed = error
+  if (typeof error === 'string') {
+    try {
+      parsed = JSON.parse(error)
+    } catch {
+      parsed = error
+    }
   }
 
-  if (typeof error === 'string') {
-    return new Error(error)
+  if (parsed && typeof parsed === 'object') {
+    const code = typeof parsed.code === 'string' && parsed.code.trim() ? parsed.code : null
+    const command = typeof parsed.command === 'string' && parsed.command.trim() ? parsed.command : null
+    const retryable = typeof parsed.retryable === 'boolean' ? parsed.retryable : null
+    const message = formatUserFacingError(parsed, code ?? "Couldn't complete the request")
+    const normalized = new Error(message)
+    if (code) normalized.code = code
+    if (command) normalized.command = command
+    if (retryable !== null) normalized.retryable = retryable
+    normalized.ipc = {
+      code,
+      command,
+      retryable,
+    }
+    return normalized
+  }
+
+  if (typeof parsed === 'string') {
+    return new Error(parsed)
   }
 
   return new Error("Couldn't complete the request")
