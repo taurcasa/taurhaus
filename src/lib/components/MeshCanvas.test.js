@@ -245,4 +245,96 @@ describe('MeshCanvas', () => {
     expect(offlineStyle).toContain('stroke-dasharray: 6,4')
     expect(offlineStyle).toContain('opacity: 0.28')
   })
+
+  it('parses initializing steps from object fields and renders connections', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(3),
+        mode: 'initializing',
+        initSteps: {
+          completedIds: ['agent-1'],
+          activeId: 'agent-2',
+        },
+      },
+    })
+
+    expect(screen.getAllByTestId('mesh-connection')).toHaveLength(3)
+  })
+
+  it('parses initializing steps from alternate object fields', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(4),
+        mode: 'initializing',
+        initSteps: {
+          completed: ['agent-1'],
+          currentId: 'agent-2',
+          completedCount: 2,
+        },
+      },
+    })
+
+    expect(screen.getAllByTestId('mesh-connection')).toHaveLength(4)
+  })
+
+  it('parses initializing steps from array entries with mixed statuses', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(3),
+        mode: 'initializing',
+        initSteps: [
+          { id: 'agent-1', status: 'succeeded' },
+          { id: 'agent-2', status: 'running' },
+          { id: 'agent-3', status: 'initializing' },
+          'agent-1',
+        ],
+      },
+    })
+
+    expect(screen.getAllByTestId('mesh-connection')).toHaveLength(3)
+  })
+
+  it('supports lead/agent cli_tool and model_name fallbacks', () => {
+    render(MeshCanvas, {
+      props: {
+        lead: {
+          id: null,
+          name: 'lead',
+          cli_tool: 'claude',
+          model_name: 'opus',
+          status: 'active',
+        },
+        agents: [
+          {
+            id: null,
+            name: 'agent-fallback',
+            cli_tool: 'codex',
+            model_name: 'gpt-5',
+            status: 'idle',
+          },
+        ],
+        mode: 'runtime',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-model-lead')).toHaveTextContent('opus')
+    expect(screen.getByTestId('mesh-node-model-agent')).toHaveTextContent('gpt-5')
+  })
+
+  it('falls back to setup mode for unknown mode and non-array agents', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: null,
+        mode: 'unexpected-mode',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-lead')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-node-agent')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-add-node')).toBeInTheDocument()
+  })
 })

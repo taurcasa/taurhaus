@@ -19,6 +19,9 @@ vi.mock('./sessionIndicator.js', () => ({
   toolIndicators: vi.fn(() => []),
 }))
 
+const { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } = await import('./ipc.js')
+const { getSessionForProject, getSessionsForProject } = await import('./sessionStore.svelte.js')
+const { toolIndicators } = await import('./sessionIndicator.js')
 import Sidebar from './Sidebar.svelte'
 
 function makeProjects(count) {
@@ -28,22 +31,235 @@ function makeProjects(count) {
     name: `Project ${index}`,
     path: `/projects/project-${index}`,
     activity_state: activityStates[index % activityStates.length],
-    branch: null,
-    is_dirty: false,
+    branch: index % 2 === 0 ? 'main' : null,
+    is_dirty: index % 3 === 0,
   }))
 }
 
-describe('Sidebar virtualization + timer cleanup', () => {
+describe('Sidebar component branches', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
 
   beforeEach(() => {
     vi.clearAllMocks()
+    removeProject.mockResolvedValue(undefined)
+    launchClaudeSession.mockResolvedValue({ ok: true })
+    stopClaudeSession.mockResolvedValue(undefined)
+    navigateToSession.mockResolvedValue(undefined)
+
+    if (!navigator.clipboard) {
+      Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    } else {
+      navigator.clipboard.writeText = vi.fn().mockResolvedValue(undefined)
+    }
   })
 
-  it('virtualizes large project lists and limits rendered project rows', async () => {
+  it('renders loading, error, empty, and no-match states', async () => {
+    const onRetry = vi.fn()
+    const { rerender } = render(Sidebar, {
+      props: {
+        projects: [],
+        sidebarLoading: true,
+        onRetry,
+      },
+    })
+
+    expect(screen.getByTestId('sidebar-skeleton')).toBeInTheDocument()
+
+    await rerender({ projects: [], sidebarLoading: false, sidebarError: 'boom', onRetry })
+    expect(screen.getByTestId('sidebar-error')).toBeInTheDocument()
+    await fireEvent.click(screen.getByText('Retry'))
+    expect(onRetry).toHaveBeenCalled()
+
+    await rerender({ projects: [], sidebarLoading: false, sidebarError: null, onRetry })
+    expect(screen.getByTestId('sidebar-empty')).toBeInTheDocument()
+
+    await rerender({ projects: makeProjects(2), sidebarLoading: false, sidebarError: null, onRetry })
+    const input = screen.getByTestId('sidebar-filter')
+    await fireEvent.input(input, { target: { value: 'does-not-exist' } })
+    expect(screen.getByTestId('sidebar-no-matches')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('sidebar-filter-clear'))
+    expect(screen.queryByTestId('sidebar-no-matches')).not.toBeInTheDocument()
+  })
+
+  it('fires selection and footer actions', async () => {
+    const onSelectProject = vi.fn()
+    const onAddProject = vi.fn()
+    const onToggleSettings = vi.fn()
+    const projects = makeProjects(3)
+
     render(Sidebar, {
+      props: {
+        projects,
+        onSelectProject,
+        onAddProject,
+        onToggleSettings,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBeGreaterThan(0)
+    })
+
+    await fireEvent.click(screen.getAllByTestId('project-item')[0])
+    expect(onSelectProject).toHaveBeenCalledWith(expect.objectContaining({ id: projects[0].id }))
+
+    await fireEvent.click(screen.getByTestId('manage-projects-btn'))
+    expect(onAddProject).toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('settings-toggle'))
+    expect(onToggleSettings).toHaveBeenCalled()
+  })
+
+  it('renders daemon status variants and hides not_configured', async () => {
+    const { rerender } = render(Sidebar, {
+      props: {
+        projects: makeProjects(1),
+        daemonStatus: 'connected',
+      },
+    })
+    expect(screen.getByTestId('daemon-status')).toHaveTextContent('Connected')
+
+    await rerender({ projects: makeProjects(1), daemonStatus: 'reconnecting' })
+    expect(screen.getByTestId('daemon-status')).toHaveTextContent('Reconnecting')
+
+    await rerender({ projects: makeProjects(1), daemonStatus: 'disconnected' })
+    expect(screen.getByTestId('daemon-status')).toHaveTextContent('Daemon offline')
+
+    await rerender({ projects: makeProjects(1), daemonStatus: 'failed' })
+    expect(screen.getByTestId('daemon-status')).toHaveTextContent('Daemon failed')
+
+    await rerender({ projects: makeProjects(1), daemonStatus: 'not_configured' })
+    expect(screen.queryByTestId('daemon-status')).not.toBeInTheDocument()
+  })
+
+  it('navigates through interactive session indicator pills only when session has tmux fields', async () => {
+    const projects = [makeProjects(1)[0]]
+    const interactiveSession = {
+      tmux_session: 'team',
+      tmux_window: '1',
+      tmux_pane: '%3',
+      cli_tool: 'codex',
+      state: 'active',
+    }
+
+    getSessionsForProject.mockImplementation(() => [interactiveSession])
+    toolIndicators.mockImplementation(() => ([
+      {
+        interactive: true,
+        colorClass: 'text-success-400',
+        isActive: true,
+        ariaLabel: 'Codex active',
+        icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' },
+        session: interactiveSession,
+      },
+      {
+        interactive: false,
+        colorClass: 'text-zinc-400',
+        isActive: false,
+        ariaLabel: 'Claude idle',
+        icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' },
+        session: { state: 'idle' },
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Codex active')).toBeInTheDocument()
+      expect(screen.getByLabelText('Claude idle')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByLabelText('Codex active'))
+    expect(navigateToSession).toHaveBeenCalledWith('team', '1', '%3')
+  })
+
+  it('context menu supports copy path and two-click remove confirmation', async () => {
+    const onProjectRemoved = vi.fn()
+    const projects = [makeProjects(1)[0]]
+
+    render(Sidebar, {
+      props: {
+        projects,
+        onProjectRemoved,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-item')).toBeInTheDocument()
+    })
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Copy Path'))
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(projects[0].path)
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Remove from taurhaus'))
+    expect(screen.getByText('Confirm remove?')).toBeInTheDocument()
+
+    await fireEvent.mouseDown(screen.getByText('Confirm remove?'))
+    await waitFor(() => {
+      expect(removeProject).toHaveBeenCalledWith(projects[0].id)
+      expect(onProjectRemoved).toHaveBeenCalledWith(projects[0].id)
+    })
+  })
+
+  it('context menu supports open/restart/stop session flows and stop confirmation', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const project = makeProjects(1)[0]
+    const session = {
+      state: 'active',
+      cli_tool: 'codex',
+      tmux_pane: '%9',
+      tmux_session: 'team',
+      tmux_window: '2',
+    }
+
+    getSessionsForProject.mockImplementation(() => [session])
+    getSessionForProject.mockImplementation(() => null)
+
+    render(Sidebar, {
+      props: {
+        projects: [project],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-item')).toBeInTheDocument()
+    })
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Open in Terminal'))
+    expect(navigateToSession).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+
+    getSessionForProject.mockImplementation(() => session)
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Restart Codex'))
+    await waitFor(() => {
+      expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
+      expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'continue', 'codex')
+    })
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Stop Codex'))
+    expect(screen.getByText('Confirm stop Codex?')).toBeInTheDocument()
+
+    await fireEvent.mouseDown(screen.getByText('Confirm stop Codex?'))
+    await waitFor(() => {
+      expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
+    })
+
+    warnSpy.mockRestore()
+  })
+
+  it('virtualizes large project lists and clears pending timers on unmount', async () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+
+    const { unmount } = render(Sidebar, {
       props: {
         projects: makeProjects(220),
       },
@@ -54,23 +270,8 @@ describe('Sidebar virtualization + timer cleanup', () => {
     })
 
     expect(screen.getAllByTestId('project-item').length).toBeLessThan(150)
-  })
 
-  it('clears pending hover timers on unmount', async () => {
-    vi.useFakeTimers()
-    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
-
-    const { unmount } = render(Sidebar, {
-      props: {
-        projects: makeProjects(1),
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('project-item')).toBeInTheDocument()
-    })
-
-    await fireEvent.mouseEnter(screen.getByTestId('project-item'))
+    await fireEvent.mouseEnter(screen.getAllByTestId('project-item')[0])
 
     unmount()
     expect(clearTimeoutSpy).toHaveBeenCalled()

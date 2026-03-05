@@ -10,10 +10,46 @@ vi.mock('./ipc.js', () => ({
   validateProjectPath: vi.fn(),
 }))
 
-const { listProjects } = await import('./ipc.js')
+vi.mock('./DirectoryBrowser.svelte', () => ({
+  default: function MockDirectoryBrowser(target, props) {
+    const root = document.createElement('div')
+    root.setAttribute('data-testid', 'mock-directory-browser')
+
+    const pickButton = document.createElement('button')
+    pickButton.textContent = 'Pick path'
+    pickButton.setAttribute('data-testid', 'mock-directory-select')
+    pickButton.addEventListener('click', () => {
+      props?.onSelect?.('/manual/selected')
+    })
+    root.appendChild(pickButton)
+
+    if (target.nodeType === Node.ELEMENT_NODE) {
+      target.appendChild(root)
+    } else {
+      target.parentNode.insertBefore(root, target)
+    }
+
+    return {
+      $set(nextProps) {
+        props = nextProps
+      },
+      $destroy() {
+        root.remove()
+      },
+    }
+  },
+}))
+
+const {
+  scanDirectory,
+  registerProjectsBatch,
+  listProjects,
+  removeProject,
+  validateProjectPath,
+} = await import('./ipc.js')
 import AddProjectModal from './AddProjectModal.svelte'
 
-describe('AddProjectModal timer cleanup', () => {
+describe('AddProjectModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     listProjects.mockResolvedValue([
@@ -24,10 +60,277 @@ describe('AddProjectModal timer cleanup', () => {
         activity_state: 'active',
       },
     ])
+    scanDirectory.mockResolvedValue([])
+    registerProjectsBatch.mockResolvedValue([{ success: true }])
+    removeProject.mockResolvedValue(undefined)
+    validateProjectPath.mockResolvedValue({
+      exists: true,
+      isGitRepo: true,
+      isRegistered: false,
+    })
   })
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows empty registered state when listProjects load fails', async () => {
+    listProjects.mockRejectedValueOnce(new Error('offline'))
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('no-projects')).toBeInTheDocument()
+    })
+  })
+
+  it('uses two-click remove confirmation and removes project', async () => {
+    const onProjectsChanged = vi.fn()
+
+    render(AddProjectModal, {
+      props: {
+        dark: false,
+        onProjectsChanged,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('remove-p1')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('remove-p1'))
+    await fireEvent.click(screen.getByTestId('confirm-remove-p1'))
+
+    await waitFor(() => {
+      expect(removeProject).toHaveBeenCalledWith('p1')
+      expect(onProjectsChanged).toHaveBeenCalled()
+    })
+    expect(screen.queryByTestId('remove-p1')).not.toBeInTheDocument()
+  })
+
+  it('handles removeProject failure without crashing', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    removeProject.mockRejectedValueOnce(new Error('permission denied'))
+
+    render(AddProjectModal, {
+      props: {
+        dark: false,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('remove-p1')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('remove-p1'))
+    await fireEvent.click(screen.getByTestId('confirm-remove-p1'))
+
+    await waitFor(() => {
+      expect(removeProject).toHaveBeenCalledWith('p1')
+    })
+    expect(consoleError).toHaveBeenCalled()
+
+    consoleError.mockRestore()
+  })
+
+  it('scans and preselects only unregistered git projects', async () => {
+    const onProjectsChanged = vi.fn()
+    scanDirectory.mockResolvedValueOnce([
+      { name: 'one', path: '/projects/one', has_git: true }, // already registered
+      { name: 'two', path: '/projects/two', has_git: true },
+      { name: 'three', path: '/projects/three', has_git: false },
+    ])
+    registerProjectsBatch.mockResolvedValueOnce([{ success: true }])
+
+    render(AddProjectModal, {
+      props: {
+        dark: false,
+        onProjectsChanged,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('discovered-list')).toBeInTheDocument()
+      expect(screen.getByText('2 new projects')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('register-button')).toHaveTextContent('Register 1')
+
+    await fireEvent.click(screen.getByTestId('register-button'))
+
+    await waitFor(() => {
+      expect(registerProjectsBatch).toHaveBeenCalledWith(['/projects/two'])
+      expect(onProjectsChanged).toHaveBeenCalled()
+      expect(screen.getByTestId('add-success')).toHaveTextContent('1 project added')
+    })
+  })
+
+  it('shows scan error and allows switching to manual mode', async () => {
+    scanDirectory.mockRejectedValueOnce(new Error('scan failed'))
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scan-error')).toBeInTheDocument()
+      expect(screen.getByText('Error: scan failed')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+    expect(screen.getByTestId('manual-path-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mock-directory-browser')).toBeInTheDocument()
+  })
+
+  it('shows all-registered state when scan returns only registered projects', async () => {
+    scanDirectory.mockResolvedValueOnce([
+      { name: 'one', path: '/projects/one', has_git: true },
+    ])
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('all-registered')).toBeInTheDocument()
+    })
+  })
+
+  it('validates manual path and blocks invalid registration', async () => {
+    scanDirectory.mockResolvedValueOnce([])
+    validateProjectPath.mockResolvedValueOnce({
+      exists: false,
+      isGitRepo: false,
+      isRegistered: false,
+    })
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+
+    const input = screen.getByTestId('manual-path-input')
+    await fireEvent.input(input, { target: { value: '/missing/project' } })
+    await fireEvent.blur(input)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-message')).toHaveTextContent('Directory not found')
+    })
+
+    expect(screen.getByTestId('manual-add-button')).toBeDisabled()
+    expect(registerProjectsBatch).not.toHaveBeenCalled()
+  })
+
+  it('adds manual project when validation succeeds', async () => {
+    const onProjectsChanged = vi.fn()
+    scanDirectory.mockResolvedValueOnce([])
+    validateProjectPath.mockResolvedValue({
+      exists: true,
+      isGitRepo: true,
+      isRegistered: false,
+    })
+    registerProjectsBatch.mockResolvedValueOnce([{ success: true }])
+    listProjects
+      .mockResolvedValueOnce([{ id: 'p1', name: 'Project One', path: '/projects/one', activity_state: 'active' }])
+      .mockResolvedValueOnce([
+        { id: 'p1', name: 'Project One', path: '/projects/one', activity_state: 'active' },
+        { id: 'p2', name: 'Project Two', path: '/manual/selected', activity_state: 'recent' },
+      ])
+
+    render(AddProjectModal, {
+      props: {
+        dark: false,
+        onProjectsChanged,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+    await fireEvent.click(screen.getByTestId('mock-directory-select'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('manual-path-input')).toHaveValue('/manual/selected')
+      expect(screen.getByTestId('manual-add-button')).not.toBeDisabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('manual-add-button'))
+
+    await waitFor(() => {
+      expect(registerProjectsBatch).toHaveBeenCalledWith(['/manual/selected'])
+      expect(onProjectsChanged).toHaveBeenCalled()
+      expect(screen.getByTestId('add-success')).toHaveTextContent('1 project added')
+    })
+  })
+
+  it('shows manual error from failed registration result', async () => {
+    scanDirectory.mockResolvedValueOnce([])
+    validateProjectPath.mockResolvedValue({
+      exists: true,
+      isGitRepo: true,
+      isRegistered: false,
+    })
+    registerProjectsBatch.mockResolvedValueOnce([{ success: false, error: 'already tracked' }])
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+    const input = screen.getByTestId('manual-path-input')
+    await fireEvent.input(input, { target: { value: '/manual/dup' } })
+    await fireEvent.blur(input)
+    await waitFor(() => {
+      expect(screen.getByTestId('manual-add-button')).not.toBeDisabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('manual-add-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('manual-error')).toHaveTextContent('already tracked')
+    })
+  })
+
+  it('closes on Escape, done button, and backdrop click only', async () => {
+    const onClose = vi.fn()
+
+    const { container } = render(AddProjectModal, {
+      props: {
+        dark: false,
+        onClose,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('manage-projects-modal')).toBeInTheDocument()
+    })
+
+    const dialog = screen.getByTestId('manage-projects-modal')
+    const backdrop = container.firstElementChild
+
+    await fireEvent.mouseDown(dialog)
+    expect(onClose).not.toHaveBeenCalled()
+
+    await fireEvent.mouseDown(backdrop)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    await fireEvent.click(screen.getByTestId('done-button'))
+    expect(onClose).toHaveBeenCalledTimes(2)
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(3)
   })
 
   it('clears pending remove-confirm timer on unmount', async () => {

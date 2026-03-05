@@ -214,6 +214,24 @@ describe('MeshTab', () => {
     })
   })
 
+  async function renderRuntime(overrides = {}) {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+        ...overrides,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+  }
+
   it('renders availability gate in gate mode before resolving project team state', () => {
     render(MeshTab, {
       props: {
@@ -556,6 +574,283 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent('Role saved to catalog')
     })
     expect(screen.getByTestId('slideover-panel').className).toContain('slideover-panel-exit')
+  })
+
+  it('builds setup from quick preset and initializes with inferred team name', async () => {
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-fullstack-dev'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'my-app-team',
+          lead: expect.objectContaining({
+            cliTool: 'claude',
+          }),
+          agents: expect.arrayContaining([
+            expect.objectContaining({ cliTool: 'codex' }),
+          ]),
+        })
+      )
+    })
+  })
+
+  it('matches teams when lead project path uses windows drive notation', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: 'C:\\projects\\taurhaus' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/mnt/c/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+  })
+
+  it('matches WSL UNC distro-root path to linux root', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { teamName: 'architecture-final', leadProjectPath: '\\\\wsl$\\Ubuntu\\' },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+  })
+
+  it('shows discovery error and allows dismissing the error banner', async () => {
+    coordinationListTeams.mockRejectedValueOnce(new Error('discovery failed'))
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-error')).toHaveTextContent('discovery failed')
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-dismiss-error-message'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('mesh-error')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows error when disband action fails', async () => {
+    coordinationDisbandTeam.mockRejectedValueOnce(new Error('cannot disband'))
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-error')).toHaveTextContent('cannot disband')
+    })
+  })
+
+  it('removes selected runtime agent after confirm', async () => {
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(coordinationRemoveMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
+    })
+  })
+
+  it('shows error when remove member action fails', async () => {
+    coordinationRemoveMember.mockRejectedValueOnce(new Error('remove failed'))
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-error')).toHaveTextContent('remove failed')
+    })
+  })
+
+  it('resume action shows error when backend reports not resumed', async () => {
+    coordinationResumeMember.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      memberName: 'frontend-dev',
+      resumed: false,
+      message: 'resume blocked',
+    })
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-resume'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-error')).toHaveTextContent('resume blocked')
+    })
+  })
+
+  it('stop action from selected lead opens disband confirmation', async () => {
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-lead'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+      expect(screen.getByText('Disband team?')).toBeInTheDocument()
+    })
+  })
+
+  it('supports add-agent role picker locking/unlocking and shows submit errors', async () => {
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'runtime-agent',
+        name: 'Runtime Agent',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: '',
+        instructions: '',
+      },
+    ])
+    coordinationAddAgent.mockRejectedValueOnce(new Error('add failed'))
+
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    })
+
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
+      target: { value: 'runtime-agent' },
+    })
+    expect(screen.getByTestId('mesh-add-agent-tool-select')).toHaveValue('gemini')
+    expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('gemini-3.1-pro')
+
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-unlock-toggle'))
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-tool-select'), {
+      target: { value: 'claude' },
+    })
+    expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('opus')
+
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
+      target: { value: '' },
+    })
+
+    await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
+      target: { value: 'runtime-dev' },
+    })
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
+      target: { value: 'proj-core' },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-error')).toHaveTextContent('add failed')
+    })
+  })
+
+  it('shows capture-role save error for runtime node with array behavioral contract', async () => {
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: '',
+          projectId: 'proj-web',
+          description: '',
+          sessionStatus: 'idle',
+          paneId: '%2',
+          behavioralContract: [
+            null,
+            { text: 'report progress', enabled: true },
+            { rule: 'skip disabled', enabled: false },
+          ],
+          capabilities: [],
+        },
+      ],
+    })
+    upsertRoleTemplate.mockRejectedValueOnce(new Error('save failed'))
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-capture'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-capture-role-form')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-capture-role-include-instructions'))
+    await fireEvent.click(screen.getByTestId('mesh-capture-role-save'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-capture-role-error')).toHaveTextContent('save failed')
+    })
   })
 
   it('cancels capture dialog without saving', async () => {

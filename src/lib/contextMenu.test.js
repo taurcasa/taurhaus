@@ -1,217 +1,225 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte'
+import '@testing-library/jest-dom/vitest'
 
-/**
- * ContextMenu component logic tests.
- *
- * Since Svelte 5 component rendering in vitest/jsdom has SSR issues,
- * we test the behavioral logic (item filtering, keyboard nav, positioning)
- * as pure functions, matching the project's existing test pattern.
- */
+import ContextMenu from './ContextMenu.svelte'
 
-describe('ContextMenu logic', () => {
-  // Helper: simulate the actionable items filter (mirrors component logic)
-  function getActionableItems(items) {
-    return items.filter(i => !i.separator)
-  }
+function createItems(overrides = {}) {
+  const copyAction = vi.fn()
+  const renameAction = vi.fn()
+  const removeAction = vi.fn()
+  const pinAction = vi.fn()
 
-  describe('item filtering', () => {
-    it('filters out separator items for keyboard nav', () => {
-      const items = [
-        { label: 'Copy path', action: vi.fn() },
-        { separator: true },
-        { label: 'Remove', action: vi.fn(), danger: true },
-      ]
-      const actionable = getActionableItems(items)
-      expect(actionable).toHaveLength(2)
-      expect(actionable[0].label).toBe('Copy path')
-      expect(actionable[1].label).toBe('Remove')
-    })
+  const items = [
+    { label: 'Copy path', action: copyAction, icon: '<svg></svg>' },
+    { label: 'Rename', action: renameAction, disabled: true },
+    { separator: true },
+    { label: 'Remove', action: removeAction, danger: true },
+    { label: 'Pin', action: pinAction, keepOpen: true },
+  ]
 
-    it('handles empty items list', () => {
-      const actionable = getActionableItems([])
-      expect(actionable).toHaveLength(0)
-    })
+  return { items, copyAction, renameAction, removeAction, pinAction, ...overrides }
+}
 
-    it('handles all separators', () => {
-      const items = [{ separator: true }, { separator: true }]
-      const actionable = getActionableItems(items)
-      expect(actionable).toHaveLength(0)
-    })
+describe('ContextMenu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  describe('keyboard navigation logic', () => {
-    // Simulate the ArrowDown logic from the component
-    function navigateDown(focusIndex, actionableItems) {
-      let next = focusIndex
-      for (let i = 0; i < actionableItems.length; i++) {
-        next = (next + 1) % actionableItems.length
-        if (!actionableItems[next].disabled) break
-      }
-      return next
-    }
+  it('renders menu items, separator, and dark mode classes', () => {
+    const { items } = createItems()
 
-    function navigateUp(focusIndex, actionableItems) {
-      let prev = focusIndex
-      for (let i = 0; i < actionableItems.length; i++) {
-        prev = prev <= 0 ? actionableItems.length - 1 : prev - 1
-        if (!actionableItems[prev].disabled) break
-      }
-      return prev
-    }
-
-    const items = [
-      { label: 'A', action: vi.fn() },
-      { label: 'B', action: vi.fn() },
-      { label: 'C', action: vi.fn() },
-    ]
-
-    it('ArrowDown from -1 moves to first item', () => {
-      expect(navigateDown(-1, items)).toBe(0)
+    render(ContextMenu, {
+      props: {
+        items,
+        dark: true,
+      },
     })
 
-    it('ArrowDown from first moves to second', () => {
-      expect(navigateDown(0, items)).toBe(1)
-    })
+    const menu = screen.getByTestId('context-menu')
+    expect(menu).toBeInTheDocument()
+    expect(menu.className).toContain('bg-zinc-900')
 
-    it('ArrowDown wraps from last to first', () => {
-      expect(navigateDown(2, items)).toBe(0)
-    })
-
-    it('ArrowUp from first wraps to last', () => {
-      expect(navigateUp(0, items)).toBe(2)
-    })
-
-    it('ArrowUp from second moves to first', () => {
-      expect(navigateUp(1, items)).toBe(0)
-    })
-
-    it('skips disabled items going down', () => {
-      const withDisabled = [
-        { label: 'A', action: vi.fn() },
-        { label: 'B', action: vi.fn(), disabled: true },
-        { label: 'C', action: vi.fn() },
-      ]
-      expect(navigateDown(0, withDisabled)).toBe(2)
-    })
-
-    it('skips disabled items going up', () => {
-      const withDisabled = [
-        { label: 'A', action: vi.fn() },
-        { label: 'B', action: vi.fn(), disabled: true },
-        { label: 'C', action: vi.fn() },
-      ]
-      expect(navigateUp(2, withDisabled)).toBe(0)
-    })
+    expect(screen.getByTestId('menu-item-copy-path')).toBeInTheDocument()
+    expect(screen.getByTestId('menu-item-rename')).toBeDisabled()
+    expect(screen.getByTestId('menu-item-remove').className).toContain('text-danger-500')
+    expect(screen.getAllByRole('separator')).toHaveLength(1)
   })
 
-  describe('viewport positioning logic', () => {
-    // Simulate the positioning logic from the component
-    function adjustPosition(x, y, menuWidth, menuHeight, vw, vh) {
-      let nx = x
-      let ny = y
+  it('adjusts x/y position to remain inside viewport', async () => {
+    const { items } = createItems()
+    const prevWidth = window.innerWidth
+    const prevHeight = window.innerHeight
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
 
-      if (x + menuWidth > vw - 8) {
-        nx = vw - menuWidth - 8
-      }
-      if (y + menuHeight > vh - 8) {
-        ny = vh - menuHeight - 8
-      }
-
-      return {
-        x: Math.max(8, nx),
-        y: Math.max(8, ny),
-      }
-    }
-
-    it('keeps position when menu fits', () => {
-      const result = adjustPosition(100, 200, 160, 120, 1920, 1080)
-      expect(result.x).toBe(100)
-      expect(result.y).toBe(200)
+    const { rerender } = render(ContextMenu, {
+      props: {
+        items,
+        x: 790,
+        y: 590,
+      },
     })
 
-    it('shifts left when overflowing right edge', () => {
-      const result = adjustPosition(1800, 100, 160, 120, 1920, 1080)
-      expect(result.x).toBe(1920 - 160 - 8)
+    const menu = screen.getByTestId('context-menu')
+    const rectSpy = vi
+      .spyOn(menu, 'getBoundingClientRect')
+      .mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 160,
+        bottom: 120,
+        width: 160,
+        height: 120,
+        x: 0,
+        y: 0,
+        toJSON() {},
+      })
+
+    await rerender({ items, x: 790, y: 590 })
+
+    await waitFor(() => {
+      expect(menu.style.left).toBe('632px')
+      expect(menu.style.top).toBe('472px')
     })
 
-    it('shifts up when overflowing bottom edge', () => {
-      const result = adjustPosition(100, 980, 160, 120, 1920, 1080)
-      expect(result.y).toBe(1080 - 120 - 8)
-    })
-
-    it('clamps to minimum of 8px from edge', () => {
-      const result = adjustPosition(-100, -50, 160, 120, 1920, 1080)
-      expect(result.x).toBe(8)
-      expect(result.y).toBe(8)
-    })
+    rectSpy.mockRestore()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: prevWidth })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight })
   })
 
-  describe('item action handling', () => {
-    it('disabled items should not call action', () => {
-      const action = vi.fn()
-      const item = { label: 'Test', action, disabled: true }
+  it('clamps position to minimum 8px when negative coordinates are passed', async () => {
+    const { items } = createItems()
 
-      // Simulate handleItemClick logic
-      if (!item.disabled && item.action) {
-        item.action()
-      }
-
-      expect(action).not.toHaveBeenCalled()
+    const { rerender } = render(ContextMenu, {
+      props: {
+        items,
+        x: -50,
+        y: -30,
+      },
     })
 
-    it('enabled items should call action', () => {
-      const action = vi.fn()
-      const item = { label: 'Test', action, disabled: false }
+    const menu = screen.getByTestId('context-menu')
+    const rectSpy = vi
+      .spyOn(menu, 'getBoundingClientRect')
+      .mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 180,
+        bottom: 140,
+        width: 180,
+        height: 140,
+        x: 0,
+        y: 0,
+        toJSON() {},
+      })
 
-      if (!item.disabled && item.action) {
-        item.action()
-      }
+    await rerender({ items, x: -50, y: -30 })
 
-      expect(action).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(menu.style.left).toBe('8px')
+      expect(menu.style.top).toBe('8px')
     })
 
-    it('danger flag is just metadata, action still fires', () => {
-      const action = vi.fn()
-      const item = { label: 'Remove', action, danger: true }
+    rectSpy.mockRestore()
+  })
 
-      if (!item.disabled && item.action) {
-        item.action()
-      }
+  it('invokes onClose on outside click but not for clicks on menu background', async () => {
+    const { items } = createItems()
+    const onClose = vi.fn()
 
-      expect(action).toHaveBeenCalled()
+    render(ContextMenu, {
+      props: {
+        items,
+        onClose,
+      },
     })
 
-    it('keepOpen items call action but suppress close', () => {
-      const action = vi.fn()
-      const onClose = vi.fn()
-      const item = { label: 'Remove', action, keepOpen: true }
+    await fireEvent.mouseDown(screen.getByTestId('context-menu'))
+    expect(onClose).toHaveBeenCalledTimes(0)
 
-      // Simulate handleItemClick logic (mirrors component)
-      if (!item.disabled && item.action) {
-        item.action()
-      }
-      if (!item.keepOpen) {
-        onClose()
-      }
+    await fireEvent.mouseDown(document.body)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 
-      expect(action).toHaveBeenCalled()
-      expect(onClose).not.toHaveBeenCalled()
+  it('handles disabled and enabled item clicks with keepOpen behavior', async () => {
+    const { items, copyAction, renameAction, pinAction } = createItems()
+    const onClose = vi.fn()
+
+    render(ContextMenu, {
+      props: {
+        items,
+        onClose,
+      },
     })
 
-    it('non-keepOpen items call action and close', () => {
-      const action = vi.fn()
-      const onClose = vi.fn()
-      const item = { label: 'Copy', action }
+    await fireEvent.mouseDown(screen.getByTestId('menu-item-rename'))
+    expect(renameAction).not.toHaveBeenCalled()
 
-      if (!item.disabled && item.action) {
-        item.action()
-      }
-      if (!item.keepOpen) {
-        onClose()
-      }
+    await fireEvent.mouseDown(screen.getByTestId('menu-item-copy-path'))
+    expect(copyAction).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
 
-      expect(action).toHaveBeenCalled()
-      expect(onClose).toHaveBeenCalled()
+    await fireEvent.mouseDown(screen.getByTestId('menu-item-pin'))
+    expect(pinAction).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('supports keyboard navigation, enter selection, and escape close', async () => {
+    const { items, copyAction, removeAction, pinAction } = createItems()
+    const onClose = vi.fn()
+
+    render(ContextMenu, {
+      props: {
+        items,
+        onClose,
+      },
     })
+
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(copyAction).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    await fireEvent.keyDown(window, { key: 'ArrowUp' })
+    await fireEvent.keyDown(window, { key: ' ' })
+
+    expect(pinAction).toHaveBeenCalledTimes(1)
+    expect(removeAction).toHaveBeenCalledTimes(0)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    await fireEvent.keyDown(window, { key: 'ArrowUp' })
+    await fireEvent.keyDown(window, { key: ' ' })
+
+    expect(removeAction).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(2)
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(3)
+  })
+
+  it('skips disabled items while navigating with arrow keys', async () => {
+    const onClose = vi.fn()
+    const first = vi.fn()
+    const third = vi.fn()
+
+    render(ContextMenu, {
+      props: {
+        onClose,
+        items: [
+          { label: 'First', action: first },
+          { label: 'Second', action: vi.fn(), disabled: true },
+          { label: 'Third', action: third },
+        ],
+      },
+    })
+
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(third).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

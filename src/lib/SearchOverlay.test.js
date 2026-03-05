@@ -81,4 +81,193 @@ describe('SearchOverlay', () => {
     })
     expect(screen.queryByText('Old Result')).not.toBeInTheDocument()
   })
+
+  it('shows empty prompt initially and no panel when closed', () => {
+    const { rerender } = render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    expect(screen.getByText('Type to search across all projects')).toBeInTheDocument()
+
+    rerender({ open: false })
+    expect(screen.queryByTestId('search-overlay')).not.toBeInTheDocument()
+  })
+
+  it('shows no-results state when search resolves empty', async () => {
+    search.mockResolvedValue([])
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'nothing' } })
+    await vi.advanceTimersByTimeAsync(150)
+
+    await waitFor(() => {
+      expect(screen.getByText('No matches found')).toBeInTheDocument()
+    })
+  })
+
+  it('handles search rejection by showing no-results state', async () => {
+    search.mockRejectedValue(new Error('boom'))
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'broken' } })
+    await vi.advanceTimersByTimeAsync(150)
+
+    await waitFor(() => {
+      expect(screen.getByText('No matches found')).toBeInTheDocument()
+    })
+  })
+
+  it('clears query/results via clear button when not loading', async () => {
+    search.mockResolvedValue([
+      {
+        entity_type: 'document',
+        project_id: 'project-1',
+        file_path: 'docs/readme.md',
+        title: 'Readme',
+        snippet: 'intro',
+      },
+    ])
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'read' } })
+    await vi.advanceTimersByTimeAsync(150)
+
+    await waitFor(() => {
+      expect(screen.getByText('Readme')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+
+    expect(screen.getByTestId('search-input')).toHaveValue('')
+    expect(screen.getByText('Type to search across all projects')).toBeInTheDocument()
+  })
+
+  it('supports keyboard navigation and enter-to-open for document results', async () => {
+    search.mockResolvedValue([
+      {
+        entity_type: 'document',
+        project_id: 'project-1',
+        file_path: 'src/main.rs',
+        title: 'main.rs',
+        snippet: 'fn main',
+      },
+      {
+        entity_type: 'session',
+        project_id: 'project-1',
+        file_path: null,
+        title: 'Session 12',
+        snippet: 'summary',
+      },
+      {
+        entity_type: 'commit',
+        project_id: 'project-1',
+        file_path: null,
+        title: 'Fix crash',
+        snippet: 'abc123',
+      },
+    ])
+    const onNavigate = vi.fn()
+
+    render(SearchOverlay, {
+      props: { open: true, onNavigate },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'm' } })
+    await vi.advanceTimersByTimeAsync(150)
+    await waitFor(() => {
+      expect(screen.getByText('main.rs')).toBeInTheDocument()
+      expect(screen.getByText('Session 12')).toBeInTheDocument()
+      expect(screen.getByText('Fix crash')).toBeInTheDocument()
+    })
+
+    await fireEvent.keyDown(input, { key: 'ArrowDown' }) // document
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onNavigate).toHaveBeenLastCalledWith({
+      tab: 'files',
+      filePath: 'src/main.rs',
+      projectId: 'project-1',
+    })
+  })
+
+  it('maps session and commit results to overview navigation targets', async () => {
+    search.mockResolvedValue([
+      {
+        entity_type: 'session',
+        project_id: 'project-2',
+        file_path: null,
+        title: 'Session Match',
+        snippet: 'session snippet',
+      },
+      {
+        entity_type: 'commit',
+        project_id: 'project-3',
+        file_path: null,
+        title: 'Commit Match',
+        snippet: 'commit snippet',
+      },
+    ])
+    const onNavigate = vi.fn()
+
+    const { rerender } = render(SearchOverlay, {
+      props: { open: true, onNavigate },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'match' } })
+    await vi.advanceTimersByTimeAsync(150)
+    await waitFor(() => expect(screen.getByText('Session Match')).toBeInTheDocument())
+    await fireEvent.click(screen.getByText('Session Match'))
+    expect(onNavigate).toHaveBeenLastCalledWith({
+      tab: 'overview',
+      section: 'session',
+      projectId: 'project-2',
+    })
+
+    await rerender({ open: true, onNavigate })
+    const reopenedInput = screen.getByTestId('search-input')
+    await fireEvent.input(reopenedInput, { target: { value: 'match' } })
+    await vi.advanceTimersByTimeAsync(150)
+    await waitFor(() => expect(screen.getByText('Commit Match')).toBeInTheDocument())
+    await fireEvent.click(screen.getByText('Commit Match'))
+    expect(onNavigate).toHaveBeenLastCalledWith({
+      tab: 'overview',
+      section: 'commits',
+      projectId: 'project-3',
+    })
+  })
+
+  it('closes on escape and ignores backdrop inner clicks', async () => {
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByTestId('search-overlay')).not.toBeInTheDocument()
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+    const overlay = screen.getByTestId('search-overlay')
+    const panel = overlay.querySelector('div.w-full')
+    expect(panel).toBeTruthy()
+
+    await fireEvent.click(panel)
+    expect(screen.getByTestId('search-overlay')).toBeInTheDocument()
+    await fireEvent.click(overlay)
+    expect(screen.queryByTestId('search-overlay')).not.toBeInTheDocument()
+  })
 })
