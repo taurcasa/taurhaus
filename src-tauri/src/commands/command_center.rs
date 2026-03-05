@@ -20,10 +20,6 @@ pub fn list_cli_sessions(
     provider: State<'_, ProviderState>,
 ) -> Result<Vec<ClaudeSession>, String> {
     if let Some(ref daemon) = provider.daemon {
-        if !daemon.is_connected() {
-            daemon.try_reconnect();
-        }
-
         if daemon.is_connected() {
             let id = "list-sessions";
             let request = protocol::DaemonRequest::new(

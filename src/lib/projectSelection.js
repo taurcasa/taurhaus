@@ -1,5 +1,24 @@
 import { formatUserFacingError } from './format.js'
 
+const PROJECT_SECTION_TIMEOUT_MS = 5000
+
+function withTimeout(promise, timeoutMs, section) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise
+  }
+
+  let timerId
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      reject(new Error(`${section} request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timerId) clearTimeout(timerId)
+  })
+}
+
 /**
  * Normalize unknown errors for degraded project-load sections.
  */
@@ -10,9 +29,14 @@ export function projectLoadErrorMessage(err) {
 /**
  * Resolve a project-load section and fall back to a safe value on error.
  */
-export async function withFallback(section, promise, fallback) {
+export async function withFallback(
+  section,
+  promise,
+  fallback,
+  timeoutMs = PROJECT_SECTION_TIMEOUT_MS
+) {
   try {
-    const value = await promise
+    const value = await withTimeout(promise, timeoutMs, section)
     return { ok: true, section, value, message: null }
   } catch (err) {
     return {
