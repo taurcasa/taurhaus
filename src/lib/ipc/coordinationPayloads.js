@@ -1,12 +1,4 @@
-function normalizeBehavioralContractPayload(value) {
-  if (!value || typeof value !== 'object') return null
-
-  return {
-    communication: Array.isArray(value.communication) ? value.communication : [],
-    execution: Array.isArray(value.execution) ? value.execution : [],
-    escalation: Array.isArray(value.escalation) ? value.escalation : [],
-  }
-}
+import { BEHAVIORAL_CONTRACT_MODES, normalizeBehavioralContract } from './normalize.js'
 
 function normalizeAgentSetupPayload(value) {
   if (!value || typeof value !== 'object') return value
@@ -15,7 +7,9 @@ function normalizeAgentSetupPayload(value) {
     ...value,
     roleId: value.roleId ?? null,
     instructions: value.instructions ?? null,
-    behavioralContract: normalizeBehavioralContractPayload(value.behavioralContract),
+    behavioralContract: normalizeBehavioralContract(value.behavioralContract, {
+      mode: BEHAVIORAL_CONTRACT_MODES.OPTIONAL_OBJECT,
+    }),
     capabilities: Array.isArray(value.capabilities) ? value.capabilities : null,
   }
 }

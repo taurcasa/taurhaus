@@ -1,49 +1,4 @@
-function normalizeBehavioralContractInput(value) {
-  if (Array.isArray(value)) {
-    const execution = value
-      .map((entry) => {
-        if (typeof entry === 'string') return entry.trim()
-        if (!entry || typeof entry !== 'object') return ''
-        if (entry.enabled === false) return ''
-        return String(entry.rule ?? entry.text ?? '').trim()
-      })
-      .filter(Boolean)
-
-    if (execution.length === 0) {
-      return {
-        communication: [],
-        execution: ['Execute assigned tasks and report status clearly.'],
-        escalation: [],
-      }
-    }
-
-    return {
-      communication: [],
-      execution,
-      escalation: [],
-    }
-  }
-
-  const communication = Array.isArray(value?.communication)
-    ? value.communication.map((line) => String(line ?? '').trim()).filter(Boolean)
-    : []
-  const execution = Array.isArray(value?.execution)
-    ? value.execution.map((line) => String(line ?? '').trim()).filter(Boolean)
-    : []
-  const escalation = Array.isArray(value?.escalation)
-    ? value.escalation.map((line) => String(line ?? '').trim()).filter(Boolean)
-    : []
-
-  if (communication.length || execution.length || escalation.length) {
-    return { communication, execution, escalation }
-  }
-
-  return {
-    communication: [],
-    execution: ['Execute assigned tasks and report status clearly.'],
-    escalation: [],
-  }
-}
+import { BEHAVIORAL_CONTRACT_MODES, normalizeBehavioralContract } from './normalize.js'
 
 export function normalizeRoleTemplateInput(roleData) {
   const source =
@@ -98,7 +53,9 @@ export function normalizeRoleTemplateInput(roleData) {
       ),
     },
     instructions: String(source.instructions ?? '').trim(),
-    behavioralContract: normalizeBehavioralContractInput(source.behavioralContract),
+    behavioralContract: normalizeBehavioralContract(source.behavioralContract, {
+      mode: BEHAVIORAL_CONTRACT_MODES.TEMPLATE_INPUT,
+    }),
     capabilities: capabilities.length > 0 ? capabilities : [roleKind === 'lead' ? 'orchestration' : 'implementation'],
     constraints: {
       minInstances: roleKind === 'lead' ? 1 : minInstances,

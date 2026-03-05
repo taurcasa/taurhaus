@@ -6,7 +6,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::commands;
 use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
 use crate::session_scanner::ClaudeSession;
-use crate::{daemon, db, fs, models, provider, services, ProviderState, WatcherState};
+use crate::{
+    daemon, db, fs, models, provider, services, watch_targets, ProviderState, WatcherState,
+};
 
 /// Extract the WSL home directory from a Linux path.
 ///
@@ -86,34 +88,29 @@ fn build_daemon_watch_plan_at(
     thresholds: &models::ActivityThresholds,
     now: chrono::DateTime<chrono::Utc>,
 ) -> DaemonWatchPlan {
+    let planned_targets = watch_targets::plan_activity_watch_targets_at(projects, thresholds, now);
     let mut project_targets = Vec::new();
 
-    for project in projects {
-        if !provider::path::is_wsl_path(&project.path) {
+    for target in planned_targets {
+        if !provider::path::is_wsl_path(&target.project_path) {
+            continue;
+        }
+        if !target.should_watch {
             continue;
         }
 
-        let activity_state =
-            models::ActivityState::compute(project.last_activity_at.as_deref(), thresholds, now);
-        if !matches!(
-            activity_state,
-            models::ActivityState::Active | models::ActivityState::Recent
-        ) {
-            continue;
-        }
-
-        let Some(linux_path) = provider::path::wsl_unc_to_linux(&project.path) else {
+        let Some(linux_path) = provider::path::wsl_unc_to_linux(&target.project_path) else {
             tracing::warn!(
-                project = project.name,
-                path = %project.path,
+                project = target.project_name,
+                path = %target.project_path,
                 "Cannot convert WSL path to Linux while planning daemon watches"
             );
             continue;
         };
 
         project_targets.push(DaemonWatchTarget {
-            project_id: project.id.clone(),
-            project_name: project.name.clone(),
+            project_id: target.project_id,
+            project_name: target.project_name,
             linux_path,
         });
     }
