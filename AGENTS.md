@@ -13,6 +13,15 @@ Desktop tool for AI project management. Tauri 2 + Svelte 5 + Rust backend + Tail
 
 Only modify files directly related to your assigned task. Do NOT refactor, clean up, or "improve" code you weren't asked to touch.
 
+## Task Assignment Expectations
+
+Every task assignment should include explicit scope boundaries:
+
+- `In scope`: what to change for this task
+- `Out of scope`: what must not be changed as part of this task
+
+If scope is unclear, default to the narrowest interpretation that satisfies the acceptance criteria.
+
 ## Pre-Completion Quality Gate
 
 **Before reporting any implementation task as done**, run:
@@ -25,6 +34,20 @@ This runs `cargo check --tests`, frontend typecheck, and frontend unit tests. It
 
 In team/agent workflows, this is the only verification command agents should run.
 Do **NOT** run `just check`; team-lead runs the full gate in serialized mode.
+
+Completion criteria in team/agent workflows:
+
+- If `just check-quick` passes on files you touched, report task complete.
+- If `just check-quick` fails on files you did **not** touch, report the failure to team-lead and mark your task complete anyway.
+- The full quality gate (`just check`) is the team-lead's responsibility.
+
+## Sprint-Start Preflight
+
+At sprint start, confirm these operating rules:
+
+1. Canonical verification lane: `just check-quick`.
+2. Full-gate owner: team-lead runs `just check`.
+3. Out-of-scope failure rule: report unrelated failures and move on.
 
 ## Code Standards
 
@@ -125,10 +148,10 @@ src-tauri/src/coordination/
 
 ## Context Compaction Recovery
 
-If you experience a context compaction and find yourself idle with no active task, **immediately report to the team lead** via mesh and ask whether idle is the correct state. Do not assume you are done — compaction may have dropped your task context.
+If you experience context compaction and either (a) have no new unread messages or (b) are unclear about your current task, **immediately message team-lead and ask for your current assignment**. Do not assume you are done — compaction may have dropped your active task context.
 
 ```
-mesh send --team taurhaus-team --to team-lead "Context compacted. I'm currently idle — is that correct or do I have an active task?"
+mesh send --team taurhaus-team --to team-lead "Context compacted. I have no clear active assignment after compaction. What task should I work on now?"
 ```
 
 ## Mesh Integration

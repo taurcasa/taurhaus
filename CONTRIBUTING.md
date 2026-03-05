@@ -146,6 +146,7 @@ Each regression test must document what broke and why (commit reference if avail
 
 ### Commit Messages
 
+- Template: `<type>(<scope>): <summary> (#task-id)`
 - Use imperative mood: "Add feature" not "Added feature"
 - First line: concise summary (under 72 characters)
 - Optional body: explain "why" not "what"
