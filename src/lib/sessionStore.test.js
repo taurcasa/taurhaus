@@ -23,6 +23,8 @@ describe('sessionStore', () => {
     vi.useRealTimers()
   })
 
+  // Regression: when daemon `sessions-updated` events are delayed/missing,
+  // polling fallback must keep session indicators updating instead of stalling.
   // AC1: Polling calls listClaudeSessions every 500ms
   it('polls listClaudeSessions every 500ms after startPolling', async () => {
     ipc.listClaudeSessions.mockResolvedValue([])
@@ -455,6 +457,8 @@ describe('sessionStore', () => {
   })
 
   it('normalizes camelCase session payloads from IPC polling', async () => {
+    // Regression: IPC normalization drift returned camelCase fields while
+    // sessionStore consumed snake_case only, causing sessions to be dropped.
     ipc.listClaudeSessions.mockResolvedValue([
       {
         pid: 1600,
@@ -480,6 +484,8 @@ describe('sessionStore', () => {
   })
 
   it('normalizes camelCase session payloads from daemon updates', () => {
+    // Regression: daemon bridge payloads with camelCase fields were not
+    // normalized before grouping/tracking, hiding sidebar indicators.
     store.applyDaemonSessionUpdate({
       version: 2,
       sessions: [
@@ -502,5 +508,30 @@ describe('sessionStore', () => {
     expect(session.project_path).toBe('/proj-daemon-camel')
     expect(session.cli_tool).toBe('gemini')
     expect(session.tmux_pane).toBe('%10')
+  })
+
+  it('applies polling updates even without daemon bridge events', async () => {
+    // Regression: indicators could stay stale when bridge events were absent;
+    // polling fallback must still hydrate and refresh sessions.
+    ipc.listClaudeSessions
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          pid: 1800,
+          project_path: '/proj-fallback',
+          state: 'active',
+          tty: '/dev/pts/11',
+          args: 'claude',
+          cli_tool: 'claude',
+        },
+      ])
+
+    store.startPolling()
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSessionForProject('/proj-fallback')).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionForProject('/proj-fallback')).toBeTruthy()
   })
 })
