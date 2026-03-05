@@ -59,14 +59,11 @@ fn initialize_paths_and_logging(
     let data_dir = resolve_app_data_dir(app.handle().clone())?;
     std::fs::create_dir_all(&data_dir)?;
 
-    let log_path = data_dir.join("taurhaus.log");
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_path)?;
+    let log_path = commands::logging::jsonl_log_path(&data_dir);
+    let log_state = commands::logging::LogFileState::new(log_path.clone())?;
+    commands::logging::install_global_sink(&log_state);
     tracing::info!(?log_path, "Log file ready");
-    app.manage(commands::logging::LogFileState(Mutex::new(log_file)));
+    app.manage(log_state);
 
     Ok(SetupPaths {
         db_path: data_dir.join("taurhaus.db"),

@@ -5,31 +5,45 @@
 //! platforms — on Windows it's spawned via `wsl.exe`, on macOS/Linux it runs
 //! natively.
 //!
-//! Bootstrap logs are written to `taurhaus.log` via `bootstrap_log` so they're
-//! visible on Windows (where Rust tracing to stderr is invisible in GUI apps).
+//! Bootstrap events are emitted through the structured JSONL sink so they're
+//! persisted even when stderr isn't visible in GUI apps.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::provider::daemon_client::DaemonProvider;
+use serde_json::{Map, Value};
 
-/// Write a timestamped line to the app log file.
-/// Dual-writes to both tracing (for dev builds) and the log file (for Windows).
 fn blog(log_path: &Path, msg: &str) {
     tracing::info!("{msg}");
-    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(log_path) {
-        let ts = chrono::Local::now().format("%H:%M:%S%.3f");
-        let _ = writeln!(f, "[{ts}] [INF] [bootstrap] {msg}");
-    }
+    let mut fields = Map::new();
+    fields.insert(
+        "log_path".to_string(),
+        Value::String(log_path.display().to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "info",
+        "bootstrap",
+        "daemon.bootstrap",
+        Some(msg.to_string()),
+        fields,
+    );
 }
 
 fn bwarn(log_path: &Path, msg: &str) {
     tracing::warn!("{msg}");
-    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(log_path) {
-        let ts = chrono::Local::now().format("%H:%M:%S%.3f");
-        let _ = writeln!(f, "[{ts}] [WRN] [bootstrap] {msg}");
-    }
+    let mut fields = Map::new();
+    fields.insert(
+        "log_path".to_string(),
+        Value::String(log_path.display().to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "warn",
+        "bootstrap",
+        "daemon.bootstrap",
+        Some(msg.to_string()),
+        fields,
+    );
 }
 
 /// Validate a WSL distro name against a safe pattern.
@@ -86,7 +100,7 @@ pub fn is_native_daemon() -> bool {
 ///
 /// **macOS/Linux**: The daemon runs natively. `wsl_distro` is ignored.
 ///
-/// `log_path` is the path to `taurhaus.log` for bootstrap logging.
+/// `log_path` is the path to `taurhaus.log.jsonl` for bootstrap logging context.
 pub fn try_connect_daemon(
     wsl_distro: Option<&str>,
     port: u16,
@@ -518,9 +532,12 @@ fn health_check_log_path() -> PathBuf {
     if let Some(appdata) = std::env::var_os("APPDATA") {
         PathBuf::from(appdata)
             .join("com.taurhaus.dev")
-            .join("taurhaus.log")
+            .join(crate::commands::logging::JSONL_LOG_FILE_NAME)
     } else {
-        PathBuf::from("/tmp/taurhaus-bootstrap.log")
+        PathBuf::from(format!(
+            "/tmp/{}",
+            crate::commands::logging::JSONL_LOG_FILE_NAME
+        ))
     }
 }
 

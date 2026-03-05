@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::State;
@@ -13,6 +12,7 @@ use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
 use crate::session_scanner::{ClaudeSession, SessionState};
 use crate::ProviderState;
+use serde_json::{Map, Value};
 
 static SESSION_ACTIVITY_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
 
@@ -207,24 +207,33 @@ fn launch_cli_session_impl(
 ) -> Result<protocol::LaunchSessionResult, String> {
     let tool = cli_tool.unwrap_or(CliTool::Claude);
 
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(
-            f,
-            "[cmd-center] launch_cli_session: project_id={project_id} mode={mode:?} tool={tool:?}"
-        );
-    }
+    let mut launch_fields = Map::new();
+    launch_fields.insert("project_id".to_string(), Value::String(project_id.clone()));
+    launch_fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
+    launch_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+    log_file.emit(
+        "info",
+        "command_center",
+        "command_center.launch.start",
+        Some("Launching CLI session".to_string()),
+        launch_fields,
+    );
 
     let project_path = resolve_project_path(db, &project_id)?;
 
     let linux_path =
         crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(
-            f,
-            "[cmd-center] launch: db_path={project_path} linux_path={linux_path}"
-        );
-    }
+    let mut path_fields = Map::new();
+    path_fields.insert("db_path".to_string(), Value::String(project_path.clone()));
+    path_fields.insert("linux_path".to_string(), Value::String(linux_path.clone()));
+    log_file.emit(
+        "debug",
+        "command_center",
+        "command_center.launch.path_resolved",
+        Some("Resolved project path for launch".to_string()),
+        path_fields,
+    );
 
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
@@ -246,13 +255,22 @@ fn launch_cli_session_impl(
                 Ok(response) if response.is_ok() => {
                     let result = decode_daemon_launch_result(response.result)?;
 
-                    if let Ok(mut f) = log_file.0.lock() {
-                        let _ = writeln!(
-                            f,
-                            "[cmd-center] launch SUCCESS via daemon: window={} pane={}",
-                            result.tmux_window, result.tmux_pane
-                        );
-                    }
+                    let mut success_fields = Map::new();
+                    success_fields.insert(
+                        "tmux_window".to_string(),
+                        Value::String(result.tmux_window.clone()),
+                    );
+                    success_fields.insert(
+                        "tmux_pane".to_string(),
+                        Value::String(result.tmux_pane.clone()),
+                    );
+                    log_file.emit(
+                        "info",
+                        "command_center",
+                        "command_center.launch.daemon_success",
+                        Some("Launch succeeded via daemon".to_string()),
+                        success_fields,
+                    );
 
                     let tmux_session = result.tmux_session.as_deref().unwrap_or(TMUX_SESSION_NAME);
                     let ts = load_terminal_settings(db);
@@ -271,24 +289,40 @@ fn launch_cli_session_impl(
                         .error
                         .map(|e| e.message)
                         .unwrap_or_else(|| "Unknown error".to_string());
-                    if let Ok(mut f) = log_file.0.lock() {
-                        let _ = writeln!(f, "[cmd-center] launch FAILED via daemon: {msg}");
-                    }
+                    let mut fail_fields = Map::new();
+                    fail_fields.insert("error".to_string(), Value::String(msg.clone()));
+                    log_file.emit(
+                        "warn",
+                        "command_center",
+                        "command_center.launch.daemon_failed",
+                        Some("Launch failed via daemon".to_string()),
+                        fail_fields,
+                    );
                     return Err(format!("Failed to launch session: {msg}"));
                 }
                 Err(e) => {
-                    if let Ok(mut f) = log_file.0.lock() {
-                        let _ = writeln!(f, "[cmd-center] launch: daemon unreachable: {e}");
-                    }
+                    let mut unreachable_fields = Map::new();
+                    unreachable_fields.insert("error".to_string(), Value::String(e.to_string()));
+                    log_file.emit(
+                        "warn",
+                        "command_center",
+                        "command_center.launch.daemon_unreachable",
+                        Some("Daemon unreachable during launch".to_string()),
+                        unreachable_fields,
+                    );
                     tracing::warn!(error = %e, "Daemon unreachable for launch");
                 }
             }
         }
     }
 
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] launch: falling back to direct tmux");
-    }
+    log_file.emit(
+        "info",
+        "command_center",
+        "command_center.launch.local_fallback",
+        Some("Falling back to local tmux launch".to_string()),
+        Map::new(),
+    );
     let ts = load_terminal_settings(db);
     let tool_cmd = resolve_configured_tool_command(&ts.cli_commands, tool, mode);
     let (session, window, pane) = crate::session_scanner::control::launch_in_tmux_with_layout(
@@ -376,9 +410,24 @@ pub fn navigate_to_session(
 ) -> Result<(), String> {
     let should_open = open_terminal.unwrap_or(false);
 
-    if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] navigate_to_session: session={tmux_session} window={tmux_window} pane={tmux_pane} open={should_open}");
-    }
+    let mut navigation_fields = Map::new();
+    navigation_fields.insert(
+        "tmux_session".to_string(),
+        Value::String(tmux_session.clone()),
+    );
+    navigation_fields.insert(
+        "tmux_window".to_string(),
+        Value::String(tmux_window.clone()),
+    );
+    navigation_fields.insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+    navigation_fields.insert("open_terminal".to_string(), Value::Bool(should_open));
+    log_file.emit(
+        "info",
+        "command_center",
+        "command_center.navigate",
+        Some("Navigate to tmux session".to_string()),
+        navigation_fields,
+    );
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "navigate-session";
@@ -507,7 +556,7 @@ fn decode_daemon_launch_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::sync::Mutex;
     use std::thread;
@@ -554,12 +603,8 @@ mod tests {
 
     fn setup_log_file() -> (LogFileState, NamedTempFile) {
         let tmp = NamedTempFile::new().expect("temp log");
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(tmp.path())
-            .expect("open log");
-        (LogFileState(Mutex::new(file)), tmp)
+        let state = LogFileState::new(tmp.path().to_path_buf()).expect("create log sink");
+        (state, tmp)
     }
 
     fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
