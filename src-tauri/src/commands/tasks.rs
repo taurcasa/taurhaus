@@ -96,9 +96,10 @@ pub fn get_project_tasks(
     let normalized_path =
         crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let db_tasks =
-        crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path).sanitize_err()?;
+    let db_tasks = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::task_queries::get_tasks_for_project(&conn, &normalized_path).sanitize_err()?
+    };
 
     let tasks: Vec<crate::task_scanner::UnifiedTask> =
         db_tasks.into_iter().map(persisted_to_unified).collect();
@@ -122,20 +123,26 @@ pub fn get_task_detail(
     let normalized_path =
         crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let db_task = match crate::db::task_queries::get_task_for_project_by_identity(
-        &conn,
-        &normalized_path,
-        &source,
-        &source_key,
-        &task_id,
-    )
-    .sanitize_err()?
-    {
-        Some(task) => task,
-        None => {
-            find_archived_task_by_identity(&conn, &normalized_path, &source, &source_key, &task_id)?
-                .ok_or_else(|| format!("Task not found: {source}/{source_key}/{task_id}"))?
+    let db_task = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        match crate::db::task_queries::get_task_for_project_by_identity(
+            &conn,
+            &normalized_path,
+            &source,
+            &source_key,
+            &task_id,
+        )
+        .sanitize_err()?
+        {
+            Some(task) => task,
+            None => find_archived_task_by_identity(
+                &conn,
+                &normalized_path,
+                &source,
+                &source_key,
+                &task_id,
+            )?
+            .ok_or_else(|| format!("Task not found: {source}/{source_key}/{task_id}"))?,
         }
     };
 
@@ -220,9 +227,11 @@ pub fn get_archived_sessions(
         crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
     let provider = providers.resolve(&project_path);
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let db_tasks = crate::db::task_queries::get_archived_tasks_for_project(&conn, &normalized_path)
-        .sanitize_err()?;
+    let db_tasks = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::task_queries::get_archived_tasks_for_project(&conn, &normalized_path)
+            .sanitize_err()?
+    };
 
     if db_tasks.is_empty() {
         return Ok(crate::task_scanner::ArchivedSessionsResult {
@@ -293,8 +302,8 @@ fn build_archived_session(
     // Query git for commits and files changed during the session time range.
     let (commit_count, file_count) = match (&started_at, &ended_at) {
         (Some(s), Some(e)) => provider
-            .commits_in_range(project_path, s, e)
-            .map(|(c, f)| (c.len(), f.len()))
+            .commits_in_range(project_path, s, e, None)
+            .map(|result| (result.commits.len(), result.files.len()))
             .unwrap_or_else(|err| {
                 enrichment_warnings.push(format!(
                     "Failed to enrich git counts for session {} in [{s}..{e}]: {err}",
@@ -495,10 +504,20 @@ pub fn get_commits_in_range(
     before: String,
 ) -> Result<crate::daemon::protocol::GitCommitsInRangeResult, String> {
     let provider = providers.resolve(&project_path);
-    let (commits, files) = provider
-        .commits_in_range(&project_path, &after, &before)
+    let range = provider
+        .commits_in_range(
+            &project_path,
+            &after,
+            &before,
+            Some(crate::git::commits::DEFAULT_RANGE_QUERY_COMMIT_CAP),
+        )
         .map_err(|e| sanitize_error(&e.to_string()))?;
-    Ok(crate::daemon::protocol::GitCommitsInRangeResult { commits, files })
+    Ok(crate::daemon::protocol::GitCommitsInRangeResult {
+        commits: range.commits,
+        files: range.files,
+        truncated: range.truncated,
+        total_count: range.total_count,
+    })
 }
 
 /// Convert a persisted DB task row to a UnifiedTask.

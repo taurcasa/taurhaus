@@ -164,6 +164,15 @@ mod tests {
         }
     }
 
+    fn explain_plan_details(conn: &Connection, sql: &str, project_id: &str) -> Vec<String> {
+        let explain_sql = format!("EXPLAIN QUERY PLAN {sql}");
+        let mut stmt = conn.prepare(&explain_sql).unwrap();
+        let rows = stmt
+            .query_map([project_id], |row| row.get::<_, String>(3))
+            .unwrap();
+        rows.collect::<Result<Vec<_>, _>>().unwrap()
+    }
+
     // AC1: insert_session stores all fields correctly
     #[test]
     fn insert_and_get_session() {
@@ -261,6 +270,30 @@ mod tests {
 
         let page3 = list_sessions(&conn, "p1", 2, 4).unwrap();
         assert_eq!(page3.len(), 1);
+    }
+
+    #[test]
+    fn list_sessions_query_plan_avoids_temp_btree_sort() {
+        let (conn, _tmp) = test_db();
+        seed_project(&conn, "p1");
+
+        insert_session(&conn, &make_session("s1", "p1", "2026-02-17")).unwrap();
+        insert_session(&conn, &make_session("s2", "p1", "2026-02-18")).unwrap();
+
+        let details = explain_plan_details(
+            &conn,
+            "SELECT id, project_id, date, summary
+             FROM sessions WHERE project_id = ?1
+             ORDER BY date DESC
+             LIMIT 50 OFFSET 0",
+            "p1",
+        );
+        assert!(
+            details.iter().all(|detail| !detail
+                .to_ascii_uppercase()
+                .contains("USE TEMP B-TREE FOR ORDER BY")),
+            "query plan should avoid temp sort btree, got: {details:?}"
+        );
     }
 
     // AC5: session_exists_by_file_path prevents duplicate imports

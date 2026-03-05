@@ -35,6 +35,12 @@ impl DaemonEventListener {
                 format!("Event listener connect to {addr} failed: {e}"),
             ))
         })?;
+        stream.set_nodelay(true).map_err(|e| {
+            AppError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Event listener TCP_NODELAY setup failed for {addr}: {e}"),
+            ))
+        })?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
         // Read auth token (falls back to WSL on Windows)
@@ -269,6 +275,7 @@ mod tests {
 
         let mut listener =
             DaemonEventListener::connect(&format!("127.0.0.1:{}", daemon.port), tx).unwrap();
+        assert!(listener.stream.nodelay().unwrap());
         let result = listener.watch("p1", dir.path().to_str().unwrap());
         assert!(result.is_ok());
 

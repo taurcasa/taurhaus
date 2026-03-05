@@ -9,7 +9,9 @@ use chrono::{DateTime, Utc};
 
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
 use crate::errors::AppError;
-use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitStatus};
+use crate::models::{
+    Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
+};
 use crate::provider::path as wsl_path;
 use crate::provider::ProjectProvider;
 
@@ -55,14 +57,25 @@ impl DaemonProvider {
         crate::daemon::auth::read_auth_token()
     }
 
-    /// Create a new DaemonProvider connected to the given address.
-    pub fn connect(addr: &str) -> Result<Self, AppError> {
+    fn connect_stream(addr: &str) -> Result<TcpStream, AppError> {
         let stream = TcpStream::connect(addr).map_err(|e| {
             AppError::Io(std::io::Error::new(
                 e.kind(),
                 format!("Failed to connect to daemon at {addr}: {e}"),
             ))
         })?;
+        stream.set_nodelay(true).map_err(|e| {
+            AppError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to configure daemon TCP_NODELAY at {addr}: {e}"),
+            ))
+        })?;
+        Ok(stream)
+    }
+
+    /// Create a new DaemonProvider connected to the given address.
+    pub fn connect(addr: &str) -> Result<Self, AppError> {
+        let stream = Self::connect_stream(addr)?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
         Ok(Self {
@@ -141,12 +154,7 @@ impl DaemonProvider {
     /// Replaces the TCP stream and reader. On success, marks the provider
     /// as connected.
     pub fn reconnect(&self) -> Result<(), AppError> {
-        let stream = TcpStream::connect(&self.addr).map_err(|e| {
-            AppError::Io(std::io::Error::new(
-                e.kind(),
-                format!("Failed to reconnect to daemon at {}: {e}", self.addr),
-            ))
-        })?;
+        let stream = Self::connect_stream(&self.addr)?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
         match self.conn.lock() {
@@ -387,7 +395,8 @@ impl ProjectProvider for DaemonProvider {
         project_path: &str,
         after: &str,
         before: &str,
-    ) -> Result<(Vec<Commit>, Vec<String>), AppError> {
+        commit_limit: Option<usize>,
+    ) -> Result<GitRangeResult, AppError> {
         let path = Self::translate_path(project_path);
         let result: protocol::GitCommitsInRangeResult = self.call(
             protocol::method::GIT_COMMITS_IN_RANGE,
@@ -395,10 +404,16 @@ impl ProjectProvider for DaemonProvider {
                 path,
                 after: after.to_string(),
                 before: before.to_string(),
+                commit_limit,
             },
             GIT_TIMEOUT,
         )?;
-        Ok((result.commits, result.files))
+        Ok(GitRangeResult {
+            commits: result.commits,
+            files: result.files,
+            truncated: result.truncated,
+            total_count: result.total_count,
+        })
     }
 
     fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError> {
@@ -761,6 +776,16 @@ mod tests {
         let daemon = start_daemon();
         let port = daemon.port;
         let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
+        {
+            let conn = provider.conn.lock().unwrap();
+            let stream = conn
+                .as_ref()
+                .expect("connection")
+                .stream
+                .try_clone()
+                .unwrap();
+            assert!(stream.nodelay().unwrap());
+        }
         assert!(provider.ping().is_ok());
 
         // Kill daemon — wait for handler to exit
@@ -780,6 +805,16 @@ mod tests {
         // Reconnect should succeed
         assert!(provider.reconnect().is_ok());
         assert!(provider.is_connected());
+        {
+            let conn = provider.conn.lock().unwrap();
+            let stream = conn
+                .as_ref()
+                .expect("connection")
+                .stream
+                .try_clone()
+                .unwrap();
+            assert!(stream.nodelay().unwrap());
+        }
         assert!(provider.ping().is_ok());
 
         daemon2.shutdown.store(true, Ordering::Relaxed);

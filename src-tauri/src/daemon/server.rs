@@ -50,6 +50,10 @@ fn epoch_secs() -> u64 {
         .as_secs()
 }
 
+fn configure_accepted_stream(stream: &TcpStream) -> std::io::Result<()> {
+    stream.set_nodelay(true)
+}
+
 /// Run the daemon server. Blocks until `shutdown` is set to true or idle timeout elapses.
 pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
@@ -82,6 +86,10 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
+                if let Err(e) = configure_accepted_stream(&stream) {
+                    tracing::warn!(%addr, error = %e, "failed to configure accepted stream");
+                    continue;
+                }
                 tracing::info!(%addr, "client connected");
                 last_activity.store(epoch_secs(), Ordering::Relaxed);
                 let shutdown_clone = shutdown.clone();
@@ -419,6 +427,18 @@ mod tests {
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         serde_json::from_str(&line).unwrap()
+    }
+
+    #[test]
+    fn configure_accepted_stream_enables_tcp_nodelay() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let client = std::thread::spawn(move || TcpStream::connect(addr).unwrap());
+        let (stream, _) = listener.accept().unwrap();
+        let _client = client.join().unwrap();
+
+        configure_accepted_stream(&stream).unwrap();
+        assert!(stream.nodelay().unwrap());
     }
 
     #[test]

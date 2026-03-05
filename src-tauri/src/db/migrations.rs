@@ -40,6 +40,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "task_source_key_identity",
         include_str!("migrations/009_task_source_key_identity.sql"),
     ),
+    (
+        10,
+        "session_and_task_timeline_indexes",
+        include_str!("migrations/010_session_and_task_timeline_indexes.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

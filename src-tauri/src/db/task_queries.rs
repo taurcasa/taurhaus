@@ -396,6 +396,15 @@ mod tests {
         format!("{source}-default")
     }
 
+    fn explain_plan_details(conn: &Connection, sql: &str, project_path: &str) -> Vec<String> {
+        let explain_sql = format!("EXPLAIN QUERY PLAN {sql}");
+        let mut stmt = conn.prepare(&explain_sql).unwrap();
+        let rows = stmt
+            .query_map([project_path], |row| row.get::<_, String>(3))
+            .unwrap();
+        rows.collect::<Result<Vec<_>, _>>().unwrap()
+    }
+
     #[test]
     fn insert_and_retrieve_round_trip() {
         let (conn, _tmp) = test_db();
@@ -1119,5 +1128,25 @@ mod tests {
         assert!(sources.contains(&"claude"));
         assert!(sources.contains(&"codex"));
         assert!(sources.contains(&"gemini"));
+    }
+
+    #[test]
+    fn archived_query_plan_avoids_temp_btree_sort() {
+        let (conn, _tmp) = test_db();
+        let details = explain_plan_details(
+            &conn,
+            "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+             FROM tasks
+             WHERE project_path = ?1 AND archived_at IS NOT NULL
+             ORDER BY session_id, source, source_key, source_task_id",
+            "/projects/foo",
+        );
+
+        assert!(
+            details.iter().all(|detail| !detail
+                .to_ascii_uppercase()
+                .contains("USE TEMP B-TREE FOR ORDER BY")),
+            "query plan should avoid temp sort btree, got: {details:?}"
+        );
     }
 }
