@@ -54,8 +54,8 @@ describe('sessionStore', () => {
 
     const sessions = store.getSessions()
     expect(sessions.size).toBe(2)
-    expect(sessions.get('/home/user/proj-a')).toEqual([mockSessions[0]])
-    expect(sessions.get('/home/user/proj-b')).toEqual([mockSessions[1]])
+    expect(sessions.get('/home/user/proj-a')?.[0]).toMatchObject(mockSessions[0])
+    expect(sessions.get('/home/user/proj-b')?.[0]).toMatchObject(mockSessions[1])
   })
 
   // AC3: getSessionForProject returns first matching session or null
@@ -66,7 +66,7 @@ describe('sessionStore', () => {
 
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(store.getSessionForProject('/home/user/proj-a')).toEqual(session)
+    expect(store.getSessionForProject('/home/user/proj-a')).toMatchObject(session)
     expect(store.getSessionForProject('/home/user/nonexistent')).toBeNull()
   })
 
@@ -452,5 +452,55 @@ describe('sessionStore', () => {
     const session = store.getSessionForProject('/proj-array')
     expect(session).toBeTruthy()
     expect(session.state).toBe('idle')
+  })
+
+  it('normalizes camelCase session payloads from IPC polling', async () => {
+    ipc.listClaudeSessions.mockResolvedValue([
+      {
+        pid: 1600,
+        projectPath: '/proj-camel',
+        state: 'active',
+        tty: '/dev/pts/9',
+        args: 'codex',
+        cliTool: 'codex',
+        tmuxSession: 'taurhaus',
+        tmuxWindow: '2',
+        tmuxPane: '%9',
+      },
+    ])
+
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const session = store.getSessionForProject('/proj-camel')
+    expect(session).toBeTruthy()
+    expect(session.project_path).toBe('/proj-camel')
+    expect(session.cli_tool).toBe('codex')
+    expect(session.tmux_pane).toBe('%9')
+  })
+
+  it('normalizes camelCase session payloads from daemon updates', () => {
+    store.applyDaemonSessionUpdate({
+      version: 2,
+      sessions: [
+        {
+          pid: 1700,
+          projectPath: '/proj-daemon-camel',
+          state: 'idle',
+          tty: '/dev/pts/10',
+          args: 'gemini',
+          cliTool: 'gemini',
+          tmuxSession: 'taurhaus',
+          tmuxWindow: '4',
+          tmuxPane: '%10',
+        },
+      ],
+    })
+
+    const session = store.getSessionForProject('/proj-daemon-camel')
+    expect(session).toBeTruthy()
+    expect(session.project_path).toBe('/proj-daemon-camel')
+    expect(session.cli_tool).toBe('gemini')
+    expect(session.tmux_pane).toBe('%10')
   })
 })

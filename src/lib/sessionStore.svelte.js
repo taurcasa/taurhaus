@@ -42,6 +42,35 @@ let timerId = null
 let trackers = new Map()
 let projectIdByPath = new Map()
 
+function normalizeSessionShape(raw) {
+  const session = raw && typeof raw === 'object' ? raw : {}
+  const normalized = { ...session }
+
+  if (normalized.project_path === undefined && session.projectPath !== undefined) {
+    normalized.project_path = session.projectPath
+  }
+  if (normalized.project_id === undefined && session.projectId !== undefined) {
+    normalized.project_id = session.projectId
+  }
+  if (normalized.cli_tool === undefined && session.cliTool !== undefined) {
+    normalized.cli_tool = session.cliTool
+  }
+  if (normalized.tmux_session === undefined && session.tmuxSession !== undefined) {
+    normalized.tmux_session = session.tmuxSession
+  }
+  if (normalized.tmux_window === undefined && session.tmuxWindow !== undefined) {
+    normalized.tmux_window = session.tmuxWindow
+  }
+  if (normalized.tmux_pane === undefined && session.tmuxPane !== undefined) {
+    normalized.tmux_pane = session.tmuxPane
+  }
+  if (normalized.tmux_window_name === undefined && session.tmuxWindowName !== undefined) {
+    normalized.tmux_window_name = session.tmuxWindowName
+  }
+
+  return normalized
+}
+
 async function resolveProjectId(projectPath) {
   const key = normalizeProjectPath(projectPath)
   if (projectIdByPath.has(key)) {
@@ -101,12 +130,14 @@ async function poll() {
  */
 function applySessions(result) {
   const now = Date.now()
+  const list = Array.isArray(result) ? result : []
 
   // Track which PIDs are still present
   const currentPids = new Set()
 
   const next = new Map()
-  for (const session of result) {
+  for (const rawSession of list) {
+    const session = normalizeSessionShape(rawSession)
     const pid = session.pid
     currentPids.add(pid)
 

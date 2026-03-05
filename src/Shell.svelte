@@ -100,6 +100,7 @@
   let sessionHistory = $state([])
   let sessionLoading = $state(false)
   let readmeContent = $state(null)
+  let sessionBridgeLive = $state(false)
 
   // Relationship state
   let relationships = $state([])
@@ -342,9 +343,9 @@
 
   // Session updates:
   // - Tauri runtime: event-driven via daemon bridge (`sessions-updated`)
-  // - Frontend-only mock mode: fallback polling
+  // - Fallback polling stays on until bridge events are observed
   $effect(() => {
-    if (isTauri()) {
+    if (isTauri() && sessionBridgeLive) {
       return
     }
 
@@ -454,6 +455,9 @@
       registerListener(listen, 'daemon-status', (event) => {
         const { status } = event.payload
         daemonStatus = status
+        if (status !== 'connected') {
+          sessionBridgeLive = false
+        }
         clearTimeout(daemonStatusDismissTimer)
         // Auto-dismiss "connected" after 3 seconds
         if (status === 'connected') {
@@ -463,6 +467,7 @@
 
       // Session activity updates from daemon bridge (event-driven above daemon).
       registerListener(listen, 'sessions-updated', (event) => {
+        sessionBridgeLive = true
         applyDaemonSessionUpdate(event.payload)
       })
 
