@@ -113,4 +113,64 @@ describe('FilesTab', () => {
       expect(screen.getByTestId('mock-code-viewer')).not.toHaveTextContent('first-content')
     })
   })
+
+  it('virtualizes large file trees to viewport-sized DOM nodes', async () => {
+    getFileTree.mockResolvedValue(
+      Array.from({ length: 220 }, (_, index) => ({
+        path: `src/file-${String(index).padStart(3, '0')}.js`,
+        name: `file-${String(index).padStart(3, '0')}.js`,
+        is_dir: false,
+      }))
+    )
+    readFile.mockResolvedValue({ content: '', language: 'javascript' })
+
+    render(FilesTab, {
+      props: {
+        dark: false,
+        codeTheme: 'github-light',
+        selectedProject: { id: 'project-1', path: '/tmp/project-1' },
+        isActive: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('treeitem', { name: 'file-000.js' })).toBeInTheDocument()
+    })
+
+    const renderedNodes = screen.getAllByTestId('file-tree-node')
+    expect(renderedNodes.length).toBeLessThan(120)
+  })
+
+  it('updates virtualized file tree window on scroll', async () => {
+    getFileTree.mockResolvedValue(
+      Array.from({ length: 220 }, (_, index) => ({
+        path: `src/file-${String(index).padStart(3, '0')}.js`,
+        name: `file-${String(index).padStart(3, '0')}.js`,
+        is_dir: false,
+      }))
+    )
+    readFile.mockResolvedValue({ content: '', language: 'javascript' })
+
+    render(FilesTab, {
+      props: {
+        dark: false,
+        codeTheme: 'github-light',
+        selectedProject: { id: 'project-1', path: '/tmp/project-1' },
+        isActive: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('treeitem', { name: 'file-000.js' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('treeitem', { name: 'file-180.js' })).not.toBeInTheDocument()
+
+    const scroller = screen.getByTestId('file-tree-scroll')
+    scroller.scrollTop = 32 * 170
+    await fireEvent.scroll(scroller)
+
+    await waitFor(() => {
+      expect(screen.getByRole('treeitem', { name: 'file-180.js' })).toBeInTheDocument()
+    })
+  })
 })

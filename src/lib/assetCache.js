@@ -10,6 +10,7 @@
  */
 
 const cache = new Map()
+const MAX_CACHE_ENTRIES = 100
 
 function key(projectId, relativePath) {
   return `${projectId}/${relativePath}`
@@ -17,12 +18,28 @@ function key(projectId, relativePath) {
 
 /** Get a cached value, or null if not cached. */
 export function get(projectId, relativePath) {
-  return cache.get(key(projectId, relativePath)) ?? null
+  const cacheKey = key(projectId, relativePath)
+  if (!cache.has(cacheKey)) return null
+  const value = cache.get(cacheKey)
+  // Refresh recency for LRU ordering.
+  cache.delete(cacheKey)
+  cache.set(cacheKey, value)
+  return value ?? null
 }
 
 /** Store a value in the cache. */
 export function set(projectId, relativePath, data) {
-  cache.set(key(projectId, relativePath), data)
+  const cacheKey = key(projectId, relativePath)
+  if (cache.has(cacheKey)) {
+    cache.delete(cacheKey)
+  }
+  cache.set(cacheKey, data)
+
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value
+    if (!oldestKey) break
+    cache.delete(oldestKey)
+  }
 }
 
 /** Invalidate a single file (called by file watcher on change). */

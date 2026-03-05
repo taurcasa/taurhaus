@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/svelte'
-import { statusBadgeClass, statusLabel } from './taskHelpers.js'
+import { groupTasksByStatus, statusBadgeClass, statusLabel } from './taskHelpers.js'
 
 // Mock markdown rendering (MarkdownRenderer depends on shiki/WASM)
 vi.mock('./markdown.js', () => ({
@@ -53,6 +53,26 @@ describe('statusLabel', () => {
 
   it('returns raw status for unknown values', () => {
     expect(statusLabel('cancelled')).toBe('cancelled')
+  })
+})
+
+describe('groupTasksByStatus', () => {
+  it('returns stable grouped reference for same task array input', () => {
+    const tasks = [
+      {
+        id: '1',
+        source: 'claude',
+        source_key: 'default',
+        status: 'pending',
+        blocked_by: [],
+      },
+    ]
+
+    const first = groupTasksByStatus(tasks)
+    const second = groupTasksByStatus(tasks)
+
+    expect(second).toBe(first)
+    expect(second.pending).toHaveLength(1)
   })
 })
 

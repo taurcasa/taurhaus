@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 vi.mock('../ipc.js', () => ({
   checkMeshInstallStatus: vi.fn(),
@@ -43,6 +45,8 @@ const {
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
+
+const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
 
 function deferred() {
   let resolve
@@ -581,5 +585,16 @@ describe('MeshTab', () => {
 
     expect(screen.getByTestId('slideover-panel').className).toContain('slideover-panel-exit')
     expect(upsertRoleTemplate).not.toHaveBeenCalled()
+  })
+})
+
+describe('MeshTab animation CSS', () => {
+  it('uses transform-based shrink animation with left origin', () => {
+    expect(appCss).toContain('@keyframes mesh-shrink-transform')
+    expect(appCss).toContain('transform: scaleX(1)')
+    expect(appCss).toContain('transform: scaleX(0)')
+    expect(appCss).toContain('transform-origin: left center')
+    expect(appCss).toContain('[data-testid="mesh-error"] > .animate-\\[shrink_8s_linear_forwards\\]')
+    expect(appCss).toContain('[data-testid="mesh-runtime-message"] > .animate-\\[shrink_5s_linear_forwards\\]')
   })
 })

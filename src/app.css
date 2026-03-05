@@ -177,6 +177,23 @@ body {
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* MeshTab message progress bar: animate transform instead of width to avoid
+   layout-triggering width interpolation. */
+@keyframes mesh-shrink-transform {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+[data-testid="mesh-error"] > .animate-\[shrink_8s_linear_forwards\] {
+  animation: mesh-shrink-transform 8s linear forwards !important;
+  transform-origin: left center;
+}
+
+[data-testid="mesh-runtime-message"] > .animate-\[shrink_5s_linear_forwards\] {
+  animation: mesh-shrink-transform 5s linear forwards !important;
+  transform-origin: left center;
+}
+
 /* ── Scrollbar styling ────────────────────────────────────────────────── */
 /* Explicit scrollbar styling for both modes — no OS defaults.
    Ensures consistent appearance across Windows, macOS, and Linux.

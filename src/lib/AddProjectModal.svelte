@@ -60,6 +60,15 @@
     loadRegistered()
   })
 
+  $effect(() => {
+    return () => {
+      if (confirmTimeout) {
+        clearTimeout(confirmTimeout)
+        confirmTimeout = null
+      }
+    }
+  })
+
   // Focus trap + escape key
   $effect(() => {
     if (!dialogEl) return

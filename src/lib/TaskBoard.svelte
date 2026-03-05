@@ -1,6 +1,6 @@
 <script>
   import { getProjectTasks, getTaskDetail } from './ipc.js'
-  import { statusBadgeClass, statusLabel } from './taskHelpers.js'
+  import { groupTasksByStatus } from './taskHelpers.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
   import { themeTokens } from './themeTokens.js'
   import { createAsyncGuard } from './asyncGuard.js'
@@ -51,60 +51,9 @@
     completed: dark ? 'bg-zinc-600' : 'bg-zinc-400',
   })
 
-  function parseTimeMs(iso) {
-    if (!iso) return 0
-    const ms = new Date(iso).getTime()
-    return Number.isFinite(ms) ? ms : 0
-  }
-
-  function recencyTimeMs(task) {
-    return Math.max(
-      parseTimeMs(task.state_changed_at),
-      parseTimeMs(task.updated_at),
-      parseTimeMs(task.archived_at),
-    )
-  }
-
-  function dependencyCount(task) {
-    return Array.isArray(task.blocked_by) ? task.blocked_by.length : 0
-  }
-
-  function taskSortIdentity(task) {
-    const source = task?.source || ''
-    const sourceKey = task?.source_key || ''
-    const sourceTaskId = task?.id || task?.source_task_id || ''
-    return `${source}/${sourceKey}/${sourceTaskId}`
-  }
-
-  // Group + sort tasks by status
-  const grouped = $derived({
-    in_progress: tasks
-      .filter(t => t.status === 'in_progress')
-      .slice()
-      .sort((a, b) => {
-        const recencyDelta = recencyTimeMs(b) - recencyTimeMs(a)
-        if (recencyDelta !== 0) return recencyDelta
-        return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
-      }),
-    pending: tasks
-      .filter(t => t.status === 'pending')
-      .slice()
-      .sort((a, b) => {
-        const depDelta = dependencyCount(b) - dependencyCount(a)
-        if (depDelta !== 0) return depDelta
-        const recencyDelta = recencyTimeMs(b) - recencyTimeMs(a)
-        if (recencyDelta !== 0) return recencyDelta
-        return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
-      }),
-    completed: tasks
-      .filter(t => t.status === 'completed')
-      .slice()
-      .sort((a, b) => {
-        const updatedDelta = parseTimeMs(b.updated_at) - parseTimeMs(a.updated_at)
-        if (updatedDelta !== 0) return updatedDelta
-        return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
-      }),
-  })
+  // Group + sort tasks by status.
+  // Memoized helper returns stable references for identical task-array inputs.
+  const grouped = $derived.by(() => groupTasksByStatus(tasks))
 
   // Pending restore target — applied once tasks finish loading
   let pendingRestore = $state(null)

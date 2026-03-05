@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+import {
+  __resetSidebarProjectionCacheForTests,
+  buildSidebarProjection,
+} from './sidebar.js'
 
 // Mock the IPC module
 vi.mock('./ipc.js', () => ({
@@ -129,6 +133,26 @@ describe('Sidebar data loading', () => {
 
     expect(validTabs).toContain(defaultTab)
     expect(validTabs).toHaveLength(2)
+  })
+})
+
+describe('sidebar projection memoization', () => {
+  beforeEach(() => {
+    __resetSidebarProjectionCacheForTests()
+  })
+
+  it('returns same grouped projection reference for same input', () => {
+    const projects = [
+      { id: 'p1', name: 'alpha', activity_state: 'active' },
+      { id: 'p2', name: 'beta', activity_state: 'recent' },
+    ]
+
+    const first = buildSidebarProjection(projects, '')
+    const second = buildSidebarProjection(projects, '')
+
+    expect(second).toBe(first)
+    expect(second.grouped[0].items).toHaveLength(1)
+    expect(second.grouped[1].items).toHaveLength(1)
   })
 })
 

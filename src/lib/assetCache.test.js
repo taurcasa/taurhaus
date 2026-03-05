@@ -71,4 +71,21 @@ describe('assetCache', () => {
     expect(assetCache.get('proj-1', 'logo.png')).toBe('new-data')
     expect(assetCache.size()).toBe(1)
   })
+
+  it('evicts oldest entry when max size is exceeded', () => {
+    for (let i = 0; i <= 100; i += 1) {
+      assetCache.set('proj-1', `file-${i}.png`, `data-${i}`)
+    }
+
+    expect(assetCache.get('proj-1', 'file-0.png')).toBe(null)
+    expect(assetCache.get('proj-1', 'file-100.png')).toBe('data-100')
+  })
+
+  it('never grows beyond configured max size', () => {
+    for (let i = 0; i < 250; i += 1) {
+      assetCache.set('proj-1', `file-${i}.png`, `data-${i}`)
+    }
+
+    expect(assetCache.size()).toBeLessThanOrEqual(100)
+  })
 })

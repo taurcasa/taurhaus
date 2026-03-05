@@ -2,6 +2,7 @@
   import { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } from './ipc.js'
   import { getSessionForProject, getSessionsForProject } from './sessionStore.svelte.js'
   import { rowTintForSessions, toolIndicators } from './sessionIndicator.js'
+  import { SIDEBAR_GROUPS, buildSidebarProjection } from './sidebar.js'
   import ContextMenu from './ContextMenu.svelte'
   import HoverCard from './HoverCard.svelte'
 
@@ -19,21 +20,19 @@
     onProjectRemoved = () => {},
   } = $props()
 
-  // Activity state groups for sidebar ordering
-  const groups = [
-    { key: 'active', label: 'ACTIVE' },
-    { key: 'recent', label: 'RECENT' },
-    { key: 'stale', label: 'STALE' },
-    { key: 'dormant', label: 'DORMANT' },
-  ]
+  const SIDEBAR_PROJECT_ROW_HEIGHT = 36
+  const SIDEBAR_HEADER_ROW_HEIGHT = 42
+  const SIDEBAR_OVERSCAN_PX = 220
+  const SIDEBAR_VIRTUALIZE_THRESHOLD = 50
 
   // Sidebar filter
   let filterQuery = $state('')
-  const filteredProjects = $derived(
-    filterQuery.trim()
-      ? projects.filter(p => p.name.toLowerCase().includes(filterQuery.trim().toLowerCase()))
-      : projects
-  )
+  let projectListEl = $state(null)
+  let projectListScrollTop = $state(0)
+  let projectListViewportHeight = $state(480)
+  const sidebarProjection = $derived.by(() => buildSidebarProjection(projects, filterQuery))
+  const filteredProjects = $derived(sidebarProjection.filtered)
+  const groupedProjects = $derived(sidebarProjection.grouped)
 
   // --- Context menu state ---
   let ctxMenu = $state(null) // { x, y, project }
@@ -55,6 +54,44 @@
   function hideHoverCard() {
     clearTimeout(hoverTimeout)
     hoverTimeout = setTimeout(() => { hoverCard = null }, 80)
+  }
+
+  $effect(() => {
+    if (!projectListEl) return
+
+    const updateViewport = () => {
+      projectListViewportHeight = projectListEl?.clientHeight || 480
+      projectListScrollTop = projectListEl?.scrollTop || 0
+    }
+    updateViewport()
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateViewport)
+      observer.observe(projectListEl)
+      return () => observer.disconnect()
+    }
+
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  })
+
+  $effect(() => {
+    return () => {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout)
+        hoverTimeout = null
+      }
+      if (ctxConfirmTimeout) {
+        clearTimeout(ctxConfirmTimeout)
+        ctxConfirmTimeout = null
+      }
+    }
+  })
+
+  function handleProjectListScroll(event) {
+    hoverCard = null
+    if (hoverTimeout) clearTimeout(hoverTimeout)
+    projectListScrollTop = event.currentTarget?.scrollTop || 0
   }
 
   /** Navigate to a project's CLI session in tmux. */
@@ -220,6 +257,75 @@
     { separator: true },
     { label: ctxConfirmRemove ? 'Confirm remove?' : 'Remove from taurhaus', action: ctxRemoveProject, danger: true, keepOpen: !ctxConfirmRemove, icon: CTX_ICON_TRASH },
   ] : [])
+
+  function sidebarRowHeight(row) {
+    return row.type === 'header'
+      ? SIDEBAR_HEADER_ROW_HEIGHT
+      : SIDEBAR_PROJECT_ROW_HEIGHT
+  }
+
+  const sidebarRows = $derived.by(() => {
+    const rows = []
+    for (const group of groupedProjects) {
+      if (!group.items.length) continue
+      rows.push({ type: 'header', key: `header-${group.key}`, group })
+      for (const project of group.items) {
+        rows.push({ type: 'project', key: `project-${project.id}`, project })
+      }
+    }
+    return rows
+  })
+
+  const sidebarProjectCount = $derived.by(
+    () => sidebarRows.filter((row) => row.type === 'project').length
+  )
+  const useVirtualizedSidebar = $derived.by(
+    () => sidebarProjectCount > SIDEBAR_VIRTUALIZE_THRESHOLD
+  )
+
+  const sidebarLayout = $derived.by(() => {
+    const offsets = []
+    let totalHeight = 0
+    for (const row of sidebarRows) {
+      offsets.push(totalHeight)
+      totalHeight += sidebarRowHeight(row)
+    }
+    return { offsets, totalHeight }
+  })
+
+  const sidebarWindow = $derived.by(() => {
+    const rows = sidebarRows
+    const { offsets, totalHeight } = sidebarLayout
+    if (!useVirtualizedSidebar) {
+      return { start: 0, end: rows.length, paddingTop: 0, paddingBottom: 0 }
+    }
+
+    const minOffset = Math.max(0, projectListScrollTop - SIDEBAR_OVERSCAN_PX)
+    const maxOffset = projectListScrollTop + projectListViewportHeight + SIDEBAR_OVERSCAN_PX
+
+    let start = 0
+    while (
+      start < rows.length
+      && offsets[start] + sidebarRowHeight(rows[start]) <= minOffset
+    ) {
+      start += 1
+    }
+
+    let end = start
+    while (end < rows.length && offsets[end] < maxOffset) {
+      end += 1
+    }
+
+    const startOffset = offsets[start] ?? totalHeight
+    const endOffset = offsets[end] ?? totalHeight
+
+    return {
+      start,
+      end,
+      paddingTop: startOffset,
+      paddingBottom: Math.max(0, totalHeight - endOffset),
+    }
+  })
 </script>
 
 <aside class="w-[252px] bg-brand-950 rounded-lg flex flex-col shrink-0 border border-white/[0.06] overflow-hidden">
@@ -251,7 +357,12 @@
   </div>
 
   <!-- Project list -->
-  <div class="flex-1 overflow-y-auto px-1.5 pt-1" onscroll={() => { hoverCard = null; clearTimeout(hoverTimeout) }}>
+  <div
+    bind:this={projectListEl}
+    class="flex-1 overflow-y-auto px-1.5 pt-1"
+    onscroll={handleProjectListScroll}
+    data-testid="sidebar-project-scroll"
+  >
     {#if sidebarLoading}
       <!-- Loading skeleton -->
       <div class="px-3 pt-3 space-y-1" data-testid="sidebar-skeleton">
@@ -284,69 +395,75 @@
         <p class="text-[12px] text-white/30">No matching projects</p>
       </div>
     {:else}
-      {#each groups as group}
-        {@const items = filteredProjects.filter(p => p.activity_state === group.key)}
-        {#if items.length > 0}
+      {#if useVirtualizedSidebar}
+        <div style="height: {sidebarWindow.paddingTop}px;"></div>
+      {/if}
+
+      {#each sidebarRows.slice(sidebarWindow.start, sidebarWindow.end) as row (row.key)}
+        {#if row.type === 'header'}
           <div class="px-3.5 pt-8 pb-1.5">
-            <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{group.label}</span>
+            <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{row.group.label}</span>
           </div>
-          {#each items as project}
-            {@const selected = selectedProject && project.id === selectedProject.id}
-            {@const projectSessions = getSessionsForProject(project.path)}
-            {@const session = projectSessions[0] ?? null}
-            {@const indicators = toolIndicators(projectSessions)}
-            <button
-              data-testid="project-item"
-              class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75 cursor-pointer
-                {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
-              onclick={() => onSelectProject(project)}
-              oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
-              onmouseenter={(e) => showHoverCard(project, projectSessions, e.currentTarget)}
-              onmouseleave={hideHoverCard}
-            >
-              {#if selected}
-                <span class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
-              {/if}
-              <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
-              {#if indicators.length > 0}
-                <span class="flex items-center gap-1 shrink-0">
-                  {#each indicators as ind}
-                    {#if ind.interactive}
-                      <span
-                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                        role="button"
-                        tabindex="0"
-                        aria-label={ind.ariaLabel}
-                        onclick={(e) => jumpToSession(e, ind.session)}
-                        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpToSession(e, ind.session) } }}
-                      >
-                        <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                          <path d={ind.icon.path}/>
-                        </svg>
-                      </span>
-                    {:else}
-                      <span
-                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                        aria-label={ind.ariaLabel}
-                      >
-                        <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                          <path d={ind.icon.path}/>
-                        </svg>
-                      </span>
-                    {/if}
-                  {/each}
-                </span>
-              {/if}
-              {#if project.branch}
-                <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/50 bg-white/10' : 'text-white/30 bg-white/[0.07]'}">{project.branch}</span>
-              {/if}
-              {#if project.is_dirty}
-                <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
-              {/if}
-            </button>
-          {/each}
+        {:else}
+          {@const project = row.project}
+          {@const selected = selectedProject && project.id === selectedProject.id}
+          {@const projectSessions = getSessionsForProject(project.path)}
+          {@const indicators = toolIndicators(projectSessions)}
+          <button
+            data-testid="project-item"
+            class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75 cursor-pointer
+              {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
+            onclick={() => onSelectProject(project)}
+            oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
+            onmouseenter={(e) => showHoverCard(project, projectSessions, e.currentTarget)}
+            onmouseleave={hideHoverCard}
+          >
+            {#if selected}
+              <span class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
+            {/if}
+            <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
+            {#if indicators.length > 0}
+              <span class="flex items-center gap-1 shrink-0">
+                {#each indicators as ind}
+                  {#if ind.interactive}
+                    <span
+                      class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                      role="button"
+                      tabindex="0"
+                      aria-label={ind.ariaLabel}
+                      onclick={(e) => jumpToSession(e, ind.session)}
+                      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpToSession(e, ind.session) } }}
+                    >
+                      <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                        <path d={ind.icon.path}/>
+                      </svg>
+                    </span>
+                  {:else}
+                    <span
+                      class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                      aria-label={ind.ariaLabel}
+                    >
+                      <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                        <path d={ind.icon.path}/>
+                      </svg>
+                    </span>
+                  {/if}
+                {/each}
+              </span>
+            {/if}
+            {#if project.branch}
+              <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/50 bg-white/10' : 'text-white/30 bg-white/[0.07]'}">{project.branch}</span>
+            {/if}
+            {#if project.is_dirty}
+              <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
+            {/if}
+          </button>
         {/if}
       {/each}
+
+      {#if useVirtualizedSidebar}
+        <div style="height: {sidebarWindow.paddingBottom}px;"></div>
+      {/if}
     {/if}
   </div>
 

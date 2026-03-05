@@ -27,6 +27,9 @@
 
   // Component-specific tokens
   const treeIcon = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const TREE_ROW_HEIGHT = 32
+  const TREE_OVERSCAN_ROWS = 8
+  const TREE_VIRTUALIZE_THRESHOLD = 120
 
   // File state
   let fileTree = $state([])
@@ -40,6 +43,9 @@
   let expandedDirs = $state(new Set())
   let targetLineNumber = $state(null)
   let targetAnchor = $state(null)
+  let treeScrollContainer = $state(null)
+  let treeScrollTop = $state(0)
+  let treeViewportHeight = $state(320)
   let fileTreeRefreshInFlight = false
   let fileTreeRefreshPending = false
   const fileReadGuard = createAsyncGuard()
@@ -54,6 +60,25 @@
     if (!selectedProject?.id || !isActive) return
     fileReadGuard.invalidate()
     refreshFileTree(selectedProject.id)
+  })
+
+  $effect(() => {
+    if (!treeScrollContainer) return
+
+    const updateViewport = () => {
+      treeViewportHeight = treeScrollContainer?.clientHeight || 320
+      treeScrollTop = treeScrollContainer?.scrollTop || 0
+    }
+    updateViewport()
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateViewport)
+      observer.observe(treeScrollContainer)
+      return () => observer.disconnect()
+    }
+
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
   })
 
   // Watch navTarget and open the requested file/directory
@@ -221,6 +246,44 @@
     expandedDirs = next
   }
 
+  function handleTreeScroll(event) {
+    treeScrollTop = event.currentTarget?.scrollTop || 0
+  }
+
+  function flattenVisibleRows(nodes, expanded, depth = 0, rows = []) {
+    for (const node of nodes) {
+      rows.push({ node, depth })
+      if (node.is_dir && expanded.has(node.path) && node.children) {
+        flattenVisibleRows(node.children, expanded, depth + 1, rows)
+      }
+    }
+    return rows
+  }
+
+  const treeRows = $derived.by(() => flattenVisibleRows(fileTree, expandedDirs))
+  const useVirtualizedTree = $derived.by(() => treeRows.length > TREE_VIRTUALIZE_THRESHOLD)
+
+  const treeWindow = $derived.by(() => {
+    const total = treeRows.length
+    if (!useVirtualizedTree) {
+      return { start: 0, end: total, paddingTop: 0, paddingBottom: 0 }
+    }
+
+    const viewportRows = Math.max(1, Math.ceil(treeViewportHeight / TREE_ROW_HEIGHT))
+    const start = Math.max(0, Math.floor(treeScrollTop / TREE_ROW_HEIGHT) - TREE_OVERSCAN_ROWS)
+    const end = Math.min(
+      total,
+      start + viewportRows + TREE_OVERSCAN_ROWS * 2
+    )
+
+    return {
+      start,
+      end,
+      paddingTop: start * TREE_ROW_HEIGHT,
+      paddingBottom: Math.max(0, (total - end) * TREE_ROW_HEIGHT),
+    }
+  })
+
   async function openFile(relativePath, lineNumber = null, anchor = null) {
     if (!selectedProject) return
     const projectId = selectedProject.id
@@ -329,7 +392,12 @@
 
   <!-- File tree (200px fixed) -->
   <div class="w-[200px] shrink-0 {t.listBg} border-r {t.keyline} flex flex-col overflow-hidden" role="tree">
-    <div class="flex-1 overflow-y-auto pt-2">
+    <div
+      bind:this={treeScrollContainer}
+      class="flex-1 overflow-y-auto pt-2"
+      data-testid="file-tree-scroll"
+      onscroll={handleTreeScroll}
+    >
       {#if fileTreeLoading}
         <div class="px-3 space-y-1" data-testid="filetree-loading">
           {#each Array(6) as _}
@@ -345,43 +413,49 @@
           <p class="text-[11px] {t.textTertiary} mt-1">Check ignore patterns in Settings</p>
         </div>
       {:else}
-        {#snippet treeNodes(nodes, depth)}
-          {#each nodes as node}
-            {#if node.is_dir}
-              <button
-                class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
-                style="padding-left: {8 + depth * 16}px"
-                onclick={() => toggleDir(node.path)}
-                oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
-                role="treeitem"
-                aria-selected={false}
-                aria-expanded={expandedDirs.has(node.path)}
-              >
-                <svg class="w-3 h-3 {treeIcon} shrink-0 transition-transform {expandedDirs.has(node.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-                <svg class="w-3.5 h-3.5 shrink-0 {dark ? 'text-zinc-500' : 'text-zinc-400'}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-                <span class="truncate">{node.name}</span>
-              </button>
-              {#if expandedDirs.has(node.path) && node.children}
-                {@render treeNodes(node.children, depth + 1)}
-              {/if}
-            {:else}
-              {@const isSelected = selectedFile === node.path}
-              <button
-                class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] rounded transition-colors
-                  {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
-                style="padding-left: {22 + depth * 16}px"
-                onclick={() => openFile(node.path)}
-                oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
-                role="treeitem"
-                aria-selected={isSelected}
-              >
-                <svg class="w-3.5 h-3.5 shrink-0 {isSelected ? '' : treeIcon}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-                <span class="truncate">{node.name}</span>
-              </button>
-            {/if}
-          {/each}
-        {/snippet}
-        {@render treeNodes(fileTree, 0)}
+        {#if useVirtualizedTree}
+          <div style="height: {treeWindow.paddingTop}px;"></div>
+        {/if}
+
+        {#each treeRows.slice(treeWindow.start, treeWindow.end) as row (row.node.path)}
+          {@const node = row.node}
+          {@const depth = row.depth}
+          {#if node.is_dir}
+            <button
+              class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
+              style="padding-left: {8 + depth * 16}px"
+              onclick={() => toggleDir(node.path)}
+              oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
+              role="treeitem"
+              aria-selected={false}
+              aria-expanded={expandedDirs.has(node.path)}
+              data-testid="file-tree-node"
+            >
+              <svg class="w-3 h-3 {treeIcon} shrink-0 transition-transform {expandedDirs.has(node.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+              <svg class="w-3.5 h-3.5 shrink-0 {dark ? 'text-zinc-500' : 'text-zinc-400'}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+              <span class="truncate">{node.name}</span>
+            </button>
+          {:else}
+            {@const isSelected = selectedFile === node.path}
+            <button
+              class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] rounded transition-colors
+                {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
+              style="padding-left: {22 + depth * 16}px"
+              onclick={() => openFile(node.path)}
+              oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
+              role="treeitem"
+              aria-selected={isSelected}
+              data-testid="file-tree-node"
+            >
+              <svg class="w-3.5 h-3.5 shrink-0 {isSelected ? '' : treeIcon}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+              <span class="truncate">{node.name}</span>
+            </button>
+          {/if}
+        {/each}
+
+        {#if useVirtualizedTree}
+          <div style="height: {treeWindow.paddingBottom}px;"></div>
+        {/if}
       {/if}
     </div>
   </div>
