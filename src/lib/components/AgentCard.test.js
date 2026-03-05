@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+import { readFileSync } from 'node:fs'
 
 import AgentCard from './AgentCard.svelte'
 
@@ -103,5 +104,15 @@ describe('AgentCard', () => {
 
     await fireEvent.click(screen.getByTestId('agent-card-cancel'))
     expect(screen.queryByTestId('agent-card-edit-form')).not.toBeInTheDocument()
+  })
+
+  it('uses tokenized color styles instead of hardcoded literals', () => {
+    const source = readFileSync(`${process.cwd()}/src/lib/components/AgentCard.svelte`, 'utf8')
+    expect(source).toContain('var(--agent-card-border-light)')
+    expect(source).toContain('var(--agent-card-bg-light-to)')
+    expect(source).toContain('var(--agent-card-shadow-light)')
+    expect(source).not.toContain('#b2d8d0')
+    expect(source).not.toContain('#e6f7f4')
+    expect(source).not.toMatch(/\brgba?\(/)
   })
 })

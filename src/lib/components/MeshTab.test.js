@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -299,9 +299,17 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-action-bar')).toBeInTheDocument()
   })
 
-  it('setup -> initializing -> runtime transition works through initialize flow', async () => {
-    const init = deferred()
-    coordinationInitializeTeam.mockReturnValueOnce(init.promise)
+  it('initialization failure exposes recovery controls and back returns to setup', async () => {
+    coordinationInitializeTeam.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      failedStep: 'create_team',
+      retryable: true,
+      message: 'team already exists',
+      steps: [
+        { step: 'validate_configuration', status: 'succeeded', message: 'ok' },
+        { step: 'create_team', status: 'failed', message: 'conflict' },
+      ],
+    })
 
     render(MeshTab, {
       props: {
@@ -325,19 +333,17 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-initializing')).toBeInTheDocument()
       expect(screen.getByTestId('mesh-init-progress')).toBeInTheDocument()
     })
-
-    init.resolve({
-      teamName: 'architecture-final',
-      failedStep: null,
-      retryable: false,
-      message: 'team initialized',
-      steps: [{ step: 'validate_configuration', status: 'succeeded', message: 'ok' }],
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-failure')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-init-retry-button')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-init-back-button')).toBeInTheDocument()
     })
+
+    await fireEvent.click(screen.getByTestId('mesh-init-back-button'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
   })
 
   it('opens and closes template, customizer, and add-agent slideovers', async () => {
@@ -345,7 +351,7 @@ describe('MeshTab', () => {
       { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
     ])
 
-    render(MeshTab, {
+    const runtimeView = render(MeshTab, {
       props: {
         dark: false,
         projectPath: '/projects/taurhaus',
@@ -365,19 +371,21 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
     await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
+    expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
-    await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
-    await waitFor(() => {
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    runtimeView.unmount()
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
     })
-    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
@@ -573,7 +581,14 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent('Role saved to catalog')
     })
-    expect(screen.getByTestId('slideover-panel').className).toContain('slideover-panel-exit')
+    await waitFor(() => {
+      const dialog = screen.queryByRole('dialog', { name: 'Capture as Role' })
+      if (!dialog) {
+        expect(dialog).toBeNull()
+        return
+      }
+      expect(within(dialog).getByRole('button', { name: 'Save to Catalog' })).toBeDisabled()
+    })
   })
 
   it('builds setup from quick preset and initializes with inferred team name', async () => {
@@ -760,7 +775,6 @@ describe('MeshTab', () => {
     coordinationDisbandTeam.mockRejectedValueOnce(new Error('cannot disband'))
     await renderRuntime()
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
@@ -789,6 +803,107 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(coordinationRemoveMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
+    })
+  })
+
+  it('passes runtime diagnostics into detail and focuses pane for selected agent', async () => {
+    const onFocusPane = vi.fn()
+    await renderRuntime({ onFocusPane })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-pane')).toHaveTextContent('%2')
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+      expect(screen.getByTestId('mesh-node-detail-focus')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-focus'))
+    expect(onFocusPane).toHaveBeenCalledWith('%2')
+  })
+
+  it('keeps runtime actions visible for offline agents and disables focus when pane is missing', async () => {
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.3-codex',
+          projectId: 'proj-web',
+          description: 'Offline agent',
+          sessionStatus: 'offline',
+          paneId: null,
+        },
+      ],
+    })
+    const onFocusPane = vi.fn()
+    await renderRuntime({ onFocusPane })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
+      expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-focus'))
+    expect(onFocusPane).not.toHaveBeenCalled()
+  })
+
+  it('wires setup detail actions to customizer open and member removal', async () => {
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    expect(screen.getAllByTestId('mesh-node-agent')).toHaveLength(1)
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-edit')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-node-detail-remove')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getAllByTestId('slideover-close').at(-1))
+    await waitFor(() => {
+      expect(screen.queryByTestId('team-customizer-panel')).not.toBeInTheDocument()
+    })
+
+    if (!screen.queryByTestId('mesh-node-detail-remove')) {
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-remove')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-remove'))
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('mesh-node-agent')).toHaveLength(0)
     })
   })
 

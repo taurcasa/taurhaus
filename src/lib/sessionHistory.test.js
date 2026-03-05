@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/svelte'
+import { render, screen, waitFor, within } from '@testing-library/svelte'
 
 const { eventListenMock, emitProjectTasksChanged } = vi.hoisted(() => {
   let handler = null
@@ -98,10 +98,8 @@ describe('SessionHistory component', () => {
 
     render(SessionHistory, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
-      const header = screen.getByTestId('session-header')
-      expect(header).toBeTruthy()
-      // Duration should be formatted
-      expect(header.textContent).toContain('2h 15m')
+      const header = screen.getByRole('button', { name: /2h 15m/i })
+      expect(within(header).getByText('2h 15m')).toBeTruthy()
     })
   })
 
@@ -113,9 +111,9 @@ describe('SessionHistory component', () => {
 
     render(SessionHistory, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
-      const header = screen.getByTestId('session-header')
-      expect(header.textContent).toContain('2 tasks')
-      expect(header.textContent).toContain('12 commits')
+      const header = screen.getByRole('button', { name: /12 commits/i })
+      expect(within(header).getByText('2 tasks')).toBeTruthy()
+      expect(within(header).getByText('12 commits')).toBeTruthy()
     })
   })
 

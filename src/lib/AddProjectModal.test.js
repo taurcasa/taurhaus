@@ -59,7 +59,7 @@ describe('AddProjectModal', () => {
         id: 'p1',
         name: 'Project One',
         path: '/projects/one',
-        activity_state: 'active',
+        activityState: 'active',
       },
     ])
     scanDirectory.mockResolvedValue([])
@@ -240,10 +240,10 @@ describe('AddProjectModal', () => {
     })
     registerProjectsBatch.mockResolvedValueOnce([{ success: true }])
     listProjects
-      .mockResolvedValueOnce([{ id: 'p1', name: 'Project One', path: '/projects/one', activity_state: 'active' }])
+      .mockResolvedValueOnce([{ id: 'p1', name: 'Project One', path: '/projects/one', activityState: 'active' }])
       .mockResolvedValueOnce([
-        { id: 'p1', name: 'Project One', path: '/projects/one', activity_state: 'active' },
-        { id: 'p2', name: 'Project Two', path: '/manual/selected', activity_state: 'recent' },
+        { id: 'p1', name: 'Project One', path: '/projects/one', activityState: 'active' },
+        { id: 'p2', name: 'Project Two', path: '/manual/selected', activityState: 'recent' },
       ])
 
     render(AddProjectModal, {
@@ -334,6 +334,44 @@ describe('AddProjectModal', () => {
 
     await fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(3)
+  })
+
+  it('traps Tab focus inside modal and restores trigger focus on close', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open projects modal'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    const onClose = vi.fn()
+    const { unmount } = render(AddProjectModal, {
+      props: {
+        dark: false,
+        onClose,
+      },
+    })
+
+    const firstFocusable = screen.getByTestId('modal-close')
+    const lastFocusable = screen.getByTestId('done-button')
+
+    await waitFor(() => {
+      expect(firstFocusable).toHaveFocus()
+    })
+
+    lastFocusable.focus()
+    expect(lastFocusable).toHaveFocus()
+
+    await fireEvent.keyDown(window, { key: 'Tab' })
+    expect(firstFocusable).toHaveFocus()
+
+    await fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(lastFocusable).toHaveFocus()
+
+    await fireEvent.click(lastFocusable)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    unmount()
+    expect(trigger).toHaveFocus()
+    trigger.remove()
   })
 
   it('clears pending remove-confirm timer on unmount', async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+import { readFileSync } from 'node:fs'
 
 import ValidationBar from './ValidationBar.svelte'
 
@@ -63,5 +64,14 @@ describe('ValidationBar', () => {
     expect(rows[0]).toHaveTextContent('Team:')
     expect(rows[1]).toHaveTextContent('●')
     expect(rows[1]).toHaveTextContent('dev-1:')
+  })
+
+  it('uses tokenized summary colors instead of hardcoded literals', () => {
+    const source = readFileSync(`${process.cwd()}/src/lib/components/ValidationBar.svelte`, 'utf8')
+    expect(source).toContain('var(--validation-bar-bg-light-to)')
+    expect(source).toContain('var(--validation-bar-border-light)')
+    expect(source).toContain('var(--validation-bar-bg-dark)')
+    expect(source).not.toContain('#e6f7f4')
+    expect(source).not.toMatch(/\brgba?\(/)
   })
 })

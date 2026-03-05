@@ -5,17 +5,28 @@
  * range filter display, and cross-tab navigation handling.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/svelte'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
-// Mock IntersectionObserver for JSDOM
-globalThis.IntersectionObserver = class {
-  constructor() {}
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
+let previousIntersectionObserver
+
+beforeAll(() => {
+  previousIntersectionObserver = globalThis.IntersectionObserver
+  globalThis.IntersectionObserver = class IntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+})
+
+afterAll(() => {
+  if (previousIntersectionObserver) {
+    globalThis.IntersectionObserver = previousIntersectionObserver
+    return
+  }
+  delete globalThis.IntersectionObserver
+})
 
 // Mock IPC
 vi.mock('./ipc.js', () => ({
@@ -107,7 +118,7 @@ describe('GitTab component', () => {
 
     render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
     await waitFor(() => {
-      expect(screen.getByTestId('git-empty').textContent).toContain('No commits found')
+      expect(screen.getByText('No commits found')).toBeInTheDocument()
     })
   })
 
@@ -127,11 +138,11 @@ describe('GitTab component', () => {
 
     render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
     await waitFor(() => {
-      const row = screen.getByTestId('commit-row')
-      expect(row.textContent).toContain('1h')
-      expect(row.textContent).toContain('Commit message 1')
-      expect(row.textContent).toContain('abc00000')
-      expect(row.textContent).toContain('Developer')
+      const row = screen.getByRole('button', { name: /Commit message 1/i })
+      expect(within(row).getByText('1h')).toBeInTheDocument()
+      expect(within(row).getByText('Commit message 1')).toBeInTheDocument()
+      expect(within(row).getByText('abc00000')).toBeInTheDocument()
+      expect(within(row).getByText('Developer')).toBeInTheDocument()
     })
   })
 

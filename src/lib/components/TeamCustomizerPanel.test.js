@@ -103,4 +103,88 @@ describe('TeamCustomizerPanel', () => {
     await fireEvent.click(screen.getByTestId('team-customizer-reset'))
     expect(onReset).toHaveBeenCalledTimes(1)
   })
+
+  it('rejects case-insensitive duplicate member names and disables save', async () => {
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: baseTeamConfig(),
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-edit'))
+    await fireEvent.input(screen.getByTestId('team-customizer-lead-name-input'), {
+      target: { value: '  DEV-1  ' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-save'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-bar-list')).toBeInTheDocument()
+      expect(screen.getByTestId('validation-bar-error-badge')).toHaveTextContent('1 error')
+      expect(screen.getByTestId('validation-bar-list')).toHaveTextContent('Duplicate member name.')
+      expect(screen.getByTestId('team-customizer-save')).toBeDisabled()
+    })
+  })
+
+  it('rejects whitespace-only lead name and renders validation error', async () => {
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: baseTeamConfig(),
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-edit'))
+    await fireEvent.input(screen.getByTestId('team-customizer-lead-name-input'), {
+      target: { value: '   ' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-save'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-bar-list')).toBeInTheDocument()
+      expect(screen.getByTestId('validation-bar-list')).toHaveTextContent('Lead')
+      expect(screen.getByTestId('validation-bar-list')).toHaveTextContent('Lead name is required.')
+    })
+  })
+
+  it('keeps save disabled until validation issues are fixed', async () => {
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: baseTeamConfig(),
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-edit'))
+    await fireEvent.input(screen.getByTestId('team-customizer-lead-name-input'), {
+      target: { value: 'dev-1' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-save'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeDisabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-edit'))
+    await fireEvent.input(screen.getByTestId('team-customizer-lead-name-input'), {
+      target: { value: 'team-lead' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-save'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('validation-bar-list')).not.toBeInTheDocument()
+      expect(screen.getByTestId('team-customizer-save')).toBeEnabled()
+    })
+  })
 })

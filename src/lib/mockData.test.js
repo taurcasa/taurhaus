@@ -12,7 +12,7 @@ describe('mockData', () => {
     expect(MOCK_PROJECTS.length).toBeGreaterThan(0)
     expect(MOCK_PROJECTS[0]).toHaveProperty('id')
     expect(MOCK_PROJECTS[0]).toHaveProperty('name')
-    expect(MOCK_PROJECTS[0]).toHaveProperty('activity_state')
+    expect(MOCK_PROJECTS[0]).toHaveProperty('activityState')
   })
 
   it('exports MOCK_COMMITS as a non-empty array with expected shape', () => {
@@ -47,7 +47,7 @@ describe('mockData', () => {
     expect(MOCK_DETAIL).toHaveProperty('id')
     expect(MOCK_DETAIL).toHaveProperty('name')
     expect(MOCK_DETAIL).toHaveProperty('description')
-    expect(MOCK_DETAIL).toHaveProperty('activity_state')
+    expect(MOCK_DETAIL).toHaveProperty('activityState')
   })
 
   it('exports MOCK_SEARCH_RESULTS as a non-empty array', () => {
@@ -75,7 +75,7 @@ describe('mockData', () => {
   })
 
   it('covers all three activity states in MOCK_PROJECTS', () => {
-    const states = new Set(MOCK_PROJECTS.map(p => p.activity_state))
+    const states = new Set(MOCK_PROJECTS.map(p => p.activityState))
     expect(states).toContain('active')
     expect(states).toContain('recent')
     expect(states).toContain('stale')

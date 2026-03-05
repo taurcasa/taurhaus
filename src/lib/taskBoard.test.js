@@ -527,6 +527,33 @@ describe('TaskBoard component', () => {
     })
   })
 
+  it('logs and surfaces a warning when task detail fetch fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const task = makeTask({ status: 'pending', subject: 'Broken detail task' })
+    getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })
+    getTaskDetail.mockRejectedValue(new Error('detail IPC failed'))
+
+    const { fireEvent } = await import('@testing-library/svelte')
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Broken detail task')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByTestId('task-row'))
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+      expect(screen.getByTestId('task-detail-error').textContent).toContain(
+        'Task detail failed to load. Showing basic task info.'
+      )
+    })
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[tasks] failed to load task detail'),
+      expect.any(Error)
+    )
+    errorSpy.mockRestore()
+  })
+
   it('closes detail panel when close button is clicked', async () => {
     const task = makeTask({ status: 'pending', subject: 'Closable task' })
     getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })

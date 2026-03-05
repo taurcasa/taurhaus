@@ -39,7 +39,7 @@ describe('MeshRuntimeBar', () => {
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
-  it('shows overflow menu and disband callback', async () => {
+  it('calls onDisband when disband button is clicked', async () => {
     const onDisband = vi.fn()
 
     render(MeshRuntimeBar, {
@@ -49,10 +49,6 @@ describe('MeshRuntimeBar', () => {
         onDisband,
       },
     })
-
-    expect(screen.queryByTestId('mesh-runtime-disband')).not.toBeInTheDocument()
-    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
-    expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     expect(onDisband).toHaveBeenCalledTimes(1)

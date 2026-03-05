@@ -40,7 +40,7 @@ describe('ipc module', () => {
     it('calls invoke with correct command name', async () => {
       window.__TAURI_INTERNALS__ = {}
       const mockProjects = [
-        { id: 'p1', name: 'test', path: '/test', activity_state: 'active', last_activity_at: null, branch: null, is_dirty: null },
+        { id: 'p1', name: 'test', path: '/test', activityState: 'active', lastActivityAt: null, branch: null, isDirty: null },
       ]
       tauriCore.invoke.mockResolvedValue(mockProjects)
 
@@ -61,10 +61,10 @@ describe('ipc module', () => {
       // Mock data should have the expected shape
       expect(result[0]).toHaveProperty('id')
       expect(result[0]).toHaveProperty('name')
-      expect(result[0]).toHaveProperty('activity_state')
+      expect(result[0]).toHaveProperty('activityState')
     })
 
-    it('normalizes camelCase project fields from Tauri payloads', async () => {
+    it('preserves camelCase project fields from Tauri payloads', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue([
         {
@@ -80,9 +80,9 @@ describe('ipc module', () => {
       const result = await ipc.listProjects()
 
       expect(result).toHaveLength(1)
-      expect(result[0].activity_state).toBe('active')
-      expect(result[0].last_activity_at).toBe('2026-03-05T12:00:00Z')
-      expect(result[0].is_dirty).toBe(true)
+      expect(result[0].activityState).toBe('active')
+      expect(result[0].lastActivityAt).toBe('2026-03-05T12:00:00Z')
+      expect(result[0].isDirty).toBe(true)
       delete window.__TAURI_INTERNALS__
     })
   })
@@ -92,10 +92,10 @@ describe('ipc module', () => {
       window.__TAURI_INTERNALS__ = {}
       const mockDetail = {
         id: 'p1', name: 'test', path: '/test',
-        description: null, activity_state: 'active',
-        last_activity_at: null, hero_preference: null,
-        created_at: '', updated_at: '',
-        branch: null, is_dirty: null,
+        description: null, activityState: 'active',
+        lastActivityAt: null, heroPreference: null,
+        createdAt: '', updatedAt: '',
+        branch: null, isDirty: null,
       }
       tauriCore.invoke.mockResolvedValue(mockDetail)
 
@@ -114,10 +114,10 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('id')
       expect(result).toHaveProperty('name')
       expect(result).toHaveProperty('description')
-      expect(result).toHaveProperty('activity_state')
+      expect(result).toHaveProperty('activityState')
     })
 
-    it('normalizes camelCase project detail fields from Tauri payloads', async () => {
+    it('preserves camelCase project detail fields from Tauri payloads', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({
         id: 'p1',
@@ -131,10 +131,10 @@ describe('ipc module', () => {
 
       const result = await ipc.getProject('p1')
 
-      expect(result.activity_state).toBe('recent')
-      expect(result.last_activity_at).toBe('2026-03-05T12:00:00Z')
-      expect(result.hero_preference).toBe('builder')
-      expect(result.is_dirty).toBe(false)
+      expect(result.activityState).toBe('recent')
+      expect(result.lastActivityAt).toBe('2026-03-05T12:00:00Z')
+      expect(result.heroPreference).toBe('builder')
+      expect(result.isDirty).toBe(false)
       delete window.__TAURI_INTERNALS__
     })
   })
@@ -313,7 +313,7 @@ describe('ipc module', () => {
   describe('getGitStatus()', () => {
     it('calls invoke with correct command and args', async () => {
       window.__TAURI_INTERNALS__ = {}
-      const mockStatus = { branch: 'main', is_dirty: false, ahead: 0, behind: 0 }
+      const mockStatus = { branch: 'main', isDirty: false, ahead: 0, behind: 0 }
       tauriCore.invoke.mockResolvedValue(mockStatus)
 
       const result = await ipc.getGitStatus('p1')
@@ -328,7 +328,7 @@ describe('ipc module', () => {
       const result = await ipc.getGitStatus('p1')
 
       expect(result).toHaveProperty('branch')
-      expect(result).toHaveProperty('is_dirty')
+      expect(result).toHaveProperty('isDirty')
     })
   })
 

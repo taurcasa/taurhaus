@@ -27,8 +27,8 @@ function createProject(overrides = {}) {
     path: '/projects/taurhaus',
     name: 'taurhaus',
     branch: 'main',
-    activity_state: 'active',
-    is_dirty: false,
+    activityState: 'active',
+    isDirty: false,
     ...overrides,
   }
 }
@@ -60,7 +60,7 @@ describe('HoverCard', () => {
   it('renders project metadata, dirty state, commits, and no-sessions message', async () => {
     render(HoverCard, {
       props: {
-        project: createProject({ is_dirty: true }),
+        project: createProject({ isDirty: true }),
         sessions: [{ live: false }],
       },
     })
@@ -84,7 +84,7 @@ describe('HoverCard', () => {
 
     render(HoverCard, {
       props: {
-        project: createProject({ activity_state: 'unknown-state', branch: '' }),
+        project: createProject({ activityState: 'unknown-state', branch: '' }),
         sessions: [
           {
             live: true,

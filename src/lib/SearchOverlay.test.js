@@ -202,6 +202,61 @@ describe('SearchOverlay', () => {
     })
   })
 
+  it('keeps selection/highlight behavior for grouped results when navigating by keyboard', async () => {
+    search.mockResolvedValue([
+      {
+        entity_type: 'commit',
+        project_id: 'project-3',
+        file_path: null,
+        title: 'Commit Match',
+        snippet: 'commit snippet',
+      },
+      {
+        entity_type: 'session',
+        project_id: 'project-2',
+        file_path: null,
+        title: 'Session Match',
+        snippet: 'session snippet',
+      },
+      {
+        entity_type: 'document',
+        project_id: 'project-1',
+        file_path: 'src/main.rs',
+        title: 'main.rs',
+        snippet: 'fn main',
+      },
+    ])
+    const onNavigate = vi.fn()
+
+    render(SearchOverlay, {
+      props: { open: true, onNavigate },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'match' } })
+    await vi.advanceTimersByTimeAsync(150)
+    await waitFor(() => {
+      expect(screen.getByText('main.rs')).toBeInTheDocument()
+      expect(screen.getByText('Session Match')).toBeInTheDocument()
+      expect(screen.getByText('Commit Match')).toBeInTheDocument()
+    })
+
+    const rows = screen.getAllByTestId('search-result')
+
+    await fireEvent.keyDown(input, { key: 'ArrowDown' })
+    await fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    expect(rows[1].className).toContain('bg-zinc-100')
+    expect(rows[0].className).not.toContain('bg-zinc-100')
+
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onNavigate).toHaveBeenLastCalledWith({
+      tab: 'overview',
+      section: 'session',
+      projectId: 'project-2',
+    })
+  })
+
   it('maps session and commit results to overview navigation targets', async () => {
     search.mockResolvedValue([
       {
@@ -267,7 +322,44 @@ describe('SearchOverlay', () => {
 
     await fireEvent.click(panel)
     expect(screen.getByTestId('search-overlay')).toBeInTheDocument()
-    await fireEvent.click(overlay)
+    await fireEvent.click(screen.getByRole('button', { name: 'Close search overlay' }))
     expect(screen.queryByTestId('search-overlay')).not.toBeInTheDocument()
+  })
+
+  it('exposes dialog semantics, traps focus, and restores prior focus on close', async () => {
+    search.mockResolvedValue([])
+
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open Search'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    await vi.advanceTimersByTimeAsync(16)
+
+    const dialog = screen.getByRole('dialog', { name: 'Search across all projects' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'focus' } })
+    await vi.advanceTimersByTimeAsync(150)
+
+    const clearButton = screen.getByRole('button', { name: 'Clear search' })
+    expect(input).toHaveFocus()
+
+    await fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(clearButton).toHaveFocus()
+
+    await fireEvent.keyDown(window, { key: 'Tab' })
+    expect(input).toHaveFocus()
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('search-overlay')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+
+    trigger.remove()
   })
 })

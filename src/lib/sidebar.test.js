@@ -34,30 +34,30 @@ describe('Sidebar data loading', () => {
 
   it('listProjects returns mock data in array form', async () => {
     const mockData = [
-      { id: 'p1', name: 'test-project', activity_state: 'active', branch: 'main', is_dirty: false },
+      { id: 'p1', name: 'test-project', activityState: 'active', branch: 'main', isDirty: false },
     ]
     ipc.listProjects.mockResolvedValue(mockData)
 
     const result = await ipc.listProjects()
 
     expect(result).toEqual(mockData)
-    expect(result[0].activity_state).toBe('active')
+    expect(result[0].activityState).toBe('active')
   })
 
-  it('listProjects groups by activity_state', async () => {
+  it('listProjects groups by activityState', async () => {
     const mockData = [
-      { id: 'p1', name: 'a', activity_state: 'active', branch: 'main', is_dirty: false },
-      { id: 'p2', name: 'b', activity_state: 'recent', branch: 'main', is_dirty: false },
-      { id: 'p3', name: 'c', activity_state: 'dormant', branch: 'main', is_dirty: false },
+      { id: 'p1', name: 'a', activityState: 'active', branch: 'main', isDirty: false },
+      { id: 'p2', name: 'b', activityState: 'recent', branch: 'main', isDirty: false },
+      { id: 'p3', name: 'c', activityState: 'dormant', branch: 'main', isDirty: false },
     ]
     ipc.listProjects.mockResolvedValue(mockData)
 
     const result = await ipc.listProjects()
     const groups = {
-      active: result.filter(p => p.activity_state === 'active'),
-      recent: result.filter(p => p.activity_state === 'recent'),
-      stale: result.filter(p => p.activity_state === 'stale'),
-      dormant: result.filter(p => p.activity_state === 'dormant'),
+      active: result.filter(p => p.activityState === 'active'),
+      recent: result.filter(p => p.activityState === 'recent'),
+      stale: result.filter(p => p.activityState === 'stale'),
+      dormant: result.filter(p => p.activityState === 'dormant'),
     }
 
     expect(groups.active).toHaveLength(1)
@@ -78,20 +78,20 @@ describe('Sidebar data loading', () => {
       name: 'taurhaus',
       path: '~/projects/taurhaus',
       description: 'Desktop tool for AI project management',
-      activity_state: 'active',
-      last_activity_at: '2025-01-01T00:00:00Z',
-      hero_preference: null,
-      created_at: '2025-01-01T00:00:00Z',
-      updated_at: '2025-01-01T00:00:00Z',
+      activityState: 'active',
+      lastActivityAt: '2025-01-01T00:00:00Z',
+      heroPreference: null,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
       branch: 'main',
-      is_dirty: false,
+      isDirty: false,
     }
     ipc.getProject.mockResolvedValue(mockDetail)
 
     const result = await ipc.getProject('p1')
 
     expect(result.description).toBe('Desktop tool for AI project management')
-    expect(result.activity_state).toBe('active')
+    expect(result.activityState).toBe('active')
     expect(result.branch).toBe('main')
   })
 
@@ -143,8 +143,8 @@ describe('sidebar projection memoization', () => {
 
   it('returns same grouped projection reference for same input', () => {
     const projects = [
-      { id: 'p1', name: 'alpha', activity_state: 'active' },
-      { id: 'p2', name: 'beta', activity_state: 'recent' },
+      { id: 'p1', name: 'alpha', activityState: 'active' },
+      { id: 'p2', name: 'beta', activityState: 'recent' },
     ]
 
     const first = buildSidebarProjection(projects, '')
@@ -153,6 +153,21 @@ describe('sidebar projection memoization', () => {
     expect(second).toBe(first)
     expect(second.grouped[0].items).toHaveLength(1)
     expect(second.grouped[1].items).toHaveLength(1)
+  })
+
+  it('groups canonical camelCase project shapes into sidebar buckets', () => {
+    const projects = [
+      { id: 'p1', name: 'alpha', activityState: 'active' },
+      { id: 'p2', name: 'beta', activityState: 'recent' },
+      { id: 'p3', name: 'gamma', activityState: 'stale' },
+      { id: 'p4', name: 'delta', activityState: 'dormant' },
+    ]
+
+    const projection = buildSidebarProjection(projects, '')
+    expect(projection.grouped.find((group) => group.key === 'active')?.items.map((project) => project.id)).toEqual(['p1'])
+    expect(projection.grouped.find((group) => group.key === 'recent')?.items.map((project) => project.id)).toEqual(['p2'])
+    expect(projection.grouped.find((group) => group.key === 'stale')?.items.map((project) => project.id)).toEqual(['p3'])
+    expect(projection.grouped.find((group) => group.key === 'dormant')?.items.map((project) => project.id)).toEqual(['p4'])
   })
 })
 
@@ -304,24 +319,24 @@ describe('Sidebar visual indicators', () => {
   }
 
   it('hasSession true for active session', () => {
-    const project = { path: '/proj', activity_state: 'dormant' }
+    const project = { path: '/proj', activityState: 'dormant' }
     const sessions = new Map([['/proj', { state: 'active' }]])
     expect(hasSession(project, sessions)).toBe(true)
   })
 
   it('hasSession true for idle session', () => {
-    const project = { path: '/proj', activity_state: 'active' }
+    const project = { path: '/proj', activityState: 'active' }
     const sessions = new Map([['/proj', { state: 'idle' }]])
     expect(hasSession(project, sessions)).toBe(true)
   })
 
   it('hasSession false when no session', () => {
-    const project = { path: '/proj', activity_state: 'recent' }
+    const project = { path: '/proj', activityState: 'recent' }
     expect(hasSession(project, new Map())).toBe(false)
   })
 
   it('isSessionActive true only for active, not idle', () => {
-    const project = { path: '/proj', activity_state: 'stale' }
+    const project = { path: '/proj', activityState: 'stale' }
     const active = new Map([['/proj', { state: 'active' }]])
     const idle = new Map([['/proj', { state: 'idle' }]])
     const none = new Map()
@@ -334,24 +349,24 @@ describe('Sidebar visual indicators', () => {
   // --- Row tint tests ---
 
   it('applies row tint when session active', () => {
-    const project = { path: '/proj', activity_state: 'active' }
+    const project = { path: '/proj', activityState: 'active' }
     const sessions = new Map([['/proj', { state: 'active' }]])
     expect(rowTintFor(project, sessions)).toBe('bg-white/[0.03]')
   })
 
   it('applies row tint when session idle', () => {
-    const project = { path: '/proj', activity_state: 'dormant' }
+    const project = { path: '/proj', activityState: 'dormant' }
     const sessions = new Map([['/proj', { state: 'idle' }]])
     expect(rowTintFor(project, sessions)).toBe('bg-white/[0.03]')
   })
 
   it('no row tint when no session', () => {
-    const project = { path: '/proj', activity_state: 'recent' }
+    const project = { path: '/proj', activityState: 'recent' }
     expect(rowTintFor(project, new Map())).toBe('')
   })
 
   it('row tint removed when session ends', () => {
-    const project = { path: '/proj', activity_state: 'active' }
+    const project = { path: '/proj', activityState: 'active' }
     const withSession = new Map([['/proj', { state: 'active' }]])
     expect(rowTintFor(project, withSession)).toBe('bg-white/[0.03]')
 

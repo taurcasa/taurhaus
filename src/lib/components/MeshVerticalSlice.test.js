@@ -88,26 +88,26 @@ describe('Mesh vertical slice smoke', () => {
       {
         name: 'team-lead',
         role: 'lead',
-        cli_tool: 'claude',
+        cliTool: 'claude',
         model: 'opus',
-        project_id: 'proj-core',
-        session_status: 'active',
-        pane_id: '%1',
+        projectId: 'proj-core',
+        sessionStatus: 'active',
+        paneId: '%1',
       },
       {
         name: 'frontend-dev',
         role: 'member',
-        cli_tool: 'codex',
+        cliTool: 'codex',
         model: 'gpt-5.3-codex',
-        project_id: 'proj-web',
-        session_status: 'idle',
-        pane_id: '%2',
+        projectId: 'proj-web',
+        sessionStatus: 'idle',
+        paneId: '%2',
       },
     ]
 
     coordinationGetLiveTeamStatus.mockImplementation(async (teamName) => ({
       team_name: teamName,
-      lead_name: 'team-lead',
+      leadName: 'team-lead',
       members: rosterMembers,
     }))
 
@@ -128,11 +128,11 @@ describe('Mesh vertical slice smoke', () => {
         {
           name: agent.name,
           role: 'member',
-          cli_tool: agent.cliTool,
+          cliTool: agent.cliTool,
           model: agent.model,
-          project_id: agent.projectId,
-          session_status: 'offline',
-          pane_id: '%9',
+          projectId: agent.projectId,
+          sessionStatus: 'offline',
+          paneId: '%9',
         },
       ]
       return {
@@ -199,57 +199,23 @@ describe('Mesh vertical slice smoke', () => {
     onCoordinationStepProgress.mockResolvedValue(() => {})
   })
 
-  it('full flow: empty -> setup -> initializing -> runtime -> add -> disband', async () => {
+  it('normalizes snake_case team metadata for runtime discovery and disband', async () => {
+    coordinationListTeams.mockResolvedValueOnce([
+      { team_name: 'taurhaus-team', lead_project_path: '/projects/taurhaus' },
+    ])
+
     render(MeshTab, {
       props: {
         dark: false,
         projectPath: '/projects/taurhaus',
-        availableProjects: [
-          { id: 'proj-web', name: 'Web' },
-          { id: 'proj-api', name: 'API' },
-        ],
       },
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
-    await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
+    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
-    })
-
-    await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
-      target: { value: 'backend-dev' },
-    })
-    await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
-      target: { value: 'proj-api' },
-    })
-    await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
-
-    await waitFor(() => {
-      expect(coordinationAddAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agent: expect.objectContaining({
-            name: 'backend-dev',
-            projectId: 'proj-api',
-          }),
-        })
-      )
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()

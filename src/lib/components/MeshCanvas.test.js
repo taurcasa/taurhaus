@@ -61,6 +61,13 @@ function connectionXBounds(connectionPath) {
   }
 }
 
+function latestAnchor(mockFn) {
+  const anchors = mockFn.mock.calls
+    .map(([anchor]) => anchor)
+    .filter(Boolean)
+  return anchors[anchors.length - 1] ?? null
+}
+
 describe('MeshCanvas', () => {
   it('renders lead node when lead prop is provided', () => {
     render(MeshCanvas, {
@@ -226,6 +233,142 @@ describe('MeshCanvas', () => {
 
     await fireEvent.click(screen.getByTestId('mesh-add-node'))
     expect(onAddClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('emits a clamped top anchor for selected agents', async () => {
+    const onDetailAnchorChange = vi.fn()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(1),
+        mode: 'runtime',
+        selectedNodeId: 'agent-1',
+        onDetailAnchorChange,
+      },
+    })
+
+    await waitFor(() => {
+      const anchors = onDetailAnchorChange.mock.calls
+        .map(([anchor]) => anchor)
+        .filter(Boolean)
+      expect(anchors.length).toBeGreaterThan(0)
+      const anchor = anchors[anchors.length - 1]
+      expect(anchor.placement).toBe('top')
+      expect(anchor.left).toBeGreaterThanOrEqual(8)
+      expect(anchor.top).toBeGreaterThanOrEqual(8)
+      expect(anchor.cardWidth).toBeGreaterThanOrEqual(176)
+      expect(anchor.cardWidth).toBeLessThanOrEqual(240)
+    })
+  })
+
+  it('flips detail placement below when selected node is near the top', async () => {
+    const onDetailAnchorChange = vi.fn()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(2),
+        mode: 'runtime',
+        selectedNodeId: 'lead-1',
+        onDetailAnchorChange,
+      },
+    })
+
+    await waitFor(() => {
+      const anchors = onDetailAnchorChange.mock.calls
+        .map(([anchor]) => anchor)
+        .filter(Boolean)
+      expect(anchors.length).toBeGreaterThan(0)
+      expect(anchors[anchors.length - 1].placement).toBe('bottom')
+    })
+  })
+
+  it('keeps detail anchors clamped within canvas bounds at horizontal and vertical edges', async () => {
+    const onDetailAnchorChange = vi.fn()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(1),
+        mode: 'runtime',
+        selectedNodeId: 'agent-1',
+        onDetailAnchorChange,
+      },
+    })
+
+    const canvas = screen.getByTestId('mesh-canvas')
+    const node = screen.getByTestId('mesh-node-agent')
+    const canvasRect = {
+      left: 0,
+      top: 0,
+      width: 360,
+      height: 520,
+      right: 360,
+      bottom: 520,
+    }
+    canvas.getBoundingClientRect = () => canvasRect
+
+    node.getBoundingClientRect = () => ({
+      left: 2,
+      top: 12,
+      width: 44,
+      height: 64,
+      right: 46,
+      bottom: 76,
+    })
+    await fireEvent(window, new Event('resize'))
+
+    await waitFor(() => {
+      const anchor = latestAnchor(onDetailAnchorChange)
+      expect(anchor).not.toBeNull()
+      expect(anchor.left).toBe(8)
+      expect(anchor.top).toBeGreaterThanOrEqual(8)
+      expect(anchor.top).toBeLessThanOrEqual(288)
+      expect(anchor.placement).toBe('bottom')
+    })
+
+    node.getBoundingClientRect = () => ({
+      left: 330,
+      top: 560,
+      width: 44,
+      height: 64,
+      right: 374,
+      bottom: 624,
+    })
+    await fireEvent(window, new Event('resize'))
+
+    await waitFor(() => {
+      const anchor = latestAnchor(onDetailAnchorChange)
+      expect(anchor).not.toBeNull()
+      expect(anchor.left).toBe(112)
+      expect(anchor.top).toBe(288)
+      expect(anchor.placement).toBe('top')
+    })
+  })
+
+  it('dismisses selected detail on Escape and outside clicks', async () => {
+    const onDismissDetail = vi.fn()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(1),
+        mode: 'runtime',
+        selectedNodeId: 'agent-1',
+        onDismissDetail,
+      },
+    })
+
+    await fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' })
+    expect(onDismissDetail).toHaveBeenCalledTimes(1)
+
+    onDismissDetail.mockClear()
+    await fireEvent.pointerDown(screen.getByTestId('mesh-node-agent'))
+    expect(onDismissDetail).not.toHaveBeenCalled()
+
+    await fireEvent.pointerDown(document.body)
+    expect(onDismissDetail).toHaveBeenCalledTimes(1)
   })
 
   it('handles empty state with no lead', () => {

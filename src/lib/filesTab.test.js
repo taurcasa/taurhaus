@@ -103,12 +103,12 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'first.js' })).toBeInTheDocument()
-      expect(screen.getByRole('treeitem', { name: 'second.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'first.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'second.js' })).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'first.js' }))
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'second.js' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'first.js' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'second.js' }))
 
     secondRead.resolve({ content: 'second-content', language: 'javascript' })
     await waitFor(() => {
@@ -119,6 +119,34 @@ describe('FilesTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mock-code-viewer')).toHaveTextContent('second-content')
       expect(screen.getByTestId('mock-code-viewer')).not.toHaveTextContent('first-content')
+    })
+  })
+
+  it('uses list semantics and supports keyboard activation for file rows', async () => {
+    readFile.mockResolvedValue({ content: 'first-content', language: 'javascript' })
+
+    render(FilesTab, {
+      props: {
+        dark: false,
+        codeTheme: 'github-light',
+        selectedProject: { id: 'project-1', path: '/tmp/project-1' },
+        isActive: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('list')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'first.js' })).toBeInTheDocument()
+    })
+
+    const firstRow = screen.getByRole('button', { name: 'first.js' })
+    firstRow.focus()
+    expect(firstRow).toHaveFocus()
+
+    await fireEvent.keyDown(firstRow, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(readFile).toHaveBeenCalledWith('project-1', 'src/first.js')
     })
   })
 
@@ -139,10 +167,10 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'first.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'first.js' })).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'first.js' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'first.js' }))
     await waitFor(() => {
       expect(screen.getByTestId('filecontent-loading')).toBeInTheDocument()
     })
@@ -191,10 +219,10 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'first.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'first.js' })).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'first.js' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'first.js' }))
     await waitFor(() => {
       expect(screen.getByTestId('filecontent-loading')).toBeInTheDocument()
     })
@@ -233,7 +261,7 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'file-000.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'file-000.js' })).toBeInTheDocument()
     })
 
     const renderedNodes = screen.getAllByTestId('file-tree-node')
@@ -260,16 +288,16 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'file-000.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'file-000.js' })).toBeInTheDocument()
     })
-    expect(screen.queryByRole('treeitem', { name: 'file-180.js' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'file-180.js' })).not.toBeInTheDocument()
 
     const scroller = screen.getByTestId('file-tree-scroll')
     scroller.scrollTop = 32 * 170
     await fireEvent.scroll(scroller)
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'file-180.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'file-180.js' })).toBeInTheDocument()
     })
   })
 
@@ -287,6 +315,33 @@ describe('FilesTab', () => {
     await waitFor(() => {
       expect(screen.getByText('No viewable files')).toBeInTheDocument()
     })
+  })
+
+  it('logs and surfaces a non-blocking error when file tree loading fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getFileTree.mockRejectedValue(new Error('tree load failed'))
+
+    render(FilesTab, {
+      props: {
+        dark: false,
+        codeTheme: 'github-light',
+        selectedProject: { id: 'project-1', path: '/tmp/project-1' },
+        isActive: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('filetree-error')).toHaveTextContent(
+        'Failed to load file tree. Please retry.'
+      )
+      expect(screen.getByText('No viewable files')).toBeInTheDocument()
+    })
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[file] failed to load file tree'),
+      expect.any(Error)
+    )
+    errorSpy.mockRestore()
   })
 
   it('auto-selects README on initial tree load', async () => {
@@ -330,15 +385,15 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'photo.png' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'photo.png' })).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'photo.png' }))
     await waitFor(() => {
       expect(screen.getByRole('img', { name: 'images/photo.png' })).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'missing.png' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'missing.png' }))
     await waitFor(() => {
       expect(screen.getByText('Error loading file')).toBeInTheDocument()
     })
@@ -362,20 +417,20 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'model.bin' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'model.bin' })).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'model.bin' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'model.bin' }))
     await waitFor(() => {
       expect(screen.getByText('Binary file — cannot display as text')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'report.pdf' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'report.pdf' }))
     await waitFor(() => {
       expect(screen.getByText('PDF viewer coming soon')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByRole('treeitem', { name: 'huge.txt' }))
+    await fireEvent.click(screen.getByRole('button', { name: 'huge.txt' }))
     await waitFor(() => {
       expect(screen.getByText('File too large to display (>5 MB)')).toBeInTheDocument()
     })
@@ -397,14 +452,14 @@ describe('FilesTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: 'main.js' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'main.js' })).toBeInTheDocument()
     })
 
-    await fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'main.js' }))
+    await fireEvent.contextMenu(screen.getByRole('button', { name: 'main.js' }))
     await fireEvent.mouseDown(screen.getByText('Copy Path'))
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('/tmp/project-1/src/main.js')
 
-    await fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'main.js' }))
+    await fireEvent.contextMenu(screen.getByRole('button', { name: 'main.js' }))
     await fireEvent.mouseDown(screen.getByText('Copy Relative Path'))
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('src/main.js')
   })

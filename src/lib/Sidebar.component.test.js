@@ -30,9 +30,9 @@ function makeProjects(count) {
     id: `project-${index}`,
     name: `Project ${index}`,
     path: `/projects/project-${index}`,
-    activity_state: activityStates[index % activityStates.length],
+    activityState: activityStates[index % activityStates.length],
     branch: index % 2 === 0 ? 'main' : null,
-    is_dirty: index % 3 === 0,
+    isDirty: index % 3 === 0,
   }))
 }
 
@@ -57,25 +57,28 @@ describe('Sidebar component branches', () => {
 
   it('renders loading, error, empty, and no-match states', async () => {
     const onRetry = vi.fn()
+    const onAddProject = vi.fn()
     const { rerender } = render(Sidebar, {
       props: {
         projects: [],
         sidebarLoading: true,
-        actions: { onRetry },
+        actions: { onRetry, onAddProject },
       },
     })
 
     expect(screen.getByTestId('sidebar-skeleton')).toBeInTheDocument()
 
-    await rerender({ projects: [], sidebarLoading: false, sidebarError: 'boom', actions: { onRetry } })
+    await rerender({ projects: [], sidebarLoading: false, sidebarError: 'boom', actions: { onRetry, onAddProject } })
     expect(screen.getByTestId('sidebar-error')).toBeInTheDocument()
     await fireEvent.click(screen.getByText('Retry'))
     expect(onRetry).toHaveBeenCalled()
 
-    await rerender({ projects: [], sidebarLoading: false, sidebarError: null, actions: { onRetry } })
+    await rerender({ projects: [], sidebarLoading: false, sidebarError: null, actions: { onRetry, onAddProject } })
     expect(screen.getByTestId('sidebar-empty')).toBeInTheDocument()
+    await fireEvent.click(screen.getByTestId('sidebar-empty-scan'))
+    expect(onAddProject).toHaveBeenCalledTimes(1)
 
-    await rerender({ projects: makeProjects(2), sidebarLoading: false, sidebarError: null, actions: { onRetry } })
+    await rerender({ projects: makeProjects(2), sidebarLoading: false, sidebarError: null, actions: { onRetry, onAddProject } })
     const input = screen.getByTestId('sidebar-filter')
     await fireEvent.input(input, { target: { value: 'does-not-exist' } })
     expect(screen.getByTestId('sidebar-no-matches')).toBeInTheDocument()
@@ -113,6 +116,26 @@ describe('Sidebar component branches', () => {
 
     await fireEvent.click(screen.getByTestId('settings-toggle'))
     expect(onToggleSettings).toHaveBeenCalled()
+  })
+
+  it('renders projects with canonical camelCase activity fields', async () => {
+    const projects = [
+      {
+        id: 'proj-recent',
+        name: 'Recent Project',
+        path: '/projects/recent',
+        activityState: 'recent',
+        branch: 'main',
+        isDirty: true,
+      },
+    ]
+
+    render(Sidebar, { props: { projects } })
+
+    await waitFor(() => {
+      expect(screen.getByText('RECENT')).toBeInTheDocument()
+      expect(screen.getByText('Recent Project')).toBeInTheDocument()
+    })
   })
 
   it('renders daemon status variants and hides not_configured', async () => {

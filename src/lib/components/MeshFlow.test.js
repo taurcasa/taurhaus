@@ -280,7 +280,6 @@ describe('Mesh flow smoke', () => {
       )
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-overflow-button'))
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { createAsyncGuard } from './asyncGuard.js'
+import { loadProjectSelectionData, withFallback } from './projectSelection.js'
 
 // Mock IPC module
 vi.mock('./ipc.js', () => ({
@@ -549,49 +551,36 @@ describe('Per-project position memory', () => {
 describe('selectProject flow', () => {
   let ipc
 
-  function errorMessage(err) {
-    if (typeof err === 'string' && err.trim()) return err
-    if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.trim()) {
-      return err.message
-    }
-    return 'Unknown error'
-  }
-
-  async function withFallback(section, promise, fallback) {
-    try {
-      const value = await promise
-      return { ok: true, section, value, message: null }
-    } catch (err) {
-      return { ok: false, section, value: fallback, message: errorMessage(err) }
-    }
-  }
-
   beforeEach(async () => {
     vi.clearAllMocks()
     ipc = await import('./ipc.js')
   })
 
   it('calls all IPC functions in parallel', async () => {
-    const project = { id: 'p1', name: 'test', path: '/test' }
+    function createDeferred() {
+      /** @type {(value: any) => void} */
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
 
-    ipc.getProject.mockResolvedValue({ ...project, description: 'A project' })
-    ipc.getRecentCommits.mockResolvedValue([])
-    ipc.getLatestSession.mockResolvedValue(null)
-    ipc.listSessions.mockResolvedValue([])
-    ipc.getReadme.mockResolvedValue(null)
-    ipc.getRelationships.mockResolvedValue([])
+    const detail = createDeferred()
+    const commits = createDeferred()
+    const latest = createDeferred()
+    const sessionList = createDeferred()
+    const readme = createDeferred()
+    const rels = createDeferred()
 
-    // Simulate selectProject's parallel calls
-    await Promise.all([
-      ipc.getProject(project.id),
-      ipc.getRecentCommits(project.id, 10),
-      Promise.all([
-        ipc.getLatestSession(project.id),
-        ipc.listSessions(project.id, 10),
-      ]),
-      ipc.getReadme(project.id),
-      ipc.getRelationships(project.id),
-    ])
+    ipc.getProject.mockReturnValue(detail.promise)
+    ipc.getRecentCommits.mockReturnValue(commits.promise)
+    ipc.getLatestSession.mockReturnValue(latest.promise)
+    ipc.listSessions.mockReturnValue(sessionList.promise)
+    ipc.getReadme.mockReturnValue(readme.promise)
+    ipc.getRelationships.mockReturnValue(rels.promise)
+
+    const loadPromise = loadProjectSelectionData('p1', ipc)
 
     expect(ipc.getProject).toHaveBeenCalledWith('p1')
     expect(ipc.getRecentCommits).toHaveBeenCalledWith('p1', 10)
@@ -599,28 +588,41 @@ describe('selectProject flow', () => {
     expect(ipc.listSessions).toHaveBeenCalledWith('p1', 10)
     expect(ipc.getReadme).toHaveBeenCalledWith('p1')
     expect(ipc.getRelationships).toHaveBeenCalledWith('p1')
+
+    detail.resolve({ id: 'p1' })
+    commits.resolve([])
+    latest.resolve(null)
+    sessionList.resolve([])
+    readme.resolve(null)
+    rels.resolve([])
+    await loadPromise
   })
 
   it('stale check prevents late responses from updating state', async () => {
-    // Simulate the generation counter pattern
-    let generation = 0
-    let result = null
+    vi.useFakeTimers()
+    try {
+      const selectLoadGuard = createAsyncGuard()
+      let result = null
 
-    async function selectProject(delay, id) {
-      const myGeneration = ++generation
-      await new Promise(r => setTimeout(r, delay))
-      if (myGeneration !== generation) return // stale
-      result = id
+      async function selectProject(delay, id) {
+        const sequence = selectLoadGuard.next()
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        if (!selectLoadGuard.isCurrent(sequence)) return
+        result = id
+      }
+
+      const first = selectProject(50, 'slow-project')
+      const second = selectProject(10, 'fast-project')
+
+      await vi.advanceTimersByTimeAsync(10)
+      expect(result).toBe('fast-project')
+
+      await vi.advanceTimersByTimeAsync(40)
+      await Promise.all([first, second])
+      expect(result).toBe('fast-project')
+    } finally {
+      vi.useRealTimers()
     }
-
-    // First select: slow (50ms)
-    const first = selectProject(50, 'slow-project')
-    // Second select: fast (10ms) — should win
-    const second = selectProject(10, 'fast-project')
-
-    await Promise.all([first, second])
-
-    expect(result).toBe('fast-project')
   })
 
   it('loader guard keeps latest project sessions and ignores stale responses', async () => {
@@ -1284,6 +1286,18 @@ describe('Git position restore on project switch', () => {
       }
 
       expect(daemonUpdateAvailable).toBeNull()
+    })
+  })
+
+  describe('error surfacing', () => {
+    it('logs targeted Shell catch paths and exposes a non-blocking notice banner', () => {
+      const source = readFileSync(`${process.cwd()}/src/Shell.svelte`, 'utf8')
+
+      expect(source).toContain('[settings] failed to load code theme preferences:')
+      expect(source).toContain('[settings] failed to persist dark mode preference:')
+      expect(source).toContain('[overview] failed to dismiss relationship')
+      expect(source).toContain('data-testid="shell-notice-banner"')
+      expect(source).toContain('data-testid="shell-notice-message"')
     })
   })
 })

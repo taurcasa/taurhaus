@@ -58,9 +58,53 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('status-badge-active')).toBeInTheDocument()
   })
 
+  it('renders lead role chip and runtime diagnostics when supplied', () => {
+    renderDetail({
+      mode: 'runtime',
+      role: 'lead',
+      status: 'idle',
+      node: {
+        paneId: '%9',
+        sessionId: 'sess-123',
+        sessionState: 'warming',
+      },
+    })
+
+    expect(screen.getByText('Lead')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-runtime')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-pane')).toHaveTextContent('%9')
+    expect(screen.getByTestId('mesh-node-detail-session')).toHaveTextContent('sess-123')
+    expect(screen.getByTestId('mesh-node-detail-session-state')).toHaveTextContent('warming')
+  })
+
   it('animates in using mesh-detail-enter keyframe class', () => {
     renderDetail()
     expect(screen.getByTestId('mesh-node-detail').className).toContain('mesh-detail-enter')
+  })
+
+  it('defaults to bottom placement when no anchor is provided', () => {
+    renderDetail()
+    const detail = screen.getByTestId('mesh-node-detail')
+    expect(detail).toHaveAttribute('data-placement', 'bottom')
+    expect(detail.getAttribute('style') || '').toContain('transform: translateX(-50%)')
+  })
+
+  it('uses anchored top/left coordinates when provided', () => {
+    renderDetail({
+      anchor: {
+        left: 88,
+        top: 24,
+        placement: 'top',
+        cardWidth: 220,
+      },
+    })
+
+    const detail = screen.getByTestId('mesh-node-detail')
+    const style = detail.getAttribute('style') || ''
+    expect(detail).toHaveAttribute('data-placement', 'top')
+    expect(style).toContain('left: 88px')
+    expect(style).toContain('top: 24px')
+    expect(style).toContain('width: 220px')
   })
 
   it('shows Edit and Remove buttons in setup mode', () => {
@@ -81,6 +125,40 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-focus')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
+  })
+
+  it('disables Focus button when no focus callback is provided', () => {
+    renderDetail({
+      mode: 'runtime',
+      actions: {
+        onResume: vi.fn(),
+        onStop: vi.fn(),
+        onCapture: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
+  })
+
+  it('renders contrast-safe surfaces in dark and light modes', () => {
+    const view = renderDetail({ mode: 'runtime', dark: true })
+    expect(screen.getByTestId('mesh-node-detail').className).toContain('text-zinc-100')
+
+    view.rerender({
+      node: {
+        name: 'frontend-dev',
+        role: 'agent',
+        tool: 'codex',
+        model: 'gpt-5.3-codex',
+        status: 'active',
+        projectId: 'taurhaus-web',
+        description: 'Implements UI surface details for the mesh canvas.',
+      },
+      mode: 'runtime',
+      dark: false,
+      actions: {},
+    })
+    expect(screen.getByTestId('mesh-node-detail').className).toContain('text-zinc-900')
   })
 
   it('calls action callbacks', async () => {

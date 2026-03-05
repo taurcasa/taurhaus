@@ -28,6 +28,7 @@ vi.mock('./MarkdownRenderer.svelte', () => {
 })
 
 import OverviewTab from './OverviewTab.svelte'
+import OverviewTabContextHarness from './OverviewTabContextHarness.svelte'
 
 /** Minimal project for rendering. */
 function makeProject(overrides = {}) {
@@ -36,10 +37,10 @@ function makeProject(overrides = {}) {
     name: 'taurhaus',
     path: '~/projects/taurhaus',
     branch: 'main',
-    is_dirty: false,
-    activity_state: 'active',
+    isDirty: false,
+    activityState: 'active',
     description: 'Desktop tool for AI project management',
-    created_at: '2025-01-01T00:00:00Z',
+    createdAt: '2025-01-01T00:00:00Z',
     ...overrides,
   }
 }
@@ -138,15 +139,15 @@ describe('OverviewTab', () => {
     expect(screen.getByText('Desktop tool for AI project management')).toBeTruthy()
   })
 
-  it('shows dirty indicator when is_dirty is true', () => {
+  it('shows dirty indicator when isDirty is true', () => {
     render(OverviewTab, {
-      props: defaultProps({ selectedProject: makeProject({ is_dirty: true }) }),
+      props: defaultProps({ selectedProject: makeProject({ isDirty: true }) }),
     })
     const dot = document.querySelector('[title="Uncommitted changes"]')
     expect(dot).toBeTruthy()
   })
 
-  it('hides dirty indicator when is_dirty is false', () => {
+  it('hides dirty indicator when isDirty is false', () => {
     render(OverviewTab, { props: defaultProps() })
     const dot = document.querySelector('[title="Uncommitted changes"]')
     expect(dot).toBeNull()
@@ -375,7 +376,7 @@ describe('OverviewTab', () => {
 
   it('shows created date', () => {
     render(OverviewTab, { props: defaultProps() })
-    // created_at: '2025-01-01T00:00:00Z'
+    // createdAt: '2025-01-01T00:00:00Z'
     const dateStr = new Date('2025-01-01T00:00:00Z').toLocaleDateString()
     expect(screen.getByText(dateStr)).toBeTruthy()
   })
@@ -413,6 +414,52 @@ describe('OverviewTab', () => {
   it('README section hidden when no content', () => {
     render(OverviewTab, { props: defaultProps({ readmeContent: null }) })
     expect(screen.queryByTestId('overview-readme')).toBeNull()
+  })
+
+  it('uses and updates project data from context when selectedProject/projects are omitted', async () => {
+    const alpha = makeProject({ id: 'p1', name: 'alpha' })
+    const beta = makeProject({ id: 'p2', name: 'beta' })
+    const gamma = makeProject({ id: 'p3', name: 'gamma' })
+
+    const { rerender } = render(OverviewTabContextHarness, {
+      props: {
+        contextSelectedProject: alpha,
+        contextProjects: [alpha, beta],
+        data: {
+          relationships: [{
+            id: 'rel-1',
+            source_project_id: 'p1',
+            target_project_id: 'p2',
+            relationship_type: 'references',
+            detection_source: 'manual',
+            dismissed: false,
+          }],
+        },
+      },
+    })
+
+    expect(screen.getByText('alpha')).toBeTruthy()
+    expect(screen.getByText('beta')).toBeTruthy()
+
+    await rerender({
+      contextSelectedProject: beta,
+      contextProjects: [beta, gamma],
+      data: {
+        relationships: [{
+          id: 'rel-2',
+          source_project_id: 'p2',
+          target_project_id: 'p3',
+          relationship_type: 'references',
+          detection_source: 'manual',
+          dismissed: false,
+        }],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('alpha')).toBeNull()
+      expect(screen.getByText('gamma')).toBeTruthy()
+    })
   })
 
   // --- Dark mode ---
