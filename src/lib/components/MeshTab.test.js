@@ -610,6 +610,96 @@ describe('MeshTab', () => {
     })
   })
 
+  it('resolves standard-team agent names from slot and role name patterns', async () => {
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'claude-orchestrator',
+        name: 'Claude Orchestrator',
+        kind: 'lead',
+        cliTool: 'claude',
+        model: 'opus',
+        defaults: { defaultNamePattern: 'lead-{project}' },
+      },
+      {
+        roleId: 'codex-architect',
+        name: 'Codex Architect',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.3-codex',
+        defaults: { defaultNamePattern: 'architect-{n}' },
+      },
+      {
+        roleId: 'codex-developer',
+        name: 'Codex Developer',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.3-codex',
+        defaults: { defaultNamePattern: 'dev-{n}' },
+      },
+      {
+        roleId: 'gemini-ui-specialist',
+        name: 'Gemini UI Specialist',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: 'gemini-3.1-pro',
+        defaults: { defaultNamePattern: 'ui-specialist-{n}' },
+      },
+    ])
+    getTeamPreset.mockResolvedValueOnce({
+      presetId: 'standard-team',
+      name: 'Standard Dev Team',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [
+        {
+          roleId: 'codex-architect',
+          count: 1,
+          overrides: { namePattern: 'architect' },
+        },
+        {
+          roleId: 'codex-developer',
+          count: 2,
+          overrides: { namePattern: 'developer{n}' },
+        },
+        {
+          roleId: 'gemini-ui-specialist',
+          count: 1,
+          overrides: { namePattern: 'ui-specialist' },
+        },
+      ],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-standard-team'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalled()
+    })
+
+    const request = coordinationInitializeTeam.mock.calls.at(-1)?.[0]
+    expect(request?.lead?.name).toBe('team-lead')
+    expect(request?.agents?.map((agent) => agent.name)).toEqual([
+      'architect',
+      'developer1',
+      'developer2',
+      'ui-specialist',
+    ])
+  })
+
   it('matches teams when lead project path uses windows drive notation', async () => {
     coordinationListTeams.mockResolvedValueOnce([
       { teamName: 'architecture-final', leadProjectPath: 'C:\\projects\\taurhaus' },

@@ -6,6 +6,7 @@
     coordinationListTeams,
     coordinationRemoveMember,
     coordinationResumeMember,
+    getTeamPreset,
     listRoleTemplates,
     upsertRoleTemplate,
   } from '../ipc.js'
@@ -48,6 +49,15 @@
   }
 
   const quickPresets = [
+    {
+      presetId: 'standard-team',
+      name: 'Standard Dev Team',
+      description: 'Orchestrator, architect, two full-stack developers, and a UI specialist',
+      leadCount: 1,
+      agentCount: 4,
+      tools: ['claude', 'codex', 'gemini'],
+      builtIn: true,
+    },
     {
       presetId: 'fullstack-dev',
       name: 'Full Stack Dev Team',
@@ -94,6 +104,7 @@
 
   let gateBootstrapping = false
   let discoverySequence = 0
+  let presetSelectionSequence = 0
   let runtimeMessageTimer = null
   let errorMessageTimer = null
 
@@ -193,6 +204,61 @@
   function defaultModelForTool(tool) {
     const normalized = normalizeTool(tool)
     return modelOptionsByTool[normalized]?.[0] ?? 'default'
+  }
+
+  function normalizePatternProjectName(path) {
+    const normalized = normalizeProjectPath(path)
+    const segments = normalized.split('/').filter(Boolean)
+    return segments.at(-1) || 'project'
+  }
+
+  function applyNamePattern(pattern, n, projectName) {
+    return String(pattern || '')
+      .replace(/\{n\}/g, String(n))
+      .replace(/\{project\}/g, projectName)
+  }
+
+  function resolveDefaultNamePattern(roleTemplate) {
+    return (
+      roleTemplate?.defaults?.defaultNamePattern ??
+      roleTemplate?.defaults?.default_name_pattern ??
+      roleTemplate?.defaultNamePattern ??
+      roleTemplate?.default_name_pattern ??
+      null
+    )
+  }
+
+  function resolveSlotNamePattern(slot, roleTemplate) {
+    const overridePattern = slot?.overrides?.namePattern ?? slot?.overrides?.name_pattern
+    return overridePattern ?? resolveDefaultNamePattern(roleTemplate) ?? 'agent-{n}'
+  }
+
+  function resolveRoleTool(roleTemplate, fallbackTool = 'codex') {
+    return normalizeTool(
+      roleTemplate?.cliTool ??
+      roleTemplate?.cli_tool ??
+      roleTemplate?.defaults?.cliTool ??
+      roleTemplate?.defaults?.cli_tool ??
+      fallbackTool
+    )
+  }
+
+  function resolveRoleModel(roleTemplate, tool) {
+    return String(roleTemplate?.model ?? roleTemplate?.defaults?.model ?? defaultModelForTool(tool))
+  }
+
+  function uniquifyMemberName(name, seenNames) {
+    const baseName = String(name || '').trim()
+    if (!baseName) return ''
+    const seen = seenNames.get(baseName) ?? 0
+    seenNames.set(baseName, seen + 1)
+    return seen === 0 ? baseName : `${baseName}-${seen}`
+  }
+
+  function normalizeAgentSlots(preset) {
+    return Array.isArray(preset?.agentSlots ?? preset?.agent_slots)
+      ? (preset?.agentSlots ?? preset?.agent_slots)
+      : []
   }
 
   function coerceTeams(response) {
@@ -300,34 +366,88 @@
     }
   }
 
-  function buildTeamConfigFromPreset(preset) {
+  function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = []) {
     const tools = Array.isArray(preset?.tools) && preset.tools.length > 0
       ? preset.tools.map((entry) => normalizeTool(entry))
       : ['claude', 'codex', 'gemini']
 
-    const lead = createLead({
-      id: 'lead',
-      name: 'team-lead',
-      tool: tools[0] ?? 'claude',
-      status: 'offline',
-      projectId: projectPath,
-    })
-
-    const agentCount = Math.max(
-      1,
-      Number(preset?.agentCount ?? Math.max(0, Number(preset?.roleCount ?? 1) - 1) ?? 1)
+    const roleTemplatesById = new Map(
+      (Array.isArray(roleTemplatesCatalog) ? roleTemplatesCatalog : [])
+        .filter((entry) => entry && (entry.roleId ?? entry.role_id))
+        .map((entry) => [entry.roleId ?? entry.role_id, entry])
     )
 
-    const agents = Array.from({ length: agentCount }, (_, index) => {
-      const tool = tools[(index + 1) % tools.length] ?? 'codex'
-      return createAgent(index, {
-        id: `agent-${index + 1}`,
-        name: `agent-${index + 1}`,
-        tool,
-        status: 'offline',
-        projectId: projectPath,
-      })
+    const leadRoleId = preset?.leadRoleId ?? preset?.lead_role_id ?? ''
+    const leadRoleTemplate = roleTemplatesById.get(leadRoleId)
+    const leadTool = resolveRoleTool(leadRoleTemplate, tools[0] ?? 'claude')
+    const seenNames = new Map()
+    const leadName = uniquifyMemberName('team-lead', seenNames) || 'team-lead'
+
+    const lead = createLead({
+      id: 'lead',
+      name: leadName,
+      tool: leadTool,
+      model: resolveRoleModel(leadRoleTemplate, leadTool),
+      status: 'offline',
+      projectId: projectPath,
+      roleId: leadRoleId || null,
     })
+
+    const projectName = normalizePatternProjectName(projectPath)
+    const agentSlots = normalizeAgentSlots(preset)
+    let agents = []
+
+    if (agentSlots.length > 0) {
+      let agentIndex = 0
+      agents = agentSlots.flatMap((slot) => {
+        const count = Math.max(0, Number(slot?.count ?? 0))
+        const roleId = slot?.roleId ?? slot?.role_id ?? null
+        const roleTemplate = roleTemplatesById.get(roleId)
+        const tool = resolveRoleTool(roleTemplate, tools[(agentIndex + 1) % tools.length] ?? 'codex')
+        const model = resolveRoleModel(roleTemplate, tool)
+        const pattern = resolveSlotNamePattern(slot, roleTemplate)
+
+        const members = Array.from({ length: count }, (_, offset) => {
+          const memberIndex = offset + 1
+          const fallbackName = `agent-${agentIndex + 1}`
+          const resolvedName = applyNamePattern(pattern, memberIndex, projectName)
+          const name = uniquifyMemberName(resolvedName || fallbackName, seenNames) || fallbackName
+          const member = createAgent(agentIndex, {
+            id: name,
+            name,
+            tool,
+            model,
+            status: 'offline',
+            projectId: projectPath,
+            roleId,
+          })
+          agentIndex += 1
+          return member
+        })
+
+        return members
+      })
+    }
+
+    if (agents.length === 0) {
+      const agentCount = Math.max(
+        1,
+        Number(preset?.agentCount ?? Math.max(0, Number(preset?.roleCount ?? 1) - 1) ?? 1)
+      )
+
+      agents = Array.from({ length: agentCount }, (_, index) => {
+        const tool = tools[(index + 1) % tools.length] ?? 'codex'
+        const fallbackName = `agent-${index + 1}`
+        const name = uniquifyMemberName(fallbackName, seenNames) || fallbackName
+        return createAgent(index, {
+          id: name,
+          name,
+          tool,
+          status: 'offline',
+          projectId: projectPath,
+        })
+      })
+    }
 
     return {
       lead,
@@ -337,10 +457,8 @@
       composition: {
         presetId: preset?.presetId ?? '',
         name: preset?.name ?? '',
-        leadRoleId: preset?.leadRoleId ?? preset?.lead_role_id ?? '',
-        agentSlots: Array.isArray(preset?.agentSlots ?? preset?.agent_slots)
-          ? (preset?.agentSlots ?? preset?.agent_slots)
-          : [],
+        leadRoleId,
+        agentSlots,
       },
     }
   }
@@ -548,8 +666,32 @@
     slideOverContext = null
   }
 
-  function handlePresetSelect(preset) {
-    teamConfig = buildTeamConfigFromPreset(preset)
+  async function handlePresetSelect(preset) {
+    const sequence = ++presetSelectionSequence
+    const presetId = preset?.presetId ?? preset?.preset_id ?? ''
+    let resolvedPreset = preset
+    let roleCatalog = []
+
+    try {
+      const [hydratedPreset, hydratedRoles] = await Promise.all([
+        presetId ? getTeamPreset(presetId) : Promise.resolve(null),
+        listRoleTemplates(),
+      ])
+
+      if (sequence !== presetSelectionSequence) return
+      if (hydratedPreset && typeof hydratedPreset === 'object') {
+        resolvedPreset = {
+          ...preset,
+          ...hydratedPreset,
+        }
+      }
+      roleCatalog = Array.isArray(hydratedRoles) ? hydratedRoles : []
+    } catch (error) {
+      console.error('Failed to hydrate quick preset details:', error)
+    }
+
+    if (sequence !== presetSelectionSequence) return
+    teamConfig = buildTeamConfigFromPreset(resolvedPreset, roleCatalog)
     teamName = inferTeamName(projectPath)
     selectedNodeId = null
     mode = 'setup'
@@ -558,8 +700,7 @@
   }
 
   function handlePresetFromBrowser(preset) {
-    handlePresetSelect(preset)
-    closeSlideOver()
+    void handlePresetSelect(preset)
   }
 
   function handleRoleFromBrowser(role) {
