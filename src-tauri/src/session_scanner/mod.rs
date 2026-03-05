@@ -20,7 +20,8 @@ pub use cli_tool::CliTool;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// State of a Claude Code session.
@@ -116,6 +117,97 @@ struct StateTracker {
 /// State trackers keyed by PID.
 static STATE_TRACKERS: Mutex<Option<HashMap<u32, StateTracker>>> = Mutex::new(None);
 
+/// Max age for cached tmux pane metadata before forced refresh.
+const TMUX_CACHE_MAX_AGE: Duration = Duration::from_secs(2);
+
+#[derive(Default)]
+struct ScannerCache {
+    pid_fingerprint: Vec<u32>,
+    processes: Vec<process::ProcessInfo>,
+    pane_map: HashMap<String, tmux::TmuxPane>,
+    tmux_epoch: u64,
+    last_tmux_refresh: Option<Instant>,
+}
+
+static SCAN_CACHE: OnceLock<Mutex<ScannerCache>> = OnceLock::new();
+static TMUX_CHANGE_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+/// Notify scanner cache that tmux layout metadata likely changed.
+///
+/// Call this after tmux launch/stop operations so the next scan forces a
+/// fresh `list-panes` read even when process PIDs are otherwise stable.
+pub fn notify_tmux_changed() {
+    TMUX_CHANGE_EPOCH.fetch_add(1, Ordering::Relaxed);
+}
+
+fn scan_inputs_with_cache<F, G, H>(
+    now: Instant,
+    process_id_scanner: &F,
+    process_scanner: &G,
+    tmux_lister: &H,
+) -> (
+    Vec<process::ProcessInfo>,
+    HashMap<String, tmux::TmuxPane>,
+    bool,
+    bool,
+    u64,
+    u64,
+)
+where
+    F: Fn() -> Vec<u32>,
+    G: Fn() -> Vec<process::ProcessInfo>,
+    H: Fn() -> HashMap<String, tmux::TmuxPane>,
+{
+    let current_pids = process_id_scanner();
+    let current_tmux_epoch = TMUX_CHANGE_EPOCH.load(Ordering::Relaxed);
+
+    let cache = SCAN_CACHE.get_or_init(|| Mutex::new(ScannerCache::default()));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+
+    let process_cache_hit = !guard.processes.is_empty() && guard.pid_fingerprint == current_pids;
+
+    let mut process_scan_ms = 0u64;
+    let processes = if process_cache_hit {
+        guard.processes.clone()
+    } else {
+        let process_started = Instant::now();
+        let fresh = process_scanner();
+        process_scan_ms = process_started.elapsed().as_millis() as u64;
+        guard.processes = fresh.clone();
+        guard.pid_fingerprint = current_pids;
+        fresh
+    };
+
+    let tmux_cache_hit = process_cache_hit
+        && !guard.pane_map.is_empty()
+        && guard.tmux_epoch == current_tmux_epoch
+        && guard
+            .last_tmux_refresh
+            .is_some_and(|ts| now.duration_since(ts) < TMUX_CACHE_MAX_AGE);
+
+    let mut tmux_ms = 0u64;
+    let pane_map = if tmux_cache_hit {
+        guard.pane_map.clone()
+    } else {
+        let tmux_started = Instant::now();
+        let fresh = tmux_lister();
+        tmux_ms = tmux_started.elapsed().as_millis() as u64;
+        guard.pane_map = fresh.clone();
+        guard.tmux_epoch = current_tmux_epoch;
+        guard.last_tmux_refresh = Some(now);
+        fresh
+    };
+
+    (
+        processes,
+        pane_map,
+        process_cache_hit,
+        tmux_cache_hit,
+        process_scan_ms,
+        tmux_ms,
+    )
+}
+
 /// Apply bidirectional hysteresis to a raw state reading.
 ///
 /// Returns the state to report. Only changes from the previously reported
@@ -157,6 +249,15 @@ fn retain_state_trackers(active_pids: &[u32]) {
     if let Some(map) = guard.as_mut() {
         map.retain(|pid, _| active_pids.contains(pid));
     }
+}
+
+#[cfg(test)]
+fn clear_scan_cache() {
+    if let Some(cache) = SCAN_CACHE.get() {
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = ScannerCache::default();
+    }
+    TMUX_CHANGE_EPOCH.store(0, Ordering::Relaxed);
 }
 
 /// Compute a process's raw state from tool-specific signals.
@@ -254,12 +355,13 @@ fn compute_activity_decision(
 /// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
     let scan_started = Instant::now();
-    let processes = process::scan_processes();
-    let process_scan_ms = scan_started.elapsed().as_millis() as u64;
-
-    let tmux_started = Instant::now();
-    let pane_map = tmux::list_panes();
-    let tmux_ms = tmux_started.elapsed().as_millis() as u64;
+    let (processes, pane_map, process_cache_hit, tmux_cache_hit, process_scan_ms, tmux_ms) =
+        scan_inputs_with_cache(
+            scan_started,
+            &process::scan_process_ids_cached,
+            &process::scan_processes,
+            &tmux::list_panes,
+        );
 
     let mut sessions_per_project_tool: HashMap<(String, CliTool), usize> = HashMap::new();
     for proc in &processes {
@@ -383,6 +485,8 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     tracing::debug!(
         process_scan_ms,
         tmux_ms,
+        process_cache_hit,
+        tmux_cache_hit,
         classify_ms,
         idle_ms = idle_ms.as_millis() as u64,
         process_signal_ms = process_signal_ms.as_millis() as u64,
@@ -449,6 +553,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static SCAN_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn session_state_serializes_lowercase() {
@@ -900,5 +1007,148 @@ mod tests {
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
         assert_eq!(sessions.len(), 2, "different tools should not be deduped");
+    }
+
+    fn process_info(pid: u32, tty: &str) -> process::ProcessInfo {
+        process::ProcessInfo {
+            pid,
+            project_path: "/home/user/project".to_string(),
+            tty: tty.to_string(),
+            args: "claude --continue".to_string(),
+            cli_tool: CliTool::Claude,
+        }
+    }
+
+    fn tmux_map(tty: &str) -> HashMap<String, tmux::TmuxPane> {
+        let mut map = HashMap::new();
+        map.insert(
+            tty.to_string(),
+            tmux::TmuxPane {
+                pane_id: "%1".to_string(),
+                tty: tty.to_string(),
+                window_index: "0".to_string(),
+                window_name: "project".to_string(),
+                session_name: "taurhaus".to_string(),
+            },
+        );
+        map
+    }
+
+    #[test]
+    fn scanner_cache_hit_reuses_process_and_tmux_data() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let _lock = SCAN_CACHE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        clear_scan_cache();
+
+        let full_process_calls = AtomicUsize::new(0);
+        let tmux_calls = AtomicUsize::new(0);
+        let process_ids = || vec![42];
+        let process_scan = || {
+            full_process_calls.fetch_add(1, Ordering::Relaxed);
+            vec![process_info(42, "/dev/pts/1")]
+        };
+        let tmux_scan = || {
+            tmux_calls.fetch_add(1, Ordering::Relaxed);
+            tmux_map("/dev/pts/1")
+        };
+
+        let now = Instant::now();
+        let (_, _, process_hit_1, tmux_hit_1, _, _) =
+            scan_inputs_with_cache(now, &process_ids, &process_scan, &tmux_scan);
+        let (_, _, process_hit_2, tmux_hit_2, _, _) = scan_inputs_with_cache(
+            now + Duration::from_millis(100),
+            &process_ids,
+            &process_scan,
+            &tmux_scan,
+        );
+
+        assert!(!process_hit_1);
+        assert!(!tmux_hit_1);
+        assert!(process_hit_2);
+        assert!(tmux_hit_2);
+        assert_eq!(full_process_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(tmux_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn scanner_cache_invalidates_on_pid_change() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let _lock = SCAN_CACHE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        clear_scan_cache();
+
+        let full_process_calls = AtomicUsize::new(0);
+        let tmux_calls = AtomicUsize::new(0);
+        let pid_scan_calls = AtomicUsize::new(0);
+        let process_ids = || {
+            let call = pid_scan_calls.fetch_add(1, Ordering::Relaxed);
+            if call == 0 {
+                vec![42]
+            } else {
+                vec![43]
+            }
+        };
+        let process_scan = || {
+            full_process_calls.fetch_add(1, Ordering::Relaxed);
+            vec![process_info(43, "/dev/pts/1")]
+        };
+        let tmux_scan = || {
+            tmux_calls.fetch_add(1, Ordering::Relaxed);
+            tmux_map("/dev/pts/1")
+        };
+
+        let now = Instant::now();
+        let _ = scan_inputs_with_cache(now, &process_ids, &process_scan, &tmux_scan);
+        let _ = scan_inputs_with_cache(
+            now + Duration::from_millis(100),
+            &process_ids,
+            &process_scan,
+            &tmux_scan,
+        );
+
+        assert_eq!(full_process_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(tmux_calls.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn scanner_cache_invalidates_on_tmux_change_epoch() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let _lock = SCAN_CACHE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        clear_scan_cache();
+
+        let full_process_calls = AtomicUsize::new(0);
+        let tmux_calls = AtomicUsize::new(0);
+        let process_ids = || vec![42];
+        let process_scan = || {
+            full_process_calls.fetch_add(1, Ordering::Relaxed);
+            vec![process_info(42, "/dev/pts/1")]
+        };
+        let tmux_scan = || {
+            tmux_calls.fetch_add(1, Ordering::Relaxed);
+            tmux_map("/dev/pts/1")
+        };
+
+        let now = Instant::now();
+        let _ = scan_inputs_with_cache(now, &process_ids, &process_scan, &tmux_scan);
+        notify_tmux_changed();
+        let (_, _, process_hit, tmux_hit, _, _) = scan_inputs_with_cache(
+            now + Duration::from_millis(100),
+            &process_ids,
+            &process_scan,
+            &tmux_scan,
+        );
+
+        assert!(process_hit);
+        assert!(!tmux_hit);
+        assert_eq!(full_process_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(tmux_calls.load(Ordering::Relaxed), 2);
     }
 }

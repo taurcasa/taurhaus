@@ -411,7 +411,12 @@ pub(crate) fn process_watch_events(
             };
             let mut updated = 0;
             for path in &unique {
-                match search::indexer::update_file(&mut index, project_id, project_root, path) {
+                match search::indexer::update_file_batched(
+                    &mut index,
+                    project_id,
+                    project_root,
+                    path,
+                ) {
                     Ok(true) => updated += 1,
                     Err(e) => {
                         tracing::warn!(
@@ -421,6 +426,17 @@ pub(crate) fn process_watch_events(
                         );
                     }
                     _ => {}
+                }
+            }
+            if updated > 0 {
+                if let Err(e) = search::indexer::commit_batch(&mut index) {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %e,
+                        "Failed to commit batched search index update"
+                    );
+                    drop(index);
+                    continue;
                 }
             }
             drop(index);

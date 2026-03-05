@@ -2,6 +2,7 @@
 
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::cli_tool::CliTool;
@@ -26,6 +27,69 @@ pub fn scan_processes() -> Vec<ProcessInfo> {
         None => return vec![],
     };
     parse_and_enrich(&ps_output)
+}
+
+/// Scan only detected CLI-tool PIDs (cheap fingerprint for cache checks).
+pub fn scan_process_ids() -> Vec<u32> {
+    let ps_output = match run_ps() {
+        Some(output) => output,
+        None => return vec![],
+    };
+    let mut pids: Vec<u32> = parse_ps_output(&ps_output)
+        .into_iter()
+        .map(|(pid, _, _)| pid)
+        .collect();
+    pids.sort_unstable();
+    pids
+}
+
+const PID_FINGERPRINT_CACHE_TTL: Duration = Duration::from_secs(2);
+
+#[derive(Default)]
+struct PidFingerprintCache {
+    pids: Vec<u32>,
+    proc_count: Option<usize>,
+    scanned_at: Option<Instant>,
+}
+
+static PID_FINGERPRINT_CACHE: OnceLock<Mutex<PidFingerprintCache>> = OnceLock::new();
+
+/// Scan detected CLI-tool PIDs with short caching when overall process count is stable.
+pub fn scan_process_ids_cached() -> Vec<u32> {
+    let now = Instant::now();
+    let proc_count = system_process_count();
+    let cache = PID_FINGERPRINT_CACHE.get_or_init(|| Mutex::new(PidFingerprintCache::default()));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+
+    let cache_fresh = guard
+        .scanned_at
+        .is_some_and(|ts| now.duration_since(ts) < PID_FINGERPRINT_CACHE_TTL);
+    let same_proc_count = proc_count.is_some() && guard.proc_count == proc_count;
+    if cache_fresh && same_proc_count {
+        return guard.pids.clone();
+    }
+
+    let pids = scan_process_ids();
+    guard.pids = pids.clone();
+    guard.proc_count = proc_count;
+    guard.scanned_at = Some(now);
+    pids
+}
+
+/// Count live process entries from `/proc` (Linux).
+fn system_process_count() -> Option<usize> {
+    let entries = std::fs::read_dir("/proc").ok()?;
+    Some(
+        entries
+            .filter_map(Result::ok)
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
+            })
+            .count(),
+    )
 }
 
 /// Timeout for subprocess execution. If `ps` or similar hangs (e.g. stale

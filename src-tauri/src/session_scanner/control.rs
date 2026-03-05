@@ -62,6 +62,7 @@ pub fn launch_in_tmux_with_layout(
             // Try to split an existing window (max 4 panes per window)
             if let Some(target_pane) = find_window_with_space(&tmux_session, 4) {
                 let pane_id = split_pane(&target_pane, &shell_cmd)?;
+                crate::session_scanner::notify_tmux_changed();
                 return Ok((tmux_session, window_name, pane_id));
             }
             // No window with space — fall through to new window
@@ -70,6 +71,7 @@ pub fn launch_in_tmux_with_layout(
             // Try to find an existing window named after this project
             if let Some(target_pane) = find_project_window(&tmux_session, &window_name) {
                 let pane_id = split_pane(&target_pane, &shell_cmd)?;
+                crate::session_scanner::notify_tmux_changed();
                 return Ok((tmux_session, window_name, pane_id));
             }
             // No matching window — fall through to new window
@@ -100,6 +102,7 @@ pub fn launch_in_tmux_with_layout(
     }
 
     let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    crate::session_scanner::notify_tmux_changed();
 
     Ok((tmux_session, window_name, pane_id))
 }
@@ -236,6 +239,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
                 }
                 None => {
                     tracing::info!(pane = %pane, "stop_session: pane already gone");
+                    crate::session_scanner::notify_tmux_changed();
                     return;
                 }
                 Some(cmd) => {
@@ -252,6 +256,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
         let result = Command::new("tmux")
             .args(["kill-pane", "-t", &pane])
             .output();
+        crate::session_scanner::notify_tmux_changed();
         tracing::info!(pane = %pane, success = ?result.as_ref().map(|o| o.status.success()), "stop_session: kill-pane result");
     });
 

@@ -23,6 +23,8 @@ pub struct SearchIndex {
     writer: IndexWriter,
     pub fields: SearchFields,
     pub schema: Schema,
+    #[cfg(test)]
+    commit_calls: usize,
 }
 
 /// Build the tantivy schema used for all indexed content.
@@ -76,6 +78,8 @@ impl SearchIndex {
             writer,
             fields,
             schema,
+            #[cfg(test)]
+            commit_calls: 0,
         })
     }
 
@@ -94,6 +98,8 @@ impl SearchIndex {
             writer,
             fields,
             schema,
+            #[cfg(test)]
+            commit_calls: 0,
         })
     }
 
@@ -133,10 +139,19 @@ impl SearchIndex {
 
     /// Commit all pending changes to the index.
     pub fn commit(&mut self) -> Result<(), AppError> {
+        #[cfg(test)]
+        {
+            self.commit_calls = self.commit_calls.saturating_add(1);
+        }
         self.writer
             .commit()
             .map_err(|e| AppError::SearchError(format!("Failed to commit index: {e}")))?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn commit_calls(&self) -> usize {
+        self.commit_calls
     }
 
     /// Clear the entire index (delete all documents).
@@ -479,6 +494,43 @@ pub fn update_file(
     project_root: &Path,
     absolute_path: &Path,
 ) -> Result<bool, AppError> {
+    update_file_with_policy(index, project_id, project_root, absolute_path, true)
+}
+
+/// Batch-mode variant of `update_file` that defers commit until caller flushes.
+pub fn update_file_batched(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    absolute_path: &Path,
+) -> Result<bool, AppError> {
+    update_file_with_policy(index, project_id, project_root, absolute_path, false)
+}
+
+/// Flush buffered updates after a batch of `update_file_batched` calls.
+pub fn commit_batch(index: &mut SearchIndex) -> Result<(), AppError> {
+    index.commit()
+}
+
+fn update_file_with_policy(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    absolute_path: &Path,
+    auto_commit: bool,
+) -> Result<bool, AppError> {
+    fn remove_path(
+        index: &mut SearchIndex,
+        relative: &str,
+        auto_commit: bool,
+    ) -> Result<bool, AppError> {
+        index.remove_by_file_path(relative);
+        if auto_commit {
+            index.commit()?;
+        }
+        Ok(true)
+    }
+
     let relative = match absolute_path.strip_prefix(project_root) {
         Ok(r) => r.to_string_lossy().to_string(),
         Err(_) => return Ok(false),
@@ -491,31 +543,21 @@ pub fn update_file(
     };
     let canonical_file = match absolute_path.canonicalize() {
         Ok(path) => path,
-        Err(_) => {
-            index.remove_by_file_path(&relative);
-            index.commit()?;
-            return Ok(true);
-        }
+        Err(_) => return remove_path(index, &relative, auto_commit),
     };
     if !canonical_file.starts_with(&canonical_root) {
-        index.remove_by_file_path(&relative);
-        index.commit()?;
-        return Ok(true);
+        return remove_path(index, &relative, auto_commit);
     }
 
     // If file was deleted or isn't indexable, remove from index
     if !absolute_path.is_file() || !is_indexable_file(absolute_path) {
-        index.remove_by_file_path(&relative);
-        index.commit()?;
-        return Ok(true);
+        return remove_path(index, &relative, auto_commit);
     }
 
     // Skip oversized files
     if let Ok(meta) = std::fs::metadata(absolute_path) {
         if meta.len() > MAX_INDEX_FILE_SIZE {
-            index.remove_by_file_path(&relative);
-            index.commit()?;
-            return Ok(true);
+            return remove_path(index, &relative, auto_commit);
         }
     }
 
@@ -525,9 +567,7 @@ pub fn update_file(
         Err(_) => {
             // File exists but is no longer readable as text (e.g. binary/encoding/permissions):
             // remove stale index content for this path.
-            index.remove_by_file_path(&relative);
-            index.commit()?;
-            return Ok(true);
+            return remove_path(index, &relative, auto_commit);
         }
     };
 
@@ -539,7 +579,9 @@ pub fn update_file(
     // Remove old entry and add updated one
     index.remove_by_file_path(&relative);
     index.add_document(project_id, "document", &relative, &title, &content)?;
-    index.commit()?;
+    if auto_commit {
+        index.commit()?;
+    }
 
     Ok(true)
 }
@@ -1080,6 +1122,26 @@ mod tests {
         // New content should be searchable
         let results = index.search("keywords", 10).unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn update_file_batch_commits_once_for_multiple_files() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_a = dir.path().join("a.md");
+        let file_b = dir.path().join("b.md");
+        let file_c = dir.path().join("c.md");
+        std::fs::write(&file_a, "alpha").unwrap();
+        std::fs::write(&file_b, "beta").unwrap();
+        std::fs::write(&file_c, "gamma").unwrap();
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        assert!(update_file_batched(&mut index, "p1", dir.path(), &file_a).unwrap());
+        assert!(update_file_batched(&mut index, "p1", dir.path(), &file_b).unwrap());
+        assert!(update_file_batched(&mut index, "p1", dir.path(), &file_c).unwrap());
+        commit_batch(&mut index).unwrap();
+
+        assert_eq!(index.commit_calls(), 1);
+        assert_eq!(index.doc_count().unwrap(), 3);
     }
 
     #[test]
