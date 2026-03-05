@@ -314,10 +314,13 @@
   async function checkDaemonUpdate() {
     try {
       const status = await checkDaemonInstallStatus()
-      if (status.installed && status.needs_update) {
+      const installed = Boolean(status?.installed)
+      const needsUpdate = Boolean(status?.needsUpdate ?? status?.needs_update)
+      const bundledVersion = status?.bundledVersion ?? status?.bundled_version ?? null
+      if (installed && needsUpdate) {
         daemonUpdateAvailable = {
           version: status.version,
-          bundled_version: status.bundled_version,
+          bundled_version: bundledVersion,
         }
       }
     } catch { /* ignore — not critical */ }

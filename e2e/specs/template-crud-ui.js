@@ -262,7 +262,9 @@ async function disbandRuntimeTeamIfE2E() {
     return false
   }
 
-  await clickTestId('mesh-runtime-overflow-button')
+  if (await hasTestId('mesh-runtime-overflow-button')) {
+    await clickTestId('mesh-runtime-overflow-button')
+  }
   await browser.waitUntil(
     async () => await hasTestId('mesh-runtime-disband'),
     { ...WAIT_SHORT, timeoutMsg: 'Runtime disband option unavailable' }

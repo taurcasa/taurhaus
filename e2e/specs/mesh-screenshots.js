@@ -75,7 +75,9 @@ async function disbandRuntimeTeamIfSafe() {
   const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
   if (!createdTeamNames.has(teamName)) return false
 
-  await clickTestId('mesh-runtime-overflow-button')
+  if (await hasTestId('mesh-runtime-overflow-button')) {
+    await clickTestId('mesh-runtime-overflow-button')
+  }
   await browser.waitUntil(
     async () => await hasTestId('mesh-runtime-disband'),
     { ...WAIT_MEDIUM, timeoutMsg: 'Runtime disband option unavailable' }

@@ -64,16 +64,28 @@
     return String(error || '').includes('Mesh CLI not found')
   }
 
+  function meshNeedsUpdate(status) {
+    return Boolean(status?.needsUpdate ?? status?.needs_update ?? false)
+  }
+
+  function meshEnvironmentAvailable(status) {
+    return Boolean(status?.environmentAvailable ?? status?.environment_available ?? false)
+  }
+
+  function meshBundledVersion(status) {
+    return status?.bundledVersion ?? status?.bundled_version ?? 'unknown'
+  }
+
   function meshVersionMismatchError(status) {
-    if (!status?.installed || !status?.needs_update) return ''
+    if (!status?.installed || !meshNeedsUpdate(status)) return ''
     const installed = status.version || 'unknown'
-    const bundled = status.bundled_version || 'unknown'
+    const bundled = meshBundledVersion(status)
     return `Mesh CLI ${installed} is installed, but taurhaus requires ${bundled}. Update Mesh to continue.`
   }
 
   const showMeshInstallActions = $derived(
-    (blockingErrors.some(isMeshMissing) || meshStatus?.needs_update) &&
-      meshStatus?.environment_available
+    (blockingErrors.some(isMeshMissing) || meshNeedsUpdate(meshStatus)) &&
+      meshEnvironmentAvailable(meshStatus)
   )
 
   async function installBundledMesh() {

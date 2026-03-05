@@ -44,6 +44,20 @@
 
   // ═══ DAEMON SETUP ═══
 
+  function normalizeDaemonInstallStatus(status) {
+    if (!status || typeof status !== 'object') return null
+    const needsUpdate = status.needsUpdate ?? status.needs_update ?? false
+    const wslAvailable = status.wslAvailable ?? status.wsl_available ?? true
+    return {
+      installed: Boolean(status.installed),
+      version: status.version ?? null,
+      bundledVersion: status.bundledVersion ?? status.bundled_version ?? null,
+      needsUpdate: Boolean(needsUpdate),
+      wslAvailable: Boolean(wslAvailable),
+      error: status.error ?? null,
+    }
+  }
+
   async function checkDaemon() {
     daemonChecking = true
     daemonError = null
@@ -54,9 +68,9 @@
         getPlatform(),
       ])
       platform = plat
-      daemonStatus = status
+      daemonStatus = normalizeDaemonInstallStatus(status)
       // Auto-proceed if daemon is already installed and current
-      if (daemonStatus.installed && !daemonStatus.needs_update) {
+      if (daemonStatus?.installed && !daemonStatus?.needsUpdate) {
         setTimeout(() => { step = 3 }, 800)
       }
     } catch (e) {
@@ -72,8 +86,8 @@
     try {
       await installDaemon()
       // Re-check status after install
-      daemonStatus = await checkDaemonInstallStatus()
-      if (daemonStatus.installed && !daemonStatus.needs_update) {
+      daemonStatus = normalizeDaemonInstallStatus(await checkDaemonInstallStatus())
+      if (daemonStatus?.installed && !daemonStatus?.needsUpdate) {
         setTimeout(() => { step = 3 }, 800)
       }
     } catch (e) {
@@ -200,7 +214,7 @@
             <span class="text-[13px] {t.textSecondary}">Checking daemon status...</span>
           </div>
 
-        {:else if daemonStatus && !daemonStatus.wsl_available}
+        {:else if daemonStatus && !daemonStatus.wslAvailable}
           <!-- No WSL -->
           <div class="py-4 px-4 rounded-lg border border-danger-500/30 {dark ? 'bg-danger-500/5' : 'bg-danger-50'} mb-5" data-testid="daemon-no-wsl">
             <div class="flex items-start gap-3">
@@ -214,7 +228,7 @@
             </div>
           </div>
 
-        {:else if daemonStatus && daemonStatus.installed && !daemonStatus.needs_update}
+        {:else if daemonStatus && daemonStatus.installed && !daemonStatus.needsUpdate}
           <!-- Already installed and current -->
           <div class="flex items-center gap-3 py-4 px-4 rounded-lg {dark ? 'bg-success-500/5' : 'bg-success-50'} border border-success-500/30 mb-5" data-testid="daemon-installed">
             <svg class="w-5 h-5 text-success-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
@@ -255,12 +269,12 @@
             >Retry</button>
           </div>
 
-        {:else if daemonStatus && daemonStatus.installed && daemonStatus.needs_update}
+        {:else if daemonStatus && daemonStatus.installed && daemonStatus.needsUpdate}
           <!-- Outdated -->
           <div class="flex items-center gap-3 py-4 px-4 rounded-lg border border-warning-500/30 {dark ? 'bg-warning-500/5' : 'bg-warning-50'} mb-5" data-testid="daemon-outdated">
             <svg class="w-5 h-5 text-warning-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
             <span class="text-[13px] {t.textPrimary}">
-              Update available: v{daemonStatus.version} → v{daemonStatus.bundled_version}
+              Update available: v{daemonStatus.version} → v{daemonStatus.bundledVersion}
             </span>
           </div>
           <button
@@ -288,7 +302,7 @@
             class="text-[13px] {t.linkColor} transition-colors"
             onclick={() => step = 1}
           >Back</button>
-          {#if !daemonChecking && !(daemonStatus?.installed && !daemonStatus?.needs_update)}
+          {#if !daemonChecking && !(daemonStatus?.installed && !daemonStatus?.needsUpdate)}
             <button
               class="text-[13px] {t.linkColor} transition-colors"
               onclick={() => step = 3}

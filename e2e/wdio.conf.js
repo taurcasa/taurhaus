@@ -231,7 +231,9 @@ export const config = {
   runner: 'local',
   hostname: '127.0.0.1',
   port: 4444,
-  connectionRetryTimeout: 10_000,
+  // Tauri startup + first-run onboarding can keep the WebDriver bridge busy for
+  // >10s on CI and loaded dev machines; avoid transport false negatives.
+  connectionRetryTimeout: 30_000,
   connectionRetryCount: 1,
   maxInstances: 1,
   // WDIO defaults to "info", which logs every COMMAND/DATA/RESULT triplet.

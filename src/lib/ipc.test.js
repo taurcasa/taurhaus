@@ -925,6 +925,48 @@ describe('ipc module', () => {
 
   // ── Platform + Daemon install commands ──────────────────────────────────
 
+  describe('getDaemonStatus()', () => {
+    it('returns normalized status shape in non-Tauri mode', async () => {
+      const result = await ipc.getDaemonStatus()
+      expect(result).toEqual({
+        status: 'connected',
+        version: null,
+        protocol_version: 0,
+        expected_protocol_version: 0,
+        uptime_secs: null,
+        port: 17233,
+        wsl_distro: null,
+      })
+    })
+
+    it('normalizes camelCase daemon status fields from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        status: 'connected',
+        version: '0.3.2',
+        protocolVersion: 4,
+        expectedProtocolVersion: 4,
+        uptimeSecs: 15,
+        port: 17233,
+        wslDistro: 'Ubuntu',
+      })
+
+      const result = await ipc.getDaemonStatus()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_daemon_status')
+      expect(result).toEqual({
+        status: 'connected',
+        version: '0.3.2',
+        protocol_version: 4,
+        expected_protocol_version: 4,
+        uptime_secs: 15,
+        port: 17233,
+        wsl_distro: 'Ubuntu',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
   describe('getPlatform()', () => {
     it('returns mock linux in non-Tauri mode', async () => {
       const result = await ipc.getPlatform()
@@ -991,6 +1033,30 @@ describe('ipc module', () => {
       expect(result.installed).toBe(false)
       delete window.__TAURI_INTERNALS__
     })
+
+    it('normalizes camelCase daemon install fields from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        installed: true,
+        version: '0.3.2',
+        bundledVersion: '0.3.3',
+        needsUpdate: true,
+        wslAvailable: true,
+        error: null,
+      })
+
+      const result = await ipc.checkDaemonInstallStatus()
+
+      expect(result).toEqual({
+        installed: true,
+        version: '0.3.2',
+        bundled_version: '0.3.3',
+        needs_update: true,
+        wsl_available: true,
+        error: null,
+      })
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   describe('installDaemon()', () => {
@@ -1045,6 +1111,30 @@ describe('ipc module', () => {
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('check_mesh_install_status')
       expect(result.installed).toBe(false)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('normalizes camelCase mesh install fields from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        installed: true,
+        version: '0.1.0',
+        bundledVersion: '0.1.1',
+        needsUpdate: true,
+        environmentAvailable: true,
+        error: null,
+      })
+
+      const result = await ipc.checkMeshInstallStatus()
+
+      expect(result).toEqual({
+        installed: true,
+        version: '0.1.0',
+        bundled_version: '0.1.1',
+        needs_update: true,
+        environment_available: true,
+        error: null,
+      })
       delete window.__TAURI_INTERNALS__
     })
   })
