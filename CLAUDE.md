@@ -83,8 +83,9 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `npx tauri bui
 |--------|-------------|
 | `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
 | `just dev-frontend` | Frontend dev server only (no Rust backend) |
-| `just check` | Full quality gate: clippy + svelte-check + all tests (Rust + frontend unit) |
-| `just test` | All tests (Rust + frontend unit). Does NOT include E2E. |
+| `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
+| `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
+| `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
 | `just install-daemon` | Builds + copies daemon to `~/.local/bin/` |
 | `just bump VERSION` | Bump version in all files (tauri.conf.json, Cargo.toml, package.json, Cargo.lock, CHANGELOG.md) |

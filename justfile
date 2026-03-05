@@ -30,13 +30,14 @@ ensure-tauri-resources:
     @touch src-tauri/resources/mesh
     @if [ ! -s src-tauri/resources/mesh.version ]; then echo "0.0.0-dev" > src-tauri/resources/mesh.version; fi
 
-# Run default checks (safe local lane)
+# Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
+# Use this when you need the definitive "is this ready?" signal.
 check: fmt lint typecheck test
-    @echo "All checks passed."
+    @echo "Full quality gate passed."
 
-# Run full checks (includes integration/system Rust tests)
-check-full: fmt lint typecheck test-full
-    @echo "All full checks passed."
+# Backward-compatible alias for the full quality gate.
+# Prefer: `just check`.
+check-full: check
 
 # Enforce Rust formatting.
 fmt:
@@ -51,24 +52,31 @@ lint: ensure-tauri-resources
 typecheck:
     npm run typecheck
 
-# Run default tests (safe local lane)
-test: test-rust-fast test-frontend
+# Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit).
+# This is the primary "does everything work?" test command.
+test: test-rust test-frontend
 
-# Run full tests (all Rust lanes + frontend)
-test-full: test-rust test-frontend
+# Fast feedback lane for local iteration.
+# Runs Rust compile-check only (no Rust test execution) + frontend unit tests.
+test-fast: test-rust-fast test-frontend
 
-# Run all Rust tests (compile lane + unit lane + integration/system lane)
+# Backward-compatible alias for full non-E2E tests.
+# Prefer: `just test`.
+test-full: test
+
+# Run all Rust test lanes (compile-check + unit execution + integration/system execution).
 test-rust: test-rust-fast test-rust-unit test-rust-integration
 
-# Run Rust fast lane (compile all Rust tests, no execution)
+# Rust fast lane: compile all Rust tests without executing them.
+# Use for quick compile feedback.
 test-rust-fast: ensure-tauri-resources
     cd src-tauri && cargo check --tests
 
-# Run Rust unit-test execution lane (daemon/network/watcher-heavy tests skipped)
+# Rust unit-test execution lane (excludes heavy daemon/network/watcher suites).
 test-rust-unit: ensure-tauri-resources
     cd src-tauri && cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything
 
-# Run Rust integration/system lane (serialized)
+# Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
     cd src-tauri && cargo test --tests -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::server::tests:: -- --test-threads=1
