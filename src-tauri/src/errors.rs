@@ -24,6 +24,12 @@ pub enum AppError {
     #[error("Parse error: {0}")]
     ParseError(String),
 
+    #[error("Daemon transport error: {0}")]
+    DaemonTransport(String),
+
+    #[error("Daemon protocol error: {0}")]
+    DaemonProtocol(String),
+
     #[error("Search error: {0}")]
     SearchError(String),
 }
@@ -147,7 +153,9 @@ impl From<AppError> for IpcError {
             AppError::NotFound(msg) => Self::not_found(msg),
             AppError::AlreadyExists(msg) => Self::conflict(msg),
             AppError::InvalidPath(msg) | AppError::ParseError(msg) => Self::validation(msg),
-            AppError::SearchError(msg) => Self::unavailable(msg),
+            AppError::DaemonTransport(msg)
+            | AppError::DaemonProtocol(msg)
+            | AppError::SearchError(msg) => Self::unavailable(msg),
             AppError::Database(err) => Self::internal(err.to_string()),
             AppError::Git(err) => Self::internal(err.to_string()),
             AppError::Io(err) => Self::internal(err.to_string()),
@@ -250,5 +258,10 @@ mod tests {
 
         let conflict = IpcError::from(AppError::AlreadyExists("dup".to_string()));
         assert_eq!(conflict.code, IpcErrorCode::Conflict);
+
+        let daemon_transport =
+            IpcError::from(AppError::DaemonTransport("daemon offline".to_string()));
+        assert_eq!(daemon_transport.code, IpcErrorCode::Unavailable);
+        assert!(daemon_transport.retryable);
     }
 }

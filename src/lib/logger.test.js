@@ -96,15 +96,16 @@ describe('logger bridge', () => {
     })
   })
 
-  it('handles IPC rejection without crashing and emits a fallback warning', async () => {
+  it('handles IPC rejection without crashing and does not recurse forwarding', async () => {
     const { invoke, sink } = await setupLogger()
     const error = new Error('ipc unavailable')
 
-    invoke.mockRejectedValueOnce(error).mockResolvedValue(undefined)
+    invoke.mockRejectedValue(error)
 
     expect(() => console.log('trigger ipc failure')).not.toThrow()
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve()
+    }
 
     expect(sink.warn).toHaveBeenCalledWith(
       '[logger] failed to forward frontend log to backend:',
@@ -114,12 +115,7 @@ describe('logger bridge', () => {
       level: 'info',
       message: 'trigger ipc failure',
     })
-    expect(invoke).toHaveBeenCalledTimes(2)
-    const fallbackPayload = invoke.mock.calls[1][1]
-    expect(fallbackPayload.level).toBe('warn')
-    expect(fallbackPayload.message).toContain(
-      '[logger] failed to forward frontend log to backend:'
-    )
+    expect(invoke).toHaveBeenCalledTimes(1)
   })
 
   it('serializes edge-case values without throwing', async () => {

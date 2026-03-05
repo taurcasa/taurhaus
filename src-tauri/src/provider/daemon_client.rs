@@ -59,15 +59,11 @@ impl DaemonProvider {
 
     fn connect_stream(addr: &str) -> Result<TcpStream, AppError> {
         let stream = TcpStream::connect(addr).map_err(|e| {
-            AppError::Io(std::io::Error::new(
-                e.kind(),
-                format!("Failed to connect to daemon at {addr}: {e}"),
-            ))
+            AppError::DaemonTransport(format!("Failed to connect to daemon at {addr}: {e}"))
         })?;
         stream.set_nodelay(true).map_err(|e| {
-            AppError::Io(std::io::Error::new(
-                e.kind(),
-                format!("Failed to configure daemon TCP_NODELAY at {addr}: {e}"),
+            AppError::DaemonTransport(format!(
+                "Failed to configure daemon TCP_NODELAY at {addr}: {e}"
             ))
         })?;
         Ok(stream)
@@ -76,7 +72,9 @@ impl DaemonProvider {
     /// Create a new DaemonProvider connected to the given address.
     pub fn connect(addr: &str) -> Result<Self, AppError> {
         let stream = Self::connect_stream(addr)?;
-        let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
+        let reader = BufReader::new(stream.try_clone().map_err(|error| {
+            AppError::DaemonTransport(format!("Failed to clone daemon stream at {addr}: {error}"))
+        })?);
 
         Ok(Self {
             conn: Mutex::new(Some(Connection { stream, reader })),
@@ -121,7 +119,7 @@ impl DaemonProvider {
         if response.is_ok() {
             Ok(())
         } else {
-            Err(AppError::InvalidPath("Daemon ping failed".to_string()))
+            Err(AppError::DaemonProtocol("Daemon ping failed".to_string()))
         }
     }
 
@@ -131,7 +129,7 @@ impl DaemonProvider {
         let request = DaemonRequest::ping(&id);
         let response = self.send_request(&request, PING_TIMEOUT)?;
         if !response.is_ok() {
-            return Err(AppError::InvalidPath("Daemon ping failed".to_string()));
+            return Err(AppError::DaemonProtocol("Daemon ping failed".to_string()));
         }
         let version = response
             .result
@@ -155,7 +153,12 @@ impl DaemonProvider {
     /// as connected.
     pub fn reconnect(&self) -> Result<(), AppError> {
         let stream = Self::connect_stream(&self.addr)?;
-        let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
+        let reader = BufReader::new(stream.try_clone().map_err(|error| {
+            AppError::DaemonTransport(format!(
+                "Failed to clone daemon stream while reconnecting at {}: {error}",
+                self.addr
+            ))
+        })?);
 
         match self.conn.lock() {
             Ok(mut guard) => {
@@ -249,7 +252,7 @@ impl DaemonProvider {
         timeout: Duration,
     ) -> Result<DaemonResponse, AppError> {
         let result = self.send_request_inner(request, timeout);
-        if let Err(AppError::Io(_)) = &result {
+        if let Err(AppError::DaemonTransport(_)) = &result {
             tracing::warn!("Daemon I/O error, marking disconnected");
             self.mark_disconnected();
         }
@@ -261,24 +264,23 @@ impl DaemonProvider {
         request: &DaemonRequest,
         timeout: Duration,
     ) -> Result<DaemonResponse, AppError> {
-        let mut conn_guard = self
-            .conn
-            .lock()
-            .map_err(|_| AppError::InvalidPath("Daemon connection lock poisoned".to_string()))?;
-
-        let conn = conn_guard.as_mut().ok_or_else(|| {
-            AppError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Daemon not connected",
-            ))
+        let mut conn_guard = self.conn.lock().map_err(|_| {
+            AppError::DaemonTransport("Daemon connection lock poisoned".to_string())
         })?;
+
+        let conn = conn_guard
+            .as_mut()
+            .ok_or_else(|| AppError::DaemonTransport("Daemon not connected".to_string()))?;
 
         let stream = &mut conn.stream;
         let reader = &mut conn.reader;
 
-        stream
-            .set_read_timeout(Some(timeout))
-            .map_err(AppError::Io)?;
+        stream.set_read_timeout(Some(timeout)).map_err(|error| {
+            AppError::DaemonTransport(format!(
+                "Failed to set daemon read timeout ({}s): {error}",
+                timeout.as_secs()
+            ))
+        })?;
 
         // Attach auth token to the request
         let mut authed_request = request.clone();
@@ -289,16 +291,25 @@ impl DaemonProvider {
             .clone();
 
         let json = serde_json::to_string(&authed_request)
-            .map_err(|e| AppError::InvalidPath(format!("Failed to serialize request: {e}")))?;
-        stream.write_all(json.as_bytes()).map_err(AppError::Io)?;
-        stream.write_all(b"\n").map_err(AppError::Io)?;
-        stream.flush().map_err(AppError::Io)?;
+            .map_err(|e| AppError::DaemonProtocol(format!("Failed to serialize request: {e}")))?;
+        stream.write_all(json.as_bytes()).map_err(|error| {
+            AppError::DaemonTransport(format!("Failed to write daemon request: {error}"))
+        })?;
+        stream.write_all(b"\n").map_err(|error| {
+            AppError::DaemonTransport(format!("Failed to terminate daemon request line: {error}"))
+        })?;
+        stream.flush().map_err(|error| {
+            AppError::DaemonTransport(format!("Failed to flush daemon request: {error}"))
+        })?;
 
         let mut line = String::new();
-        reader.read_line(&mut line).map_err(AppError::Io)?;
+        reader.read_line(&mut line).map_err(|error| {
+            AppError::DaemonTransport(format!("Failed to read daemon response: {error}"))
+        })?;
 
-        let response: DaemonResponse = serde_json::from_str(&line)
-            .map_err(|e| AppError::InvalidPath(format!("Failed to parse daemon response: {e}")))?;
+        let response: DaemonResponse = serde_json::from_str(&line).map_err(|e| {
+            AppError::DaemonProtocol(format!("Failed to parse daemon response: {e}"))
+        })?;
 
         Ok(response)
     }
@@ -315,7 +326,7 @@ impl DaemonProvider {
         let response = self.send_request(&request, timeout)?;
 
         if let Some(err) = response.error {
-            return Err(AppError::InvalidPath(format!(
+            return Err(AppError::DaemonProtocol(format!(
                 "Daemon error [{}]: {}",
                 err.code, err.message
             )));
@@ -326,8 +337,9 @@ impl DaemonProvider {
         // Non-nullable types will still produce a deserialization error.
         let result = response.result.unwrap_or(serde_json::Value::Null);
 
-        serde_json::from_value(result)
-            .map_err(|e| AppError::InvalidPath(format!("Failed to deserialize daemon result: {e}")))
+        serde_json::from_value(result).map_err(|e| {
+            AppError::DaemonProtocol(format!("Failed to deserialize daemon result: {e}"))
+        })
     }
 }
 
@@ -382,7 +394,7 @@ impl ProjectProvider for DaemonProvider {
         match result.timestamp {
             Some(ts) => {
                 let dt = ts.parse::<DateTime<Utc>>().map_err(|e| {
-                    AppError::InvalidPath(format!("Invalid timestamp from daemon: {e}"))
+                    AppError::DaemonProtocol(format!("Invalid timestamp from daemon: {e}"))
                 })?;
                 Ok(Some(dt))
             }
@@ -489,7 +501,7 @@ impl ProjectProvider for DaemonProvider {
             FILE_TIMEOUT,
         )?;
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &result.data)
-            .map_err(|e| AppError::InvalidPath(format!("Failed to decode base64: {e}")))
+            .map_err(|e| AppError::DaemonProtocol(format!("Failed to decode base64: {e}")))
     }
 
     fn scan_session_files(&self, project_path: &str) -> Result<Vec<PathBuf>, AppError> {

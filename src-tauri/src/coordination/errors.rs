@@ -38,6 +38,9 @@ impl From<AppError> for CoordinationError {
             AppError::InvalidPath(message) | AppError::ParseError(message) => {
                 Self::Validation(message)
             }
+            AppError::DaemonTransport(message) | AppError::DaemonProtocol(message) => {
+                Self::Backend(message)
+            }
             AppError::Database(err) => Self::StoreError(err.to_string()),
             AppError::Io(err) => Self::Io(err),
             AppError::Git(err) => Self::Backend(err.to_string()),
@@ -124,6 +127,14 @@ mod tests {
         }
         match CoordinationError::from(AppError::SearchError("search failed".to_string())) {
             CoordinationError::Backend(msg) => assert_eq!(msg, "search failed"),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::DaemonTransport("daemon down".to_string())) {
+            CoordinationError::Backend(msg) => assert_eq!(msg, "daemon down"),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+        match CoordinationError::from(AppError::DaemonProtocol("bad daemon response".to_string())) {
+            CoordinationError::Backend(msg) => assert_eq!(msg, "bad daemon response"),
             other => panic!("unexpected mapping: {other:?}"),
         }
     }
