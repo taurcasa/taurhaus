@@ -112,19 +112,10 @@ struct MemberKey {
     member_name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NudgeCountWindow {
     pub window_started_at: Option<DateTime<Utc>>,
     pub count: u32,
-}
-
-impl Default for NudgeCountWindow {
-    fn default() -> Self {
-        Self {
-            window_started_at: None,
-            count: 0,
-        }
-    }
 }
 
 impl NudgeCountWindow {
@@ -278,9 +269,7 @@ impl SignalSnapshot {
         &self,
         require_medium_confidence: bool,
     ) -> Option<SelectedSessionSignal> {
-        let Some(state) = self.session_state else {
-            return None;
-        };
+        let state = self.session_state?;
         let is_strong = self.session_is_strong(require_medium_confidence);
         if !matches!(state, SessionState::Active) || !is_strong {
             return None;
@@ -2396,7 +2385,7 @@ mod tests {
         let trigger = &history[0];
         assert_eq!(trigger.stage, StallTriggerStage::StageA);
         assert_eq!(trigger.signal_snapshot.idle_secs, 300);
-        assert_eq!(trigger.suppression.suppressed, false);
+        assert!(!trigger.suppression.suppressed);
         assert_eq!(
             trigger.resumed_within_recovery_window_without_intervention,
             None
