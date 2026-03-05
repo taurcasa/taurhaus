@@ -304,11 +304,12 @@ fn initialize_ipc_delegates_to_orchestrator_and_returns_report_shape() {
     let state = test_state(tmp.path().to_path_buf());
     let request = sample_preflight_request();
 
-    let report = coordination_initialize_team_with_emitter(
+    let report = coordination_initialize_team_internal(
         &state,
         request,
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize should return a report");
 
@@ -325,13 +326,15 @@ fn initialize_progress_events_are_emitted_in_step_order() {
     let request = sample_preflight_request();
 
     let mut emitted = Vec::new();
-    let report = coordination_initialize_team_with_emitter(
+    let mut emit = |event: &StepProgressEvent| {
+        emitted.push(event.clone());
+    };
+    let report = coordination_initialize_team_internal(
         &state,
         request,
         &crate::models::CliCommandSettings::default(),
-        |event| {
-            emitted.push(event.clone());
-        },
+        DEFAULT_TMUX_LAYOUT,
+        Some(&mut emit),
     )
     .expect("initialize should return a report");
 
@@ -354,11 +357,12 @@ fn initialize_error_case_returns_structured_failed_step_report() {
     let mut request = sample_preflight_request();
     request.agents[0].name = request.lead.name.clone(); // duplicate name -> validation step failure
 
-    let report = coordination_initialize_team_with_emitter(
+    let report = coordination_initialize_team_internal(
         &state,
         request,
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize should return structured failure report");
     assert_eq!(
@@ -376,8 +380,14 @@ fn add_agent_ipc_returns_add_agent_report_shape() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
 
-    let report = coordination_add_agent_impl(&state, sample_add_agent_request("arch", "bob"))
-        .expect("add-agent should return report");
+    let report = coordination_add_agent_internal(
+        &state,
+        sample_add_agent_request("arch", "bob"),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("add-agent should return report");
 
     assert_eq!(report.team_name, "arch");
     assert_eq!(report.member_name, "bob");
@@ -395,11 +405,13 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
 
     let mut emitted = Vec::new();
-    let report = coordination_add_agent_with_emitter(
+    let mut emit = |event: &StepProgressEvent| emitted.push(event.clone());
+    let report = coordination_add_agent_internal(
         &state,
         sample_add_agent_request("arch", "bob"),
         &crate::models::CliCommandSettings::default(),
-        |event| emitted.push(event.clone()),
+        DEFAULT_TMUX_LAYOUT,
+        Some(&mut emit),
     )
     .expect("add-agent should return report");
 
@@ -419,11 +431,12 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
 fn reonboard_succeeds_for_existing_member() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_with_emitter(
+    coordination_initialize_team_internal(
         &state,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize");
 
@@ -472,7 +485,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
 
-    let add_agent_err = coordination_add_agent_impl(
+    let add_agent_err = coordination_add_agent_internal(
         &state,
         AddAgentRequest {
             team_name: " ".to_string(),
@@ -488,6 +501,9 @@ fn add_agent_and_reonboard_validate_empty_strings() {
                 capabilities: None,
             },
         },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect_err("empty add-agent fields should fail");
     assert!(add_agent_err.contains("team_name"));
@@ -518,24 +534,30 @@ fn resume_member_validates_empty_fields() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
 
-    let err = coordination_resume_member_impl(
+    let err = coordination_resume_member_internal(
         &state,
         ResumeMemberRequest {
             team_name: "".to_string(),
             member_name: "agent".to_string(),
             context_mode: ResumeContextMode::Continue,
         },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect_err("empty team_name should fail");
     assert!(err.contains("team_name"));
 
-    let err = coordination_resume_member_impl(
+    let err = coordination_resume_member_internal(
         &state,
         ResumeMemberRequest {
             team_name: "arch".to_string(),
             member_name: " ".to_string(),
             context_mode: ResumeContextMode::Fresh,
         },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect_err("blank member_name should fail");
     assert!(err.contains("member_name"));
@@ -545,11 +567,12 @@ fn resume_member_validates_empty_fields() {
 fn resume_member_ipc_returns_report_shape() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_with_emitter(
+    coordination_initialize_team_internal(
         &state,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize");
 
@@ -568,13 +591,16 @@ fn resume_member_ipc_returns_report_shape() {
     )
     .expect("save runtime");
 
-    let report = coordination_resume_member_impl(
+    let report = coordination_resume_member_internal(
         &state,
         ResumeMemberRequest {
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
             context_mode: ResumeContextMode::Continue,
         },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("resume should return a report");
 
@@ -698,11 +724,12 @@ fn add_member_defaults_to_lead_project_path_instead_of_process_cwd() {
     let state = test_state(tmp.path().to_path_buf());
     let request = sample_preflight_request();
 
-    coordination_initialize_team_with_emitter(
+    coordination_initialize_team_internal(
         &state,
         request,
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize should succeed");
 
@@ -810,11 +837,12 @@ fn list_teams_includes_lead_project_anchor() {
     let state = test_state(tmp.path().to_path_buf());
 
     let request = sample_preflight_request();
-    coordination_initialize_team_with_emitter(
+    coordination_initialize_team_internal(
         &state,
         request,
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize should succeed");
 
@@ -1100,11 +1128,12 @@ fn live_team_status_round_trip() {
 fn live_status_test_helper_invokes_live_status_impl() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_with_emitter(
+    coordination_initialize_team_internal(
         &state,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
-        |_| {},
+        DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("initialize");
 

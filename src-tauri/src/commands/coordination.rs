@@ -44,6 +44,9 @@ fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     }
 }
 
+#[cfg(test)]
+const DEFAULT_TMUX_LAYOUT: &str = "new_window";
+
 #[tauri::command]
 pub fn coordination_initialize_team(
     app: AppHandle,
@@ -53,14 +56,15 @@ pub fn coordination_initialize_team(
 ) -> IpcResult<InitializeReport> {
     let request = normalize_initialize_request_paths(&db, request)?;
     let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-    coordination_initialize_team_with_emitter_and_layout(
+    let mut emit = |event: &StepProgressEvent| {
+        let _ = app.emit("coordination-step-progress", event);
+    };
+    coordination_initialize_team_internal(
         state.inner(),
         request,
         &cli_commands,
         &tmux_layout,
-        |event| {
-            let _ = app.emit("coordination-step-progress", event);
-        },
+        Some(&mut emit),
     )
     .ipc()
 }
@@ -74,14 +78,15 @@ pub fn coordination_add_agent(
 ) -> IpcResult<AddAgentReport> {
     let request = normalize_add_agent_request_path(&db, request)?;
     let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-    coordination_add_agent_with_emitter_and_layout(
+    let mut emit = |event: &StepProgressEvent| {
+        let _ = app.emit("coordination-step-progress", event);
+    };
+    coordination_add_agent_internal(
         state.inner(),
         request,
         &cli_commands,
         &tmux_layout,
-        |event| {
-            let _ = app.emit("coordination-step-progress", event);
-        },
+        Some(&mut emit),
     )
     .ipc()
 }
@@ -94,14 +99,15 @@ pub fn coordination_resume_member(
     request: ResumeMemberRequest,
 ) -> IpcResult<ResumeAgentReport> {
     let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-    coordination_resume_member_with_emitter_and_layout(
+    let mut emit = |event: &StepProgressEvent| {
+        let _ = app.emit("coordination-step-progress", event);
+    };
+    coordination_resume_member_internal(
         state.inner(),
         request,
         &cli_commands,
         &tmux_layout,
-        |event| {
-            let _ = app.emit("coordination-step-progress", event);
-        },
+        Some(&mut emit),
     )
     .ipc()
 }
@@ -190,14 +196,16 @@ pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityR
     Ok(coordination_get_feature_availability_impl())
 }
 
-fn coordination_initialize_team_impl_with_cli_commands_and_layout(
+fn coordination_initialize_team_internal(
     state: &CoordinationState,
     request: InitializeTeamRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) -> Result<InitializeReport, String> {
+    validate_initialize_request_fields(&request)?;
     let contract_request = map_initialize_request_to_contract(&request);
-    state
+    let report = state
         .with_orchestrator(|orchestrator| {
             orchestrator.initialize_team_with_cli_commands_and_layout(
                 &contract_request,
@@ -206,85 +214,24 @@ fn coordination_initialize_team_impl_with_cli_commands_and_layout(
             )
         })
         .map(map_initialize_report_from_contract)
-        .map_err(map_coordination_error)
-}
-
-#[cfg(test)]
-fn coordination_initialize_team_with_emitter<E>(
-    state: &CoordinationState,
-    request: InitializeTeamRequest,
-    cli_commands: &CliCommandSettings,
-    emit: E,
-) -> Result<InitializeReport, String>
-where
-    E: FnMut(&StepProgressEvent),
-{
-    coordination_initialize_team_with_emitter_and_layout(
-        state,
-        request,
-        cli_commands,
-        "new_window",
-        emit,
-    )
-}
-
-fn coordination_initialize_team_with_emitter_and_layout<E>(
-    state: &CoordinationState,
-    request: InitializeTeamRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    mut emit: E,
-) -> Result<InitializeReport, String>
-where
-    E: FnMut(&StepProgressEvent),
-{
-    validate_initialize_request_fields(&request)?;
-    let report = coordination_initialize_team_impl_with_cli_commands_and_layout(
-        state,
-        request,
-        cli_commands,
-        tmux_layout,
-    )?;
-    for event in initialize_progress_events(&report) {
-        emit(&event);
-    }
+        .map_err(map_coordination_error)?;
+    emit_progress_events(initialize_progress_events(&report), emit);
     Ok(report)
 }
 
-#[cfg(test)]
-fn coordination_add_agent_impl(
-    state: &CoordinationState,
-    request: AddAgentRequest,
-) -> Result<AddAgentReport, String> {
-    coordination_add_agent_impl_with_cli_commands(state, request, &CliCommandSettings::default())
-}
-
-#[cfg(test)]
-fn coordination_add_agent_impl_with_cli_commands(
-    state: &CoordinationState,
-    request: AddAgentRequest,
-    cli_commands: &CliCommandSettings,
-) -> Result<AddAgentReport, String> {
-    coordination_add_agent_impl_with_cli_commands_and_layout(
-        state,
-        request,
-        cli_commands,
-        "new_window",
-    )
-}
-
-fn coordination_add_agent_impl_with_cli_commands_and_layout(
+fn coordination_add_agent_internal(
     state: &CoordinationState,
     request: AddAgentRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) -> Result<AddAgentReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("agent.name", &request.agent.name)?;
     validate_non_empty("agent.project_id", &request.agent.project_id)?;
     validate_non_empty("agent.cli_tool", &request.agent.cli_tool)?;
     let contract_request = map_add_agent_request_to_contract(&request);
-    state
+    let report = state
         .with_orchestrator(|orchestrator| {
             orchestrator.add_agent_to_team_with_cli_commands_and_layout(
                 &contract_request,
@@ -293,67 +240,22 @@ fn coordination_add_agent_impl_with_cli_commands_and_layout(
             )
         })
         .map(map_add_agent_report_from_contract)
-        .map_err(map_coordination_error)
-}
-
-#[cfg(test)]
-fn coordination_add_agent_with_emitter<E>(
-    state: &CoordinationState,
-    request: AddAgentRequest,
-    cli_commands: &CliCommandSettings,
-    emit: E,
-) -> Result<AddAgentReport, String>
-where
-    E: FnMut(&StepProgressEvent),
-{
-    coordination_add_agent_with_emitter_and_layout(state, request, cli_commands, "new_window", emit)
-}
-
-fn coordination_add_agent_with_emitter_and_layout<E>(
-    state: &CoordinationState,
-    request: AddAgentRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    mut emit: E,
-) -> Result<AddAgentReport, String>
-where
-    E: FnMut(&StepProgressEvent),
-{
-    let report = coordination_add_agent_impl_with_cli_commands_and_layout(
-        state,
-        request,
-        cli_commands,
-        tmux_layout,
-    )?;
-    for event in add_agent_progress_events(&report) {
-        emit(&event);
-    }
+        .map_err(map_coordination_error)?;
+    emit_progress_events(add_agent_progress_events(&report), emit);
     Ok(report)
 }
 
-#[cfg(test)]
-fn coordination_resume_member_impl(
-    state: &CoordinationState,
-    request: ResumeMemberRequest,
-) -> Result<ResumeAgentReport, String> {
-    coordination_resume_member_impl_with_cli_commands_and_layout(
-        state,
-        request,
-        &CliCommandSettings::default(),
-        "new_window",
-    )
-}
-
-fn coordination_resume_member_impl_with_cli_commands_and_layout(
+fn coordination_resume_member_internal(
     state: &CoordinationState,
     request: ResumeMemberRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) -> Result<ResumeAgentReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("member_name", &request.member_name)?;
     let contract_request = map_resume_member_request_to_contract(&request);
-    state
+    let report = state
         .with_orchestrator(|orchestrator| {
             orchestrator.resume_member_with_cli_commands_and_layout(
                 &contract_request,
@@ -362,29 +264,21 @@ fn coordination_resume_member_impl_with_cli_commands_and_layout(
             )
         })
         .map(map_resume_agent_report_from_contract)
-        .map_err(map_coordination_error)
+        .map_err(map_coordination_error)?;
+    emit_progress_events(resume_member_progress_events(&report), emit);
+    Ok(report)
 }
 
-fn coordination_resume_member_with_emitter_and_layout<E>(
-    state: &CoordinationState,
-    request: ResumeMemberRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    mut emit: E,
-) -> Result<ResumeAgentReport, String>
-where
-    E: FnMut(&StepProgressEvent),
-{
-    let report = coordination_resume_member_impl_with_cli_commands_and_layout(
-        state,
-        request,
-        cli_commands,
-        tmux_layout,
-    )?;
-    for event in resume_member_progress_events(&report) {
+fn emit_progress_events(
+    events: Vec<StepProgressEvent>,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) {
+    let Some(emit) = emit.as_mut() else {
+        return;
+    };
+    for event in events {
         emit(&event);
     }
-    Ok(report)
 }
 
 fn coordination_reonboard_impl(

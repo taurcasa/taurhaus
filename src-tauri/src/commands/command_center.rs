@@ -14,7 +14,7 @@ use crate::session_scanner::{ClaudeSession, SessionState};
 use crate::ProviderState;
 
 #[tauri::command]
-pub fn list_claude_sessions(
+pub fn list_cli_sessions(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
@@ -62,10 +62,7 @@ pub fn list_claude_sessions(
     }
 
     let fallback = crate::session_scanner::scan_sessions();
-    tracing::debug!(
-        count = fallback.len(),
-        "list_claude_sessions: fallback scan"
-    );
+    tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
     promote_activity_from_sessions(&app, db.inner(), &fallback);
     Ok(fallback)
 }
@@ -145,7 +142,7 @@ fn promote_activity_from_sessions_impl(
 }
 
 #[tauri::command]
-pub fn launch_claude_session(
+pub fn launch_cli_session(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     log_file: State<'_, LogFileState>,
@@ -153,7 +150,7 @@ pub fn launch_claude_session(
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
 ) -> Result<protocol::LaunchSessionResult, String> {
-    launch_claude_session_impl(
+    launch_cli_session_impl(
         db.inner(),
         provider.inner(),
         log_file.inner(),
@@ -163,7 +160,7 @@ pub fn launch_claude_session(
     )
 }
 
-fn launch_claude_session_impl(
+fn launch_cli_session_impl(
     db: &DbState,
     provider: &ProviderState,
     log_file: &LogFileState,
@@ -174,7 +171,10 @@ fn launch_claude_session_impl(
     let tool = cli_tool.unwrap_or(CliTool::Claude);
 
     if let Ok(mut f) = log_file.0.lock() {
-        let _ = writeln!(f, "[cmd-center] launch_claude_session: project_id={project_id} mode={mode:?} tool={tool:?}");
+        let _ = writeln!(
+            f,
+            "[cmd-center] launch_cli_session: project_id={project_id} mode={mode:?} tool={tool:?}"
+        );
     }
 
     let project_path = {
@@ -287,15 +287,15 @@ fn launch_claude_session_impl(
 }
 
 #[tauri::command]
-pub fn stop_claude_session(
+pub fn stop_cli_session(
     provider: State<'_, ProviderState>,
     tmux_pane: String,
     cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
-    stop_claude_session_impl(provider.inner(), tmux_pane, cli_tool)
+    stop_cli_session_impl(provider.inner(), tmux_pane, cli_tool)
 }
 
-fn stop_claude_session_impl(
+fn stop_cli_session_impl(
     provider: &ProviderState,
     tmux_pane: String,
     cli_tool: Option<CliTool>,
@@ -744,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_claude_session_uses_daemon_success_response() {
+    fn launch_cli_session_uses_daemon_success_response() {
         let daemon = start_stub_daemon(serde_json::json!({
             "result": {
                 "tmux_session": "taurhaus",
@@ -764,7 +764,7 @@ mod tests {
         let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
         let (log_file, _log_file) = setup_log_file();
 
-        let result = launch_claude_session_impl(
+        let result = launch_cli_session_impl(
             &db,
             &provider,
             &log_file,
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_claude_session_surfaces_daemon_error_message() {
+    fn launch_cli_session_surfaces_daemon_error_message() {
         let daemon = start_stub_daemon(serde_json::json!({
             "result": null,
             "error": {
@@ -807,7 +807,7 @@ mod tests {
         let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
         let (log_file, _log_file) = setup_log_file();
 
-        let err = launch_claude_session_impl(
+        let err = launch_cli_session_impl(
             &db,
             &provider,
             &log_file,
@@ -821,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_claude_session_surfaces_daemon_error_message() {
+    fn stop_cli_session_surfaces_daemon_error_message() {
         let daemon = start_stub_daemon(serde_json::json!({
             "result": null,
             "error": {
@@ -838,7 +838,7 @@ mod tests {
             wsl_distro: None,
         };
 
-        let err = stop_claude_session_impl(&provider, "%10".to_string(), Some(CliTool::Codex))
+        let err = stop_cli_session_impl(&provider, "%10".to_string(), Some(CliTool::Codex))
             .expect_err("daemon stop should return error");
         assert!(err.contains("cannot stop session"));
     }
@@ -876,7 +876,7 @@ mod tests {
         };
         let (log_file, _log_file) = setup_log_file();
 
-        let err = launch_claude_session_impl(
+        let err = launch_cli_session_impl(
             &db,
             &provider,
             &log_file,
@@ -903,7 +903,7 @@ mod tests {
         let (db, _db_file) = setup_db_with_project("p1", "/path/that/does/not/exist");
         let (log_file, _log_file) = setup_log_file();
 
-        let err = launch_claude_session_impl(
+        let err = launch_cli_session_impl(
             &db,
             &provider,
             &log_file,
