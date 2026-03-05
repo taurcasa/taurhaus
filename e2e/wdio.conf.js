@@ -32,6 +32,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -88,8 +89,19 @@ function buildSpecList() {
   return groups
 }
 
+const specList = buildSpecList()
+const specGroupIndexByPath = new Map()
+for (const [groupIndex, group] of specList.entries()) {
+  for (const specPath of group) {
+    specGroupIndexByPath.set(resolve(specPath), groupIndex)
+  }
+}
+
 let tauriDriver
 let sessionTempRoot = null
+let tauriDriverStderrBuffer = ''
+let sessionAppLogPaths = []
+let sessionDaemonLogPaths = []
 
 function runGitOrThrow(cwd, args, errorMessage) {
   const result = spawnSync('git', args, {
@@ -308,6 +320,8 @@ function cleanupSessionTempRoot() {
   if (!sessionTempRoot) return
   rmSync(sessionTempRoot, { recursive: true, force: true })
   sessionTempRoot = null
+  sessionAppLogPaths = []
+  sessionDaemonLogPaths = []
 }
 
 function cleanupAllE2eArtifacts() {
@@ -358,7 +372,7 @@ export const config = {
   // Override with E2E_BAIL=0 when a full matrix is required.
   bail: suiteBail,
   // Multiple sub-arrays: each group gets its own app instance.
-  specs: buildSpecList(),
+  specs: specList,
 
   // ── Capabilities ────────────────────────────────────────────────────────
   capabilities: [
@@ -407,14 +421,44 @@ export const config = {
     test.__e2eStart = Date.now()
   },
 
-  afterTest(test, _context, result) {
-    if (!traceTiming) return
-    const duration = Number(result?.duration || 0)
-    if (duration < traceTimingThresholdMs) return
+  async afterTest(test, _context, result) {
+    if (traceTiming) {
+      const duration = Number(result?.duration || 0)
+      if (duration >= traceTimingThresholdMs) {
+        const parent = test?.parent ? `${test.parent} :: ` : ''
+        const title = test?.title ? `${test.title}` : 'unknown test'
+        const status = result?.error ? 'fail' : 'pass'
+        console.log(`[e2e:timing] test ${status} ${duration}ms :: ${parent}${title}`)
+      }
+    }
+
+    const failed = Boolean(result?.error) || result?.passed === false
+    if (!failed) return
+
+    const rawSpecFile = test?.file || 'unknown-spec.js'
+    const resolvedSpecFile = resolve(specsDir, rawSpecFile)
+    const groupIndex = specGroupIndexByPath.get(resolvedSpecFile) ?? null
     const parent = test?.parent ? `${test.parent} :: ` : ''
-    const title = test?.title ? `${test.title}` : 'unknown test'
-    const status = result?.error ? 'fail' : 'pass'
-    console.log(`[e2e:timing] test ${status} ${duration}ms :: ${parent}${title}`)
+    const testTitle = `${parent}${test?.title || 'unknown test'}`
+
+    try {
+      const bundle = await collectFailureArtifacts({
+        outputDir: wdioOutputDir,
+        specFile: resolvedSpecFile,
+        testTitle,
+        groupIndex,
+        appLogPaths: sessionAppLogPaths,
+        daemonLogPaths: sessionDaemonLogPaths,
+        driverStderr: tauriDriverStderrBuffer,
+        tailLines: 200,
+        saveScreenshot: async (screenshotPath) => {
+          await browser.saveScreenshot(screenshotPath)
+        },
+      })
+      console.error(`[e2e] failure artifacts collected at ${bundle.artifactDir}`)
+    } catch (error) {
+      console.warn(`[e2e] failed to collect failure artifacts for "${testTitle}":`, error)
+    }
   },
 
   /**
@@ -462,6 +506,17 @@ export const config = {
     const ledgerFixtureProject = `${e2eProjectsDir}/ledger`
     mkdirSync(tauriDataDir, { recursive: true })
     mkdirSync(tauriClaudeDir, { recursive: true })
+    tauriDriverStderrBuffer = ''
+    sessionAppLogPaths = [
+      `${tauriDataDir}/taurhaus.log.jsonl`,
+      `${tauriDataDir}/taurhaus.log`,
+    ]
+    sessionDaemonLogPaths = [
+      process.env.TAURHAUS_DAEMON_LOG_PATH,
+      `${tauriDataDir}/taurhaus-daemon.log.jsonl`,
+      `${tauriDataDir}/taurhaus-daemon.log`,
+      `${tauriDataDir}/daemon.log`,
+    ].filter(Boolean)
 
     createFixtureRepo(taurhausFixtureProject, { title: 'taurhaus fixture', withHistory: true })
     createFixtureRepo(ledgerFixtureProject, { title: 'ledger fixture', withHistory: false })
@@ -478,11 +533,23 @@ export const config = {
         TAURHAUS_DATA_DIR: tauriDataDir,
         TAURHAUS_CLAUDE_DIR: tauriClaudeDir,
       },
-      stdio: [null, process.stdout, process.stderr],
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
       }
     )
     appendDriverPid(tauriDriver.pid)
+    if (tauriDriver?.stdout) {
+      tauriDriver.stdout.on('data', (chunk) => {
+        process.stdout.write(chunk)
+      })
+    }
+    if (tauriDriver?.stderr) {
+      tauriDriver.stderr.on('data', (chunk) => {
+        const text = chunk.toString()
+        process.stderr.write(text)
+        tauriDriverStderrBuffer = appendDriverStderr(tauriDriverStderrBuffer, text)
+      })
+    }
 
     await waitForWebDriverReady('127.0.0.1', wdioPort)
   },
