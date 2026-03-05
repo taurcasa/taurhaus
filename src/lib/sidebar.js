@@ -38,7 +38,7 @@ export function buildSidebarProjection(projects, filterQuery = '') {
   const filtered = computeFilteredProjects(projectList, query)
   const grouped = SIDEBAR_GROUPS.map((group) => ({
     ...group,
-    items: filtered.filter((project) => project.activity_state === group.key),
+    items: filtered.filter((project) => project.activityState === group.key),
   }))
 
   const projection = {

@@ -77,6 +77,39 @@
   const allSelected = $derived(selectableProjects.length > 0 && selected.size === selectableProjects.length)
 
   let dialogEl = $state(null)
+  const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'area[href]',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    'button:not([disabled])',
+    'iframe',
+    'object',
+    'embed',
+    '[contenteditable="true"]',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',')
+
+  function getFocusableElements() {
+    if (!dialogEl) return []
+    return Array.from(dialogEl.querySelectorAll(FOCUSABLE_SELECTOR))
+      .filter((element) => (
+        element instanceof HTMLElement
+        && !element.hasAttribute('disabled')
+        && element.tabIndex >= 0
+        && element.getAttribute('aria-hidden') !== 'true'
+      ))
+  }
+
+  function focusFirstInteractiveElement() {
+    const focusable = getFocusableElements()
+    if (focusable.length > 0) {
+      focusable[0].focus()
+      return
+    }
+    dialogEl?.focus()
+  }
 
   // Load registered projects on mount
   $effect(() => {
@@ -92,19 +125,54 @@
     }
   })
 
-  // Focus trap + escape key
+  // Keyboard trap + escape key
   $effect(() => {
     if (!dialogEl) return
-    dialogEl.focus()
+    const previousFocusedElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    focusFirstInteractiveElement()
 
     function handleKeydown(e) {
       if (e.key === 'Escape') {
         e.preventDefault()
         onClose()
+        return
+      }
+
+      if (e.key !== 'Tab') return
+      const focusable = getFocusableElements()
+      if (focusable.length === 0) {
+        e.preventDefault()
+        dialogEl.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+
+      if (!(active instanceof HTMLElement) || !dialogEl.contains(active)) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+        return
+      }
+
+      if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
       }
     }
     window.addEventListener('keydown', handleKeydown)
-    return () => window.removeEventListener('keydown', handleKeydown)
+    return () => {
+      window.removeEventListener('keydown', handleKeydown)
+      if (previousFocusedElement && previousFocusedElement.isConnected) {
+        previousFocusedElement.focus()
+      }
+    }
   })
 
   async function loadRegistered() {
@@ -403,7 +471,7 @@
               <div
                 class="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 {t.keyline} transition-all {removingId === project.id ? 'opacity-30' : ''}"
               >
-                <span class="w-[7px] h-[7px] rounded-full shrink-0 {dots[project.activity_state] || 'bg-zinc-500'}"></span>
+                <span class="w-[7px] h-[7px] rounded-full shrink-0 {dots[project.activityState] || 'bg-zinc-500'}"></span>
                 <div class="min-w-0 flex-1">
                   <div class="text-[13px] font-medium {t.textPrimary} truncate">{project.name}</div>
                   <div class="text-[11px] {t.textTertiary} truncate font-mono">{project.path}</div>

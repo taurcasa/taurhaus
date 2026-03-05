@@ -19,6 +19,7 @@
     onProjectMouseLeave = () => {},
     onSessionJump = () => {},
     onRetry = () => {},
+    onOpenManageProjects = () => {},
   } = $props()
 </script>
 
@@ -43,7 +44,11 @@
   <div class="px-4 pt-8 text-center" data-testid="sidebar-empty">
     <svg class="w-10 h-10 text-white/10 mx-auto" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
     <p class="mt-2 text-[12px] text-white/40">No projects yet</p>
-    <button class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors">Scan for projects</button>
+    <button
+      class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors"
+      onclick={onOpenManageProjects}
+      data-testid="sidebar-empty-scan"
+    >Scan for projects</button>
   </div>
 {:else if filteredProjects.length === 0 && filterQuery}
   <div class="px-4 pt-6 text-center" data-testid="sidebar-no-matches">
@@ -114,7 +119,7 @@
         {#if project.branch}
           <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/50 bg-white/10' : 'text-white/30 bg-white/[0.07]'}">{project.branch}</span>
         {/if}
-        {#if project.is_dirty}
+        {#if project.isDirty}
           <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
         {/if}
       </button>

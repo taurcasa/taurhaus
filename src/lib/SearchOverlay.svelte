@@ -9,8 +9,22 @@
   let loading = $state(false)
   let debounceTimer = $state(null)
   let inputEl = $state(null)
+  let overlayEl = $state(null)
   let selectedIndex = $state(-1)
   let searchRequestId = 0
+  const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'area[href]',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    'button:not([disabled])',
+    'iframe',
+    'object',
+    'embed',
+    '[contenteditable="true"]',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',')
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -36,43 +50,66 @@
 
   const GROUP_ORDER = ['document', 'session', 'commit']
 
-  // Group results by entity_type
-  const grouped = $derived(() => {
+  // Group results by entity_type and precompute flat indices once per result set.
+  const groupedResults = $derived.by(() => {
     const groups = {}
-    for (const r of results) {
-      if (!groups[r.entity_type]) groups[r.entity_type] = []
-      groups[r.entity_type].push(r)
+    for (const result of results) {
+      if (!groups[result.entity_type]) groups[result.entity_type] = []
+      groups[result.entity_type].push(result)
     }
-    return groups
-  })
 
-  // Flat list of results for keyboard navigation
-  const flatResults = $derived(() => {
+    const indexed = {}
     const flat = []
+    let flatIndex = 0
+
     for (const type of GROUP_ORDER) {
-      const g = grouped()
-      if (g[type]) flat.push(...g[type])
+      const entries = groups[type] ?? []
+      indexed[type] = entries.map((result) => {
+        const item = { result, flatIndex }
+        flat.push(result)
+        flatIndex += 1
+        return item
+      })
     }
-    return flat
+
+    return { indexed, flat }
   })
 
-  // Focus input when overlay opens
+  // Flat list of results for keyboard navigation (document -> session -> commit).
+  const flatResults = $derived.by(() => groupedResults.flat)
+
+  function getFocusableElements() {
+    if (!overlayEl) return []
+    return Array.from(overlayEl.querySelectorAll(FOCUSABLE_SELECTOR))
+      .filter((element) => (
+        element instanceof HTMLElement
+        && !element.hasAttribute('disabled')
+        && element.tabIndex >= 0
+        && element.getAttribute('aria-hidden') !== 'true'
+      ))
+  }
+
+  function focusFirstInteractiveElement() {
+    const focusable = getFocusableElements()
+    if (focusable.length > 0) {
+      focusable[0].focus()
+      return
+    }
+    overlayEl?.focus()
+  }
+
+  // Reset overlay-local state when closed
   $effect(() => {
-    if (open && inputEl) {
-      // Small delay to ensure the element is mounted
-      requestAnimationFrame(() => inputEl?.focus())
+    if (open) return
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
     }
-    if (!open) {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer)
-        debounceTimer = null
-      }
-      searchRequestId += 1
-      query = ''
-      results = []
-      loading = false
-      selectedIndex = -1
-    }
+    searchRequestId += 1
+    query = ''
+    results = []
+    loading = false
+    selectedIndex = -1
   })
 
   function handleInput(e) {
@@ -111,14 +148,45 @@
     }, 150)
   }
 
-  function handleKeydown(e) {
-    const flat = flatResults()
+  function handleSearchKeydown(e) {
+    if (!open) return
+    const active = document.activeElement
+    const activeInsideOverlay = active instanceof HTMLElement && overlayEl?.contains(active)
 
     if (e.key === 'Escape') {
       e.preventDefault()
       close()
       return
     }
+
+    if (e.key === 'Tab') {
+      const focusable = getFocusableElements()
+      if (focusable.length === 0) {
+        e.preventDefault()
+        overlayEl?.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+
+      if (!activeInsideOverlay) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+        return
+      }
+
+      if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+      }
+      return
+    }
+
+    if (!activeInsideOverlay) return
+    const flat = flatResults
 
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -138,6 +206,27 @@
       return
     }
   }
+
+  $effect(() => {
+    if (!open) return
+    const previousFocusedElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+
+    const rafId = requestAnimationFrame(() => {
+      focusFirstInteractiveElement()
+      inputEl?.focus()
+    })
+
+    window.addEventListener('keydown', handleSearchKeydown)
+    return () => {
+      cancelAnimationFrame(rafId)
+      window.removeEventListener('keydown', handleSearchKeydown)
+      if (previousFocusedElement && previousFocusedElement.isConnected) {
+        previousFocusedElement.focus()
+      }
+    }
+  })
 
   function navigateTo(result) {
     const action = mapResultToNavigation(result)
@@ -161,23 +250,30 @@
   function close() {
     open = false
   }
-
-  function handleBackdropClick(e) {
-    if (e.target === e.currentTarget) close()
-  }
 </script>
 
 {#if open}
-  <!-- Backdrop -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm"
-    onclick={handleBackdropClick}
+    class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm relative"
     data-testid="search-overlay"
   >
+    <button
+      type="button"
+      class="absolute inset-0 bg-transparent"
+      onclick={close}
+      tabindex="-1"
+      aria-label="Close search overlay"
+    ></button>
+
     <!-- Search panel -->
-    <div class="w-full max-w-[540px] {overlayBg} rounded-xl shadow-2xl border {borderColor} overflow-hidden backdrop-blur-xl">
+    <div
+      bind:this={overlayEl}
+      class="relative z-10 w-full max-w-[540px] {overlayBg} rounded-xl shadow-2xl border {borderColor} overflow-hidden backdrop-blur-xl"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search across all projects"
+      data-testid="search-dialog"
+    >
 
       <!-- Search input -->
       <div class="flex items-center gap-3 px-4 h-[52px] border-b {borderColor}">
@@ -189,7 +285,6 @@
           type="text"
           value={query}
           oninput={handleInput}
-          onkeydown={handleKeydown}
           placeholder="Search across all projects..."
           class="flex-1 bg-transparent text-[15px] {t.textPrimary} outline-none placeholder:{t.textMuted}"
           spellcheck="false"
@@ -240,15 +335,15 @@
           </div>
         {:else}
           <!-- Grouped results -->
-          {@const groups = grouped()}
+          {@const indexedGroups = groupedResults.indexed}
           {#each GROUP_ORDER as type}
-            {#if groups[type]?.length > 0}
+            {#if indexedGroups[type]?.length > 0}
               <div class="px-3 pt-3 pb-1">
                 <span class="text-[10px] font-medium uppercase tracking-[0.06em] {groupLabel}">{GROUP_LABELS[type]}</span>
               </div>
-              {#each groups[type] as result, i}
-                {@const flatIdx = flatResults().indexOf(result)}
-                {@const isSelected = flatIdx === selectedIndex}
+              {#each indexedGroups[type] as entry}
+                {@const result = entry.result}
+                {@const isSelected = entry.flatIndex === selectedIndex}
                 <button
                   class="w-full flex items-start gap-3 px-3 py-2 text-left transition-colors rounded-md mx-0
                     {isSelected ? selectedBg : hoverBg}"

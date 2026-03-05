@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl, getPlatform } from './lib/ipc.js'
   import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
@@ -16,7 +16,7 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createAsyncGuard } from './lib/asyncGuard.js'
-  import { writable } from 'svelte/store'
+  import { loadProjectSelectionData } from './lib/projectSelection.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
 
@@ -39,6 +39,7 @@
   let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
+  let startupViewportSyncAttempted = false
 
   // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
@@ -48,6 +49,7 @@
   let daemonUpdateAvailable = $state(null)  // { version, bundled_version } or null
   let daemonUpdateDismissed = $state(false)
   let daemonUpdating = $state(false)
+  let shellNotice = $state(null)
 
   /*
    * Layout dimensions
@@ -113,19 +115,21 @@
   const sessionsLoadGuard = createAsyncGuard()
   const readmeLoadGuard = createAsyncGuard()
   const relationshipsLoadGuard = createAsyncGuard()
+  const selectLoadGuard = createAsyncGuard()
 
-  const projectContext = setProjectContext({
-    projects: writable([]),
-    selectedProject: writable(null),
+  let projectContextValue = $state({
+    projects: [],
+    selectedProject: null,
     selectProject: (project) => selectProject(project),
     navigateToCommit: (hash) => navigateToCommit(hash),
     navigateToFile: (path, lineNumber) => navigateToFile(path, lineNumber),
     navigateToCommitRange: (after, before) => navigateToCommitRange(after, before),
     onProjectRemoved: (id) => handleProjectRemoved(id),
   })
+  const projectContext = setProjectContext(projectContextValue)
 
-  const sessionContext = setSessionContext({
-    daemonStatus: writable(null),
+  let sessionContextValue = $state({
+    daemonStatus: null,
     launchSession: (tool) => handleOverviewLaunchSession(tool),
     openTerminal: () => handleOverviewOpenTerminal(),
     openManageProjects: () => {
@@ -138,14 +142,15 @@
       loadProjects()
     },
   })
+  const sessionContext = setSessionContext(sessionContextValue)
 
   $effect(() => {
-    projectContext.projects.set(projects)
-    projectContext.selectedProject.set(selectedProject)
+    projectContext.projects = projects
+    projectContext.selectedProject = selectedProject
   })
 
   $effect(() => {
-    sessionContext.daemonStatus.set(daemonStatus)
+    sessionContext.daemonStatus = daemonStatus
   })
 
   function saveProjectPosition() {
@@ -193,14 +198,20 @@
         codeThemeDark = s.code_theme.dark || DEFAULT_DARK_THEME
       }
       dark = !!s.dark_mode
-    } catch {
+    } catch (error) {
+      console.error('[settings] failed to load code theme preferences:', error)
       // Keep defaults on error
     }
   }
 
   function setDarkMode(value) {
     dark = value
-    getSettings().then(s => updateSettings({ ...s, dark_mode: value })).catch(() => {})
+    getSettings()
+      .then((s) => updateSettings({ ...s, dark_mode: value }))
+      .catch((error) => {
+        console.error('[settings] failed to persist dark mode preference:', error)
+        shellNotice = 'Failed to save dark mode preference.'
+      })
   }
 
   function handleCodeThemeChanged() {
@@ -225,6 +236,7 @@
       loadProjects()
       loadCodeThemeFromSettings()
       loadDaemonStatus()
+      void syncWindowsStartupViewport()
     }
   }
 
@@ -233,6 +245,40 @@
     loadProjects()
     loadCodeThemeFromSettings()
     loadDaemonStatus()
+    void syncWindowsStartupViewport()
+  }
+
+  async function syncWindowsStartupViewport() {
+    if (startupViewportSyncAttempted || !isTauri()) return
+    startupViewportSyncAttempted = true
+    try {
+      const platform = await getPlatform()
+      if (platform !== 'windows') return
+
+      const { getCurrentWindow, PhysicalSize } = await import('@tauri-apps/api/window')
+      const appWindow = getCurrentWindow()
+      const [maximized, fullscreen] = await Promise.all([
+        appWindow.isMaximized(),
+        appWindow.isFullscreen(),
+      ])
+
+      // Keep maximized/fullscreen startup untouched.
+      if (maximized || fullscreen) {
+        window.dispatchEvent(new Event('resize'))
+        return
+      }
+
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      const size = await appWindow.innerSize()
+      if (!size?.width || !size?.height) return
+
+      // Force one native resize cycle: this mirrors the manual resize workaround.
+      await appWindow.setSize(new PhysicalSize(size.width + 1, size.height))
+      await appWindow.setSize(new PhysicalSize(size.width, size.height))
+      window.dispatchEvent(new Event('resize'))
+    } catch (error) {
+      console.warn('[window] startup viewport sync failed:', error)
+    }
   }
 
   async function loadDaemonStatus() {
@@ -305,14 +351,31 @@
     let destroyed = false
     let cleanups = []
 
-    function registerListener(listen, eventName, handler) {
-      listen(eventName, handler).then((unlisten) => {
-        if (destroyed) {
-          unlisten()
-          return
+    function runListenerHandler(eventName, handler, event) {
+      try {
+        const maybePromise = handler(event)
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          maybePromise.catch((error) => {
+            console.error(`[events] listener '${eventName}' handler failed:`, error)
+          })
         }
-        cleanups.push(unlisten)
-      })
+      } catch (error) {
+        console.error(`[events] listener '${eventName}' handler failed:`, error)
+      }
+    }
+
+    function registerListener(listen, eventName, handler) {
+      listen(eventName, (event) => runListenerHandler(eventName, handler, event))
+        .then((unlisten) => {
+          if (destroyed) {
+            unlisten()
+            return
+          }
+          cleanups.push(unlisten)
+        })
+        .catch((error) => {
+          console.error(`[events] failed to register listener '${eventName}':`, error)
+        })
     }
 
     import('@tauri-apps/api/event').then(({ listen }) => {
@@ -320,12 +383,13 @@
       // Git status changed — refresh sidebar project status
       registerListener(listen, 'project-git-changed', (event) => {
         const { project_id } = event.payload
+        const isDirty = event.payload?.isDirty ?? event.payload?.is_dirty
         const idx = projects.findIndex(p => p.id === project_id)
         if (idx !== -1 && event.payload.branch !== undefined) {
-          projects[idx] = { ...projects[idx], branch: event.payload.branch, is_dirty: event.payload.is_dirty }
+          projects[idx] = { ...projects[idx], branch: event.payload.branch, isDirty }
         }
         if (selectedProject?.id === project_id) {
-          selectedProject = { ...selectedProject, branch: event.payload.branch ?? selectedProject.branch, is_dirty: event.payload.is_dirty ?? selectedProject.is_dirty }
+          selectedProject = { ...selectedProject, branch: event.payload.branch ?? selectedProject.branch, isDirty: isDirty ?? selectedProject.isDirty }
         }
       })
 
@@ -386,7 +450,9 @@
       if (!destroyed) {
         hydrateSessionsFromBackend()
       }
-    }).catch(() => {})
+    }).catch((error) => {
+      console.error('[events] failed to initialize Tauri listeners:', error)
+    })
 
     return () => {
       destroyed = true
@@ -420,25 +486,6 @@
     }
   }
 
-
-  let _selectGeneration = 0
-  function errorMessage(err) {
-    if (typeof err === 'string' && err.trim()) return err
-    if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.trim()) {
-      return err.message
-    }
-    return 'Unknown error'
-  }
-
-  async function withFallback(section, promise, fallback) {
-    try {
-      const value = await promise
-      return { ok: true, section, value, message: null }
-    } catch (err) {
-      return { ok: false, section, value: fallback, message: errorMessage(err) }
-    }
-  }
-
   async function retryProjectLoad() {
     if (!selectedProject) return
     await selectProject(selectedProject)
@@ -452,20 +499,20 @@
 
     const savedPosition = projectPositions.get(projectId)
     const restoredTab = savedPosition?.tab || 'overview'
-    const generation = ++_selectGeneration
+    const generation = selectLoadGuard.next()
 
     // Fire all IPC calls in parallel — don't touch state yet
-    const [detail, commits, latest, sessionList, readme, rels] = await Promise.all([
-      withFallback('Project details', getProject(projectId), null),
-      withFallback('Recent commits', getRecentCommits(projectId, 10), []),
-      withFallback('Latest session', getLatestSession(projectId), null),
-      withFallback('Session history', listSessions(projectId, 10), []),
-      withFallback('README', getReadme(projectId), null),
-      withFallback('Relationships', getRelationships(projectId), []),
-    ])
+    const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
+      getProject,
+      getRecentCommits,
+      getLatestSession,
+      listSessions,
+      getReadme,
+      getRelationships,
+    })
 
     // Stale check — user clicked a different project while we were loading
-    if (generation !== _selectGeneration) return
+    if (!selectLoadGuard.isCurrent(generation)) return
 
     const loadIssues = [detail, commits, latest, sessionList, readme, rels]
       .filter(result => !result.ok)
@@ -560,8 +607,9 @@
     try {
       await dismissRelationship(relId)
       relationships = relationships.filter(r => r.id !== relId)
-    } catch {
-      // Silent fail — relationship may still show
+    } catch (error) {
+      console.error(`[overview] failed to dismiss relationship (${relId}):`, error)
+      shellNotice = 'Failed to dismiss relationship. Please try again.'
     }
   }
 
@@ -951,6 +999,8 @@
       {projects}
       {sidebarLoading}
       {sidebarError}
+      {selectedProject}
+      daemonStatus={daemonStatus}
       {settingsOpen}
     />
 
@@ -993,6 +1043,18 @@
             class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
             onclick={() => projectLoadIssues = []}
             data-testid="project-load-dismiss"
+          >Dismiss</button>
+        </div>
+      {/if}
+
+      {#if shellNotice && !settingsOpen}
+        <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" data-testid="shell-notice-banner">
+          <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
+          <span class="text-[12px] {t.textSecondary} flex-1" data-testid="shell-notice-message">{shellNotice}</span>
+          <button
+            class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
+            onclick={() => shellNotice = null}
+            data-testid="shell-notice-dismiss"
           >Dismiss</button>
         </div>
       {/if}

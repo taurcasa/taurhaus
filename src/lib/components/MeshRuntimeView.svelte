@@ -42,6 +42,25 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  let nodeDetailAnchor = $state(null)
+  const detailNode = $derived.by(() => {
+    if (!selectedNode || typeof selectedNode !== 'object') return null
+    return {
+      name: selectedNode.name,
+      role: selectedNode.role,
+      tool: selectedNode.tool ?? selectedNode.cliTool ?? selectedNode.cli_tool,
+      model: selectedNode.model ?? selectedNode.modelName ?? selectedNode.model_name,
+      status: selectedNode.status ?? selectedNode.sessionStatus ?? selectedNode.session_status,
+      projectId: selectedNode.projectId ?? selectedNode.project_id,
+      description: selectedNode.description ?? '',
+      paneId: selectedNode.paneId ?? selectedNode.pane_id ?? '',
+      sessionId: selectedNode.sessionId ?? selectedNode.session_id ?? '',
+      sessionState: selectedNode.sessionState ?? selectedNode.session_status ?? '',
+    }
+  })
+  const canFocusSelectedPane = $derived.by(
+    () => Boolean(selectedNode?.paneId ?? selectedNode?.pane_id)
+  )
   const fieldTone = $derived(
     dark
       ? 'bg-zinc-950/50 border-white/[0.08] text-zinc-100 placeholder-zinc-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
@@ -54,6 +73,15 @@
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
       .filter((project) => project.id)
   )
+
+  function handleDetailAnchorChange(anchor) {
+    nodeDetailAnchor = anchor
+  }
+
+  $effect(() => {
+    if (selectedNode) return
+    nodeDetailAnchor = null
+  })
 </script>
 
 <div class="px-4 pt-2 pb-4 space-y-3">
@@ -64,10 +92,9 @@
       {dark}
       onAddAgent={onOpenAddAgent}
       onDisband={onRequestDisband}
-      onOverflow={() => {}}
     />
 
-    <div data-testid="mesh-runtime-canvas-frame">
+    <div class="relative" data-testid="mesh-runtime-canvas-frame">
       <MeshCanvas
         lead={teamConfig?.lead ?? null}
         agents={teamConfig?.agents ?? []}
@@ -76,33 +103,28 @@
         {selectedNodeId}
         onNodeClick={onNodeClick}
         onAddClick={() => {}}
+        onDetailAnchorChange={handleDetailAnchorChange}
+        onDismissDetail={onCloseNode}
       />
-    </div>
 
-    {#if selectedNode}
-      <div class="relative h-0" data-testid="mesh-node-detail-host">
-        <MeshNodeDetail
-          node={{
-            name: selectedNode.name,
-            role: selectedNode.role,
-            tool: selectedNode.tool,
-            model: selectedNode.model,
-            status: selectedNode.status,
-            projectId: selectedNode.projectId,
-            description: selectedNode.description || '',
-          }}
-          mode="runtime"
-          {dark}
-          actions={{
-            onResume: onResumeSelected,
-            onStop: onStopSelected,
-            onFocusPane: onFocusSelectedPane,
-            onCapture: onCaptureRole,
-            onClose: onCloseNode,
-          }}
-        />
-      </div>
-    {/if}
+      {#if detailNode && nodeDetailAnchor}
+        <div class="pointer-events-none absolute inset-0 z-20" data-testid="mesh-node-detail-host">
+          <MeshNodeDetail
+            node={detailNode}
+            mode="runtime"
+            {dark}
+            anchor={nodeDetailAnchor}
+            actions={{
+              onResume: onResumeSelected,
+              onStop: onStopSelected,
+              onFocusPane: canFocusSelectedPane ? onFocusSelectedPane : null,
+              onCapture: onCaptureRole,
+              onClose: onCloseNode,
+            }}
+          />
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
 

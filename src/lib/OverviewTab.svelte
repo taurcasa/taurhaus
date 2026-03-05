@@ -17,28 +17,9 @@
 
   const projectContext = getProjectContext()
   const sessionContext = getSessionContext()
-  let contextSelectedProject = $state(null)
-  let contextProjects = $state([])
 
-  $effect(() => {
-    const cleanups = []
-    if (projectContext?.selectedProject?.subscribe) {
-      cleanups.push(projectContext.selectedProject.subscribe((value) => {
-        contextSelectedProject = value
-      }))
-    }
-    if (projectContext?.projects?.subscribe) {
-      cleanups.push(projectContext.projects.subscribe((value) => {
-        contextProjects = Array.isArray(value) ? value : []
-      }))
-    }
-    return () => {
-      for (const cleanup of cleanups) cleanup()
-    }
-  })
-
-  const selectedProject = $derived.by(() => data?.selectedProject ?? contextSelectedProject ?? {})
-  const projects = $derived.by(() => data?.projects ?? contextProjects ?? [])
+  const selectedProject = $derived.by(() => data?.selectedProject ?? projectContext?.selectedProject ?? {})
+  const projects = $derived.by(() => data?.projects ?? projectContext?.projects ?? [])
   const recentCommits = $derived.by(() => data?.recentCommits ?? [])
   const commitsLoading = $derived.by(() => Boolean(data?.commitsLoading))
   const latestSession = $derived.by(() => data?.latestSession ?? null)
@@ -143,11 +124,11 @@
   <div class="flex items-center gap-3">
     <h1 class="text-[18px] font-semibold {t.textPrimary} tracking-[-0.02em]">{selectedProject.name}</h1>
     <span class="text-[11px] font-mono {t.textTertiary} self-baseline">{selectedProject.branch || ''}</span>
-    {#if selectedProject.is_dirty}
+    {#if selectedProject.isDirty}
       <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Uncommitted changes"></span>
     {/if}
-    {#if selectedProject.activity_state}
-      <span class="text-[11px] {statusColor} font-medium capitalize self-baseline">{selectedProject.activity_state}</span>
+    {#if selectedProject.activityState}
+      <span class="text-[11px] {statusColor} font-medium capitalize self-baseline">{selectedProject.activityState}</span>
     {/if}
     <!-- Quick actions — compact icon buttons -->
     <div class="ml-auto flex items-center gap-1 shrink-0" data-testid="quick-actions">
@@ -369,10 +350,10 @@
           <span class="{t.textTertiary} w-14">Path</span>
           <span class="font-mono text-[12px] {t.textMuted}">{selectedProject.path}</span>
         </div>
-        {#if selectedProject.created_at}
+        {#if selectedProject.createdAt}
           <div class="flex items-center gap-3">
             <span class="{t.textTertiary} w-14">Created</span>
-            <span class="text-[12px] {t.textMuted}">{new Date(selectedProject.created_at).toLocaleDateString()}</span>
+            <span class="text-[12px] {t.textMuted}">{new Date(selectedProject.createdAt).toLocaleDateString()}</span>
           </div>
         {/if}
       </div>

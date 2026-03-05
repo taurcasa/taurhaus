@@ -259,20 +259,20 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     ...member,
     name: String(member?.name ?? `member-${index + 1}`),
     role: String(member?.role ?? '').toLowerCase(),
-    tool: normalizeTool(member?.cliTool ?? member?.cli_tool),
+    tool: normalizeTool(member?.cliTool),
     model: String(member?.model ?? ''),
-    status: normalizeStatus(member?.sessionStatus ?? member?.session_status),
-    projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
+    status: normalizeStatus(member?.sessionStatus),
+    projectId: String(member?.projectId ?? projectPath ?? ''),
     description: member?.description ?? null,
-    paneId: member?.paneId ?? member?.pane_id ?? null,
-    roleId: member?.roleId ?? member?.role_id ?? null,
+    paneId: member?.paneId ?? null,
+    roleId: member?.roleId ?? null,
     instructions: member?.instructions ?? null,
-    behavioralContract: member?.behavioralContract ?? member?.behavioral_contract ?? null,
+    behavioralContract: member?.behavioralContract ?? null,
     capabilities: Array.isArray(member?.capabilities) ? member.capabilities : null,
   }))
 
   const leadMember = normalizedMembers.find((member) => member.role === 'lead')
-  const fallbackLeadName = status?.leadName ?? status?.lead_name ?? 'team-lead'
+  const fallbackLeadName = status?.leadName ?? 'team-lead'
 
   const lead = createLead(
     {

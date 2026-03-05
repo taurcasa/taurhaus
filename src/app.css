@@ -46,6 +46,30 @@
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
 
   /* Mesh Canvas — Node surfaces */
+  --mesh-node-bg-dark: rgba(255, 255, 255, 0.04);
+  --mesh-node-bg-light: rgba(255, 255, 255, 0.9);
+  --mesh-node-border-dark: rgba(255, 255, 255, 0.08);
+  --mesh-node-border-dark-hover: rgba(255, 255, 255, 0.14);
+  --mesh-node-border-light: rgba(13, 148, 136, 0.15);
+  --mesh-node-border-light-hover: rgba(13, 148, 136, 0.28);
+  --mesh-node-lead-border-dark: rgba(13, 148, 136, 0.42);
+  --mesh-node-lead-border-dark-hover: rgba(13, 148, 136, 0.56);
+  --mesh-node-selected-border-dark: rgba(13, 148, 136, 0.5);
+  --mesh-node-lead-selected-border-dark: rgba(13, 148, 136, 0.6);
+  --mesh-node-lead-border-light: rgba(13, 148, 136, 0.3);
+  --mesh-node-lead-border-light-hover: rgba(13, 148, 136, 0.42);
+  --mesh-node-selected-border-light: rgba(13, 148, 136, 0.5);
+  --mesh-node-lead-selected-border-light: rgba(13, 148, 136, 0.58);
+  --mesh-node-selected-ring: 0 0 0 2px rgba(13, 148, 136, 0.2);
+  --mesh-node-status-offline: #6B7280;
+  --mesh-node-status-shadow-dark: 0 0 6px rgba(0, 0, 0, 0.35);
+  --mesh-node-status-shadow-light: 0 0 6px rgba(13, 148, 136, 0.28);
+  --mesh-node-text-dark: #e7f5f2;
+  --mesh-node-text-light: #134e4a;
+  --mesh-node-tool-dark: rgba(156, 214, 206, 0.9);
+  --mesh-node-tool-light: #0f766e;
+  --mesh-node-model-dark: #9cb3b1;
+  --mesh-node-model-light: #0d7c73;
   --mesh-node-gradient-from: #2e6261;
   --mesh-node-gradient-to: #102625;
   --mesh-node-gradient-hover-from: #38706e;
@@ -85,6 +109,22 @@
   --mesh-add-border: rgba(45, 212, 191, 0.3);
   --mesh-add-border-hover: rgba(45, 212, 191, 0.5);
   --mesh-add-icon: rgba(45, 212, 191, 0.6);
+
+  /* Mesh Runtime panel cards */
+  --agent-card-border-dark: rgba(63, 63, 70, 0.7);
+  --agent-card-border-light: #b2d8d0;
+  --agent-card-text-dark: #f4f4f5;
+  --agent-card-text-light: #134E4A;
+  --agent-card-shadow-light: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --agent-card-bg-light-from: #F0FDFA;
+  --agent-card-bg-light-to: #e6f7f4;
+  --validation-bar-border-dark: #3f3f46;
+  --validation-bar-border-light: #99F6E4;
+  --validation-bar-bg-dark: rgba(24, 24, 27, 0.8);
+  --validation-bar-bg-light-from: #F0FDFA;
+  --validation-bar-bg-light-to: #e6f7f4;
+  --validation-bar-text-dark: #e4e4e7;
+  --validation-bar-text-light: #134E4A;
 }
 
 html, body, #app {

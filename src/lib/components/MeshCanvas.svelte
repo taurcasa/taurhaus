@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte'
   import MeshConnection from './MeshConnection.svelte'
   import MeshNode from './MeshNode.svelte'
 
@@ -10,12 +11,102 @@
     dark = false,
     onNodeClick = (id) => {},
     onAddClick = () => {},
+    onDetailAnchorChange = (_anchor) => {},
+    onDismissDetail = () => {},
     selectedNodeId = null,
   } = $props()
 
   let containerWidth = $state(0)
   let containerHeight = $state(0)
+  let canvasElement = $state(null)
+  let emittedAnchorSignature = $state('')
   const connectionGlowFilterId = `mesh-connection-glow-${Math.random().toString(36).slice(2, 9)}`
+  const detailWidth = 240
+  const detailMinWidth = 176
+  const detailEstimatedHeight = 224
+  const detailGap = 12
+  const detailMargin = 8
+
+  function clamp(value, min, max) {
+    if (max < min) return min
+    return Math.min(Math.max(value, min), max)
+  }
+
+  function emitDetailAnchor(anchor) {
+    const nextSignature = anchor
+      ? [
+        Math.round(anchor.left),
+        Math.round(anchor.top),
+        anchor.placement,
+        Math.round(anchor.cardWidth),
+      ].join(':')
+      : 'none'
+    if (nextSignature === emittedAnchorSignature) return
+    emittedAnchorSignature = nextSignature
+    onDetailAnchorChange(anchor)
+  }
+
+  function findSelectedNodeElement(nodeId) {
+    if (!canvasElement || nodeId === null || nodeId === undefined) return null
+    const nodes = canvasElement.querySelectorAll('[data-node-id]')
+    for (const node of nodes) {
+      if (String(node.getAttribute('data-node-id') || '') === String(nodeId)) {
+        return node
+      }
+    }
+    return null
+  }
+
+  function calculateDetailAnchor() {
+    const currentNodeId = selectedNodeId
+    if (!currentNodeId || !canvasElement) return null
+    const selectedElement = findSelectedNodeElement(currentNodeId)
+    if (!selectedElement) return null
+
+    const canvasRect = canvasElement.getBoundingClientRect()
+    const nodeRect = selectedElement.getBoundingClientRect()
+    const canvasW = Math.max(0, Math.round(canvasRect.width || containerWidth || 600))
+    const canvasH = Math.max(0, Math.round(canvasRect.height || canvasHeight || 460))
+    const availableWidth = Math.max(detailMinWidth, canvasW - detailMargin * 2)
+    const cardWidth = Math.min(detailWidth, availableWidth)
+    const fallbackCenterX = Number(selectedElement.getAttribute('data-center-x') || '0')
+    const fallbackCenterY = Number(selectedElement.getAttribute('data-center-y') || '0')
+    const fallbackNodeHeight = Number(selectedElement.getAttribute('data-node-height') || '64')
+    const hasMeasuredNodeRect = nodeRect.width > 0 && nodeRect.height > 0
+    const centerX = hasMeasuredNodeRect
+      ? nodeRect.left - canvasRect.left + nodeRect.width / 2
+      : fallbackCenterX
+    const centerY = hasMeasuredNodeRect
+      ? nodeRect.top - canvasRect.top + nodeRect.height / 2
+      : fallbackCenterY
+    const nodeHeight = hasMeasuredNodeRect ? nodeRect.height : fallbackNodeHeight
+    const nodeTop = centerY - nodeHeight / 2
+    const nodeBottom = centerY + nodeHeight / 2
+
+    const preferredTop = nodeTop - detailGap - detailEstimatedHeight
+    let placement = 'top'
+    let top = preferredTop
+    if (preferredTop < detailMargin) {
+      placement = 'bottom'
+      top = nodeBottom + detailGap
+    }
+
+    const maxLeft = Math.max(detailMargin, canvasW - cardWidth - detailMargin)
+    const left = clamp(centerX - cardWidth / 2, detailMargin, maxLeft)
+    const maxTop = Math.max(detailMargin, canvasH - detailEstimatedHeight - detailMargin)
+    const clampedTop = clamp(top, detailMargin, maxTop)
+
+    return {
+      left,
+      top: clampedTop,
+      placement,
+      cardWidth,
+    }
+  }
+
+  function refreshDetailAnchor() {
+    emitDetailAnchor(calculateDetailAnchor())
+  }
 
   function normalizeStatus(status) {
     const value = String(status || '').toLowerCase()
@@ -310,11 +401,87 @@
 
     return Math.max(minHeight, Math.ceil(maxY + 20))
   })
+
+  $effect(() => {
+    const currentNodeId = selectedNodeId
+    void layout
+    void containerWidth
+    void containerHeight
+    void canvasHeight
+
+    if (!currentNodeId) {
+      emitDetailAnchor(null)
+      return
+    }
+
+    let active = true
+    void tick().then(() => {
+      if (!active) return
+      refreshDetailAnchor()
+    })
+
+    return () => {
+      active = false
+    }
+  })
+
+  $effect(() => {
+    if (!canvasElement || !selectedNodeId) return
+
+    let frame = 0
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        refreshDetailAnchor()
+      })
+    }
+
+    const observer = new ResizeObserver(schedule)
+    observer.observe(canvasElement)
+
+    window.addEventListener('resize', schedule)
+    window.addEventListener('scroll', schedule, true)
+    schedule()
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      observer.disconnect()
+      window.removeEventListener('resize', schedule)
+      window.removeEventListener('scroll', schedule, true)
+    }
+  })
+
+  $effect(() => {
+    if (!selectedNodeId) return
+
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onDismissDetail()
+    }
+
+    const onPointerDown = (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest('[data-testid="mesh-node-detail"]')) return
+      if (target.closest('[data-node-id]')) return
+      onDismissDetail()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown)
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  })
 </script>
 
 <div
   class="mesh-canvas"
   class:is-light={!dark}
+  bind:this={canvasElement}
   bind:clientWidth={containerWidth}
   bind:clientHeight={containerHeight}
   data-testid="mesh-canvas"
@@ -355,6 +522,7 @@
 
     <div class="mesh-canvas-nodes">
       <MeshNode
+        nodeId={layout.lead.id}
         name={layout.lead.name}
         role="lead"
         tool={layout.lead.tool}
@@ -369,6 +537,7 @@
 
       {#each layout.agents as agent (agent.id)}
         <MeshNode
+          nodeId={agent.id}
           name={agent.name}
           role="agent"
           tool={agent.tool}

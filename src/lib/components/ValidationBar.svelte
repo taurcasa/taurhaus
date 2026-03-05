@@ -22,8 +22,8 @@
   const issueCount = $derived(normalizedIssues.length)
   const summaryTone = $derived(
     dark
-      ? 'border-zinc-700 bg-zinc-900/80 text-zinc-200'
-      : 'border-brand-200 bg-linear-to-b from-brand-50 to-[#e6f7f4] text-brand-900'
+      ? 'border-[var(--validation-bar-border-dark)] bg-[var(--validation-bar-bg-dark)] text-[var(--validation-bar-text-dark)]'
+      : 'border-[var(--validation-bar-border-light)] bg-linear-to-b from-[var(--validation-bar-bg-light-from)] to-[var(--validation-bar-bg-light-to)] text-[var(--validation-bar-text-light)]'
   )
   const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
   const chevronTone = $derived(dark ? 'text-zinc-500' : 'text-brand-700/70')

@@ -42,12 +42,37 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  let nodeDetailAnchor = $state(null)
+  const detailNode = $derived.by(() => {
+    if (!selectedNode || typeof selectedNode !== 'object') return null
+    return {
+      name: selectedNode.name,
+      role: selectedNode.role,
+      tool: selectedNode.tool ?? selectedNode.cliTool ?? selectedNode.cli_tool,
+      model: selectedNode.model ?? selectedNode.modelName ?? selectedNode.model_name,
+      status: selectedNode.status ?? selectedNode.sessionStatus ?? selectedNode.session_status,
+      projectId: selectedNode.projectId ?? selectedNode.project_id,
+      description: selectedNode.description ?? '',
+      paneId: selectedNode.paneId ?? selectedNode.pane_id ?? '',
+      sessionId: selectedNode.sessionId ?? selectedNode.session_id ?? '',
+      sessionState: selectedNode.sessionState ?? selectedNode.session_status ?? '',
+    }
+  })
 
   function triggerGateReady(node) {
     void node
     onGateReady()
     return {}
   }
+
+  function handleDetailAnchorChange(anchor) {
+    nodeDetailAnchor = anchor
+  }
+
+  $effect(() => {
+    if (selectedNode) return
+    nodeDetailAnchor = null
+  })
 </script>
 
 {#if mode === 'gate'}
@@ -75,7 +100,7 @@
 {:else if mode === 'setup'}
   <div class="px-4 pt-2 pb-4 space-y-3">
     <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-setup">
-      <div data-testid="mesh-setup-canvas-frame">
+      <div class="relative" data-testid="mesh-setup-canvas-frame">
         <MeshCanvas
           lead={teamConfig?.lead ?? null}
           agents={teamConfig?.agents ?? []}
@@ -83,32 +108,27 @@
           {dark}
           onNodeClick={onNodeClick}
           onAddClick={onOpenCustomizer}
+          onDetailAnchorChange={handleDetailAnchorChange}
+          onDismissDetail={onCloseNode}
           {selectedNodeId}
         />
-      </div>
 
-      {#if selectedNode}
-        <div class="relative h-0" data-testid="mesh-node-detail-host">
+        {#if detailNode && nodeDetailAnchor}
+          <div class="pointer-events-none absolute inset-0 z-20" data-testid="mesh-node-detail-host">
           <MeshNodeDetail
-            node={{
-              name: selectedNode.name,
-              role: selectedNode.role,
-              tool: selectedNode.tool,
-              model: selectedNode.model,
-              status: selectedNode.status,
-              projectId: selectedNode.projectId,
-              description: selectedNode.description || '',
-            }}
+            node={detailNode}
             mode="setup"
             {dark}
+            anchor={nodeDetailAnchor}
             actions={{
               onEdit: onOpenCustomizer,
               onRemove: onRemoveSetupNode,
               onClose: onCloseNode,
             }}
           />
-        </div>
-      {/if}
+          </div>
+        {/if}
+      </div>
 
       <MeshActionBar
         {canInitialize}

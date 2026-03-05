@@ -2,6 +2,7 @@
   import { getToolIcon } from '../toolLogos.js'
 
   let {
+    nodeId = '',
     name = '',
     role = 'agent',
     tool = 'claude',
@@ -37,9 +38,9 @@
   })
 
   const statusColor = $derived.by(() => {
-    if (safeStatus === 'active') return '#22C55E'
-    if (safeStatus === 'idle') return '#F59E0B'
-    return '#6B7280'
+    if (safeStatus === 'active') return 'var(--color-success-500)'
+    if (safeStatus === 'idle') return 'var(--color-warning-500)'
+    return 'var(--mesh-node-status-offline)'
   })
 
   const centerX = $derived(Number(position?.x ?? 0))
@@ -65,6 +66,7 @@
   class:is-selected={selected}
   class:is-light={!dark}
   data-testid={`mesh-node-${normalizedRole}`}
+  data-node-id={String(nodeId || '')}
   data-center-x={centerX}
   data-center-y={centerY}
   data-node-width={width}
@@ -102,11 +104,11 @@
 <style>
   .mesh-node {
     position: absolute;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--mesh-node-border-dark);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
-    color: #e7f5f2;
+    background: var(--mesh-node-bg-dark);
+    box-shadow: var(--mesh-node-shadow);
+    color: var(--mesh-node-text-dark);
     transition: border-color 150ms ease-out, transform 150ms ease-out, box-shadow 150ms ease-out;
     cursor: pointer;
     padding: 12px 16px;
@@ -117,63 +119,63 @@
 
   .mesh-node:hover {
     transform: translateY(-1px);
-    border-color: rgba(255, 255, 255, 0.14);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32), 0 2px 5px rgba(0, 0, 0, 0.22);
+    border-color: var(--mesh-node-border-dark-hover);
+    box-shadow: var(--mesh-node-shadow-hover);
   }
 
   .mesh-node.is-lead {
     border-width: 1.5px;
-    border-color: rgba(13, 148, 136, 0.42);
+    border-color: var(--mesh-node-lead-border-dark);
   }
 
   .mesh-node.is-lead:hover {
-    border-color: rgba(13, 148, 136, 0.56);
+    border-color: var(--mesh-node-lead-border-dark-hover);
   }
 
   .mesh-node.is-selected {
     border-width: 1.5px;
-    border-color: rgba(13, 148, 136, 0.5);
-    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2), 0 8px 18px rgba(0, 0, 0, 0.3);
+    border-color: var(--mesh-node-selected-border-dark);
+    box-shadow: var(--mesh-node-selected-ring), var(--mesh-node-shadow-hover);
   }
 
   .mesh-node.is-lead.is-selected {
-    border-color: rgba(13, 148, 136, 0.6);
+    border-color: var(--mesh-node-lead-selected-border-dark);
   }
 
   .mesh-node.is-light {
-    border: 1px solid rgba(13, 148, 136, 0.15);
-    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--mesh-node-border-light);
+    background: var(--mesh-node-bg-light);
     box-shadow: var(--mesh-node-shadow-light);
-    color: #134e4a;
+    color: var(--mesh-node-text-light);
   }
 
   .mesh-node.is-light:hover {
-    border-color: rgba(13, 148, 136, 0.28);
+    border-color: var(--mesh-node-border-light-hover);
     box-shadow: var(--mesh-node-shadow-light-hover);
   }
 
   .mesh-node.is-light.is-lead {
-    border-color: rgba(13, 148, 136, 0.3);
+    border-color: var(--mesh-node-lead-border-light);
   }
 
   .mesh-node.is-light.is-lead:hover {
-    border-color: rgba(13, 148, 136, 0.42);
+    border-color: var(--mesh-node-lead-border-light-hover);
   }
 
   .mesh-node.is-light.is-selected {
-    border-color: rgba(13, 148, 136, 0.5);
-    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2), var(--mesh-node-shadow-light-hover);
+    border-color: var(--mesh-node-selected-border-light);
+    box-shadow: var(--mesh-node-selected-ring), var(--mesh-node-shadow-light-hover);
   }
 
   .mesh-node.is-light.is-lead.is-selected {
-    border-color: rgba(13, 148, 136, 0.58);
+    border-color: var(--mesh-node-lead-selected-border-light);
   }
 
   .mesh-node-status {
     width: 6px;
     height: 6px;
     border-radius: 9999px;
-    box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--mesh-node-status-shadow-dark);
     flex: 0 0 auto;
     margin-top: 5px;
     pointer-events: none;
@@ -203,7 +205,7 @@
   }
 
   .mesh-node-tool {
-    color: rgba(156, 214, 206, 0.9);
+    color: var(--mesh-node-tool-dark);
     flex: 0 0 auto;
   }
 
@@ -219,21 +221,21 @@
   .mesh-node-model {
     font-size: 11px;
     line-height: 1.25;
-    color: #9cb3b1;
+    color: var(--mesh-node-model-dark);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .mesh-node.is-light .mesh-node-model {
-    color: #0d7c73;
+    color: var(--mesh-node-model-light);
   }
 
   .mesh-node.is-light .mesh-node-tool {
-    color: #0f766e;
+    color: var(--mesh-node-tool-light);
   }
 
   .mesh-node.is-light .mesh-node-status {
-    box-shadow: 0 0 6px rgba(13, 148, 136, 0.28);
+    box-shadow: var(--mesh-node-status-shadow-light);
   }
 </style>

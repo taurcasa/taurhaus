@@ -5,10 +5,7 @@
     dark = false,
     onAddAgent = () => {},
     onDisband = () => {},
-    onOverflow = () => {},
   } = $props()
-
-  let showOverflowMenu = $state(false)
 
   const panelTone = $derived(dark ? 'bg-zinc-900/80 backdrop-blur-sm' : 'bg-white/80 backdrop-blur-sm')
   const borderTone = $derived(dark ? 'border-b border-white/8' : 'border-b border-brand-200/60')
@@ -22,6 +19,11 @@
     dark
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
       : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+  )
+  const dangerTone = $derived(
+    dark
+      ? 'border-danger-500/40 text-danger-300 hover:bg-danger-500/15'
+      : 'border-danger-400/60 text-danger-600 hover:bg-danger-500/10'
   )
 
   const statusCounts = $derived.by(() => {
@@ -47,26 +49,7 @@
     return parts.length > 0 ? parts.join(', ') : 'No agents'
   })
 
-  function handleWindowClick(event) {
-    if (!showOverflowMenu) return
-    const target = event?.target
-    if (!(target instanceof Element)) return
-    if (
-      target.closest('[data-testid="mesh-runtime-overflow-button"]') ||
-      target.closest('[data-testid="mesh-runtime-overflow-menu"]')
-    ) {
-      return
-    }
-    showOverflowMenu = false
-  }
-
-  function toggleOverflowMenu() {
-    showOverflowMenu = !showOverflowMenu
-    onOverflow(showOverflowMenu)
-  }
 </script>
-
-<svelte:window onclick={handleWindowClick} />
 
 <footer
   class="flex w-full min-h-12 items-center justify-between gap-3 rounded-lg px-4 py-2.5 {panelTone} {borderTone}"
@@ -95,44 +78,21 @@
   </div>
 
   <div class="flex items-center gap-2">
-    <div class="relative">
-      <button
-        class="rounded-md border px-3 py-1.5 text-xs transition-colors {secondaryTone}"
-        type="button"
-        onclick={toggleOverflowMenu}
-        aria-label="Runtime menu"
-        data-testid="mesh-runtime-overflow-button"
-      >
-        ⚙
-      </button>
-
-      {#if showOverflowMenu}
-        <div
-          class="absolute right-0 top-full mt-1 z-10 min-w-[140px] rounded-md border py-1 shadow-lg {dark ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-200 bg-white'}"
-          data-testid="mesh-runtime-overflow-menu"
-        >
-          <button
-            class="block w-full px-3 py-1.5 text-left text-xs text-danger-500 transition-colors hover:bg-danger-500/10"
-            type="button"
-            onclick={() => {
-              showOverflowMenu = false
-              onDisband()
-            }}
-            data-testid="mesh-runtime-disband"
-          >
-            Disband Team
-          </button>
-        </div>
-      {/if}
-    </div>
+    <button
+      class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors {dangerTone}"
+      type="button"
+      onclick={onDisband}
+      aria-label="Disband team"
+      data-testid="mesh-runtime-disband"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="m10 11 4 4"/><path d="m14 11-4 4"/></svg>
+      Disband
+    </button>
 
     <button
       class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
       type="button"
-      onclick={() => {
-        showOverflowMenu = false
-        onAddAgent()
-      }}
+      onclick={onAddAgent}
       data-testid="mesh-runtime-add-agent"
     >
       + Add Agent

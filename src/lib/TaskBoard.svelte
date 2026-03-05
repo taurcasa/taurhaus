@@ -35,6 +35,7 @@
   // Selection + detail panel state
   let selectedTask = $state(null)
   let taskDetail = $state(null)
+  let taskDetailError = $state(null)
   const taskListFetchGuard = createAsyncGuard()
 
   const SOURCE_LABELS = TOOL_NAMES
@@ -174,9 +175,11 @@
       // Clicking same card again — deselect
       selectedTask = null
       taskDetail = null
+      taskDetailError = null
     } else {
       selectedTask = task
       taskDetail = null // Show loading state immediately
+      taskDetailError = null
       fetchDetail(task)
     }
   }
@@ -189,11 +192,16 @@
       // Only apply if this task is still selected
       if (isSameTaskIdentity(selectedTask, task)) {
         taskDetail = detail
+        taskDetailError = null
       }
     } catch (e) {
-      // Silently fail — panel shows header without detail sections
+      console.error(
+        `[tasks] failed to load task detail (project=${projectPath}, task=${task?.id}, source=${task?.source}):`,
+        e
+      )
       if (isSameTaskIdentity(selectedTask, task)) {
         taskDetail = { task, session: null, commits: [], files_changed: [] }
+        taskDetailError = 'Task detail failed to load. Showing basic task info.'
       }
     }
   }
@@ -202,6 +210,7 @@
   function closeDetail() {
     selectedTask = null
     taskDetail = null
+    taskDetailError = null
   }
 
   /** Close panel when clicking the board background (not a card). */
@@ -304,6 +313,17 @@
     {:else}
 
       <!-- Error indicators (per-source) -->
+      {#if taskDetailError}
+        <div class="px-5 pb-2 shrink-0">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}" data-testid="task-detail-error">
+            <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z" />
+            </svg>
+            <span>{taskDetailError}</span>
+          </div>
+        </div>
+      {/if}
+
       {#if errors.length > 0}
         <div class="px-5 pb-2 space-y-1 shrink-0">
           {#each errors as [source, message]}

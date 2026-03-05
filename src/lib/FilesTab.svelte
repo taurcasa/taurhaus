@@ -34,6 +34,7 @@
   // File state
   let fileTree = $state([])
   let fileTreeLoading = $state(false)
+  let fileTreeError = $state(null)
   let selectedFile = $state(null)
   let fileContent = $state(null)
   let fileContentLoading = $state(false)
@@ -146,8 +147,10 @@
     // Only show skeleton on initial load -- refreshes update silently
     const isInitialLoad = fileTree.length === 0
     if (isInitialLoad) fileTreeLoading = true
+    fileTreeError = null
     try {
       fileTree = await getFileTree(projectId)
+      fileTreeError = null
       // Auto-select README if no file selected
       if (!selectedFile) {
         const readme = findReadmeInTree(fileTree)
@@ -157,6 +160,8 @@
       }
     } catch (e) {
       fileTree = []
+      fileTreeError = 'Failed to load file tree. Please retry.'
+      console.error(`[file] failed to load file tree (project=${projectId}):`, e)
     } finally {
       fileTreeLoading = false
     }
@@ -242,8 +247,10 @@
       try {
         tree = await getFileTree(selectedProject.id)
         fileTree = tree
-      } catch {
+      } catch (error) {
         tree = []
+        fileTreeError = 'Failed to load file tree. Please retry.'
+        console.error(`[file] failed to load file tree while opening directory (project=${selectedProject.id}):`, error)
       }
     }
 
@@ -273,6 +280,13 @@
       next.add(path)
     }
     expandedDirs = next
+  }
+
+  function handleRowKeydown(event, action) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      action()
+    }
   }
 
   function handleTreeScroll(event) {
@@ -421,13 +435,23 @@
 <div class="flex-1 flex min-h-0 min-w-0 overflow-hidden">
 
   <!-- File tree (200px fixed) -->
-  <div class="w-[200px] shrink-0 {t.listBg} border-r {t.keyline} flex flex-col overflow-hidden" role="tree">
+  <div class="w-[200px] shrink-0 {t.listBg} border-r {t.keyline} flex flex-col overflow-hidden" role="list">
     <div
       bind:this={treeScrollContainer}
       class="flex-1 overflow-y-auto pt-2"
       data-testid="file-tree-scroll"
       onscroll={handleTreeScroll}
     >
+      {#if fileTreeError}
+        <div class="mx-2 mt-2 px-2 py-1.5 rounded text-[11px] flex items-center gap-2 {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}" data-testid="filetree-error">
+          <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z" />
+          </svg>
+          <span class="flex-1">{fileTreeError}</span>
+          <button class="text-[10px] underline underline-offset-2" onclick={() => fileTreeError = null} data-testid="filetree-error-dismiss">Dismiss</button>
+        </div>
+      {/if}
+
       {#if fileTreeLoading}
         <div class="px-3 space-y-1" data-testid="filetree-loading">
           {#each Array(6) as _}
@@ -450,37 +474,37 @@
         {#each treeRows.slice(treeWindow.start, treeWindow.end) as row (row.node.path)}
           {@const node = row.node}
           {@const depth = row.depth}
-          {#if node.is_dir}
-            <button
-              class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
-              style="padding-left: {8 + depth * 16}px"
-              onclick={() => toggleDir(node.path)}
-              oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
-              role="treeitem"
-              aria-selected={false}
-              aria-expanded={expandedDirs.has(node.path)}
-              data-testid="file-tree-node"
-            >
-              <svg class="w-3 h-3 {treeIcon} shrink-0 transition-transform {expandedDirs.has(node.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-              <svg class="w-3.5 h-3.5 shrink-0 {dark ? 'text-zinc-500' : 'text-zinc-400'}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-              <span class="truncate">{node.name}</span>
-            </button>
-          {:else}
-            {@const isSelected = selectedFile === node.path}
-            <button
-              class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] rounded transition-colors
-                {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
-              style="padding-left: {22 + depth * 16}px"
-              onclick={() => openFile(node.path)}
-              oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
-              role="treeitem"
-              aria-selected={isSelected}
-              data-testid="file-tree-node"
-            >
-              <svg class="w-3.5 h-3.5 shrink-0 {isSelected ? '' : treeIcon}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-              <span class="truncate">{node.name}</span>
-            </button>
-          {/if}
+          <div role="listitem">
+            {#if node.is_dir}
+              <button
+                class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
+                style="padding-left: {8 + depth * 16}px"
+                onclick={() => toggleDir(node.path)}
+                onkeydown={(event) => handleRowKeydown(event, () => toggleDir(node.path))}
+                oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
+                data-testid="file-tree-node"
+              >
+                <svg class="w-3 h-3 {treeIcon} shrink-0 transition-transform {expandedDirs.has(node.path) ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+                <svg class="w-3.5 h-3.5 shrink-0 {dark ? 'text-zinc-500' : 'text-zinc-400'}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+                <span class="truncate">{node.name}</span>
+              </button>
+            {:else}
+              {@const isSelected = selectedFile === node.path}
+              <button
+                class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] rounded transition-colors
+                  {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
+                style="padding-left: {22 + depth * 16}px"
+                onclick={() => openFile(node.path)}
+                onkeydown={(event) => handleRowKeydown(event, () => openFile(node.path))}
+                oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
+                aria-current={isSelected ? 'true' : undefined}
+                data-testid="file-tree-node"
+              >
+                <svg class="w-3.5 h-3.5 shrink-0 {isSelected ? '' : treeIcon}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                <span class="truncate">{node.name}</span>
+              </button>
+            {/if}
+          </div>
         {/each}
 
         {#if useVirtualizedTree}

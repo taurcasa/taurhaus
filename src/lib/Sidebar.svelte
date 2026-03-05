@@ -13,33 +13,15 @@
     projects = [],
     sidebarLoading = false,
     sidebarError = null,
+    selectedProject: selectedProjectProp = null,
     daemonStatus: daemonStatusProp = null,
     settingsOpen = false,
     actions = {},
   } = $props()
   const projectContext = getProjectContext()
   const sessionContext = getSessionContext()
-  let selectedProject = $state(null)
-  let daemonStatusFromContext = $state(null)
-
-  $effect(() => {
-    const cleanups = []
-    if (projectContext?.selectedProject?.subscribe) {
-      cleanups.push(projectContext.selectedProject.subscribe((value) => {
-        selectedProject = value
-      }))
-    }
-    if (sessionContext?.daemonStatus?.subscribe) {
-      cleanups.push(sessionContext.daemonStatus.subscribe((value) => {
-        daemonStatusFromContext = value
-      }))
-    }
-    return () => {
-      for (const cleanup of cleanups) cleanup()
-    }
-  })
-
-  const daemonStatus = $derived.by(() => daemonStatusProp ?? daemonStatusFromContext)
+  const selectedProject = $derived.by(() => selectedProjectProp ?? projectContext?.selectedProject ?? null)
+  const daemonStatus = $derived.by(() => daemonStatusProp ?? sessionContext?.daemonStatus ?? null)
 
   const SIDEBAR_PROJECT_ROW_HEIGHT = 36
   const SIDEBAR_HEADER_ROW_HEIGHT = 42
@@ -431,6 +413,7 @@
       onProjectMouseLeave={hideHoverCard}
       onSessionJump={jumpToSession}
       onRetry={handleRetry}
+      onOpenManageProjects={handleOpenManageProjects}
     />
   </div>
 

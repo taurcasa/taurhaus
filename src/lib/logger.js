@@ -21,7 +21,16 @@ let rateWindowCount = 0
 
 function serialize(...args) {
   return args
-    .map(a => (typeof a === 'string' ? a : JSON.stringify(a, null, 0)))
+    .map((value) => {
+      if (typeof value === 'string') return value
+      if (typeof value === 'bigint') return value.toString()
+      try {
+        const serialized = JSON.stringify(value, null, 0)
+        return serialized === undefined ? String(value) : serialized
+      } catch {
+        return '[unserializable]'
+      }
+    })
     .join(' ')
 }
 

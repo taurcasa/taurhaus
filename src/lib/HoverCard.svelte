@@ -102,10 +102,10 @@
     <!-- Status line: activity state · dirty · historical -->
     <div class="flex items-center gap-1.5 text-[11px] text-white/45 flex-wrap">
       <span class="flex items-center gap-1.5">
-        <span class="w-[5px] h-[5px] rounded-full {activityDotColors[project.activity_state] || 'bg-zinc-500'}"></span>
-        {activityLabels[project.activity_state] || 'Unknown'}
+        <span class="w-[5px] h-[5px] rounded-full {activityDotColors[project.activityState] || 'bg-zinc-500'}"></span>
+        {activityLabels[project.activityState] || 'Unknown'}
       </span>
-      {#if project.is_dirty}
+      {#if project.isDirty}
         <span class="text-white/20">·</span>
         <span class="text-warning-300/70">Dirty</span>
       {/if}

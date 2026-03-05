@@ -40,13 +40,15 @@
   const isLead = $derived(String(role ?? '').toLowerCase() === 'lead')
   const icon = $derived(getToolIcon(draft.tool))
   const cardTone = $derived(
-    dark ? 'border-zinc-700/70 text-zinc-100' : 'border-[#b2d8d0] text-brand-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+    dark
+      ? 'border-[var(--agent-card-border-dark)] text-[var(--agent-card-text-dark)]'
+      : 'border-[var(--agent-card-border-light)] text-[var(--agent-card-text-light)] shadow-[var(--agent-card-shadow-light)]'
   )
   const mutedTone = $derived(dark ? 'text-zinc-400' : 'text-brand-700')
   const nodeTone = $derived(
     dark
       ? 'bg-linear-to-b from-[var(--mesh-node-gradient-from)] to-[var(--mesh-node-gradient-to)]'
-      : 'bg-linear-to-b from-brand-50 to-[#e6f7f4]'
+      : 'bg-linear-to-b from-[var(--agent-card-bg-light-from)] to-[var(--agent-card-bg-light-to)]'
   )
   const inputTone = $derived(
     dark
