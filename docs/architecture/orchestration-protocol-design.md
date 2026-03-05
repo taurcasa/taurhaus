@@ -2,7 +2,12 @@
 
 Date: 2026-03-06  
 Owner: architect  
-Inputs: [`docs/ai-agent-characteristics.md`](/home/mstie/projects/taurhaus/docs/ai-agent-characteristics.md), coordination subsystem architecture, stall detector behavior, live team workflow experience.
+Contributors: architect + mesh-expert (feasibility review)
+
+Inputs:
+- [`docs/ai-agent-characteristics.md`](/home/mstie/projects/taurhaus/docs/ai-agent-characteristics.md)
+- coordination subsystem and stall detector implementation
+- mesh-expert feasibility feedback (2026-03-05 23:28 UTC)
 
 ## 1. Vision & Mission
 
@@ -10,38 +15,38 @@ Inputs: [`docs/ai-agent-characteristics.md`](/home/mstie/projects/taurhaus/docs/
 
 Excellent multi-agent orchestration in taurhaus means:
 
-- Every task assignment is operational, unambiguous, and self-executing.
-- Team lead stays in orchestration role under pressure and after compaction.
-- Task state is authoritative and consistent across channels.
-- Model-specific quirks are absorbed by protocol and guardrails, not ad-hoc human memory.
+- Assignments are operational and self-executing, not conversationally ambiguous.
+- Lead remains an orchestrator, especially under pressure and after compaction.
+- Task state is authoritative and consistent across UI, messages, and automation.
+- Model-specific quirks are handled by protocol + guardrails, not memory or luck.
 
 ### Mission
 
-Define and implement an orchestration protocol that converts fragile chat habits into deterministic task execution loops.
+Define a compatibility-first orchestration protocol and rollout that eliminates known coordination failure modes without breaking existing mesh consumers.
 
 ### Measurable goals
 
 1. `0` stall-on-ack incidents per rolling 14 days.
-2. Median assignment overhead `< 2` message round-trips per task (assignment -> delivery).
-3. `>= 95%` of assignments transition to `executing` within 3 minutes of delivery.
-4. `0` lead role-drift incidents after compaction (lead starts implementation without delegation).
-5. `0` task-state divergence incidents (task system says one thing, messages/docs another).
-6. `>= 90%` of assignments pass protocol lint on first send.
+2. Median assignment overhead `< 2` message round-trips per task.
+3. `>= 95%` of assignments transition to `executing` within 3 minutes.
+4. `0` lead role-drift incidents after compaction.
+5. `0` task-state divergence incidents (task DB vs message flow).
+6. `>= 90%` protocol-lint pass rate on first send.
 
 ### Scope
 
 In scope:
 
-- Protocol-level message contract (assignment, nudge, info, completion).
-- Guardrails in taurhaus/mesh orchestration layer.
-- Team-level conventions and task templates.
-- Per-model adaptation profile (Codex/Claude/Gemini framing).
+- Orchestration protocol envelope and lint rules.
+- Guardrails for assignment quality, stalls, and drift.
+- Layer boundaries between mesh infra, taurhaus conventions, and per-model framing.
+- Migration path from permissive current behavior to enforceable protocol.
 
 Out of scope:
 
-- Changing base model internals.
-- Replacing mesh transport primitives end-to-end.
-- Solving all productivity issues via infrastructure only (human conventions still required).
+- Modifying base model internals.
+- Big-bang breaking changes to existing mesh inbox consumers.
+- Replacing mesh transport primitives.
 
 ## 2. Current State Assessment
 
@@ -49,247 +54,280 @@ Out of scope:
 
 | Failure mode | Root cause | Current workaround | Workaround cost |
 |---|---|---|---|
-| Stall-on-ack | Ack-only messages end execution loop for Codex agents | Lead avoids acknowledgments and manually appends follow-up directives | High cognitive load; easy to regress under pressure |
-| Task-read-not-execute | Assignment messages are meta/instructional, not operational | Lead re-sends with imperative + first step | Extra round-trip and latency |
-| Priority inversion under stacked directives | No explicit precedence between task brief, AGENTS/CLAUDE policy, and lead message | Manual clarification per incident | Frequent ambiguity and slower start |
-| Split-directive fragmentation | One task is sent across many micro-messages; context is diffused | Lead repeats consolidated instructions | Message noise and avoidable rework |
-| Post-compaction role drift (lead) | Lead loses operating posture and starts coding instead of delegating | Memory reminders and manual correction | Throughput bottleneck; delayed responses to agents |
-| Single-source-of-truth drift | Task status, chat text, and docs diverge | Manual reconciliation in chat | Hidden stale state, duplicate work |
-| Idle ambiguity | “Idle” is inferred from silence without protocol state semantics | Manual pings (“check messages”) | Produces read-and-stop behavior rather than execution |
-| Command/message syntax fragility | Shell-like message text can be malformed when executed/copy-pasted | Manual resend/correction | Wasted cycle, occasional misfire |
+| Stall-on-ack | Ack-only messages terminate Codex execution loop | Lead avoids pure acknowledgments manually | High cognitive load; brittle |
+| Task-read-not-execute | “You have task X” framing is informational, not operational | Re-send with imperative first step | Extra round-trips |
+| Priority inversion | Conflicting directives (task brief vs repo policy vs message) lack explicit precedence | Manual clarification | Delayed starts, confusion |
+| Split directives | One instruction spread over multiple micro-messages | Manual consolidation | Message noise, missed context |
+| Post-compaction role drift (lead) | Lead resumes implementation instead of orchestration | Manual reminders/corrections | Orchestrator bottleneck |
+| Task state drift | Task status, message stream, and docs diverge | Manual reconciliation | Hidden inconsistency, duplicate work |
+| Idle ambiguity | Silence interpreted without typed intent/state | Manual “check messages” pings | Produces read-and-stop loops |
 
-### Notes from runtime experience
+### Root takeaway
 
-- The system already has useful guardrail primitives (`coordination/stall_detector.rs`, event/audit scaffolding), but orchestration protocol validation is still mostly social/manual.
-- Current delivery templates in coordination are good onboarding scaffolding, but assignment lifecycle semantics are not enforced as a typed protocol contract.
+Most failures are protocol-quality failures, not model-capability failures.
+
+### Existing capabilities we can leverage now
+
+Already available in mesh/taurhaus stack:
+
+- Message IDs and explicit ack/ack-status.
+- Heartbeat API (activity freshness).
+- Explicit member status (`blocked|investigating|working`) with TTL semantics.
+- Idle reminder/task fallback nudge primitives.
+- Taurhaus stall detector + orchestration runtime telemetry.
 
 ## 3. Separation of Concerns
 
 ### Mesh infrastructure responsibility
 
-Mesh infrastructure should own protocol mechanics and enforcement:
+Mesh should own protocol mechanics and transport-safe enforcement:
 
-- Typed message envelope and required fields.
-- Message intent taxonomy (`assign`, `nudge`, `info`, `close`, `handoff`).
-- Task-state transition API and idempotent updates.
-- Protocol linting/validation before send.
-- Delivery/ack telemetry and timeout hooks.
-- Automated orchestration guardrails (stall detection hooks, role drift alerts, anti-pattern checks).
+- Typed orchestration metadata envelope (compatibility-first extension fields).
+- `mesh protocol lint` and mode control (`warn` vs `enforce`).
+- Task transition API + edge validation + idempotency.
+- Message/task drift detection at protocol layer.
+- Telemetry for delivery, transition latency, lint outcomes.
 
-### Project-level responsibility (taurhaus repo/team)
+### Taurhaus/project responsibility
 
-Project/team should own domain conventions:
+Taurhaus/team should own domain conventions and operating policy:
 
-- Role definitions (lead vs developers vs architect).
-- Task quality gates (`just check-quick`, `just agent-quality` where applicable).
-- Deliverable structure and file path standards.
-- Repo policy precedence rules and conflict handling.
-- Domain-specific acceptance criteria templates.
+- Role definitions and task assignment checklist.
+- Quality gate conventions (`check-quick`, `agent-quality`, etc.).
+- Repository policy precedence declaration.
+- UI surfacing of drift/stall signals and remediation UX.
 
 ### Per-model adaptation responsibility
 
-Model adaptation layer should own framing strategy, not task truth:
+Adapter layer should own framing transformation, not truth:
 
-- Mapping canonical protocol fields into model-specific messaging templates.
-- Known anti-pattern suppression (ack-only for Codex, over-specified design prompts for Gemini, role-drift nudges for Claude lead).
-- Output normalization (completion summary shape, confidence flags, blocker format).
+- Render protocol payload into model-specific message style.
+- Suppress model-specific anti-patterns.
+- Normalize completion/blocker reporting format.
 
 ### Boundary rule
 
 - Infrastructure enforces mechanics.
-- Project defines intent and standards.
-- Model adapters transform presentation.
+- Project policy defines intent.
+- Model adapters shape presentation.
 
-No layer should duplicate another layer's source of truth.
+No duplication of authoritative task state across layers.
 
 ## 4. Design Proposals
 
-### 4.1 Protocol changes (standardized message contract)
+### 4.1 Compatibility-first Orchestration Protocol v1
 
-Define **Orchestration Protocol v1** envelope for every directed work message:
+Do not break current inbox schema. Add protocol metadata as extension fields via `mesh send` flags, persisted alongside existing fields.
 
-Required fields:
+Compatibility placement contract:
 
-- `protocol_version`
-- `message_id`
-- `team`
-- `from`
-- `to`
-- `intent` (`assign|nudge|info|close|handoff`)
-- `task_id` (required for `assign|nudge|close`)
-- `action_required` (bool)
-- `first_step` (required when `action_required=true`)
-- `deliverable` (artifact path or explicit output contract)
-- `completion_signal` (what the assignee must do on finish)
-- `no_response_needed` (bool, required for non-action informational messages)
-- `priority`
-- `deadline` (optional)
-- `precedence` (ordered list for conflict resolution)
+- Store all protocol metadata under one namespaced extension key: `extensions.orchestration_v1`.
+- Legacy consumers that ignore unknown extension keys remain unaffected.
 
-Protocol semantics:
+V1 metadata contract (`extensions.orchestration_v1`):
 
-1. `assign` must include `first_step`, `deliverable`, `completion_signal`.
-2. `info` must set `action_required=false` and `no_response_needed=true`.
-3. `nudge` must reference existing `task_id` and include concrete next action.
-4. `close` must include closure reason and final status.
+- required: `protocol_version`, `message_id`, `intent`
+- conditional by intent: `task_id`, `action_required`, `no_response_needed`, `first_step`, `deliverable`, `completion_signal`, `precedence`
 
-### 4.2 Automated guardrails
+Proposed flags (mapped into `extensions.orchestration_v1`):
 
-#### A) Assignment lint gate (pre-send)
+- `--intent`
+- `--task-id`
+- `--action-required`
+- `--no-response-needed`
+- `--first-step`
+- `--deliverable`
+- `--completion-signal`
+- `--precedence`
 
-Block or warn on:
+Default rollout mode: `warn` lint, not hard enforcement.
 
-- Missing `first_step` in actionable message.
-- Ack-only body while target has active in-progress task.
-- Instruction split across multiple consecutive messages without a single actionable payload.
-- Missing `task_id` for actionable intents.
+### 4.2 Linting and enforcement strategy
+
+Add `mesh protocol lint` with modes:
+
+- `warn` (default): emits lint findings, allows send.
+- `enforce` (opt-in team setting): blocks send on error-level violations.
+
+Ack-only detection rollout:
+
+- Phase A: heuristic warn-first (canned short-ack patterns).
+- Phase B: promote to enforce for actionable conversations.
+
+### 4.3 Task transition ownership and migration
+
+Target authoritative API:
+
+- `mesh task transition --task-id ... --to assigned|executing|completed|blocked|failed|closed`
+
+Allowed edges (strict mode):
+
+- `assigned -> executing -> completed|blocked|failed|closed`
+- idempotent replays of same transition allowed.
+
+Canonical legacy -> strict transition mapping:
+
+- `pending -> assigned`
+- `in_progress -> executing`
+- `completed -> completed`
+- `deleted -> failed|closed` (policy-defined by team/project)
+
+Migration bridge:
+
+- Continue applying canonical mapping for legacy statuses (`pending/in_progress/completed/deleted`) during transition window.
+- Tighten to strict edge validation once adoption and telemetry are stable.
+
+### 4.4 Automated guardrails
+
+#### A) Assignment quality gate (pre-send)
+
+Warn/block rules:
+
+- actionable intent missing `first_step`.
+- actionable intent missing `task_id`.
+- missing `completion_signal` for assignment.
+- informational broadcast missing `no_response_needed=true`.
 
 #### B) Task-read-not-execute detector
 
-If `assign` delivered and no `task -> executing` transition within timeout (default 180s):
+If assignment delivered and no `task -> executing` within timeout:
 
-- auto-send protocolized nudge with explicit first command/action.
-- increment orchestration warning counter.
+- auto-nudge with concrete first step.
+- suppress nudge when fresh heartbeat/status indicates active or blocked/investigating work.
+- default freshness windows for suppression:
+  - heartbeat `<= 3m`
+  - status `<= 10m`
 
-#### C) Lead role-drift detector
+#### C) Drift monitor
 
-Use orchestration signals to detect lead doing implementation while queue has pending coordination events:
+Detect and surface when task authoritative state and message protocol state disagree:
 
-- Trigger when lead opens source/test-heavy command sequence while unresolved inbound assignment/reply backlog exceeds threshold.
-- Emit reminder event: `orchestration.role_drift.detected`.
-- Suggest delegation action with one-click task draft.
+- message says done but task not transitioned.
+- task transitioned without completion signal message.
 
-#### D) Single-source-of-truth enforcement
+#### D) Lead role-drift detection
 
-- Task system is authoritative for `status`, `owner`, `active_form`, `blocked_by`.
-- Messages cannot mutate effective state unless accompanied by task transition call.
-- UI should show “message/task drift” warning when inconsistency detected.
+Primary detector location: taurhaus orchestration runtime.
 
-#### E) Priority conflict resolver
+Why: taurhaus sees pane/session command telemetry and queue depth context; mesh alone does not.
 
-Encode precedence explicitly in protocol:
+Mesh contributes supporting signals:
 
-1. Safety/security constraints
-2. Repository policy files
-3. Current task acceptance criteria
-4. Lead free-text instructions
-5. Heuristic optimizations
+- backlog depth
+- heartbeat freshness
+- status freshness
 
-If conflict detected, assignee returns structured blocker instead of guessing.
+### 4.5 Convention changes (team behavior)
 
-### 4.3 Convention changes (team operating protocol)
+Assignment checklist (mandatory):
 
-#### Assignment checklist (mandatory)
+1. Objective in one sentence.
+2. Exact deliverable path/output contract.
+3. Concrete first action.
+4. Completion signal.
+5. Explicit response expectation (`no_response_needed` where applicable).
 
-Before lead sends assignment:
+Anti-pattern enforcement:
 
-1. Objective stated in one sentence.
-2. Exact artifact/deliverable path named.
-3. Concrete first action specified.
-4. Completion signal specified.
-5. `no_response_needed` policy explicit.
+- no pure acknowledgments to active assignees.
+- no “check messages” without explicit action.
+- no split assignment across many micro-messages when one complete payload is possible.
 
-#### Communication anti-pattern enforcement
-
-Disallow in lead playbook:
-
-- “You have task X” without executable first step.
-- Pure acknowledgment to active assignee.
-- “Check messages” without explicit required action.
-- Multi-message fragmented directive when one structured assignment can be sent.
-
-#### Completion contract convention
-
-Every assignee completion message includes:
-
-- `task_id`
-- artifacts changed
-- verification performed (or explicit skipped reason)
-- residual risks/blockers
-
-### 4.4 Infrastructure changes (mesh system)
-
-1. Add protocol-aware send command:
-   - `mesh send --intent assign --task-id ... --first-step ... --deliverable ...`
-2. Add orchestration lint command:
-   - `mesh protocol lint --message <json|file>`
-3. Add task transition API with strict state machine:
-   - `assigned -> executing -> completed|blocked|failed`
-4. Add drift monitor service:
-   - compares task state and message stream; emits divergence events.
-5. Add role-drift hooks in orchestration runtime:
-   - queue-depth + lead command pattern heuristics.
-6. Add protocol telemetry stream:
-   - round-trip counts, transition latency, lint failures, auto-nudges.
-
-### 4.5 Failure mode -> proposal mapping
+### 4.6 Failure mode -> solution mapping
 
 | Failure mode | Primary fix |
 |---|---|
-| Stall-on-ack | `intent=info` + `no_response_needed=true` + ack-lint guard |
-| Task-read-not-execute | Required `first_step` + execution timeout auto-nudge |
-| Priority inversion | Explicit `precedence` field + conflict escalation contract |
-| Split directives | Single structured assignment payload requirement |
-| Post-compaction role drift | Lead role-drift detector + delegation reminder guardrail |
-| Task state divergence | Task transition API as authority + drift monitor |
-| Idle ambiguity | Stateful task lifecycle + actionable nudge intents |
-| Syntax fragility | Typed fields instead of shell-fragile free-text contracts |
+| Stall-on-ack | info intent + `no_response_needed=true` + ack lint |
+| Task-read-not-execute | required first step + execution timeout nudge |
+| Priority inversion | explicit precedence field + conflict contract |
+| Split directives | single structured assignment payload |
+| Role drift | taurhaus role-drift detector + delegation reminder |
+| Task/message drift | authoritative transition API + drift monitor |
+| Idle ambiguity | typed status/heartbeat-aware nudge suppression |
 
-### 4.6 Rollout plan
+### 4.7 Rollout plan (aligned with mesh-expert feasibility)
 
-Phase 1 (convention-first, immediate):
+Phase 1: conventions now
 
-- Adopt assignment checklist and anti-pattern rules.
-- Enforce `no_response_needed` for broadcast/info.
-- Track baseline metrics manually.
+- apply assignment checklist and anti-pattern rules immediately.
+- enforce `no_response_needed` discipline for informational traffic.
 
-Phase 2 (protocol scaffolding):
+Phase 2: optional envelope + lint warn mode
 
-- Introduce protocol envelope and lint in mesh/taurhaus integration layer.
-- Instrument transition latency and round-trips.
+- ship protocol extension fields and `mesh protocol lint` in warn mode.
+- collect lint and transition latency metrics.
 
-Phase 3 (guardrail automation):
+Phase 3: automation
 
-- Enable task-read-not-execute auto-nudge.
-- Enable role-drift and drift monitor alerts.
-- Enforce strict task/message consistency.
+- enable `assign -> executing` timeout auto-nudge.
+- suppress using heartbeat and explicit status (`blocked|investigating`).
+
+Phase 4: enforce mode + strict transitions
+
+- enable lint enforce for actionable intents.
+- adopt strict `task transition` edges as team default.
 
 ## 5. Success Criteria
 
-### Metrics dashboard (weekly)
+### Metrics
 
-Track:
+Weekly dashboard:
 
 - `stall_on_ack_count`
-- `assignment_to_executing_p50_secs`
 - `assignment_round_trips_p50`
+- `assignment_to_executing_p50_secs`
 - `protocol_lint_fail_rate`
 - `task_message_drift_count`
-- `role_drift_incident_count`
+- `lead_role_drift_incidents`
 
-Target thresholds:
+Targets:
 
-1. `stall_on_ack_count = 0`.
-2. `assignment_round_trips_p50 < 2`.
-3. `assignment_to_executing_p50_secs < 180`.
-4. `protocol_lint_fail_rate < 5%` after week 2.
-5. `task_message_drift_count = 0` for 14 consecutive days.
-6. `role_drift_incident_count = 0` for 14 consecutive days.
+1. `stall_on_ack_count = 0`
+2. `assignment_round_trips_p50 < 2`
+3. `assignment_to_executing_p50_secs < 180`
+4. `protocol_lint_fail_rate < 5%` after rollout week 2
+5. `task_message_drift_count = 0` for 14 consecutive days
+6. `lead_role_drift_incidents = 0` for 14 consecutive days
 
-### “Done” definition
+### Done definition
 
-This initiative is done when:
+The design is “done” when:
 
-1. Protocol v1 envelope and lint gate are enforced for all actionable assignments.
-2. Task lifecycle transitions are authoritative and reflected consistently in UI/messages.
-3. Automated guardrails are active for ack anti-patterns, non-execution stalls, and lead role drift.
-4. Metrics meet thresholds for at least two consecutive weekly windows.
-5. Team can onboard a new lead/agent and maintain throughput without undocumented tribal rules.
+1. Protocol v1 metadata + lint mode control are implemented and adopted.
+2. Task transition API is authoritative for actionable lifecycle state.
+3. Auto-nudge and drift monitors are running with suppression safeguards.
+4. Role-drift detection is active in taurhaus with mesh support signals.
+5. Metrics meet thresholds for two consecutive weekly windows.
 
-## Key proposal summary
+## Appendix A: Protocol Field Table (v1)
 
-- Shift from “message style guidance” to a typed orchestration protocol contract.
-- Make task state authoritative and message flow derivative.
-- Convert known failure modes into deterministic lint and guardrail checks.
-- Separate responsibilities cleanly across infrastructure, project conventions, and model adapters.
-- Measure protocol quality directly; treat orchestration quality as a first-class product surface.
+| Field | Assign | Nudge | Info | Close | Required? |
+|---|---|---|---|---|---|
+| `protocol_version` | yes | yes | yes | yes | always |
+| `message_id` | yes | yes | yes | yes | always |
+| `intent` | yes | yes | yes | yes | always |
+| `task_id` | yes | yes | no | yes | by intent |
+| `action_required` | yes | yes | no | no | by intent |
+| `no_response_needed` | optional | optional | yes | optional | by intent |
+| `first_step` | yes | yes | no | no | by intent |
+| `deliverable` | yes | optional | no | optional | by intent |
+| `completion_signal` | yes | optional | no | optional | by intent |
+| `precedence` | optional | optional | no | optional | recommended for actionable intents |
+
+## Appendix B: Initial Lint Matrix
+
+| Rule | Warn mode | Enforce mode |
+|---|---|---|
+| Actionable intent missing `task_id` | warn | block |
+| Actionable intent missing `first_step` | warn | block |
+| Assign missing `completion_signal` | warn | block |
+| Info missing `no_response_needed=true` | warn | block |
+| Ack-only message to active assignee | warn | block (after rollout hardening) |
+
+## Key aligned proposals
+
+- Compatibility-first protocol rollout with extension fields, not breaking schema changes.
+- Warn-first linting with planned enforce mode.
+- Strict task transitions via dedicated API, with migration mapping from legacy statuses.
+- Role-drift detection primarily in taurhaus runtime; mesh provides supporting signals.
+- Incremental rollout with measurable gates at each phase.
