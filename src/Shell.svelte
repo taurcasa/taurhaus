@@ -17,6 +17,7 @@
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createAsyncGuard } from './lib/asyncGuard.js'
   import { loadProjectSelectionData } from './lib/projectSelection.js'
+  import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
 
@@ -192,12 +193,14 @@
   // Load code theme prefs + dark mode from settings
   async function loadCodeThemeFromSettings() {
     try {
-      const s = await getSettings()
-      if (s.code_theme) {
-        codeThemeLight = s.code_theme.light || DEFAULT_LIGHT_THEME
-        codeThemeDark = s.code_theme.dark || DEFAULT_DARK_THEME
-      }
-      dark = !!s.dark_mode
+      const preferences = await loadThemePreferences({
+        getSettings,
+        defaultLightTheme: DEFAULT_LIGHT_THEME,
+        defaultDarkTheme: DEFAULT_DARK_THEME,
+      })
+      codeThemeLight = preferences.codeThemeLight
+      codeThemeDark = preferences.codeThemeDark
+      dark = preferences.darkMode
     } catch (error) {
       console.error('[settings] failed to load code theme preferences:', error)
       // Keep defaults on error
@@ -206,8 +209,7 @@
 
   function setDarkMode(value) {
     dark = value
-    getSettings()
-      .then((s) => updateSettings({ ...s, dark_mode: value }))
+    persistDarkModePreference({ getSettings, updateSettings, value })
       .catch((error) => {
         console.error('[settings] failed to persist dark mode preference:', error)
         shellNotice = 'Failed to save dark mode preference.'

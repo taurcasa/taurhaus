@@ -27,6 +27,11 @@ import {
   slugifyRoleId,
   teamMatchesProject,
 } from './meshTabUtils.js'
+import {
+  bootstrapFromGateWorkflow,
+  refreshRuntimeTeamConfigWorkflow,
+} from './meshTabGateWorkflow.js'
+import { autoDismissNotice } from './meshTabNotifications.js'
 
 export function createMeshTabController({
   getProjectPath,
@@ -138,39 +143,52 @@ export function createMeshTabController({
   })
 
   async function refreshRuntimeTeamConfig(nextTeamName, sequence) {
-    const report = await coordinationGetLiveTeamStatus(nextTeamName)
-    if (sequence !== discoverySequence) return
-    teamConfig = buildTeamConfigFromRuntimeStatus(report, getProjectPath())
+    await refreshRuntimeTeamConfigWorkflow({
+      nextTeamName,
+      sequence,
+      getDiscoverySequence: () => discoverySequence,
+      coordinationGetLiveTeamStatus,
+      buildTeamConfigFromRuntimeStatus,
+      getProjectPath,
+      onTeamConfig: (nextConfig) => {
+        teamConfig = nextConfig
+      },
+    })
   }
 
   async function bootstrapFromGate() {
     const sequence = ++discoverySequence
     errorMessage = ''
     runtimeMessage = ''
-    try {
-      const response = await coordinationListTeams()
-      if (sequence !== discoverySequence) return
-      const matchingTeam = coerceTeams(response).find((team) => teamMatchesProject(team, getProjectPath()))
-      if (matchingTeam) {
-        const matchedTeamName = normalizeTeamName(matchingTeam)
+    await bootstrapFromGateWorkflow({
+      sequence,
+      getDiscoverySequence: () => discoverySequence,
+      coordinationListTeams,
+      coerceTeams,
+      teamMatchesProject,
+      getProjectPath,
+      normalizeTeamName,
+      inferTeamName,
+      onRuntimeTeamMatched: async (matchedTeamName, matchSequence) => {
         teamName = matchedTeamName
         mode = 'runtime'
         selectedNodeId = null
         initProgress = null
-        await refreshRuntimeTeamConfig(matchedTeamName, sequence)
-        return
-      }
-      teamName = inferTeamName(getProjectPath())
-      teamConfig = null
-      selectedNodeId = null
-      initProgress = null
-      mode = 'empty'
-    } catch (error) {
-      if (sequence !== discoverySequence) return
-      errorMessage = error?.message || 'Failed to load Mesh team state.'
-      teamName = inferTeamName(getProjectPath())
-      mode = 'empty'
-    }
+        await refreshRuntimeTeamConfig(matchedTeamName, matchSequence)
+      },
+      onEmptyTeamState: (nextTeamName) => {
+        teamName = nextTeamName
+        teamConfig = null
+        selectedNodeId = null
+        initProgress = null
+        mode = 'empty'
+      },
+      onEmptyTeamStateWithError: (message, nextTeamName) => {
+        errorMessage = message
+        teamName = nextTeamName
+        mode = 'empty'
+      },
+    })
   }
 
   function ensureGateReady() {
@@ -578,25 +596,31 @@ export function createMeshTabController({
   })
 
   $effect(() => {
-    if (runtimeMessageTimer) clearTimeout(runtimeMessageTimer)
-    if (!runtimeMessage) return
-    runtimeMessageTimer = setTimeout(() => {
-      runtimeMessage = ''
-    }, 5000)
-    return () => {
-      if (runtimeMessageTimer) clearTimeout(runtimeMessageTimer)
-    }
+    return autoDismissNotice({
+      value: runtimeMessage,
+      timeoutMs: 5000,
+      getTimer: () => runtimeMessageTimer,
+      setTimer: (timer) => {
+        runtimeMessageTimer = timer
+      },
+      clearValue: () => {
+        runtimeMessage = ''
+      },
+    })
   })
 
   $effect(() => {
-    if (errorMessageTimer) clearTimeout(errorMessageTimer)
-    if (!errorMessage) return
-    errorMessageTimer = setTimeout(() => {
-      errorMessage = ''
-    }, 8000)
-    return () => {
-      if (errorMessageTimer) clearTimeout(errorMessageTimer)
-    }
+    return autoDismissNotice({
+      value: errorMessage,
+      timeoutMs: 8000,
+      getTimer: () => errorMessageTimer,
+      setTimer: (timer) => {
+        errorMessageTimer = timer
+      },
+      clearValue: () => {
+        errorMessage = ''
+      },
+    })
   })
 
   return {
