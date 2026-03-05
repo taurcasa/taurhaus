@@ -7,12 +7,40 @@ import {
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 
+function normalizeProjectRecord(project) {
+  if (!project || typeof project !== 'object') return project
+
+  const normalized = { ...project }
+  if (normalized.activity_state === undefined && normalized.activityState !== undefined) {
+    normalized.activity_state = normalized.activityState
+  }
+  if (normalized.last_activity_at === undefined && normalized.lastActivityAt !== undefined) {
+    normalized.last_activity_at = normalized.lastActivityAt
+  }
+  if (normalized.hero_preference === undefined && normalized.heroPreference !== undefined) {
+    normalized.hero_preference = normalized.heroPreference
+  }
+  if (normalized.is_dirty === undefined && normalized.isDirty !== undefined) {
+    normalized.is_dirty = normalized.isDirty
+  }
+  return normalized
+}
+
+function normalizeProjectList(projects) {
+  if (!Array.isArray(projects)) return []
+  return projects.map((project) => normalizeProjectRecord(project))
+}
+
 export function listProjects() {
-  return invokeOrMock('list_projects', undefined, () => MOCK_PROJECTS)
+  return invokeOrMock('list_projects', undefined, () => MOCK_PROJECTS).then((projects) =>
+    normalizeProjectList(projects)
+  )
 }
 
 export function getProject(projectId) {
-  return invokeOrMock('get_project', { projectId }, () => ({ ...MOCK_DETAIL, id: projectId }))
+  return invokeOrMock('get_project', { projectId }, () => ({ ...MOCK_DETAIL, id: projectId })).then(
+    (project) => normalizeProjectRecord(project)
+  )
 }
 
 export function registerProject(path, name) {
@@ -20,7 +48,7 @@ export function registerProject(path, name) {
     ...MOCK_DETAIL,
     path,
     name: name || path.split('/').pop(),
-  }))
+  })).then((project) => normalizeProjectRecord(project))
 }
 
 export function createProject(name, parentDir) {
@@ -28,7 +56,7 @@ export function createProject(name, parentDir) {
     ...MOCK_DETAIL,
     name,
     path: `${parentDir.replace(/[\\/]+$/, '')}/${name}`,
-  }))
+  })).then((project) => normalizeProjectRecord(project))
 }
 
 export function updateProject(projectId, fields) {
@@ -36,7 +64,7 @@ export function updateProject(projectId, fields) {
     ...MOCK_DETAIL,
     id: projectId,
     ...fields,
-  }))
+  })).then((project) => normalizeProjectRecord(project))
 }
 
 export function removeProject(projectId) {

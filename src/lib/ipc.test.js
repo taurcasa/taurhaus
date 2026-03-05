@@ -63,6 +63,28 @@ describe('ipc module', () => {
       expect(result[0]).toHaveProperty('name')
       expect(result[0]).toHaveProperty('activity_state')
     })
+
+    it('normalizes camelCase project fields from Tauri payloads', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue([
+        {
+          id: 'p1',
+          name: 'test',
+          path: '/test',
+          activityState: 'active',
+          lastActivityAt: '2026-03-05T12:00:00Z',
+          isDirty: true,
+        },
+      ])
+
+      const result = await ipc.listProjects()
+
+      expect(result).toHaveLength(1)
+      expect(result[0].activity_state).toBe('active')
+      expect(result[0].last_activity_at).toBe('2026-03-05T12:00:00Z')
+      expect(result[0].is_dirty).toBe(true)
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   describe('getProject()', () => {
@@ -93,6 +115,27 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('name')
       expect(result).toHaveProperty('description')
       expect(result).toHaveProperty('activity_state')
+    })
+
+    it('normalizes camelCase project detail fields from Tauri payloads', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        id: 'p1',
+        name: 'test',
+        path: '/test',
+        activityState: 'recent',
+        lastActivityAt: '2026-03-05T12:00:00Z',
+        heroPreference: 'builder',
+        isDirty: false,
+      })
+
+      const result = await ipc.getProject('p1')
+
+      expect(result.activity_state).toBe('recent')
+      expect(result.last_activity_at).toBe('2026-03-05T12:00:00Z')
+      expect(result.hero_preference).toBe('builder')
+      expect(result.is_dirty).toBe(false)
+      delete window.__TAURI_INTERNALS__
     })
   })
 
