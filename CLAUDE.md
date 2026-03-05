@@ -25,6 +25,7 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 - **Tailwind v4 with `@theme` tokens**: Custom design tokens defined in `app.css`. Document any non-standard arbitrary values.
 - **Semantic HTML**: `<aside>` for sidebar, `<main>` for content, `<nav>` for navigation, `<section>` for content sections.
 - **Rust test placement**: Command-layer modules use an external sibling `tests.rs`; lower-level modules keep inline `#[cfg(test)] mod tests`.
+- **Bun-only JS workflows**: Use `bun install`, `bun run`, and `bunx`. Do not use `npm` or `npx` in this repo.
 - **No over-engineering**: Don't abstract until there's actual duplication. Three similar lines beat a premature abstraction.
 
 ## Logging
@@ -76,7 +77,7 @@ $effect(() => {
 
 ## Build & Development
 
-All builds use `just` recipes. Never use raw `cargo tauri build`, `npx tauri build`, or cross-compilation toolchains.
+All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri build`, or cross-compilation toolchains.
 
 **Development (runs in WSL/Linux):**
 
@@ -133,13 +134,13 @@ Always use the `just` recipes for releases. Never manually create GitHub release
 
 The `release` recipe enforces: must be on `main`, working tree must be clean, tag must not already exist. Never replace assets on an existing release — if a fix is needed, bump the version and release again.
 
-**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`cmd.exe`). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, npm install, and native Windows cargo build.
+**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`cmd.exe`). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and native Windows cargo build.
 
-**macOS**: The macOS app is built **natively on a Mac Mini** (Scaleway, arm64) via SSH. We do NOT cross-compile from Linux. The `just build-macos` recipe handles everything — rsync sync, npm install, daemon build + codesign, and `cargo tauri build`. The Mac's PATH requires a login shell (`zsh -ilc`) for fnm/cargo/homebrew.
+**macOS**: The macOS app is built **natively on a Mac Mini** (Scaleway, arm64) via SSH. We do NOT cross-compile from Linux. The `just build-macos` recipe handles everything — rsync sync, Bun install, daemon build + codesign, and `cargo tauri build`. The Mac's PATH requires a login shell (`zsh -ilc`) for bun/cargo/homebrew.
 
 If the build fails with "Access is denied" on the exe, the app is still running — close it first, then rebuild.
 
-**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), NOT from `src-tauri/`. If `npx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the project root first.
+**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), NOT from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the project root first.
 
 ## Architecture Summary
 

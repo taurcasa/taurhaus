@@ -25,7 +25,7 @@ logLevel: wdioLogLevel
 That keeps verbose command logging available when explicitly needed:
 
 ```bash
-E2E_WDIO_LOG_LEVEL=info E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js
+E2E_WDIO_LOG_LEVEL=info E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js
 ```
 
 ## Notes
@@ -121,14 +121,14 @@ slow(>=100ms): 1143 ops, 221.2s total  ← 96% of WebDriver time
 
 ```bash
 # Build once
-npx tauri build --debug --no-bundle
+bunx tauri build --debug --no-bundle
 
 # Full suite (slow — ~4 min)
-E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js
+E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js
 
 # 3-spec subset (fast — ~38s)
 # Create /tmp/wdio-3spec.conf.js with specs: [[overview, git, cross-tab]]
-E2E_SKIP_BUILD=1 npx wdio run /tmp/wdio-3spec.conf.js
+E2E_SKIP_BUILD=1 bunx wdio run /tmp/wdio-3spec.conf.js
 ```
 
 ## Files

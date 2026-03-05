@@ -4,7 +4,9 @@
   "version": "0.5.0",
   "license": "MIT",
   "type": "module",
+  "packageManager": "bun@1.2.20",
   "scripts": {
+    "preinstall": "node -e \"const ua=process.env.npm_config_user_agent||''; if(!ua.includes('bun/')){console.error('Use bun install (not npm/pnpm/yarn) in taurhaus'); process.exit(1)}\"",
     "dev": "vite",
     "dev:tauri": "tauri dev",
     "build": "vite build",
@@ -12,8 +14,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "npm run check",
-    "typecheck": "npm run check",
+    "lint": "bun run check",
+    "typecheck": "bun run check",
     "check": "svelte-check"
   },
   "devDependencies": {
@@ -39,6 +41,11 @@
   "overrides": {
     "serialize-javascript": "^7.0.3"
   },
+  "trustedDependencies": [
+    "esbuild",
+    "edgedriver",
+    "geckodriver"
+  ],
   "dependencies": {
     "@shikijs/markdown-it": "^3.22.0",
     "dompurify": "^3.3.1",

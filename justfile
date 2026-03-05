@@ -12,22 +12,17 @@ mac_dir   := "~/projects/taurhaus"
 
 # Run frontend dev server only
 dev-frontend:
-    npm run dev
+    bun run dev
 
 # Run full Tauri dev (frontend + backend)
-# Creates placeholder daemon resource if missing (Tauri validates at compile time)
-dev:
-    @mkdir -p src-tauri/resources
-    @touch src-tauri/resources/taurhaus-daemon
-    @touch src-tauri/resources/mesh
-    @echo "0.0.0-dev" > src-tauri/resources/mesh.version
-    npm run dev:tauri
+dev: ensure-tauri-resources
+    bun run dev:tauri
 
 # Ensure required Tauri resource files exist for local compile/test lanes.
 ensure-tauri-resources:
     @mkdir -p src-tauri/resources
-    @touch src-tauri/resources/taurhaus-daemon
-    @touch src-tauri/resources/mesh
+    @if [ ! -e src-tauri/resources/taurhaus-daemon ]; then touch src-tauri/resources/taurhaus-daemon; fi
+    @if [ ! -e src-tauri/resources/mesh ]; then touch src-tauri/resources/mesh; fi
     @if [ ! -s src-tauri/resources/mesh.version ]; then echo "0.0.0-dev" > src-tauri/resources/mesh.version; fi
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
@@ -46,16 +41,21 @@ fmt:
 # Lint everything
 lint: ensure-tauri-resources
     cd src-tauri && cargo clippy --all-targets -- -D warnings
-    npm run lint
+    bun run lint
 
 # Typecheck frontend code
 typecheck:
-    npm run typecheck
+    bun run typecheck
 
 # Generate a comprehensive quality KPI report (tests, coverage, build health, code size, E2E inventory).
 # Use this at milestones/pre-release checkpoints for a single health snapshot.
 metrics:
     ./scripts/metrics.sh
+
+# Run the unified resource monitor (live table by default).
+# Example: just monitor --samples 1 --interval 1
+monitor *ARGS:
+    python3 scripts/resource-monitor.py {{ARGS}}
 
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit).
 # This is the primary "does everything work?" test command.
@@ -113,38 +113,38 @@ test-rust-bisect-orchestrator:
 
 # Run frontend tests
 test-frontend:
-    npm run test
+    bun run test
 
 # Run frontend tests in watch mode
 test-watch:
-    npm run test:watch
+    bun run test:watch
 
 # Build the Tauri debug binary for E2E tests.
 # IMPORTANT: Always use this (not raw `cargo build`) — Tauri needs --debug --no-bundle
 # for embedded asset serving. A plain `cargo build` produces a binary that tries to
 # connect to a dev server, resulting in a blank page.
 build-e2e:
-    npx tauri build --debug --no-bundle
+    bunx tauri build --debug --no-bundle
 
 # Run E2E tests — Tier 1 only.
 # By default this does NOT run install-daemon (to avoid killing/restarting
 # a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
 test-e2e: e2e-prepare-daemon
-    npx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+    bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # By default this does NOT run install-daemon (to avoid killing/restarting
 # a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 test-e2e-full: e2e-prepare-daemon
-    npx wdio run e2e/wdio.conf.js
+    bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
 # By default this does NOT run install-daemon (to avoid killing/restarting
 # a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
 test-e2e-spec SPEC: e2e-prepare-daemon
-    npx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+    bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
 # Optional daemon prep for E2E runs.
 # Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 to rebuild/reinstall daemon.
@@ -168,7 +168,7 @@ db-migrate:
 
 # Build for Linux
 build-linux: bundle-daemon bundle-mesh
-    npm run tauri build
+    bun run tauri build
 
 # Build the WSL daemon binary (Linux target)
 build-daemon:
@@ -318,10 +318,10 @@ bundle-daemon: build-daemon
 build-windows: install-daemon bundle-daemon bundle-mesh sync-windows
     @echo "Note: cmd.exe may print 'UNC paths are not supported'. This is harmless."
     @echo "▸ Installing frontend dependencies on Windows…"
-    cmd.exe /c "cd /d {{win_drive}} && npm install"
+    cmd.exe /c "cd /d {{win_drive}} && (bun --version >NUL 2>&1 && bun install --frozen-lockfile || %USERPROFILE%\\.bun\\bin\\bun.exe install --frozen-lockfile)"
     @echo ""
     @echo "▸ Building Windows NSIS installer (cargo tauri)…"
-    cmd.exe /c "cd /d {{win_drive}} && cargo tauri build --bundles nsis"
+    cmd.exe /c "cd /d {{win_drive}} && set PATH=%USERPROFILE%\\.bun\\bin;%PATH% && cargo tauri build --bundles nsis"
     @echo ""
     @echo "✓ Windows build complete:"
     @ls -lh {{win_dir}}/src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || echo "  (no installer found)"
@@ -362,7 +362,7 @@ build-macos: sync-macos
     echo "✓ Mesh sync complete"
     echo ""
     echo "▸ Installing frontend dependencies on macOS…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun install --frozen-lockfile'"
     echo ""
     echo "▸ Creating resource placeholders…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon {{mac_dir}}/src-tauri/resources/mesh && echo 0.0.0-dev > {{mac_dir}}/src-tauri/resources/mesh.version'"
@@ -416,7 +416,7 @@ build-macos-intel: sync-macos
     echo "✓ Mesh sync complete"
     echo ""
     echo "▸ Installing frontend dependencies on macOS…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun install --frozen-lockfile'"
     echo ""
     echo "▸ Creating resource placeholders…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon {{mac_dir}}/src-tauri/resources/mesh && echo 0.0.0-dev > {{mac_dir}}/src-tauri/resources/mesh.version'"
@@ -432,7 +432,7 @@ build-macos-intel: sync-macos
     ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/x86_64-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/x86_64-apple-darwin/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
     echo ""
     echo "▸ Building Intel (x86_64) macOS app…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm run build && cargo tauri build --target x86_64-apple-darwin 2>&1'"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun run build && cargo tauri build --target x86_64-apple-darwin 2>&1'"
     echo ""
     echo "▸ Copying build artifacts locally…"
     mkdir -p {{project}}/builds/macos-x86_64
@@ -458,7 +458,7 @@ build-macos-universal: sync-macos
     echo "✓ Mesh sync complete"
     echo ""
     echo "▸ Installing frontend dependencies on macOS…"
-    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && npm install'"
+    ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun install --frozen-lockfile'"
     echo ""
     echo "▸ Creating resource placeholders…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && touch {{mac_dir}}/src-tauri/resources/taurhaus-daemon {{mac_dir}}/src-tauri/resources/mesh && echo 0.0.0-dev > {{mac_dir}}/src-tauri/resources/mesh.version'"

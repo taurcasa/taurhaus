@@ -20,8 +20,8 @@ Core rules:
 |---|---|
 | `just` | Entry point for all supported build/release workflows. |
 | Rust toolchain (`cargo`, `rustc`, `clippy`, `rustfmt`) | Backend build, tests, lint, and packaging. |
-| Node.js + npm (managed with `fnm` on macOS host) | Frontend build and Tauri frontend pipeline. |
-| Tauri CLI | App bundling (`cargo tauri build` or `npx tauri build` via recipes). |
+| Node.js + Bun (Bun available on build hosts) | Frontend build and Tauri frontend pipeline. |
+| Tauri CLI | App bundling (`cargo tauri build` or `bunx tauri build` via recipes). |
 | `rsync` + `ssh` | Remote sync/build on macOS host. |
 | Windows `cmd.exe` interop from WSL | Native Windows NSIS build from synced workspace. |
 | `gh` CLI (authenticated) | `just release` creates GitHub releases and uploads artifacts. |
@@ -55,7 +55,7 @@ just build-linux
 
 What it runs:
 
-- `npm run tauri build`
+- `bun run tauri build`
 
 ### Windows build (native via WSL interop)
 
@@ -70,8 +70,8 @@ Pipeline summary:
 1. `install-daemon` (WSL daemon binary rebuilt/installed).
 2. `bundle-daemon` (copies daemon binary into `src-tauri/resources/`).
 3. `sync-windows` (rsync to `D:\taurhaus_build`).
-4. `cmd.exe /c "cd /d D:\taurhaus_build && npm install"`.
-5. `cmd.exe /c "cd /d D:\taurhaus_build && cargo tauri build --bundles nsis"`.
+4. `cmd.exe /c "cd /d D:\taurhaus_build && bun install --frozen-lockfile"` (with `%USERPROFILE%\.bun\bin\bun.exe` fallback from WSL).
+5. `cmd.exe /c "cd /d D:\taurhaus_build && set PATH=%USERPROFILE%\.bun\bin;%PATH% && cargo tauri build --bundles nsis"`.
 
 Expected artifact location:
 
@@ -94,7 +94,7 @@ just build-macos
 Pipeline summary:
 
 1. `sync-macos` via rsync.
-2. Remote `npm install` using `zsh -ilc` login shell.
+2. Remote `bun install --frozen-lockfile` using `zsh -ilc` login shell.
 3. Remote daemon release build (`cargo build --release --bin taurhaus-daemon`).
 4. Copy daemon to `~/.local/bin/` and `src-tauri/resources/`.
 5. Re-sign daemon binaries (`codesign --force --sign - ...`).
@@ -103,7 +103,7 @@ Pipeline summary:
 
 Why login shell matters:
 
-- The recipe intentionally uses `zsh -ilc` so PATH includes `fnm`, `cargo`, Homebrew tools, and expected environment vars.
+- The recipe intentionally uses `zsh -ilc` so PATH includes `bun`, `cargo`, Homebrew tools, and expected environment vars.
 
 Expected artifact location:
 
@@ -217,7 +217,7 @@ After bumping:
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `Access is denied` in Windows build | Existing app process has installer/exe locked | Close running app/processes, rerun `just build-windows` |
-| macOS build cannot find `cargo`/`npm`/`fnm` | Non-login shell environment on remote Mac | Use recipes as-is (`zsh -ilc`); avoid manual non-login SSH commands |
+| macOS build cannot find `cargo`/`bun`/Homebrew tools | Non-login shell environment on remote Mac | Use recipes as-is (`zsh -ilc`); avoid manual non-login SSH commands |
 | macOS app/daemon blocked after copy | Unsigned copied daemon binary | Ensure `codesign --force --sign -` runs on daemon install/resource copy |
 | `just release` refuses due to dirty tree | Uncommitted changes | Commit or stash, then rerun |
 | `just release` says tag exists | Version already released/tagged | Bump to a new version and run release again |

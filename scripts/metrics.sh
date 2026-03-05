@@ -78,9 +78,9 @@ status_icon() {
 }
 
 # Run long frontend checks in parallel while Rust checks run.
-run_bg "coverage" "npx vitest run --coverage"
-run_bg "svelte" "npm run check"
-run_bg "vite_build" "npm run build -- --manifest"
+run_bg "coverage" "bunx vitest run --coverage"
+run_bg "svelte" "bun run check"
+run_bg "vite_build" "bun run build -- --manifest"
 
 # Run Rust lanes in foreground (avoids cargo target lock thrashing).
 run_cmd "rust_list" "cd src-tauri && cargo test -- --list"

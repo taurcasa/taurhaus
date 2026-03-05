@@ -35,7 +35,7 @@ Vitest + JSDOM + `@testing-library/svelte`. Tests cover components, stores, and 
 just test-frontend        # Run all frontend tests
 ```
 
-**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), not from `src-tauri/`. If `npx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this automatically.
+**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), not from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this automatically.
 
 Test files follow the pattern `*.test.js` alongside the source they test (e.g., `src/lib/format.test.js`).
 
@@ -61,7 +61,7 @@ just test-macos-e2e       # macOS E2E via SSH on remote Mac Mini
 
 **Skip build** (when binary is known-fresh): `E2E_SKIP_BUILD=1 just test-e2e-spec SPEC`
 
-Test specs live in `e2e/specs/` — 17 spec files covering all major features.
+Test specs live in `e2e/specs/` — 20 spec files covering all major features.
 
 ## Test lanes
 
@@ -98,7 +98,7 @@ just check   # Full quality gate
 This runs:
 1. `cargo fmt --check` — Rust formatting
 2. `cargo clippy` — Rust lints
-3. `npx svelte-check` — Svelte type checking
+3. `bun run check` — Svelte type checking
 4. All tests (Rust + frontend)
 
 **Run on every task.** The quality gate must pass before any work is considered complete.

@@ -19,7 +19,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ```bash
 git clone https://github.com/taurcasa/taurhaus.git
 cd taurhaus
-npm install
+bun install --frozen-lockfile
 just dev  # Full Tauri dev mode with hot-reload
 ```
 
@@ -87,7 +87,7 @@ just test-frontend   # Frontend tests (Vitest)
 
 Frontend tests run from the project root (not `src-tauri/`). Vitest is configured to find test files at the root level.
 
-If you add imports to source files included by integration shims (for example `coordination/pipelines.rs`), update shim modules in `src-tauri/tests/` and rerun `just agent-quality` to catch test-crate scope breakage early.
+If you add imports to source files included by integration shims (for example modules under `coordination/pipelines/`), update shim modules in `src-tauri/tests/` and rerun `just agent-quality` to catch test-crate scope breakage early.
 
 ### E2E Testing
 

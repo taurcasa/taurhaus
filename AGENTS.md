@@ -47,6 +47,11 @@ Rust backend lives in `src-tauri/`. Cargo commands must run from `src-tauri/` or
 
 **Vitest**: Must run from the project root (`/home/mstie/projects/taurhaus`), NOT from `src-tauri/`.
 
+## JS Tooling (Bun Required)
+
+- Use `bun install`, `bun run`, and `bunx` for JavaScript/package workflows in this repo.
+- Do not use `npm` or `npx` in this repo.
+
 ## TDD
 
 - **Test-first for logic** (red -> green -> refactor)
@@ -57,7 +62,7 @@ Rust backend lives in `src-tauri/`. Cargo commands must run from `src-tauri/` or
 
 ## Integration Test Shims
 
-The integration tests in `src-tauri/tests/` include source files via `#[path = "../src/..."]` and define stub modules for dependencies that don't exist in the test crate scope. If you add new imports to `coordination/pipelines.rs` or similar included files, you must also update the shim modules in:
+The integration tests in `src-tauri/tests/` include source files via `#[path = "../src/..."]` and define stub modules for dependencies that don't exist in the test crate scope. If you add new imports to modules under `coordination/pipelines/` (or other coordination modules included by `coordination/mod.rs`), you must also update the shim modules in:
 
 - `src-tauri/tests/coordination_integration.rs`
 - `src-tauri/tests/coordination_onboarding_linux_e2e.rs`
@@ -95,12 +100,17 @@ src-tauri/src/coordination/
   errors.rs       -- CoordinationError enum
   requests.rs     -- IPC DTOs and delivery request types
   state.rs        -- Lazy CoordinationState bootstrap (AppState managed)
-  orchestrator.rs -- CoordinationOrchestrator (create/disband/add/remove/deliver)
-  stores.rs       -- TeamConfigStore + MemberRuntimeStore (file-locked persistence)
+  mesh_cli.rs     -- Mesh binary/path discovery and command helpers
+  orchestrator.rs -- CoordinationOrchestrator public entry points
+  runtime.rs      -- Runtime/pane/process integration helpers
+  validation.rs   -- Team/member naming and input validation
   backend/        -- BackendSelector, MeshBridgedBackend, FakeBackend
+  orchestrator/   -- Lifecycle handlers and internal orchestration modules
+  pipelines/      -- Initialize/add/resume pipeline modules
+  stores/         -- TeamConfigStore + MemberRuntimeStore (file-locked persistence)
   delivery.rs     -- DeliveryRenderer (onboarding templates, operator notices)
   events.rs       -- Event producer/consumer for inbox/config changes
-  health.rs       -- Health state machine
+  health/         -- Health state machine (state/transition/policy)
   reconcile.rs    -- State drift reconciliation
   audit.rs        -- Audit event logging
   consumer.rs     -- Event consumer loop

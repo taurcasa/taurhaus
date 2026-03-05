@@ -34,7 +34,7 @@ images:
         "bundle-daemon + bundle-mesh" → "cargo tauri build" → arrow to "Linux artifact" box (right side)
 
         "Windows" label:
-        "sync to D:\taurhaus_build" → "cmd.exe npm install" → "cmd.exe cargo tauri build --bundles nsis" → arrow to "Windows .exe" box (right side)
+        "sync to D:\taurhaus_build" → "cmd.exe bun install --frozen-lockfile" → "cmd.exe cargo tauri build --bundles nsis" → arrow to "Windows .exe" box (right side)
 
         "macOS" label:
         "sync-macos" → "build daemon+mesh (arm64+x86_64)" → "lipo universal" → "codesign" → "cargo tauri build" → arrow to "macOS .dmg" box (right side)
@@ -87,7 +87,7 @@ images:
         - Arrow right to "CoordinationOrchestrator" box (large, prominent)
 
         SECOND ROW (below, left to right):
-        - "pipelines.rs (initialize / add_agent / resume_member)" box — note the addition of resume_member
+        - "pipelines/ (initialize / add_agent / resume_member)" box — note the addition of resume_member
         - Arrow right to "BackendSelector" box
         - Arrow right to "CoordinationBackend trait" box
         - Below CoordinationBackend: "MeshBridgedBackend" solid box and "ClaudeNativeBackend (Planned)" dashed box side by side
@@ -306,10 +306,10 @@ images:
         TWO SWIM LANES side by side:
 
         LEFT LANE: "Agent Resume Flow"
-        Actors shown as column headers: "MeshTeamRoster (UI)" | "IPC command" | "CoordinationOrchestrator" | "tmux / runtime"
+        Actors shown as column headers: "MeshRuntimeView + MeshNodeDetail (UI)" | "IPC command" | "CoordinationOrchestrator" | "tmux / runtime"
 
         Sequence:
-        1. MeshTeamRoster: "User clicks Resume on offline agent"
+        1. MeshNodeDetail: "User clicks Resume on offline agent"
         2. Arrow right: "Select context mode: Continue or Fresh"
         3. Arrow to IPC: "coordination_resume_member"
         4. Arrow to Orchestrator: "validate: must be offline"
@@ -322,7 +322,7 @@ images:
         11. Arrow back to UI: "roster refreshes"
 
         RIGHT LANE: "Liveness Reconciliation (write-on-drift)"
-        Actors: "MeshTeamRoster (UI)" | "IPC command" | "CoordinationOrchestrator" | "tmux checks"
+        Actors: "MeshRuntimeView (UI)" | "IPC command" | "CoordinationOrchestrator" | "tmux checks"
 
         Sequence:
         1. UI: "Periodic or on-demand status poll"

@@ -69,8 +69,8 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 
 4. **At least one AI CLI tool** inside WSL:
    - [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `curl -fsSL https://claude.ai/install.sh | bash`
-   - [Codex](https://github.com/openai/codex): `npm install -g @openai/codex`
-   - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli`
+   - [Codex](https://github.com/openai/codex): `bun add -g @openai/codex`
+   - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `bun add -g @google/gemini-cli`
 
 5. **Mesh CLI** (required for Mesh View team orchestration):
    - The Mesh tab can install/update bundled Mesh automatically when supported
@@ -95,7 +95,7 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 3. **At least one AI CLI tool**:
    - [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `brew install --cask claude-code`
    - [Codex](https://github.com/openai/codex): `brew install --cask codex`
-   - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `npm install -g @google/gemini-cli`
+   - [Gemini CLI](https://github.com/google-gemini/gemini-cli): `bun add -g @google/gemini-cli`
 
 4. **Mesh CLI** (required for Mesh View team orchestration):
    - The Mesh tab can install/update bundled Mesh automatically when supported

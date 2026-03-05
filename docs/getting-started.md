@@ -103,12 +103,12 @@ curl -fsSL https://claude.ai/install.sh | bash
 
 **Codex** (OpenAI):
 ```bash
-npm install -g @openai/codex
+bun add -g @openai/codex
 ```
 
 **Gemini CLI** (Google):
 ```bash
-npm install -g @google/gemini-cli
+bun add -g @google/gemini-cli
 ```
 
 You need at least one installed for session management features. The app works without any CLI tools — you just won't see live sessions.
@@ -307,7 +307,7 @@ taurhaus supports iTerm2, Ghostty, and Terminal.app. Check that your preferred e
 
 taurhaus detects CLI tools by scanning running processes. If a tool doesn't appear:
 
-- Make sure it's installed globally (`npm install -g ...` or via the tool's installer)
+- Make sure it's installed globally (`bun add -g ...` or via the tool's installer)
 - Make sure it's running inside the `taurhaus` tmux session (launched via taurhaus, not manually)
 - Check `tmux list-windows -t taurhaus` to see active windows
 

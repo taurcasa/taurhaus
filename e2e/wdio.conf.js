@@ -25,7 +25,7 @@
  * Usage:
  *   just test-e2e                        (builds + runs full suite)
  *   just test-e2e-spec search-workflow   (single spec in its own session)
- *   E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js  (skip build)
+ *   E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js  (skip build)
  */
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -282,7 +282,7 @@ export const config = {
 
     console.log('[e2e] Building Tauri debug binary...')
     return new Promise((resolve, reject) => {
-      const build = spawn('npx', ['tauri', 'build', '--debug', '--no-bundle'], {
+      const build = spawn('bunx', ['tauri', 'build', '--debug', '--no-bundle'], {
         cwd: projectRoot,
         stdio: 'inherit',
       })
