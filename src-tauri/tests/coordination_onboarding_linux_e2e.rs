@@ -179,7 +179,12 @@ fn write_executable_script(path: &Path, body: &str) {
     fs::set_permissions(path, perms).expect("chmod +x");
 }
 
-fn make_request(team_name: &str) -> InitializeTeamRequest {
+fn make_request(
+    team_name: &str,
+    lead_project: &str,
+    frontend_project: &str,
+    reviewer_project: &str,
+) -> InitializeTeamRequest {
     InitializeTeamRequest {
         team_name: team_name.to_string(),
         team_description: Some("linux onboarding e2e".to_string()),
@@ -188,7 +193,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
             name: "team-lead".to_string(),
             cli_tool: "claude".to_string(),
             model: "opus".to_string(),
-            project_id: "proj-core".to_string(),
+            project_id: lead_project.to_string(),
             description: Some("lead".to_string()),
             role_id: None,
             instructions: None,
@@ -200,7 +205,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
                 model: "gpt-5.3".to_string(),
-                project_id: "proj-web".to_string(),
+                project_id: frontend_project.to_string(),
                 description: Some("ui".to_string()),
                 role_id: None,
                 instructions: None,
@@ -211,7 +216,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 name: "reviewer".to_string(),
                 cli_tool: "gemini".to_string(),
                 model: "pro".to_string(),
-                project_id: "proj-api".to_string(),
+                project_id: reviewer_project.to_string(),
                 description: None,
                 role_id: None,
                 instructions: None,
@@ -232,6 +237,9 @@ fn onboarding_flow_launches_lead_and_injects_commands_with_enter() {
     let fake_bin = tmp.path().join("bin");
     let fake_mesh_bin = fake_home.join(".local/bin");
     let teams_dir = tmp.path().join("teams");
+    let project_core = tmp.path().join("proj-core");
+    let project_web = tmp.path().join("proj-web");
+    let project_api = tmp.path().join("proj-api");
     let log_path = tmp.path().join("calls.log");
     let counter_path = tmp.path().join("pane_counter.txt");
     let session_marker = tmp.path().join("tmux_session_created");
@@ -239,6 +247,9 @@ fn onboarding_flow_launches_lead_and_injects_commands_with_enter() {
     fs::create_dir_all(&fake_bin).expect("create fake bin dir");
     fs::create_dir_all(&fake_mesh_bin).expect("create fake mesh bin dir");
     fs::create_dir_all(&teams_dir).expect("create teams dir");
+    fs::create_dir_all(&project_core).expect("create lead project dir");
+    fs::create_dir_all(&project_web).expect("create frontend project dir");
+    fs::create_dir_all(&project_api).expect("create reviewer project dir");
     fs::write(&counter_path, "0\n").expect("seed counter");
 
     let tmux_script = format!(
@@ -298,7 +309,12 @@ exit 0
         Arc::new(MeshBridgedBackend::default()),
         Arc::new(SystemCoordinationRuntime),
     );
-    let request = make_request("linux-onboarding-e2e");
+    let request = make_request(
+        "linux-onboarding-e2e",
+        project_core.to_string_lossy().as_ref(),
+        project_web.to_string_lossy().as_ref(),
+        project_api.to_string_lossy().as_ref(),
+    );
 
     let report = orchestrator
         .initialize_team(&request)
@@ -316,9 +332,18 @@ exit 0
     let log = fs::read_to_string(&log_path).expect("read call log");
     assert!(log.contains("tmux:has-session -t taurhaus"));
     assert!(log.contains("tmux:new-session -d -s taurhaus"));
-    assert!(log.contains("tmux:new-window -n proj-core -t taurhaus: -P -F #{pane_id} -c proj-core"));
-    assert!(log.contains("tmux:new-window -n proj-web -t taurhaus: -P -F #{pane_id} -c proj-web"));
-    assert!(log.contains("tmux:new-window -n proj-api -t taurhaus: -P -F #{pane_id} -c proj-api"));
+    assert!(log.contains(&format!(
+        "tmux:new-window -n proj-core -t taurhaus: -P -F #{{pane_id}} -c {}",
+        project_core.display()
+    )));
+    assert!(log.contains(&format!(
+        "tmux:new-window -n proj-web -t taurhaus: -P -F #{{pane_id}} -c {}",
+        project_web.display()
+    )));
+    assert!(log.contains(&format!(
+        "tmux:new-window -n proj-api -t taurhaus: -P -F #{{pane_id}} -c {}",
+        project_api.display()
+    )));
 
     assert!(log.contains("tmux:send-keys -t %1 -l CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions"));
     assert!(log.contains("--team-name linux-onboarding-e2e"));

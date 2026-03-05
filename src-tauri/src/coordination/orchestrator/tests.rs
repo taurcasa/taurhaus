@@ -270,6 +270,106 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
     }
 }
 
+#[derive(Debug)]
+struct ProjectPathCheckingRuntime {
+    inner: RecordingCoordinationRuntime,
+}
+
+impl ProjectPathCheckingRuntime {
+    fn new() -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+        }
+    }
+
+    fn calls(&self) -> Vec<RuntimeCall> {
+        self.inner.calls()
+    }
+}
+
+impl CoordinationRuntime for ProjectPathCheckingRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        if !std::path::Path::new(project_id).is_dir() {
+            return Err(CoordinationError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("project path does not exist: {project_id}"),
+            )));
+        }
+        self.inner.join_mesh(team_name, member_name, project_id)
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
+}
+
 fn initialize_request(team_name: &str) -> InitializeTeamRequest {
     InitializeTeamRequest {
         team_name: team_name.to_string(),
@@ -1811,6 +1911,86 @@ fn initialize_team_agent_addition_failure_is_partial() {
             "create_panes",
         ]
     );
+}
+
+#[test]
+fn initialize_team_join_mesh_failure_reports_partial_and_cleans_up() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(ProjectPathCheckingRuntime::new());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        Arc::new(FakeBackend::default()),
+        runtime,
+    );
+    let request = initialize_request("architecture-final-join-failure");
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+
+    assert_eq!(report.failed_step.as_deref(), Some("join_mesh"));
+    assert_eq!(
+        report.succeeded_steps,
+        vec![
+            "validate_configuration",
+            "create_team",
+            "add_lead",
+            "create_panes",
+            "launch_sessions",
+        ]
+    );
+    assert!(
+        !tmp.path().join("architecture-final-join-failure").exists(),
+        "team should be cleaned up when join_mesh fails"
+    );
+}
+
+#[test]
+fn initialize_team_join_mesh_uses_member_project_paths() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(ProjectPathCheckingRuntime::new());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        Arc::new(FakeBackend::default()),
+        runtime.clone(),
+    );
+
+    let lead_project = tmp.path().join("proj-core");
+    let frontend_project = tmp.path().join("proj-web");
+    let reviewer_project = tmp.path().join("proj-api");
+    std::fs::create_dir_all(&lead_project).expect("lead project");
+    std::fs::create_dir_all(&frontend_project).expect("frontend project");
+    std::fs::create_dir_all(&reviewer_project).expect("reviewer project");
+
+    let mut request = initialize_request("architecture-final-join-paths");
+    request.lead.project_id = lead_project.to_string_lossy().to_string();
+    request.agents[0].project_id = frontend_project.to_string_lossy().to_string();
+    request.agents[1].project_id = reviewer_project.to_string_lossy().to_string();
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+    assert!(report.failed_step.is_none(), "initialize should succeed");
+
+    let join_calls: Vec<(String, String)> = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::JoinMesh {
+                member_name,
+                project_id,
+                ..
+            } => Some((member_name, project_id)),
+            _ => None,
+        })
+        .collect();
+
+    assert!(join_calls
+        .iter()
+        .any(|(member, path)| member == "frontend-dev" && path == &request.agents[0].project_id));
+    assert!(join_calls
+        .iter()
+        .any(|(member, path)| member == "reviewer" && path == &request.agents[1].project_id));
 }
 
 #[test]
