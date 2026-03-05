@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 use ignore::gitignore::Gitignore;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::sentinels::PYTHON_CACHE_DIR;
+
 /// Classification of a filesystem event for taurhaus purposes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent {
@@ -75,8 +77,8 @@ pub fn classify_event(project_root: &Path, event_path: &Path) -> Option<EventCla
     for component in relative.components() {
         let name = component.as_os_str().to_string_lossy();
         match name.as_ref() {
-            "node_modules" | "target" | "dist" | ".cache" | "__pycache__" | ".playwright-mcp"
-            | ".next" | ".nuxt" | ".svelte-kit" => return None,
+            "node_modules" | "target" | "dist" | ".cache" | PYTHON_CACHE_DIR
+            | ".playwright-mcp" | ".next" | ".nuxt" | ".svelte-kit" => return None,
             _ => {}
         }
     }

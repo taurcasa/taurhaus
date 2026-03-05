@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::bootstrap;
 use crate::commands::projects::DbState;
+use crate::sentinels::{CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX};
 use crate::{db, fs, search, services, ProviderState, SearchState};
 
 /// Look up a project's path from the database, returning None on any error.
@@ -507,7 +508,7 @@ pub(crate) fn process_watch_events(
 fn internal_task_trigger(event: &fs::watcher::WatchEvent) -> crate::bootstrap::TaskScanTrigger {
     use fs::watcher::WatchEvent;
     match event {
-        WatchEvent::FileChanged { project_id, paths } if project_id == "__claude_tasks__" => {
+        WatchEvent::FileChanged { project_id, paths } if project_id == CLAUDE_TASKS_PROJECT_ID => {
             crate::bootstrap::TaskScanTrigger::ClaudeTaskPaths(paths.clone())
         }
         _ => crate::bootstrap::TaskScanTrigger::Full,
@@ -522,6 +523,6 @@ pub(crate) fn is_internal_event(event: &fs::watcher::WatchEvent) -> bool {
         event,
         WatchEvent::FileChanged { project_id, .. }
         | WatchEvent::GitChanged { project_id }
-            if project_id.starts_with("__")
+            if project_id.starts_with(INTERNAL_PROJECT_ID_PREFIX)
     )
 }

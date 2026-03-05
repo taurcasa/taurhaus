@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::sentinels::PYTHON_CACHE_DIR;
+
 /// Directories to skip during scanning — large or internal directories.
 const SKIP_DIRS: &[&str] = &[
     "node_modules",
@@ -8,7 +10,7 @@ const SKIP_DIRS: &[&str] = &[
     "dist",
     ".cache",
     ".next",
-    "__pycache__",
+    PYTHON_CACHE_DIR,
     ".venv",
     "venv",
     ".tox",

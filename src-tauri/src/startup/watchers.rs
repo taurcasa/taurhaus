@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 use crate::commands::projects::DbState;
+use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
 use crate::{daemon_lifecycle, db, event_processor, platform, provider, WatcherState};
 
 use super::SetupContext;
@@ -132,8 +133,8 @@ fn register_local_watches(app: &mut tauri::App, has_daemon: bool) {
     if !has_daemon || crate::daemon::launcher::is_native_daemon() {
         if let Some(tasks_dir) = super::resolve_claude_tasks_dir() {
             if tasks_dir.is_dir() {
-                if let Err(error) =
-                    watcher_guard.watch_project("__claude_tasks__".to_string(), tasks_dir.clone())
+                if let Err(error) = watcher_guard
+                    .watch_project(CLAUDE_TASKS_PROJECT_ID.to_string(), tasks_dir.clone())
                 {
                     tracing::debug!(
                         error = %error,

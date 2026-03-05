@@ -1,0 +1,746 @@
+use super::*;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use tempfile::TempDir;
+
+use crate::coordination::backend::fake::FakeBackend;
+use crate::coordination::domain::{HealthState, Member, MemberRole};
+use crate::coordination::errors::CoordinationError;
+use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::requests::{
+    AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode, ResumeContextMode,
+    ResumeMemberRequest, StepStatus,
+};
+use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::models::CliCommandSettings;
+use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::types::BehavioralContract;
+
+fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Member {
+    Member {
+        name: name.to_string(),
+        role,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+        project_path: PathBuf::from(project),
+        cli_tool,
+    }
+}
+
+fn setup_config(name: &str, cli_tool: &str, model: &str, project_id: &str) -> AgentSetupConfig {
+    AgentSetupConfig {
+        name: name.to_string(),
+        cli_tool: cli_tool.to_string(),
+        model: model.to_string(),
+        project_id: project_id.to_string(),
+        description: None,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+    }
+}
+
+fn new_orchestrator(
+    tmp: &TempDir,
+    backend: Arc<FakeBackend>,
+    runtime: Arc<RecordingCoordinationRuntime>,
+) -> CoordinationOrchestrator {
+    CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime)
+}
+
+#[test]
+fn build_cli_launch_command_uses_configured_fresh_command() {
+    let mut cmds = crate::models::CliCommandSettings::default();
+    cmds.gemini.fresh = "gemini --yolo --sandbox read-only".to_string();
+    let agent = AgentSetupConfig {
+        name: "reviewer".to_string(),
+        cli_tool: "gemini".to_string(),
+        model: "gemini-2.5-pro".to_string(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+    };
+    assert_eq!(
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
+            .expect("command"),
+        "gemini --yolo --sandbox read-only"
+    );
+}
+
+#[test]
+fn build_cli_launch_command_for_codex_appends_model_when_missing() {
+    let cmds = crate::models::CliCommandSettings::default();
+    let agent = AgentSetupConfig {
+        name: "builder".to_string(),
+        cli_tool: "codex".to_string(),
+        model: "gpt-5.3".to_string(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+    };
+    assert_eq!(
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
+            .expect("command"),
+        "codex --yolo -m 'gpt-5.3-codex'"
+    );
+}
+
+#[test]
+fn build_cli_launch_command_for_claude_appends_team_context() {
+    let cmds = crate::models::CliCommandSettings::default();
+    let agent = AgentSetupConfig {
+        name: "team-lead".to_string(),
+        cli_tool: "claude".to_string(),
+        model: "claude-opus-4-6".to_string(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+    };
+    let command =
+        build_cli_launch_command(&agent, "ledger-team", MemberRole::Lead, &cmds).expect("command");
+    assert!(command.contains("CLAUDECODE=1"));
+    assert!(command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"));
+    assert!(command.contains("--team-name ledger-team"));
+    assert!(command.contains("--agent-name team-lead"));
+    assert!(command.contains("--agent-id team-lead@ledger-team"));
+    assert!(command.contains("--agent-type orchestrator"));
+}
+
+#[test]
+fn build_resume_cli_launch_command_continue_uses_resume_for_codex() {
+    let cmds = crate::models::CliCommandSettings::default();
+    let agent = AgentSetupConfig {
+        name: "builder".to_string(),
+        cli_tool: "codex".to_string(),
+        model: "gpt-5.3".to_string(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+    };
+
+    let command = build_resume_cli_launch_command(
+        &agent,
+        "architecture-final",
+        MemberRole::Agent,
+        ResumeContextMode::Continue,
+        &cmds,
+    )
+    .expect("command");
+    assert_eq!(command, "codex resume --last --yolo");
+}
+
+#[test]
+fn build_resume_cli_launch_command_continue_uses_claude_continue_with_team_context() {
+    let cmds = crate::models::CliCommandSettings::default();
+    let agent = AgentSetupConfig {
+        name: "team-lead".to_string(),
+        cli_tool: "claude".to_string(),
+        model: "opus".to_string(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        instructions: None,
+        behavioral_contract: None,
+        capabilities: None,
+    };
+
+    let command = build_resume_cli_launch_command(
+        &agent,
+        "architecture-final",
+        MemberRole::Lead,
+        ResumeContextMode::Continue,
+        &cmds,
+    )
+    .expect("command");
+    assert!(command.contains("--continue"));
+    assert!(command.contains("--agent-type orchestrator"));
+    assert!(command.contains("--team-name architecture-final"));
+}
+
+#[test]
+fn member_from_agent_setup_maps_role_template_context() {
+    let mut setup = setup_config("codex-dev", "codex", "gpt-5.3", "/tmp/project");
+    setup.description = Some("fallback instructions".to_string());
+    setup.role_id = Some("codex-developer".to_string());
+    setup.instructions = Some("template instructions".to_string());
+    setup.behavioral_contract = Some(BehavioralContract {
+        communication: vec!["post updates".to_string()],
+        execution: vec!["ship patches".to_string()],
+        escalation: vec!["raise blockers".to_string()],
+    });
+    setup.capabilities = Some(vec!["implementation".to_string()]);
+
+    let member =
+        member_from_agent_setup(&setup, MemberRole::Agent).expect("member mapping should work");
+
+    assert_eq!(member.role_id.as_deref(), Some("codex-developer"));
+    assert_eq!(
+        member.instructions.as_deref(),
+        Some("template instructions")
+    );
+    assert_eq!(
+        member
+            .behavioral_contract
+            .as_ref()
+            .map(|contract| contract.execution.clone())
+            .unwrap_or_default(),
+        vec!["ship patches".to_string()]
+    );
+    assert_eq!(
+        member.capabilities.as_ref().cloned().unwrap_or_default(),
+        vec!["implementation".to_string()]
+    );
+}
+
+#[test]
+fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
+
+    let mut claude_agent = setup_config("researcher", "claude", "claude-opus-4-6", "/tmp/research");
+    claude_agent.role_id = Some("claude-researcher".to_string());
+    claude_agent.instructions = Some("Investigate architecture tradeoffs.".to_string());
+    claude_agent.behavioral_contract = Some(BehavioralContract {
+        communication: vec!["post concise findings".to_string()],
+        execution: vec!["run focused experiments".to_string()],
+        escalation: vec!["escalate ambiguous requirements".to_string()],
+    });
+    claude_agent.capabilities = Some(vec!["analysis".to_string(), "research".to_string()]);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        agents: vec![claude_agent],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+
+    let delivered = backend.delivered_requests();
+    assert_eq!(
+        delivered.len(),
+        1,
+        "claude template agent should receive role context"
+    );
+    match &delivered[0] {
+        DeliveryRequest::OperatorNotice(payload) => {
+            assert_eq!(payload.member_name, "researcher");
+            assert!(payload.message.contains("[taurhaus] role_context"));
+            assert!(payload.message.contains("Role: claude-researcher"));
+            assert!(payload.message.contains("Capabilities:"));
+            assert!(payload.message.contains("- analysis"));
+            assert!(payload.message.contains("- research"));
+            assert!(!payload.message.contains("mesh read --unread"));
+        }
+        other => panic!("unexpected delivery payload: {other:?}"),
+    }
+}
+
+#[test]
+fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        agents: vec![setup_config(
+            "researcher",
+            "claude",
+            "claude-opus-4-6",
+            "/tmp/research",
+        )],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+    assert!(
+        backend.delivered_requests().is_empty(),
+        "claude agent without template context should keep legacy skip behavior"
+    );
+}
+
+#[test]
+fn load_resume_member_state_preserves_role_template_context() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            Member {
+                name: "builder".to_string(),
+                role: MemberRole::Agent,
+                role_id: Some("codex-developer".to_string()),
+                instructions: Some("Implement safely".to_string()),
+                behavioral_contract: Some(BehavioralContract {
+                    communication: vec!["post updates".to_string()],
+                    execution: vec!["ship patches".to_string()],
+                    escalation: vec!["raise blockers".to_string()],
+                }),
+                capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
+                project_path: PathBuf::from("/tmp/builder"),
+                cli_tool: CliTool::Codex,
+            },
+        )
+        .expect("add member");
+
+    let request = ResumeMemberRequest {
+        team_name: "architecture-final".to_string(),
+        member_name: "builder".to_string(),
+        context_mode: ResumeContextMode::Continue,
+    };
+
+    let (loaded_member, _runtime_record, lead_name) = orchestrator
+        .load_resume_member_state(&request)
+        .expect("resume state should load");
+
+    assert_eq!(lead_name, "team-lead");
+    assert_eq!(loaded_member.role_id.as_deref(), Some("codex-developer"));
+    assert_eq!(
+        loaded_member.instructions.as_deref(),
+        Some("Implement safely")
+    );
+    assert_eq!(
+        loaded_member
+            .behavioral_contract
+            .as_ref()
+            .map(|contract| contract.execution.clone())
+            .unwrap_or_default(),
+        vec!["ship patches".to_string()]
+    );
+    assert_eq!(
+        loaded_member
+            .capabilities
+            .as_ref()
+            .cloned()
+            .unwrap_or_default(),
+        vec!["implementation".to_string(), "testing".to_string()]
+    );
+}
+
+#[test]
+fn resume_pipeline_claude_lead_skips_mesh_daemon_and_onboarding() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+
+    let mut lead_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead").expect("runtime");
+    lead_runtime.pane_id = Some("%9".to_string());
+    lead_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "team-lead", &lead_runtime)
+        .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member(
+            "architecture-final",
+            "team-lead",
+            ResumeContextMode::Continue,
+        )
+        .expect("resume report");
+
+    assert!(report.resumed);
+    assert!(report.reused_pane);
+    assert_eq!(report.failed_step, None);
+    let join_step = report
+        .steps
+        .iter()
+        .find(|step| step.step == "join_mesh")
+        .expect("join step");
+    assert_eq!(join_step.status, StepStatus::Succeeded);
+    assert!(join_step
+        .message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("not required"));
+    let daemon_step = report
+        .steps
+        .iter()
+        .find(|step| step.step == "start_daemon")
+        .expect("daemon step");
+    assert!(daemon_step
+        .message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("not required"));
+    let onboarding_step = report
+        .steps
+        .iter()
+        .find(|step| step.step == "send_onboarding")
+        .expect("onboarding step");
+    assert!(onboarding_step
+        .message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("not required"));
+
+    let calls = runtime.calls();
+    let launch = calls
+        .iter()
+        .find_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+            _ => None,
+        })
+        .expect("launch command");
+    assert!(launch.contains("--continue"));
+    assert!(launch.contains("--agent-type orchestrator"));
+    assert!(!calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
+    assert!(!calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert_eq!(
+        backend.call_counts().1,
+        0,
+        "onboarding should be skipped for lead"
+    );
+}
+
+#[test]
+fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "researcher",
+                MemberRole::Agent,
+                CliTool::Claude,
+                "/tmp/research",
+            ),
+        )
+        .expect("add member");
+
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "researcher").expect("runtime");
+    member_runtime.pane_id = Some("%10".to_string());
+    member_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(
+        tmp.path(),
+        "architecture-final",
+        "researcher",
+        &member_runtime,
+    )
+    .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member(
+            "architecture-final",
+            "researcher",
+            ResumeContextMode::Continue,
+        )
+        .expect("resume report");
+
+    assert!(report.resumed);
+    let calls = runtime.calls();
+    let launch = calls
+        .iter()
+        .find_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+            _ => None,
+        })
+        .expect("launch command");
+    assert!(launch.contains("--agent-type general-purpose"));
+    assert!(!calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
+    assert!(!calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert_eq!(backend.call_counts().1, 1, "onboarding should be delivered");
+}
+
+#[test]
+fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            Member {
+                name: "researcher".to_string(),
+                role: MemberRole::Agent,
+                role_id: Some("claude-researcher".to_string()),
+                instructions: Some("Investigate tradeoffs and summarize findings.".to_string()),
+                behavioral_contract: Some(BehavioralContract {
+                    communication: vec!["post concise updates".to_string()],
+                    execution: vec!["run experiments".to_string()],
+                    escalation: vec!["escalate blockers immediately".to_string()],
+                }),
+                capabilities: Some(vec!["analysis".to_string()]),
+                project_path: PathBuf::from("/tmp/research"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add member");
+
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "researcher").expect("runtime");
+    member_runtime.pane_id = Some("%10".to_string());
+    member_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(
+        tmp.path(),
+        "architecture-final",
+        "researcher",
+        &member_runtime,
+    )
+    .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member(
+            "architecture-final",
+            "researcher",
+            ResumeContextMode::Continue,
+        )
+        .expect("resume report");
+
+    assert!(report.resumed);
+    let delivered = backend.delivered_requests();
+    assert_eq!(delivered.len(), 1);
+    match &delivered[0] {
+        DeliveryRequest::OperatorNotice(payload) => {
+            assert!(payload.message.contains("[taurhaus] role_context"));
+            assert!(payload.message.contains("Role: claude-researcher"));
+            assert!(payload.message.contains("Capabilities:"));
+            assert!(payload.message.contains("- analysis"));
+        }
+        other => panic!("unexpected delivery payload: {other:?}"),
+    }
+}
+
+#[test]
+fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add member");
+
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+    member_runtime.pane_id = Some("%11".to_string());
+    member_runtime.daemon_pid = Some(55);
+    member_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
+        .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+        .expect("resume report");
+    assert!(report.resumed);
+    assert!(report.reused_pane);
+
+    let calls = runtime.calls();
+    let launch = calls
+        .iter()
+        .find_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+            _ => None,
+        })
+        .expect("launch command");
+    assert_eq!(launch, "codex resume --last --yolo");
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 55)));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert_eq!(backend.call_counts().1, 1, "onboarding should be delivered");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder")
+        .expect("updated runtime");
+    assert_eq!(updated.pane_id.as_deref(), Some("%11"));
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.daemon_pid, Some(10000));
+    assert!(updated.attached_at.is_some());
+}
+
+#[test]
+fn resume_failure_cleans_created_resources_and_keeps_member_config() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    backend.set_deliver_error(CoordinationError::Backend("delivery failed".to_string()));
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add member");
+
+    // Existing pane should be reused; rollback must not kill it.
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+    member_runtime.pane_id = Some("%77".to_string());
+    member_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
+        .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+        .expect("resume report");
+    assert!(!report.resumed);
+    assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+
+    let config = TeamConfigStore::load(tmp.path(), "architecture-final").expect("team config");
+    assert!(config.members.iter().any(|entry| entry.name == "builder"));
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 10000)));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%77")),
+        "reused pane must not be killed during rollback"
+    );
+}

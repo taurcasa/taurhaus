@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands;
+use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
 use crate::session_scanner::ClaudeSession;
 use crate::{daemon, db, fs, models, provider, services, ProviderState, WatcherState};
 
@@ -96,11 +97,11 @@ pub(crate) fn start_daemon_watches(
     }
 
     // Watch Claude task directories for event-driven task sync.
-    // Uses a special "__claude_tasks__" project ID that process_watch_events
+    // Uses a special internal project ID that process_watch_events
     // intercepts to trigger background task scanning instead of normal file handling.
     if let Some(ref home) = wsl_home {
         let claude_tasks_dir = format!("{home}/.claude/tasks");
-        if let Err(e) = listener.watch("__claude_tasks__", &claude_tasks_dir) {
+        if let Err(e) = listener.watch(CLAUDE_TASKS_PROJECT_ID, &claude_tasks_dir) {
             tracing::debug!(
                 error = %e,
                 path = %claude_tasks_dir,

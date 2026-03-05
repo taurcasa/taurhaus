@@ -10,6 +10,7 @@ pub mod db;
 pub mod errors;
 mod event_processor;
 pub mod models;
+mod sentinels;
 pub mod services;
 mod startup;
 
