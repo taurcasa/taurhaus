@@ -88,7 +88,8 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just metrics` | Quality KPI snapshot (tests, coverage, build health, code size, E2E inventory). |
 | `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
-| `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). |
+| `just check-quick` | Fast feedback for iteration: Rust format auto-fix (`cargo fmt`) + Rust compilation (`cargo check --tests`) + frontend typecheck + frontend unit tests. |
+| `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). Team-lead serialized runs or pre-release only. |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
 | `just install-daemon` | Builds + copies daemon to `~/.local/bin/` |
 | `just bump VERSION` | Bump version in all files (tauri.conf.json, Cargo.toml, package.json, Cargo.lock, CHANGELOG.md) |
@@ -108,6 +109,10 @@ E2E tests launch the real app binary via tauri-driver + WebDriverIO. They run on
 For local runs that should rebuild/reinstall the daemon first, opt in explicitly: `E2E_INSTALL_DAEMON=1 just test-e2e`.
 E2E sessions also use isolated roots via `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR`, plus fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH`.
 
+Agent/team workflow rule:
+- Use `just check-quick` during implementation.
+- Do **NOT** run `just check` as an agent; team-lead owns serialized full-gate runs.
+
 **Platform builds (run natively on target OS):**
 
 | Recipe | What it does |
@@ -126,7 +131,7 @@ Always use the `just` recipes for releases. Never manually create GitHub release
 1. just bump 0.4.0              # bump all version files + add CHANGELOG section
 2. Edit CHANGELOG.md            # fill in changes for this version
 3. git add -A && git commit     # commit the version bump
-4. just check                   # run full quality gate
+4. just check                   # full gate before release (team-lead serialized run)
 5. just build-windows           # build Windows NSIS installer
 6. just build-macos             # build macOS DMG
 7. just release                 # push, create GitHub release, upload artifacts
@@ -232,8 +237,9 @@ When a regression is discovered — frontend or backend — the fix follows TDD 
 This is non-negotiable. No regression fix ships without a corresponding test.
 
 ### Quality Gates
-- `just check` runs full gate: clippy + svelte-check + all tests
-- Full test suite on every task. E2E at milestones.
+- `just check-quick` is the per-task gate: `cargo fmt` + `cargo check --tests` + frontend typecheck + frontend unit tests
+- `just check` is the full gate and is run by team-lead in serialized fashion (or before release)
+- E2E at milestones.
 - Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
 - Visual dual review: self-review + Gemini Pro 3 cross-review. Lower score wins, Claude is final arbiter with justified override.
 - **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See [`docs/design-workflow.md`](docs/design-workflow.md). The UI specialist (Gemini) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.

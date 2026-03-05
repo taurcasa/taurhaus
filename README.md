@@ -143,7 +143,8 @@ All builds use [`just`](https://github.com/casey/just) recipes:
 just dev              # Full Tauri dev mode (hot-reload)
 just build-windows    # Windows release build (NSIS installer)
 just build-macos      # macOS release build (DMG)
-just check            # Quality gate: clippy + svelte-check + all tests
+just check-quick      # Fast iteration gate: cargo check --tests + typecheck + frontend tests
+just check            # Full gate (team-lead serialized runs / pre-release)
 just test             # All tests (Rust + frontend)
 just bump 0.4.0       # Bump version everywhere
 just release          # Create GitHub Release with artifacts

@@ -4,7 +4,7 @@ Testing strategy, test lanes, and procedures for the taurhaus project.
 
 ## Overview
 
-Testing follows TDD for logic and visual review for layout. Three layers cover the stack: Rust unit tests, frontend Vitest tests, and E2E tests via WebdriverIO. The quality gate (`just check`) runs on every task.
+Testing follows TDD for logic and visual review for layout. Three layers cover the stack: Rust unit tests, frontend Vitest tests, and E2E tests via WebdriverIO. The per-task verification gate is `just check-quick`.
 
 ## Philosophy
 
@@ -89,19 +89,25 @@ just test-rust-bisect-commands      # Bisect commands module
 just test-rust-bisect-coordination  # Bisect coordination module
 ```
 
-## Quality gate
+## Verification gates
 
 ```bash
-just check   # Full quality gate
+just check-quick   # Per-task fast gate
+just check         # Full gate (team-lead serialized runs or pre-release)
 ```
 
-This runs:
+`just check-quick` runs:
+1. `cargo check --tests` — Rust compile + test-target validation
+2. `bun run check` — Svelte type checking
+3. `bun run test` — Frontend unit tests
+
+`just check` runs the full gate:
 1. `cargo fmt --check` — Rust formatting
 2. `cargo clippy` — Rust lints
 3. `bun run check` — Svelte type checking
 4. All tests (Rust + frontend)
 
-**Run on every task.** The quality gate must pass before any work is considered complete.
+**Run `just check-quick` on every task.** In team/agent workflows, agents should not run `just check`; team-lead owns serialized full-gate runs.
 
 E2E tests run at milestones, not on every task.
 
@@ -150,7 +156,7 @@ This applies to frontend tasks only — backend tasks skip visual review.
 
 | File | Purpose |
 |------|---------|
-| `justfile` | All test recipes and quality gate |
+| `justfile` | All test recipes and verification gates |
 | `e2e/README.md` | E2E runbook and troubleshooting |
 | `e2e/specs/regressions.js` | E2E regression test suite |
 | `vitest.config.js` | Frontend test configuration |

@@ -251,13 +251,13 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Status**: Implemented
 
-**Decision**: Rust implementation tasks must pass `just agent-quality` before being reported complete.
+**Decision**: Implementation tasks must pass `just check-quick` before being reported complete.
 
-- Runs `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo check --tests`
-- Captures compile/lint regressions across unit + integration test targets
+- Runs `cargo check --tests`, frontend typecheck, and frontend unit tests
+- Captures compile/type/test regressions for routine iteration
 - Ensures integration shim breakages are caught when included source files gain new imports
 
-**Rationale**: Coordination changes span runtime, orchestrator, IPC, and integration shims. A strict pre-completion gate prevents partially validated backend changes from being reported as done.
+**Rationale**: Coordination changes span runtime, orchestrator, IPC, and integration shims. A strict pre-completion gate prevents partially validated changes from being reported as done while keeping iteration fast. The full `just check` gate is reserved for serialized team-lead/pre-release runs.
 
 ### D19: Team template composition feeds the existing initialize pipeline
 

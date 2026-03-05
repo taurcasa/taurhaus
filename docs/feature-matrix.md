@@ -18,7 +18,7 @@ Current shipped status for key mesh coordination capabilities.
 
 | Gate | Status | Required For | Command |
 |---|---|---|---|
-| Rust implementation quality gate | Implemented | Rust implementation tasks before completion | `just agent-quality` |
+| Task verification gate | Implemented | Implementation tasks before completion | `just check-quick` |
 
 ## References
 

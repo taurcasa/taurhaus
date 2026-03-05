@@ -57,10 +57,10 @@ just dev-frontend
 
 ## Testing
 
-All tests must pass before submitting a PR:
+Use fast verification during implementation:
 
 ```bash
-just check  # Full gate: fmt + lint + typecheck + all non-E2E tests
+just check-quick  # Fast gate: cargo check --tests + typecheck + frontend unit tests
 ```
 
 Core release-lane recipes (from `justfile`):
@@ -69,14 +69,17 @@ Core release-lane recipes (from `justfile`):
 |--------|---------|
 | `just test` | Full non-E2E test lane (Rust + frontend) |
 | `just test-fast` | Fast iteration lane (`cargo check --tests` + frontend tests) |
-| `just check` | Full quality gate (`fmt`, `lint`, `typecheck`, `test`) |
+| `just check-quick` | Per-task fast gate (`cargo check --tests`, `typecheck`, frontend tests) |
+| `just check` | Full quality gate (`fmt`, `lint`, `typecheck`, `test`) for team-lead serialized runs or pre-release/PR validation |
 | `just metrics` | Quality KPI report (tests, coverage, build health, code size, E2E inventory) |
 
-For Rust implementation work, run the task-level quality gate before declaring completion:
+In team/agent workflows, run this before declaring completion:
 
 ```bash
-just agent-quality  # cargo fmt + clippy -D warnings + cargo check --tests
+just check-quick
 ```
+
+Run `just check` before release, or before opening a PR when a full gate is required.
 
 Individual test suites:
 
@@ -87,7 +90,7 @@ just test-frontend   # Frontend tests (Vitest)
 
 Frontend tests run from the project root (not `src-tauri/`). Vitest is configured to find test files at the root level.
 
-If you add imports to source files included by integration shims (for example modules under `coordination/pipelines/`), update shim modules in `src-tauri/tests/` and rerun `just agent-quality` to catch test-crate scope breakage early.
+If you add imports to source files included by integration shims (for example modules under `coordination/pipelines/`), update shim modules in `src-tauri/tests/` and rerun `just check-quick` to catch test-crate scope breakage early.
 
 ### E2E Testing
 
@@ -137,7 +140,7 @@ Each regression test must document what broke and why (commit reference if avail
 
 1. Create a feature branch from `main`
 2. Make your changes with clear, focused commits
-3. Run `just check` and ensure everything passes
+3. Run `just check` (full gate) and ensure everything passes
 4. Open a PR with a clear title and description
 5. Include a brief test plan (what you tested and how)
 

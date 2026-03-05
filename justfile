@@ -34,6 +34,15 @@ check: fmt lint typecheck test
 # Prefer: `just check`.
 check-full: check
 
+# Fast formatting + compilation + type/test checks for iteration.
+# Use `just check` for the full quality gate.
+check-quick: ensure-tauri-resources
+    cd src-tauri && cargo fmt
+    cd src-tauri && cargo check --tests
+    bun run typecheck
+    bun run test
+    @echo "Quick check passed."
+
 # Enforce Rust formatting.
 fmt:
     cd src-tauri && cargo fmt --check
@@ -243,27 +252,23 @@ install-daemon:
     fi
 
 # Install mesh CLI to ~/.local/bin/ (WSL)
-# Builds from ~/projects/mesh and installs alongside the daemon.
-install-mesh:
+# Delegates build to build-mesh, then installs alongside the daemon.
+install-mesh: build-mesh
     #!/usr/bin/env bash
     set -euo pipefail
 
-    MESH_PROJECT="$HOME/projects/mesh"
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
     INSTALL_DIR="$HOME/.local/bin"
     MESH_BIN="mesh"
-
-    if [ ! -d "$MESH_PROJECT" ]; then
-        echo "✗ Mesh project not found at $MESH_PROJECT"
+    MESH_PATH="$MESH_PROJECT/target/release/$MESH_BIN"
+    if [ ! -x "$MESH_PATH" ]; then
+        echo "✗ Built mesh binary not found at $MESH_PATH"
         exit 1
     fi
 
-    echo "▸ Building mesh…"
-    cd "$MESH_PROJECT" && cargo build --release
-    cd -
-
     mkdir -p "$INSTALL_DIR"
     TMP_BIN="$INSTALL_DIR/.${MESH_BIN}.new"
-    install -m 755 "$MESH_PROJECT/target/release/$MESH_BIN" "$TMP_BIN"
+    install -m 755 "$MESH_PATH" "$TMP_BIN"
     mv -f "$TMP_BIN" "$INSTALL_DIR/$MESH_BIN"
     echo "✓ Installed $MESH_BIN to $INSTALL_DIR/"
     "$INSTALL_DIR/$MESH_BIN" --version 2>/dev/null || "$INSTALL_DIR/$MESH_BIN" --help 2>&1 | head -1
@@ -775,10 +780,7 @@ screenshot:
 # Agent pre-completion quality gate.
 # Codex/Gemini agents must run this before reporting a task as done.
 # Referenced in AGENTS.md — extend here as new friction points surface.
-agent-quality:
-    cd src-tauri && cargo fmt
-    cd src-tauri && cargo clippy --all-targets -- -D warnings
-    cd src-tauri && cargo check --tests
+agent-quality: check-quick
     @echo "Agent quality gate passed."
 
 # Bootstrap infographic manifest from taursult MCP generation DB.

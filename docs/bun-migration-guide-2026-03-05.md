@@ -20,7 +20,7 @@ Scope principle: use Bun everywhere it is reasonable for JS tooling (`bun instal
    - `bun install --frozen-lockfile`
 4. Verify dependency/runtime equivalence:
    - `bun pm ls --all > /tmp/bun-tree.txt`
-   - Smoke all critical paths: `just check`, `just test-e2e`, `just build-e2e`.
+   - Smoke all critical paths: `just check-quick`, `just test-e2e`, `just build-e2e`.
 5. After verification, remove `package-lock.json` in follow-up commit/PR.
 
 Notes:
@@ -79,7 +79,7 @@ Operational commands:
 - Core flows:
   - `just dev`
   - `just test`
-  - `just check`
+  - `just check-quick`
 
 ### Windows native build path (`cmd.exe`)
 - Install Bun on Windows (PowerShell installer from Bun docs).
@@ -173,7 +173,7 @@ If migration causes regressions:
 3. Remove Bun-specific fields/guards (`packageManager`, `trustedDependencies`, preinstall guard) if they block npm.
 4. Re-run baseline npm flow:
    - `npm install`
-   - `just check`
+   - `just check-quick`
    - `just test-e2e`
 5. File focused follow-up issues for each regression found during Bun rollout.
 
@@ -182,7 +182,7 @@ If migration causes regressions:
 ### Local Linux/WSL
 - `bun --version`
 - `bun install --frozen-lockfile`
-- `just check`
+- `just check-quick`
 - `just test`
 - `just build-e2e`
 - `just test-e2e`

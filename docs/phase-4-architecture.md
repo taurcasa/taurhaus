@@ -55,14 +55,16 @@ Drift mutation:
 Before reporting Rust implementation work as complete, run:
 
 ```bash
-just agent-quality
+just check-quick
 ```
 
 This runs:
 
-- `cargo fmt`
-- `cargo clippy -- -D warnings`
 - `cargo check --tests`
+- frontend typecheck
+- frontend unit tests
+
+`just check` remains the full gate and is run in serialized team-lead/pre-release flows.
 
 ## Related References
 

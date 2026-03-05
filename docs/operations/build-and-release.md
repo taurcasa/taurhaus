@@ -39,7 +39,8 @@ Project-specific environment assumptions from `justfile`:
 |---|---|
 | `just dev` | Full Tauri development mode (frontend + backend hot-reload). |
 | `just dev-frontend` | Frontend-only development server. |
-| `just check` | Standard quality gate (`fmt`, lint, typecheck, tests). |
+| `just check-quick` | Standard iteration gate (`cargo check --tests`, typecheck, frontend tests). |
+| `just check` | Full quality gate (`fmt`, lint, typecheck, tests) for team-lead serialized runs or release validation. |
 
 Use the quick-reference table in [CLAUDE.md](../../CLAUDE.md#build--development) for the full dev/test matrix.
 
@@ -173,7 +174,7 @@ Canonical release flow:
 1. `just bump <VERSION>`
 2. Edit `CHANGELOG.md` entry for that version.
 3. Commit the version/changelog changes.
-4. `just check`
+4. `just check` (team-lead serialized full gate)
 5. Build release artifacts (`just build-windows` and macOS target recipe).
 6. `just release`
 

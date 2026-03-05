@@ -18,12 +18,13 @@ Only modify files directly related to your assigned task. Do NOT refactor, clean
 **Before reporting any implementation task as done**, run:
 
 ```
-just agent-quality
+just check-quick
 ```
 
-This runs `cargo fmt`, `cargo clippy`, and `cargo check --tests`. All three must pass before you mark a task complete. If clippy or check fails, fix the issues in your changed files before reporting done.
+This runs `cargo check --tests`, frontend typecheck, and frontend unit tests. It must pass before you mark a task complete.
 
-This is mandatory for every task that touches Rust code. Do not skip it.
+In team/agent workflows, this is the only verification command agents should run.
+Do **NOT** run `just check`; team-lead runs the full gate in serialized mode.
 
 ## Code Standards
 
@@ -40,7 +41,8 @@ All builds use `just` recipes. Never use raw `cargo tauri build` or cross-compil
 | Recipe | What it does |
 |--------|-------------|
 | `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
-| `just check` | Full quality gate: clippy + svelte-check + all tests (Rust + frontend unit) |
+| `just check-quick` | Fast iteration gate: `cargo check --tests` + frontend typecheck + frontend unit tests |
+| `just check` | Full quality gate (fmt + lint + typecheck + tests). Team-lead only in serialized runs, or pre-release. |
 | `just test` | All tests (Rust + frontend unit). Does NOT include E2E. |
 
 Rust backend lives in `src-tauri/`. Cargo commands must run from `src-tauri/` or use `--manifest-path`.
@@ -67,7 +69,7 @@ The integration tests in `src-tauri/tests/` include source files via `#[path = "
 - `src-tauri/tests/coordination_integration.rs`
 - `src-tauri/tests/coordination_onboarding_linux_e2e.rs`
 
-The `just agent-quality` recipe will catch this via `cargo check --tests`.
+`just check-quick` will catch this via `cargo check --tests`.
 
 ## Architecture
 
