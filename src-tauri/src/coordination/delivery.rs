@@ -41,6 +41,10 @@ impl DeliveryRenderer {
                 "Work contract:\n",
                 "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
                 "\n",
+                "Compaction safety:\n",
+                "If context compaction happens and you have no unread messages or your current task is unclear, immediately message {lead_name} and ask for your current assignment.\n",
+                "Do not assume you are done — compaction may have dropped your active task context.\n",
+                "\n",
                 "Escalation:\n",
                 "If blocked, send blocker details to {lead_name} immediately. Do not stall silently."
             ),
@@ -78,6 +82,10 @@ impl DeliveryRenderer {
                 "\n",
                 "Work contract:\n",
                 "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+                "\n",
+                "Compaction safety:\n",
+                "If context compaction happens and you have no unread messages or your current task is unclear, immediately message {lead_name} and ask for your current assignment.\n",
+                "Do not assume you are done — compaction may have dropped your active task context.\n",
                 "\n",
                 "Escalation:\n",
                 "If blocked, send blocker details to {lead_name} immediately. Do not stall silently."
@@ -312,6 +320,8 @@ mod tests {
         ));
         assert!(rendered
             .contains("mesh task list/get/update --team architecture-final --name codex-reviewer"));
+        assert!(rendered.contains("If context compaction happens and you have no unread messages"));
+        assert!(rendered.contains("Do not assume you are done"));
         assert!(rendered.contains("If blocked, send blocker details to team-lead immediately."));
     }
 
@@ -346,6 +356,10 @@ mod tests {
             "\n",
             "Work contract:\n",
             "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+            "\n",
+            "Compaction safety:\n",
+            "If context compaction happens and you have no unread messages or your current task is unclear, immediately message team-lead and ask for your current assignment.\n",
+            "Do not assume you are done — compaction may have dropped your active task context.\n",
             "\n",
             "Escalation:\n",
             "If blocked, send blocker details to team-lead immediately. Do not stall silently."
@@ -408,6 +422,8 @@ mod tests {
 
         assert!(rendered.contains("[taurhaus] role_context"));
         assert!(rendered.contains("Use internal team tools"));
+        assert!(rendered.contains("Compaction safety:"));
+        assert!(rendered.contains("Do not assume you are done"));
         assert!(rendered.contains("Role: claude-developer"));
         assert!(rendered.contains("Capabilities:"));
         assert!(rendered.contains("- implementation"));
