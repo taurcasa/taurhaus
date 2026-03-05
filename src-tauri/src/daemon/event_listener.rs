@@ -2,12 +2,26 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::daemon::protocol::{self, DaemonMessage, DaemonRequest, DaemonResponse};
 use crate::errors::AppError;
 use crate::fs::watcher::WatchEvent;
+
+const DEFAULT_WATCH_HANDSHAKE_TIMEOUT_SECS: u64 = 10;
+const WATCH_HANDSHAKE_TIMEOUT_ENV: &str = "TAURHAUS_DAEMON_WATCH_TIMEOUT_SECS";
+static DROPPED_DAEMON_EVENT_COUNT: AtomicU64 = AtomicU64::new(0);
+
+fn watch_handshake_timeout() -> Duration {
+    std::env::var(WATCH_HANDSHAKE_TIMEOUT_ENV)
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(DEFAULT_WATCH_HANDSHAKE_TIMEOUT_SECS))
+}
 
 /// Listens for push events from the daemon over a dedicated TCP connection.
 ///
@@ -61,6 +75,7 @@ impl DaemonEventListener {
     pub fn watch(&mut self, project_id: &str, linux_path: &str) -> Result<(), AppError> {
         let id = format!("ew{}", self.next_id);
         self.next_id += 1;
+        let handshake_timeout = watch_handshake_timeout();
 
         let request = DaemonRequest::new(
             &id,
@@ -78,6 +93,16 @@ impl DaemonEventListener {
             .map_err(AppError::Io)?;
         self.stream.write_all(b"\n").map_err(AppError::Io)?;
         self.stream.flush().map_err(AppError::Io)?;
+        self.stream
+            .set_read_timeout(Some(handshake_timeout))
+            .map_err(|error| {
+                AppError::Io(std::io::Error::new(
+                    error.kind(),
+                    format!(
+                        "Set watch handshake timeout failed for project {project_id} ({linux_path}): {error}"
+                    ),
+                ))
+            })?;
 
         // Read lines until we get the watch response. The daemon may push events
         // on this connection before the response arrives (e.g. if a previously
@@ -85,7 +110,15 @@ impl DaemonEventListener {
         let mut line = String::new();
         let response: DaemonResponse = loop {
             line.clear();
-            self.reader.read_line(&mut line).map_err(AppError::Io)?;
+            self.reader.read_line(&mut line).map_err(|error| {
+                AppError::Io(std::io::Error::new(
+                    error.kind(),
+                    format!(
+                        "Read watch response failed for project {project_id} ({linux_path}) within {}s: {error}",
+                        handshake_timeout.as_secs()
+                    ),
+                ))
+            })?;
             match serde_json::from_str::<DaemonMessage>(line.trim()) {
                 Ok(DaemonMessage::Response(r)) => break r,
                 Ok(DaemonMessage::Event(event)) => {
@@ -99,6 +132,14 @@ impl DaemonEventListener {
                 }
             }
         };
+        self.stream.set_read_timeout(None).map_err(|error| {
+            AppError::Io(std::io::Error::new(
+                error.kind(),
+                format!(
+                    "Reset watch handshake timeout failed for project {project_id} ({linux_path}): {error}"
+                ),
+            ))
+        })?;
 
         if !response.is_ok() {
             return Err(AppError::InvalidPath(format!(
@@ -127,7 +168,9 @@ impl DaemonEventListener {
     /// Call this on a background thread after all `watch()` calls are done.
     /// Events are forwarded to the `event_tx` channel as `WatchEvent`s.
     pub fn run(mut self) {
-        let _ = self.stream.set_read_timeout(Some(Duration::from_secs(5)));
+        if let Err(error) = self.stream.set_read_timeout(Some(Duration::from_secs(5))) {
+            tracing::warn!(error = %error, "Failed to set daemon event listener read timeout");
+        }
 
         let mut line = String::new();
         loop {
@@ -172,7 +215,14 @@ impl DaemonEventListener {
 
     fn handle_event(&self, event: protocol::DaemonEvent) {
         if let Some(watch_event) = convert_daemon_event(event, &self.path_to_project) {
-            let _ = self.event_tx.send(watch_event);
+            if let Err(error) = self.event_tx.send(watch_event) {
+                let dropped_count = DROPPED_DAEMON_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                tracing::warn!(
+                    error = %error,
+                    dropped_count,
+                    "dropping daemon event: failed to forward to app channel"
+                );
+            }
         }
     }
 }
@@ -185,17 +235,62 @@ fn convert_daemon_event(
     event: protocol::DaemonEvent,
     path_to_project: &HashMap<String, String>,
 ) -> Option<WatchEvent> {
+    let event_name = event.event.clone();
     match event.event.as_str() {
         protocol::event::GIT_CHANGED => {
-            let data: protocol::GitChangedData = serde_json::from_value(event.data).ok()?;
-            let project_id = path_to_project.get(&data.path)?;
+            let data: protocol::GitChangedData = match serde_json::from_value(event.data) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    log_dropped_daemon_event(
+                        &event_name,
+                        "decode_payload",
+                        None,
+                        Some(&error.to_string()),
+                    );
+                    return None;
+                }
+            };
+            let project_id = match path_to_project.get(&data.path) {
+                Some(id) => id,
+                None => {
+                    log_dropped_daemon_event(
+                        &event_name,
+                        "unmapped_path",
+                        Some(data.path.as_str()),
+                        None,
+                    );
+                    return None;
+                }
+            };
             Some(WatchEvent::GitChanged {
                 project_id: project_id.clone(),
             })
         }
         protocol::event::FILE_CHANGED => {
-            let data: protocol::FileChangedData = serde_json::from_value(event.data).ok()?;
-            let project_id = path_to_project.get(&data.path)?;
+            let data: protocol::FileChangedData = match serde_json::from_value(event.data) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    log_dropped_daemon_event(
+                        &event_name,
+                        "decode_payload",
+                        None,
+                        Some(&error.to_string()),
+                    );
+                    return None;
+                }
+            };
+            let project_id = match path_to_project.get(&data.path) {
+                Some(id) => id,
+                None => {
+                    log_dropped_daemon_event(
+                        &event_name,
+                        "unmapped_path",
+                        Some(data.path.as_str()),
+                        None,
+                    );
+                    return None;
+                }
+            };
             let project_root = PathBuf::from(&data.path);
             let paths: Vec<PathBuf> = data.files.iter().map(|f| project_root.join(f)).collect();
             Some(WatchEvent::FileChanged {
@@ -204,8 +299,30 @@ fn convert_daemon_event(
             })
         }
         protocol::event::SESSION_FILE_CREATED => {
-            let data: protocol::SessionFileCreatedData = serde_json::from_value(event.data).ok()?;
-            let project_id = path_to_project.get(&data.path)?;
+            let data: protocol::SessionFileCreatedData = match serde_json::from_value(event.data) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    log_dropped_daemon_event(
+                        &event_name,
+                        "decode_payload",
+                        None,
+                        Some(&error.to_string()),
+                    );
+                    return None;
+                }
+            };
+            let project_id = match path_to_project.get(&data.path) {
+                Some(id) => id,
+                None => {
+                    log_dropped_daemon_event(
+                        &event_name,
+                        "unmapped_path",
+                        Some(data.path.as_str()),
+                        None,
+                    );
+                    return None;
+                }
+            };
             let full_path = PathBuf::from(&data.path).join(&data.file);
             Some(WatchEvent::SessionFileCreated {
                 project_id: project_id.clone(),
@@ -219,10 +336,23 @@ fn convert_daemon_event(
     }
 }
 
+fn log_dropped_daemon_event(event: &str, stage: &str, path: Option<&str>, error: Option<&str>) {
+    let dropped_count = DROPPED_DAEMON_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    tracing::warn!(
+        event,
+        stage,
+        path = path.unwrap_or("n/a"),
+        error = error.unwrap_or("n/a"),
+        dropped_count,
+        "dropping daemon event"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::daemon::server::DaemonConfig;
+    use crate::provider::local::LocalProvider;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -256,8 +386,9 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle =
-            std::thread::spawn(move || crate::daemon::server::run(&config, shutdown_clone));
+        let handle = std::thread::spawn(move || {
+            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
+        });
         std::thread::sleep(Duration::from_millis(100));
         TestDaemon {
             port,

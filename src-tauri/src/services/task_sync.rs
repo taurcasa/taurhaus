@@ -1,0 +1,386 @@
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use crate::session_scanner::ClaudeSession;
+use crate::ProviderState;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ScanGenerationKey {
+    project_path: String,
+    source: String,
+    source_key: String,
+}
+
+#[derive(Default)]
+pub struct TaskScanGenerationState {
+    applied_generations: Mutex<HashMap<ScanGenerationKey, u64>>,
+}
+
+const SCAN_GENERATION_RETENTION_WINDOW: u64 = 100;
+
+fn should_apply_scan_generation(
+    state: &TaskScanGenerationState,
+    project_path: &str,
+    source: &str,
+    source_key: &str,
+    generation: u64,
+) -> bool {
+    if cfg!(test) {
+        return true;
+    }
+
+    let key = ScanGenerationKey {
+        project_path: project_path.to_string(),
+        source: source.to_string(),
+        source_key: source_key.to_string(),
+    };
+
+    let mut applied = state
+        .applied_generations
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    match applied.get(&key) {
+        Some(existing) if generation < *existing => false,
+        _ => {
+            applied.insert(key, generation);
+            true
+        }
+    }
+}
+
+fn cleanup_applied_scan_generations(state: &TaskScanGenerationState, current_generation: u64) {
+    let mut applied = state
+        .applied_generations
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    prune_generation_map(
+        &mut applied,
+        current_generation,
+        SCAN_GENERATION_RETENTION_WINDOW,
+    );
+}
+
+fn prune_generation_map(
+    applied: &mut HashMap<ScanGenerationKey, u64>,
+    current_generation: u64,
+    retention_window: u64,
+) {
+    let min_generation = current_generation.saturating_sub(retention_window);
+    applied.retain(|_, generation| *generation >= min_generation);
+}
+
+pub(crate) fn persist_task_scan_with_generation(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+    scan_result: &crate::task_scanner::TaskResult,
+    generation_state: &TaskScanGenerationState,
+    scan_generation: u64,
+) {
+    cleanup_applied_scan_generations(generation_state, scan_generation);
+    let source_outcomes = normalized_source_outcomes(scan_result);
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut persisted_by_key: std::collections::HashMap<
+        (String, String),
+        Vec<crate::db::task_queries::PersistedTask>,
+    > = std::collections::HashMap::new();
+
+    for source_outcome in &source_outcomes {
+        if let crate::task_scanner::ScanOutcome::Data(tasks) = &source_outcome.outcome {
+            for t in tasks {
+                persisted_by_key
+                    .entry((source_outcome.source.clone(), t.source_key.clone()))
+                    .or_default()
+                    .push(crate::db::task_queries::PersistedTask {
+                        project_path: normalized_path.to_string(),
+                        source: source_outcome.source.clone(),
+                        source_key: t.source_key.clone(),
+                        source_task_id: t.id.clone(),
+                        subject: t.subject.clone(),
+                        description: t.description.clone(),
+                        active_form: t.active_form.clone(),
+                        status: t.status.to_string(),
+                        blocks: t.blocks.clone(),
+                        blocked_by: t.blocked_by.clone(),
+                        owner: t.owner.clone(),
+                        session_id: t.session_id.clone(),
+                        first_seen_at: now.clone(),
+                        state_changed_at: Some(now.clone()),
+                        updated_at: now.clone(),
+                        archived_at: None,
+                        last_status: Some(t.status.to_string()),
+                        archived_reason: None,
+                    });
+            }
+        }
+    }
+
+    for ((source, source_key), persisted) in persisted_by_key {
+        if !should_apply_scan_generation(
+            generation_state,
+            normalized_path,
+            &source,
+            &source_key,
+            scan_generation,
+        ) {
+            tracing::debug!(
+                source = %source,
+                source_key = %source_key,
+                generation = scan_generation,
+                "Skipping stale task upsert generation"
+            );
+            continue;
+        }
+
+        if let Err(e) = crate::db::task_queries::upsert_tasks(conn, &persisted) {
+            tracing::warn!(
+                error = %e,
+                source = %source,
+                source_key = %source_key,
+                "Failed to persist scanned tasks"
+            );
+        }
+    }
+
+    prune_stale_tasks(
+        conn,
+        normalized_path,
+        &source_outcomes,
+        generation_state,
+        scan_generation,
+    );
+}
+
+fn prune_stale_tasks(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+    source_outcomes: &[crate::task_scanner::SourceScanOutcome],
+    generation_state: &TaskScanGenerationState,
+    scan_generation: u64,
+) {
+    let mut active_by_source_key: std::collections::HashMap<(String, String), Vec<String>> =
+        std::collections::HashMap::new();
+    for source_outcome in source_outcomes {
+        let source = source_outcome.source.clone();
+        match &source_outcome.outcome {
+            crate::task_scanner::ScanOutcome::Unavailable(reason) => {
+                tracing::info!(
+                    source = %source,
+                    reason = %reason,
+                    "Skipping stale prune for unavailable source"
+                );
+                continue;
+            }
+            crate::task_scanner::ScanOutcome::Data(tasks) => {
+                for task in tasks {
+                    active_by_source_key
+                        .entry((source.clone(), task.source_key.clone()))
+                        .or_default()
+                        .push(task.id.clone());
+                }
+            }
+            crate::task_scanner::ScanOutcome::DefinitivelyEmpty => {}
+        }
+
+        let db_keys = match crate::db::task_queries::get_active_source_keys_for_project_source(
+            conn,
+            normalized_path,
+            &source,
+        ) {
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    source = %source,
+                    "Failed to load source keys for stale task pruning"
+                );
+                continue;
+            }
+            Ok(keys) => keys,
+        };
+
+        let mut source_keys: std::collections::BTreeSet<String> = db_keys.into_iter().collect();
+        source_keys.extend(
+            active_by_source_key
+                .keys()
+                .filter(|(s, _)| s == &source)
+                .map(|(_, key)| key.clone()),
+        );
+
+        for source_key in source_keys {
+            if !should_apply_scan_generation(
+                generation_state,
+                normalized_path,
+                &source,
+                &source_key,
+                scan_generation,
+            ) {
+                tracing::debug!(
+                    source = %source,
+                    source_key = %source_key,
+                    generation = scan_generation,
+                    "Skipping stale prune for stale generation"
+                );
+                continue;
+            }
+
+            let active_ids_storage = active_by_source_key
+                .get(&(source.clone(), source_key.clone()))
+                .cloned()
+                .unwrap_or_default();
+            let active_ids: Vec<&str> = active_ids_storage.iter().map(String::as_str).collect();
+
+            match crate::db::task_queries::archive_or_delete_stale_tasks(
+                conn,
+                normalized_path,
+                &source,
+                &source_key,
+                &active_ids,
+            ) {
+                Ok(result) => {
+                    if result.archived > 0 || result.deleted > 0 {
+                        tracing::info!(
+                            source = %source,
+                            source_key = %source_key,
+                            archived = result.archived,
+                            deleted = result.deleted,
+                            "Pruned stale tasks"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        source = %source,
+                        source_key = %source_key,
+                        "Failed to prune stale tasks"
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn normalized_source_outcomes(
+    scan_result: &crate::task_scanner::TaskResult,
+) -> Vec<crate::task_scanner::SourceScanOutcome> {
+    if !scan_result.source_outcomes.is_empty() {
+        return scan_result.source_outcomes.clone();
+    }
+
+    let failures: std::collections::HashMap<String, String> = scan_result
+        .errors
+        .iter()
+        .map(|(source, reason)| (source.clone(), reason.clone()))
+        .collect();
+
+    crate::session_scanner::cli_tool::all_tools()
+        .iter()
+        .map(|tool| {
+            let source = tool.tool.to_string();
+            let outcome = if let Some(reason) = failures.get(&source) {
+                crate::task_scanner::ScanOutcome::Unavailable(reason.clone())
+            } else {
+                let tasks: Vec<crate::task_scanner::UnifiedTask> = scan_result
+                    .tasks
+                    .iter()
+                    .filter(|t| t.source.to_string() == source)
+                    .cloned()
+                    .collect();
+                if tasks.is_empty() {
+                    crate::task_scanner::ScanOutcome::DefinitivelyEmpty
+                } else {
+                    crate::task_scanner::ScanOutcome::Data(tasks)
+                }
+            };
+            crate::task_scanner::SourceScanOutcome { source, outcome }
+        })
+        .collect()
+}
+
+/// Scan task files from live sources (daemon or local).
+pub(crate) fn scan_tasks_from_files(
+    provider: &ProviderState,
+    project_path: &str,
+    scan_cycle_id: Option<u64>,
+    cached_sessions: Option<&[ClaudeSession]>,
+    cached_claude_index: Option<&crate::task_scanner::claude_index::ClaudeSourceIndex>,
+) -> crate::task_scanner::TaskResult {
+    if let Some(ref daemon) = provider.daemon {
+        if !daemon.is_connected() {
+            daemon.try_reconnect();
+        }
+
+        if daemon.is_connected() {
+            let linux_path = crate::provider::path::to_linux(project_path)
+                .unwrap_or_else(|| project_path.to_string());
+
+            let id = "scan-project-tasks";
+            let request = crate::daemon::protocol::DaemonRequest::new(
+                id,
+                crate::daemon::protocol::method::GET_PROJECT_TASKS,
+                crate::daemon::protocol::ProjectTasksParams {
+                    path: linux_path,
+                    scan_cycle_id,
+                },
+            );
+            match daemon.send_status_request(&request) {
+                Ok(response) if response.is_ok() => {
+                    if let Some(result_payload) = response.result {
+                        match serde_json::from_value(result_payload) {
+                            Ok(result) => return result,
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "Failed to deserialize task scan from daemon"
+                                );
+                            }
+                        }
+                    }
+                }
+                Ok(response) => {
+                    tracing::warn!(error = ?response.error, "Daemon task scan failed");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Daemon request failed for task scan");
+                }
+            }
+        }
+    }
+
+    let all_sessions: Vec<ClaudeSession> = cached_sessions
+        .map(|s| s.to_vec())
+        .unwrap_or_else(crate::session_scanner::scan_sessions);
+    let project_sessions: Vec<ClaudeSession> = all_sessions
+        .into_iter()
+        .filter(|s| s.project_path == project_path)
+        .collect();
+
+    crate::task_scanner::get_tasks_for_project_with_index(
+        project_path,
+        &project_sessions,
+        cached_claude_index,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generation_map_pruning_keeps_recent_window() {
+        let mut map = std::collections::HashMap::new();
+        for i in 1..=300_u64 {
+            map.insert(
+                ScanGenerationKey {
+                    project_path: "/projects/foo".to_string(),
+                    source: "claude".to_string(),
+                    source_key: format!("session-{i}"),
+                },
+                i,
+            );
+        }
+
+        prune_generation_map(&mut map, 300, 100);
+        assert!(map.len() <= 101);
+        assert!(map.values().all(|generation| *generation >= 200));
+    }
+}

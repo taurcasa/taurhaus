@@ -18,6 +18,7 @@ pub enum ActivityState {
 
 /// Threshold configuration for activity state computation (ADR-008).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivityThresholds {
     pub active_days: i64,
     pub recent_days: i64,
@@ -67,6 +68,7 @@ impl ActivityState {
 
 /// Database row for a project.  Used for persistence and query results.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Project {
     pub id: String,
     pub name: String,
@@ -84,6 +86,7 @@ pub struct Project {
 
 /// Lightweight project summary sent to the frontend for the sidebar list.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     pub id: String,
     pub name: String,
@@ -120,6 +123,7 @@ impl ProjectSummary {
 
 /// Full project details sent to the frontend for the detail view.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectDetail {
     pub id: String,
     pub name: String,
@@ -140,6 +144,7 @@ pub struct ProjectDetail {
 
 /// Lightweight session summary for sidebar/list display.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
     pub id: String,
     pub project_id: String,
@@ -149,6 +154,7 @@ pub struct SessionSummary {
 
 /// Full session detail including extensible metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionDetail {
     pub id: String,
     pub project_id: String,
@@ -166,6 +172,7 @@ pub struct SessionDetail {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Relationship {
     pub id: String,
     pub source_project_id: String,
@@ -182,6 +189,7 @@ pub struct Relationship {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CodeThemeSettings {
     pub light: String,
     pub dark: String,
@@ -198,8 +206,10 @@ impl Default for CodeThemeSettings {
 
 /// Per-mode launch commands for a single CLI tool.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ToolCommands {
     /// Command for "Continue" mode (resume latest session).
+    #[serde(alias = "continue_cmd")]
     pub continue_cmd: String,
     /// Command for "Fresh" mode (start new session).
     pub fresh: String,
@@ -209,6 +219,7 @@ pub struct ToolCommands {
 
 /// Per-tool launch command configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CliCommandSettings {
     pub claude: ToolCommands,
     pub codex: ToolCommands,
@@ -238,6 +249,7 @@ impl Default for CliCommandSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalSettings {
     /// Terminal emulator to use:
     /// - Windows: "windows_terminal" (default), "custom"
@@ -245,11 +257,14 @@ pub struct TerminalSettings {
     pub emulator: String,
     /// Command template when emulator is "custom".
     /// Placeholders: {distro}, {tmux_session}
+    #[serde(alias = "custom_command")]
     pub custom_command: String,
     /// Tmux layout strategy: "new_window" (default), "split", "per_project"
+    #[serde(alias = "tmux_layout")]
     pub tmux_layout: String,
     /// Per-tool launch command configuration.
     #[serde(default)]
+    #[serde(alias = "cli_commands")]
     pub cli_commands: CliCommandSettings,
 }
 
@@ -281,23 +296,30 @@ fn default_emulator() -> &'static str {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(alias = "scan_directories")]
     pub scan_directories: Vec<String>,
     pub thresholds: ActivityThresholds,
+    #[serde(alias = "ignore_patterns")]
     pub ignore_patterns: Vec<String>,
     pub daemon: DaemonSettings,
     #[serde(default)]
+    #[serde(alias = "code_theme")]
     pub code_theme: CodeThemeSettings,
     #[serde(default)]
     pub terminal: TerminalSettings,
     #[serde(default)]
+    #[serde(alias = "dark_mode")]
     pub dark_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DaemonSettings {
     pub port: u16,
     pub path: String,
+    #[serde(alias = "auto_start")]
     pub auto_start: bool,
 }
 
@@ -316,6 +338,7 @@ impl Default for DaemonSettings {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DaemonStatus {
     /// "connected", "disconnected", "not_configured", "reconnecting"
     /// Status string values intentionally remain snake_case for IPC compatibility
@@ -333,6 +356,7 @@ pub struct DaemonStatus {
 
 /// Daemon installation status — used by FirstRunWizard and startup update check.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DaemonInstallStatus {
     /// Whether the daemon binary exists in WSL (~/.local/bin/taurhaus-daemon)
     pub installed: bool,
@@ -350,6 +374,7 @@ pub struct DaemonInstallStatus {
 
 /// Mesh installation status for coordination setup.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct MeshInstallStatus {
     /// Whether the mesh binary exists in ~/.local/bin/mesh (or WSL equivalent).
     pub installed: bool,
@@ -370,6 +395,7 @@ pub struct MeshInstallStatus {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct FileContent {
     pub path: String,
     pub content: String,
@@ -377,6 +403,7 @@ pub struct FileContent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct FileTreeNode {
     pub name: String,
     pub path: String,
@@ -385,6 +412,7 @@ pub struct FileTreeNode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct GitStatus {
     pub branch: Option<String>,
     pub is_dirty: bool,
@@ -393,6 +421,7 @@ pub struct GitStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Commit {
     pub hash: String,
     pub message: String,
@@ -406,6 +435,7 @@ pub struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct GitRangeResult {
     pub commits: Vec<Commit>,
     pub files: Vec<String>,
@@ -416,6 +446,7 @@ pub struct GitRangeResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CommitFile {
     pub path: String,
     /// One of: "added", "modified", "deleted", "renamed"
@@ -423,6 +454,7 @@ pub struct CommitFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DiffLine {
     pub origin: char,
     pub content: String,
@@ -431,6 +463,7 @@ pub struct DiffLine {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DiffHunk {
     pub old_start: u32,
     pub old_lines: u32,
@@ -455,6 +488,33 @@ mod tests {
 
     fn default_thresholds() -> ActivityThresholds {
         ActivityThresholds::default()
+    }
+
+    #[test]
+    fn ipc_models_serialize_camel_case_keys() {
+        let summary = ProjectSummary {
+            id: "p1".to_string(),
+            name: "proj".to_string(),
+            path: "/tmp/proj".to_string(),
+            activity_state: ActivityState::Active,
+            last_activity_at: Some("2026-01-01T00:00:00Z".to_string()),
+            branch: Some("main".to_string()),
+            is_dirty: Some(true),
+        };
+        let value = serde_json::to_value(summary).expect("serialize project summary");
+        assert!(value.get("activityState").is_some());
+        assert!(value.get("lastActivityAt").is_some());
+        assert!(value.get("isDirty").is_some());
+        assert!(value.get("activity_state").is_none());
+    }
+
+    #[test]
+    fn settings_serialize_camel_case_nested_keys() {
+        let settings = Settings::default();
+        let value = serde_json::to_value(settings).expect("serialize settings");
+        assert!(value.get("scanDirectories").is_some());
+        assert!(value.get("darkMode").is_some());
+        assert!(value.get("scan_directories").is_none());
     }
 
     // AC-1: Active for activity < 7 days ago
@@ -687,7 +747,7 @@ mod tests {
     #[test]
     fn terminal_settings_deserializes_without_cli_commands() {
         // Backward compat: old settings JSON without cli_commands field
-        let json = r#"{"emulator":"iterm2","custom_command":"","tmux_layout":"new_window"}"#;
+        let json = r#"{"emulator":"iterm2","customCommand":"","tmuxLayout":"new_window"}"#;
         let ts: TerminalSettings = serde_json::from_str(json).unwrap();
         assert_eq!(ts.cli_commands, CliCommandSettings::default());
     }

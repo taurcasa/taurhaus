@@ -11,8 +11,35 @@ use crate::{db, fs, search, services, ProviderState, SearchState};
 /// Look up a project's path from the database, returning None on any error.
 pub(crate) fn get_project_path(app: &AppHandle, project_id: &str) -> Option<String> {
     let db_state = app.state::<DbState>();
-    let conn = db_state.0.lock().ok()?;
-    let project = db::queries::get_project(&conn, project_id).ok()??;
+    let conn = match db_state.0.lock() {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(
+                project_id,
+                error = %error,
+                "Failed to resolve project path: db lock poisoned"
+            );
+            return None;
+        }
+    };
+    let project = match db::queries::get_project(&conn, project_id) {
+        Ok(Some(project)) => project,
+        Ok(None) => {
+            tracing::warn!(
+                project_id,
+                "Failed to resolve project path: project not found"
+            );
+            return None;
+        }
+        Err(error) => {
+            tracing::warn!(
+                project_id,
+                error = %error,
+                "Failed to resolve project path: project query failed"
+            );
+            return None;
+        }
+    };
     Some(project.path)
 }
 
@@ -290,6 +317,10 @@ pub(crate) fn process_watch_events(
         // Git events (one per project).
         for project_id in &batch.git_projects {
             let Some(project_path) = get_project_path(&app, project_id) else {
+                tracing::warn!(
+                    project_id = project_id.as_str(),
+                    "Skipping git watcher refresh: project path lookup failed"
+                );
                 continue;
             };
             let path = std::path::Path::new(&project_path);
@@ -400,6 +431,10 @@ pub(crate) fn process_watch_events(
 
             // Incrementally update search index (one lock per project batch).
             let Some(project_path) = get_project_path(&app, project_id) else {
+                tracing::warn!(
+                    project_id = project_id.as_str(),
+                    "Skipping file watcher indexing: project path lookup failed"
+                );
                 continue;
             };
             let project_root = std::path::Path::new(&project_path);
@@ -407,7 +442,14 @@ pub(crate) fn process_watch_events(
             let ss = app.state::<SearchState>();
             let mut index = match ss.0.lock() {
                 Ok(i) => i,
-                Err(_) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Skipping file watcher indexing: search index lock poisoned"
+                    );
+                    continue;
+                }
             };
             let mut updated = 0;
             for path in &unique {

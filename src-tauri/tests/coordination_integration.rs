@@ -157,8 +157,8 @@ mod commands {
 #[path = "../src/coordination/mod.rs"]
 mod coordination;
 
-use commands::coordination::{AddAgentRequest, AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
+use coordination::requests::{AddAgentRequest, AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime};
 use coordination::state::CoordinationState;
 use coordination::stores::{MemberRuntimeStore, TeamConfigStore};
@@ -226,6 +226,41 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 capabilities: None,
             },
         ],
+    }
+}
+
+fn make_ipc_request(team_name: &str) -> commands::coordination::InitializeTeamRequest {
+    let request = make_request(team_name);
+    commands::coordination::InitializeTeamRequest {
+        team_name: request.team_name,
+        team_description: request.team_description,
+        lead_mode: request.lead_mode,
+        lead: commands::coordination::AgentSetupConfig {
+            name: request.lead.name,
+            cli_tool: request.lead.cli_tool,
+            model: request.lead.model,
+            project_id: request.lead.project_id,
+            description: request.lead.description,
+            role_id: request.lead.role_id,
+            instructions: request.lead.instructions,
+            behavioral_contract: request.lead.behavioral_contract,
+            capabilities: request.lead.capabilities,
+        },
+        agents: request
+            .agents
+            .into_iter()
+            .map(|agent| commands::coordination::AgentSetupConfig {
+                name: agent.name,
+                cli_tool: agent.cli_tool,
+                model: agent.model,
+                project_id: agent.project_id,
+                description: agent.description,
+                role_id: agent.role_id,
+                instructions: agent.instructions,
+                behavioral_contract: agent.behavioral_contract,
+                capabilities: agent.capabilities,
+            })
+            .collect(),
     }
 }
 
@@ -380,8 +415,9 @@ fn initialize_with_duplicate_team_name_fails_partially() {
 
 #[test]
 fn preflight_check_with_real_lookup_returns_stable_shape() {
-    let report = commands::coordination::coordination_preflight_check(make_request("preflight"))
-        .expect("preflight should succeed");
+    let report =
+        commands::coordination::coordination_preflight_check(make_ipc_request("preflight"))
+            .expect("preflight should succeed");
     assert_eq!(report.can_initialize, report.blocking_errors.is_empty());
     for err in &report.blocking_errors {
         assert!(!err.trim().is_empty());

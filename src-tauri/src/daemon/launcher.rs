@@ -534,6 +534,7 @@ fn try_connect(port: u16) -> Option<DaemonProvider> {
 mod tests {
     use super::*;
     use crate::daemon::server::DEFAULT_PORT;
+    use crate::provider::local::LocalProvider;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
@@ -574,7 +575,7 @@ mod tests {
             if startup_delay > Duration::ZERO {
                 std::thread::sleep(startup_delay);
             }
-            crate::daemon::server::run(&config, shutdown_clone)
+            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
         });
         TestDaemon {
             shutdown,

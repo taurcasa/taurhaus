@@ -8,8 +8,7 @@ use crate::git::{commits, status};
 use crate::models::{
     Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
 };
-
-use super::ProjectProvider;
+use crate::project_provider::ProjectProvider;
 
 /// Maximum binary asset size for README image rendering (5 MB).
 const MAX_ASSET_SIZE: u64 = 5 * 1024 * 1024;

@@ -7,13 +7,13 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
-use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
+use crate::daemon_api::protocol::{self, DaemonRequest, DaemonResponse};
 use crate::errors::AppError;
 use crate::models::{
     Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
 };
+use crate::project_provider::ProjectProvider;
 use crate::provider::path as wsl_path;
-use crate::provider::ProjectProvider;
 
 /// Timeout for requests that involve git operations (may be slow).
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -54,7 +54,7 @@ impl DaemonProvider {
     /// Read the daemon's auth token from the well-known file path.
     /// Falls back to reading via WSL on Windows.
     fn read_auth_token() -> Option<String> {
-        crate::daemon::auth::read_auth_token()
+        crate::daemon_api::read_auth_token()
     }
 
     fn connect_stream(addr: &str) -> Result<TcpStream, AppError> {
@@ -507,6 +507,7 @@ impl ProjectProvider for DaemonProvider {
 mod tests {
     use super::*;
     use crate::daemon::server::DaemonConfig;
+    use crate::provider::local::LocalProvider;
     use git2::{Repository, Signature};
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
@@ -537,8 +538,9 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle =
-            std::thread::spawn(move || crate::daemon::server::run(&config, shutdown_clone));
+        let handle = std::thread::spawn(move || {
+            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
+        });
         std::thread::sleep(Duration::from_millis(100));
         TestDaemon {
             port,

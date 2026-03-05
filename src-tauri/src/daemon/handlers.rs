@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use notify::RecommendedWatcher;
 
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
 use crate::daemon::watch::{handle_unwatch, handle_watch};
-use crate::provider::local::LocalProvider;
-use crate::provider::ProjectProvider;
+use crate::project_provider::ProjectProvider;
 use crate::task_scanner::claude_index::{
     build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
 };
@@ -20,16 +19,20 @@ struct ProjectTaskScanCache {
     claude_index: ClaudeSourceIndex,
 }
 
-static PROJECT_TASK_SCAN_CACHE: OnceLock<Mutex<Option<ProjectTaskScanCache>>> = OnceLock::new();
+#[derive(Debug, Default)]
+pub(crate) struct ProjectTaskScanCacheState {
+    cache: Mutex<Option<ProjectTaskScanCache>>,
+}
 
 /// Dispatch a request to the appropriate handler.
 pub(crate) fn dispatch(
     request: &DaemonRequest,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
     start_time: Instant,
     writer: &Arc<Mutex<TcpStream>>,
     active_watches: &mut HashMap<String, RecommendedWatcher>,
     git_debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+    project_task_scan_cache: &ProjectTaskScanCacheState,
 ) -> DaemonResponse {
     tracing::info!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
@@ -56,7 +59,7 @@ pub(crate) fn dispatch(
             handle_navigate_to_session(&request.id, &request.params)
         }
         protocol::method::GET_PROJECT_TASKS => {
-            handle_get_project_tasks(&request.id, &request.params)
+            handle_get_project_tasks(&request.id, &request.params, project_task_scan_cache)
         }
         protocol::method::GIT_COMMITS_IN_RANGE => {
             handle_git_commits_in_range(&request.id, &request.params, provider)
@@ -100,7 +103,7 @@ pub(crate) fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {
 pub(crate) fn handle_git_status(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -115,7 +118,7 @@ pub(crate) fn handle_git_status(
 pub(crate) fn handle_git_log(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::GitLogParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -130,7 +133,7 @@ pub(crate) fn handle_git_log(
 pub(crate) fn handle_git_latest_commit_time(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -150,7 +153,7 @@ pub(crate) fn handle_git_latest_commit_time(
 pub(crate) fn handle_git_commits_in_range(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::GitCommitsInRangeParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -178,7 +181,7 @@ pub(crate) fn handle_git_commits_in_range(
 pub(crate) fn handle_git_commit_files(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::GitCommitFilesParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -193,7 +196,7 @@ pub(crate) fn handle_git_commit_files(
 pub(crate) fn handle_git_commit_diff(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::GitCommitDiffParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -208,7 +211,7 @@ pub(crate) fn handle_git_commit_diff(
 pub(crate) fn handle_file_tree(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -223,7 +226,7 @@ pub(crate) fn handle_file_tree(
 pub(crate) fn handle_read_file(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::ReadFileParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -238,7 +241,7 @@ pub(crate) fn handle_read_file(
 pub(crate) fn handle_read_readme(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -253,7 +256,7 @@ pub(crate) fn handle_read_readme(
 pub(crate) fn handle_read_asset(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::ReadFileParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -271,7 +274,7 @@ pub(crate) fn handle_read_asset(
 pub(crate) fn handle_scan_sessions(
     id: &str,
     params: &serde_json::Value,
-    provider: &LocalProvider,
+    provider: &dyn ProjectProvider,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -369,7 +372,11 @@ pub(crate) fn handle_navigate_to_session(id: &str, params: &serde_json::Value) -
     }
 }
 
-pub(crate) fn handle_get_project_tasks(id: &str, params: &serde_json::Value) -> DaemonResponse {
+pub(crate) fn handle_get_project_tasks(
+    id: &str,
+    params: &serde_json::Value,
+    project_task_scan_cache: &ProjectTaskScanCacheState,
+) -> DaemonResponse {
     let params: protocol::ProjectTasksParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
         Err(_) => match serde_json::from_value::<protocol::PathParams>(params.clone()) {
@@ -381,7 +388,8 @@ pub(crate) fn handle_get_project_tasks(id: &str, params: &serde_json::Value) -> 
         },
     };
 
-    let (all_sessions, claude_index) = load_project_task_scan_inputs(params.scan_cycle_id);
+    let (all_sessions, claude_index) =
+        load_project_task_scan_inputs(params.scan_cycle_id, project_task_scan_cache);
     let project_sessions: Vec<crate::session_scanner::ClaudeSession> = all_sessions
         .into_iter()
         .filter(|s| s.project_path == params.path)
@@ -397,13 +405,16 @@ pub(crate) fn handle_get_project_tasks(id: &str, params: &serde_json::Value) -> 
 
 fn load_project_task_scan_inputs(
     cycle_id: Option<u64>,
+    project_task_scan_cache: &ProjectTaskScanCacheState,
 ) -> (
     Vec<crate::session_scanner::ClaudeSession>,
     ClaudeSourceIndex,
 ) {
     if let Some(cycle_id) = cycle_id {
-        let cache = PROJECT_TASK_SCAN_CACHE.get_or_init(|| Mutex::new(None));
-        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = project_task_scan_cache
+            .cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(ref cached) = *guard {
             if cached.cycle_id == cycle_id {
                 return (cached.sessions.clone(), cached.claude_index.clone());

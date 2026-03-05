@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub use crate::coordination::requests::{
+    AgentRole, LeadMode, ResumeContextMode, SessionStatus, StepProgress, StepStatus,
+};
 use crate::templates::types::BehavioralContract;
 
 /// Lightweight team list entry returned to the frontend.
@@ -36,46 +39,6 @@ pub struct DisbandTeamResponse {
     pub message: String,
 }
 
-/// Team-lead startup mode selected by the user.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-// Intentionally snake_case: persisted/requested by established mesh coordination IPC payloads.
-#[serde(rename_all = "snake_case")]
-pub enum LeadMode {
-    AttachExisting,
-    LaunchNew,
-}
-
-/// Role descriptor shown in the live team roster.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-// Intentionally snake_case: runtime mesh status payload contract consumed by existing frontend code.
-#[serde(rename_all = "snake_case")]
-pub enum AgentRole {
-    Lead,
-    Member,
-}
-
-/// Session runtime status for one roster member.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-// Intentionally snake_case: runtime mesh status payload contract consumed by existing frontend code.
-#[serde(rename_all = "snake_case")]
-pub enum SessionStatus {
-    Starting,
-    Active,
-    Idle,
-    Offline,
-}
-
-/// Step status used by initialize/hot-add progress models.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-// Intentionally snake_case: progress status values are part of the long-lived mesh event contract.
-#[serde(rename_all = "snake_case")]
-pub enum StepStatus {
-    Pending,
-    Running,
-    Succeeded,
-    Failed,
-}
-
 /// Agent setup card payload from the frontend setup form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,15 +65,6 @@ pub struct InitializeTeamRequest {
     pub agents: Vec<AgentSetupConfig>,
 }
 
-/// Per-step progress shape shared by reports and streamed events.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StepProgress {
-    pub step: String,
-    pub status: StepStatus,
-    pub message: Option<String>,
-}
-
 /// IPC response for initialize operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,15 +83,6 @@ pub struct InitializeReport {
 pub struct AddAgentRequest {
     pub team_name: String,
     pub agent: AgentSetupConfig,
-}
-
-/// Context mode for resume operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-// Intentionally snake_case: IPC request contract already published to clients.
-#[serde(rename_all = "snake_case")]
-pub enum ResumeContextMode {
-    Continue,
-    Fresh,
 }
 
 /// IPC request for resuming a team member session.

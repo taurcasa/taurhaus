@@ -18,8 +18,11 @@ use crate::coordination::backend::bridged::{
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::requests::{DeliveryRequest, DeliveryResult, OperatorNoticeDelivery};
+use crate::coordination::requests::{
+    self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
+};
 use crate::coordination::state::CoordinationState;
+use crate::errors::{CommandResultExt, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -47,7 +50,7 @@ pub fn coordination_initialize_team(
     db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: InitializeTeamRequest,
-) -> Result<InitializeReport, String> {
+) -> IpcResult<InitializeReport> {
     let request = normalize_initialize_request_paths(&db, request)?;
     let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
     coordination_initialize_team_with_emitter_and_layout(
@@ -59,6 +62,7 @@ pub fn coordination_initialize_team(
             let _ = app.emit("coordination-step-progress", event);
         },
     )
+    .ipc()
 }
 
 #[tauri::command]
@@ -67,7 +71,7 @@ pub fn coordination_add_agent(
     db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: AddAgentRequest,
-) -> Result<AddAgentReport, String> {
+) -> IpcResult<AddAgentReport> {
     let request = normalize_add_agent_request_path(&db, request)?;
     let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
     coordination_add_agent_with_emitter_and_layout(
@@ -79,6 +83,7 @@ pub fn coordination_add_agent(
             let _ = app.emit("coordination-step-progress", event);
         },
     )
+    .ipc()
 }
 
 #[tauri::command]
@@ -87,7 +92,7 @@ pub fn coordination_resume_member(
     db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: ResumeMemberRequest,
-) -> Result<ResumeAgentReport, String> {
+) -> IpcResult<ResumeAgentReport> {
     let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
     coordination_resume_member_with_emitter_and_layout(
         state.inner(),
@@ -98,38 +103,39 @@ pub fn coordination_resume_member(
             let _ = app.emit("coordination-step-progress", event);
         },
     )
+    .ipc()
 }
 
 #[tauri::command]
 pub fn coordination_reonboard(
     state: State<'_, CoordinationState>,
     request: ReonboardRequest,
-) -> Result<DeliveryResult, String> {
-    coordination_reonboard_impl(state.inner(), request)
+) -> IpcResult<DeliveryResult> {
+    coordination_reonboard_impl(state.inner(), request).ipc()
 }
 
 #[tauri::command]
 pub fn coordination_get_live_team_status(
     state: State<'_, CoordinationState>,
     team_name: String,
-) -> Result<LiveTeamStatus, String> {
-    coordination_get_live_team_status_impl(state.inner(), team_name)
+) -> IpcResult<LiveTeamStatus> {
+    coordination_get_live_team_status_impl(state.inner(), team_name).ipc()
 }
 
 #[tauri::command]
 pub fn coordination_create_team(
     state: State<'_, CoordinationState>,
     team_name: String,
-) -> Result<(), String> {
-    coordination_create_team_impl(state.inner(), team_name)
+) -> IpcResult<()> {
+    coordination_create_team_impl(state.inner(), team_name).ipc()
 }
 
 #[tauri::command]
 pub fn coordination_disband_team(
     state: State<'_, CoordinationState>,
     team_name: String,
-) -> Result<DisbandTeamResponse, String> {
-    coordination_disband_team_impl(state.inner(), team_name)
+) -> IpcResult<DisbandTeamResponse> {
+    coordination_disband_team_impl(state.inner(), team_name).ipc()
 }
 
 #[tauri::command]
@@ -138,8 +144,8 @@ pub fn coordination_add_member(
     team_name: String,
     member_name: String,
     backend_kind: String,
-) -> Result<(), String> {
-    coordination_add_member_impl(state.inner(), team_name, member_name, backend_kind)
+) -> IpcResult<()> {
+    coordination_add_member_impl(state.inner(), team_name, member_name, backend_kind).ipc()
 }
 
 #[tauri::command]
@@ -147,34 +153,32 @@ pub fn coordination_remove_member(
     state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
-) -> Result<RemoveAgentReport, String> {
-    coordination_remove_member_impl(state.inner(), team_name, member_name)
+) -> IpcResult<RemoveAgentReport> {
+    coordination_remove_member_impl(state.inner(), team_name, member_name).ipc()
 }
 
 #[tauri::command]
 pub fn coordination_list_teams(
     state: State<'_, CoordinationState>,
-) -> Result<TeamDiscoveryResponse, String> {
-    coordination_list_teams_impl(state.inner())
+) -> IpcResult<TeamDiscoveryResponse> {
+    coordination_list_teams_impl(state.inner()).ipc()
 }
 
 #[tauri::command]
 pub fn coordination_get_team_status(
     state: State<'_, CoordinationState>,
     team_name: String,
-) -> Result<TeamStatus, String> {
-    coordination_get_team_status_impl(state.inner(), team_name)
+) -> IpcResult<TeamStatus> {
+    coordination_get_team_status_impl(state.inner(), team_name).ipc()
 }
 
 #[tauri::command]
-pub fn coordination_preflight_check(
-    request: InitializeTeamRequest,
-) -> Result<PreflightReport, String> {
-    coordination_preflight_check_impl(request)
+pub fn coordination_preflight_check(request: InitializeTeamRequest) -> IpcResult<PreflightReport> {
+    coordination_preflight_check_impl(request).ipc()
 }
 
 #[tauri::command]
-pub fn coordination_get_feature_availability() -> Result<FeatureAvailabilityReport, String> {
+pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityReport> {
     Ok(coordination_get_feature_availability_impl())
 }
 
@@ -184,14 +188,16 @@ fn coordination_initialize_team_impl_with_cli_commands_and_layout(
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
 ) -> Result<InitializeReport, String> {
+    let contract_request = map_initialize_request_to_contract(&request);
     state
         .with_orchestrator(|orchestrator| {
             orchestrator.initialize_team_with_cli_commands_and_layout(
-                &request,
+                &contract_request,
                 cli_commands,
                 tmux_layout,
             )
         })
+        .map(map_initialize_report_from_contract)
         .map_err(map_coordination_error)
 }
 
@@ -269,14 +275,16 @@ fn coordination_add_agent_impl_with_cli_commands_and_layout(
     validate_non_empty("agent.name", &request.agent.name)?;
     validate_non_empty("agent.project_id", &request.agent.project_id)?;
     validate_non_empty("agent.cli_tool", &request.agent.cli_tool)?;
+    let contract_request = map_add_agent_request_to_contract(&request);
     state
         .with_orchestrator(|orchestrator| {
             orchestrator.add_agent_to_team_with_cli_commands_and_layout(
-                &request,
+                &contract_request,
                 cli_commands,
                 tmux_layout,
             )
         })
+        .map(map_add_agent_report_from_contract)
         .map_err(map_coordination_error)
 }
 
@@ -336,14 +344,16 @@ fn coordination_resume_member_impl_with_cli_commands_and_layout(
 ) -> Result<ResumeAgentReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("member_name", &request.member_name)?;
+    let contract_request = map_resume_member_request_to_contract(&request);
     state
         .with_orchestrator(|orchestrator| {
             orchestrator.resume_member_with_cli_commands_and_layout(
-                &request,
+                &contract_request,
                 cli_commands,
                 tmux_layout,
             )
         })
+        .map(map_resume_agent_report_from_contract)
         .map_err(map_coordination_error)
 }
 
@@ -736,14 +746,145 @@ fn normalize_add_agent_request_path(
     Ok(request)
 }
 
+fn map_lead_mode_to_contract(mode: LeadMode) -> contracts::LeadMode {
+    match mode {
+        LeadMode::AttachExisting => contracts::LeadMode::AttachExisting,
+        LeadMode::LaunchNew => contracts::LeadMode::LaunchNew,
+    }
+}
+
+fn map_step_status_from_contract(status: contracts::StepStatus) -> StepStatus {
+    match status {
+        contracts::StepStatus::Pending => StepStatus::Pending,
+        contracts::StepStatus::Running => StepStatus::Running,
+        contracts::StepStatus::Succeeded => StepStatus::Succeeded,
+        contracts::StepStatus::Failed => StepStatus::Failed,
+    }
+}
+
+fn map_resume_context_mode_to_contract(mode: ResumeContextMode) -> contracts::ResumeContextMode {
+    match mode {
+        ResumeContextMode::Continue => contracts::ResumeContextMode::Continue,
+        ResumeContextMode::Fresh => contracts::ResumeContextMode::Fresh,
+    }
+}
+
+fn map_agent_setup_to_contract(agent: &AgentSetupConfig) -> contracts::AgentSetupConfig {
+    contracts::AgentSetupConfig {
+        name: agent.name.clone(),
+        cli_tool: agent.cli_tool.clone(),
+        model: agent.model.clone(),
+        project_id: agent.project_id.clone(),
+        description: agent.description.clone(),
+        role_id: agent.role_id.clone(),
+        instructions: agent.instructions.clone(),
+        behavioral_contract: agent.behavioral_contract.clone(),
+        capabilities: agent.capabilities.clone(),
+    }
+}
+
+fn map_step_progress_from_contract(progress: contracts::StepProgress) -> StepProgress {
+    StepProgress {
+        step: progress.step,
+        status: map_step_status_from_contract(progress.status),
+        message: progress.message,
+    }
+}
+
+fn map_initialize_request_to_contract(
+    request: &InitializeTeamRequest,
+) -> contracts::InitializeTeamRequest {
+    contracts::InitializeTeamRequest {
+        team_name: request.team_name.clone(),
+        team_description: request.team_description.clone(),
+        lead_mode: map_lead_mode_to_contract(request.lead_mode),
+        lead: map_agent_setup_to_contract(&request.lead),
+        agents: request
+            .agents
+            .iter()
+            .map(map_agent_setup_to_contract)
+            .collect(),
+    }
+}
+
+fn map_add_agent_request_to_contract(request: &AddAgentRequest) -> contracts::AddAgentRequest {
+    contracts::AddAgentRequest {
+        team_name: request.team_name.clone(),
+        agent: map_agent_setup_to_contract(&request.agent),
+    }
+}
+
+fn map_resume_member_request_to_contract(
+    request: &ResumeMemberRequest,
+) -> contracts::ResumeMemberRequest {
+    contracts::ResumeMemberRequest {
+        team_name: request.team_name.clone(),
+        member_name: request.member_name.clone(),
+        context_mode: map_resume_context_mode_to_contract(request.context_mode),
+    }
+}
+
+fn map_initialize_report_from_contract(report: contracts::InitializeReport) -> InitializeReport {
+    InitializeReport {
+        team_name: report.team_name,
+        succeeded_steps: report.succeeded_steps,
+        failed_step: report.failed_step,
+        retryable: report.retryable,
+        message: report.message,
+        steps: report
+            .steps
+            .into_iter()
+            .map(map_step_progress_from_contract)
+            .collect(),
+    }
+}
+
+fn map_add_agent_report_from_contract(report: contracts::AddAgentReport) -> AddAgentReport {
+    AddAgentReport {
+        team_name: report.team_name,
+        member_name: report.member_name,
+        succeeded_steps: report.succeeded_steps,
+        failed_step: report.failed_step,
+        retryable: report.retryable,
+        message: report.message,
+        steps: report
+            .steps
+            .into_iter()
+            .map(map_step_progress_from_contract)
+            .collect(),
+    }
+}
+
+fn map_resume_agent_report_from_contract(
+    report: contracts::ResumeAgentReport,
+) -> ResumeAgentReport {
+    ResumeAgentReport {
+        team_name: report.team_name,
+        member_name: report.member_name,
+        resumed: report.resumed,
+        succeeded_steps: report.succeeded_steps,
+        failed_step: report.failed_step,
+        retryable: report.retryable,
+        message: report.message,
+        steps: report
+            .steps
+            .into_iter()
+            .map(map_step_progress_from_contract)
+            .collect(),
+        warnings: report.warnings,
+        pane_id: report.pane_id,
+        reused_pane: report.reused_pane,
+    }
+}
+
 #[cfg(not(test))]
 fn resolve_project_reference(db: &DbState, project_ref: &str) -> Result<String, String> {
     validate_non_empty("project_id", project_ref)?;
     let trimmed = project_ref.trim();
 
     let project_path = {
-        let conn = db.0.lock().map_err(|err| err.to_string())?;
-        match crate::db::queries::get_project(&conn, trimmed).map_err(|err| err.to_string())? {
+        let conn = db.0.lock().map_err(|err| format!("{err}"))?;
+        match crate::db::queries::get_project(&conn, trimmed).map_err(|err| format!("{err}"))? {
             Some(project) => project.path,
             None => trimmed.to_string(),
         }

@@ -138,13 +138,34 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
     let watcher_state = app.state::<WatcherState>();
     let event_tx = match watcher_state.0.lock() {
         Ok(w) => w.event_sender(),
-        Err(_) => return,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to respawn daemon watches: watcher lock poisoned"
+            );
+            return;
+        }
     };
 
     let db_state = app.state::<commands::projects::DbState>();
     let projects = match db_state.0.lock() {
-        Ok(conn) => db::queries::list_projects(&conn).unwrap_or_default(),
-        Err(_) => return,
+        Ok(conn) => match db::queries::list_projects(&conn) {
+            Ok(list) => list,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to respawn daemon watches: project list query failed"
+                );
+                return;
+            }
+        },
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to respawn daemon watches: db lock poisoned"
+            );
+            return;
+        }
     };
 
     tracing::info!(
@@ -161,9 +182,24 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
         let db_state = app.state::<commands::projects::DbState>();
         let conn = match db_state.0.lock() {
             Ok(c) => c,
-            Err(_) => return,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Skipping daemon reconnection session backfill: db lock poisoned"
+                );
+                return;
+            }
         };
-        let all_projects = db::queries::list_projects(&conn).unwrap_or_default();
+        let all_projects = match db::queries::list_projects(&conn) {
+            Ok(list) => list,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Skipping daemon reconnection session backfill: project list query failed"
+                );
+                return;
+            }
+        };
         for project in &all_projects {
             let root = if provider::path::is_wsl_path(&project.path) {
                 provider::path::wsl_unc_to_linux(&project.path).map(std::path::PathBuf::from)
@@ -180,7 +216,15 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
                             "Imported missed sessions after reconnection"
                         );
                     }
-                    _ => {}
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            project_id = project.id.as_str(),
+                            path = project.path.as_str(),
+                            error = %error,
+                            "Failed to backfill sessions after daemon reconnection"
+                        );
+                    }
                 }
             }
         }

@@ -92,22 +92,19 @@ pub fn session_exists_by_file_path(
 
 /// Map a row to SessionDetail, deserializing JSON arrays.
 fn row_to_session_detail(row: &rusqlite::Row<'_>) -> Result<SessionDetail, rusqlite::Error> {
+    let session_id: String = row.get(0)?;
     let next_steps_raw: Option<String> = row.get(4)?;
     let open_questions_raw: Option<String> = row.get(5)?;
     let metadata_raw: Option<String> = row.get(6)?;
 
-    let next_steps: Vec<String> = next_steps_raw
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-    let open_questions: Vec<String> = open_questions_raw
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-    let metadata: serde_json::Value = metadata_raw
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(serde_json::Value::Null);
+    let next_steps =
+        decode_session_string_list(next_steps_raw.as_deref(), "next_steps", &session_id);
+    let open_questions =
+        decode_session_string_list(open_questions_raw.as_deref(), "open_questions", &session_id);
+    let metadata = decode_session_metadata(metadata_raw.as_deref(), &session_id);
 
     Ok(SessionDetail {
-        id: row.get(0)?,
+        id: session_id,
         project_id: row.get(1)?,
         date: row.get(2)?,
         summary: row.get(3)?,
@@ -117,6 +114,42 @@ fn row_to_session_detail(row: &rusqlite::Row<'_>) -> Result<SessionDetail, rusql
         file_path: row.get(7)?,
         created_at: row.get(8)?,
     })
+}
+
+fn decode_session_string_list(raw: Option<&str>, field: &str, session_id: &str) -> Vec<String> {
+    match raw {
+        Some(json) => match serde_json::from_str(json) {
+            Ok(values) => values,
+            Err(error) => {
+                tracing::warn!(
+                    session_id,
+                    field,
+                    error = %error,
+                    "Failed to decode session JSON list field; using empty fallback"
+                );
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    }
+}
+
+fn decode_session_metadata(raw: Option<&str>, session_id: &str) -> serde_json::Value {
+    match raw {
+        Some(json) => match serde_json::from_str(json) {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::warn!(
+                    session_id,
+                    field = "metadata",
+                    error = %error,
+                    "Failed to decode session metadata JSON; using null fallback"
+                );
+                serde_json::Value::Null
+            }
+        },
+        None => serde_json::Value::Null,
+    }
 }
 
 #[cfg(test)]

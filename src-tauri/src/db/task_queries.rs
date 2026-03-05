@@ -24,6 +24,31 @@ pub struct PersistedTask {
     pub archived_reason: Option<String>,
 }
 
+fn decode_json_string_list(
+    raw: &str,
+    field: &str,
+    project_path: &str,
+    source: &str,
+    source_key: &str,
+    source_task_id: &str,
+) -> Vec<String> {
+    match serde_json::from_str(raw) {
+        Ok(values) => values,
+        Err(error) => {
+            tracing::warn!(
+                field,
+                project_path,
+                source,
+                source_key,
+                source_task_id,
+                error = %error,
+                "Failed to decode task JSON column; using empty list fallback"
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// Upsert a task — insert or update if the composite key already exists.
 ///
 /// Updates subject, description, active_form, status, blocks, blocked_by,
@@ -104,17 +129,35 @@ pub fn get_tasks_for_project(
         .query_map([project_path], |row| {
             let blocks_str: String = row.get(8)?;
             let blocked_by_str: String = row.get(9)?;
+            let project_path: String = row.get(0)?;
+            let source: String = row.get(1)?;
+            let source_key: String = row.get(2)?;
+            let source_task_id: String = row.get(3)?;
             Ok(PersistedTask {
-                project_path: row.get(0)?,
-                source: row.get(1)?,
-                source_key: row.get(2)?,
-                source_task_id: row.get(3)?,
+                project_path: project_path.clone(),
+                source: source.clone(),
+                source_key: source_key.clone(),
+                source_task_id: source_task_id.clone(),
                 subject: row.get(4)?,
                 description: row.get(5)?,
                 active_form: row.get(6)?,
                 status: row.get(7)?,
-                blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
-                blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+                blocks: decode_json_string_list(
+                    &blocks_str,
+                    "blocks",
+                    &project_path,
+                    &source,
+                    &source_key,
+                    &source_task_id,
+                ),
+                blocked_by: decode_json_string_list(
+                    &blocked_by_str,
+                    "blocked_by",
+                    &project_path,
+                    &source,
+                    &source_key,
+                    &source_task_id,
+                ),
                 owner: row.get(10)?,
                 session_id: row.get(11)?,
                 first_seen_at: row.get(12)?,
@@ -169,17 +212,35 @@ pub fn get_task_for_project_by_identity(
 
     let blocks_str: String = row.get(8)?;
     let blocked_by_str: String = row.get(9)?;
+    let project_path_value: String = row.get(0)?;
+    let source_value: String = row.get(1)?;
+    let source_key_value: String = row.get(2)?;
+    let source_task_id_value: String = row.get(3)?;
     Ok(Some(PersistedTask {
-        project_path: row.get(0)?,
-        source: row.get(1)?,
-        source_key: row.get(2)?,
-        source_task_id: row.get(3)?,
+        project_path: project_path_value.clone(),
+        source: source_value.clone(),
+        source_key: source_key_value.clone(),
+        source_task_id: source_task_id_value.clone(),
         subject: row.get(4)?,
         description: row.get(5)?,
         active_form: row.get(6)?,
         status: row.get(7)?,
-        blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
-        blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+        blocks: decode_json_string_list(
+            &blocks_str,
+            "blocks",
+            &project_path_value,
+            &source_value,
+            &source_key_value,
+            &source_task_id_value,
+        ),
+        blocked_by: decode_json_string_list(
+            &blocked_by_str,
+            "blocked_by",
+            &project_path_value,
+            &source_value,
+            &source_key_value,
+            &source_task_id_value,
+        ),
         owner: row.get(10)?,
         session_id: row.get(11)?,
         first_seen_at: row.get(12)?,
@@ -214,17 +275,35 @@ pub fn get_archived_task_for_project_by_identity(
 
     let blocks_str: String = row.get(8)?;
     let blocked_by_str: String = row.get(9)?;
+    let project_path_value: String = row.get(0)?;
+    let source_value: String = row.get(1)?;
+    let source_key_value: String = row.get(2)?;
+    let source_task_id_value: String = row.get(3)?;
     Ok(Some(PersistedTask {
-        project_path: row.get(0)?,
-        source: row.get(1)?,
-        source_key: row.get(2)?,
-        source_task_id: row.get(3)?,
+        project_path: project_path_value.clone(),
+        source: source_value.clone(),
+        source_key: source_key_value.clone(),
+        source_task_id: source_task_id_value.clone(),
         subject: row.get(4)?,
         description: row.get(5)?,
         active_form: row.get(6)?,
         status: row.get(7)?,
-        blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
-        blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+        blocks: decode_json_string_list(
+            &blocks_str,
+            "blocks",
+            &project_path_value,
+            &source_value,
+            &source_key_value,
+            &source_task_id_value,
+        ),
+        blocked_by: decode_json_string_list(
+            &blocked_by_str,
+            "blocked_by",
+            &project_path_value,
+            &source_value,
+            &source_key_value,
+            &source_task_id_value,
+        ),
         owner: row.get(10)?,
         session_id: row.get(11)?,
         first_seen_at: row.get(12)?,
@@ -317,17 +396,35 @@ pub fn get_archived_tasks_for_project(
         .query_map([project_path], |row| {
             let blocks_str: String = row.get(8)?;
             let blocked_by_str: String = row.get(9)?;
+            let project_path: String = row.get(0)?;
+            let source: String = row.get(1)?;
+            let source_key: String = row.get(2)?;
+            let source_task_id: String = row.get(3)?;
             Ok(PersistedTask {
-                project_path: row.get(0)?,
-                source: row.get(1)?,
-                source_key: row.get(2)?,
-                source_task_id: row.get(3)?,
+                project_path: project_path.clone(),
+                source: source.clone(),
+                source_key: source_key.clone(),
+                source_task_id: source_task_id.clone(),
                 subject: row.get(4)?,
                 description: row.get(5)?,
                 active_form: row.get(6)?,
                 status: row.get(7)?,
-                blocks: serde_json::from_str(&blocks_str).unwrap_or_default(),
-                blocked_by: serde_json::from_str(&blocked_by_str).unwrap_or_default(),
+                blocks: decode_json_string_list(
+                    &blocks_str,
+                    "blocks",
+                    &project_path,
+                    &source,
+                    &source_key,
+                    &source_task_id,
+                ),
+                blocked_by: decode_json_string_list(
+                    &blocked_by_str,
+                    "blocked_by",
+                    &project_path,
+                    &source,
+                    &source_key,
+                    &source_task_id,
+                ),
                 owner: row.get(10)?,
                 session_id: row.get(11)?,
                 first_seen_at: row.get(12)?,

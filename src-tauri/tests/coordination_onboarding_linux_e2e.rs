@@ -130,19 +130,12 @@ mod daemon {
     }
 }
 
-#[path = "../src/commands/coordination_types.rs"]
-pub mod commands_coordination_types;
-
-mod commands {
-    pub use crate::commands_coordination_types as coordination_types;
-}
-
 #[path = "../src/coordination/mod.rs"]
 mod coordination;
 
-use commands::coordination_types::{AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::backend::MeshBridgedBackend;
 use coordination::orchestrator::CoordinationOrchestrator;
+use coordination::requests::{AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::runtime::SystemCoordinationRuntime;
 use coordination::stores::MemberRuntimeStore;
 

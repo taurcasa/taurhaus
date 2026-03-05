@@ -100,9 +100,20 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
     let terminal_tmux_layout =
         get_setting(conn, KEY_TERMINAL_TMUX_LAYOUT)?.unwrap_or(defaults.terminal.tmux_layout);
 
-    let cli_commands: CliCommandSettings = get_setting(conn, KEY_CLI_COMMANDS)?
-        .and_then(|v| serde_json::from_str(&v).ok())
-        .unwrap_or_default();
+    let cli_commands: CliCommandSettings = match get_setting(conn, KEY_CLI_COMMANDS)? {
+        Some(raw) => match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                tracing::warn!(
+                    key = KEY_CLI_COMMANDS,
+                    error = %error,
+                    "Failed to decode settings JSON field; using default cli_commands"
+                );
+                defaults.terminal.cli_commands.clone()
+            }
+        },
+        None => defaults.terminal.cli_commands.clone(),
+    };
 
     let dark_mode = get_setting(conn, KEY_DARK_MODE)?
         .and_then(|v| v.parse().ok())

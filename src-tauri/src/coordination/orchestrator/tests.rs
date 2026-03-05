@@ -4,12 +4,12 @@ use std::sync::Arc;
 use tempfile::TempDir;
 
 use super::*;
-use crate::commands::coordination_types::{
-    AddAgentRequest, AgentSetupConfig, InitializeTeamRequest, LeadMode, StepStatus,
-};
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::MemberRole;
-use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+use crate::coordination::requests::{
+    AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
+    OperatorNoticeDelivery, StepStatus,
+};
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };

@@ -2,16 +2,14 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 
-use crate::commands::coordination_types::{
-    AddAgentReport, AddAgentRequest, AgentSetupConfig, InitializeReport, InitializeTeamRequest,
-    LeadMode, ResumeAgentReport, ResumeContextMode, ResumeMemberRequest, StepProgress, StepStatus,
-};
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    DeliveryRequest, OperatorNoticeDelivery, TeardownMode, TeardownRequest,
+    AddAgentReport, AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeReport,
+    InitializeTeamRequest, LeadMode, OperatorNoticeDelivery, ResumeAgentReport, ResumeContextMode,
+    ResumeMemberRequest, StepProgress, StepStatus, TeardownMode, TeardownRequest,
 };
 use crate::coordination::runtime::{resolve_or_create_pane_for_member, PaneResolution};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};

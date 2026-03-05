@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::commands;
 use crate::commands::projects::DbState;
 use crate::task_scanner::claude_index::{
     build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
@@ -322,13 +321,27 @@ fn sync_project_tasks_for_claude_changes(
     cycle_id: u64,
 ) -> bool {
     if changed_paths.is_empty() {
+        tracing::warn!(
+            cycle_id,
+            "Task sync trigger had no changed Claude task paths"
+        );
         return false;
     }
 
     let Some(source_keys) = collect_source_keys_from_paths(changed_paths) else {
+        tracing::warn!(
+            cycle_id,
+            changed_paths = changed_paths.len(),
+            "Task sync fallback to full scan: failed to derive source key from changed path set"
+        );
         return false;
     };
     if source_keys.is_empty() {
+        tracing::warn!(
+            cycle_id,
+            changed_paths = changed_paths.len(),
+            "Task sync fallback to full scan: changed paths resolved to empty source key set"
+        );
         return false;
     }
 
@@ -336,18 +349,45 @@ fn sync_project_tasks_for_claude_changes(
     let projects = {
         let conn = match db_state.0.lock() {
             Ok(c) => c,
-            Err(_) => return false,
+            Err(error) => {
+                tracing::warn!(
+                    cycle_id,
+                    error = %error,
+                    "Task sync fallback to full scan: db lock failed while loading projects"
+                );
+                return false;
+            }
         };
-        db::queries::list_projects(&conn).unwrap_or_default()
+        match db::queries::list_projects(&conn) {
+            Ok(list) => list,
+            Err(error) => {
+                tracing::warn!(
+                    cycle_id,
+                    error = %error,
+                    "Task sync fallback to full scan: project list query failed"
+                );
+                return false;
+            }
+        }
     };
 
     let context = build_task_scan_cycle_context(cycle_id);
     let Some(target_ids) =
         resolve_affected_project_ids(&projects, &source_keys, &context.claude_index)
     else {
+        tracing::warn!(
+            cycle_id,
+            source_keys = source_keys.len(),
+            "Task sync fallback to full scan: changed source keys did not map cleanly to projects"
+        );
         return false;
     };
     if target_ids.is_empty() {
+        tracing::warn!(
+            cycle_id,
+            source_keys = source_keys.len(),
+            "Task sync fallback to full scan: no affected projects resolved from source keys"
+        );
         return false;
     }
 
@@ -434,9 +474,26 @@ fn sync_all_project_tasks_with_cycle(app: &AppHandle, cycle_id: u64) {
     let projects = {
         let conn = match db_state.0.lock() {
             Ok(c) => c,
-            Err(_) => return,
+            Err(error) => {
+                tracing::warn!(
+                    cycle_id,
+                    error = %error,
+                    "Skipping full task sync cycle: db lock failed while loading projects"
+                );
+                return;
+            }
         };
-        db::queries::list_projects(&conn).unwrap_or_default()
+        match db::queries::list_projects(&conn) {
+            Ok(list) => list,
+            Err(error) => {
+                tracing::warn!(
+                    cycle_id,
+                    error = %error,
+                    "Skipping full task sync cycle: project list query failed"
+                );
+                return;
+            }
+        }
     };
 
     let context = build_task_scan_cycle_context(cycle_id);
@@ -451,6 +508,7 @@ fn sync_project_tasks_for_projects(
 ) {
     let db_state = app.state::<DbState>();
     let provider_state = app.state::<ProviderState>();
+    let generation_state = app.state::<services::task_sync::TaskScanGenerationState>();
 
     let mut total_tasks = 0;
     for project in projects {
@@ -461,7 +519,7 @@ fn sync_project_tasks_for_projects(
         }
 
         // Scan tasks from files (daemon or local)
-        let scan_result = commands::tasks::scan_tasks_from_files(
+        let scan_result = services::task_sync::scan_tasks_from_files(
             &provider_state,
             &project.path,
             Some(context.cycle_id),
@@ -482,10 +540,11 @@ fn sync_project_tasks_for_projects(
                 }
             };
             let before = load_active_task_signature(&conn, &normalized_path);
-            commands::tasks::persist_task_scan_with_generation(
+            services::task_sync::persist_task_scan_with_generation(
                 &conn,
                 &normalized_path,
                 &scan_result,
+                generation_state.inner(),
                 context.cycle_id,
             );
             let after = load_active_task_signature(&conn, &normalized_path);
@@ -517,8 +576,17 @@ fn load_active_task_signature(
     conn: &rusqlite::Connection,
     normalized_path: &str,
 ) -> Option<TaskStatusSignature> {
-    let tasks = crate::db::task_queries::get_tasks_for_project(conn, normalized_path).ok()?;
-    Some(task_status_signature(&tasks))
+    match crate::db::task_queries::get_tasks_for_project(conn, normalized_path) {
+        Ok(tasks) => Some(task_status_signature(&tasks)),
+        Err(error) => {
+            tracing::warn!(
+                normalized_path,
+                error = %error,
+                "Failed to load active task signature for project"
+            );
+            None
+        }
+    }
 }
 
 fn task_status_signature(tasks: &[crate::db::task_queries::PersistedTask]) -> TaskStatusSignature {

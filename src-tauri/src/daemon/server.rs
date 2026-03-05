@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use notify::RecommendedWatcher;
 
 use crate::daemon::protocol::{self, DaemonEvent, DaemonRequest, DaemonResponse};
-use crate::provider::local::LocalProvider;
+use crate::project_provider::ProjectProvider;
 
 /// Default port for the daemon.
 pub const DEFAULT_PORT: u16 = 17233;
@@ -18,6 +18,7 @@ pub const DEFAULT_PORT: u16 = 17233;
 /// Normal requests are typically < 10 KB. This limit prevents unbounded
 /// memory allocation from malicious or misbehaving clients.
 const MAX_REQUEST_LINE_LEN: usize = 1_048_576;
+static DROPPED_PUSH_EVENT_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Configuration for the daemon server.
 pub struct DaemonConfig {
@@ -55,7 +56,11 @@ fn configure_accepted_stream(stream: &TcpStream) -> std::io::Result<()> {
 }
 
 /// Run the daemon server. Blocks until `shutdown` is set to true or idle timeout elapses.
-pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
+pub fn run(
+    config: &DaemonConfig,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+) -> std::io::Result<()> {
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
     // it there can permit duplicate listeners on the same port.
@@ -96,6 +101,7 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
                 let start = start_time;
                 let activity = last_activity.clone();
                 let token = auth_token.clone();
+                let provider = provider.clone();
                 std::thread::spawn(move || {
                     if let Err(e) = handle_connection(
                         stream,
@@ -103,6 +109,7 @@ pub fn run(config: &DaemonConfig, shutdown: Arc<AtomicBool>) -> std::io::Result<
                         &shutdown_clone,
                         &activity,
                         token.as_deref(),
+                        provider,
                     ) {
                         tracing::warn!(error = %e, "connection handler error");
                     }
@@ -228,13 +235,14 @@ fn handle_connection(
     shutdown: &AtomicBool,
     last_activity: &AtomicU64,
     auth_token: Option<&str>,
+    provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(1)))?;
 
     let mut reader = BufReader::new(stream.try_clone()?);
     let writer = Arc::new(Mutex::new(stream));
-    let provider = LocalProvider;
+    let project_task_scan_cache = crate::daemon::handlers::ProjectTaskScanCacheState::default();
     let mut active_watches: HashMap<String, RecommendedWatcher> = HashMap::new();
     let git_debounce: Arc<Mutex<HashMap<String, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
 
@@ -290,11 +298,12 @@ fn handle_connection(
 
         let response = crate::daemon::handlers::dispatch(
             &request,
-            &provider,
+            provider.as_ref(),
             start_time,
             &writer,
             &mut active_watches,
             &git_debounce,
+            &project_task_scan_cache,
         );
 
         write_locked(&writer, &response)?;
@@ -333,30 +342,45 @@ fn write_response(writer: &mut TcpStream, response: &DaemonResponse) -> std::io:
 
 /// Push a DaemonEvent to a client through a shared writer.
 ///
-/// Silently drops the event if the writer lock is poisoned or the write fails
-/// (the connection will be cleaned up by the handler thread).
 pub(crate) fn push_event(writer: &Arc<Mutex<TcpStream>>, event: &DaemonEvent) {
     match serde_json::to_string(event) {
-        Ok(json) => {
-            if let Ok(mut w) = writer.lock() {
-                let _ = w.write_all(json.as_bytes());
-                let _ = w.write_all(b"\n");
-                let _ = w.flush();
+        Ok(json) => match writer.lock() {
+            Ok(mut w) => {
+                if let Err(error) = w.write_all(json.as_bytes()) {
+                    log_dropped_push_event(event, "write", Some(&error.to_string()));
+                    return;
+                }
+                if let Err(error) = w.write_all(b"\n") {
+                    log_dropped_push_event(event, "newline", Some(&error.to_string()));
+                    return;
+                }
+                if let Err(error) = w.flush() {
+                    log_dropped_push_event(event, "flush", Some(&error.to_string()));
+                }
             }
-        }
-        Err(err) => {
-            tracing::debug!(
-                event = %event.event,
-                error = %err,
-                "failed to serialize daemon push event"
-            );
-        }
+            Err(_) => {
+                log_dropped_push_event(event, "writer_lock_poisoned", None);
+            }
+        },
+        Err(error) => log_dropped_push_event(event, "serialize", Some(&error.to_string())),
     }
+}
+
+fn log_dropped_push_event(event: &DaemonEvent, stage: &str, error: Option<&str>) {
+    let dropped_count = DROPPED_PUSH_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    tracing::warn!(
+        event = %event.event,
+        stage,
+        dropped_count,
+        error = error.unwrap_or("n/a"),
+        "dropping daemon push event"
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::local::LocalProvider;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
 
@@ -381,7 +405,8 @@ mod tests {
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || run(&config, shutdown_clone));
+        let handle =
+            std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
         let server = TestServer {
             port,
             shutdown,
@@ -694,7 +719,8 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || run(&config, shutdown_clone));
+        let handle =
+            std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
 
         // Wait for the server to start, then let it idle for >1s
         std::thread::sleep(std::time::Duration::from_millis(100));

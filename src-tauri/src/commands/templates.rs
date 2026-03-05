@@ -383,6 +383,7 @@ pub fn templates_apply_composition(
         coordination_state,
         request.initialize_request,
     )
+    .map_err(|err| err.message)
 }
 
 #[tauri::command]

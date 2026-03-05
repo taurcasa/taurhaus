@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::{HealthState, Member};
 use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::types::BehavioralContract;
 
 /// Launch-time policy controls for a member session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,10 +185,18 @@ pub struct StepProgress {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentDefinition {
     pub name: String,
-    pub cli_tool: CliTool,
+    pub cli_tool: String,
     pub model: String,
     pub project_id: String,
     pub description: Option<String>,
+    #[serde(default)]
+    pub role_id: Option<String>,
+    #[serde(default)]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub behavioral_contract: Option<BehavioralContract>,
+    #[serde(default)]
+    pub capabilities: Option<Vec<String>>,
 }
 
 /// Domain contract for full team initialization.
@@ -229,6 +238,45 @@ pub struct AddAgentResult {
     pub message: String,
     pub steps: Vec<StepProgress>,
 }
+
+/// Context mode for resume operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResumeContextMode {
+    Continue,
+    Fresh,
+}
+
+/// Request contract for resuming a team member session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeMemberRequest {
+    pub team_name: String,
+    pub member_name: String,
+    pub context_mode: ResumeContextMode,
+}
+
+/// Result contract for resuming an agent in a running team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeAgentReport {
+    pub team_name: String,
+    pub member_name: String,
+    pub resumed: bool,
+    pub succeeded_steps: Vec<String>,
+    pub failed_step: Option<String>,
+    pub retryable: bool,
+    pub message: String,
+    pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
+    pub pane_id: Option<String>,
+    pub reused_pane: bool,
+}
+
+pub type AgentSetupConfig = AgentDefinition;
+pub type InitializeTeamRequest = InitializeTeam;
+pub type AddAgentRequest = AddAgent;
+pub type InitializeReport = InitializeResult;
+pub type AddAgentReport = AddAgentResult;
+pub type LiveAgentStatus = LiveAgent;
 
 /// Live roster row rendered by the frontend mesh view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,17 +362,25 @@ mod tests {
             lead_mode: LeadMode::AttachExisting,
             lead: AgentDefinition {
                 name: "team-lead".to_string(),
-                cli_tool: CliTool::Claude,
+                cli_tool: "claude".to_string(),
                 model: "opus".to_string(),
                 project_id: "proj-core".to_string(),
                 description: Some("Lead".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
             agents: vec![AgentDefinition {
                 name: "frontend-dev".to_string(),
-                cli_tool: CliTool::Codex,
+                cli_tool: "codex".to_string(),
                 model: "gpt-5.3".to_string(),
                 project_id: "proj-web".to_string(),
                 description: None,
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             }],
         };
 
@@ -340,10 +396,14 @@ mod tests {
             team_name: "architecture-final".to_string(),
             agent: AgentDefinition {
                 name: "backend-dev".to_string(),
-                cli_tool: CliTool::Codex,
+                cli_tool: "codex".to_string(),
                 model: "gpt-5.3".to_string(),
                 project_id: "proj-api".to_string(),
                 description: Some("Own API work".to_string()),
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
             },
         };
 
