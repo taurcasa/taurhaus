@@ -67,11 +67,11 @@ pub(super) fn seed_valid_catalog(builtins_dir: &Path) {
 }
 
 pub(super) fn parse_role(yaml: &str) -> RoleTemplate {
-    serde_yaml::from_str::<RoleTemplate>(yaml).expect("parse role yaml")
+    serde_yml::from_str::<RoleTemplate>(yaml).expect("parse role yaml")
 }
 
 pub(super) fn parse_preset(yaml: &str) -> TeamPreset {
-    serde_yaml::from_str::<TeamPreset>(yaml).expect("parse preset yaml")
+    serde_yml::from_str::<TeamPreset>(yaml).expect("parse preset yaml")
 }
 
 pub(super) fn age_pending_actions(store: &TemplateStore, seconds: i64) {

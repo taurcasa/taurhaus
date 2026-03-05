@@ -56,7 +56,7 @@ struct RawFrontmatter {
 pub fn parse_handoff(content: &str) -> Result<ParsedSession, AppError> {
     let (frontmatter_str, body) = extract_frontmatter(content)?;
 
-    let raw: RawFrontmatter = serde_yaml::from_str(&frontmatter_str)
+    let raw: RawFrontmatter = serde_yml::from_str(&frontmatter_str)
         .map_err(|e| AppError::ParseError(format!("Invalid YAML frontmatter: {e}")))?;
 
     Ok(ParsedSession {

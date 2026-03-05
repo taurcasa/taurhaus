@@ -462,7 +462,7 @@ mod tests {
             .into_iter()
             .map(|path| {
                 let raw = fs::read_to_string(&path).expect("read role template");
-                serde_yaml::from_str::<RoleTemplate>(&raw).expect("parse role template")
+                serde_yml::from_str::<RoleTemplate>(&raw).expect("parse role template")
             })
             .collect()
     }
@@ -470,7 +470,7 @@ mod tests {
     fn load_preset(id: &str) -> TeamPreset {
         let path = templates_dir().join("presets").join(format!("{id}.yaml"));
         let raw = fs::read_to_string(path).expect("read preset template");
-        serde_yaml::from_str::<TeamPreset>(&raw).expect("parse preset template")
+        serde_yml::from_str::<TeamPreset>(&raw).expect("parse preset template")
     }
 
     #[test]

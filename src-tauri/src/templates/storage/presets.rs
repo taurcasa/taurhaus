@@ -104,7 +104,7 @@ impl TemplateStore {
         }
 
         let relative_path = self.preset_file_path(&template.preset_id);
-        let payload = serde_yaml::to_string(template).map_err(|err| {
+        let payload = serde_yml::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to serialize preset '{}': {err}",
                 template.preset_id
@@ -153,7 +153,7 @@ impl TemplateStore {
 
         // Updating built-ins creates/updates user override.
         let relative_path = self.preset_file_path(preset_id);
-        let payload = serde_yaml::to_string(template).map_err(|err| {
+        let payload = serde_yml::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize preset '{preset_id}': {err}"))
         })?;
         let commit_id = self.mutate_and_commit(
@@ -206,7 +206,7 @@ impl TemplateStore {
         external_path: &Path,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
-        let template = serde_yaml::from_str::<TeamPreset>(&raw).map_err(|err| {
+        let template = serde_yml::from_str::<TeamPreset>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to parse external preset {}: {err}",
                 external_path.display()

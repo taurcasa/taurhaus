@@ -40,10 +40,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 git2 = { version = "0.19", features = ["vendored-openssl"] }
 ignore = "0.4"
 
-serde_yaml = "0.9"
+serde_yml = "0.0.12"
 
 notify = "7"
-notify-debouncer-full = "0.4"
 
 tantivy = "0.22"
 toml = "1.0.2"
