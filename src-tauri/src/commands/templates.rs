@@ -11,8 +11,8 @@ use crate::git::commits::{get_commit_diff, get_commit_files};
 use crate::models::DiffHunk;
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
-    PendingAction, TeamPresetRecord, TemplateFileMutation, TemplateSource, TemplateStore,
-    TemplateStoreError,
+    PendingAction, RoleTemplateRecord, TeamPresetRecord, TemplateFileMutation, TemplateSource,
+    TemplateStore, TemplateStoreError,
 };
 use crate::templates::types::{
     AgentSlot, ProjectBinding, RoleKind, RoleTemplate, SlotOverrides, TeamPreset,
@@ -62,6 +62,24 @@ pub struct TeamPresetSummary {
     pub name: String,
     pub description: String,
     pub version: String,
+    pub source: TemplateSource,
+    pub read_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleTemplateFull {
+    #[serde(flatten)]
+    pub template: RoleTemplate,
+    pub source: TemplateSource,
+    pub read_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamPresetFull {
+    #[serde(flatten)]
+    pub template: TeamPreset,
     pub source: TemplateSource,
     pub read_only: bool,
 }
@@ -202,19 +220,18 @@ pub fn templates_list_roles(
     let store = &state.0;
     store
         .list_roles()
-        .map(|roles| {
-            roles
-                .into_iter()
-                .map(|record| RoleTemplateSummary {
-                    role_id: record.template.role_id,
-                    name: record.template.name,
-                    version: record.template.version,
-                    kind: record.template.kind,
-                    source: record.source,
-                    read_only: record.read_only,
-                })
-                .collect()
-        })
+        .map(|roles| roles.into_iter().map(map_role_summary).collect())
+        .map_err(map_template_error)
+}
+
+#[tauri::command]
+pub fn templates_list_roles_full(
+    state: State<'_, TemplateStoreState>,
+) -> Result<Vec<RoleTemplateFull>, String> {
+    let store = &state.0;
+    store
+        .list_roles()
+        .map(|roles| roles.into_iter().map(map_role_full).collect())
         .map_err(map_template_error)
 }
 
@@ -269,6 +286,17 @@ pub fn templates_list_presets(
     store
         .list_presets()
         .map(|presets| presets.into_iter().map(map_preset_summary).collect())
+        .map_err(map_template_error)
+}
+
+#[tauri::command]
+pub fn templates_list_presets_full(
+    state: State<'_, TemplateStoreState>,
+) -> Result<Vec<TeamPresetFull>, String> {
+    let store = &state.0;
+    store
+        .list_presets()
+        .map(|presets| presets.into_iter().map(map_preset_full).collect())
         .map_err(map_template_error)
 }
 
@@ -662,6 +690,33 @@ fn map_preset_summary(record: TeamPresetRecord) -> TeamPresetSummary {
         name: record.template.name,
         description: record.template.description,
         version: record.template.version,
+        source: record.source,
+        read_only: record.read_only,
+    }
+}
+
+fn map_role_summary(record: RoleTemplateRecord) -> RoleTemplateSummary {
+    RoleTemplateSummary {
+        role_id: record.template.role_id,
+        name: record.template.name,
+        version: record.template.version,
+        kind: record.template.kind,
+        source: record.source,
+        read_only: record.read_only,
+    }
+}
+
+fn map_role_full(record: RoleTemplateRecord) -> RoleTemplateFull {
+    RoleTemplateFull {
+        template: record.template,
+        source: record.source,
+        read_only: record.read_only,
+    }
+}
+
+fn map_preset_full(record: TeamPresetRecord) -> TeamPresetFull {
+    TeamPresetFull {
+        template: record.template,
         source: record.source,
         read_only: record.read_only,
     }

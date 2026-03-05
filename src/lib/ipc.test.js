@@ -923,34 +923,26 @@ describe('ipc module', () => {
   describe('listRoleTemplates()', () => {
     it('maps role defaults.cli_tool/defaults.model into top-level fields in Tauri mode', async () => {
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke
-        .mockResolvedValueOnce([
-          {
-            roleId: 'codex-developer',
-            name: 'Codex Developer',
-            version: '1.0.0',
-            kind: 'agent',
-            source: 'built_in',
-            readOnly: true,
-          },
-        ])
-        .mockResolvedValueOnce({
+      tauriCore.invoke.mockResolvedValueOnce([
+        {
           roleId: 'codex-developer',
           name: 'Codex Developer',
+          version: '1.0.0',
           kind: 'agent',
+          source: 'built_in',
+          readOnly: true,
           defaults: {
             cliTool: 'codex',
             model: 'gpt-5.3-codex',
           },
           capabilities: ['implementation'],
-        })
+        },
+      ])
 
       const result = await ipc.listRoleTemplates()
 
-      expect(tauriCore.invoke).toHaveBeenNthCalledWith(1, 'templates_list_roles')
-      expect(tauriCore.invoke).toHaveBeenNthCalledWith(2, 'templates_get_role', {
-        roleId: 'codex-developer',
-      })
+      expect(tauriCore.invoke).toHaveBeenCalledTimes(1)
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_list_roles_full')
       expect(result).toEqual([
         expect.objectContaining({
           roleId: 'codex-developer',
@@ -968,30 +960,21 @@ describe('ipc module', () => {
   describe('listTeamPresets()', () => {
     it('normalizes aliased preset fields in Tauri mode', async () => {
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke
-        .mockResolvedValueOnce([
-          {
-            presetId: 'review-team',
-            name: 'Review Team',
-            leadRoleId: 'claude-reviewer',
-            source: 'built_in',
-            readOnly: true,
-          },
-        ])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce({
+      tauriCore.invoke.mockResolvedValueOnce([
+        {
           presetId: 'review-team',
+          name: 'Review Team',
           leadRoleId: 'claude-reviewer',
+          source: 'built_in',
+          readOnly: true,
           agentSlots: [{ roleId: 'codex-developer', count: 2 }],
-        })
+        },
+      ])
 
       const result = await ipc.listTeamPresets()
 
-      expect(tauriCore.invoke).toHaveBeenNthCalledWith(1, 'templates_list_presets')
-      expect(tauriCore.invoke).toHaveBeenNthCalledWith(2, 'templates_list_roles')
-      expect(tauriCore.invoke).toHaveBeenNthCalledWith(3, 'templates_get_preset', {
-        presetId: 'review-team',
-      })
+      expect(tauriCore.invoke).toHaveBeenCalledTimes(1)
+      expect(tauriCore.invoke).toHaveBeenCalledWith('templates_list_presets_full')
       expect(result).toEqual([
         expect.objectContaining({
           presetId: 'review-team',

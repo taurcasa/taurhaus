@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 vi.mock('./markdown.js', () => ({
   renderMarkdown: vi.fn(),
 }))
@@ -142,6 +152,31 @@ describe('MarkdownRenderer mermaid rendering', () => {
       expect(view.container.querySelector('[data-testid="markdown-content"]')).toHaveClass('th-prose-dark')
     })
     expect(mockMermaidRender).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores stale markdown render results from older requests', async () => {
+    const slow = createDeferred()
+    const fast = createDeferred()
+    renderMarkdown.mockImplementation((source) => {
+      if (source === 'old') return slow.promise
+      if (source === 'new') return fast.promise
+      return Promise.resolve('<p>default</p>')
+    })
+
+    const view = render(MarkdownRenderer, {
+      props: { source: 'old' },
+    })
+    await view.rerender({ source: 'new' })
+
+    fast.resolve('<p>new</p>')
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-testid="markdown-content"]')).toHaveTextContent('new')
+    })
+
+    slow.resolve('<p>old</p>')
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-testid="markdown-content"]')).toHaveTextContent('new')
+    })
   })
 })
 

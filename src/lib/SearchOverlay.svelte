@@ -10,6 +10,7 @@
   let debounceTimer = $state(null)
   let inputEl = $state(null)
   let selectedIndex = $state(-1)
+  let searchRequestId = 0
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -62,6 +63,11 @@
       requestAnimationFrame(() => inputEl?.focus())
     }
     if (!open) {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+        debounceTimer = null
+      }
+      searchRequestId += 1
       query = ''
       results = []
       loading = false
@@ -70,12 +76,19 @@
   })
 
   function handleInput(e) {
-    query = e.target.value
+    const nextQuery = e.target.value
+    query = nextQuery
     selectedIndex = -1
 
-    if (debounceTimer) clearTimeout(debounceTimer)
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
 
-    if (!query.trim()) {
+    searchRequestId += 1
+    const requestId = searchRequestId
+
+    if (!nextQuery.trim()) {
       results = []
       loading = false
       return
@@ -83,11 +96,16 @@
 
     loading = true
     debounceTimer = setTimeout(async () => {
+      debounceTimer = null
       try {
-        results = await search(query, 20)
+        const nextResults = await search(nextQuery, 20)
+        if (requestId !== searchRequestId) return
+        results = nextResults
       } catch {
+        if (requestId !== searchRequestId) return
         results = []
       } finally {
+        if (requestId !== searchRequestId) return
         loading = false
       }
     }, 150)

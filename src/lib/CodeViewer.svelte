@@ -6,6 +6,7 @@
   let highlightedHtml = $state('')
   let ready = $state(false)
   let markdownModulePromise = null
+  let highlightRequestId = 0
 
   async function getMarkdownModule() {
     if (!markdownModulePromise) {
@@ -25,19 +26,28 @@
     const src = code
     const lang = language
     const theme = codeTheme
+    const requestId = ++highlightRequestId
+    let cancelled = false
     if (!src) { highlightedHtml = ''; ready = true; return }
 
+    ready = false
     getMarkdownModule()
       .then(({ highlightCode }) => highlightCode(src, lang || 'text', theme))
       .then(html => {
+        if (cancelled || requestId !== highlightRequestId) return
         highlightedHtml = html
         ready = true
       }).catch((err) => {
+        if (cancelled || requestId !== highlightRequestId) return
         // Shiki failed (e.g., WASM blocked by CSP) — show plain text fallback
         highlightedHtml = ''
         ready = true
         console.error(`[code] Shiki failed for "${lang}": ${err}`)
       })
+
+    return () => {
+      cancelled = true
+    }
   })
 
   // Split code into lines for fallback display

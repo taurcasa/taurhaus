@@ -806,51 +806,24 @@ function teamPresetSummary(preset) {
 export async function listRoleTemplates() {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')
-    const summaries = await invoke('templates_list_roles')
-    const enriched = await Promise.all(
-      (summaries ?? []).map(async (summary) => {
-        const roleId = summary?.roleId
-        if (!roleId) return summary
-        try {
-          const detail = await invoke('templates_get_role', { roleId })
-          const resolvedRoleId = detail?.roleId ?? roleId
-          const resolvedCliTool =
-            detail?.cliTool ??
-            detail?.defaults?.cliTool ??
-            summary?.cliTool ??
-            null
-          const resolvedModel =
-            detail?.model ??
-            detail?.defaults?.model ??
-            summary?.model ??
-            null
-          const resolvedCapabilities =
-            Array.isArray(detail?.capabilities)
-              ? detail.capabilities
-              : Array.isArray(summary?.capabilities)
-                ? summary.capabilities
-                : []
-          return {
-            ...summary,
-            ...detail,
-            roleId: resolvedRoleId,
-            cliTool: resolvedCliTool,
-            model: resolvedModel,
-            capabilities: resolvedCapabilities,
-            builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
-            readOnly: Boolean(summary?.readOnly),
-          }
-        } catch {
-          return {
-            ...summary,
-            roleId,
-            builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
-            readOnly: Boolean(summary?.readOnly),
-          }
-        }
-      })
-    )
-    return enriched
+    const templates = await invoke('templates_list_roles_full')
+    return (templates ?? []).map((template) => ({
+      ...template,
+      roleId: template?.roleId ?? template?.role_id ?? '',
+      cliTool:
+        template?.cliTool ??
+        template?.cli_tool ??
+        template?.defaults?.cliTool ??
+        template?.defaults?.cli_tool ??
+        null,
+      model:
+        template?.model ??
+        template?.defaults?.model ??
+        null,
+      capabilities: Array.isArray(template?.capabilities) ? template.capabilities : [],
+      builtIn: String(template?.source ?? '').toLowerCase() === 'built_in',
+      readOnly: Boolean(template?.readOnly ?? template?.read_only),
+    }))
   }
   return MOCK_ROLE_TEMPLATES.map(roleTemplateSummary)
 }
@@ -1031,53 +1004,24 @@ export function deleteRoleTemplate(roleId) {
 export async function listTeamPresets() {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')
-    const [summaries, roles] = await Promise.all([
-      invoke('templates_list_presets'),
-      listRoleTemplates(),
-    ])
-    const roleMap = new Map(
-      (roles ?? [])
-        .map((role) => [role?.roleId, role])
-        .filter(([roleId]) => Boolean(roleId))
-    )
+    const presets = await invoke('templates_list_presets_full')
+    return (presets ?? []).map((preset) => {
+      const leadRoleId = preset?.leadRoleId ?? preset?.lead_role_id ?? ''
+      const agentSlots = Array.isArray(preset?.agentSlots ?? preset?.agent_slots)
+        ? (preset?.agentSlots ?? preset?.agent_slots)
+        : []
 
-    const enriched = await Promise.all(
-      (summaries ?? []).map(async (summary) => {
-        const presetId = summary?.presetId
-        if (!presetId) return summary
-        let detail = null
-        try {
-          detail = await invoke('templates_get_preset', { presetId })
-        } catch {}
-
-        const leadRoleId =
-          detail?.leadRoleId ??
-          summary?.leadRoleId ??
-          ''
-        const agentSlots = detail?.agentSlots ?? []
-        const referencedRoleIds = [
-          leadRoleId,
-          ...agentSlots.map((slot) => slot?.roleId),
-        ].filter(Boolean)
-        const referencedRoles = referencedRoleIds.map((roleId) => roleMap.get(roleId)).filter(Boolean)
-        const tools = [...new Set(referencedRoles.map((role) => role?.cliTool).filter(Boolean))]
-        const capabilities = [...new Set(referencedRoles.flatMap((role) => role?.capabilities ?? []))]
-
-        return {
-          ...summary,
-          ...detail,
-          presetId,
-          leadRoleId,
-          roleCount: agentSlots.length,
-          agentCount: agentSlots.reduce((total, slot) => total + (slot?.count ?? 0), 0),
-          tools,
-          capabilities,
-          builtIn: String(summary?.source ?? '').toLowerCase() === 'built_in',
-          readOnly: Boolean(summary?.readOnly),
-        }
-      })
-    )
-    return enriched
+      return {
+        ...preset,
+        leadRoleId,
+        roleCount: agentSlots.length,
+        agentCount: agentSlots.reduce((total, slot) => total + (slot?.count ?? 0), 0),
+        tools: Array.isArray(preset?.tools) ? preset.tools : [],
+        capabilities: Array.isArray(preset?.capabilities) ? preset.capabilities : [],
+        builtIn: String(preset?.source ?? '').toLowerCase() === 'built_in',
+        readOnly: Boolean(preset?.readOnly ?? preset?.read_only),
+      }
+    })
   }
   return MOCK_TEAM_PRESETS.map(teamPresetSummary)
 }

@@ -18,6 +18,7 @@
   let container = $state(null)
   let mermaidRenderCounter = 0
   let markdownModulePromise = null
+  let renderRequestId = 0
 
   async function getMarkdownModule() {
     if (!markdownModulePromise) {
@@ -32,17 +33,25 @@
   $effect(() => {
     const src = source
     const theme = codeTheme
+    const requestId = ++renderRequestId
+    let cancelled = false
     loading = true
     getMarkdownModule()
       .then(({ renderMarkdown }) => renderMarkdown(src, theme))
       .then(result => {
+        if (cancelled || requestId !== renderRequestId) return
         html = result
         loading = false
       }).catch((err) => {
+        if (cancelled || requestId !== renderRequestId) return
         console.error(`[markdown] render failed completely: ${err}`)
         html = `<pre style="white-space:pre-wrap;word-break:break-word">${src.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`
         loading = false
       })
+
+    return () => {
+      cancelled = true
+    }
   })
 
   // After HTML is rendered, resolve relative image src via cache or IPC
