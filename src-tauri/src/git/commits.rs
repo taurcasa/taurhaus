@@ -620,6 +620,22 @@ mod tests {
             .unwrap();
     }
 
+    fn create_commit_at(repo: &Repository, message: &str, timestamp: DateTime<Utc>) {
+        let git_time = git2::Time::new(timestamp.timestamp(), 0);
+        let sig = Signature::new("Test User", "test@example.com", &git_time).unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+
+        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit> = parent.iter().collect();
+
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .unwrap();
+    }
+
     #[test]
     fn head_revwalk_is_none_without_head_commit() {
         let (_dir, repo) = init_test_repo();
@@ -779,11 +795,12 @@ mod tests {
     #[test]
     fn get_commits_in_range_filters_by_time() {
         let (dir, repo) = init_test_repo();
-        create_commit(&repo, "Old commit");
-        std::thread::sleep(std::time::Duration::from_millis(1100));
-        let after = Utc::now();
-        create_commit(&repo, "In-range commit");
-        let before = Utc::now();
+        let now = Utc::now();
+        create_commit_at(&repo, "Old commit", now - chrono::Duration::seconds(10));
+        create_commit_at(&repo, "In-range commit", now - chrono::Duration::seconds(5));
+
+        let after = now - chrono::Duration::seconds(6);
+        let before = now - chrono::Duration::seconds(4);
 
         let commits = get_commits_in_range(dir.path(), after, before).unwrap();
         assert_eq!(commits.len(), 1);
