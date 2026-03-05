@@ -3,6 +3,23 @@
  */
 
 /**
+ * Normalize unknown failures into a user-facing message.
+ *
+ * Prefers `error.message` when available, otherwise returns the provided fallback.
+ *
+ * @param {unknown} error
+ * @param {string} fallback
+ * @returns {string}
+ */
+export function formatUserFacingError(error, fallback = 'Something went wrong. Please try again.') {
+  if (typeof error === 'string' && error.trim()) return error
+  if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) {
+    return error.message
+  }
+  return fallback
+}
+
+/**
  * Format a duration in milliseconds to a human-readable string.
  *
  * @param {number} ms — duration in milliseconds

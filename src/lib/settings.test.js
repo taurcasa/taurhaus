@@ -181,6 +181,21 @@ describe('Settings component', () => {
     })
   })
 
+  it('shows inline save error when updateSettings fails', async () => {
+    updateSettings.mockRejectedValueOnce(new Error('permission denied'))
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => expect(screen.getByTestId('threshold-active')).toBeTruthy())
+
+    const input = screen.getByTestId('threshold-active')
+    await fireEvent.input(input, { target: { value: '9' } })
+    await fireEvent.blur(input)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-save-error')).toBeTruthy()
+      expect(screen.getByTestId('settings-save-error').textContent).toContain('permission denied')
+    })
+  })
+
   // --- Display section: code themes ---
 
   it('renders code theme dropdowns in Display section', async () => {

@@ -10,6 +10,7 @@
   import CreateWorkflow from './CreateWorkflow.svelte'
   import ManualWorkflow from './ManualWorkflow.svelte'
   import ScanWorkflow from './ScanWorkflow.svelte'
+  import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
 
   let {
@@ -233,7 +234,7 @@
         results.filter(p => p.has_git && !registeredPaths.has(p.path)).map(p => p.path)
       )
     } catch (e) {
-      scanError = e?.toString() || 'Failed to scan directory'
+      scanError = formatUserFacingError(e, 'Failed to scan directory')
     } finally {
       scanning = false
     }
@@ -274,7 +275,7 @@
       showAddSection = false
       onProjectsChanged()
     } catch (e) {
-      scanError = e?.toString() || 'Registration failed'
+      scanError = formatUserFacingError(e, 'Registration failed')
     } finally {
       registering = false
     }
@@ -303,7 +304,7 @@
         manualError = result?.error || 'Failed to register project'
       }
     } catch (e) {
-      manualError = e?.toString() || 'Registration failed'
+      manualError = formatUserFacingError(e, 'Registration failed')
     } finally {
       registering = false
     }
@@ -361,7 +362,7 @@
       onProjectCreated(created)
       onClose()
     } catch (e) {
-      createError = e?.toString() || 'Failed to create project'
+      createError = formatUserFacingError(e, 'Failed to create project')
     } finally {
       creating = false
     }

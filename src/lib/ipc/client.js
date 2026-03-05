@@ -1,4 +1,6 @@
 /** Shared IPC transport with mock fallback. */
+import { formatUserFacingError } from '../format.js'
+
 export function isTauri() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
@@ -7,12 +9,8 @@ function normalizeInvokeError(error) {
   if (error instanceof Error) return error
 
   if (error && typeof error === 'object') {
-    const message =
-      typeof error.message === 'string'
-        ? error.message
-        : typeof error.code === 'string'
-          ? `${error.code}`
-          : 'IPC request failed'
+    const code = typeof error.code === 'string' && error.code.trim() ? error.code : null
+    const message = formatUserFacingError(error, code ?? "Couldn't complete the request")
     return new Error(message)
   }
 
@@ -20,7 +18,7 @@ function normalizeInvokeError(error) {
     return new Error(error)
   }
 
-  return new Error('IPC request failed')
+  return new Error("Couldn't complete the request")
 }
 
 /**

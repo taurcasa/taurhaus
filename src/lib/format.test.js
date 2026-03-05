@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { formatDuration } from './format.js'
+import { formatDuration, formatUserFacingError } from './format.js'
+
+describe('formatUserFacingError', () => {
+  it('returns error.message when available', () => {
+    expect(formatUserFacingError(new Error('boom'), 'fallback')).toBe('boom')
+    expect(formatUserFacingError({ message: 'typed message' }, 'fallback')).toBe('typed message')
+  })
+
+  it('returns non-empty strings unchanged', () => {
+    expect(formatUserFacingError('network unavailable', 'fallback')).toBe('network unavailable')
+  })
+
+  it('returns fallback for unknown or empty inputs', () => {
+    expect(formatUserFacingError('', 'fallback')).toBe('fallback')
+    expect(formatUserFacingError({ code: 'E_FAIL' }, 'fallback')).toBe('fallback')
+    expect(formatUserFacingError(null, 'fallback')).toBe('fallback')
+  })
+})
 
 describe('formatDuration', () => {
   it('returns "< 1m" for durations under 60 seconds', () => {

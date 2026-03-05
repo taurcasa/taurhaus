@@ -1,12 +1,10 @@
+import { formatUserFacingError } from './format.js'
+
 /**
  * Normalize unknown errors for degraded project-load sections.
  */
 export function projectLoadErrorMessage(err) {
-  if (typeof err === 'string' && err.trim()) return err
-  if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.trim()) {
-    return err.message
-  }
-  return 'Unknown error'
+  return formatUserFacingError(err, "Couldn't load project data")
 }
 
 /**
@@ -17,7 +15,12 @@ export async function withFallback(section, promise, fallback) {
     const value = await promise
     return { ok: true, section, value, message: null }
   } catch (err) {
-    return { ok: false, section, value: fallback, message: projectLoadErrorMessage(err) }
+    return {
+      ok: false,
+      section,
+      value: fallback,
+      message: formatUserFacingError(err, `Couldn't load ${section.toLowerCase()}`),
+    }
   }
 }
 

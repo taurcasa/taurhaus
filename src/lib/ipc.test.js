@@ -794,7 +794,7 @@ describe('ipc module', () => {
 
       const result = await ipc.listClaudeSessions()
 
-      expect(tauriCore.invoke).toHaveBeenCalledWith('list_claude_sessions')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('list_cli_sessions')
       expect(result).toEqual(mockSessions)
       delete window.__TAURI_INTERNALS__
     })
@@ -819,7 +819,7 @@ describe('ipc module', () => {
 
       const result = await ipc.launchClaudeSession('p1', 'continue')
 
-      expect(tauriCore.invoke).toHaveBeenCalledWith('launch_claude_session', {
+      expect(tauriCore.invoke).toHaveBeenCalledWith('launch_cli_session', {
         projectId: 'p1',
         mode: 'continue',
         cliTool: null,
@@ -844,7 +844,7 @@ describe('ipc module', () => {
 
       await ipc.stopClaudeSession('%3')
 
-      expect(tauriCore.invoke).toHaveBeenCalledWith('stop_claude_session', { tmuxPane: '%3', cliTool: null })
+      expect(tauriCore.invoke).toHaveBeenCalledWith('stop_cli_session', { tmuxPane: '%3', cliTool: null })
       delete window.__TAURI_INTERNALS__
     })
   })

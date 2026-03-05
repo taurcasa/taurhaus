@@ -23,11 +23,11 @@ export function getSession(sessionId) {
 }
 
 export function listClaudeSessions() {
-  return invokeOrMock('list_claude_sessions', undefined, () => MOCK_CLAUDE_SESSIONS)
+  return invokeOrMock('list_cli_sessions', undefined, () => MOCK_CLAUDE_SESSIONS)
 }
 
 export function launchClaudeSession(projectId, mode, cliTool) {
-  return invokeOrMock('launch_claude_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
+  return invokeOrMock('launch_cli_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
     tmux_session: 'taurhaus',
     tmux_window: 'project',
     tmux_pane: '%99',
@@ -35,7 +35,7 @@ export function launchClaudeSession(projectId, mode, cliTool) {
 }
 
 export function stopClaudeSession(tmuxPane, cliTool) {
-  return invokeOrMock('stop_claude_session', { tmuxPane, cliTool: cliTool ?? null }, () => undefined)
+  return invokeOrMock('stop_cli_session', { tmuxPane, cliTool: cliTool ?? null }, () => undefined)
 }
 
 export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane, openTerminal = false) {

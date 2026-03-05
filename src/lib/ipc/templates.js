@@ -13,6 +13,7 @@ import {
   normalizeRoleTemplateInput,
   normalizeTeamPresetInput,
 } from './templatePayloads.js'
+import { formatUserFacingError } from '../format.js'
 
 export async function listRoleTemplates() {
   const templates = await invokeOrMock('templates_list_roles_full', undefined, () =>
@@ -134,13 +135,7 @@ export function composeTeam(request) {
       validationErrors: [],
     }
   }).catch((error) => {
-    const message =
-      error?.message ||
-      (typeof error === 'string' ? error : '') ||
-      (error ? JSON.stringify(error) : '') ||
-      'templates_compose_team failed'
-
-    throw new Error(message)
+    throw new Error(formatUserFacingError(error, "Couldn't prepare a team from these role selections"))
   })
 }
 

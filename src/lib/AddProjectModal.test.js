@@ -179,7 +179,7 @@ describe('AddProjectModal', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('scan-error')).toBeInTheDocument()
-      expect(screen.getByText('Error: scan failed')).toBeInTheDocument()
+      expect(screen.getByText('scan failed')).toBeInTheDocument()
     })
 
     await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])

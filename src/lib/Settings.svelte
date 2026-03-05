@@ -1,6 +1,7 @@
 <script>
   import { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform } from './ipc.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
+  import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
 
   let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
@@ -19,6 +20,7 @@
   let loading = $state(true)
   let saving = $state(false)
   let loadError = $state(null)
+  let saveError = $state(null)
 
   // Index state
   let indexStatus = $state(null)
@@ -51,7 +53,7 @@
     try {
       settings = await getSettings()
     } catch (e) {
-      loadError = e?.message || 'Failed to load settings'
+      loadError = formatUserFacingError(e, 'Failed to load settings')
       // Provide defaults so the UI is still usable
       settings = {
         scan_directories: ['~/projects'],
@@ -76,10 +78,12 @@
   async function saveSettings() {
     if (!settings) return
     saving = true
+    saveError = null
     try {
       settings = await updateSettings(settings)
       onSettingsChanged()
     } catch (e) {
+      saveError = formatUserFacingError(e, 'Could not save settings. Try again.')
       console.error('Failed to save settings:', e)
     } finally {
       saving = false
@@ -174,7 +178,7 @@
       await rebuildIndex()
       await loadIndexStatus()
     } catch (e) {
-      rebuildError = e?.message || 'Failed to rebuild index'
+      rebuildError = formatUserFacingError(e, 'Failed to rebuild index')
     } finally {
       rebuilding = false
     }
@@ -227,6 +231,11 @@
         {#if loadError}
           <div class="px-3 py-2 rounded-md text-[13px] {dark ? 'bg-warning-500/10 text-warning-400 border border-warning-500/20' : 'bg-warning-50 text-warning-700 border border-warning-200'}" data-testid="settings-load-error">
             Could not load saved settings — showing defaults. {loadError}
+          </div>
+        {/if}
+        {#if saveError}
+          <div class="px-3 py-2 rounded-md text-[13px] {dark ? 'bg-danger-500/10 text-danger-300 border border-danger-500/20' : 'bg-red-50 text-red-700 border border-red-200'}" data-testid="settings-save-error">
+            Could not save settings. {saveError}
           </div>
         {/if}
 
