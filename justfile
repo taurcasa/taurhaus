@@ -52,6 +52,11 @@ lint: ensure-tauri-resources
 typecheck:
     npm run typecheck
 
+# Generate a comprehensive quality KPI report (tests, coverage, build health, code size, E2E inventory).
+# Use this at milestones/pre-release checkpoints for a single health snapshot.
+metrics:
+    ./scripts/metrics.sh
+
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit).
 # This is the primary "does everything work?" test command.
 test: test-rust test-frontend
