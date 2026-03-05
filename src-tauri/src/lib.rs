@@ -45,6 +45,7 @@ use std::sync::Mutex;
 
 use commands::projects::DbState;
 use tauri::{Emitter, Manager};
+use tauri_plugin_window_state::StateFlags;
 use tracing_subscriber::EnvFilter;
 
 const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
@@ -160,7 +161,19 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            // Persist only geometry/fullscreen state. Decorations are static
+            // (`decorations: false` in tauri.conf) and restoring them can cause
+            // platform-specific client-height drift on reopen.
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         .menu(|app| {
             use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
 
