@@ -50,7 +50,8 @@ vi.mock('mermaid', () => ({
 
 const { renderMarkdown } = await import('./markdown.js')
 const { default: DOMPurify } = await import('dompurify')
-const { openExternalUrl } = await import('./ipc.js')
+const { openExternalUrl, readProjectAsset } = await import('./ipc.js')
+const assetCache = await import('./assetCache.js')
 import MarkdownRenderer from './MarkdownRenderer.svelte'
 
 describe('MarkdownRenderer mermaid rendering', () => {
@@ -177,6 +178,50 @@ describe('MarkdownRenderer mermaid rendering', () => {
     await waitFor(() => {
       expect(view.container.querySelector('[data-testid="markdown-content"]')).toHaveTextContent('new')
     })
+  })
+
+  it('ignores stale image asset resolutions from older render cycles', async () => {
+    const firstImage = createDeferred()
+    const secondImage = createDeferred()
+
+    renderMarkdown.mockImplementation((source) => {
+      if (source === 'old') return Promise.resolve('<p><img src="old.png" alt="old"></p>')
+      if (source === 'new') return Promise.resolve('<p><img src="new.png" alt="new"></p>')
+      return Promise.resolve('<p>default</p>')
+    })
+    readProjectAsset.mockImplementation((projectId, path) => {
+      if (projectId !== 'project-1') return Promise.resolve(null)
+      if (path === 'old.png') return firstImage.promise
+      if (path === 'new.png') return secondImage.promise
+      return Promise.resolve(null)
+    })
+
+    const view = render(MarkdownRenderer, {
+      props: { source: 'old', projectId: 'project-1', filePath: 'docs/readme.md' },
+    })
+
+    await waitFor(() => {
+      expect(readProjectAsset).toHaveBeenCalledWith('project-1', 'old.png')
+    })
+
+    await view.rerender({
+      source: 'new',
+      projectId: 'project-1',
+      filePath: 'docs/readme.md',
+    })
+
+    secondImage.resolve('data:image/png;base64,new')
+    await waitFor(() => {
+      expect(assetCache.set).toHaveBeenCalledWith('project-1', 'new.png', 'data:image/png;base64,new')
+    })
+
+    firstImage.resolve('data:image/png;base64,old')
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-testid="markdown-content"] img')?.getAttribute('src')).toBe(
+        'data:image/png;base64,new'
+      )
+    })
+    expect(assetCache.set).not.toHaveBeenCalledWith('project-1', 'old.png', 'data:image/png;base64,old')
   })
 })
 

@@ -46,9 +46,25 @@ function makeProject(overrides = {}) {
 
 /** Default props for OverviewTab. */
 function defaultProps(overrides = {}) {
-  return {
-    dark: false,
-    codeTheme: 'github-light',
+  const dataOverrideKeys = new Set([
+    'selectedProject',
+    'projects',
+    'recentCommits',
+    'commitsLoading',
+    'latestSession',
+    'sessionHistory',
+    'sessionLoading',
+    'readmeContent',
+    'relationships',
+    'relationshipsLoading',
+  ])
+  const actionOverrideKeys = new Set([
+    'onNavigateToCommit',
+    'onSelectProject',
+    'onLaunchSession',
+    'onOpenTerminal',
+  ])
+  const baseData = {
     selectedProject: makeProject(),
     projects: [makeProject()],
     recentCommits: [],
@@ -59,14 +75,39 @@ function defaultProps(overrides = {}) {
     readmeContent: null,
     relationships: [],
     relationshipsLoading: false,
+  }
+  const baseActions = {
     onNavigateToCommit: vi.fn(),
-    onViewAllCommits: vi.fn(),
-    onDismissRelationship: vi.fn(),
     onSelectProject: vi.fn(),
-    onMarkdownNavigate: vi.fn(),
     onLaunchSession: vi.fn(),
     onOpenTerminal: vi.fn(),
-    ...overrides,
+  }
+  const data = { ...baseData, ...(overrides.data || {}) }
+  const actions = { ...baseActions, ...(overrides.actions || {}) }
+  const rest = {}
+
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key === 'data' || key === 'actions') continue
+    if (dataOverrideKeys.has(key)) {
+      data[key] = value
+      continue
+    }
+    if (actionOverrideKeys.has(key)) {
+      actions[key] = value
+      continue
+    }
+    rest[key] = value
+  }
+
+  return {
+    dark: false,
+    codeTheme: 'github-light',
+    data,
+    actions,
+    onViewAllCommits: vi.fn(),
+    onDismissRelationship: vi.fn(),
+    onMarkdownNavigate: vi.fn(),
+    ...rest,
   }
 }
 

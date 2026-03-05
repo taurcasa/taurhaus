@@ -404,6 +404,11 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('path')
       expect(result).toHaveProperty('content')
     })
+
+    it('returns null for missing project in mock mode', async () => {
+      delete window.__TAURI_INTERNALS__
+      await expect(ipc.getReadme('missing-project')).resolves.toBeNull()
+    })
   })
 
   // -----------------------------------------------------------------------
@@ -430,6 +435,11 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('id')
       expect(result).toHaveProperty('summary')
       expect(result).toHaveProperty('next_steps')
+    })
+
+    it('returns null for missing project in mock mode', async () => {
+      delete window.__TAURI_INTERNALS__
+      await expect(ipc.getLatestSession('missing-project')).resolves.toBeNull()
     })
   })
 
@@ -828,6 +838,27 @@ describe('ipc module', () => {
     })
   })
 
+  describe('task IPC contract fields', () => {
+    it('getProjectTasks mock includes source_outcomes', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getProjectTasks('/tmp/project')
+
+      expect(result).toHaveProperty('tasks')
+      expect(result).toHaveProperty('source_outcomes')
+      expect(Array.isArray(result.source_outcomes)).toBe(true)
+    })
+
+    it('getCommitsInRange mock includes truncated and total_count', async () => {
+      delete window.__TAURI_INTERNALS__
+      const result = await ipc.getCommitsInRange('/tmp/project', 'abc', 'def')
+
+      expect(result).toHaveProperty('commits')
+      expect(result).toHaveProperty('files')
+      expect(result).toHaveProperty('truncated')
+      expect(result).toHaveProperty('total_count')
+    })
+  })
+
   // ── Platform + Daemon install commands ──────────────────────────────────
 
   describe('getPlatform()', () => {
@@ -1019,15 +1050,15 @@ describe('ipc module', () => {
   })
 
   describe('template mapping edge cases', () => {
-    it('listRoleTemplates handles snake_case aliases and nullable fields', async () => {
+    it('listRoleTemplates handles nullable fields and array guards', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValueOnce([
         {
-          role_id: 'snake-role',
-          name: 'Snake Role',
+          roleId: 'role-a',
+          name: 'Role A',
           source: 'CUSTOM',
-          read_only: 1,
-          cli_tool: 'gemini',
+          readOnly: true,
+          cliTool: 'gemini',
           defaults: { model: 'gemini-3.1-pro' },
           capabilities: 'not-an-array',
         },
@@ -1037,7 +1068,7 @@ describe('ipc module', () => {
 
       expect(result).toEqual([
         expect.objectContaining({
-          roleId: 'snake-role',
+          roleId: 'role-a',
           cliTool: 'gemini',
           model: 'gemini-3.1-pro',
           capabilities: [],
@@ -1058,15 +1089,15 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    it('listTeamPresets normalizes alias fields and array guards', async () => {
+    it('listTeamPresets normalizes role counts and array guards', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValueOnce([
         {
-          preset_id: 'snake-preset',
-          lead_role_id: 'lead-1',
+          presetId: 'preset-a',
+          leadRoleId: 'lead-1',
           source: 'built_in',
-          read_only: true,
-          agent_slots: [{ role_id: 'r1', count: 3 }],
+          readOnly: true,
+          agentSlots: [{ roleId: 'r1', count: 3 }],
           tools: 'oops',
           capabilities: null,
         },
@@ -1076,7 +1107,7 @@ describe('ipc module', () => {
 
       expect(result).toEqual([
         expect.objectContaining({
-          preset_id: 'snake-preset',
+          presetId: 'preset-a',
           leadRoleId: 'lead-1',
           roleCount: 1,
           agentCount: 3,
@@ -1169,12 +1200,12 @@ describe('ipc module', () => {
       tauriCore.invoke.mockResolvedValue({ ok: true })
 
       await ipc.upsertRoleTemplate({
-        role_id: 'lead-alpha',
+        roleId: 'lead-alpha',
         name: 'Lead Alpha',
         kind: 'LEAD',
         capabilities: [],
         behavioralContract: [],
-        constraints: { min_instances: -5, max_instances: 0 },
+        constraints: { minInstances: -5, maxInstances: 0 },
       })
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_role', {
@@ -1286,32 +1317,32 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    it('upsertTeamPreset normalizes snake_case slots and defaults', async () => {
+    it('upsertTeamPreset normalizes slot counts and defaults', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({ ok: true })
 
       await ipc.upsertTeamPreset({
-        preset_id: 'snake-preset',
-        name: 'Snake Preset',
-        lead_role_id: 'lead-alpha',
-        agent_slots: [
+        presetId: 'preset-a',
+        name: 'Preset A',
+        leadRoleId: 'lead-alpha',
+        agentSlots: [
           {
-            role_id: 'impl-1',
+            roleId: 'impl-1',
             count: 0,
-            project_binding: 'slot_project',
-            project_id: 'proj-2',
+            projectBinding: 'slot_project',
+            projectId: 'proj-2',
           },
         ],
         defaults: {
-          team_name_pattern: '{project}-snake',
-          tmux_layout: 'even-horizontal',
+          teamNamePattern: '{project}-snake',
+          tmuxLayout: 'even-horizontal',
         },
       })
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_preset', {
         request: {
           preset: expect.objectContaining({
-            presetId: 'snake-preset',
+            presetId: 'preset-a',
             leadRoleId: 'lead-alpha',
             agentSlots: [
               expect.objectContaining({
@@ -1356,15 +1387,15 @@ describe('ipc module', () => {
   })
 
   describe('composeTeam()', () => {
-    it('normalizes mixed request aliases before invoking backend', async () => {
+    it('normalizes compose request before invoking backend', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({ roster: [], warnings: [], validationErrors: [] })
 
       await ipc.composeTeam({
-        lead_role_id: 'lead-a',
+        leadRoleId: 'lead-a',
         projectName: 'atlas',
-        agent_slots: [
-          { role_id: 'dev-1', count: '2', project_binding: 'slot_project', project_id: 'p2' },
+        agentSlots: [
+          { roleId: 'dev-1', count: '2', projectBinding: 'slot_project', projectId: 'p2' },
         ],
         overrides: { mode: 'strict' },
       })
@@ -1374,10 +1405,10 @@ describe('ipc module', () => {
           leadRoleId: 'lead-a',
           agentSlots: [
             {
-              role_id: 'dev-1',
+              roleId: 'dev-1',
               count: 2,
-              project_binding: 'slot_project',
-              project_id: 'p2',
+              projectBinding: 'slot_project',
+              projectId: 'p2',
               overrides: null,
             },
           ],

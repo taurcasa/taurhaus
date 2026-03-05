@@ -34,6 +34,16 @@ const {
 
 import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('TemplateBrowserPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -528,5 +538,76 @@ describe('TemplateBrowserPanel', () => {
     })
     expect(screen.getByTestId('role-model-badge-custom-doc-writer')).toBeInTheDocument()
     expect(screen.getByTestId('role-capability-custom-doc-writer-documentation')).toBeInTheDocument()
+  })
+
+  it('ignores stale catalog responses when panel is reopened quickly', async () => {
+    const oldRoles = deferred()
+    const oldPresets = deferred()
+    const newRoles = deferred()
+    const newPresets = deferred()
+
+    listRoleTemplates
+      .mockReturnValueOnce(oldRoles.promise)
+      .mockReturnValueOnce(newRoles.promise)
+    listTeamPresets
+      .mockReturnValueOnce(oldPresets.promise)
+      .mockReturnValueOnce(newPresets.promise)
+
+    const view = render(TemplateBrowserPanel, { props: { open: true } })
+    await view.rerender({ open: false })
+    await view.rerender({ open: true })
+
+    newRoles.resolve([
+      {
+        roleId: 'new-role',
+        name: 'New Role',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.3-codex',
+        capabilities: [],
+        builtIn: false,
+      },
+    ])
+    newPresets.resolve([
+      {
+        presetId: 'new-preset',
+        name: 'New Preset',
+        description: 'fresh',
+        roleCount: 1,
+        agentCount: 0,
+        tools: ['codex'],
+      },
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-template-card-new-role')).toBeInTheDocument()
+    })
+
+    oldRoles.resolve([
+      {
+        roleId: 'old-role',
+        name: 'Old Role',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: 'gemini-2.5-pro',
+        capabilities: [],
+        builtIn: false,
+      },
+    ])
+    oldPresets.resolve([
+      {
+        presetId: 'old-preset',
+        name: 'Old Preset',
+        description: 'stale',
+        roleCount: 1,
+        agentCount: 0,
+        tools: ['gemini'],
+      },
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-template-card-new-role')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('role-template-card-old-role')).not.toBeInTheDocument()
   })
 })

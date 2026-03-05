@@ -164,6 +164,53 @@
     }))
   }
 
+  function fitHorizontalLayout(rowCount, availableWidth, preferredNodeW, preferredGap) {
+    if (rowCount <= 0) {
+      return { nodeW: preferredNodeW, gap: preferredGap }
+    }
+
+    if (rowCount === 1) {
+      return {
+        nodeW: Math.min(preferredNodeW, Math.floor(availableWidth)),
+        gap: 0,
+      }
+    }
+
+    const minGap = 12
+    const minNodeW = 120
+    const hardMinNodeW = 88
+
+    let nodeW = preferredNodeW
+    let gap = preferredGap
+
+    const totalPreferred = rowCount * nodeW + (rowCount - 1) * gap
+    if (totalPreferred <= availableWidth) {
+      return { nodeW, gap }
+    }
+
+    nodeW = Math.min(
+      preferredNodeW,
+      Math.max(minNodeW, Math.floor((availableWidth - (rowCount - 1) * minGap) / rowCount))
+    )
+    gap = Math.min(
+      preferredGap,
+      Math.max(minGap, Math.floor((availableWidth - rowCount * nodeW) / (rowCount - 1)))
+    )
+
+    if (rowCount * nodeW + (rowCount - 1) * gap > availableWidth) {
+      gap = minGap
+      nodeW = Math.max(
+        hardMinNodeW,
+        Math.floor((availableWidth - (rowCount - 1) * minGap) / rowCount)
+      )
+    }
+
+    return {
+      nodeW: Math.max(hardMinNodeW, nodeW),
+      gap: Math.max(minGap, gap),
+    }
+  }
+
   const layout = $derived.by(() => {
     const cw = containerWidth || 600
     const ch = Math.max(460, containerHeight || 0)
@@ -172,8 +219,17 @@
 
     const members = normalizedAgents
     const count = members.length
-    const gap = 28
-    const nodeW = count >= 7 ? 140 : (count >= 5 ? 160 : 180)
+    const preferredGap = count >= 7 ? 20 : 28
+    const preferredNodeW = count >= 7 ? 140 : (count >= 5 ? 160 : 180)
+    const maxRowCount = count >= 7 ? Math.ceil(count / 2) : count
+    const horizontalPadding = 24
+    const availableWidth = Math.max(cw - horizontalPadding * 2, 320)
+    const { nodeW, gap } = fitHorizontalLayout(
+      maxRowCount,
+      availableWidth,
+      preferredNodeW,
+      preferredGap
+    )
     const leadPos = { x: cw / 2, y: Math.round(ch * 0.3) }
     const primaryAgentY = Math.round(ch * 0.65)
 

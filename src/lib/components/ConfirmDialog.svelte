@@ -9,8 +9,8 @@
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
     variant = 'danger',
-    onconfirm = () => {},
-    oncancel = () => {},
+    onConfirm = () => {},
+    onCancel = () => {},
   } = $props()
 
   const t = $derived(themeTokens(dark))
@@ -47,11 +47,11 @@
   function dismiss() {
     if (!open) return
     open = false
-    oncancel()
+    onCancel()
   }
 
   function handleConfirm() {
-    onconfirm()
+    onConfirm()
     open = false
   }
 

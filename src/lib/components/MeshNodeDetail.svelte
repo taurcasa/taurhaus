@@ -3,23 +3,19 @@
   import StatusBadge from './StatusBadge.svelte'
 
   let {
-    name = '',
-    role = 'agent',
-    tool = 'claude',
-    model = '',
-    status = 'offline',
-    projectId = '',
-    description = '',
+    node = {},
     mode = 'setup',
     dark = false,
-    onEdit = () => {},
-    onRemove = () => {},
-    onResume = () => {},
-    onStop = () => {},
-    onFocusPane = () => {},
-    onCapture = () => {},
-    onClose = () => {},
+    actions = {},
   } = $props()
+
+  const name = $derived.by(() => String(node?.name ?? ''))
+  const role = $derived.by(() => String(node?.role ?? 'agent'))
+  const tool = $derived.by(() => String(node?.tool ?? 'claude'))
+  const model = $derived.by(() => String(node?.model ?? ''))
+  const status = $derived.by(() => String(node?.status ?? 'offline'))
+  const projectId = $derived.by(() => String(node?.projectId ?? ''))
+  const description = $derived.by(() => String(node?.description ?? ''))
 
   const t = $derived(themeTokens(dark))
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
@@ -90,7 +86,7 @@
     </div>
     <button
       class="h-6 w-6 shrink-0 rounded-md text-xs transition-colors {closeTone}"
-      onclick={onClose}
+      onclick={() => actions?.onClose?.()}
       aria-label="Close node detail"
       data-testid="mesh-node-detail-close"
     >
@@ -111,7 +107,7 @@
       {#if normalizedMode === 'setup'}
         <button
           class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
-          onclick={onEdit}
+          onclick={() => actions?.onEdit?.()}
           data-testid="mesh-node-detail-edit"
         >
           Edit
@@ -119,7 +115,7 @@
         {#if normalizedRole !== 'lead'}
           <button
             class="text-xs px-2 py-1 rounded transition-colors {dangerGhostTone}"
-            onclick={onRemove}
+            onclick={() => actions?.onRemove?.()}
             data-testid="mesh-node-detail-remove"
           >
             Remove
@@ -128,28 +124,28 @@
       {:else}
         <button
           class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
-          onclick={onResume}
+          onclick={() => actions?.onResume?.()}
           data-testid="mesh-node-detail-resume"
         >
           Resume
         </button>
         <button
           class="text-xs px-2 py-1 rounded transition-colors {dangerGhostTone}"
-          onclick={onStop}
+          onclick={() => actions?.onStop?.()}
           data-testid="mesh-node-detail-stop"
         >
           Stop
         </button>
         <button
           class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
-          onclick={onCapture}
+          onclick={() => actions?.onCapture?.()}
           data-testid="mesh-node-detail-capture"
         >
           Capture
         </button>
         <button
           class="text-xs px-2 py-1 rounded transition-colors {ghostButtonTone}"
-          onclick={onFocusPane}
+          onclick={() => actions?.onFocusPane?.()}
           data-testid="mesh-node-detail-focus"
         >
           Focus ▶

@@ -61,21 +61,21 @@ describe('Sidebar component branches', () => {
       props: {
         projects: [],
         sidebarLoading: true,
-        onRetry,
+        actions: { onRetry },
       },
     })
 
     expect(screen.getByTestId('sidebar-skeleton')).toBeInTheDocument()
 
-    await rerender({ projects: [], sidebarLoading: false, sidebarError: 'boom', onRetry })
+    await rerender({ projects: [], sidebarLoading: false, sidebarError: 'boom', actions: { onRetry } })
     expect(screen.getByTestId('sidebar-error')).toBeInTheDocument()
     await fireEvent.click(screen.getByText('Retry'))
     expect(onRetry).toHaveBeenCalled()
 
-    await rerender({ projects: [], sidebarLoading: false, sidebarError: null, onRetry })
+    await rerender({ projects: [], sidebarLoading: false, sidebarError: null, actions: { onRetry } })
     expect(screen.getByTestId('sidebar-empty')).toBeInTheDocument()
 
-    await rerender({ projects: makeProjects(2), sidebarLoading: false, sidebarError: null, onRetry })
+    await rerender({ projects: makeProjects(2), sidebarLoading: false, sidebarError: null, actions: { onRetry } })
     const input = screen.getByTestId('sidebar-filter')
     await fireEvent.input(input, { target: { value: 'does-not-exist' } })
     expect(screen.getByTestId('sidebar-no-matches')).toBeInTheDocument()
@@ -93,9 +93,11 @@ describe('Sidebar component branches', () => {
     render(Sidebar, {
       props: {
         projects,
-        onSelectProject,
-        onAddProject,
-        onToggleSettings,
+        actions: {
+          onSelectProject,
+          onAddProject,
+          onToggleSettings,
+        },
       },
     })
 
@@ -183,7 +185,9 @@ describe('Sidebar component branches', () => {
     render(Sidebar, {
       props: {
         projects,
-        onProjectRemoved,
+        actions: {
+          onProjectRemoved,
+        },
       },
     })
 

@@ -1,24 +1,45 @@
 <script>
   import { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } from './ipc.js'
+  import { getProjectContext } from './context/ProjectContext.js'
+  import { getSessionContext } from './context/SessionContext.js'
   import { getSessionForProject, getSessionsForProject } from './sessionStore.svelte.js'
   import { rowTintForSessions, toolIndicators } from './sessionIndicator.js'
-  import { SIDEBAR_GROUPS, buildSidebarProjection } from './sidebar.js'
+  import { buildSidebarProjection } from './sidebar.js'
+  import SidebarProjectList from './SidebarProjectList.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import HoverCard from './HoverCard.svelte'
 
   let {
     projects = [],
-    selectedProject = null,
     sidebarLoading = false,
     sidebarError = null,
-    daemonStatus = null,
+    daemonStatus: daemonStatusProp = null,
     settingsOpen = false,
-    onSelectProject = () => {},
-    onAddProject = () => {},
-    onToggleSettings = () => {},
-    onRetry = () => {},
-    onProjectRemoved = () => {},
+    actions = {},
   } = $props()
+  const projectContext = getProjectContext()
+  const sessionContext = getSessionContext()
+  let selectedProject = $state(null)
+  let daemonStatusFromContext = $state(null)
+
+  $effect(() => {
+    const cleanups = []
+    if (projectContext?.selectedProject?.subscribe) {
+      cleanups.push(projectContext.selectedProject.subscribe((value) => {
+        selectedProject = value
+      }))
+    }
+    if (sessionContext?.daemonStatus?.subscribe) {
+      cleanups.push(sessionContext.daemonStatus.subscribe((value) => {
+        daemonStatusFromContext = value
+      }))
+    }
+    return () => {
+      for (const cleanup of cleanups) cleanup()
+    }
+  })
+
+  const daemonStatus = $derived.by(() => daemonStatusProp ?? daemonStatusFromContext)
 
   const SIDEBAR_PROJECT_ROW_HEIGHT = 36
   const SIDEBAR_HEADER_ROW_HEIGHT = 42
@@ -120,7 +141,9 @@
 
   function ctxCopyPath() {
     if (ctxMenu?.project?.path) {
-      navigator.clipboard.writeText(ctxMenu.project.path).catch(() => {})
+      navigator.clipboard.writeText(ctxMenu.project.path).catch((error) => {
+        console.warn('[sidebar] failed to copy project path to clipboard:', error)
+      })
     }
   }
 
@@ -138,10 +161,31 @@
     const project = ctxMenu.project
     closeContextMenu()
     removeProject(project.id).then(() => {
-      onProjectRemoved(project.id)
+      actions?.onProjectRemoved?.(project.id)
+      projectContext?.onProjectRemoved?.(project.id)
     }).catch(e => {
       console.error('Failed to remove project:', e)
     })
+  }
+
+  function handleSelectProject(project) {
+    actions?.onSelectProject?.(project)
+    projectContext?.selectProject?.(project)
+  }
+
+  function handleOpenManageProjects() {
+    actions?.onAddProject?.()
+    sessionContext?.openManageProjects?.()
+  }
+
+  function handleToggleSettings() {
+    actions?.onToggleSettings?.()
+    sessionContext?.toggleSettings?.()
+  }
+
+  function handleRetry() {
+    actions?.onRetry?.()
+    sessionContext?.retryProjects?.()
   }
 
   // --- Session context menu actions ---
@@ -363,113 +407,36 @@
     onscroll={handleProjectListScroll}
     data-testid="sidebar-project-scroll"
   >
-    {#if sidebarLoading}
-      <!-- Loading skeleton -->
-      <div class="px-3 pt-3 space-y-1" data-testid="sidebar-skeleton">
-        {#each Array(5) as _}
-          <div class="flex items-center gap-2 h-[34px] px-3">
-            <div class="w-[7px] h-[7px] rounded-full bg-white/[0.06] animate-pulse"></div>
-            <div class="h-3 rounded bg-white/[0.06] animate-pulse flex-1"></div>
-          </div>
-        {/each}
-      </div>
-    {:else if sidebarError}
-      <!-- Error state -->
-      <div class="px-4 pt-6 text-center" data-testid="sidebar-error">
-        <p class="text-[12px] text-white/40">{sidebarError}</p>
-        <button
-          class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors"
-          onclick={onRetry}
-        >Retry</button>
-      </div>
-    {:else if projects.length === 0}
-      <!-- Empty state -->
-      <div class="px-4 pt-8 text-center" data-testid="sidebar-empty">
-        <svg class="w-10 h-10 text-white/10 mx-auto" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-        <p class="mt-2 text-[12px] text-white/40">No projects yet</p>
-        <button class="mt-2 text-[12px] text-brand-400 hover:text-brand-300 transition-colors">Scan for projects</button>
-      </div>
-    {:else if filteredProjects.length === 0 && filterQuery}
-      <!-- No filter matches -->
-      <div class="px-4 pt-6 text-center" data-testid="sidebar-no-matches">
-        <p class="text-[12px] text-white/30">No matching projects</p>
-      </div>
-    {:else}
-      {#if useVirtualizedSidebar}
-        <div style="height: {sidebarWindow.paddingTop}px;"></div>
-      {/if}
-
-      {#each sidebarRows.slice(sidebarWindow.start, sidebarWindow.end) as row (row.key)}
-        {#if row.type === 'header'}
-          <div class="px-3.5 pt-8 pb-1.5">
-            <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{row.group.label}</span>
-          </div>
-        {:else}
-          {@const project = row.project}
-          {@const selected = selectedProject && project.id === selectedProject.id}
-          {@const projectSessions = getSessionsForProject(project.path)}
-          {@const indicators = toolIndicators(projectSessions)}
-          <button
-            data-testid="project-item"
-            class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75 cursor-pointer
-              {selected ? 'bg-white/[0.08]' : ctxMenu?.project?.id === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
-            onclick={() => onSelectProject(project)}
-            oncontextmenu={(e) => { hoverCard = null; clearTimeout(hoverTimeout); openContextMenu(e, project) }}
-            onmouseenter={(e) => showHoverCard(project, projectSessions, e.currentTarget)}
-            onmouseleave={hideHoverCard}
-          >
-            {#if selected}
-              <span class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
-            {/if}
-            <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
-            {#if indicators.length > 0}
-              <span class="flex items-center gap-1 shrink-0">
-                {#each indicators as ind}
-                  {#if ind.interactive}
-                    <span
-                      class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                      role="button"
-                      tabindex="0"
-                      aria-label={ind.ariaLabel}
-                      onclick={(e) => jumpToSession(e, ind.session)}
-                      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpToSession(e, ind.session) } }}
-                    >
-                      <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                        <path d={ind.icon.path}/>
-                      </svg>
-                    </span>
-                  {:else}
-                    <span
-                      class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                      aria-label={ind.ariaLabel}
-                    >
-                      <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                        <path d={ind.icon.path}/>
-                      </svg>
-                    </span>
-                  {/if}
-                {/each}
-              </span>
-            {/if}
-            {#if project.branch}
-              <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/50 bg-white/10' : 'text-white/30 bg-white/[0.07]'}">{project.branch}</span>
-            {/if}
-            {#if project.is_dirty}
-              <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
-            {/if}
-          </button>
-        {/if}
-      {/each}
-
-      {#if useVirtualizedSidebar}
-        <div style="height: {sidebarWindow.paddingBottom}px;"></div>
-      {/if}
-    {/if}
+    <SidebarProjectList
+      {sidebarLoading}
+      {sidebarError}
+      {projects}
+      {filteredProjects}
+      {filterQuery}
+      {useVirtualizedSidebar}
+      {sidebarRows}
+      {sidebarWindow}
+      {selectedProject}
+      ctxMenuProjectId={ctxMenu?.project?.id ?? null}
+      {getSessionsForProject}
+      {toolIndicators}
+      {rowTintForSessions}
+      onProjectClick={handleSelectProject}
+      onProjectContextMenu={(event, project) => {
+        hoverCard = null
+        clearTimeout(hoverTimeout)
+        openContextMenu(event, project)
+      }}
+      onProjectMouseEnter={showHoverCard}
+      onProjectMouseLeave={hideHoverCard}
+      onSessionJump={jumpToSession}
+      onRetry={handleRetry}
+    />
   </div>
 
   <!-- Footer -->
   <div class="h-[44px] flex items-center justify-between px-4 border-t border-white/[0.06]">
-    <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Manage projects" data-testid="manage-projects-btn" onclick={onAddProject}>
+    <button class="w-7 h-7 flex items-center justify-center rounded-md text-white/20 hover:text-white/40 hover:bg-white/[0.06] transition-colors" aria-label="Manage projects" data-testid="manage-projects-btn" onclick={handleOpenManageProjects}>
       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
     </button>
     {#if daemonStatus && daemonStatus !== 'not_configured'}
@@ -489,12 +456,12 @@
         {/if}
       </span>
     {/if}
-    <button
-      class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {settingsOpen ? 'text-white/60 bg-white/[0.08]' : 'text-white/20 hover:text-white/40 hover:bg-white/[0.06]'}"
-      aria-label="Settings"
-      onclick={onToggleSettings}
-      data-testid="settings-toggle"
-    >
+      <button
+        class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {settingsOpen ? 'text-white/60 bg-white/[0.08]' : 'text-white/20 hover:text-white/40 hover:bg-white/[0.06]'}"
+        aria-label="Settings"
+        onclick={handleToggleSettings}
+        data-testid="settings-toggle"
+      >
       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>
     </button>
   </div>

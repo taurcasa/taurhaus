@@ -16,6 +16,9 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createAsyncGuard } from './lib/asyncGuard.js'
+  import { writable } from 'svelte/store'
+  import { setProjectContext } from './lib/context/ProjectContext.js'
+  import { setSessionContext } from './lib/context/SessionContext.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
@@ -111,6 +114,40 @@
   const readmeLoadGuard = createAsyncGuard()
   const relationshipsLoadGuard = createAsyncGuard()
 
+  const projectContext = setProjectContext({
+    projects: writable([]),
+    selectedProject: writable(null),
+    selectProject: (project) => selectProject(project),
+    navigateToCommit: (hash) => navigateToCommit(hash),
+    navigateToFile: (path, lineNumber) => navigateToFile(path, lineNumber),
+    navigateToCommitRange: (after, before) => navigateToCommitRange(after, before),
+    onProjectRemoved: (id) => handleProjectRemoved(id),
+  })
+
+  const sessionContext = setSessionContext({
+    daemonStatus: writable(null),
+    launchSession: (tool) => handleOverviewLaunchSession(tool),
+    openTerminal: () => handleOverviewOpenTerminal(),
+    openManageProjects: () => {
+      showAddProject = true
+    },
+    toggleSettings: () => {
+      settingsOpen = !settingsOpen
+    },
+    retryProjects: () => {
+      loadProjects()
+    },
+  })
+
+  $effect(() => {
+    projectContext.projects.set(projects)
+    projectContext.selectedProject.set(selectedProject)
+  })
+
+  $effect(() => {
+    sessionContext.daemonStatus.set(daemonStatus)
+  })
+
   function saveProjectPosition() {
     if (!selectedProject) return
     projectPositions.set(selectedProject.id, {
@@ -135,6 +172,16 @@
   function navigateToFile(path, lineNumber) {
     filesNavTarget = { file: path, lineNumber }
     switchTab('files', { tab: 'files', file: path, lineNumber })
+  }
+
+  function handleProjectRemoved(id) {
+    projects = projects.filter((project) => project.id !== id)
+    if (selectedProject?.id === id) {
+      selectedProject = projects.length > 0 ? projects[0] : null
+      if (selectedProject) {
+        selectProject(selectedProject)
+      }
+    }
   }
 
   // Load code theme prefs + dark mode from settings
@@ -902,22 +949,9 @@
     <!-- ═══ SIDEBAR ═══ -->
     <Sidebar
       {projects}
-      {selectedProject}
       {sidebarLoading}
       {sidebarError}
-      {daemonStatus}
       {settingsOpen}
-      onSelectProject={selectProject}
-      onAddProject={() => showAddProject = true}
-      onToggleSettings={() => settingsOpen = !settingsOpen}
-      onRetry={loadProjects}
-      onProjectRemoved={(id) => {
-        projects = projects.filter(p => p.id !== id)
-        if (selectedProject?.id === id) {
-          selectedProject = projects.length > 0 ? projects[0] : null
-          if (selectedProject) selectProject(selectedProject)
-        }
-      }}
     />
 
     <!-- ═══ MAIN PANEL ═══ -->
@@ -978,23 +1012,21 @@
         <OverviewTab
           {dark}
           {codeTheme}
-          {selectedProject}
-          {projects}
-          {recentCommits}
-          {commitsLoading}
-          {latestSession}
-          {sessionHistory}
-          {sessionLoading}
-          {readmeContent}
-          {relationships}
-          {relationshipsLoading}
-          onNavigateToCommit={navigateToCommit}
+          data={{
+            selectedProject,
+            projects,
+            recentCommits,
+            commitsLoading,
+            latestSession,
+            sessionHistory,
+            sessionLoading,
+            readmeContent,
+            relationships,
+            relationshipsLoading,
+          }}
           onViewAllCommits={viewAllCommits}
           onDismissRelationship={handleDismissRelationship}
-          onSelectProject={selectProject}
           onMarkdownNavigate={handleMarkdownNavigate}
-          onLaunchSession={handleOverviewLaunchSession}
-          onOpenTerminal={handleOverviewOpenTerminal}
         />
       </div>
 
@@ -1010,9 +1042,6 @@
             bind:position={taskPosition}
             navTarget={taskNavTarget}
             onClearNavTarget={() => { taskNavTarget = null }}
-            onNavigateToCommit={navigateToCommit}
-            onNavigateToFile={navigateToFile}
-            onNavigateToCommitRange={navigateToCommitRange}
           />
         {/if}
       </div>

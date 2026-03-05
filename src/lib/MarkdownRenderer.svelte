@@ -19,6 +19,7 @@
   let mermaidRenderCounter = 0
   let markdownModulePromise = null
   let renderRequestId = 0
+  let imageResolveRequestId = 0
 
   async function getMarkdownModule() {
     if (!markdownModulePromise) {
@@ -57,6 +58,8 @@
   // After HTML is rendered, resolve relative image src via cache or IPC
   $effect(() => {
     if (!container || !projectId || loading) return
+    const requestId = ++imageResolveRequestId
+    let cancelled = false
     const images = container.querySelectorAll('img')
     for (const img of images) {
       const src = img.getAttribute('src')
@@ -73,13 +76,18 @@
 
       // Cache miss — load via IPC and cache for next time
       readProjectAsset(projectId, resolved).then(dataUri => {
-        if (dataUri) {
+        if (cancelled || requestId !== imageResolveRequestId) return
+        if (dataUri && img.isConnected) {
           assetCache.set(projectId, resolved, dataUri)
           img.src = dataUri
         }
       }).catch(() => {
         // Image not found — leave alt text visible
       })
+    }
+
+    return () => {
+      cancelled = true
     }
   })
 

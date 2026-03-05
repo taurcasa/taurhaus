@@ -5,18 +5,45 @@ import '@testing-library/jest-dom/vitest'
 import MeshNodeDetail from './MeshNodeDetail.svelte'
 
 function renderDetail(props = {}) {
+  const legacyNode = {}
+  if (props.name !== undefined) legacyNode.name = props.name
+  if (props.role !== undefined) legacyNode.role = props.role
+  if (props.tool !== undefined) legacyNode.tool = props.tool
+  if (props.model !== undefined) legacyNode.model = props.model
+  if (props.status !== undefined) legacyNode.status = props.status
+  if (props.projectId !== undefined) legacyNode.projectId = props.projectId
+  if (props.description !== undefined) legacyNode.description = props.description
+  const node = {
+    name: 'frontend-dev',
+    role: 'agent',
+    tool: 'codex',
+    model: 'gpt-5.3-codex',
+    status: 'active',
+    projectId: 'taurhaus-web',
+    description: 'Implements UI surface details for the mesh canvas.',
+    ...legacyNode,
+    ...(props.node || {}),
+  }
+  const actions = {
+    ...(props.actions || {}),
+  }
+  const passthrough = { ...props }
+  delete passthrough.name
+  delete passthrough.role
+  delete passthrough.tool
+  delete passthrough.model
+  delete passthrough.status
+  delete passthrough.projectId
+  delete passthrough.description
+  delete passthrough.node
+  delete passthrough.actions
   return render(MeshNodeDetail, {
     props: {
-      name: 'frontend-dev',
-      role: 'agent',
-      tool: 'codex',
-      model: 'gpt-5.3-codex',
-      status: 'active',
-      projectId: 'taurhaus-web',
-      description: 'Implements UI surface details for the mesh canvas.',
+      node,
       mode: 'setup',
       dark: true,
-      ...props,
+      actions,
+      ...passthrough,
     },
   })
 }
@@ -67,9 +94,11 @@ describe('MeshNodeDetail', () => {
 
     const view = renderDetail({
       mode: 'setup',
-      onEdit,
-      onRemove,
-      onClose,
+      actions: {
+        onEdit,
+        onRemove,
+        onClose,
+      },
     })
 
     await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
@@ -80,19 +109,23 @@ describe('MeshNodeDetail', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
 
     view.rerender({
-      name: 'frontend-dev',
-      role: 'agent',
-      tool: 'codex',
-      model: 'gpt-5.3-codex',
-      status: 'active',
-      projectId: 'taurhaus-web',
-      description: 'Implements UI surface details for the mesh canvas.',
+      node: {
+        name: 'frontend-dev',
+        role: 'agent',
+        tool: 'codex',
+        model: 'gpt-5.3-codex',
+        status: 'active',
+        projectId: 'taurhaus-web',
+        description: 'Implements UI surface details for the mesh canvas.',
+      },
       mode: 'runtime',
       dark: true,
-      onResume,
-      onStop,
-      onFocusPane,
-      onCapture,
+      actions: {
+        onResume,
+        onStop,
+        onFocusPane,
+        onCapture,
+      },
     })
 
     await fireEvent.click(screen.getByTestId('mesh-node-detail-resume'))
@@ -110,13 +143,15 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-description')).toHaveTextContent('Node details for handoff.')
 
     view.rerender({
-      name: 'frontend-dev',
-      role: 'agent',
-      tool: 'codex',
-      model: 'gpt-5.3-codex',
-      status: 'active',
-      projectId: 'taurhaus-web',
-      description: '',
+      node: {
+        name: 'frontend-dev',
+        role: 'agent',
+        tool: 'codex',
+        model: 'gpt-5.3-codex',
+        status: 'active',
+        projectId: 'taurhaus-web',
+        description: '',
+      },
       mode: 'setup',
       dark: true,
     })

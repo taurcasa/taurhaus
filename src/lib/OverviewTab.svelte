@@ -1,29 +1,52 @@
 <script>
   import MarkdownRenderer from './MarkdownRenderer.svelte'
+  import { getProjectContext } from './context/ProjectContext.js'
+  import { getSessionContext } from './context/SessionContext.js'
   import { themeTokens } from './themeTokens.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
 
   let {
-    dark,
-    codeTheme,
-    selectedProject,
-    projects,
-    recentCommits,
-    commitsLoading,
-    latestSession,
-    sessionHistory,
-    sessionLoading,
-    readmeContent,
-    relationships,
-    relationshipsLoading,
-    onNavigateToCommit,
+    dark = false,
+    codeTheme = 'github-light',
+    data = null,
+    actions = {},
     onViewAllCommits,
     onDismissRelationship,
-    onSelectProject,
     onMarkdownNavigate,
-    onLaunchSession,
-    onOpenTerminal,
   } = $props()
+
+  const projectContext = getProjectContext()
+  const sessionContext = getSessionContext()
+  let contextSelectedProject = $state(null)
+  let contextProjects = $state([])
+
+  $effect(() => {
+    const cleanups = []
+    if (projectContext?.selectedProject?.subscribe) {
+      cleanups.push(projectContext.selectedProject.subscribe((value) => {
+        contextSelectedProject = value
+      }))
+    }
+    if (projectContext?.projects?.subscribe) {
+      cleanups.push(projectContext.projects.subscribe((value) => {
+        contextProjects = Array.isArray(value) ? value : []
+      }))
+    }
+    return () => {
+      for (const cleanup of cleanups) cleanup()
+    }
+  })
+
+  const selectedProject = $derived.by(() => data?.selectedProject ?? contextSelectedProject ?? {})
+  const projects = $derived.by(() => data?.projects ?? contextProjects ?? [])
+  const recentCommits = $derived.by(() => data?.recentCommits ?? [])
+  const commitsLoading = $derived.by(() => Boolean(data?.commitsLoading))
+  const latestSession = $derived.by(() => data?.latestSession ?? null)
+  const sessionHistory = $derived.by(() => data?.sessionHistory ?? [])
+  const sessionLoading = $derived.by(() => Boolean(data?.sessionLoading))
+  const readmeContent = $derived.by(() => data?.readmeContent ?? null)
+  const relationships = $derived.by(() => data?.relationships ?? [])
+  const relationshipsLoading = $derived.by(() => Boolean(data?.relationshipsLoading))
 
   const t = $derived(themeTokens(dark))
 
@@ -89,7 +112,27 @@
 
   function handleViewAllCommits() {
     showAllCommits = true
-    onViewAllCommits()
+    onViewAllCommits?.()
+  }
+
+  function handleNavigateToCommit(hash) {
+    actions?.onNavigateToCommit?.(hash)
+    projectContext?.navigateToCommit?.(hash)
+  }
+
+  function handleSelectProject(project) {
+    actions?.onSelectProject?.(project)
+    projectContext?.selectProject?.(project)
+  }
+
+  function handleLaunchSession(tool) {
+    actions?.onLaunchSession?.(tool)
+    sessionContext?.launchSession?.(tool)
+  }
+
+  function handleOpenTerminal() {
+    actions?.onOpenTerminal?.()
+    sessionContext?.openTerminal?.()
   }
 
   const TOOLS = ['claude', 'codex', 'gemini']
@@ -112,7 +155,7 @@
         {@const icon = TOOL_ICONS[tool]}
         <button
           class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {actionBtnBase}"
-          onclick={() => onLaunchSession?.(tool)}
+          onclick={() => handleLaunchSession(tool)}
           title={TOOL_NAMES[tool]}
           data-testid="action-launch-{tool}"
         >
@@ -123,7 +166,7 @@
       {/each}
       <button
         class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {actionBtnBase}"
-        onclick={() => onOpenTerminal?.()}
+        onclick={handleOpenTerminal}
         title="Terminal"
         data-testid="action-open-terminal"
       >
@@ -174,7 +217,7 @@
           {#each recentCommits as commit}
             <button
               class="w-full flex items-center h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
-              onclick={() => onNavigateToCommit(commit.hash)}
+              onclick={() => handleNavigateToCommit(commit.hash)}
               data-testid="overview-commit-row"
             >
               <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
@@ -291,7 +334,7 @@
                   onclick={() => {
                     const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
                     const p = projects.find(pr => pr.id === otherId)
-                    if (p) onSelectProject(p)
+                    if (p) handleSelectProject(p)
                   }}
                 >{projectName}</button>
 

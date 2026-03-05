@@ -44,7 +44,9 @@ function shouldForward(level, message) {
 function forward(level, ...args) {
   const message = serialize(...args)
   if (!shouldForward(level, message)) return
-  invoke('frontend_log', { level, message }).catch(() => {})
+  invoke('frontend_log', { level, message }).catch((error) => {
+    console.warn('[logger] failed to forward frontend log to backend:', error)
+  })
 }
 
 console.log = (...args) => { _log(...args); forward('info', ...args) }

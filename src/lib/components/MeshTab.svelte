@@ -1368,26 +1368,30 @@
         {#if selectedNode}
           <div class="relative h-0" data-testid="mesh-node-detail-host">
             <MeshNodeDetail
-              name={selectedNode.name}
-              role={selectedNode.role}
-              tool={selectedNode.tool}
-              model={selectedNode.model}
-              status={selectedNode.status}
-              projectId={selectedNode.projectId}
-              description={selectedNode.description || ''}
+              node={{
+                name: selectedNode.name,
+                role: selectedNode.role,
+                tool: selectedNode.tool,
+                model: selectedNode.model,
+                status: selectedNode.status,
+                projectId: selectedNode.projectId,
+                description: selectedNode.description || '',
+              }}
               mode="setup"
               {dark}
-              onEdit={openCustomizer}
-              onRemove={() => {
-                if (selectedNode.role !== 'agent') return
-                teamConfig = {
-                  ...teamConfig,
-                  agents: (teamConfig?.agents ?? []).filter((entry) => entry.id !== selectedNode.id),
-                }
-                selectedNodeId = null
-              }}
-              onClose={() => {
-                selectedNodeId = null
+              actions={{
+                onEdit: openCustomizer,
+                onRemove: () => {
+                  if (selectedNode.role !== 'agent') return
+                  teamConfig = {
+                    ...teamConfig,
+                    agents: (teamConfig?.agents ?? []).filter((entry) => entry.id !== selectedNode.id),
+                  }
+                  selectedNodeId = null
+                },
+                onClose: () => {
+                  selectedNodeId = null
+                },
               }}
             />
           </div>
@@ -1422,8 +1426,8 @@
         <MeshInitProgress
           {dark}
           request={initProgress}
-          onsuccess={handleInitializeSuccess}
-          onback={handleInitializeBack}
+          onSuccess={handleInitializeSuccess}
+          onBack={handleInitializeBack}
         />
       </div>
     </div>
@@ -1455,21 +1459,25 @@
         {#if selectedNode}
           <div class="relative h-0" data-testid="mesh-node-detail-host">
             <MeshNodeDetail
-              name={selectedNode.name}
-              role={selectedNode.role}
-              tool={selectedNode.tool}
-              model={selectedNode.model}
-              status={selectedNode.status}
-              projectId={selectedNode.projectId}
-              description={selectedNode.description || ''}
+              node={{
+                name: selectedNode.name,
+                role: selectedNode.role,
+                tool: selectedNode.tool,
+                model: selectedNode.model,
+                status: selectedNode.status,
+                projectId: selectedNode.projectId,
+                description: selectedNode.description || '',
+              }}
               mode="runtime"
               {dark}
-              onResume={handleResumeSelected}
-              onStop={handleStopSelected}
-              onFocusPane={handleFocusSelectedPane}
-              onCapture={openCaptureRoleDialog}
-              onClose={() => {
-                selectedNodeId = null
+              actions={{
+                onResume: handleResumeSelected,
+                onStop: handleStopSelected,
+                onFocusPane: handleFocusSelectedPane,
+                onCapture: openCaptureRoleDialog,
+                onClose: () => {
+                  selectedNodeId = null
+                },
               }}
             />
           </div>
@@ -1828,8 +1836,8 @@
       message={confirmDialogMessage()}
       confirmLabel={confirmDialogLabel()}
       variant="danger"
-      onconfirm={handleConfirmAction}
-      oncancel={() => {
+      onConfirm={handleConfirmAction}
+      onCancel={() => {
         confirmContext = null
       }}
     />

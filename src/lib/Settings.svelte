@@ -38,7 +38,11 @@
   $effect(() => {
     loadSettings()
     loadIndexStatus()
-    getPlatform().then(p => { platform = p }).catch(() => {})
+    getPlatform()
+      .then(p => { platform = p })
+      .catch((error) => {
+        console.warn('[settings] failed to detect platform, using fallback:', error)
+      })
   })
 
   async function loadSettings() {

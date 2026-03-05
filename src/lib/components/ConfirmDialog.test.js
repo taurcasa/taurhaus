@@ -22,57 +22,57 @@ describe('ConfirmDialog', () => {
   })
 
   it('calls confirm callback when confirm button is clicked', async () => {
-    const onconfirm = vi.fn()
+    const onConfirm = vi.fn()
     render(ConfirmDialog, {
       props: {
         open: true,
-        onconfirm,
+        onConfirm,
       },
     })
 
     await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
-    expect(onconfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
   it('calls cancel callback when cancel button is clicked', async () => {
-    const oncancel = vi.fn()
+    const onCancel = vi.fn()
     render(ConfirmDialog, {
       props: {
         open: true,
-        oncancel,
+        onCancel,
       },
     })
 
     await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
-    expect(oncancel).toHaveBeenCalledTimes(1)
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
   it('supports Enter keyboard shortcut for confirm', async () => {
-    const onconfirm = vi.fn()
+    const onConfirm = vi.fn()
     render(ConfirmDialog, {
       props: {
         open: true,
-        onconfirm,
+        onConfirm,
       },
     })
 
     const dialog = screen.getByTestId('confirm-dialog')
 
     await fireEvent.keyDown(dialog, { key: 'Enter', code: 'Enter' })
-    expect(onconfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
   it('supports Escape keyboard shortcut for cancel', async () => {
-    const oncancel = vi.fn()
+    const onCancel = vi.fn()
     render(ConfirmDialog, {
       props: {
         open: true,
-        oncancel,
+        onCancel,
       },
     })
 
     const dialog = screen.getByTestId('confirm-dialog')
     await fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
-    expect(oncancel).toHaveBeenCalledTimes(1)
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

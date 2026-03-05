@@ -175,7 +175,7 @@ describe('MeshInitProgress', () => {
     expect(screen.getByTestId('mesh-init-disband-existing-button')).toBeInTheDocument()
   })
 
-  it('open existing team action invokes onsuccess with openedExisting flag', async () => {
+  it('open existing team action invokes onSuccess with openedExisting flag', async () => {
     coordinationInitializeTeam.mockResolvedValueOnce({
       teamName: 'arch-team',
       failedStep: 'create_team',
@@ -186,13 +186,13 @@ describe('MeshInitProgress', () => {
         { step: 'create_team', status: 'failed', message: 'conflict' },
       ],
     })
-    const onsuccess = vi.fn()
+    const onSuccess = vi.fn()
 
     render(MeshInitProgress, {
       props: {
         dark: false,
         request: { teamName: 'arch-team' },
-        onsuccess,
+        onSuccess,
       },
     })
 
@@ -201,7 +201,7 @@ describe('MeshInitProgress', () => {
     })
     await fireEvent.click(screen.getByTestId('mesh-init-open-existing-button'))
 
-    expect(onsuccess).toHaveBeenCalledWith({
+    expect(onSuccess).toHaveBeenCalledWith({
       teamName: 'arch-team',
       openedExisting: true,
     })
@@ -263,10 +263,12 @@ describe('MeshInitProgress', () => {
         steps: [{ step: 'create_team', status: 'succeeded', message: 'ok' }],
       })
 
+    const onRetry = vi.fn()
     render(MeshInitProgress, {
       props: {
         dark: false,
         request: { teamName: 'arch-team' },
+        onRetry,
       },
     })
 
@@ -278,5 +280,6 @@ describe('MeshInitProgress', () => {
     await waitFor(() => {
       expect(coordinationInitializeTeam).toHaveBeenCalledTimes(2)
     })
+    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,0 +1,531 @@
+import {
+  TOOL_OPTIONS,
+  applyNamePattern,
+  defaultModelForTool,
+  normalizeTool,
+  resolveRoleModel,
+  resolveRoleTool,
+  resolveSlotNamePattern,
+  uniquifyMemberName,
+} from '../meshDefaults.js'
+
+export function normalizeStatus(status) {
+  const value = String(status || '').trim().toLowerCase()
+  if (value === 'active' || value === 'idle') return value
+  return 'offline'
+}
+
+export function inferTeamName(path) {
+  const segments = String(path || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+  const project = segments.at(-1) || 'project'
+  return `${project}-team`
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function normalizeLinuxPath(path) {
+  let value = String(path || '').trim()
+  if (!value) return ''
+  value = value.replace(/\\/g, '/')
+  value = value.replace(/\/+/g, '/')
+  while (value.length > 1 && value.endsWith('/')) {
+    value = value.slice(0, -1)
+  }
+  return value
+}
+
+function wslUncToLinux(path) {
+  const normalized = String(path || '').trim().replace(/\//g, '\\')
+  const lower = normalized.toLowerCase()
+
+  let prefix = ''
+  if (lower.startsWith('\\\\wsl$\\')) {
+    prefix = '\\\\wsl$\\'
+  } else if (lower.startsWith('\\\\wsl.localhost\\')) {
+    prefix = '\\\\wsl.localhost\\'
+  } else {
+    return null
+  }
+
+  const remainder = normalized.slice(prefix.length)
+  const firstSeparator = remainder.indexOf('\\')
+  if (firstSeparator === -1) return null
+
+  const afterDistro = remainder.slice(firstSeparator)
+  if (!afterDistro || afterDistro === '\\') return '/'
+  return normalizeLinuxPath(afterDistro)
+}
+
+function windowsDriveToLinux(path) {
+  const match = String(path || '').trim().match(/^([a-zA-Z]):[\\/](.*)$/)
+  if (!match) return null
+  const [, drive, rest] = match
+  return normalizeLinuxPath(`/mnt/${drive.toLowerCase()}/${rest}`)
+}
+
+export function normalizeProjectPath(path) {
+  const raw = String(path || '').trim()
+  if (!raw) return ''
+  return wslUncToLinux(raw) ?? windowsDriveToLinux(raw) ?? normalizeLinuxPath(raw)
+}
+
+function normalizeLeadPath(team) {
+  return team?.leadProjectPath ?? team?.lead_project_path ?? null
+}
+
+function normalizePatternProjectName(path) {
+  const normalized = normalizeProjectPath(path)
+  const segments = normalized.split('/').filter(Boolean)
+  return segments.at(-1) || 'project'
+}
+
+function isSameProjectPath(left, right) {
+  const leftNormalized = normalizeProjectPath(left)
+  const rightNormalized = normalizeProjectPath(right)
+  if (!leftNormalized || !rightNormalized) return false
+  return leftNormalized === rightNormalized
+}
+
+function normalizeAgentSlots(preset) {
+  return Array.isArray(preset?.agentSlots ?? preset?.agent_slots)
+    ? (preset?.agentSlots ?? preset?.agent_slots)
+    : []
+}
+
+export function coerceTeams(response) {
+  if (Array.isArray(response)) return response
+  return Array.isArray(response?.teams) ? response.teams : []
+}
+
+export function normalizeTeamName(team) {
+  return team?.teamName ?? team?.team_name ?? ''
+}
+
+export function teamMatchesProject(team, currentProjectPath) {
+  return isSameProjectPath(normalizeLeadPath(team), currentProjectPath)
+}
+
+export function createLead(overrides = {}, projectPath = '') {
+  return {
+    id: String(overrides.id ?? 'lead'),
+    name: String(overrides.name ?? 'team-lead'),
+    tool: normalizeTool(overrides.tool ?? overrides.cliTool),
+    model: String(overrides.model ?? defaultModelForTool(overrides.tool ?? overrides.cliTool)),
+    status: normalizeStatus(overrides.status),
+    projectId: String(overrides.projectId ?? projectPath ?? ''),
+    description: overrides.description ?? 'Team lead',
+    paneId: overrides.paneId ?? null,
+    roleId: overrides.roleId ?? null,
+    instructions: overrides.instructions ?? null,
+    behavioralContract: overrides.behavioralContract ?? null,
+    capabilities: Array.isArray(overrides.capabilities) ? overrides.capabilities : null,
+  }
+}
+
+export function createAgent(index, overrides = {}, projectPath = '') {
+  const normalizedTool = normalizeTool(overrides.tool ?? overrides.cliTool ?? 'codex')
+  return {
+    id: String(overrides.id ?? `agent-${index + 1}`),
+    name: String(overrides.name ?? `agent-${index + 1}`),
+    tool: normalizedTool,
+    model: String(overrides.model ?? defaultModelForTool(normalizedTool)),
+    status: normalizeStatus(overrides.status),
+    projectId: String(overrides.projectId ?? projectPath ?? ''),
+    description: overrides.description ?? null,
+    paneId: overrides.paneId ?? null,
+    roleId: overrides.roleId ?? null,
+    instructions: overrides.instructions ?? null,
+    behavioralContract: overrides.behavioralContract ?? null,
+    capabilities: Array.isArray(overrides.capabilities) ? overrides.capabilities : null,
+  }
+}
+
+export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], projectPath = '') {
+  const tools = Array.isArray(preset?.tools) && preset.tools.length > 0
+    ? preset.tools.map((entry) => normalizeTool(entry))
+    : TOOL_OPTIONS
+
+  const roleTemplatesById = new Map(
+    (Array.isArray(roleTemplatesCatalog) ? roleTemplatesCatalog : [])
+      .filter((entry) => entry && (entry.roleId ?? entry.role_id))
+      .map((entry) => [entry.roleId ?? entry.role_id, entry])
+  )
+
+  const leadRoleId = preset?.leadRoleId ?? preset?.lead_role_id ?? ''
+  const leadRoleTemplate = roleTemplatesById.get(leadRoleId)
+  const leadTool = resolveRoleTool(leadRoleTemplate, tools[0] ?? 'claude')
+  const seenNames = new Map()
+  const leadName = uniquifyMemberName('team-lead', seenNames) || 'team-lead'
+
+  const lead = createLead(
+    {
+      id: 'lead',
+      name: leadName,
+      tool: leadTool,
+      model: resolveRoleModel(leadRoleTemplate, leadTool),
+      status: 'offline',
+      projectId: projectPath,
+      roleId: leadRoleId || null,
+    },
+    projectPath
+  )
+
+  const projectName = normalizePatternProjectName(projectPath)
+  const agentSlots = normalizeAgentSlots(preset)
+  let agents = []
+
+  if (agentSlots.length > 0) {
+    let agentIndex = 0
+    agents = agentSlots.flatMap((slot) => {
+      const count = Math.max(0, Number(slot?.count ?? 0))
+      const roleId = slot?.roleId ?? slot?.role_id ?? null
+      const roleTemplate = roleTemplatesById.get(roleId)
+      const tool = resolveRoleTool(roleTemplate, tools[(agentIndex + 1) % tools.length] ?? 'codex')
+      const model = resolveRoleModel(roleTemplate, tool)
+      const pattern = resolveSlotNamePattern(slot, roleTemplate)
+
+      const members = Array.from({ length: count }, (_, offset) => {
+        const memberIndex = offset + 1
+        const fallbackName = `agent-${agentIndex + 1}`
+        const resolvedName = applyNamePattern(pattern, memberIndex, projectName)
+        const name = uniquifyMemberName(resolvedName || fallbackName, seenNames) || fallbackName
+        const member = createAgent(
+          agentIndex,
+          {
+            id: name,
+            name,
+            tool,
+            model,
+            status: 'offline',
+            projectId: projectPath,
+            roleId,
+          },
+          projectPath
+        )
+        agentIndex += 1
+        return member
+      })
+
+      return members
+    })
+  }
+
+  if (agents.length === 0) {
+    const agentCount = Math.max(
+      1,
+      Number(preset?.agentCount ?? Math.max(0, Number(preset?.roleCount ?? 1) - 1) ?? 1)
+    )
+
+    agents = Array.from({ length: agentCount }, (_, index) => {
+      const tool = tools[(index + 1) % tools.length] ?? 'codex'
+      const fallbackName = `agent-${index + 1}`
+      const name = uniquifyMemberName(fallbackName, seenNames) || fallbackName
+      return createAgent(
+        index,
+        {
+          id: name,
+          name,
+          tool,
+          status: 'offline',
+          projectId,
+        },
+        projectPath
+      )
+    })
+  }
+
+  return {
+    lead,
+    agents,
+    presetId: preset?.presetId ?? '',
+    presetName: preset?.name ?? '',
+    composition: {
+      presetId: preset?.presetId ?? '',
+      name: preset?.name ?? '',
+      leadRoleId,
+      agentSlots,
+    },
+  }
+}
+
+export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
+  const members = Array.isArray(status?.members) ? status.members : []
+  const normalizedMembers = members.map((member, index) => ({
+    ...member,
+    name: String(member?.name ?? `member-${index + 1}`),
+    role: String(member?.role ?? '').toLowerCase(),
+    tool: normalizeTool(member?.cliTool ?? member?.cli_tool),
+    model: String(member?.model ?? ''),
+    status: normalizeStatus(member?.sessionStatus ?? member?.session_status),
+    projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
+    description: member?.description ?? null,
+    paneId: member?.paneId ?? member?.pane_id ?? null,
+    roleId: member?.roleId ?? member?.role_id ?? null,
+    instructions: member?.instructions ?? null,
+    behavioralContract: member?.behavioralContract ?? member?.behavioral_contract ?? null,
+    capabilities: Array.isArray(member?.capabilities) ? member.capabilities : null,
+  }))
+
+  const leadMember = normalizedMembers.find((member) => member.role === 'lead')
+  const fallbackLeadName = status?.leadName ?? status?.lead_name ?? 'team-lead'
+
+  const lead = createLead(
+    {
+      id: String(leadMember?.name ?? 'lead'),
+      name: leadMember?.name ?? fallbackLeadName,
+      tool: leadMember?.tool ?? 'claude',
+      model: leadMember?.model ?? defaultModelForTool(leadMember?.tool ?? 'claude'),
+      status: leadMember?.status ?? 'active',
+      projectId: leadMember?.projectId ?? projectPath,
+      description: leadMember?.description ?? 'Team lead',
+      paneId: leadMember?.paneId ?? null,
+      roleId: leadMember?.roleId ?? null,
+      instructions: leadMember?.instructions ?? null,
+      behavioralContract: leadMember?.behavioralContract ?? null,
+      capabilities: leadMember?.capabilities ?? null,
+    },
+    projectPath
+  )
+
+  const agents = normalizedMembers
+    .filter((member) => member.role !== 'lead')
+    .map((member, index) =>
+      createAgent(
+        index,
+        {
+          id: member.name,
+          name: member.name,
+          tool: member.tool,
+          model: member.model,
+          status: member.status,
+          projectId: member.projectId,
+          description: member.description,
+          paneId: member.paneId,
+          roleId: member.roleId,
+          instructions: member.instructions,
+          behavioralContract: member.behavioralContract,
+          capabilities: member.capabilities,
+        },
+        projectPath
+      )
+    )
+
+  return {
+    lead,
+    agents,
+    presetId: '',
+    presetName: '',
+    composition: null,
+  }
+}
+
+export function composeConfigFromPayload(payload, projectPath = '') {
+  const lead = createLead(
+    {
+      id: String(payload?.lead?.name ?? 'lead'),
+      name: payload?.lead?.name ?? 'team-lead',
+      tool: payload?.lead?.cliTool ?? payload?.lead?.cli_tool,
+      model: payload?.lead?.model,
+      status: 'offline',
+      projectId: payload?.lead?.projectId ?? payload?.lead?.project_id ?? projectPath,
+      description: payload?.lead?.description ?? 'Team lead',
+      roleId: payload?.lead?.roleId ?? payload?.lead?.role_id ?? null,
+      instructions: payload?.lead?.instructions ?? null,
+      behavioralContract: payload?.lead?.behavioralContract ?? payload?.lead?.behavioral_contract ?? null,
+      capabilities: Array.isArray(payload?.lead?.capabilities) ? payload.lead.capabilities : null,
+    },
+    projectPath
+  )
+
+  const rawAgents = Array.isArray(payload?.agents) ? payload.agents : []
+  const agents = rawAgents.map((agent, index) =>
+    createAgent(
+      index,
+      {
+        id: String(agent?.name ?? `agent-${index + 1}`),
+        name: agent?.name ?? `agent-${index + 1}`,
+        tool: agent?.cliTool ?? agent?.cli_tool,
+        model: agent?.model,
+        status: 'offline',
+        projectId: agent?.projectId ?? agent?.project_id ?? projectPath,
+        description: agent?.description ?? null,
+        roleId: agent?.roleId ?? agent?.role_id ?? null,
+        instructions: agent?.instructions ?? null,
+        behavioralContract: agent?.behavioralContract ?? agent?.behavioral_contract ?? null,
+        capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
+      },
+      projectPath
+    )
+  )
+
+  return {
+    lead,
+    agents,
+    presetId: '',
+    presetName: '',
+    composition: {
+      presetId: payload?.presetId ?? '',
+      name: payload?.presetName ?? '',
+      leadRoleId: payload?.leadRoleId ?? payload?.lead_role_id ?? '',
+      agentSlots: Array.isArray(payload?.agentSlots ?? payload?.agent_slots)
+        ? (payload?.agentSlots ?? payload?.agent_slots)
+        : [],
+    },
+  }
+}
+
+export function buildInitializationRequest(config, teamName, projectPath = '') {
+  const lead = config?.lead
+  const agents = Array.isArray(config?.agents) ? config.agents : []
+
+  return {
+    teamName: teamName.trim() || inferTeamName(projectPath),
+    teamDescription: null,
+    leadMode: 'launch_new',
+    lead: {
+      name: lead?.name ?? 'team-lead',
+      cliTool: normalizeTool(lead?.tool),
+      model: lead?.model ?? defaultModelForTool(lead?.tool),
+      projectId: lead?.projectId || projectPath,
+      description: lead?.description ?? 'Team lead',
+      roleId: lead?.roleId ?? null,
+      instructions: lead?.instructions ?? null,
+      behavioralContract: lead?.behavioralContract ?? null,
+      capabilities: Array.isArray(lead?.capabilities) ? lead.capabilities : null,
+    },
+    agents: agents.map((agent, index) => ({
+      name: agent?.name || `agent-${index + 1}`,
+      cliTool: normalizeTool(agent?.tool),
+      model: agent?.model ?? defaultModelForTool(agent?.tool),
+      projectId: agent?.projectId || projectPath,
+      description: agent?.description ?? null,
+      roleId: agent?.roleId ?? null,
+      instructions: agent?.instructions ?? null,
+      behavioralContract: agent?.behavioralContract ?? null,
+      capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
+    })),
+  }
+}
+
+export function slugifyRoleId(value) {
+  const slug = String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s_-]+/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return slug || 'captured-role'
+}
+
+export function normalizeBehavioralContract(value) {
+  const base = {
+    communication: [],
+    execution: [],
+    escalation: [],
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const key of Object.keys(base)) {
+      if (Array.isArray(value[key])) {
+        base[key] = value[key].map((entry) => String(entry || '').trim()).filter(Boolean)
+      }
+    }
+    return base
+  }
+
+  if (Array.isArray(value)) {
+    base.communication = value
+      .map((entry) => {
+        if (typeof entry === 'string') return entry.trim()
+        if (!entry || typeof entry !== 'object') return ''
+        const rule = String(entry.rule ?? entry.text ?? '').trim()
+        const enabled = entry.enabled === undefined ? true : Boolean(entry.enabled)
+        return enabled ? rule : ''
+      })
+      .filter(Boolean)
+    return base
+  }
+
+  return base
+}
+
+export function contractHasRules(contract) {
+  return (
+    contract.communication.length > 0 ||
+    contract.execution.length > 0 ||
+    contract.escalation.length > 0
+  )
+}
+
+export function defaultBehavioralContract(roleName) {
+  const safeName = String(roleName || 'agent').trim() || 'agent'
+  return {
+    communication: [`Report concise progress as ${safeName} and escalate blockers quickly.`],
+    execution: ['Execute scoped tasks and verify outcomes before handoff.'],
+    escalation: ['Escalate ambiguous requirements before taking risky actions.'],
+  }
+}
+
+export function normalizeCapabilities(capabilities, tool) {
+  if (Array.isArray(capabilities)) {
+    const normalized = capabilities
+      .map((entry) => String(entry || '').trim().toLowerCase())
+      .filter(Boolean)
+    if (normalized.length > 0) return [...new Set(normalized)]
+  }
+  return [`${normalizeTool(tool)}-workflow`]
+}
+
+export function buildCapturedRoleTemplate(draft) {
+  const roleKind = draft.roleKind === 'lead' ? 'lead' : 'agent'
+  const trimmedName = String(draft.name || '').trim()
+  const normalizedRoleId = slugifyRoleId(draft.roleId)
+  const includeInstructions = Boolean(draft.includeInstructions)
+  const includeBehavioralContract = Boolean(draft.includeBehavioralContract)
+
+  const instructionsFromNode = includeInstructions ? String(draft.description || '').trim() : ''
+  const instructions = instructionsFromNode || `Captured runtime role for ${trimmedName}.`
+
+  const currentContract = normalizeBehavioralContract(draft.behavioralContract)
+  const behavioralContract = includeBehavioralContract && contractHasRules(currentContract)
+    ? currentContract
+    : defaultBehavioralContract(trimmedName)
+
+  return {
+    schema: {
+      kind: 'role_template',
+      version: 1,
+    },
+    roleId: normalizedRoleId,
+    name: trimmedName,
+    version: '1.0.0',
+    kind: roleKind,
+    defaults: {
+      cliTool: normalizeTool(draft.tool),
+      model: String(draft.model || '').trim() || defaultModelForTool(draft.tool),
+      defaultNamePattern: roleKind === 'lead' ? 'team-lead' : 'agent-{n}',
+    },
+    instructions,
+    behavioralContract,
+    capabilities: normalizeCapabilities(draft.capabilities, draft.tool),
+    constraints: roleKind === 'lead'
+      ? {
+        minInstances: 1,
+        maxInstances: 1,
+        requiresLeadTool: null,
+        allowedProjectBinding: 'lead_project',
+      }
+      : {
+        minInstances: 0,
+        maxInstances: 8,
+        requiresLeadTool: null,
+        allowedProjectBinding: 'any',
+      },
+  }
+}

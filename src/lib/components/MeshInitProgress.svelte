@@ -10,9 +10,9 @@
   let {
     dark = false,
     request = null,
-    onsuccess = () => {},
-    onback = () => {},
-    onretry = () => {},
+    onSuccess = () => {},
+    onBack = () => {},
+    onRetry = () => {},
   } = $props()
 
   const stepsOrder = [
@@ -145,7 +145,7 @@
       const report = await coordinationInitializeTeam(nextRequest)
       applyReport(report)
       if (!report?.failedStep && !report?.failed_step) {
-        onsuccess({
+        onSuccess({
           teamName: report?.teamName ?? report?.team_name ?? activeTeamName,
           report,
         })
@@ -192,13 +192,13 @@
   }
 
   function handleRetry() {
-    onretry()
+    onRetry()
     void runInitialization(lastRequest)
   }
 
   function handleOpenExistingTeam() {
     if (!existingTeamName) return
-    onsuccess({ teamName: existingTeamName, openedExisting: true })
+    onSuccess({ teamName: existingTeamName, openedExisting: true })
   }
 
   function handleDisbandExistingTeam() {
@@ -251,7 +251,9 @@
         }
         unlisten = dispose
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.warn('[mesh-init] failed to subscribe to coordination step progress:', error)
+      })
     return () => {
       cancelled = true
       if (typeof unlisten === 'function') unlisten()
@@ -358,7 +360,7 @@
       </button>
       <button
         class="rounded-md px-3 py-1.5 text-xs {subtleButton} disabled:cursor-not-allowed disabled:opacity-50"
-        onclick={onback}
+        onclick={onBack}
         disabled={running}
         data-testid="mesh-init-back-button"
       >
@@ -369,7 +371,7 @@
     {#if succeeded}
       <button
         class={primaryCta}
-        onclick={() => onsuccess({ teamName: activeTeamName })}
+        onclick={() => onSuccess({ teamName: activeTeamName })}
         data-testid="mesh-init-runtime-button"
       >
         Switch to Runtime
@@ -386,6 +388,6 @@
     message={`Disband team "${existingTeamName}" and retry initialization?`}
     confirmLabel="Disband & Retry"
     variant="danger"
-    onconfirm={confirmDisbandExistingTeam}
+    onConfirm={confirmDisbandExistingTeam}
   />
 {/if}

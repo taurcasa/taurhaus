@@ -4,11 +4,13 @@
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
   import { themeTokens } from './themeTokens.js'
   import { createAsyncGuard } from './asyncGuard.js'
+  import { getProjectContext } from './context/ProjectContext.js'
   import TaskDetailPanel from './TaskDetailPanel.svelte'
   import SessionHistory from './SessionHistory.svelte'
 
-  /** @type {{ projectId?: string|null, projectPath: string, isActive?: boolean, dark: boolean, codeTheme?: string, position: object|null, navTarget: object|null, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void, onClearNavTarget?: () => void }} */
-  let { projectId = null, projectPath, isActive = true, dark, codeTheme = 'github-light', position = $bindable(null), navTarget = null, onNavigateToCommit, onNavigateToFile, onNavigateToCommitRange, onClearNavTarget } = $props()
+  /** @type {{ projectId?: string|null, projectPath: string, isActive?: boolean, dark: boolean, codeTheme?: string, position: object|null, navTarget: object|null, onClearNavTarget?: () => void }} */
+  let { projectId = null, projectPath, isActive = true, dark, codeTheme = 'github-light', position = $bindable(null), navTarget = null, onClearNavTarget } = $props()
+  const projectContext = getProjectContext()
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
@@ -230,6 +232,18 @@
     activeSubTab = tab
     closeDetail()
   }
+
+  function navigateToCommit(hash) {
+    projectContext?.navigateToCommit?.(hash)
+  }
+
+  function navigateToFile(path) {
+    projectContext?.navigateToFile?.(path)
+  }
+
+  function navigateToCommitRange(after, before) {
+    projectContext?.navigateToCommitRange?.(after, before)
+  }
 </script>
 
 <div class="flex-1 flex overflow-hidden">
@@ -339,9 +353,9 @@
         {projectId}
         isActive={isActive && activeSubTab === 'history'}
         onSelectTask={selectTask}
-        {onNavigateToCommit}
-        {onNavigateToFile}
-        {onNavigateToCommitRange}
+        onNavigateToCommit={navigateToCommit}
+        onNavigateToFile={navigateToFile}
+        onNavigateToCommitRange={navigateToCommitRange}
       />
     </div>
   {/if}

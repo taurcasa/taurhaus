@@ -49,6 +49,18 @@ function centerY(element) {
   return Number.parseFloat(element.getAttribute('data-center-y') || '0')
 }
 
+function connectionXBounds(connectionPath) {
+  const raw = String(connectionPath?.getAttribute('d') ?? '')
+  const numbers = raw.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+  const xValues = [numbers[0], numbers[2], numbers[4], numbers[6]].filter((value) =>
+    Number.isFinite(value)
+  )
+  return {
+    min: Math.min(...xValues),
+    max: Math.max(...xValues),
+  }
+}
+
 describe('MeshCanvas', () => {
   it('renders lead node when lead prop is provided', () => {
     render(MeshCanvas, {
@@ -138,6 +150,31 @@ describe('MeshCanvas', () => {
     })
 
     expect(screen.getAllByTestId('mesh-connection')).toHaveLength(5)
+  })
+
+  it('keeps all 5-6 agent connections within canvas bounds', async () => {
+    const { container, rerender } = render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(5),
+      },
+    })
+
+    for (const count of [5, 6]) {
+      await rerender({
+        lead,
+        agents: makeAgents(count),
+      })
+
+      const svg = container.querySelector('svg.mesh-canvas-connections')
+      expect(svg).toBeInTheDocument()
+      const viewBoxWidth = Number((svg.getAttribute('viewBox') || '0 0 600 0').split(' ')[2])
+      for (const connection of screen.getAllByTestId('mesh-connection')) {
+        const bounds = connectionXBounds(connection)
+        expect(bounds.min).toBeGreaterThanOrEqual(0)
+        expect(bounds.max).toBeLessThanOrEqual(viewBoxWidth)
+      }
+    }
   })
 
   it('shows add node in setup mode and hides it in runtime mode', async () => {

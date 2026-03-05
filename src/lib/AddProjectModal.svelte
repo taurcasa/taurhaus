@@ -7,8 +7,10 @@
     validateProjectPath,
     createProject,
   } from './ipc.js'
+  import CreateWorkflow from './CreateWorkflow.svelte'
+  import ManualWorkflow from './ManualWorkflow.svelte'
+  import ScanWorkflow from './ScanWorkflow.svelte'
   import { themeTokens } from './themeTokens.js'
-  import DirectoryBrowser from './DirectoryBrowser.svelte'
 
   let {
     dark = false,
@@ -51,7 +53,12 @@
   let selected = $state(new Set())
   let registering = $state(false)
   let scanError = $state(null)
-  let addMode = $state('scan') // 'scan' | 'manual' | 'create'
+  const WORKFLOW_STATES = {
+    SCAN: 'scan',
+    MANUAL: 'manual',
+    CREATE: 'create',
+  }
+  let addMode = $state(WORKFLOW_STATES.SCAN)
   let manualPath = $state('')
   let manualError = $state(null)
   let addSuccess = $state(null) // "3 projects added" message
@@ -219,7 +226,7 @@
       if (result?.success) {
         addSuccess = '1 project added'
         manualPath = ''
-        addMode = 'scan'
+        addMode = WORKFLOW_STATES.SCAN
         validation = null
         await loadRegistered()
         showAddSection = false
@@ -330,6 +337,20 @@
       onClose()
     }
   }
+
+  function transitionWorkflow(nextMode) {
+    addMode = nextMode
+    if (nextMode !== WORKFLOW_STATES.MANUAL) {
+      manualError = null
+      validation = null
+    }
+    if (nextMode !== WORKFLOW_STATES.CREATE) {
+      createError = null
+    }
+    if (nextMode !== WORKFLOW_STATES.SCAN) {
+      scanError = null
+    }
+  }
 </script>
 
 <!-- Backdrop -->
@@ -423,12 +444,12 @@
           <button
             class="w-full py-2 rounded-lg border border-dashed {t.keyline} text-[13px] {t.textTertiary} hover:border-brand-500 hover:text-brand-500 transition-colors flex items-center justify-center gap-2"
             onclick={() => {
-              showAddSection = true
-              addMode = 'scan'
-              manualError = null
-              scanError = null
-              createError = null
-              handleScan()
+                showAddSection = true
+                transitionWorkflow(WORKFLOW_STATES.SCAN)
+                manualError = null
+                scanError = null
+                createError = null
+                handleScan()
             }}
             data-testid="show-add-section"
           >
@@ -444,7 +465,7 @@
               class="text-[11px] {t.textTertiary} hover:text-zinc-600 transition-colors"
               onclick={() => {
                 showAddSection = false
-                addMode = 'scan'
+                transitionWorkflow(WORKFLOW_STATES.SCAN)
                 manualError = null
                 scanError = null
                 createError = null
@@ -454,217 +475,90 @@
 
           <div class="grid grid-cols-3 gap-2 mb-3">
             <button
-              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === 'scan' ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
-              onclick={() => { addMode = 'scan'; createError = null; if (discovered.length === 0 && !scanning) handleScan() }}
+              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.SCAN ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+              onclick={() => { transitionWorkflow(WORKFLOW_STATES.SCAN); if (discovered.length === 0 && !scanning) handleScan() }}
               data-testid="mode-scan"
             >Scan</button>
             <button
-              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === 'manual' ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
-              onclick={() => { addMode = 'manual'; createError = null }}
+              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.MANUAL ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+              onclick={() => { transitionWorkflow(WORKFLOW_STATES.MANUAL) }}
               data-testid="mode-manual"
             >Manual</button>
             <button
-              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === 'create' ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
-              onclick={() => { addMode = 'create'; manualError = null }}
+              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.CREATE ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+              onclick={() => { transitionWorkflow(WORKFLOW_STATES.CREATE) }}
               data-testid="mode-create"
             >Create New</button>
           </div>
 
-          {#if addMode === 'manual'}
-            <!-- Manual path entry with directory browser -->
-            <div>
-              <label for="manual-path" class="text-[13px] {t.textSecondary} mb-1.5 block">Project path</label>
-              <div class="relative">
-                <input
-                  id="manual-path"
-                  type="text"
-                  placeholder="~/projects/my-project"
-                  bind:value={manualPath}
-                  class="w-full px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono pr-8"
-                  onkeydown={(e) => e.key === 'Enter' && handleManualAdd()}
-                  onblur={() => validatePath(manualPath)}
-                  data-testid="manual-path-input"
-                />
-                {#if validating}
-                  <div class="absolute right-2.5 top-1/2 -translate-y-1/2">
-                    <div class="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                {:else if validationMessage?.type === 'success'}
-                  <div class="absolute right-2.5 top-1/2 -translate-y-1/2 text-success-500">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-                  </div>
-                {/if}
-              </div>
-
-              <!-- Validation feedback -->
-              {#if manualError}
-                <p class="text-[12px] text-danger-500 mt-1.5" data-testid="manual-error">{manualError}</p>
-              {:else if validationMessage}
-                <p class="text-[12px] mt-1.5 {validationMessage.type === 'error' ? 'text-danger-500' : validationMessage.type === 'warning' ? 'text-warning-500' : 'text-success-500'}" data-testid="validation-message">{validationMessage.text}</p>
-              {/if}
-
-              <!-- Directory tree browser -->
-              <div class="mt-3">
-                <DirectoryBrowser {dark} selectedPath={manualPath} onSelect={(path) => { manualPath = path; validatePath(path) }} maxHeight="180px" />
-              </div>
-
-              <div class="flex items-center justify-between mt-3">
-                <button
-                  class="text-[12px] {t.linkColor} transition-colors"
-                  onclick={() => { addMode = 'scan'; manualError = null; validation = null }}
-                >Back to scan</button>
-                <button
-                  class="px-3 py-1.5 rounded-md bg-brand-600 text-white text-[12px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
-                  onclick={handleManualAdd}
-                  disabled={!pathIsValid || registering}
-                  data-testid="manual-add-button"
-                >{registering ? 'Adding...' : 'Add project'}</button>
-              </div>
-            </div>
-
-          {:else if addMode === 'create'}
-            <div>
-              <label for="create-project-name" class="text-[13px] {t.textSecondary} mb-1.5 block">Project name</label>
-              <input
-                id="create-project-name"
-                type="text"
-                placeholder="my-new-project"
-                bind:value={createProjectName}
-                class="w-full px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
-                onkeydown={(e) => e.key === 'Enter' && handleCreateProject()}
-                data-testid="create-name-input"
-              />
-
-              <label for="create-parent-dir" class="text-[13px] {t.textSecondary} mb-1.5 mt-3 block">Parent directory</label>
-              <input
-                id="create-parent-dir"
-                type="text"
-                placeholder="~/projects"
-                bind:value={createParentDir}
-                class="w-full px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
-                onkeydown={(e) => e.key === 'Enter' && handleCreateProject()}
-                data-testid="create-parent-input"
-              />
-
-              <div class="mt-3">
-                <DirectoryBrowser
-                  {dark}
-                  selectedPath={createParentDir}
-                  onSelect={(path) => { createParentDir = path }}
-                  maxHeight="180px"
-                />
-              </div>
-
-              {#if createError}
-                <p class="text-[12px] text-danger-500 mt-2" data-testid="create-error">{createError}</p>
-              {/if}
-
-              <div class="flex items-center justify-between mt-3">
-                <button
-                  class="text-[12px] {t.linkColor} transition-colors"
-                  onclick={() => { addMode = 'scan'; createError = null }}
-                >Back to scan</button>
-                <button
-                  class="px-3 py-1.5 rounded-md bg-brand-600 text-white text-[12px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
-                  onclick={handleCreateProject}
-                  disabled={!isValidProjectName(createProjectName) || !createParentDir.trim() || creating}
-                  data-testid="create-project-button"
-                >{creating ? 'Creating...' : 'Create project'}</button>
-              </div>
-            </div>
-
-          {:else if scanning}
-            <div class="text-center py-4" data-testid="scanning-state">
-              <div class="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p class="text-[12px] {t.textTertiary}">Scanning ~/projects/...</p>
-            </div>
-
-          {:else if scanError}
-            <div class="text-center py-4" data-testid="scan-error">
-              <p class="text-[13px] {t.textPrimary} mb-1">Scan failed</p>
-              <p class="text-[11px] text-danger-500 mb-3">{scanError}</p>
-              <div class="flex items-center justify-center gap-3">
-                <button class="text-[12px] {t.linkColor} transition-colors" onclick={handleScan}>Try again</button>
-                <span class="{t.textTertiary}">·</span>
-                <button class="text-[12px] {t.linkColor} transition-colors" onclick={() => { scanError = null; addMode = 'manual' }} data-testid="enter-manual-mode">Browse manually</button>
-              </div>
-            </div>
-
-          {:else if selectableProjects.length === 0 && discovered.length > 0}
-            <div class="text-center py-4" data-testid="all-registered">
-              <p class="text-[13px] {t.textSecondary}">All projects in ~/projects/ are already registered.</p>
-              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { addMode = 'manual' }} data-testid="enter-manual-mode">Browse manually</button>
-            </div>
-
-          {:else if discovered.length === 0}
-            <div class="text-center py-4" data-testid="empty-scan">
-              <p class="text-[13px] {t.textSecondary}">No new projects found in ~/projects/.</p>
-              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { addMode = 'manual' }} data-testid="enter-manual-mode">Browse manually</button>
-            </div>
-
+          {#if addMode === WORKFLOW_STATES.MANUAL}
+            <ManualWorkflow
+              {dark}
+              {t}
+              {inputBg}
+              {manualPath}
+              {validating}
+              {validationMessage}
+              {manualError}
+              {pathIsValid}
+              {registering}
+              onManualPathInput={(value) => {
+                manualPath = value
+              }}
+              onManualPathBlur={() => validatePath(manualPath)}
+              onManualEnter={handleManualAdd}
+              onManualAdd={handleManualAdd}
+              onBackToScan={() => transitionWorkflow(WORKFLOW_STATES.SCAN)}
+              onManualDirectorySelect={(path) => {
+                manualPath = path
+                validatePath(path)
+              }}
+            />
+          {:else if addMode === WORKFLOW_STATES.CREATE}
+            <CreateWorkflow
+              {dark}
+              {t}
+              {inputBg}
+              {createProjectName}
+              {createParentDir}
+              {createError}
+              {creating}
+              canCreate={isValidProjectName(createProjectName) && Boolean(createParentDir.trim())}
+              onCreateNameInput={(value) => {
+                createProjectName = value
+              }}
+              onCreateParentInput={(value) => {
+                createParentDir = value
+              }}
+              onCreateEnter={handleCreateProject}
+              onCreateParentSelect={(path) => {
+                createParentDir = path
+              }}
+              onCreateProject={handleCreateProject}
+              onBackToScan={() => transitionWorkflow(WORKFLOW_STATES.SCAN)}
+            />
           {:else}
-            <!-- Scan results -->
-            <div class="flex items-center gap-3 mb-2">
-              <p class="text-[12px] {t.textSecondary}">
-                {selectableProjects.length} new project{selectableProjects.length !== 1 ? 's' : ''}
-              </p>
-              <span class="flex-1"></span>
-              {#if selectableProjects.length > 1}
-                <button class="text-[11px] {t.linkColor} transition-colors" onclick={allSelected ? deselectAll : selectAll}>
-                  {allSelected ? 'Deselect all' : 'Select all'}
-                </button>
-              {/if}
-            </div>
-
-            <div class="border {t.keyline} rounded-lg overflow-hidden max-h-[200px] overflow-y-auto" data-testid="discovered-list">
-              {#each selectableProjects as project}
-                {@const isSelected = selected.has(project.path)}
-                <button
-                  class="w-full flex items-center gap-3 px-3 py-2 text-left border-b last:border-b-0 {t.keyline} {hoverRow} transition-colors"
-                  onclick={() => toggleProject(project.path)}
-                >
-                  <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {isSelected ? 'bg-brand-600 border-brand-600' : t.checkBg}">
-                    {#if isSelected}
-                      <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-                    {/if}
-                  </div>
-                  <div class="min-w-0 flex-1">
-                    <div class="text-[13px] font-medium {t.textPrimary} truncate">{project.name}</div>
-                    <div class="text-[11px] {t.textTertiary} truncate font-mono">{project.path}</div>
-                  </div>
-                  {#if project.has_git}
-                    <span class="text-[10px] px-1.5 py-0.5 rounded {badgeBg}">git</span>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-          {/if}
-
-          {#if !scanning && addMode === 'scan' && !scanError}
-            <div class="flex items-center justify-between mt-3">
-              <div class="flex items-center gap-3">
-                <button
-                  class="text-[12px] {t.linkColor} transition-colors"
-                  onclick={() => { addMode = 'manual' }}
-                  data-testid="enter-manual-mode"
-                >Enter path manually</button>
-                <button
-                  class="text-[12px] {t.linkColor} transition-colors"
-                  onclick={() => { addMode = 'create' }}
-                  data-testid="enter-create-mode"
-                >Create new project</button>
-              </div>
-              {#if selectableProjects.length > 0}
-                <button
-                  class="px-3 py-1.5 rounded-md bg-brand-600 text-white text-[12px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
-                  onclick={handleRegister}
-                  disabled={selectedCount === 0 || registering}
-                  data-testid="register-button"
-                >
-                  {registering ? 'Registering...' : `Register ${selectedCount}`}
-                </button>
-              {/if}
-            </div>
+            <ScanWorkflow
+              {dark}
+              {t}
+              {hoverRow}
+              {badgeBg}
+              {scanning}
+              {scanError}
+              {discovered}
+              {selectableProjects}
+              {selected}
+              {selectedCount}
+              {allSelected}
+              {registering}
+              onToggleProject={toggleProject}
+              onSelectAll={selectAll}
+              onDeselectAll={deselectAll}
+              onRegister={handleRegister}
+              onEnterManualMode={() => transitionWorkflow(WORKFLOW_STATES.MANUAL)}
+              onEnterCreateMode={() => transitionWorkflow(WORKFLOW_STATES.CREATE)}
+              onRetryScan={handleScan}
+            />
           {/if}
         </div>
       {/if}

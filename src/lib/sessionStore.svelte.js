@@ -146,7 +146,9 @@ function applySessions(result) {
         endedAt,
         activeDurationMs,
         totalDurationMs,
-      ).catch(() => {})
+      ).catch((error) => {
+        console.warn('[sessionStore] failed to persist session activity stats:', error)
+      })
 
       trackers.delete(pid)
     }
