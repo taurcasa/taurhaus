@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use git2::{Repository, Sort, StatusOptions};
@@ -17,17 +16,6 @@ use crate::templates::storage::{
 use crate::templates::types::{
     AgentSlot, ProjectBinding, RoleKind, RoleTemplate, SlotOverrides, TeamPreset,
 };
-
-#[cfg(feature = "mesh-bridged-backend")]
-use crate::commands::coordination;
-#[cfg(feature = "mesh-bridged-backend")]
-use crate::commands::coordination_types::{InitializeReport, InitializeTeamRequest};
-#[cfg(feature = "mesh-bridged-backend")]
-use crate::commands::projects::DbState;
-#[cfg(feature = "mesh-bridged-backend")]
-use crate::coordination::state::CoordinationState;
-#[cfg(feature = "mesh-bridged-backend")]
-use tauri::AppHandle;
 
 pub struct TemplateStoreState(pub TemplateStore);
 
@@ -51,17 +39,6 @@ pub struct RoleTemplateSummary {
     pub name: String,
     pub version: String,
     pub kind: RoleKind,
-    pub source: TemplateSource,
-    pub read_only: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TeamPresetSummary {
-    pub preset_id: String,
-    pub name: String,
-    pub description: String,
-    pub version: String,
     pub source: TemplateSource,
     pub read_only: bool,
 }
@@ -199,20 +176,6 @@ pub struct TemplateFlushResult {
     pub commit_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum TemplateImportResult {
-    Role { template: RoleTemplate },
-    Preset { preset: TeamPreset },
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplatesApplyCompositionRequest {
-    pub initialize_request: InitializeTeamRequest,
-}
-
 #[tauri::command]
 pub fn templates_list_roles(
     state: State<'_, TemplateStoreState>,
@@ -276,17 +239,6 @@ pub fn templates_delete_role(
     let store = &state.0;
     store.delete_role(&role_id).map_err(map_template_error)?;
     Ok(())
-}
-
-#[tauri::command]
-pub fn templates_list_presets(
-    state: State<'_, TemplateStoreState>,
-) -> Result<Vec<TeamPresetSummary>, String> {
-    let store = &state.0;
-    store
-        .list_presets()
-        .map(|presets| presets.into_iter().map(map_preset_summary).collect())
-        .map_err(map_template_error)
 }
 
 #[tauri::command]
@@ -359,31 +311,6 @@ pub fn templates_compose_team(
         &catalog.roles,
         &request.overrides,
     ))
-}
-
-#[tauri::command]
-pub fn templates_validate_composition(
-    state: State<'_, TemplateStoreState>,
-    request: TemplatesComposeTeamRequest,
-) -> Result<CompositionResult, String> {
-    templates_compose_team(state, request)
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-#[tauri::command]
-pub fn templates_apply_composition(
-    app: AppHandle,
-    db: State<'_, DbState>,
-    coordination_state: State<'_, CoordinationState>,
-    request: TemplatesApplyCompositionRequest,
-) -> Result<InitializeReport, String> {
-    coordination::coordination_initialize_team(
-        app,
-        db,
-        coordination_state,
-        request.initialize_request,
-    )
-    .map_err(|err| err.message)
 }
 
 #[tauri::command]
@@ -637,65 +564,6 @@ pub fn templates_flush_pending(
     })
 }
 
-#[tauri::command]
-pub fn templates_import(
-    state: State<'_, TemplateStoreState>,
-    path: String,
-) -> Result<TemplateImportResult, String> {
-    let store = &state.0;
-    let source = PathBuf::from(path);
-    let raw = fs::read_to_string(&source).map_err(|err| sanitize_error(&err.to_string()))?;
-
-    let role_error = match serde_yaml::from_str::<RoleTemplate>(&raw) {
-        Ok(role) => match role.validate() {
-            Ok(()) => {
-                store.import_role(&source).map_err(map_template_error)?;
-                let imported = store
-                    .get_role(&role.role_id)
-                    .map_err(map_template_error)?
-                    .template;
-                return Ok(TemplateImportResult::Role { template: imported });
-            }
-            Err(err) => format!("role validation failed: {err}"),
-        },
-        Err(err) => format!("role parse failed: {err}"),
-    };
-
-    let preset_error = match serde_yaml::from_str::<TeamPreset>(&raw) {
-        Ok(preset) => {
-            let role_catalog = store.load_catalog().map_err(map_template_error)?.roles;
-            match preset.validate_with_role_catalog(&role_catalog) {
-                Ok(()) => {
-                    store.import_preset(&source).map_err(map_template_error)?;
-                    let imported = store
-                        .get_preset(&preset.preset_id)
-                        .map_err(map_template_error)?
-                        .template;
-                    return Ok(TemplateImportResult::Preset { preset: imported });
-                }
-                Err(err) => format!("preset validation failed: {err}"),
-            }
-        }
-        Err(err) => format!("preset parse failed: {err}"),
-    };
-
-    Err(sanitize_error(&format!(
-        "file is neither a valid role template nor team preset ({}; {})",
-        role_error, preset_error
-    )))
-}
-
-fn map_preset_summary(record: TeamPresetRecord) -> TeamPresetSummary {
-    TeamPresetSummary {
-        preset_id: record.template.preset_id,
-        name: record.template.name,
-        description: record.template.description,
-        version: record.template.version,
-        source: record.source,
-        read_only: record.read_only,
-    }
-}
-
 fn map_role_summary(record: RoleTemplateRecord) -> RoleTemplateSummary {
     RoleTemplateSummary {
         role_id: record.template.role_id,
@@ -782,8 +650,6 @@ fn commit_changed_template_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::templates::storage::TemplateSource;
-    use crate::templates::types::{TemplateKind, TemplateSchema};
 
     #[test]
     fn managed_template_path_filter_matches_expected_prefixes() {
@@ -798,34 +664,6 @@ mod tests {
         assert!(is_valid_template_id("qa_reviewer-1"));
         assert!(!is_valid_template_id("../etc/passwd"));
         assert!(!is_valid_template_id("role with spaces"));
-    }
-
-    #[test]
-    fn preset_summary_maps_source_metadata() {
-        let record = TeamPresetRecord {
-            template: TeamPreset {
-                schema: TemplateSchema {
-                    kind: TemplateKind::TeamPreset,
-                    version: 1,
-                },
-                preset_id: "preset".to_string(),
-                name: "Preset".to_string(),
-                description: "desc".to_string(),
-                version: "1.0.0".to_string(),
-                lead_role_id: "lead".to_string(),
-                agent_slots: Vec::new(),
-                defaults: crate::templates::types::TeamPresetDefaults {
-                    team_name_pattern: "{project}".to_string(),
-                    tmux_layout: "tiled".to_string(),
-                },
-            },
-            source: TemplateSource::BuiltIn,
-            read_only: true,
-        };
-
-        let summary = map_preset_summary(record);
-        assert_eq!(summary.source, TemplateSource::BuiltIn);
-        assert!(summary.read_only);
     }
 
     #[test]

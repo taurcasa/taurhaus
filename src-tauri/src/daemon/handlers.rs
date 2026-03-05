@@ -50,7 +50,7 @@ pub(crate) fn dispatch(
     watch_runtime: &mut WatchRuntime,
     project_task_scan_cache: &ProjectTaskScanCacheState,
 ) -> DaemonResponse {
-    tracing::info!(method = %request.method, id = %request.id, "Received request");
+    tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
         protocol::method::PING => handle_ping(&request.id, start_time),
         protocol::method::GIT_STATUS => handle_git_status(&request.id, &request.params, provider),

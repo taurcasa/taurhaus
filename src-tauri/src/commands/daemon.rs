@@ -116,40 +116,6 @@ pub fn start_daemon(
     Ok("Daemon process started (not yet connected)".to_string())
 }
 
-/// Manually stop the daemon process.
-#[tauri::command]
-pub fn stop_daemon(
-    provider: State<'_, ProviderState>,
-    app: tauri::AppHandle,
-) -> Result<String, String> {
-    let Some(ref daemon) = provider.daemon else {
-        return Err("No daemon configured".to_string());
-    };
-
-    if !daemon.is_connected() {
-        return Ok("Daemon already disconnected".to_string());
-    }
-
-    // Send shutdown command
-    let id = "manual-shutdown";
-    let request =
-        protocol::DaemonRequest::new(id, protocol::method::SHUTDOWN, serde_json::Value::Null);
-    match daemon.send_status_request(&request) {
-        Ok(response) if response.is_ok() => {
-            let _ = app.emit(
-                "daemon-status",
-                serde_json::json!({ "status": "disconnected" }),
-            );
-            Ok("Daemon stopped".to_string())
-        }
-        Ok(response) => Err(format!(
-            "Shutdown failed: {}",
-            response.error.map(|e| e.message).unwrap_or_default()
-        )),
-        Err(e) => Err(format!("Failed to send shutdown: {e}")),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Daemon auto-install commands (FirstRunWizard + startup update check)
 // ---------------------------------------------------------------------------

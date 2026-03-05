@@ -180,6 +180,7 @@ fn member_commands_validate_all_required_fields() {
         "team".to_string(),
         "".to_string(),
         "mesh".to_string(),
+        None,
     )
     .expect_err("empty member should fail");
     assert!(err.contains("member_name"));
@@ -189,6 +190,7 @@ fn member_commands_validate_all_required_fields() {
         "team".to_string(),
         "alice".to_string(),
         "".to_string(),
+        None,
     )
     .expect_err("empty backend should fail");
     assert!(err.contains("backend_kind"));
@@ -650,6 +652,7 @@ fn add_member_happy_path_persists_member() {
         "arch".to_string(),
         "alice".to_string(),
         "mesh".to_string(),
+        Some("/tmp/arch".to_string()),
     )
     .expect("add member");
     let status = coordination_get_team_status_impl(&state, "arch".to_string()).expect("status");
@@ -666,9 +669,68 @@ fn add_member_error_mapping_not_found() {
         "missing".to_string(),
         "alice".to_string(),
         "mesh".to_string(),
+        None,
     )
     .expect_err("missing team");
     assert!(err.contains("Not found"));
+}
+
+#[test]
+fn add_member_requires_project_path_when_team_has_no_members() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+
+    coordination_create_team_impl(&state, "arch".to_string()).expect("create");
+    let err = coordination_add_member_impl(
+        &state,
+        "arch".to_string(),
+        "alice".to_string(),
+        "mesh".to_string(),
+        None,
+    )
+    .expect_err("missing project path should fail for empty team");
+    assert!(err.contains("project_path must be provided"));
+}
+
+#[test]
+fn add_member_defaults_to_lead_project_path_instead_of_process_cwd() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let request = sample_preflight_request();
+
+    coordination_initialize_team_with_emitter(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        |_| {},
+    )
+    .expect("initialize should succeed");
+
+    coordination_add_member_impl(
+        &state,
+        "architecture-final".to_string(),
+        "legacy-dev".to_string(),
+        "codex".to_string(),
+        None,
+    )
+    .expect("add member");
+
+    let member_project_path = state
+        .with_orchestrator(|orchestrator| {
+            let status = orchestrator.get_team_status("architecture-final")?;
+            let member = status
+                .config
+                .members
+                .iter()
+                .find(|member| member.name == "legacy-dev")
+                .ok_or_else(|| {
+                    CoordinationError::NotFound("member 'legacy-dev' not found".to_string())
+                })?;
+            Ok(member.project_path.clone())
+        })
+        .expect("member should be persisted");
+
+    assert_eq!(member_project_path, PathBuf::from("proj-core"));
 }
 
 #[test]
@@ -682,6 +744,7 @@ fn remove_member_happy_path_removes_member() {
         "arch".to_string(),
         "alice".to_string(),
         "mesh".to_string(),
+        Some("/tmp/arch".to_string()),
     )
     .expect("add");
     let report = coordination_remove_member_impl(&state, "arch".to_string(), "alice".to_string())
@@ -792,6 +855,7 @@ fn get_team_status_happy_path_returns_team_and_members() {
         "arch".to_string(),
         "alice".to_string(),
         "mesh".to_string(),
+        Some("/tmp/arch".to_string()),
     )
     .expect("add");
     let status = coordination_get_team_status_impl(&state, "arch".to_string()).expect("status");

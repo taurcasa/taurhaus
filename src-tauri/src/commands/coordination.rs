@@ -144,8 +144,16 @@ pub fn coordination_add_member(
     team_name: String,
     member_name: String,
     backend_kind: String,
+    project_path: Option<String>,
 ) -> IpcResult<()> {
-    coordination_add_member_impl(state.inner(), team_name, member_name, backend_kind).ipc()
+    coordination_add_member_impl(
+        state.inner(),
+        team_name,
+        member_name,
+        backend_kind,
+        project_path,
+    )
+    .ipc()
 }
 
 #[tauri::command]
@@ -545,24 +553,31 @@ fn coordination_add_member_impl(
     team_name: String,
     member_name: String,
     backend_kind: String,
+    project_path: Option<String>,
 ) -> Result<(), String> {
     validate_non_empty("team_name", &team_name)?;
     validate_non_empty("member_name", &member_name)?;
     validate_non_empty("backend_kind", &backend_kind)?;
-
     let cli_tool = cli_tool_from_backend_kind(&backend_kind).map_err(map_coordination_error)?;
-    let member = Member {
-        name: member_name,
-        role: MemberRole::Agent,
-        role_id: None,
-        instructions: None,
-        behavioral_contract: None,
-        capabilities: None,
-        project_path: default_project_path(),
-        cli_tool,
-    };
     state
-        .with_orchestrator(|orchestrator| orchestrator.add_member(&team_name, member))
+        .with_orchestrator(|orchestrator| {
+            let team_status = orchestrator.get_team_status(&team_name)?;
+            let project_path = resolve_legacy_member_project_path(
+                &team_status.config.members,
+                project_path.as_deref(),
+            )?;
+            let member = Member {
+                name: member_name,
+                role: MemberRole::Agent,
+                role_id: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
+                project_path,
+                cli_tool,
+            };
+            orchestrator.add_member(&team_name, member)
+        })
         .map_err(map_coordination_error)
 }
 
@@ -919,8 +934,31 @@ fn session_status_from_health(health: HealthState) -> SessionStatus {
     }
 }
 
-fn default_project_path() -> PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+fn resolve_legacy_member_project_path(
+    existing_members: &[Member],
+    project_path_override: Option<&str>,
+) -> Result<PathBuf, CoordinationError> {
+    if let Some(project_path) = project_path_override {
+        let project_path = project_path.trim();
+        if project_path.is_empty() {
+            return Err(CoordinationError::Validation(
+                "project_path must not be empty".to_string(),
+            ));
+        }
+        return Ok(PathBuf::from(project_path));
+    }
+
+    existing_members
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+        .or_else(|| existing_members.first())
+        .map(|member| member.project_path.clone())
+        .ok_or_else(|| {
+            CoordinationError::Validation(
+                "project_path must be provided for legacy add-member when team has no members"
+                    .to_string(),
+            )
+        })
 }
 
 fn map_coordination_error(err: CoordinationError) -> String {
