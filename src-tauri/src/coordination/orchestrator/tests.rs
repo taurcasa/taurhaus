@@ -160,6 +160,10 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         self.inner.pane_is_shell(pane_id)
     }
 
+    fn pane_current_command(&self, _pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        Ok(None)
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.inner.kill_aitx_pane(pane_id)
     }
@@ -255,6 +259,10 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
 
     fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
         self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, _pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        Ok(None)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
@@ -355,6 +363,10 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
 
     fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
         self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, _pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        Ok(None)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {

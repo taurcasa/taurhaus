@@ -56,6 +56,7 @@ pub trait CoordinationRuntime: Send + Sync {
     fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError>;
     fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError>;
     fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError>;
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError>;
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError>;
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError>;
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError>;
@@ -322,6 +323,25 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         Ok(is_shell_command(raw.as_ref()))
     }
 
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        let out = run_tmux_output(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            tmux_target_for_pane(pane_id),
+            "#{pane_current_command}".to_string(),
+        ])?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        let command = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if command.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(command))
+        }
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         run_tmux(&[
             "kill-pane".to_string(),
@@ -472,6 +492,9 @@ pub enum RuntimeCall {
     CheckPaneShell {
         pane_id: String,
     },
+    CheckPaneCurrentCommand {
+        pane_id: String,
+    },
     KillPane {
         pane_id: String,
     },
@@ -489,6 +512,7 @@ pub struct RecordingCoordinationRuntime {
     pane_exists: Mutex<HashMap<String, bool>>,
     pane_dead: Mutex<HashMap<String, bool>>,
     pane_shell: Mutex<HashMap<String, bool>>,
+    pane_command: Mutex<HashMap<String, Option<String>>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
     pid_running: Mutex<HashMap<u32, bool>>,
     pane_counter: AtomicUsize,
@@ -524,6 +548,12 @@ impl RecordingCoordinationRuntime {
     pub fn set_pane_shell(&self, pane_id: &str, shell: bool) {
         if let Ok(mut map) = self.pane_shell.lock() {
             map.insert(pane_id.to_string(), shell);
+        }
+    }
+
+    pub fn set_pane_current_command(&self, pane_id: &str, command: Option<&str>) {
+        if let Ok(mut map) = self.pane_command.lock() {
+            map.insert(pane_id.to_string(), command.map(ToString::to_string));
         }
     }
 
@@ -666,6 +696,19 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             .and_then(|map| map.get(pane_id).copied())
             .unwrap_or(false);
         Ok(is_shell)
+    }
+
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        self.push_call(RuntimeCall::CheckPaneCurrentCommand {
+            pane_id: pane_id.to_string(),
+        });
+        let command = self
+            .pane_command
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).cloned())
+            .flatten();
+        Ok(command)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {

@@ -13,6 +13,8 @@ pub mod templates {
 }
 
 pub mod session_scanner {
+    pub use taurhaus_lib::session_scanner::{scan_sessions, ActivityConfidence, SessionState};
+
     pub mod cli_tool {
         use serde::{Deserialize, Serialize};
 
