@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -13,6 +14,16 @@ use crate::{
 };
 
 use super::SetupContext;
+
+static RECONCILE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+struct ReconcileInProgressGuard;
+
+impl Drop for ReconcileInProgressGuard {
+    fn drop(&mut self) {
+        RECONCILE_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
 
 pub(crate) fn initialize(
     app: &mut tauri::App,
@@ -89,6 +100,18 @@ pub(crate) fn initialize(
 }
 
 pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
+    if RECONCILE_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        tracing::debug!(
+            reason,
+            "Skipping activity watch reconcile because another run is in progress"
+        );
+        return;
+    }
+    let _in_progress_guard = ReconcileInProgressGuard;
+
     let (projects, thresholds, has_daemon) = {
         let db_state = app.state::<DbState>();
         let db_guard = match db_state.0.lock() {
@@ -129,82 +152,86 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
         (projects, thresholds, has_daemon)
     };
 
-    let watcher_state = app.state::<WatcherState>();
-    let mut watcher_guard = match watcher_state.0.lock() {
-        Ok(guard) => guard,
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                reason,
-                "Watcher lock poisoned while reconciling activity watches; recovering"
-            );
-            error.into_inner()
-        }
-    };
-    let watched_ids: HashSet<String> = watcher_guard.watched_projects().into_iter().collect();
+    let (watched, unwatched, watch_limit_hit) = {
+        let watcher_state = app.state::<WatcherState>();
+        let mut watcher_guard = match watcher_state.0.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Watcher lock poisoned while reconciling activity watches; recovering"
+                );
+                error.into_inner()
+            }
+        };
+        let watched_ids: HashSet<String> = watcher_guard.watched_projects().into_iter().collect();
 
-    let planned_targets = watch_targets::plan_activity_watch_targets(&projects, &thresholds);
-    let mut by_id: HashMap<String, watch_targets::ActivityWatchTarget> = HashMap::new();
-    for target in planned_targets {
-        by_id.insert(target.project_id.clone(), target);
-    }
-
-    let mut watched = 0usize;
-    let mut unwatched = 0usize;
-    let mut watch_limit_hit = false;
-
-    for (project_id, target) in &by_id {
-        if has_daemon && provider::path::is_wsl_path(&target.project_path) {
-            continue;
+        let planned_targets = watch_targets::plan_activity_watch_targets(&projects, &thresholds);
+        let mut by_id: HashMap<String, watch_targets::ActivityWatchTarget> = HashMap::new();
+        for target in planned_targets {
+            by_id.insert(target.project_id.clone(), target);
         }
 
-        let should_watch = target.should_watch;
-        let is_watched = watched_ids.contains(project_id);
-        let path = std::path::Path::new(&target.project_path);
-        let can_watch_path = path.is_dir();
+        let mut watched = 0usize;
+        let mut unwatched = 0usize;
+        let mut watch_limit_hit = false;
 
-        if should_watch && can_watch_path && !is_watched {
-            match watcher_guard.watch_project(project_id.clone(), path.to_path_buf()) {
-                Ok(()) => watched += 1,
-                Err(error) => {
-                    let msg = error.to_string();
-                    if platform::is_watch_limit_error(&msg) {
-                        tracing::warn!(
-                            project = target.project_name,
-                            error = %error,
-                            reason,
-                            "Watch limit reached — skipping project"
-                        );
-                        watch_limit_hit = true;
-                    } else {
-                        tracing::debug!(
-                            project = target.project_name,
-                            error = %error,
-                            reason,
-                            "Could not watch project directory (local)"
-                        );
+        for (project_id, target) in &by_id {
+            if has_daemon && provider::path::is_wsl_path(&target.project_path) {
+                continue;
+            }
+
+            let should_watch = target.should_watch;
+            let is_watched = watched_ids.contains(project_id);
+            let path = std::path::Path::new(&target.project_path);
+            let can_watch_path = path.is_dir();
+
+            if should_watch && can_watch_path && !is_watched {
+                match watcher_guard.watch_project(project_id.clone(), path.to_path_buf()) {
+                    Ok(()) => watched += 1,
+                    Err(error) => {
+                        let msg = error.to_string();
+                        if platform::is_watch_limit_error(&msg) {
+                            tracing::warn!(
+                                project = target.project_name,
+                                error = %error,
+                                reason,
+                                "Watch limit reached — skipping project"
+                            );
+                            watch_limit_hit = true;
+                        } else {
+                            tracing::debug!(
+                                project = target.project_name,
+                                error = %error,
+                                reason,
+                                "Could not watch project directory (local)"
+                            );
+                        }
                     }
                 }
+                continue;
             }
-            continue;
+
+            if is_watched && (!should_watch || !can_watch_path) {
+                watcher_guard.unwatch_project(project_id);
+                unwatched += 1;
+            }
         }
 
-        if is_watched && (!should_watch || !can_watch_path) {
-            watcher_guard.unwatch_project(project_id);
+        for watched_id in watched_ids {
+            if watched_id.starts_with(INTERNAL_PROJECT_ID_PREFIX) {
+                continue;
+            }
+            if by_id.contains_key(&watched_id) {
+                continue;
+            }
+            watcher_guard.unwatch_project(&watched_id);
             unwatched += 1;
         }
-    }
 
-    for watched_id in watched_ids {
-        if watched_id.starts_with(INTERNAL_PROJECT_ID_PREFIX) {
-            continue;
-        }
-        if by_id.contains_key(&watched_id) {
-            continue;
-        }
-        watcher_guard.unwatch_project(&watched_id);
-        unwatched += 1;
-    }
+        (watched, unwatched, watch_limit_hit)
+    };
 
     if watched > 0 || unwatched > 0 {
         tracing::info!(

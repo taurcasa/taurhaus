@@ -20,8 +20,11 @@ pub enum ActivityState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityThresholds {
+    #[serde(alias = "active_days")]
     pub active_days: i64,
+    #[serde(alias = "recent_days")]
     pub recent_days: i64,
+    #[serde(alias = "stale_days")]
     pub stale_days: i64,
 }
 

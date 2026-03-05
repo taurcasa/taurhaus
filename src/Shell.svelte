@@ -16,7 +16,6 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createAsyncGuard } from './lib/asyncGuard.js'
-  import { createProjectSelectionRequests } from './lib/projectSelection.js'
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
@@ -43,6 +42,7 @@
   let showWizard = $state(false)
   let wizardChecked = $state(false)
   let startupViewportSyncAttempted = false
+  let useWizardBootstrapSelection = false
 
   // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
@@ -247,6 +247,7 @@
 
   function handleWizardComplete() {
     showWizard = false
+    useWizardBootstrapSelection = true
     loadProjects()
     loadCodeThemeFromSettings()
     loadDaemonStatus({ allowInitial: false })
@@ -487,7 +488,13 @@
       projects = await listProjects()
       // Auto-select first project if none selected
       if (!selectedProject && projects.length > 0) {
-        void selectProject(projects[0])
+        const firstProject = projects[0]
+        if (useWizardBootstrapSelection) {
+          useWizardBootstrapSelection = false
+          void bootstrapInitialProject(firstProject)
+        } else {
+          void selectProject(firstProject)
+        }
       }
       // Git status now comes from cached columns in list_projects (no extra IPC calls).
       // The cache is refreshed by the file watcher and startup reseed.
@@ -509,6 +516,16 @@
   async function retryProjectLoad() {
     if (!selectedProject) return
     await selectProject(selectedProject)
+  }
+
+  async function bootstrapInitialProject(project) {
+    selectedProject = project
+    detailLoading = false
+    setTimeout(() => {
+      if (selectedProject?.id === project.id) {
+        void selectProject(project)
+      }
+    }, 1500)
   }
 
   async function selectProject(project) {
@@ -552,77 +569,79 @@
     // Restore file position via navigateTarget — FilesTab loads its own tree
     filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
 
-    const requests = createProjectSelectionRequests(projectId, {
-      getProject,
-      getRecentCommits,
-      getLatestSession,
-      listSessions,
-      getReadme,
-      getRelationships,
-    })
-
-    function updateProjectLoadIssue(result) {
-      if (!result?.section) return
-      if (result.ok) {
-        projectLoadIssues = projectLoadIssues.filter((issue) => issue.section !== result.section)
-        return
-      }
-      projectLoadIssues = [
-        ...projectLoadIssues.filter((issue) => issue.section !== result.section),
-        { section: result.section, message: result.message },
-      ]
+    const issues = []
+    const addIssue = (section, error) => {
+      issues.push({ section, message: error?.message || `Couldn't load ${section.toLowerCase()}` })
     }
 
-    const detailTask = requests.detail.then((detail) => {
+    try {
+      const detail = await getProject(projectId)
       if (!selectLoadGuard.isCurrent(generation)) return
-      updateProjectLoadIssue(detail)
-      selectedProject = detail.value ? { ...project, ...detail.value } : project
-      detailLoading = false
-    })
-
-    const commitsTask = requests.commits.then((commits) => {
+      selectedProject = detail ? { ...project, ...detail } : project
+    } catch (error) {
       if (!selectLoadGuard.isCurrent(generation)) return
-      updateProjectLoadIssue(commits)
-      recentCommits = commits.value
-      commitsLoading = false
-    })
-
-    const sessionsTask = Promise.all([requests.latest, requests.sessionList]).then(
-      ([latest, sessionList]) => {
-        if (!selectLoadGuard.isCurrent(generation)) return
-        updateProjectLoadIssue(latest)
-        updateProjectLoadIssue(sessionList)
-        latestSession = latest.value
-        sessionHistory = sessionList.value || []
-        sessionLoading = false
+      addIssue('Project details', error)
+    } finally {
+      if (selectLoadGuard.isCurrent(generation)) {
+        detailLoading = false
       }
-    )
+    }
 
-    const readmeTask = requests.readme.then((readme) => {
-      if (!selectLoadGuard.isCurrent(generation)) return
-      updateProjectLoadIssue(readme)
-      readmeContent = readme.value
-    })
-
-    const relationshipsTask = requests.rels.then((rels) => {
-      if (!selectLoadGuard.isCurrent(generation)) return
-      updateProjectLoadIssue(rels)
-      relationships = rels.value
-      relationshipsLoading = false
-    })
-
-    await Promise.allSettled([
-      detailTask,
-      commitsTask,
-      sessionsTask,
-      readmeTask,
-      relationshipsTask,
-    ])
-
+    try {
+      recentCommits = await getRecentCommits(projectId, 10)
+    } catch (error) {
+      recentCommits = []
+      addIssue('Recent commits', error)
+    } finally {
+      if (selectLoadGuard.isCurrent(generation)) {
+        commitsLoading = false
+      }
+    }
     if (!selectLoadGuard.isCurrent(generation)) return
 
-    if (projectLoadIssues.length > 0) {
-      console.warn(`[shell] project ${projectId} loaded with degraded data`, projectLoadIssues)
+    try {
+      latestSession = await getLatestSession(projectId)
+    } catch (error) {
+      latestSession = null
+      addIssue('Latest session', error)
+    }
+    if (!selectLoadGuard.isCurrent(generation)) return
+
+    try {
+      sessionHistory = await listSessions(projectId, 10) || []
+    } catch (error) {
+      sessionHistory = []
+      addIssue('Session history', error)
+    } finally {
+      if (selectLoadGuard.isCurrent(generation)) {
+        sessionLoading = false
+      }
+    }
+    if (!selectLoadGuard.isCurrent(generation)) return
+
+    try {
+      readmeContent = await getReadme(projectId)
+    } catch (error) {
+      readmeContent = null
+      addIssue('README', error)
+    }
+    if (!selectLoadGuard.isCurrent(generation)) return
+
+    try {
+      relationships = await getRelationships(projectId)
+    } catch (error) {
+      relationships = []
+      addIssue('Relationships', error)
+    } finally {
+      if (selectLoadGuard.isCurrent(generation)) {
+        relationshipsLoading = false
+      }
+    }
+    if (!selectLoadGuard.isCurrent(generation)) return
+
+    projectLoadIssues = issues
+    if (issues.length > 0) {
+      console.warn(`[shell] project ${projectId} loaded with degraded data`, issues)
     }
   }
 

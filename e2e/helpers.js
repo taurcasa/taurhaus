@@ -131,20 +131,14 @@ export async function ensureMainApp() {
   // Step 4 → 5: Wait for indexing → completion → click dashboard
   const dashboardBtn = await $('[data-testid="go-to-dashboard"]')
   await dashboardBtn.waitForExist({ timeout: 120_000 })
-  if (await dashboardBtn.isExisting()) {
-    await dashboardBtn.click()
-  }
-  // Wizard teardown + Shell hydration can briefly stall WebDriver.
-  await browser.pause(4_000)
+  await dashboardBtn.click()
 
-  // Wait for main app using a fresh selector query.
-  // Reusing an old element handle across wizard -> shell swap can become stale.
   await browser.waitUntil(
     async () => {
       const tab = await $('[data-testid="tab-overview"]')
       return await tab.isExisting()
     },
-    { timeout: 15_000, interval: POLL_WIZARD, timeoutMsg: 'Overview tab did not appear after wizard completion' }
+    { timeout: 30_000, interval: POLL_WIZARD, timeoutMsg: 'Overview tab did not appear after wizard completion' }
   )
   return true
 }
@@ -157,34 +151,23 @@ export async function ensureMainApp() {
  * in-page cleanup, minimizing WebDriver round-trips (~1-2 calls instead of ~15).
  */
 export async function resetAppState() {
-  // Single round-trip: check state + do in-page cleanup
-  await browser.execute(() => {
-    // Close search overlay
-    const overlay = document.querySelector('[data-testid="search-overlay"]')
-    if (overlay) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    }
+  // Close search overlay and modal if they are open.
+  const searchOverlay = await $('[data-testid="search-overlay"]')
+  if (await searchOverlay.isExisting()) await browser.keys('Escape')
+  const manageProjectsModal = await $('[data-testid="manage-projects-modal"]')
+  if (await manageProjectsModal.isExisting()) await browser.keys('Escape')
 
-    // Close modal
-    const modal = document.querySelector('[data-testid="manage-projects-modal"]')
-    if (modal) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    }
+  // Leave settings if needed.
+  const settingsBack = await $('[data-testid="settings-back"]')
+  if (await settingsBack.isExisting()) await settingsBack.click()
 
-    // Close settings via back button
-    const settingsBack = document.querySelector('[data-testid="settings-back"]')
-    if (settingsBack) settingsBack.click()
+  // Reset to dark mode and select first project.
+  const darkBtn = await $('[data-testid="theme-dark"]')
+  if (await darkBtn.isExisting()) await darkBtn.click()
+  const firstProject = await $('[data-testid="project-item"]')
+  if (await firstProject.isExisting()) await firstProject.click()
 
-    // Reset to dark mode
-    const darkBtn = document.querySelector('[data-testid="theme-dark"]')
-    if (darkBtn) darkBtn.click()
-
-    // Click first project
-    const firstProject = document.querySelector('[data-testid="project-item"]')
-    if (firstProject) firstProject.click()
-
-    // Click Overview tab
-    const overviewBtn = document.querySelector('[data-testid="tab-overview"]')
-    if (overviewBtn) overviewBtn.click()
-  })
+  // Return to the default Overview tab.
+  const overviewBtn = await $('[data-testid="tab-overview"]')
+  if (await overviewBtn.isExisting()) await overviewBtn.click()
 }

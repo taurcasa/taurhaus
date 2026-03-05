@@ -19,6 +19,7 @@
     "check": "svelte-check"
   },
   "devDependencies": {
+    "@crabnebula/tauri-driver": "^2.0.9",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@tauri-apps/api": "^2.0.0",

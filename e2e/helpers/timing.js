@@ -17,10 +17,10 @@ export const PAUSE_CLICK_SETTLE = 100
 export const PAUSE_TICK = 50
 
 /** Boot: initial wait for app process to start before querying DOM. */
-export const PAUSE_BOOT = 3_000
+export const PAUSE_BOOT = 1_000
 
 /** Boot: after clicking "Continue anyway" on splash screen. */
-export const PAUSE_BOOT_ACTION = 500
+export const PAUSE_BOOT_ACTION = 150
 
 // ── Poll Intervals ─────────────────────────────────────────────────────────
 // How often waitUntil checks its condition.
@@ -51,16 +51,16 @@ export const TIMEOUT_INSTANT = 1_500
 export const TIMEOUT_SHORT = 2_000
 
 /** Content loading — file tree, commit list, search results. */
-export const TIMEOUT_MEDIUM = 5_000
+export const TIMEOUT_MEDIUM = 2_500
 
 /** Heavy operation — search index rebuild, tasks loading, initial app boot. */
-export const TIMEOUT_LONG = 10_000
+export const TIMEOUT_LONG = 4_000
 
 /** Extra-heavy operation — full index rebuild, large file tree. */
-export const TIMEOUT_XLONG = 20_000
+export const TIMEOUT_XLONG = 7_000
 
 /** First-launch only — wizard, initial indexing. */
-export const TIMEOUT_BOOT = 45_000
+export const TIMEOUT_BOOT = 15_000
 
 // ── Presets ────────────────────────────────────────────────────────────────
 // Common { timeout, interval } combos to spread into waitUntil options.

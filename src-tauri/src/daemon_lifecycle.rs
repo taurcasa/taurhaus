@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::thread::JoinHandle;
 
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -78,6 +79,7 @@ impl DaemonWatchPlan {
 struct DaemonWatchRuntime {
     plan: Option<DaemonWatchPlan>,
     stop_signal: Option<Arc<AtomicBool>>,
+    listener_thread: Option<JoinHandle<()>>,
 }
 
 static DAEMON_WATCH_RUNTIME: LazyLock<Mutex<DaemonWatchRuntime>> =
@@ -135,7 +137,7 @@ fn build_daemon_watch_plan(
 }
 
 fn stop_daemon_watch_runtime(reason: &str) {
-    let stop_signal = {
+    let (stop_signal, listener_thread) = {
         let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
             tracing::warn!(
                 error = %error,
@@ -145,11 +147,19 @@ fn stop_daemon_watch_runtime(reason: &str) {
             error.into_inner()
         });
         runtime.plan = None;
-        runtime.stop_signal.take()
+        (runtime.stop_signal.take(), runtime.listener_thread.take())
     };
 
     if let Some(signal) = stop_signal {
         signal.store(true, Ordering::Relaxed);
+    }
+    if let Some(listener_thread) = listener_thread {
+        if listener_thread.join().is_err() {
+            tracing::warn!(
+                reason,
+                "daemon watch listener thread panicked while stopping"
+            );
+        }
     }
 }
 
@@ -255,7 +265,7 @@ fn apply_daemon_watch_plan(
         "Daemon watching WSL projects"
     );
 
-    std::thread::spawn(move || {
+    let listener_thread = std::thread::spawn(move || {
         listener.run_until_stopped(stop_signal.clone());
 
         let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
@@ -272,8 +282,21 @@ fn apply_daemon_watch_plan(
         {
             runtime.plan = None;
             runtime.stop_signal = None;
+            runtime.listener_thread = None;
         }
     });
+
+    {
+        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Daemon watch runtime lock poisoned while storing listener handle; recovering"
+            );
+            error.into_inner()
+        });
+        runtime.listener_thread = Some(listener_thread);
+    }
 }
 
 pub(crate) fn reconcile_daemon_activity_watches(
@@ -613,6 +636,8 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
 
     std::thread::spawn(move || {
         let mut since_version: u64 = 0;
+        let mut observed_connected = false;
+        tracing::info!("session updates bridge thread started");
 
         loop {
             let (daemon_addr, connected) = {
@@ -624,8 +649,16 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
             };
 
             if !connected {
+                if observed_connected {
+                    tracing::info!("session updates bridge: daemon disconnected");
+                    observed_connected = false;
+                }
                 std::thread::sleep(RETRY_DELAY);
                 continue;
+            }
+            if !observed_connected {
+                tracing::info!("session updates bridge: daemon connected");
+                observed_connected = true;
             }
 
             let mut listener =
@@ -663,6 +696,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                         since_version = update.version;
                         if update.changed {
                             let mut sessions = update.sessions;
+                            let session_count = sessions.len();
                             let distro = {
                                 let provider_state = app.state::<ProviderState>();
                                 provider_state.wsl_distro.clone()
@@ -679,6 +713,11 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                     "version": update.version,
                                     "sessions": sessions,
                                 }),
+                            );
+                            tracing::debug!(
+                                version = update.version,
+                                session_count = session_count,
+                                "session updates bridge emitted sessions-updated event"
                             );
                         }
                     }

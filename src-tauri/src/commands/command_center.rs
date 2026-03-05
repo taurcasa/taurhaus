@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::State;
 
@@ -12,6 +13,8 @@ use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
 use crate::session_scanner::{ClaudeSession, SessionState};
 use crate::ProviderState;
+
+static SESSION_ACTIVITY_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn list_cli_sessions(
@@ -83,6 +86,36 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
     Ok(project.path)
 }
 
+fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
+    if SESSION_ACTIVITY_RECONCILE_QUEUED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    #[cfg(test)]
+    {
+        crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        SESSION_ACTIVITY_RECONCILE_QUEUED.store(false, Ordering::Release);
+    }
+
+    #[cfg(not(test))]
+    {
+        std::thread::spawn(move || {
+            struct ResetQueuedFlag;
+            impl Drop for ResetQueuedFlag {
+                fn drop(&mut self) {
+                    SESSION_ACTIVITY_RECONCILE_QUEUED.store(false, Ordering::Release);
+                }
+            }
+
+            let _reset_queued_flag = ResetQueuedFlag;
+            crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        });
+    }
+}
+
 fn promote_activity_from_sessions(
     app: &tauri::AppHandle,
     db: &DbState,
@@ -90,7 +123,7 @@ fn promote_activity_from_sessions(
 ) {
     match promote_activity_from_sessions_impl(db, sessions) {
         Ok(promoted) if promoted > 0 => {
-            crate::startup::watchers::reconcile_activity_watches(app, "session_activity_detected");
+            enqueue_activity_watch_reconcile(app.clone(), "session_activity_detected");
         }
         Ok(_) => {}
         Err(error) => {

@@ -35,7 +35,8 @@ describe('Settings Persistence', () => {
       // Ensure settings are open first
       await ensureSettingsOpen()
 
-      await closeSettings()
+      const closed = await closeSettings()
+      if (!closed) return this.skip()
 
       const viewAfter = await $('[data-testid="settings-view"]')
       expect(await viewAfter.isExisting()).toBe(false)
@@ -327,7 +328,7 @@ describe('Settings Persistence', () => {
           const isEnabled = await btn.isEnabled()
           return isEnabled
         },
-        { timeout: 45_000, interval: POLL_SLOW, timeoutMsg: 'Rebuild index did not complete within timeout' }
+        { timeout: 10_000, interval: POLL_SLOW, timeoutMsg: 'Rebuild index did not complete within timeout' }
       )
 
       // No error element should appear

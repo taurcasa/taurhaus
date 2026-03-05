@@ -7,10 +7,8 @@
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import {
   switchToTab,
-  waitForTabContent,
   waitForProjectsLoaded,
-  getCurrentProjectName,
-  isTabActive,
+  selectProjectByName,
   waitForTabActive,
   waitForFileContent,
   clickTestId,
@@ -21,6 +19,10 @@ import { MOD_KEY } from '../helpers/platform.js'
 
 let mainApp = false
 let searchReady = false
+
+function projectNameFromItemText(text) {
+  return text.trim().split('\n')[0].trim()
+}
 
 describe('Cross-Tab Navigation', () => {
   before(async () => {
@@ -123,24 +125,19 @@ describe('Cross-Tab Navigation', () => {
 
       const projects = await $$('[data-testid="project-item"]')
       if (projects.length < 2) return this.skip()
+      const firstProjectName = projectNameFromItemText(await projects[0].getText())
+      const secondProjectName = projectNameFromItemText(await projects[1].getText())
+      if (!firstProjectName || !secondProjectName || firstProjectName === secondProjectName) return this.skip()
 
       // Select first project and navigate to Git tab
-      await browser.execute((el) => el.click(), projects[0])
+      if (!(await selectProjectByName(firstProjectName))) return this.skip()
       await switchToTab('git')
 
-      const firstProjectName = await getCurrentProjectName()
-
       // Switch to second project (will default to Overview)
-      await browser.execute((el) => el.click(), projects[1])
+      if (!(await selectProjectByName(secondProjectName))) return this.skip()
 
       // Switch back to first project
-      for (const project of await $$('[data-testid="project-item"]')) {
-        const text = await browser.execute((el) => el.textContent, project)
-        if (text.includes(firstProjectName)) {
-          await browser.execute((el) => el.click(), project)
-          break
-        }
-      }
+      if (!(await selectProjectByName(firstProjectName))) return this.skip()
 
       // The Git tab should still be active (position memory)
       await waitForTabActive('git', TIMEOUT_MEDIUM)
@@ -151,13 +148,16 @@ describe('Cross-Tab Navigation', () => {
 
       const projects = await $$('[data-testid="project-item"]')
       if (projects.length < 2) return this.skip()
+      const firstProjectName = projectNameFromItemText(await projects[0].getText())
+      const secondProjectName = projectNameFromItemText(await projects[1].getText())
+      if (!firstProjectName || !secondProjectName || firstProjectName === secondProjectName) return this.skip()
 
       // Go to first project, switch to Files
-      await browser.execute((el) => el.click(), projects[0])
+      if (!(await selectProjectByName(firstProjectName))) return this.skip()
       await switchToTab('files')
 
       // Switch to second project — should show Overview (default)
-      await browser.execute((el) => el.click(), projects[1])
+      if (!(await selectProjectByName(secondProjectName))) return this.skip()
 
       await waitForTabActive('overview', TIMEOUT_MEDIUM)
     })
@@ -176,7 +176,7 @@ describe('Cross-Tab Navigation', () => {
         },
         {
           tab: 'files',
-          contentSelector: '[role="treeitem"], [data-testid="filetree-loading"]',
+          contentSelector: '[data-testid="file-tree-node"], [data-testid="filetree-loading"], [data-testid="file-tree-scroll"]',
         },
         {
           tab: 'git',

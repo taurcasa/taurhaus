@@ -192,7 +192,7 @@ async function openTemplateCatalog(testContext) {
 }
 
 async function findLeadRoleId() {
-  const summaries = await invokeOrThrow('templates_list_roles')
+  const summaries = await invokeOrThrow('templates_list_roles_full')
   const lead = (summaries ?? []).find((entry) => String(getField(entry, 'kind', 'kind')) === 'lead')
   const leadRoleId = getField(lead, 'roleId', 'role_id')
   if (!leadRoleId) throw new Error('No lead role template found')

@@ -29,18 +29,28 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import net from 'node:net'
 import { resolve } from 'node:path'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
 
 const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')
+const localTauriDriverPath = resolve(projectRoot, 'node_modules', '.bin', 'tauri-driver')
+const nativeWebKitDriverPath = process.env.E2E_NATIVE_DRIVER_PATH || '/usr/bin/WebKitWebDriver'
 const wdioLogLevel = process.env.E2E_WDIO_LOG_LEVEL || 'error'
+const wdioOutputDir = process.env.E2E_WDIO_OUTPUT_DIR || resolve(tmpdir(), 'taurhaus-e2e-wdio-logs')
 const wdioPort = Number(process.env.E2E_WDIO_PORT || (4500 + (process.pid % 300)))
 const nativeWebDriverPort = Number(process.env.E2E_NATIVE_WEBDRIVER_PORT || (wdioPort + 1))
+const connectionRetryTimeoutMs = Number(process.env.E2E_CONNECTION_RETRY_TIMEOUT_MS || 12_000)
+const connectionRetryCount = Number(process.env.E2E_CONNECTION_RETRY_COUNT || 0)
+const mochaTimeoutMs = Number(process.env.E2E_MOCHA_TIMEOUT_MS || 25_000)
+const mochaBail = process.env.E2E_MOCHA_BAIL !== '0'
+const suiteBail = Number(process.env.E2E_BAIL || 1)
+const traceTiming = process.env.E2E_TRACE_TIMING === '1'
+const traceTimingThresholdMs = Number(process.env.E2E_TRACE_THRESHOLD_MS || 1_500)
+const driverPidRegistry = resolve(tmpdir(), `taurhaus-e2e-driver-pids-${wdioPort}.txt`)
 
 // Spec groups by app layer. Each sub-array = one worker session = one app instance.
 // Groups are SEALED: new specs form new groups, never expand existing ones.
@@ -199,51 +209,154 @@ The runtime mode keeps agents connected.
   runGitOrThrow(repoPath, ['commit', '-q', '-m', 'docs: add changelog for git history coverage'], 'Failed to create third e2e fixture commit')
 }
 
-function isPortOpen(host, port, timeoutMs = 250) {
-  return new Promise((resolve) => {
-    const socket = new net.Socket()
-    let settled = false
-
-    const finish = (result) => {
-      if (settled) return
-      settled = true
-      socket.destroy()
-      resolve(result)
-    }
-
-    socket.setTimeout(timeoutMs)
-    socket.once('connect', () => finish(true))
-    socket.once('timeout', () => finish(false))
-    socket.once('error', () => finish(false))
-    socket.connect(port, host)
-  })
+async function isWebDriverProtocolReady(host, port, timeoutMs = 500) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(`http://${host}:${port}/status`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    return response.status === 200
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function waitForWebDriverReady(host, port, timeoutMs = 5_000, intervalMs = 100) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
-    if (await isPortOpen(host, port)) return
+    if (await isWebDriverProtocolReady(host, port)) return
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
-  throw new Error(`tauri-driver did not open ${host}:${port} within ${timeoutMs}ms`)
+  throw new Error(`tauri-driver did not become protocol-ready at ${host}:${port} within ${timeoutMs}ms`)
 }
+
+function killByPattern(pattern) {
+  if (process.platform === 'win32') return
+  spawnSync('pkill', ['-f', pattern], { stdio: 'ignore' })
+}
+
+function appendDriverPid(pid) {
+  if (!pid) return
+  appendFileSync(driverPidRegistry, `${pid}\n`)
+}
+
+function readDriverPids() {
+  try {
+    const lines = readFileSync(driverPidRegistry, 'utf8')
+      .split('\n')
+      .map(line => Number.parseInt(line.trim(), 10))
+      .filter(pid => Number.isInteger(pid) && pid > 0)
+    return [...new Set(lines)]
+  } catch {
+    return []
+  }
+}
+
+function clearDriverPidRegistry() {
+  rmSync(driverPidRegistry, { force: true })
+}
+
+function killDriverTree(pid) {
+  if (!pid || pid <= 0) return
+  try {
+    process.kill(-pid, 'SIGKILL')
+    return
+  } catch {
+    // Fall back to direct PID kill.
+  }
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {
+    // no-op
+  }
+}
+
+function cleanupRegisteredDrivers() {
+  for (const pid of readDriverPids()) {
+    killDriverTree(pid)
+  }
+  clearDriverPidRegistry()
+}
+
+function cleanupDriverPortFallback() {
+  // Last-resort fallback for orphan processes on this worker's ports.
+  killByPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
+  killByPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
+}
+
+function cleanupStaleDriverProcessesPreRun() {
+  // Safe at startup only (before worker sessions begin).
+  // Prevents orphan test apps from prior aborted runs.
+  killByPattern('tauri-driver --port')
+  killByPattern('WebKitWebDriver --port=')
+}
+
+function cleanupTauriDriver() {
+  if (tauriDriver?.pid) {
+    killDriverTree(tauriDriver.pid)
+  }
+  tauriDriver = null
+  cleanupRegisteredDrivers()
+  cleanupDriverPortFallback()
+}
+
+function cleanupSessionTempRoot() {
+  if (!sessionTempRoot) return
+  rmSync(sessionTempRoot, { recursive: true, force: true })
+  sessionTempRoot = null
+}
+
+function cleanupAllE2eArtifacts() {
+  cleanupTauriDriver()
+  cleanupSessionTempRoot()
+}
+
+let cleanupHandlersRegistered = false
+function registerCleanupHandlers() {
+  if (cleanupHandlersRegistered) return
+  cleanupHandlersRegistered = true
+
+  process.on('exit', () => {
+    cleanupAllE2eArtifacts()
+  })
+
+  const handleSignal = () => {
+    cleanupAllE2eArtifacts()
+    process.exit(1)
+  }
+  const handleCrash = () => {
+    cleanupAllE2eArtifacts()
+  }
+  process.on('SIGINT', handleSignal)
+  process.on('SIGTERM', handleSignal)
+  process.on('uncaughtException', handleCrash)
+  process.on('unhandledRejection', handleCrash)
+}
+registerCleanupHandlers()
 
 export const config = {
   // ── Runner ──────────────────────────────────────────────────────────────
   runner: 'local',
   hostname: '127.0.0.1',
   port: wdioPort,
-  // Tauri startup + first-run onboarding can keep the WebDriver bridge busy for
-  // >10s on CI and loaded dev machines; avoid transport false negatives.
-  connectionRetryTimeout: 30_000,
-  connectionRetryCount: 1,
+  // Keep transport retries bounded so failed sessions fail fast.
+  connectionRetryTimeout: connectionRetryTimeoutMs,
+  connectionRetryCount,
   maxInstances: 1,
   // WDIO defaults to "info", which logs every COMMAND/DATA/RESULT triplet.
   // In the persistent 14-spec suite that adds thousands of synchronous writes
   // and noticeably inflates per-command latency. Keep verbose logs opt-in.
   logLevel: wdioLogLevel,
+  outputDir: wdioOutputDir,
 
   // ── Specs ───────────────────────────────────────────────────────────────
+  // Stop the overall run after the first failing spec by default.
+  // Override with E2E_BAIL=0 when a full matrix is required.
+  bail: suiteBail,
   // Multiple sub-arrays: each group gets its own app instance.
   specs: buildSpecList(),
 
@@ -266,7 +379,8 @@ export const config = {
   framework: 'mocha',
   mochaOpts: {
     ui: 'bdd',
-    timeout: 60_000,
+    timeout: mochaTimeoutMs,
+    bail: mochaBail,
   },
 
   // ── Reporter ────────────────────────────────────────────────────────────
@@ -274,11 +388,42 @@ export const config = {
 
   // ── Hooks ───────────────────────────────────────────────────────────────
 
+  beforeHook(test) {
+    if (!traceTiming) return
+    test.__e2eStart = Date.now()
+  },
+
+  afterHook(test, _context, result) {
+    if (!traceTiming) return
+    const duration = Number(result?.duration || 0)
+    if (duration < traceTimingThresholdMs) return
+    const title = test?.title ? `${test.title}` : 'hook'
+    const passed = result?.error ? 'fail' : 'pass'
+    console.log(`[e2e:timing] hook ${passed} ${duration}ms :: ${title}`)
+  },
+
+  beforeTest(test) {
+    if (!traceTiming) return
+    test.__e2eStart = Date.now()
+  },
+
+  afterTest(test, _context, result) {
+    if (!traceTiming) return
+    const duration = Number(result?.duration || 0)
+    if (duration < traceTimingThresholdMs) return
+    const parent = test?.parent ? `${test.parent} :: ` : ''
+    const title = test?.title ? `${test.title}` : 'unknown test'
+    const status = result?.error ? 'fail' : 'pass'
+    console.log(`[e2e:timing] test ${status} ${duration}ms :: ${parent}${title}`)
+  },
+
   /**
    * Build the Tauri debug binary before running tests.
    * Skip with E2E_SKIP_BUILD=1 if you already have a fresh build.
    */
   async onPrepare() {
+    cleanupStaleDriverProcessesPreRun()
+
     if (process.env.E2E_SKIP_BUILD === '1') {
       console.log('[e2e] Skipping build (E2E_SKIP_BUILD=1)')
       return
@@ -306,6 +451,9 @@ export const config = {
    * With batched groups, this runs once per group (5 times for the full suite).
    */
   async beforeSession() {
+    // Guard against stale processes from aborted runs before starting a new worker.
+    cleanupAllE2eArtifacts()
+
     sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
     const tauriDataDir = `${sessionTempRoot}/app-data`
     const tauriClaudeDir = `${sessionTempRoot}/claude`
@@ -321,14 +469,20 @@ export const config = {
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
 
-    tauriDriver = spawn('tauri-driver', ['--port', String(wdioPort), '--native-port', String(nativeWebDriverPort)], {
+    tauriDriver = spawn(
+      localTauriDriverPath,
+      ['--port', String(wdioPort), '--native-port', String(nativeWebDriverPort), '--native-driver', nativeWebKitDriverPath],
+      {
       env: {
         ...process.env,
         TAURHAUS_DATA_DIR: tauriDataDir,
         TAURHAUS_CLAUDE_DIR: tauriClaudeDir,
       },
       stdio: [null, process.stdout, process.stderr],
-    })
+      detached: true,
+      }
+    )
+    appendDriverPid(tauriDriver.pid)
 
     await waitForWebDriverReady('127.0.0.1', wdioPort)
   },
@@ -337,13 +491,13 @@ export const config = {
    * Kill tauri-driver after each worker session ends.
    */
   async afterSession() {
-    if (tauriDriver) {
-      tauriDriver.kill()
-      tauriDriver = null
-    }
-    if (sessionTempRoot) {
-      rmSync(sessionTempRoot, { recursive: true, force: true })
-      sessionTempRoot = null
-    }
+    cleanupAllE2eArtifacts()
+  },
+
+  /**
+   * Final safety net so failed/crashed runs don't leave app instances behind.
+   */
+  async onComplete() {
+    cleanupAllE2eArtifacts()
   },
 }

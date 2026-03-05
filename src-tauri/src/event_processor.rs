@@ -102,10 +102,16 @@ pub(crate) fn refresh_project_git_status(
 }
 
 const MAX_PENDING_GIT_STATUS_RETRIES: usize = 32;
+const GITIGNORE_REBUILD_MIN_INTERVAL: Duration = Duration::from_secs(10);
 
 fn pending_git_status_retries() -> &'static Mutex<HashSet<String>> {
     static PENDING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     PENDING.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn last_gitignore_rebuilds() -> &'static Mutex<HashMap<String, Instant>> {
+    static LAST: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+    LAST.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn reserve_git_status_retry(project_id: &str) -> bool {
@@ -148,6 +154,35 @@ fn clear_git_status_retry_reservations() {
     let pending = pending_git_status_retries();
     if let Ok(mut pending) = pending.lock() {
         pending.clear();
+    }
+}
+
+fn should_run_gitignore_rebuild(project_id: &str) -> bool {
+    let now = Instant::now();
+    let last_rebuilds = last_gitignore_rebuilds();
+    let Ok(mut last_rebuilds) = last_rebuilds.lock() else {
+        tracing::warn!(
+            project_id,
+            "failed to evaluate gitignore rebuild rate limit: timestamp lock poisoned"
+        );
+        return true;
+    };
+
+    if let Some(last) = last_rebuilds.get(project_id) {
+        if now.duration_since(*last) < GITIGNORE_REBUILD_MIN_INTERVAL {
+            return false;
+        }
+    }
+
+    last_rebuilds.insert(project_id.to_string(), now);
+    true
+}
+
+#[cfg(test)]
+fn clear_gitignore_rebuild_timestamps() {
+    let last_rebuilds = last_gitignore_rebuilds();
+    if let Ok(mut last_rebuilds) = last_rebuilds.lock() {
+        last_rebuilds.clear();
     }
 }
 
@@ -564,6 +599,15 @@ pub(crate) fn process_watch_events(
 
         // Gitignore changes.
         for project_id in &batch.gitignore_projects {
+            if !should_run_gitignore_rebuild(project_id) {
+                tracing::debug!(
+                    project_id = project_id.as_str(),
+                    cooldown_secs = GITIGNORE_REBUILD_MIN_INTERVAL.as_secs(),
+                    "Skipping gitignore reindex due to per-project cooldown"
+                );
+                continue;
+            }
+
             let Some(project_path) = get_project_path(&app, project_id) else {
                 tracing::warn!(
                     project_id = project_id.as_str(),
@@ -765,5 +809,14 @@ mod tests {
         }
         release_git_status_retry("retry-cap-overflow");
         clear_git_status_retry_reservations();
+    }
+
+    #[test]
+    fn gitignore_rebuild_rate_limit_is_enforced_per_project() {
+        clear_gitignore_rebuild_timestamps();
+        assert!(should_run_gitignore_rebuild("p1"));
+        assert!(!should_run_gitignore_rebuild("p1"));
+        assert!(should_run_gitignore_rebuild("p2"));
+        clear_gitignore_rebuild_timestamps();
     }
 }

@@ -75,13 +75,6 @@ async function disbandRuntimeTeamIfSafe() {
   const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
   if (!createdTeamNames.has(teamName)) return false
 
-  if (await hasTestId('mesh-runtime-overflow-button')) {
-    await clickTestId('mesh-runtime-overflow-button')
-  }
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-runtime-disband'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Runtime disband option unavailable' }
-  )
   await clickTestId('mesh-runtime-disband')
   if (await hasTestId('confirm-dialog-confirm')) {
     await clickTestId('confirm-dialog-confirm')
@@ -129,9 +122,39 @@ async function initializeRuntimeForScreenshot() {
   )
 
   const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
-  await teamNameInput.clearValue()
-  await teamNameInput.setValue(teamName)
-  await clickTestId('team-customizer-save')
+  await browser.waitUntil(
+    async () => await teamNameInput.isDisplayed(),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer name input did not become visible' }
+  )
+
+  const typedViaWebDriver = await teamNameInput.clearValue()
+    .then(async () => {
+      await teamNameInput.setValue(teamName)
+      return true
+    })
+    .catch(() => false)
+
+  if (!typedViaWebDriver) {
+    await browser.execute((el, value) => {
+      if (!el) return
+      el.focus()
+      el.value = ''
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    }, teamNameInput, teamName)
+  }
+
+  const savedViaDomClick = await browser.execute(() => {
+    const save = document.querySelector('[data-testid="team-customizer-save"]')
+    if (!save || save.disabled) return false
+    save.click()
+    return true
+  }).catch(() => false)
+  if (!savedViaDomClick) {
+    await clickTestId('team-customizer-save')
+  }
 
   await browser.waitUntil(
     async () => !(await hasTestId('team-customizer-panel')),

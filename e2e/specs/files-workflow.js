@@ -4,10 +4,27 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { switchToTab, waitForTabContent, waitForFileContent } from '../helpers/navigation.js'
+import { switchToTab, waitForFileContent } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_XLONG, TIMEOUT_LONG } from '../helpers/timing.js'
 
 let mainApp = false
+const TREE_NODE_SELECTOR = '[data-testid="file-tree-node"]'
+
+async function isDirectoryNode(node) {
+  return browser.execute((el) => {
+    const firstSvg = el.querySelector('svg')
+    const cls = firstSvg?.getAttribute('class') || ''
+    return cls.includes('transition-transform')
+  }, node)
+}
+
+async function isExpandedDirectoryNode(node) {
+  return browser.execute((el) => {
+    const firstSvg = el.querySelector('svg')
+    const cls = firstSvg?.getAttribute('class') || ''
+    return cls.includes('rotate-90')
+  }, node)
+}
 
 describe('Files Workflow', () => {
   before(async () => {
@@ -19,7 +36,7 @@ describe('Files Workflow', () => {
   // ─── File Tree ────────────────────────────────────────────────────────────
 
   describe('file tree', () => {
-    it('loads with treeitem roles', async function () {
+    it('loads with file tree nodes', async function () {
       if (!mainApp) return this.skip()
 
       // Wait for file tree loading to complete (skeleton disappears).
@@ -31,7 +48,7 @@ describe('Files Workflow', () => {
         { ...WAIT_XLONG, timeoutMsg: 'File tree loading did not complete' }
       )
 
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       expect(items.length).toBeGreaterThan(0)
     })
 
@@ -45,14 +62,14 @@ describe('Files Workflow', () => {
       // Wait for tree to settle
       await browser.waitUntil(
         async () => {
-          const items = await $$('[role="treeitem"]')
+          const items = await $$(TREE_NODE_SELECTOR)
           return items.length > 0
         },
         WAIT_MEDIUM
       )
 
       // Check for a README in the tree first — skip if project has none
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       let hasReadme = false
       for (const item of items) {
         const text = await browser.execute((el) => el.textContent, item)
@@ -76,11 +93,11 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         WAIT_MEDIUM
       )
 
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       for (const item of items.slice(0, 5)) {
         const text = await browser.execute((el) => el.textContent, item)
         expect(text.trim().length).toBeGreaterThan(0)
@@ -91,11 +108,11 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         WAIT_MEDIUM
       )
 
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       for (const item of items) {
         const text = await browser.execute((el) => el.textContent, item)
         expect(text).not.toContain('node_modules')
@@ -110,12 +127,12 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         WAIT_MEDIUM
       )
 
       // Find a code file (.js or .rs)
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       let codeItem = null
       for (const item of items) {
         const text = await browser.execute((el) => el.textContent, item)
@@ -142,11 +159,11 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         WAIT_MEDIUM
       )
 
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       let mdItem = null
       for (const item of items) {
         const text = await browser.execute((el) => el.textContent, item)
@@ -173,7 +190,7 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       // Scan entire tree for a known binary extension
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       let binaryItem = null
       for (const item of items) {
         const text = await browser.execute((el) => el.textContent, item)
@@ -212,20 +229,22 @@ describe('Files Workflow', () => {
   // ─── Directory Navigation ─────────────────────────────────────────────────
 
   describe('directory navigation', () => {
-    it('clicking a collapsed directory expands it (aria-expanded toggles to true)', async function () {
+    it('clicking a collapsed directory expands it', async function () {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"][aria-expanded]')).length > 0,
-        { ...WAIT_MEDIUM, timeoutMsg: 'No expandable directories found in file tree' }
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
+        { ...WAIT_MEDIUM, timeoutMsg: 'No file tree nodes found' }
       )
 
-      const dirs = await $$('[role="treeitem"][aria-expanded]')
-      // Find one that is currently collapsed (aria-expanded="false")
+      const dirs = await $$(TREE_NODE_SELECTOR)
+      const itemsBefore = dirs.length
+
+      // Find one that is currently collapsed.
       let collapsed = null
       for (const dir of dirs) {
-        const expanded = await dir.getAttribute('aria-expanded')
-        if (expanded === 'false') {
+        if (!(await isDirectoryNode(dir))) continue
+        if (!(await isExpandedDirectoryNode(dir))) {
           collapsed = dir
           break
         }
@@ -234,29 +253,29 @@ describe('Files Workflow', () => {
 
       await browser.execute((el) => el.click(), collapsed)
       await browser.waitUntil(
-        async () => (await collapsed.getAttribute('aria-expanded')) === 'true',
-        { ...WAIT_MEDIUM, timeoutMsg: 'Directory did not expand (aria-expanded stayed false)' }
+        async () => await isExpandedDirectoryNode(collapsed),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Directory did not expand' }
       )
 
       // Children should have appeared in the tree
-      const itemsAfter = await $$('[role="treeitem"]')
-      expect(itemsAfter.length).toBeGreaterThan(dirs.length)
+      const itemsAfter = await $$(TREE_NODE_SELECTOR)
+      expect(itemsAfter.length).toBeGreaterThan(itemsBefore)
     })
 
-    it('clicking an expanded directory collapses it (aria-expanded toggles to false)', async function () {
+    it('clicking an expanded directory collapses it', async function () {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"][aria-expanded]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         WAIT_MEDIUM
       )
 
-      const dirs = await $$('[role="treeitem"][aria-expanded]')
+      const dirs = await $$(TREE_NODE_SELECTOR)
       // Find one that is currently expanded
       let expanded = null
       for (const dir of dirs) {
-        const state = await dir.getAttribute('aria-expanded')
-        if (state === 'true') {
+        if (!(await isDirectoryNode(dir))) continue
+        if (await isExpandedDirectoryNode(dir)) {
           expanded = dir
           break
         }
@@ -264,25 +283,32 @@ describe('Files Workflow', () => {
 
       // Expand one if nothing is already expanded
       if (!expanded) {
-        const collapsed = dirs[0]
+        let collapsed = null
+        for (const dir of dirs) {
+          if (!(await isDirectoryNode(dir))) continue
+          if (!(await isExpandedDirectoryNode(dir))) {
+            collapsed = dir
+            break
+          }
+        }
         if (!collapsed) return this.skip()
         await browser.execute((el) => el.click(), collapsed)
         await browser.waitUntil(
-          async () => (await collapsed.getAttribute('aria-expanded')) === 'true',
+          async () => await isExpandedDirectoryNode(collapsed),
           WAIT_MEDIUM
         )
         expanded = collapsed
       }
 
-      const itemsBefore = (await $$('[role="treeitem"]')).length
+      const itemsBefore = (await $$(TREE_NODE_SELECTOR)).length
       await browser.execute((el) => el.click(), expanded)
       await browser.waitUntil(
-        async () => (await expanded.getAttribute('aria-expanded')) === 'false',
-        { ...WAIT_MEDIUM, timeoutMsg: 'Directory did not collapse (aria-expanded stayed true)' }
+        async () => !(await isExpandedDirectoryNode(expanded)),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Directory did not collapse' }
       )
 
       // Children should have been removed
-      const itemsAfter = (await $$('[role="treeitem"]')).length
+      const itemsAfter = (await $$(TREE_NODE_SELECTOR)).length
       expect(itemsAfter).toBeLessThan(itemsBefore)
     })
   })
@@ -294,12 +320,12 @@ describe('Files Workflow', () => {
       if (!mainApp) return this.skip()
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         WAIT_MEDIUM
       )
 
       // Select a code file so we have a deterministic viewer state
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       let codeItem = null
       for (const item of items) {
         const text = await browser.execute((el) => el.textContent, item)
@@ -349,11 +375,11 @@ describe('Files Workflow', () => {
       await switchToTab('files')
 
       await browser.waitUntil(
-        async () => (await $$('[role="treeitem"]')).length > 0,
+        async () => (await $$(TREE_NODE_SELECTOR)).length > 0,
         { ...WAIT_MEDIUM, timeoutMsg: 'File tree did not render after tab round-trip' }
       )
 
-      const items = await $$('[role="treeitem"]')
+      const items = await $$(TREE_NODE_SELECTOR)
       expect(items.length).toBeGreaterThan(0)
     })
   })

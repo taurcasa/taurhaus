@@ -849,13 +849,10 @@ fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreErr
     })?;
 
     let mut file = selected_file.ok_or_else(|| {
-        TemplateStoreError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "internal temp-file selection mismatch while writing {}",
-                target.display()
-            ),
-        ))
+        TemplateStoreError::Io(std::io::Error::other(format!(
+            "internal temp-file selection mismatch while writing {}",
+            target.display()
+        )))
     })?;
     file.write_all(bytes)?;
     file.sync_all()?;
