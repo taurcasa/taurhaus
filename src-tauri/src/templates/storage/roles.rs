@@ -105,17 +105,10 @@ impl TemplateStore {
                 template.role_id
             ))
         })?;
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::write(
-                relative_path,
-                payload.into_bytes(),
-            )],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::write(relative_path, payload.into_bytes()),
             &format!("templates: create role {}", template.role_id),
-        )?;
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 
     pub fn update_role(
@@ -149,17 +142,10 @@ impl TemplateStore {
         let payload = serde_yml::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize role '{role_id}': {err}"))
         })?;
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::write(
-                relative_path,
-                payload.into_bytes(),
-            )],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::write(relative_path, payload.into_bytes()),
             &format!("templates: update role {role_id}"),
-        )?;
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 
     pub fn delete_role(&self, role_id: &str) -> Result<TemplateMutationResult, TemplateStoreError> {
@@ -194,14 +180,10 @@ impl TemplateStore {
             )));
         }
 
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::delete(relative_path)],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::delete(relative_path),
             &format!("templates: delete role {role_id}"),
-        )?;
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 
     pub fn import_role(
@@ -228,14 +210,9 @@ impl TemplateStore {
         };
 
         let relative_path = self.role_file_path(&role_id);
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::write(relative_path, raw.into_bytes())],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::write(relative_path, raw.into_bytes()),
             &format!("templates: {action} role {role_id}"),
-        )?;
-
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 }

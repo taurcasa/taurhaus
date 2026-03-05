@@ -110,17 +110,10 @@ impl TemplateStore {
                 template.preset_id
             ))
         })?;
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::write(
-                relative_path,
-                payload.into_bytes(),
-            )],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::write(relative_path, payload.into_bytes()),
             &format!("templates: create preset {}", template.preset_id),
-        )?;
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 
     pub fn update_preset(
@@ -156,17 +149,10 @@ impl TemplateStore {
         let payload = serde_yml::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize preset '{preset_id}': {err}"))
         })?;
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::write(
-                relative_path,
-                payload.into_bytes(),
-            )],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::write(relative_path, payload.into_bytes()),
             &format!("templates: update preset {preset_id}"),
-        )?;
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 
     pub fn delete_preset(
@@ -191,14 +177,10 @@ impl TemplateStore {
             )));
         }
 
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::delete(relative_path)],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::delete(relative_path),
             &format!("templates: delete preset {preset_id}"),
-        )?;
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 
     pub fn import_preset(
@@ -227,14 +209,9 @@ impl TemplateStore {
         };
 
         let relative_path = self.preset_file_path(&preset_id);
-        let commit_id = self.mutate_and_commit(
-            &[TemplateFileMutation::write(relative_path, raw.into_bytes())],
+        self.apply_single_template_mutation(
+            TemplateFileMutation::write(relative_path, raw.into_bytes()),
             &format!("templates: {action} preset {preset_id}"),
-        )?;
-
-        Ok(TemplateMutationResult {
-            committed: commit_id.is_some(),
-            commit_id,
-        })
+        )
     }
 }

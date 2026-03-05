@@ -480,6 +480,18 @@ impl TemplateStore {
         PathBuf::from(PRESETS_DIRNAME).join(format!("{preset_id}.yaml"))
     }
 
+    fn apply_single_template_mutation(
+        &self,
+        mutation: TemplateFileMutation,
+        commit_message: &str,
+    ) -> Result<TemplateMutationResult, TemplateStoreError> {
+        let commit_id = self.mutate_and_commit(&[mutation], commit_message)?;
+        Ok(TemplateMutationResult {
+            committed: commit_id.is_some(),
+            commit_id,
+        })
+    }
+
     fn load_role_templates_from_dir(
         &self,
         dir: &Path,
