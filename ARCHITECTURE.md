@@ -46,6 +46,9 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `FirstRunWizard.svelte` | Onboarding flow: project discovery and registration |
 | `SplashScreen.svelte` | Startup splash with bootstrap chain progress |
 | `SessionHistory.svelte` | Session timeline with handoff summaries |
+| `components/MeshTab.svelte` | Mesh View orchestration surface (gate/setup/init/runtime states) |
+| `components/MeshCanvas.svelte` | Node-canvas runtime graph for lead/agents and connection state |
+| `components/MeshRuntimeBar.svelte` | Runtime status controls (add-agent/disband/summary pills) |
 
 **Key patterns:**
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`, `$props`) — no legacy stores
@@ -100,24 +103,24 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (83)
+### IPC Commands (86)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
-Grouped by domain:
-- **Projects** (9): list, get, register, batch register, update, remove, first-run check, scan directory, validate path
-- **Git** (7): all commits, recent commits, range commits, diff, commit files, status, remote URL
-- **Files** (7): read file, path type check, list directory, read asset, file tree, readme, system roots
-- **Search** (3): search, rebuild index, index status
-- **Sessions** (3): list, get latest, get detail
-- **Relationships** (4): list, create, dismiss, remove
-- **Command Center** (6): launch session, stop session, navigate to session, list sessions, record activity, project activity
-- **Tasks** (3): project tasks, task detail, archived sessions
-- **Daemon** (6): platform, status, start, stop, check install, install
-- **Mesh install** (2): check install status, install mesh
-- **Settings** (2): get, update
-- **Coordination** (13): create/disband/list teams, add/remove members, team status, initialize, add agent, resume member, reonboard, live status, preflight, feature availability (behind `mesh-bridged-backend` feature flag)
-- **Templates** (17): role/preset CRUD, composition + validation, storage status, history, diff, revert, import, flush pending, apply composition
+Grouped by command module:
+- **Projects** (12): includes `create_project`, registration flows, path/directory helpers, and first-run checks
+- **Git** (4): commit lists + status + remote URL
+- **Files** (5): file tree/read/readme/asset/path-type
+- **Search** (3): search, rebuild, index status
+- **Sessions** (3): list/latest/detail
+- **Relationships** (4): list/create/dismiss/remove
+- **Command Center** (6): launch/stop/navigate/list/record activity
+- **Tasks** (6): board data + detail + archive + commit context helpers
+- **Daemon** (6): platform/status/start/stop/install checks
+- **Mesh install** (2): check/install mesh binary
+- **Settings** (2): get/update
+- **Coordination** (13): team lifecycle + member lifecycle + live/preflight
+- **Templates** (19): role/preset CRUD, composition, storage status, history/diff/revert/import/flush/apply
 - **Logging** (1): frontend log forwarding — `console.log` in the frontend is monkey-patched (`logger.js`) to also call `frontend_log` IPC, writing to a unified `taurhaus.log` in the resolved app-data root (`app_data_dir()` by default, or `TAURHAUS_DATA_DIR` when set). Backend uses `tracing` crate. Single log file, truncated per launch.
 
 ### Coordination (Mesh View)
@@ -130,6 +133,8 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Resume lifecycle**: offline members are resumed via `coordination_resume_member` with mode-aware commands (`Continue` or `Fresh`) and step-level reporting.
 - **Liveness reconciliation**: live-status reads call orchestrator write-on-drift reconciliation (missing pane, dead pane, or shell-returned pane via `pane_is_shell`) before returning UI status. Offline drift clears stale session IDs and cleans non-Claude daemon PIDs.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes for non-lead members).
+- **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) instead of force-sim layouts. Lead/agent positions are computed from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
+- **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model.
 
 See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
 
@@ -141,7 +146,7 @@ The template system provides reusable role templates and team presets, with comp
 - **Storage roots**: template files live under the resolved app-data directory (`app_data_dir()/templates` by default, or `<TAURHAUS_DATA_DIR>/templates` when overridden).
 - **Git-backed state**: template writes are committed through `TemplateStore`, enabling history (`templates_get_history`), diff (`templates_get_diff`), and forward revert (`templates_revert`).
 - **Composition engine**: `templates::composition::compose_team` resolves lead and agent slots into a concrete roster, returning `warnings` and `validation_errors`.
-- **Frontend pipeline**: `TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm` -> `coordination_initialize_team` (initialize payload shape remains unchanged).
+- **Frontend pipeline**: `TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm` -> `coordination_initialize_team` (initialize payload shape remains unchanged).
 - **Operational visibility**: storage mode, dirty state, and pending actions are exposed via `templates_get_storage_status`; manual flush is available via `templates_flush_pending`.
 
 See [team templates guide](docs/team-templates.md) for user-facing workflows.
@@ -181,6 +186,12 @@ File system events from `notify` arrive in rapid bursts (5–8 events per file e
 - **Max-wait ceiling** (2s): batch flushes regardless after 2s, preventing starvation
 
 Result: one `project-files-changed` Tauri event per edit instead of 5–8. The frontend listener in Shell.svelte dispatches to the active tab via reactive props.
+
+### Recent Performance Improvements
+
+- **Git range queries**: range traversal uses a single-pass algorithm in `git/commits.rs` (covered by `single_pass_range_matches_dual_pass_output`), reducing duplicated revwalk work.
+- **Search indexing**: file updates are batch-committed in `search/indexer.rs` (`update_file_batch_commits_once_for_multiple_files`) to avoid per-file commit overhead.
+- **Session scanner CPU**: activity detection uses hysteresis and cadence widening (`session_scanner/proc_io.rs`, `daemon/session_activity.rs`) to reduce false active spikes and idle-loop churn.
 
 ### Daemon Protocol
 
@@ -249,8 +260,10 @@ just dev              # Tauri dev mode (hot-reload)
 just build-windows    # Sync to D:\, npm install, cargo build natively via cmd.exe
 just build-macos      # Sync to Mac Mini, build ARM DMG via SSH
 just build-macos-intel # Build Intel (x86_64) DMG via SSH
-just check            # clippy + svelte-check + all tests
-just test             # All tests (Rust + frontend)
+just check            # Full gate: fmt + lint + typecheck + just test
+just test             # All non-E2E tests (Rust + frontend)
+just test-fast        # Fast lane: cargo check --tests + frontend tests
+just metrics          # Quality KPI report snapshot
 just test-macos       # Run Rust tests on Mac Mini via SSH
 just agent-quality    # Rust implementation quality gate: fmt + clippy + check --tests
 ```

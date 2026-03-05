@@ -60,8 +60,17 @@ just dev-frontend
 All tests must pass before submitting a PR:
 
 ```bash
-just check  # Runs fmt + clippy + svelte-check + all tests
+just check  # Full gate: fmt + lint + typecheck + all non-E2E tests
 ```
+
+Core release-lane recipes (from `justfile`):
+
+| Recipe | Purpose |
+|--------|---------|
+| `just test` | Full non-E2E test lane (Rust + frontend) |
+| `just test-fast` | Fast iteration lane (`cargo check --tests` + frontend tests) |
+| `just check` | Full quality gate (`fmt`, `lint`, `typecheck`, `test`) |
+| `just metrics` | Quality KPI report (tests, coverage, build health, code size, E2E inventory) |
 
 For Rust implementation work, run the task-level quality gate before declaring completion:
 

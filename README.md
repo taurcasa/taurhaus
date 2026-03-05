@@ -26,11 +26,13 @@ If you've ever stared at six terminal tabs wondering "wait, did I already start 
 ## Features
 
 - **Project overview** — All projects at a glance, grouped by activity (Active / Recent / Stale / Dormant)
+- **Project onboarding** — Scan/register existing repos or create a brand-new git project (initialized on `main`) from the Add Project modal
 - **File browser** — Browse and preview files with VS Code-grade syntax highlighting (Shiki)
 - **Git integration** — Commit history and inline diffs — all in-app via libgit2, no CLI dependency
 - **Task board** — Aggregated tasks from Claude Code, Codex, and Gemini CLI in one view
 - **Multi-CLI session management** — Launch, stop, and jump to Claude Code, Codex, and Gemini CLI sessions from the sidebar
 - **Mesh View (multi-agent coordination)** — Create teams, initialize agent sessions, track live team status, and hot-add/re-onboard members
+- **Team templates** — Built-in role/preset catalog (including `codex-architect` and `standard-team`) with compose/apply flow
 - **Live activity detection** — Real-time active/idle status for running CLI sessions
 - **Full-text search** — Search across all project content with Ctrl+K (powered by tantivy)
 - **Session handoffs** — Auto-imported session summaries so you can pick up where you left off

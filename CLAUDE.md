@@ -144,14 +144,14 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
-- **IPC**: Fine-grained commands (~25). One per operation. Frontend calls in parallel.
+- **IPC**: Fine-grained commands (currently 86 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
 - **File rendering**: Classification → IPC → cache → render. See [`docs/file-rendering-pipeline.md`](docs/file-rendering-pipeline.md).
 - **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
-- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm`) while preserving the existing initialize payload contract.
+- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm`) while preserving the existing initialize payload contract.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
 Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/`](docs/architecture/) references.
@@ -164,10 +164,12 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/App.svelte` | Entry wrapper |
 | `src/app.css` | Design tokens + global styles |
 | `src/lib/ipc.js` | Tauri IPC commands + dev-mode mock fallbacks |
-| `src/lib/components/TemplateCatalog.svelte` | Role/preset browser, inspector, and composition entry point |
-| `src/lib/components/TeamComposer.svelte` | Lead/agent composition, roster editing, and validation UI |
+| `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
+| `src/lib/components/MeshCanvas.svelte` | Runtime node canvas for lead/agent topology + connection status |
+| `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog and composition entry |
+| `src/lib/components/TeamCustomizerPanel.svelte` | Team composition editor/validator before initialize |
 | `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
-| `docs/design-brief.md` | Full requirements (Phase 2) |
+| `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
 | `docs/images/system-architecture.jpg` | System architecture infographic |

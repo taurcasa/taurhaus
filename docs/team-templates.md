@@ -12,7 +12,7 @@ Team templates let you define reusable team structure before launch:
 
 The template flow is:
 
-`TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm` -> `coordination_initialize_team`
+`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm` -> `coordination_initialize_team`
 
 Manual setup remains available via **Blank slate**.
 
@@ -39,6 +39,17 @@ Managed layout:
 
 For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_DIR`, so template storage resolves under `<TAURHAUS_DATA_DIR>/templates/`.
 
+## Built-in Catalog (v0.5.0)
+
+Current built-ins ship from `src-tauri/resources/templates/`:
+
+- **Roles (7)**: `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-architect`, `codex-developer`, `codex-qa`, `gemini-ui-specialist`
+- **Presets (4)**: `standard-team`, `fullstack-dev`, `research-dev`, `review-team`
+
+Notable updates:
+- `codex-architect` is a first-class built-in role template for architecture/review ownership.
+- `standard-team` is the default "full team" preset (lead orchestrator + architect + developers + UI specialist).
+
 ## Using Templates in Setup
 
 In Mesh setup, use **Start from template**:
@@ -52,7 +63,7 @@ After composition, the roster is still editable in `MeshSetupForm` (names, tools
 
 ## Composition and Validation
 
-`TeamComposer` resolves roster members and runs live checks:
+`TeamCustomizerPanel` resolves roster members and runs live checks:
 
 - single-lead validation
 - name-collision detection

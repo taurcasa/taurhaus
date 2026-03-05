@@ -144,12 +144,10 @@ struct BackendCapabilities {
 
 ### D10: Backend selection — auto-detect with override
 
-**Status**: Planned
+**Status**: Partial
 
-**Decision**: `BackendSelector` auto-detects based on CLI tool (session scanner already knows Claude/Codex/Gemini). User can override in team setup UI.
-
-Both `detected_tool` and `selected_backend` are persisted for auditability and debugging.
-Current M0 path forces `MeshBridged` selection; auto-detect/override is designed but not active in setup flow.
+**Decision**: `BackendSelector` supports override → force-mesh → CLI-tool auto-detection ordering.
+`BackendSelector` supports override + auto-detect, but current setup/runtime flows still force M0-style `MeshBridged` selection.
 
 ### D11: Channel-based daemon → orchestrator event pipeline
 
@@ -200,7 +198,9 @@ src-tauri/src/
 
 **Status**: Partial
 
-**Decision**: Taurhaus only shows teams it created/manages (tracked in SQLite). CLI-only mesh teams are not visible — consistent with the existing "only registered projects are visible" model.
+**Decision**: Taurhaus team discovery currently comes from filesystem config (`TeamConfigStore::discover` under `~/.claude/teams`), then the Mesh tab scopes active restoration by lead project path.
+
+This means teams are not sourced from SQLite ownership records; visibility is project-context aware but still driven by `config.json` discovery.
 
 ### D15: Structured member removal with guarded teardown + lead notice
 
@@ -266,7 +266,7 @@ src-tauri/src/
 **Decision**: Template-driven team setup remains an adapter layer above coordination initialization, not a second orchestration path.
 
 - Backend template IPC (`templates_*`) handles role/preset storage, composition, history, diff, and revert.
-- Frontend template flow (`TemplateCatalog` -> `TeamComposer` -> `MeshSetupForm`) resolves to the same `InitializeTeamRequest` shape used by manual setup.
+- Frontend template flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm`) resolves to the same `InitializeTeamRequest` shape used by manual setup.
 - Coordination runtime continues to start teams only through `coordination_initialize_team` / `templates_apply_composition` (which forwards into the same initialize pipeline).
 
 **Integration points**:
@@ -285,7 +285,7 @@ src-tauri/src/
 - MeshBridged backend (OperatorNotice delivery only)
 - Orchestrator (create/disband/add/remove/list/status/deliver, idempotent)
 - Daemon event channel wiring
-- IPC commands + minimal UI (team setup + status list)
+- IPC commands + runtime UI baseline (team setup, init progress, runtime canvas/status, hot-add/reonboard/disband actions)
 
 ### M1: Backend parity + health/recovery
 - ClaudeNative backend (Planned; current backend exists as placeholder and launch is not implemented)
