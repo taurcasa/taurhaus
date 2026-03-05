@@ -180,7 +180,7 @@ fn scan_all_task_directories(
     index: &ClaudeSourceIndex,
 ) -> ClaudeScanOutcome {
     let mut outcome = ClaudeScanOutcome::default();
-    let project_key = normalize_project_path(project_path);
+    let project_key = crate::provider::path::normalize_project_path(project_path);
     let entries = match fs::read_dir(tasks_base) {
         Ok(entries) => entries,
         Err(e) => {
@@ -246,13 +246,14 @@ fn scan_all_task_directories(
 
 fn source_matches_project(source_key: &str, project_key: &str, index: &ClaudeSourceIndex) -> bool {
     if let Some(session_project) = index.sessions.get(source_key) {
-        return normalize_project_path(&session_project.to_string_lossy()) == project_key;
+        return crate::provider::path::normalize_project_path(&session_project.to_string_lossy())
+            == project_key;
     }
 
     if let Some(team_projects) = index.teams.get(source_key) {
-        return team_projects
-            .iter()
-            .any(|p| normalize_project_path(&p.to_string_lossy()) == project_key);
+        return team_projects.iter().any(|p| {
+            crate::provider::path::normalize_project_path(&p.to_string_lossy()) == project_key
+        });
     }
 
     tracing::warn!(
@@ -260,15 +261,6 @@ fn source_matches_project(source_key: &str, project_key: &str, index: &ClaudeSou
         "Skipping orphan Claude task directory with no source-index mapping"
     );
     false
-}
-
-fn normalize_project_path(path: &str) -> String {
-    let converted = crate::provider::path::to_linux(path).unwrap_or_else(|| path.to_string());
-    let mut normalized = converted.replace('\\', "/");
-    while normalized.len() > 1 && normalized.ends_with('/') {
-        normalized.pop();
-    }
-    normalized
 }
 
 /// Parse all task JSON files in a directory for a specific source key.

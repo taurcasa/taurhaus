@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::daemon::launcher::{is_native_daemon, validate_wsl_distro, wsl_command};
-use crate::models::MeshInstallStatus;
+use crate::models::{MeshInstallStatus, OperationResult};
 use tauri::Manager;
 
 const MESH_BINARY_NAME: &str = "mesh";
@@ -18,7 +18,7 @@ pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallSta
 }
 
 #[tauri::command]
-pub fn install_mesh(app: tauri::AppHandle) -> Result<String, String> {
+pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let (bundled_binary, bundled_version) = resolve_bundled_mesh_assets(&app)?;
     if is_native_daemon() {
         install_mesh_native(&bundled_binary, &bundled_version)
@@ -250,7 +250,10 @@ fn check_mesh_install_wsl(bundled_version: &str) -> Result<MeshInstallStatus, St
     })
 }
 
-fn install_mesh_native(bundled_binary: &Path, bundled_version: &str) -> Result<String, String> {
+fn install_mesh_native(
+    bundled_binary: &Path,
+    bundled_version: &str,
+) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
     let target_path = target_dir.join("mesh");
@@ -306,16 +309,19 @@ fn install_mesh_native(bundled_binary: &Path, bundled_version: &str) -> Result<S
                     "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
                 ));
             }
-            Ok(format!(
+            Ok(OperationResult::success(format!(
                 "Mesh installed successfully: mesh {installed_version}"
-            ))
+            )))
         }
         Ok(_) => Err("Mesh was copied but --version check failed.".to_string()),
         Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
     }
 }
 
-fn install_mesh_wsl(bundled_binary: &Path, bundled_version: &str) -> Result<String, String> {
+fn install_mesh_wsl(
+    bundled_binary: &Path,
+    bundled_version: &str,
+) -> Result<OperationResult, String> {
     let distro = detect_default_distro()?.ok_or("No WSL distro configured")?;
     validate_wsl_distro(&distro).map_err(|e| format!("Invalid distro: {e}"))?;
 
@@ -381,9 +387,9 @@ fn install_mesh_wsl(bundled_binary: &Path, bundled_version: &str) -> Result<Stri
                     "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
                 ));
             }
-            Ok(format!(
+            Ok(OperationResult::success(format!(
                 "Mesh installed successfully: mesh {installed_version}"
-            ))
+            )))
         }
         Ok(_) => Err("Mesh was copied but --version check failed.".to_string()),
         Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),

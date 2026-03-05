@@ -130,6 +130,39 @@ pub fn to_windows(path: &str, distro: &str) -> String {
     linux_mount_to_windows(path).unwrap_or_else(|| linux_to_wsl_unc(path, distro))
 }
 
+/// Normalize a project path for stable cross-platform matching and DB keys.
+///
+/// Rules:
+/// - Convert WSL UNC and Windows drive paths to Linux form when applicable.
+/// - Convert backslashes to forward slashes.
+/// - Collapse repeated separators.
+/// - Strip trailing separators (except root `/`).
+pub fn normalize_project_path(path: &str) -> String {
+    let converted = to_linux(path).unwrap_or_else(|| path.to_string());
+    normalize_linux_separators(&converted)
+}
+
+fn normalize_linux_separators(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    let mut prev_slash = false;
+    for ch in path.trim().chars() {
+        let mapped = if ch == '\\' { '/' } else { ch };
+        if mapped == '/' {
+            if prev_slash {
+                continue;
+            }
+            prev_slash = true;
+        } else {
+            prev_slash = false;
+        }
+        out.push(mapped);
+    }
+    while out.len() > 1 && out.ends_with('/') {
+        out.pop();
+    }
+    out
+}
+
 /// Strip the WSL UNC prefix, returning the rest starting with the distro name.
 fn strip_wsl_prefix(path: &str) -> Option<&str> {
     // Case-insensitive prefix matching: normalize to lowercase for comparison
@@ -409,6 +442,30 @@ mod tests {
         assert_eq!(
             to_windows("/home/user/projects", "Ubuntu"),
             r"\\wsl.localhost\Ubuntu\home\user\projects"
+        );
+    }
+
+    #[test]
+    fn normalize_project_path_converts_wsl_unc_to_linux() {
+        assert_eq!(
+            normalize_project_path(r"\\wsl.localhost\Ubuntu\home\user\proj\"),
+            "/home/user/proj".to_string()
+        );
+    }
+
+    #[test]
+    fn normalize_project_path_converts_drive_paths_and_trims() {
+        assert_eq!(
+            normalize_project_path(r"D:\projects\taurhaus\\"),
+            "/mnt/d/projects/taurhaus".to_string()
+        );
+    }
+
+    #[test]
+    fn normalize_project_path_normalizes_relative_and_repeated_separators() {
+        assert_eq!(
+            normalize_project_path(r"foo\\bar///baz/"),
+            "foo/bar/baz".to_string()
         );
     }
 

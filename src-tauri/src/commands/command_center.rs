@@ -79,6 +79,14 @@ fn normalize_project_path_key(path: &str) -> String {
     }
 }
 
+fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let project = crate::db::queries::get_project(&conn, project_id)
+        .sanitize_err()?
+        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+    Ok(project.path)
+}
+
 fn promote_activity_from_sessions(
     app: &tauri::AppHandle,
     db: &DbState,
@@ -177,13 +185,7 @@ fn launch_cli_session_impl(
         );
     }
 
-    let project_path = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let project = crate::db::queries::get_project(&conn, &project_id)
-            .sanitize_err()?
-            .ok_or_else(|| format!("Project not found: {project_id}"))?;
-        project.path
-    };
+    let project_path = resolve_project_path(db, &project_id)?;
 
     let linux_path =
         crate::provider::path::to_linux(&project_path).unwrap_or_else(|| project_path.clone());
@@ -399,7 +401,7 @@ pub fn navigate_to_session(
 #[tauri::command]
 pub fn record_session_activity(
     db: State<'_, DbState>,
-    project_path: String,
+    project_id: String,
     cli_tool: CliTool,
     started_at: String,
     ended_at: String,
@@ -408,7 +410,7 @@ pub fn record_session_activity(
 ) -> Result<(), String> {
     record_session_activity_impl(
         db.inner(),
-        project_path,
+        project_id,
         cli_tool,
         started_at,
         ended_at,
@@ -419,13 +421,14 @@ pub fn record_session_activity(
 
 fn record_session_activity_impl(
     db: &DbState,
-    project_path: String,
+    project_id: String,
     cli_tool: CliTool,
     started_at: String,
     ended_at: String,
     active_duration_ms: i64,
     total_duration_ms: i64,
 ) -> Result<(), String> {
+    let project_path = resolve_project_path(db, &project_id)?;
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let cli_tool = cli_tool.to_string();
     crate::db::activity_queries::insert_session_activity(
@@ -443,8 +446,9 @@ fn record_session_activity_impl(
 #[tauri::command]
 pub fn get_project_activity(
     db: State<'_, DbState>,
-    project_path: String,
+    project_id: String,
 ) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
+    let project_path = resolve_project_path(db.inner(), &project_id)?;
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::activity_queries::get_project_activity(&conn, &project_path).sanitize_err()
 }
@@ -848,7 +852,7 @@ mod tests {
         let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
         record_session_activity_impl(
             &db,
-            "/tmp/project".to_string(),
+            "p1".to_string(),
             CliTool::Gemini,
             "2026-03-04T10:00:00Z".to_string(),
             "2026-03-04T11:00:00Z".to_string(),

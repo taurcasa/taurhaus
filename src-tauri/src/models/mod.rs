@@ -390,6 +390,23 @@ pub struct MeshInstallStatus {
     pub error: Option<String>,
 }
 
+/// Structured response for operational commands that previously returned strings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationResult {
+    pub success: bool,
+    pub message: String,
+}
+
+impl OperationResult {
+    pub fn success(message: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            message: message.into(),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // IPC response types (used by commands, implemented in later phases)
 // ---------------------------------------------------------------------------

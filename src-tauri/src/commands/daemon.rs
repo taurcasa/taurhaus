@@ -3,7 +3,7 @@ use tauri::{Emitter, Manager, State};
 use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::daemon::protocol::{self, PingResult, PROTOCOL_VERSION};
 use crate::daemon::server::DEFAULT_PORT;
-use crate::models::{DaemonInstallStatus, DaemonStatus};
+use crate::models::{DaemonInstallStatus, DaemonStatus, OperationResult};
 use crate::ProviderState;
 
 const BUNDLED_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -86,7 +86,7 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
 pub fn start_daemon(
     provider: State<'_, ProviderState>,
     app: tauri::AppHandle,
-) -> Result<String, String> {
+) -> Result<OperationResult, String> {
     let distro = provider.wsl_distro.as_deref().ok_or_else(|| {
         if crate::daemon::launcher::is_native_daemon() {
             "No daemon configuration available".to_string()
@@ -109,11 +109,13 @@ pub fn start_daemon(
                 "daemon-status",
                 serde_json::json!({ "status": "connected" }),
             );
-            return Ok("Daemon started and connected".to_string());
+            return Ok(OperationResult::success("Daemon started and connected"));
         }
     }
 
-    Ok("Daemon process started (not yet connected)".to_string())
+    Ok(OperationResult::success(
+        "Daemon process started (not yet connected)",
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -339,7 +341,7 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
 /// On macOS/Linux: copies directly to `~/.local/bin/taurhaus-daemon`.
 /// On Windows: copies into the default WSL distro.
 #[tauri::command]
-pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
+pub fn install_daemon(app: tauri::AppHandle) -> Result<OperationResult, String> {
     // Resolve bundled binary path from Tauri resources
     let resource_dir = app
         .path()
@@ -362,7 +364,7 @@ pub fn install_daemon(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 /// Install daemon natively (macOS/Linux): copy binary + chmod + verify.
-fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<String, String> {
+fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
     let target_path = target_dir.join("taurhaus-daemon");
@@ -418,7 +420,9 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<String, Str
         Ok(output) if output.status.success() => {
             let raw = String::from_utf8_lossy(&output.stdout);
             let version = raw.trim();
-            Ok(format!("Daemon installed successfully: {version}"))
+            Ok(OperationResult::success(format!(
+                "Daemon installed successfully: {version}"
+            )))
         }
         Ok(_) => Err(
             "Daemon was copied but --version check failed. The binary may be corrupted."
@@ -429,7 +433,7 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<String, Str
 }
 
 /// Install daemon via WSL (Windows): copy into WSL distro + chmod + verify.
-fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String> {
+fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<OperationResult, String> {
     let distro = detect_default_distro()?.ok_or("No WSL distro configured")?;
     validate_wsl_distro(&distro).map_err(|e| format!("Invalid distro: {e}"))?;
 
@@ -511,7 +515,9 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<String, String
         Ok(output) if output.status.success() => {
             let raw = String::from_utf8_lossy(&output.stdout);
             let version = raw.trim();
-            Ok(format!("Daemon installed successfully: {version}"))
+            Ok(OperationResult::success(format!(
+                "Daemon installed successfully: {version}"
+            )))
         }
         Ok(_) => Err(
             "Daemon was copied but --version check failed. The binary may be corrupted."

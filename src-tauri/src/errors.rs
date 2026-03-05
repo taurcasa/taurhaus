@@ -49,7 +49,14 @@ pub enum IpcErrorCode {
 pub struct IpcError {
     pub code: IpcErrorCode,
     pub message: String,
+    pub command: Option<String>,
     pub retryable: bool,
+}
+
+impl std::fmt::Display for IpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
 }
 
 impl IpcError {
@@ -57,6 +64,7 @@ impl IpcError {
         Self {
             code: IpcErrorCode::ValidationError,
             message: sanitize_error(&message.into()),
+            command: None,
             retryable: false,
         }
     }
@@ -65,6 +73,7 @@ impl IpcError {
         Self {
             code: IpcErrorCode::NotFound,
             message: sanitize_error(&message.into()),
+            command: None,
             retryable: false,
         }
     }
@@ -73,6 +82,7 @@ impl IpcError {
         Self {
             code: IpcErrorCode::Conflict,
             message: sanitize_error(&message.into()),
+            command: None,
             retryable: false,
         }
     }
@@ -81,6 +91,7 @@ impl IpcError {
         Self {
             code: IpcErrorCode::Unavailable,
             message: sanitize_error(&message.into()),
+            command: None,
             retryable: true,
         }
     }
@@ -89,8 +100,14 @@ impl IpcError {
         Self {
             code: IpcErrorCode::InternalError,
             message: sanitize_error(&message.into()),
+            command: None,
             retryable: false,
         }
+    }
+
+    pub fn with_command(mut self, command: impl Into<String>) -> Self {
+        self.command = Some(command.into());
+        self
     }
 }
 
@@ -127,11 +144,17 @@ pub fn map_command_error<E: std::fmt::Display>(err: E) -> IpcError {
 
 pub trait CommandResultExt<T> {
     fn ipc(self) -> IpcResult<T>;
+    fn ipc_cmd(self, command: &'static str) -> IpcResult<T>;
 }
 
 impl<T, E: std::fmt::Display> CommandResultExt<T> for Result<T, E> {
     fn ipc(self) -> IpcResult<T> {
         self.map_err(map_command_error)
+    }
+
+    fn ipc_cmd(self, command: &'static str) -> IpcResult<T> {
+        self.map_err(map_command_error)
+            .map_err(|err| err.with_command(command))
     }
 }
 
@@ -236,6 +259,7 @@ mod tests {
         let value = serde_json::to_value(err).expect("serialize ipc error");
         assert_eq!(value["code"], "VALIDATION_ERROR");
         assert_eq!(value["message"], "bad input");
+        assert_eq!(value["command"], serde_json::Value::Null);
         assert_eq!(value["retryable"], serde_json::Value::Bool(false));
     }
 
@@ -246,6 +270,13 @@ mod tests {
         assert_eq!(err.code, IpcErrorCode::InternalError);
         assert!(!err.retryable);
         assert_eq!(err.message, "boom");
+    }
+
+    #[test]
+    fn command_result_ext_attaches_command_name() {
+        let result: IpcResult<()> = Err("missing").ipc_cmd("get_task_detail");
+        let err = result.expect_err("expected mapped error");
+        assert_eq!(err.command.as_deref(), Some("get_task_detail"));
     }
 
     #[test]

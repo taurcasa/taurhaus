@@ -327,8 +327,8 @@ fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> Resul
         None => return Ok(false),
     };
 
-    let norm_cwd = cwd.trim_end_matches('/');
-    let norm_target = project_path.trim_end_matches('/');
+    let norm_cwd = crate::provider::path::normalize_project_path(cwd);
+    let norm_target = crate::provider::path::normalize_project_path(project_path);
     Ok(norm_cwd == norm_target)
 }
 
@@ -503,10 +503,8 @@ fn find_codex_session_by_id(
     use chrono::Local;
 
     let today = Local::now().date_naive();
-    let normalized_project = project_path
-        .to_string_lossy()
-        .trim_end_matches('/')
-        .to_string();
+    let normalized_project =
+        crate::provider::path::normalize_project_path(&project_path.to_string_lossy());
 
     for days_back in 0..CODEX_TIMELINE_LOOKBACK_DAYS {
         let date = today - chrono::Duration::days(days_back);
@@ -550,7 +548,7 @@ fn find_codex_session_by_id(
             let project_matches = meta
                 .cwd
                 .as_deref()
-                .map(|cwd| cwd.trim_end_matches('/') == normalized_project)
+                .map(|cwd| crate::provider::path::normalize_project_path(cwd) == normalized_project)
                 .unwrap_or(false);
             if !project_matches {
                 continue;

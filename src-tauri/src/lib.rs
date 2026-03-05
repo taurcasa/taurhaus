@@ -221,7 +221,6 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::tasks::get_commit_diff,
             commands::tasks::get_commits_in_range,
             // Kept for direct E2E IPC assertions.
-            commands::templates::templates_list_roles,
             commands::templates::templates_list_roles_full,
             commands::templates::templates_get_role,
             commands::templates::templates_upsert_role,
