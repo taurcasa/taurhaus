@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
-import { appendDriverStderr, collectFailureArtifacts } from '../e2e/failure-artifacts.js'
+import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 
 describe('e2e failure artifact collection', () => {
   it('creates a per-spec artifact bundle with log tails, metadata, and screenshot', async () => {
