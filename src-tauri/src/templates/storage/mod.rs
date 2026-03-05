@@ -7,9 +7,11 @@ use std::thread;
 use std::time::Duration;
 
 use fs2::FileExt;
-use git2::{Oid, Repository, Signature, Status, StatusOptions};
+use git2::{Oid, Repository, Signature, Status};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+
+use crate::models::DiffHunk;
 
 use super::types::{RoleTemplate, TeamPreset};
 
@@ -62,6 +64,48 @@ pub struct TeamPresetRecord {
     pub template: TeamPreset,
     pub source: TemplateSource,
     pub read_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateCommit {
+    pub commit_id: String,
+    pub short_id: String,
+    pub message: String,
+    pub author: String,
+    pub timestamp: i64,
+    pub changed_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateCommitPage {
+    pub commits: Vec<TemplateCommit>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateDiffFile {
+    pub path: String,
+    pub status: String,
+    pub hunks: Vec<DiffHunk>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateDiffStats {
+    pub files_changed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateDiff {
+    pub commit_id: String,
+    pub files: Vec<TemplateDiffFile>,
+    pub stats: TemplateDiffStats,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

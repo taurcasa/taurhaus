@@ -1,4 +1,10 @@
 use super::*;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+use git2::{Repository, Sort, StatusOptions};
+
+use crate::git::commits::{get_commit_diff, get_commit_files};
 
 impl TemplateStore {
     pub fn ensure_repo_for_mutation(&self) -> Result<Option<Repository>, TemplateStoreError> {
@@ -79,6 +85,197 @@ impl TemplateStore {
                 Ok(None)
             }
         }
+    }
+
+    pub fn managed_dirty_status(&self) -> Result<bool, TemplateStoreError> {
+        self.ensure_directories()?;
+        if !self.git_dir().exists() {
+            return Ok(false);
+        }
+
+        let repo = match Repository::open(self.templates_dir()) {
+            Ok(repo) => repo,
+            Err(_) => return Ok(false),
+        };
+
+        match has_managed_dirty_status(&repo) {
+            Ok(dirty) => Ok(dirty),
+            Err(_) => Ok(false),
+        }
+    }
+
+    pub fn get_history(
+        &self,
+        limit: Option<usize>,
+        cursor: Option<String>,
+    ) -> Result<TemplateCommitPage, TemplateStoreError> {
+        self.ensure_directories()?;
+        if !self.git_dir().exists() {
+            return Ok(TemplateCommitPage {
+                commits: Vec::new(),
+                next_cursor: None,
+            });
+        }
+
+        let repo = Repository::open(self.templates_dir())?;
+        let mut revwalk = repo.revwalk()?;
+        if revwalk.push_head().is_err() {
+            return Ok(TemplateCommitPage {
+                commits: Vec::new(),
+                next_cursor: None,
+            });
+        }
+        revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+
+        let max = limit.unwrap_or(50).clamp(1, 200);
+        let mut commits = Vec::new();
+        let mut can_collect = cursor.is_none();
+
+        for oid_result in revwalk {
+            let oid = oid_result?;
+            let full = oid.to_string();
+
+            if !can_collect {
+                if let Some(target) = cursor.as_deref() {
+                    if full.starts_with(target) {
+                        can_collect = true;
+                    }
+                }
+                continue;
+            }
+
+            if commits.len() >= max {
+                break;
+            }
+
+            let commit = repo.find_commit(oid)?;
+            let changed_paths = commit_changed_template_paths(&repo, &commit)?;
+            if changed_paths.is_empty() {
+                continue;
+            }
+
+            commits.push(TemplateCommit {
+                short_id: format!("{oid:.8}"),
+                commit_id: full,
+                message: commit.summary().unwrap_or("").to_string(),
+                author: commit.author().name().unwrap_or("unknown").to_string(),
+                timestamp: commit.time().seconds(),
+                changed_paths,
+            });
+        }
+
+        let next_cursor = if commits.len() == max {
+            commits.last().map(|commit| commit.commit_id.clone())
+        } else {
+            None
+        };
+
+        Ok(TemplateCommitPage {
+            commits,
+            next_cursor,
+        })
+    }
+
+    pub fn get_diff(&self, commit_id: &str) -> Result<TemplateDiff, TemplateStoreError> {
+        self.ensure_directories()?;
+
+        let files = get_commit_files(self.templates_dir(), commit_id)
+            .map_err(|err| TemplateStoreError::Parse(err.to_string()))?;
+
+        let mut out_files = Vec::new();
+        let mut insertions = 0u32;
+        let mut deletions = 0u32;
+
+        for file in files {
+            if !is_managed_template_str_path(file.path.as_str()) {
+                continue;
+            }
+
+            let hunks = get_commit_diff(self.templates_dir(), commit_id, &file.path)
+                .map_err(|err| TemplateStoreError::Parse(err.to_string()))?;
+
+            for hunk in &hunks {
+                for line in &hunk.lines {
+                    if line.origin == '+' {
+                        insertions = insertions.saturating_add(1);
+                    } else if line.origin == '-' {
+                        deletions = deletions.saturating_add(1);
+                    }
+                }
+            }
+
+            out_files.push(TemplateDiffFile {
+                path: file.path,
+                status: file.status,
+                hunks,
+            });
+        }
+
+        let stats = TemplateDiffStats {
+            files_changed: out_files.len() as u32,
+            insertions,
+            deletions,
+        };
+
+        Ok(TemplateDiff {
+            commit_id: commit_id.to_string(),
+            files: out_files,
+            stats,
+        })
+    }
+
+    pub fn revert_template(&self, id: &str, commit_hash: &str) -> Result<(), TemplateStoreError> {
+        if !is_valid_template_id(id) {
+            return Err(TemplateStoreError::Validation(
+                "invalid template id".to_string(),
+            ));
+        }
+
+        self.ensure_directories()?;
+
+        let repo = Repository::open(self.templates_dir())?;
+        let object = repo.revparse_single(commit_hash)?;
+        let commit = object.peel_to_commit()?;
+        let tree = commit.tree()?;
+
+        let candidates = [format!("roles/{id}.yaml"), format!("presets/{id}.yaml")];
+
+        let mut touched = Vec::new();
+        let mut mutations = Vec::new();
+        for rel in candidates {
+            let rel_path = PathBuf::from(&rel);
+            if let Ok(entry) = tree.get_path(Path::new(&rel)) {
+                let obj = entry.to_object(&repo)?;
+                if let Some(blob) = obj.as_blob() {
+                    mutations.push(TemplateFileMutation::write(
+                        rel_path.clone(),
+                        blob.content().to_vec(),
+                    ));
+                    touched.push(rel_path);
+                }
+                continue;
+            }
+
+            let abs = self.templates_dir().join(&rel_path);
+            if abs.exists() {
+                mutations.push(TemplateFileMutation::delete(rel_path.clone()));
+                touched.push(rel_path);
+            }
+        }
+
+        if touched.is_empty() {
+            return Err(TemplateStoreError::NotFound(format!(
+                "template '{id}' not found in commit"
+            )));
+        }
+
+        let short = format!("{:.8}", commit.id());
+        let _ = self.mutate_and_commit(
+            &mutations,
+            &format!("templates: revert template {id} to {short}"),
+        )?;
+        let _ = self.flush_pending_commits()?;
+        Ok(())
     }
 
     pub fn write_template_file(
@@ -361,4 +558,59 @@ impl TemplateStore {
         let oid = repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)?;
         Ok(Some(oid))
     }
+}
+
+fn is_valid_template_id(id: &str) -> bool {
+    !id.trim().is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn is_managed_template_str_path(path: &str) -> bool {
+    is_managed_template_path(Path::new(path))
+}
+
+fn has_managed_dirty_status(repo: &Repository) -> Result<bool, git2::Error> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true).recurse_untracked_dirs(true);
+
+    let statuses = repo.statuses(Some(&mut opts))?;
+    Ok(statuses.iter().any(|entry| {
+        entry
+            .path()
+            .map(is_managed_template_str_path)
+            .unwrap_or(false)
+    }))
+}
+
+fn commit_changed_template_paths(
+    repo: &Repository,
+    commit: &git2::Commit<'_>,
+) -> Result<Vec<String>, git2::Error> {
+    let tree = commit.tree()?;
+    let parent_tree = commit.parent(0).ok().and_then(|parent| parent.tree().ok());
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+
+    let mut paths = BTreeSet::new();
+    diff.foreach(
+        &mut |delta, _| {
+            let path = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())
+                .and_then(|path| path.to_str());
+            if let Some(path) = path {
+                if is_managed_template_str_path(path) {
+                    paths.insert(path.to_string());
+                }
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )?;
+
+    Ok(paths.into_iter().collect())
 }

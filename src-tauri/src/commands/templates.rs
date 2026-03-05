@@ -1,21 +1,15 @@
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use git2::{Repository, Sort, StatusOptions};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::errors::sanitize_error;
-use crate::git::commits::{get_commit_diff, get_commit_files};
-use crate::models::DiffHunk;
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
-    PendingAction, RoleTemplateRecord, TeamPresetRecord, TemplateFileMutation, TemplateSource,
-    TemplateStore, TemplateStoreError,
+    PendingAction, RoleTemplateRecord, TeamPresetRecord, TemplateCommitPage, TemplateDiff,
+    TemplateSource, TemplateStore, TemplateStoreError,
 };
-use crate::templates::types::{
-    AgentSlot, ProjectBinding, RoleKind, RoleTemplate, SlotOverrides, TeamPreset,
-};
+use crate::templates::types::{AgentSlot, ProjectBinding, RoleTemplate, SlotOverrides, TeamPreset};
 
 pub struct TemplateStoreState(pub TemplateStore);
 
@@ -30,17 +24,6 @@ impl TemplateStoreState {
 pub enum TemplateStorageMode {
     Git,
     PlainFilesystem,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleTemplateSummary {
-    pub role_id: String,
-    pub name: String,
-    pub version: String,
-    pub kind: RoleKind,
-    pub source: TemplateSource,
-    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,48 +105,6 @@ pub struct TemplateStorageStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TemplateCommit {
-    pub commit_id: String,
-    pub short_id: String,
-    pub message: String,
-    pub author: String,
-    pub timestamp: i64,
-    pub changed_paths: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplateCommitPage {
-    pub commits: Vec<TemplateCommit>,
-    pub next_cursor: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplateDiffFile {
-    pub path: String,
-    pub status: String,
-    pub hunks: Vec<DiffHunk>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplateDiffStats {
-    pub files_changed: u32,
-    pub insertions: u32,
-    pub deletions: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplateDiff {
-    pub commit_id: String,
-    pub files: Vec<TemplateDiffFile>,
-    pub stats: TemplateDiffStats,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TemplateRevertRequest {
     pub id: String,
     pub commit_hash: String,
@@ -174,17 +115,6 @@ pub struct TemplateRevertRequest {
 pub struct TemplateFlushResult {
     pub committed: bool,
     pub commit_id: Option<String>,
-}
-
-#[tauri::command]
-pub fn templates_list_roles(
-    state: State<'_, TemplateStoreState>,
-) -> Result<Vec<RoleTemplateSummary>, String> {
-    let store = &state.0;
-    store
-        .list_roles()
-        .map(|roles| roles.into_iter().map(map_role_summary).collect())
-        .map_err(map_template_error)
 }
 
 #[tauri::command]
@@ -328,14 +258,7 @@ pub fn templates_get_storage_status(
         TemplateStorageMode::PlainFilesystem
     };
 
-    let dirty = if git_dir.exists() {
-        match Repository::open(store.templates_dir()) {
-            Ok(repo) => has_managed_dirty_status(&repo).unwrap_or(false),
-            Err(_) => false,
-        }
-    } else {
-        false
-    };
+    let dirty = store.managed_dirty_status().map_err(map_template_error)?;
 
     Ok(TemplateStorageStatus {
         mode,
@@ -353,81 +276,7 @@ pub fn templates_get_history(
     cursor: Option<String>,
 ) -> Result<TemplateCommitPage, String> {
     let store = &state.0;
-    store.ensure_directories().map_err(map_template_error)?;
-
-    let git_dir = store.templates_dir().join(".git");
-    if !git_dir.exists() {
-        return Ok(TemplateCommitPage {
-            commits: Vec::new(),
-            next_cursor: None,
-        });
-    }
-
-    let repo =
-        Repository::open(store.templates_dir()).map_err(|err| sanitize_error(&err.to_string()))?;
-    let mut revwalk = repo
-        .revwalk()
-        .map_err(|err| sanitize_error(&err.to_string()))?;
-    if revwalk.push_head().is_err() {
-        return Ok(TemplateCommitPage {
-            commits: Vec::new(),
-            next_cursor: None,
-        });
-    }
-    revwalk
-        .set_sorting(Sort::TOPOLOGICAL | Sort::TIME)
-        .map_err(|err| sanitize_error(&err.to_string()))?;
-
-    let max = limit.unwrap_or(50).clamp(1, 200);
-    let mut commits = Vec::new();
-    let mut can_collect = cursor.is_none();
-
-    for oid_result in revwalk {
-        let oid = oid_result.map_err(|err| sanitize_error(&err.to_string()))?;
-        let full = oid.to_string();
-
-        if !can_collect {
-            if let Some(target) = cursor.as_deref() {
-                if full.starts_with(target) {
-                    can_collect = true;
-                }
-            }
-            continue;
-        }
-
-        if commits.len() >= max {
-            break;
-        }
-
-        let commit = repo
-            .find_commit(oid)
-            .map_err(|err| sanitize_error(&err.to_string()))?;
-        let changed_paths = commit_changed_template_paths(&repo, &commit)
-            .map_err(|err| sanitize_error(&err.to_string()))?;
-        if changed_paths.is_empty() {
-            continue;
-        }
-
-        commits.push(TemplateCommit {
-            short_id: format!("{oid:.8}"),
-            commit_id: full,
-            message: commit.summary().unwrap_or("").to_string(),
-            author: commit.author().name().unwrap_or("unknown").to_string(),
-            timestamp: commit.time().seconds(),
-            changed_paths,
-        });
-    }
-
-    let next_cursor = if commits.len() == max {
-        commits.last().map(|commit| commit.commit_id.clone())
-    } else {
-        None
-    };
-
-    Ok(TemplateCommitPage {
-        commits,
-        next_cursor,
-    })
+    store.get_history(limit, cursor).map_err(map_template_error)
 }
 
 #[tauri::command]
@@ -436,51 +285,7 @@ pub fn templates_get_diff(
     commit_id: String,
 ) -> Result<TemplateDiff, String> {
     let store = &state.0;
-    store.ensure_directories().map_err(map_template_error)?;
-
-    let files = get_commit_files(store.templates_dir(), &commit_id)
-        .map_err(|err| sanitize_error(&err.to_string()))?;
-
-    let mut out_files = Vec::new();
-    let mut insertions = 0u32;
-    let mut deletions = 0u32;
-
-    for file in files {
-        if !is_managed_template_path(file.path.as_str()) {
-            continue;
-        }
-
-        let hunks = get_commit_diff(store.templates_dir(), &commit_id, &file.path)
-            .map_err(|err| sanitize_error(&err.to_string()))?;
-
-        for hunk in &hunks {
-            for line in &hunk.lines {
-                if line.origin == '+' {
-                    insertions = insertions.saturating_add(1);
-                } else if line.origin == '-' {
-                    deletions = deletions.saturating_add(1);
-                }
-            }
-        }
-
-        out_files.push(TemplateDiffFile {
-            path: file.path,
-            status: file.status,
-            hunks,
-        });
-    }
-
-    let stats = TemplateDiffStats {
-        files_changed: out_files.len() as u32,
-        insertions,
-        deletions,
-    };
-
-    Ok(TemplateDiff {
-        commit_id,
-        files: out_files,
-        stats,
-    })
+    store.get_diff(&commit_id).map_err(map_template_error)
 }
 
 #[tauri::command]
@@ -488,68 +293,10 @@ pub fn templates_revert(
     state: State<'_, TemplateStoreState>,
     request: TemplateRevertRequest,
 ) -> Result<(), String> {
-    if !is_valid_template_id(&request.id) {
-        return Err("invalid template id".to_string());
-    }
-
     let store = &state.0;
-    store.ensure_directories().map_err(map_template_error)?;
-
-    let repo =
-        Repository::open(store.templates_dir()).map_err(|err| sanitize_error(&err.to_string()))?;
-    let object = repo
-        .revparse_single(&request.commit_hash)
-        .map_err(|err| sanitize_error(&err.to_string()))?;
-    let commit = object
-        .peel_to_commit()
-        .map_err(|err| sanitize_error(&err.to_string()))?;
-    let tree = commit
-        .tree()
-        .map_err(|err| sanitize_error(&err.to_string()))?;
-
-    let candidates = [
-        format!("roles/{}.yaml", request.id),
-        format!("presets/{}.yaml", request.id),
-    ];
-
-    let mut touched = Vec::new();
-    let mut mutations = Vec::new();
-    for rel in candidates {
-        let rel_path = PathBuf::from(&rel);
-        if let Ok(entry) = tree.get_path(Path::new(&rel)) {
-            let obj = entry
-                .to_object(&repo)
-                .map_err(|err| sanitize_error(&err.to_string()))?;
-            if let Some(blob) = obj.as_blob() {
-                mutations.push(TemplateFileMutation::write(
-                    rel_path.clone(),
-                    blob.content().to_vec(),
-                ));
-                touched.push(rel_path);
-            }
-            continue;
-        }
-
-        let abs = store.templates_dir().join(&rel_path);
-        if abs.exists() {
-            mutations.push(TemplateFileMutation::delete(rel_path.clone()));
-            touched.push(rel_path);
-        }
-    }
-
-    if touched.is_empty() {
-        return Err(format!("template '{}' not found in commit", request.id));
-    }
-
-    let short = format!("{:.8}", commit.id());
-    let _ = store
-        .mutate_and_commit(
-            &mutations,
-            &format!("templates: revert template {} to {}", request.id, short),
-        )
-        .map_err(map_template_error)?;
-    let _ = store.flush_pending_commits().map_err(map_template_error)?;
-    Ok(())
+    store
+        .revert_template(&request.id, &request.commit_hash)
+        .map_err(map_template_error)
 }
 
 #[tauri::command]
@@ -562,17 +309,6 @@ pub fn templates_flush_pending(
         committed: commit_id.is_some(),
         commit_id,
     })
-}
-
-fn map_role_summary(record: RoleTemplateRecord) -> RoleTemplateSummary {
-    RoleTemplateSummary {
-        role_id: record.template.role_id,
-        name: record.template.name,
-        version: record.template.version,
-        kind: record.template.kind,
-        source: record.source,
-        read_only: record.read_only,
-    }
 }
 
 fn map_role_full(record: RoleTemplateRecord) -> RoleTemplateFull {
@@ -595,76 +331,9 @@ fn map_template_error(err: TemplateStoreError) -> String {
     sanitize_error(&err.to_string())
 }
 
-fn is_managed_template_path(path: &str) -> bool {
-    path.starts_with("roles/") || path.starts_with("presets/") || path.starts_with("_meta/")
-}
-
-fn is_valid_template_id(id: &str) -> bool {
-    !id.trim().is_empty()
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
-
-fn has_managed_dirty_status(repo: &Repository) -> Result<bool, git2::Error> {
-    let mut opts = StatusOptions::new();
-    opts.include_untracked(true).recurse_untracked_dirs(true);
-
-    let statuses = repo.statuses(Some(&mut opts))?;
-    Ok(statuses
-        .iter()
-        .any(|entry| entry.path().map(is_managed_template_path).unwrap_or(false)))
-}
-
-fn commit_changed_template_paths(
-    repo: &Repository,
-    commit: &git2::Commit<'_>,
-) -> Result<Vec<String>, git2::Error> {
-    let tree = commit.tree()?;
-    let parent_tree = commit.parent(0).ok().and_then(|parent| parent.tree().ok());
-    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
-
-    let mut paths = BTreeSet::new();
-    diff.foreach(
-        &mut |delta, _| {
-            let path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path())
-                .and_then(|path| path.to_str());
-            if let Some(path) = path {
-                if is_managed_template_path(path) {
-                    paths.insert(path.to_string());
-                }
-            }
-            true
-        },
-        None,
-        None,
-        None,
-    )?;
-
-    Ok(paths.into_iter().collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn managed_template_path_filter_matches_expected_prefixes() {
-        assert!(is_managed_template_path("roles/dev.yaml"));
-        assert!(is_managed_template_path("presets/fullstack.yaml"));
-        assert!(is_managed_template_path("_meta/state.json"));
-        assert!(!is_managed_template_path("README.md"));
-    }
-
-    #[test]
-    fn template_id_validation_rejects_path_traversal() {
-        assert!(is_valid_template_id("qa_reviewer-1"));
-        assert!(!is_valid_template_id("../etc/passwd"));
-        assert!(!is_valid_template_id("role with spaces"));
-    }
 
     #[test]
     fn compose_request_accepts_camel_case_agent_slot_fields() {

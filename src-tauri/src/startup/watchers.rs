@@ -73,7 +73,10 @@ pub(crate) fn initialize(
         event_processor::process_watch_events(rx, handle);
     });
 
-    reconcile_activity_watches(app.handle(), "startup");
+    let startup_reconcile_handle = app.handle().clone();
+    std::thread::spawn(move || {
+        reconcile_activity_watches(&startup_reconcile_handle, "startup");
+    });
     ensure_task_directory_watch(app, context.daemon_connected_at_startup);
 
     let periodic_handle = app.handle().clone();

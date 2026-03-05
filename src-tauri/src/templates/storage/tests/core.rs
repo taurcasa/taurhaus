@@ -1,4 +1,5 @@
 use super::*;
+use git2::StatusOptions;
 use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
 use std::thread;

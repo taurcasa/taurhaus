@@ -416,15 +416,6 @@ fn extract_source_key_from_task_path(path: &Path) -> Option<String> {
     Some(source_key.to_string())
 }
 
-fn normalize_project_path(path: &str) -> String {
-    let converted = provider::path::to_linux(path).unwrap_or_else(|| path.to_string());
-    let mut normalized = converted.replace('\\', "/");
-    while normalized.len() > 1 && normalized.ends_with('/') {
-        normalized.pop();
-    }
-    normalized
-}
-
 fn resolve_affected_project_ids(
     projects: &[crate::models::Project],
     source_keys: &BTreeSet<String>,
@@ -433,7 +424,7 @@ fn resolve_affected_project_ids(
     let mut project_ids_by_path: HashMap<String, Vec<String>> = HashMap::new();
     for project in projects {
         project_ids_by_path
-            .entry(normalize_project_path(&project.path))
+            .entry(provider::path::normalize_project_path(&project.path))
             .or_default()
             .push(project.id.clone());
     }
@@ -442,7 +433,8 @@ fn resolve_affected_project_ids(
     for source_key in source_keys {
         let mut matched_any = false;
         if let Some(project_path) = index.sessions.get(source_key) {
-            let normalized = normalize_project_path(&project_path.to_string_lossy());
+            let normalized =
+                provider::path::normalize_project_path(&project_path.to_string_lossy());
             if let Some(ids) = project_ids_by_path.get(&normalized) {
                 target_ids.extend(ids.iter().cloned());
                 matched_any = true;
@@ -451,7 +443,8 @@ fn resolve_affected_project_ids(
 
         if let Some(project_paths) = index.teams.get(source_key) {
             for project_path in project_paths {
-                let normalized = normalize_project_path(&project_path.to_string_lossy());
+                let normalized =
+                    provider::path::normalize_project_path(&project_path.to_string_lossy());
                 if let Some(ids) = project_ids_by_path.get(&normalized) {
                     target_ids.extend(ids.iter().cloned());
                     matched_any = true;
@@ -528,8 +521,7 @@ fn sync_project_tasks_for_projects(
         );
 
         // Normalize path for DB storage
-        let normalized_path =
-            provider::path::to_linux(&project.path).unwrap_or_else(|| project.path.clone());
+        let normalized_path = provider::path::normalize_project_path(&project.path);
 
         let (before_sig, after_sig) = {
             let conn = match db_state.0.lock() {
