@@ -6,6 +6,7 @@ pub mod coordination_types;
 pub mod daemon;
 pub mod files;
 pub mod git;
+pub mod lifecycle;
 pub mod logging;
 pub mod mesh;
 pub mod projects;

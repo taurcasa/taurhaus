@@ -1,7 +1,9 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Instant;
 
+use serde_json::{Map, Value};
 use tauri::Manager;
 
 use crate::commands;
@@ -38,15 +40,129 @@ struct DaemonPhase {
     daemon_connected_at_startup: bool,
 }
 
+struct StartupPhaseSpan {
+    phase: &'static str,
+    started_at: Instant,
+    daemon_addr: Option<String>,
+    connected_at_startup: Option<bool>,
+}
+
+impl StartupPhaseSpan {
+    fn start(
+        phase: &'static str,
+        daemon_addr: Option<String>,
+        connected_at_startup: Option<bool>,
+    ) -> Self {
+        emit_startup_phase_event(
+            "info",
+            "startup.phase.started",
+            phase,
+            None,
+            daemon_addr.clone(),
+            connected_at_startup,
+            None,
+            None,
+        );
+        Self {
+            phase,
+            started_at: Instant::now(),
+            daemon_addr,
+            connected_at_startup,
+        }
+    }
+
+    fn complete(&self) {
+        emit_startup_phase_event(
+            "info",
+            "startup.phase.completed",
+            self.phase,
+            Some(self.started_at.elapsed().as_millis() as u64),
+            self.daemon_addr.clone(),
+            self.connected_at_startup,
+            None,
+            None,
+        );
+    }
+
+    fn fail(&self, error_code: &str, error_message: &str) {
+        emit_startup_phase_event(
+            "error",
+            "startup.phase.failed",
+            self.phase,
+            Some(self.started_at.elapsed().as_millis() as u64),
+            self.daemon_addr.clone(),
+            self.connected_at_startup,
+            Some(error_code),
+            Some(error_message),
+        );
+    }
+}
+
+fn emit_startup_phase_event(
+    level: &str,
+    event: &str,
+    phase: &str,
+    duration_ms: Option<u64>,
+    daemon_addr: Option<String>,
+    connected_at_startup: Option<bool>,
+    error_code: Option<&str>,
+    error_message: Option<&str>,
+) {
+    let mut fields = Map::new();
+    fields.insert("phase".to_string(), Value::String(phase.to_string()));
+    if let Some(duration_ms) = duration_ms {
+        fields.insert(
+            "duration_ms".to_string(),
+            Value::Number(serde_json::Number::from(duration_ms)),
+        );
+    }
+    if let Some(daemon_addr) = daemon_addr {
+        fields.insert("daemon_addr".to_string(), Value::String(daemon_addr));
+    }
+    if let Some(connected_at_startup) = connected_at_startup {
+        fields.insert(
+            "connected_at_startup".to_string(),
+            Value::Bool(connected_at_startup),
+        );
+    }
+    if let Some(error_code) = error_code {
+        fields.insert(
+            "error.code".to_string(),
+            Value::String(error_code.to_string()),
+        );
+    }
+    if let Some(error_message) = error_message {
+        fields.insert(
+            "error.message".to_string(),
+            Value::String(error_message.to_string()),
+        );
+    }
+    commands::logging::emit_global(
+        level,
+        "backend",
+        event,
+        Some("Startup phase lifecycle event".to_string()),
+        fields,
+    );
+}
+
 pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("taurhaus starting");
 
     let setup_paths = initialize_paths_and_logging(app)?;
-    let conn = initialize_database(&setup_paths)?;
+    let bootstrap_phase = StartupPhaseSpan::start("bootstrap", None, None);
+    let conn = match initialize_database(&setup_paths) {
+        Ok(conn) => conn,
+        Err(error) => {
+            bootstrap_phase.fail("STARTUP_DATABASE_INIT_FAILED", &error.to_string());
+            return Err(error);
+        }
+    };
     let daemon_phase = determine_daemon_phase(&conn);
     let context = build_setup_context(&setup_paths, &daemon_phase);
 
     register_managed_state(app, conn, &setup_paths, daemon_phase);
+    bootstrap_phase.complete();
     run_startup_orchestration(app, &context)?;
 
     tracing::info!(db_path = %context.db_path.display(), "database initialized");
@@ -167,10 +283,37 @@ fn run_startup_orchestration(
     app: &mut tauri::App,
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let daemon_phase = StartupPhaseSpan::start(
+        "daemon",
+        context.daemon_addr.clone(),
+        Some(context.daemon_connected_at_startup),
+    );
     daemon::spawn_background_bootstrap(app.handle().clone(), context);
     daemon::start_runtime_monitors(app.handle().clone(), context);
-    watchers::initialize(app, context)?;
-    search::initialize(app, context)?;
+    daemon_phase.complete();
+
+    let watchers_phase = StartupPhaseSpan::start(
+        "watchers",
+        context.daemon_addr.clone(),
+        Some(context.daemon_connected_at_startup),
+    );
+    if let Err(error) = watchers::initialize(app, context) {
+        watchers_phase.fail("STARTUP_WATCHERS_INIT_FAILED", &error.to_string());
+        return Err(error);
+    }
+    watchers_phase.complete();
+
+    let search_phase = StartupPhaseSpan::start(
+        "search",
+        context.daemon_addr.clone(),
+        Some(context.daemon_connected_at_startup),
+    );
+    if let Err(error) = search::initialize(app, context) {
+        search_phase.fail("STARTUP_SEARCH_INIT_FAILED", &error.to_string());
+        return Err(error);
+    }
+    search_phase.complete();
+
     bootstrap::spawn_background_startup_tasks(app.handle().clone());
     Ok(())
 }

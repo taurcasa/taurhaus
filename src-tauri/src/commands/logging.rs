@@ -3,11 +3,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 pub const JSONL_LOG_FILE_NAME: &str = "taurhaus.log.jsonl";
@@ -16,7 +16,7 @@ const RETENTION_DAYS: i64 = 7;
 const LOG_WRITE_WARN_THROTTLE_MS: u64 = 5_000;
 
 static LAST_LOG_WRITE_WARN_MS: AtomicU64 = AtomicU64::new(0);
-static GLOBAL_LOG_EMITTER: OnceLock<LogEmitter> = OnceLock::new();
+static GLOBAL_LOG_EMITTER: OnceLock<RwLock<LogEmitter>> = OnceLock::new();
 
 #[derive(Clone)]
 struct LogEmitter {
@@ -38,6 +38,20 @@ struct LogRecord {
     run_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+    #[serde(flatten)]
+    fields: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct FrontendLogPayload {
+    level: String,
+    component: Option<String>,
+    subsystem: Option<String>,
+    event: Option<String>,
+    message: String,
+    context: Option<Value>,
+    interaction_id: Option<String>,
     #[serde(flatten)]
     fields: Map<String, Value>,
 }
@@ -71,6 +85,31 @@ impl LogFileState {
         fields: Map<String, Value>,
     ) {
         self.emitter.emit(level, component, event, message, fields);
+    }
+}
+
+impl Default for FrontendLogPayload {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            component: None,
+            subsystem: None,
+            event: None,
+            message: String::new(),
+            context: None,
+            interaction_id: None,
+            fields: Map::new(),
+        }
+    }
+}
+
+impl FrontendLogPayload {
+    fn from_legacy(level: Option<String>, message: Option<String>) -> Self {
+        Self {
+            level: level.unwrap_or_else(|| "info".to_string()),
+            message: message.unwrap_or_default(),
+            ..Self::default()
+        }
     }
 }
 
@@ -198,7 +237,14 @@ pub fn jsonl_log_path(data_dir: &Path) -> PathBuf {
 }
 
 pub fn install_global_sink(state: &LogFileState) {
-    let _ = GLOBAL_LOG_EMITTER.set(state.emitter.clone());
+    let emitter = state.emitter.clone();
+    if let Some(slot) = GLOBAL_LOG_EMITTER.get() {
+        if let Ok(mut guard) = slot.write() {
+            *guard = emitter;
+        }
+        return;
+    }
+    let _ = GLOBAL_LOG_EMITTER.set(RwLock::new(emitter));
 }
 
 pub fn emit_global(
@@ -208,26 +254,58 @@ pub fn emit_global(
     message: Option<String>,
     fields: Map<String, Value>,
 ) {
-    if let Some(emitter) = GLOBAL_LOG_EMITTER.get() {
-        emitter.emit(level, component, event, message, fields);
+    if let Some(slot) = GLOBAL_LOG_EMITTER.get() {
+        if let Ok(emitter) = slot.read() {
+            emitter.emit(level, component, event, message, fields);
+        }
     }
 }
 
 #[tauri::command]
-pub fn frontend_log(level: String, message: String, log_file: tauri::State<LogFileState>) {
-    frontend_log_impl(&level, &message, log_file.inner());
+pub fn frontend_log(
+    payload: Option<FrontendLogPayload>,
+    level: Option<String>,
+    message: Option<String>,
+    log_file: tauri::State<LogFileState>,
+) {
+    let payload = payload.unwrap_or_else(|| FrontendLogPayload::from_legacy(level, message));
+    frontend_log_impl(payload, log_file.inner());
 }
 
-fn frontend_log_impl(level: &str, message: &str, log_file: &LogFileState) {
-    let mut fields = Map::new();
-    fields.insert("source".to_string(), Value::String("frontend".to_string()));
-    log_file.emit(
-        level,
-        "frontend",
-        "frontend.log",
-        Some(message.to_string()),
-        fields,
-    );
+fn frontend_log_impl(payload: FrontendLogPayload, log_file: &LogFileState) {
+    let mut fields = payload.fields;
+    if let Some(subsystem) = normalize_optional_string(payload.subsystem) {
+        fields.insert("subsystem".to_string(), Value::String(subsystem));
+    }
+    if let Some(interaction_id) = normalize_optional_string(payload.interaction_id) {
+        fields.insert("interaction_id".to_string(), Value::String(interaction_id));
+    }
+    if let Some(context) = payload.context {
+        fields.insert("context".to_string(), context);
+    }
+
+    let component =
+        normalize_optional_string(payload.component).unwrap_or_else(|| "frontend".to_string());
+    let event = normalize_optional_string(payload.event)
+        .unwrap_or_else(|| "frontend.console.received".to_string());
+    let message = if payload.message.trim().is_empty() {
+        None
+    } else {
+        Some(payload.message)
+    };
+
+    log_file.emit(&payload.level, &component, &event, message, fields);
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
 }
 
 fn spawn_writer(log_path: PathBuf, run_id: String) -> std::io::Result<LogEmitter> {
@@ -324,6 +402,7 @@ fn parse_rotation_timestamp(file_name: &str, prefix: &str) -> Option<DateTime<Ut
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::io::Read;
     use std::time::Duration;
 
@@ -353,13 +432,21 @@ mod tests {
         read_lines(path)
     }
 
+    fn frontend_payload(level: &str, message: &str) -> FrontendLogPayload {
+        FrontendLogPayload {
+            level: level.to_string(),
+            message: message.to_string(),
+            ..FrontendLogPayload::default()
+        }
+    }
+
     #[test]
     fn frontend_log_writes_valid_jsonl_with_required_schema() {
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join(JSONL_LOG_FILE_NAME);
         let state = LogFileState::new(log_path.clone()).expect("create log state");
 
-        frontend_log_impl("warn", "hello from ui", &state);
+        frontend_log_impl(frontend_payload("warn", "hello from ui"), &state);
         let lines = wait_for_lines(&log_path, 1);
         assert_eq!(lines.len(), 1);
 
@@ -369,8 +456,42 @@ mod tests {
         }
         assert_eq!(value["level"], "WARN");
         assert_eq!(value["component"], "frontend");
-        assert_eq!(value["event"], "frontend.log");
+        assert_eq!(value["event"], "frontend.console.received");
         assert_eq!(value["message"], "hello from ui");
+    }
+
+    #[test]
+    fn frontend_log_parses_structured_payload_fields() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join(JSONL_LOG_FILE_NAME);
+        let state = LogFileState::new(log_path.clone()).expect("create log state");
+
+        let payload: FrontendLogPayload = serde_json::from_value(json!({
+            "level": "warn",
+            "component": "frontend",
+            "subsystem": "logger",
+            "event": "frontend.logs.dropped",
+            "message": "Dropped frontend logs in logger bridge",
+            "interaction_id": "ix_abc123",
+            "dropped_count": 4,
+            "context": {
+                "view_name": "task_board"
+            }
+        }))
+        .expect("deserialize structured payload");
+
+        frontend_log_impl(payload, &state);
+        let lines = wait_for_lines(&log_path, 1);
+        assert_eq!(lines.len(), 1);
+
+        let value: Value = serde_json::from_str(&lines[0]).expect("valid json");
+        assert_eq!(value["level"], "WARN");
+        assert_eq!(value["component"], "frontend");
+        assert_eq!(value["event"], "frontend.logs.dropped");
+        assert_eq!(value["interaction_id"], "ix_abc123");
+        assert_eq!(value["dropped_count"], 4);
+        assert_eq!(value["context"]["view_name"], "task_board");
+        assert_eq!(value["subsystem"], "logger");
     }
 
     #[test]
@@ -379,8 +500,8 @@ mod tests {
         let log_path = dir.path().join(JSONL_LOG_FILE_NAME);
         let state = LogFileState::new(log_path.clone()).expect("create log state");
 
-        frontend_log_impl("info", "first", &state);
-        frontend_log_impl("error", "second", &state);
+        frontend_log_impl(frontend_payload("info", "first"), &state);
+        frontend_log_impl(frontend_payload("error", "second"), &state);
         let lines = wait_for_lines(&log_path, 2);
         assert_eq!(lines.len(), 2);
 

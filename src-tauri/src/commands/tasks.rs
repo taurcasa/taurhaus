@@ -2,8 +2,11 @@
 //!
 //! Business logic lives in `services::task_query` and `services::task_sync`.
 
+use std::time::Instant;
+
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::queries;
 use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
@@ -15,9 +18,12 @@ pub fn get_project_tasks(
     db: State<'_, DbState>,
     project_id: String,
 ) -> IpcResult<crate::task_scanner::TaskResult> {
+    let span = IpcCommandSpan::start("get_project_tasks");
     let project_path =
-        resolve_project_path(db.inner(), &project_id).ipc_cmd("get_project_tasks")?;
-    get_project_tasks_impl(db.inner(), project_path)
+        resolve_project_path(db.inner(), &project_id, Some(&span)).ipc_cmd("get_project_tasks")?;
+    let result = get_project_tasks_impl(db.inner(), project_path);
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -28,8 +34,12 @@ pub fn get_task_detail(
     source: String,
     source_key: String,
 ) -> IpcResult<crate::task_scanner::TaskDetail> {
-    let project_path = resolve_project_path(db.inner(), &project_id).ipc_cmd("get_task_detail")?;
-    get_task_detail_impl(db.inner(), project_path, task_id, source, source_key)
+    let span = IpcCommandSpan::start("get_task_detail");
+    let project_path =
+        resolve_project_path(db.inner(), &project_id, Some(&span)).ipc_cmd("get_task_detail")?;
+    let result = get_task_detail_impl(db.inner(), project_path, task_id, source, source_key);
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -38,9 +48,12 @@ pub fn get_archived_sessions(
     providers: State<'_, ProviderState>,
     project_id: String,
 ) -> IpcResult<crate::task_scanner::ArchivedSessionsResult> {
-    let project_path =
-        resolve_project_path(db.inner(), &project_id).ipc_cmd("get_archived_sessions")?;
-    get_archived_sessions_impl(db.inner(), providers.inner(), project_path)
+    let span = IpcCommandSpan::start("get_archived_sessions");
+    let project_path = resolve_project_path(db.inner(), &project_id, Some(&span))
+        .ipc_cmd("get_archived_sessions")?;
+    let result = get_archived_sessions_impl(db.inner(), providers.inner(), project_path);
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -50,8 +63,12 @@ pub fn get_commit_files(
     project_id: String,
     hash: String,
 ) -> IpcResult<Vec<crate::models::CommitFile>> {
-    let project_path = resolve_project_path(db.inner(), &project_id).ipc_cmd("get_commit_files")?;
-    get_commit_files_impl(providers.inner(), project_path, hash)
+    let span = IpcCommandSpan::start("get_commit_files");
+    let project_path =
+        resolve_project_path(db.inner(), &project_id, Some(&span)).ipc_cmd("get_commit_files")?;
+    let result = get_commit_files_impl(providers.inner(), project_path, hash);
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -62,8 +79,12 @@ pub fn get_commit_diff(
     hash: String,
     file_path: String,
 ) -> IpcResult<Vec<crate::models::DiffHunk>> {
-    let project_path = resolve_project_path(db.inner(), &project_id).ipc_cmd("get_commit_diff")?;
-    get_commit_diff_impl(providers.inner(), project_path, hash, file_path)
+    let span = IpcCommandSpan::start("get_commit_diff");
+    let project_path =
+        resolve_project_path(db.inner(), &project_id, Some(&span)).ipc_cmd("get_commit_diff")?;
+    let result = get_commit_diff_impl(providers.inner(), project_path, hash, file_path);
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -74,13 +95,24 @@ pub fn get_commits_in_range(
     after: String,
     before: String,
 ) -> IpcResult<crate::models::GitRangeResult> {
-    let project_path =
-        resolve_project_path(db.inner(), &project_id).ipc_cmd("get_commits_in_range")?;
-    get_commits_in_range_impl(providers.inner(), project_path, after, before)
+    let span = IpcCommandSpan::start("get_commits_in_range");
+    let project_path = resolve_project_path(db.inner(), &project_id, Some(&span))
+        .ipc_cmd("get_commits_in_range")?;
+    let result = get_commits_in_range_impl(providers.inner(), project_path, after, before);
+    span.finish_result(&result);
+    result
 }
 
-fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
+fn resolve_project_path(
+    db: &DbState,
+    project_id: &str,
+    span: Option<&IpcCommandSpan>,
+) -> Result<String, String> {
+    let lock_started = Instant::now();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    if let Some(span) = span {
+        span.emit_lock_wait("db", lock_started.elapsed().as_millis() as u64);
+    }
     let project = queries::get_project(&conn, project_id)
         .sanitize_err()?
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
@@ -285,14 +317,14 @@ mod tests {
         let (db, _tmp) = test_db_state();
         insert_project(&db, "proj-1", "/projects/demo");
 
-        let path = resolve_project_path(&db, "proj-1").expect("project path");
+        let path = resolve_project_path(&db, "proj-1", None).expect("project path");
         assert_eq!(path, "/projects/demo");
     }
 
     #[test]
     fn resolve_project_path_returns_error_for_missing_project() {
         let (db, _tmp) = test_db_state();
-        let err = resolve_project_path(&db, "missing").expect_err("missing project");
+        let err = resolve_project_path(&db, "missing", None).expect_err("missing project");
         assert!(err.contains("Project not found"));
     }
 }

@@ -1,5 +1,6 @@
 use tauri::{Emitter, Manager, State};
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::daemon::protocol::{self, PingResult, PROTOCOL_VERSION};
 use crate::daemon::server::DEFAULT_PORT;
@@ -14,22 +15,26 @@ const BUNDLED_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// platform-appropriate UI (e.g., wizard text about WSL vs native daemon).
 #[tauri::command]
 pub fn get_platform() -> String {
-    if cfg!(target_os = "macos") {
+    let span = IpcCommandSpan::start("get_platform");
+    let platform = if cfg!(target_os = "macos") {
         "macos".to_string()
     } else if cfg!(target_os = "windows") {
         "windows".to_string()
     } else {
         "linux".to_string()
-    }
+    };
+    span.complete();
+    platform
 }
 
 /// Get the current daemon connection status.
 #[tauri::command]
 pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonStatus, String> {
+    let span = IpcCommandSpan::start("get_daemon_status");
     let port = DEFAULT_PORT;
 
     let Some(ref daemon) = provider.daemon else {
-        return Ok(DaemonStatus {
+        let result = Ok(DaemonStatus {
             status: "not_configured".to_string(),
             version: None,
             protocol_version: 0,
@@ -38,10 +43,12 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
             port,
             wsl_distro: provider.wsl_distro.clone(),
         });
+        span.finish_result(&result);
+        return result;
     };
 
     if !daemon.is_connected() {
-        return Ok(DaemonStatus {
+        let result = Ok(DaemonStatus {
             status: "disconnected".to_string(),
             version: None,
             protocol_version: 0,
@@ -50,12 +57,14 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
             port,
             wsl_distro: provider.wsl_distro.clone(),
         });
+        span.finish_result(&result);
+        return result;
     }
 
     // Try a ping to get version and uptime
     let id = "status-ping";
     let request = protocol::DaemonRequest::ping(id);
-    match daemon.send_status_request(&request) {
+    let result = match daemon.send_status_request(&request) {
         Ok(response) if response.is_ok() => {
             let ping: Option<PingResult> =
                 response.result.and_then(|v| serde_json::from_value(v).ok());
@@ -78,7 +87,9 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
             port,
             wsl_distro: provider.wsl_distro.clone(),
         }),
-    }
+    };
+    span.finish_result(&result);
+    result
 }
 
 /// Manually start the daemon process.
@@ -87,18 +98,29 @@ pub fn start_daemon(
     provider: State<'_, ProviderState>,
     app: tauri::AppHandle,
 ) -> Result<OperationResult, String> {
-    let distro = provider.wsl_distro.as_deref().ok_or_else(|| {
+    let span = IpcCommandSpan::start("start_daemon");
+    let distro = match provider.wsl_distro.as_deref().ok_or_else(|| {
         if crate::daemon::launcher::is_native_daemon() {
             "No daemon configuration available".to_string()
         } else {
             "No WSL distro configured".to_string()
         }
-    })?;
+    }) {
+        Ok(distro) => distro,
+        Err(error) => {
+            span.fail_msg(&error);
+            return Err(error);
+        }
+    };
 
     let port = DEFAULT_PORT;
 
-    crate::daemon::launcher::try_restart_daemon(distro, port)
-        .map_err(|e| format!("Failed to start daemon: {e}"))?;
+    if let Err(error) = crate::daemon::launcher::try_restart_daemon(distro, port)
+        .map_err(|e| format!("Failed to start daemon: {e}"))
+    {
+        span.fail_msg(&error);
+        return Err(error);
+    }
 
     // Wait a moment, then try to reconnect
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -109,13 +131,17 @@ pub fn start_daemon(
                 "daemon-status",
                 serde_json::json!({ "status": "connected" }),
             );
-            return Ok(OperationResult::success("Daemon started and connected"));
+            let result = Ok(OperationResult::success("Daemon started and connected"));
+            span.finish_result(&result);
+            return result;
         }
     }
 
-    Ok(OperationResult::success(
+    let result = Ok(OperationResult::success(
         "Daemon process started (not yet connected)",
-    ))
+    ));
+    span.finish_result(&result);
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -156,11 +182,14 @@ fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
 /// Used by FirstRunWizard and startup update detection.
 #[tauri::command]
 pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
-    if crate::daemon::launcher::is_native_daemon() {
+    let span = IpcCommandSpan::start("check_daemon_install_status");
+    let result = if crate::daemon::launcher::is_native_daemon() {
         check_daemon_install_native()
     } else {
         check_daemon_install_wsl()
-    }
+    };
+    span.finish_result(&result);
+    result
 }
 
 /// Native daemon check (macOS/Linux): just stat the binary and run --version.
@@ -342,25 +371,37 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
 /// On Windows: copies into the default WSL distro.
 #[tauri::command]
 pub fn install_daemon(app: tauri::AppHandle) -> Result<OperationResult, String> {
+    let span = IpcCommandSpan::start("install_daemon");
     // Resolve bundled binary path from Tauri resources
-    let resource_dir = app
+    let resource_dir = match app
         .path()
         .resource_dir()
-        .map_err(|e| format!("Failed to resolve resource directory: {e}"))?;
+        .map_err(|e| format!("Failed to resolve resource directory: {e}"))
+    {
+        Ok(path) => path,
+        Err(error) => {
+            span.fail_msg(&error);
+            return Err(error);
+        }
+    };
     let bundled_binary = resource_dir.join("resources").join("taurhaus-daemon");
 
     if !bundled_binary.exists() {
-        return Err(format!(
+        let error = format!(
             "Bundled daemon binary not found at {}",
             bundled_binary.display()
-        ));
+        );
+        span.fail_msg(&error);
+        return Err(error);
     }
 
-    if crate::daemon::launcher::is_native_daemon() {
+    let result = if crate::daemon::launcher::is_native_daemon() {
         install_daemon_native(&bundled_binary)
     } else {
         install_daemon_wsl(&bundled_binary)
-    }
+    };
+    span.finish_result(&result);
+    result
 }
 
 /// Install daemon natively (macOS/Linux): copy binary + chmod + verify.

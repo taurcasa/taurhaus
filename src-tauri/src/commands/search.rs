@@ -1,6 +1,9 @@
+use std::time::Instant;
+
 use serde::Serialize;
 use tauri::State;
 
+use super::lifecycle::IpcCommandSpan;
 use super::projects::DbState;
 use crate::errors::SanitizeErr;
 use crate::search::indexer;
@@ -20,26 +23,44 @@ pub fn search(
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<SearchResult>, String> {
-    search_impl(search_state.inner(), query, limit)
+    let span = IpcCommandSpan::start("search");
+    let result = search_impl(search_state.inner(), query, limit, Some(&span));
+    span.finish_result(&result);
+    result
 }
 
 fn search_impl(
     search_state: &SearchState,
     query: String,
     limit: Option<usize>,
+    span: Option<&IpcCommandSpan>,
 ) -> Result<Vec<SearchResult>, String> {
+    let lock_started = Instant::now();
     let index = search_state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(span) = span {
+        span.emit_lock_wait("search_index", lock_started.elapsed().as_millis() as u64);
+    }
     let limit = limit.unwrap_or(20).min(50);
     index.search(&query, limit).sanitize_err()
 }
 
 #[tauri::command]
 pub fn get_index_status(search_state: State<'_, SearchState>) -> Result<IndexStatus, String> {
-    get_index_status_impl(search_state.inner())
+    let span = IpcCommandSpan::start("get_index_status");
+    let result = get_index_status_impl(search_state.inner(), Some(&span));
+    span.finish_result(&result);
+    result
 }
 
-fn get_index_status_impl(search_state: &SearchState) -> Result<IndexStatus, String> {
+fn get_index_status_impl(
+    search_state: &SearchState,
+    span: Option<&IpcCommandSpan>,
+) -> Result<IndexStatus, String> {
+    let lock_started = Instant::now();
     let index = search_state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(span) = span {
+        span.emit_lock_wait("search_index", lock_started.elapsed().as_millis() as u64);
+    }
     let doc_count = index.doc_count().sanitize_err()?;
     Ok(IndexStatus {
         doc_count,
@@ -52,12 +73,30 @@ pub fn rebuild_index(
     search_state: State<'_, SearchState>,
     db: State<'_, DbState>,
 ) -> Result<usize, String> {
-    rebuild_index_impl(search_state.inner(), db.inner())
+    let span = IpcCommandSpan::start("rebuild_index");
+    let result = rebuild_index_impl(search_state.inner(), db.inner(), Some(&span));
+    span.finish_result(&result);
+    result
 }
 
-fn rebuild_index_impl(search_state: &SearchState, db: &DbState) -> Result<usize, String> {
+fn rebuild_index_impl(
+    search_state: &SearchState,
+    db: &DbState,
+    span: Option<&IpcCommandSpan>,
+) -> Result<usize, String> {
+    let search_lock_started = Instant::now();
     let mut index = search_state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(span) = span {
+        span.emit_lock_wait(
+            "search_index",
+            search_lock_started.elapsed().as_millis() as u64,
+        );
+    }
+    let db_lock_started = Instant::now();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    if let Some(span) = span {
+        span.emit_lock_wait("db", db_lock_started.elapsed().as_millis() as u64);
+    }
     indexer::rebuild_all(&mut index, &conn).sanitize_err()
 }
 
@@ -90,16 +129,16 @@ mod tests {
             index.commit().expect("commit index");
         }
 
-        let results =
-            search_impl(&search_state, "hello".to_string(), Some(10)).expect("search results");
+        let results = search_impl(&search_state, "hello".to_string(), Some(10), None)
+            .expect("search results");
         assert_eq!(results.len(), 1);
 
-        let status = get_index_status_impl(&search_state).expect("index status");
+        let status = get_index_status_impl(&search_state, None).expect("index status");
         assert!(!status.is_empty);
         assert!(status.doc_count >= 1);
 
         let (db, _tmp) = test_db_state();
-        let rebuilt = rebuild_index_impl(&search_state, &db).expect("rebuild index");
+        let rebuilt = rebuild_index_impl(&search_state, &db, None).expect("rebuild index");
         assert_eq!(rebuilt, 0, "empty project db should rebuild zero docs");
     }
 
@@ -110,7 +149,7 @@ mod tests {
             let _guard = poisoned_search.0.lock().expect("lock search");
             panic!("poison search state");
         }));
-        let err = search_impl(&poisoned_search, "query".to_string(), Some(5))
+        let err = search_impl(&poisoned_search, "query".to_string(), Some(5), None)
             .expect_err("poisoned search");
         assert!(err.to_lowercase().contains("poison"));
 
@@ -120,7 +159,7 @@ mod tests {
             panic!("poison db");
         }));
         let search_state = test_search_state();
-        let err = rebuild_index_impl(&search_state, &poisoned_db).expect_err("poisoned db");
+        let err = rebuild_index_impl(&search_state, &poisoned_db, None).expect_err("poisoned db");
         assert!(err.to_lowercase().contains("poison"));
     }
 }

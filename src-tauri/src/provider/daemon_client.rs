@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 
 use crate::daemon_api::protocol::{self, DaemonRequest, DaemonResponse};
+use crate::daemon_api::{is_timeout_transport_error, DaemonRpcSpan};
 use crate::errors::AppError;
 use crate::models::{
     Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
@@ -251,7 +252,23 @@ impl DaemonProvider {
         request: &DaemonRequest,
         timeout: Duration,
     ) -> Result<DaemonResponse, AppError> {
+        let rpc_span = DaemonRpcSpan::start(request, 0);
         let result = self.send_request_inner(request, timeout);
+        match &result {
+            Ok(response) => {
+                if response.error.is_some() {
+                    rpc_span.response("error");
+                } else {
+                    rpc_span.response("ok");
+                }
+            }
+            Err(AppError::DaemonTransport(message)) if is_timeout_transport_error(message) => {
+                rpc_span.timeout();
+            }
+            Err(_) => {
+                rpc_span.response("error");
+            }
+        }
         if let Err(AppError::DaemonTransport(_)) = &result {
             tracing::warn!("Daemon I/O error, marking disconnected");
             self.mark_disconnected();
@@ -303,9 +320,17 @@ impl DaemonProvider {
         })?;
 
         let mut line = String::new();
-        reader.read_line(&mut line).map_err(|error| {
-            AppError::DaemonTransport(format!("Failed to read daemon response: {error}"))
-        })?;
+        reader
+            .read_line(&mut line)
+            .map_err(|error| match error.kind() {
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => {
+                    AppError::DaemonTransport(format!(
+                        "Daemon request timed out after {}s: {error}",
+                        timeout.as_secs()
+                    ))
+                }
+                _ => AppError::DaemonTransport(format!("Failed to read daemon response: {error}")),
+            })?;
 
         let response: DaemonResponse = serde_json::from_str(&line).map_err(|e| {
             AppError::DaemonProtocol(format!("Failed to parse daemon response: {e}"))
