@@ -22,7 +22,10 @@ describe('MeshAvailabilityGate', () => {
       environment_available: true,
       error: null,
     })
-    installMesh.mockResolvedValue('Mesh installed successfully: mesh 0.1.0')
+    installMesh.mockResolvedValue({
+      success: true,
+      message: 'Mesh installed successfully: mesh 0.1.0',
+    })
   })
 
   it('shows setup form content when all required tools are available', async () => {
@@ -148,7 +151,10 @@ describe('MeshAvailabilityGate', () => {
         blockingErrors: [],
         agentWarnings: [],
       })
-    installMesh.mockResolvedValueOnce('Mesh installed successfully: mesh 0.1.0')
+    installMesh.mockResolvedValueOnce({
+      success: true,
+      message: 'Mesh installed successfully: mesh 0.1.0',
+    })
 
     render(MeshAvailabilityGateHarness, {
       props: {

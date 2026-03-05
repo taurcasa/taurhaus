@@ -98,6 +98,8 @@
   // In Vite-only mode, fall back to polling for mock data.
   $effect(() => {
     if (!projectPath) return
+    const projectRef = projectId || projectPath
+    if (!projectRef) return
     let destroyed = false
     let unlisten = null
     let interval = null
@@ -132,13 +134,15 @@
     async function fetchTasks() {
       const fetchSequence = taskListFetchGuard.next()
       const expectedProjectPath = projectPath
+      const expectedProjectRef = projectRef
       loading = true
       try {
-        const result = await getProjectTasks(expectedProjectPath)
+        const result = await getProjectTasks(expectedProjectRef)
         if (
           destroyed
           || !taskListFetchGuard.isCurrent(fetchSequence)
           || projectPath !== expectedProjectPath
+          || (projectId || projectPath) !== expectedProjectRef
         ) {
           return
         }
@@ -150,6 +154,7 @@
           destroyed
           || !taskListFetchGuard.isCurrent(fetchSequence)
           || projectPath !== expectedProjectPath
+          || (projectId || projectPath) !== expectedProjectRef
         ) {
           return
         }
@@ -188,7 +193,8 @@
   async function fetchDetail(task) {
     try {
       const sourceKey = task.source_key || `legacy-${task.source}`
-      const detail = await getTaskDetail(projectPath, task.id, task.source, sourceKey)
+      const projectRef = projectId || projectPath
+      const detail = await getTaskDetail(projectRef, task.id, task.source, sourceKey)
       // Only apply if this task is still selected
       if (isSameTaskIdentity(selectedTask, task)) {
         taskDetail = detail

@@ -159,10 +159,13 @@ describe('First-Run wizard logic', () => {
   })
 
   it('installDaemon returns success message', async () => {
-    ipc.installDaemon.mockResolvedValue('Daemon installed successfully: taurhaus-daemon 0.3.2')
+    ipc.installDaemon.mockResolvedValue({
+      success: true,
+      message: 'Daemon installed successfully: taurhaus-daemon 0.3.2',
+    })
 
     const result = await ipc.installDaemon()
-    expect(result).toContain('successfully')
+    expect(result.message).toContain('successfully')
   })
 
   it('no WSL returns wsl_available false', async () => {

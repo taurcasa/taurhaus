@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveRelativePath } from './pathUtils.js'
+import { normalizeProjectPath, resolveRelativePath } from './pathUtils.js'
 
 describe('resolveRelativePath', () => {
   it('resolves parent directory reference', () => {
@@ -40,5 +40,28 @@ describe('resolveRelativePath', () => {
   it('handles deeply nested paths', () => {
     expect(resolveRelativePath('a/b/c/d.md', '../../img.jpg'))
       .toBe('a/img.jpg')
+  })
+})
+
+describe('normalizeProjectPath', () => {
+  it('normalizes WSL UNC paths to linux paths', () => {
+    expect(normalizeProjectPath('\\\\wsl$\\Ubuntu\\home\\user\\proj\\')).toBe('/home/user/proj')
+    expect(normalizeProjectPath('\\\\wsl.localhost\\Ubuntu\\home\\user\\proj\\')).toBe('/home/user/proj')
+  })
+
+  it('normalizes Windows drive paths to /mnt form', () => {
+    expect(normalizeProjectPath('D:\\projects\\taurhaus\\')).toBe('/mnt/d/projects/taurhaus')
+    expect(normalizeProjectPath('c:/Users/me/code')).toBe('/mnt/c/Users/me/code')
+  })
+
+  it('normalizes native and relative paths', () => {
+    expect(normalizeProjectPath('/home/user//proj///')).toBe('/home/user/proj')
+    expect(normalizeProjectPath('foo\\bar///baz/')).toBe('foo/bar/baz')
+  })
+
+  it('returns root and empty values safely', () => {
+    expect(normalizeProjectPath('/')).toBe('/')
+    expect(normalizeProjectPath('')).toBe('')
+    expect(normalizeProjectPath('   ')).toBe('')
   })
 })

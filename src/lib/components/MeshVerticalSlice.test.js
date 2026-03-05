@@ -75,7 +75,10 @@ describe('Mesh vertical slice smoke', () => {
       environment_available: true,
       error: null,
     })
-    installMesh.mockResolvedValue('Mesh installed successfully: mesh 0.1.0')
+    installMesh.mockResolvedValue({
+      success: true,
+      message: 'Mesh installed successfully: mesh 0.1.0',
+    })
 
     coordinationPreflightCheck.mockResolvedValue({
       blocking_errors: [],

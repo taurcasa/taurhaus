@@ -59,7 +59,8 @@
     }
     expandedData = new Map(expandedData).set(sessionId, { commits: [], files: [], loading: true, error: null })
     try {
-      const result = await getCommitsInRange(projectPath, session.started_at, session.ended_at)
+      const projectRef = projectId || projectPath
+      const result = await getCommitsInRange(projectRef, session.started_at, session.ended_at)
       expandedData = new Map(expandedData).set(sessionId, {
         commits: result.commits || [],
         files: result.files || [],
@@ -124,7 +125,8 @@
 
   async function fetchData(cancelledRef) {
     try {
-      const result = await getArchivedSessions(projectPath)
+      const projectRef = projectId || projectPath
+      const result = await getArchivedSessions(projectRef)
       if (cancelledRef.cancelled) return
       sessions = result.sessions || []
       dataErrors = result.errors || []

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('./ipc.js', () => ({
   listClaudeSessions: vi.fn(),
+  listProjects: vi.fn().mockResolvedValue([]),
   recordSessionActivity: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -379,6 +380,7 @@ describe('sessionStore', () => {
 
   it('triggers recordSessionActivity IPC when session disappears', async () => {
     const session = { pid: 1100, project_path: '/proj-x', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-x', path: '/proj-x' }])
     ipc.listClaudeSessions
       .mockResolvedValueOnce([session])
       .mockResolvedValue([]) // session disappears
@@ -393,7 +395,7 @@ describe('sessionStore', () => {
 
     expect(ipc.recordSessionActivity).toHaveBeenCalledTimes(1)
     expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
-      '/proj-x',
+      'proj-x',
       'claude',
       expect.any(String), // startedAt
       expect.any(String), // endedAt

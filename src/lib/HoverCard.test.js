@@ -66,7 +66,7 @@ describe('HoverCard', () => {
     })
 
     await waitFor(() => {
-      expect(getProjectActivity).toHaveBeenCalledWith('/projects/taurhaus')
+      expect(getProjectActivity).toHaveBeenCalledWith('proj-1')
       expect(getRecentCommits).toHaveBeenCalledWith('proj-1', 3)
     })
 

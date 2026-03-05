@@ -128,7 +128,8 @@
     diffGuard.invalidate()
     rangeFilter = { after, before }
     try {
-      const result = await getCommitsInRange(projectPath, after, before)
+      const projectRef = projectId || projectPath
+      const result = await getCommitsInRange(projectRef, after, before)
       if (!commitListGuard.isCurrent(commitListSequence)) return
       commits = result.commits || []
     } catch {
@@ -183,7 +184,8 @@
     filesLoading = true
     commitFiles = []
     try {
-      const files = await getCommitFiles(projectPath, hash)
+      const projectRef = projectId || projectPath
+      const files = await getCommitFiles(projectRef, hash)
       if (!commitFilesGuard.isCurrent(commitFilesSequence) || selectedHash !== expectedHash) return
       commitFiles = files
     } catch {
@@ -212,7 +214,8 @@
     diffLoading = true
     diffHunks = []
     try {
-      const hunks = await getCommitDiff(projectPath, expectedHash, expectedPath)
+      const projectRef = projectId || projectPath
+      const hunks = await getCommitDiff(projectRef, expectedHash, expectedPath)
       if (
         !diffGuard.isCurrent(diffSequence)
         || selectedFilePath !== expectedPath

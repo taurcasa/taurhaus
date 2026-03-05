@@ -81,7 +81,8 @@
     installError = ''
     installMessage = ''
     try {
-      installMessage = await installMesh()
+      const result = await installMesh()
+      installMessage = result?.message || ''
       refreshToken += 1
     } catch (err) {
       installError = err?.message || 'Failed to install Mesh CLI.'

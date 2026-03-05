@@ -558,7 +558,7 @@ describe('GitTab component', () => {
     })
     await waitFor(() => {
       // Should auto-select the commit and show files
-      expect(getCommitFiles).toHaveBeenCalledWith('/test', 'abc00001')
+      expect(getCommitFiles).toHaveBeenCalledWith('p1', 'abc00001')
     })
     expect(onClearNavTarget).toHaveBeenCalled()
   })

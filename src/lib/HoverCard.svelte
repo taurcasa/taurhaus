@@ -37,16 +37,15 @@
 
   // Fetch historical stats and recent commits when project changes
   $effect(() => {
-    if (!project?.path) {
+    if (!project?.id) {
       historicalStats = null
       recentCommits = null
       return
     }
-    const path = project.path
     const id = project.id
 
-    getProjectActivity(path).then(stats => {
-      if (project?.path === path) historicalStats = stats
+    getProjectActivity(id).then(stats => {
+      if (project?.id === id) historicalStats = stats
     }).catch(() => {
       historicalStats = null
     })

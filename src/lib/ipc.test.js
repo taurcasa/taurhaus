@@ -900,6 +900,27 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('truncated')
       expect(result).toHaveProperty('total_count')
     })
+
+    it('surfaces structured IPC error metadata for task commands', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockRejectedValueOnce({
+        code: 'NOT_FOUND',
+        message: 'Task not found',
+        command: 'get_task_detail',
+        retryable: false,
+      })
+
+      try {
+        await ipc.getTaskDetail('/tmp/project', 'missing', 'claude', 'session-x')
+        throw new Error('expected getTaskDetail to reject')
+      } catch (error) {
+        expect(error.message).toBe('Task not found')
+        expect(error.code).toBe('NOT_FOUND')
+        expect(error.command).toBe('get_task_detail')
+        expect(error.retryable).toBe(false)
+      }
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   // ── Platform + Daemon install commands ──────────────────────────────────
@@ -918,6 +939,24 @@ describe('ipc module', () => {
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('get_platform')
       expect(result).toBe('macos')
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('startDaemon()', () => {
+    it('returns mock success in non-Tauri mode', async () => {
+      const result = await ipc.startDaemon()
+      expect(result).toContain('Daemon started')
+    })
+
+    it('calls start_daemon in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('Daemon started')
+
+      const result = await ipc.startDaemon()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('start_daemon')
+      expect(result).toContain('Daemon started')
       delete window.__TAURI_INTERNALS__
     })
   })
@@ -957,17 +996,23 @@ describe('ipc module', () => {
   describe('installDaemon()', () => {
     it('returns mock success in non-Tauri mode', async () => {
       const result = await ipc.installDaemon()
-      expect(result).toContain('Daemon installed successfully')
+      expect(result).toEqual({
+        success: true,
+        message: 'Daemon installed successfully: taurhaus-daemon 0.3.1',
+      })
     })
 
     it('calls install_daemon in Tauri mode', async () => {
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue('Daemon installed successfully: taurhaus-daemon 0.3.2')
+      tauriCore.invoke.mockResolvedValue({
+        success: true,
+        message: 'Daemon installed successfully: taurhaus-daemon 0.3.2',
+      })
 
       const result = await ipc.installDaemon()
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('install_daemon')
-      expect(result).toContain('0.3.2')
+      expect(result.message).toContain('0.3.2')
       delete window.__TAURI_INTERNALS__
     })
   })
@@ -1007,17 +1052,23 @@ describe('ipc module', () => {
   describe('installMesh()', () => {
     it('returns mock success in non-Tauri mode', async () => {
       const result = await ipc.installMesh()
-      expect(result).toContain('Mesh installed successfully')
+      expect(result).toEqual({
+        success: true,
+        message: 'Mesh installed successfully: mesh 0.1.0',
+      })
     })
 
     it('calls install_mesh in Tauri mode', async () => {
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue('Mesh installed successfully: mesh 0.1.1')
+      tauriCore.invoke.mockResolvedValue({
+        success: true,
+        message: 'Mesh installed successfully: mesh 0.1.1',
+      })
 
       const result = await ipc.installMesh()
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('install_mesh')
-      expect(result).toContain('0.1.1')
+      expect(result.message).toContain('0.1.1')
       delete window.__TAURI_INTERNALS__
     })
   })
