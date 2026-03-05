@@ -1,9 +1,8 @@
-import MarkdownIt from 'markdown-it'
-import { fromHighlighter } from '@shikijs/markdown-it/core'
-import { createHighlighter } from 'shiki'
 import DOMPurify from 'dompurify'
 
 let highlighterPromise = null
+let shikiModulesPromise = null
+let markdownItCtorPromise = null
 const mdInstances = {}
 let plainMd = null
 
@@ -14,19 +13,72 @@ let plainMd = null
  * grammars load from disk once, so bundle size is irrelevant. We never
  * have to manually add languages when viewing new project types.
  */
-// Languages that appear frequently in READMEs and project files.
-// Pre-loaded at init so the first render doesn't hit lazy-load failures.
-const COMMON_LANGS = [
-  'bash', 'shell', 'javascript', 'typescript', 'json', 'python',
-  'rust', 'html', 'css', 'yaml', 'toml', 'markdown', 'sql', 'diff',
+// Core languages load eagerly with the highlighter to avoid first-use delay.
+// All other languages are lazy-loaded on demand.
+const CORE_LANGS = [
+  'javascript',
+  'typescript',
+  'json',
+  'yaml',
+  'toml',
+  'markdown',
+  'html',
+  'css',
+  'rust',
+  'python',
+  'bash',
+  'svelte',
 ]
+
+const LANG_ALIASES = {
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  sh: 'bash',
+  shell: 'bash',
+  zsh: 'bash',
+  yml: 'yaml',
+  md: 'markdown',
+}
+
+function normalizeLanguageId(lang) {
+  const normalized = String(lang ?? '').trim().toLowerCase()
+  if (!normalized) return 'text'
+  return LANG_ALIASES[normalized] ?? normalized
+}
+
+async function getShikiModules() {
+  if (!shikiModulesPromise) {
+    shikiModulesPromise = Promise.all([
+      import('shiki'),
+      import('@shikijs/markdown-it/core'),
+    ]).then(([shikiModule, markdownItModule]) => ({
+      createHighlighter: shikiModule.createHighlighter,
+      fromHighlighter: markdownItModule.fromHighlighter,
+    }))
+  }
+  return shikiModulesPromise
+}
+
+async function getMarkdownItCtor() {
+  if (!markdownItCtorPromise) {
+    markdownItCtorPromise = import('markdown-it').then((module) => module.default)
+  }
+  return markdownItCtorPromise
+}
 
 function getHighlighter() {
   if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({
-      themes: ['github-light', 'github-dark-dimmed'],
-      langs: COMMON_LANGS,
-    })
+    highlighterPromise = getShikiModules().then(({ createHighlighter }) =>
+      createHighlighter({
+        themes: ['github-light', 'github-dark-dimmed'],
+        langs: CORE_LANGS,
+      })
+    )
   }
   return highlighterPromise
 }
@@ -50,6 +102,8 @@ async function ensureThemeLoaded(themeId) {
 async function getMdInstance(themeId) {
   if (mdInstances[themeId]) return mdInstances[themeId]
 
+  const { fromHighlighter } = await getShikiModules()
+  const MarkdownIt = await getMarkdownItCtor()
   const highlighter = await getHighlighter()
   await ensureThemeLoaded(themeId)
 
@@ -78,8 +132,9 @@ async function getMdInstance(themeId) {
  * Shiki pipeline fails — renders markdown without syntax highlighting,
  * which is far better than showing raw text.
  */
-function getPlainMd() {
+async function getPlainMd() {
   if (!plainMd) {
+    const MarkdownIt = await getMarkdownItCtor()
     plainMd = new MarkdownIt({ html: true, linkify: true, typographer: false })
     plainMd.linkify.set({ fuzzyLink: false })
   }
@@ -136,7 +191,7 @@ export async function renderMarkdown(source, theme = 'github-light') {
     // Shiki pipeline failed entirely — fall back to plain markdown-it.
     // No Shiki output here, so no inline styles needed.
     console.warn(`[markdown] Shiki pipeline failed, using plain fallback: ${err}`)
-    const raw = getPlainMd().render(source)
+    const raw = (await getPlainMd()).render(source)
     return DOMPurify.sanitize(raw, {
       ADD_TAGS: ['span'],
       ADD_ATTR: ['class', 'target', 'rel'],
@@ -152,7 +207,7 @@ export async function renderMarkdown(source, theme = 'github-light') {
  */
 async function preloadFencedLanguages(source) {
   const highlighter = await getHighlighter()
-  const loaded = new Set(highlighter.getLoadedLanguages())
+  const loaded = new Set(highlighter.getLoadedLanguages().map(normalizeLanguageId))
 
   // Collect all unique language hints from fenced code blocks
   const langRegex = /^```(\w[\w+-]*)/gm
@@ -161,12 +216,14 @@ async function preloadFencedLanguages(source) {
   let match
   while ((match = langRegex.exec(source)) !== null) {
     const lang = match[1]
+    const normalizedLang = normalizeLanguageId(lang)
     if (seen.has(lang)) continue
     seen.add(lang)
 
-    if (!loaded.has(lang.toLowerCase())) {
+    if (!loaded.has(normalizedLang)) {
       try {
-        await highlighter.loadLanguage(lang.toLowerCase())
+        await highlighter.loadLanguage(normalizedLang)
+        loaded.add(normalizedLang)
       } catch {
         unknown.add(lang)
       }
@@ -196,17 +253,18 @@ export async function highlightCode(code, lang, theme = 'github-light') {
   await ensureThemeLoaded(theme)
 
   // Load the language on demand if not already loaded
-  const loadedLangs = highlighter.getLoadedLanguages()
-  if (lang && !loadedLangs.includes(lang)) {
+  const normalizedLang = normalizeLanguageId(lang)
+  const loadedLangs = new Set(highlighter.getLoadedLanguages().map(normalizeLanguageId))
+  let effectiveLang = normalizedLang || 'text'
+  if (effectiveLang && !loadedLangs.has(effectiveLang)) {
     try {
-      await highlighter.loadLanguage(lang)
+      await highlighter.loadLanguage(effectiveLang)
     } catch {
       // Language not available in Shiki — fall back to plaintext
-      lang = 'text'
+      effectiveLang = 'text'
     }
   }
 
-  const effectiveLang = lang || 'text'
   const html = highlighter.codeToHtml(code, { lang: effectiveLang, theme })
   // Shiki uses inline style= for token colors — must keep `style` in ADD_ATTR.
   // FORBID_TAGS blocks <style> elements while keeping inline style= attributes.

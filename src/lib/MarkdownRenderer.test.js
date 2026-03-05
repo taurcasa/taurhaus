@@ -63,6 +63,7 @@ describe('MarkdownRenderer mermaid rendering', () => {
       expect(pre).toHaveClass('mermaid-diagram')
     })
 
+    expect(mockMermaidInitialize).toHaveBeenCalledOnce()
     expect(container.querySelector('svg.mermaid-svg')).toBeInTheDocument()
     expect(mockMermaidRender).toHaveBeenCalledOnce()
   })
@@ -78,6 +79,7 @@ describe('MarkdownRenderer mermaid rendering', () => {
       expect(container.querySelector('pre code')?.textContent).toContain('const x = 1')
     })
 
+    expect(mockMermaidInitialize).not.toHaveBeenCalled()
     expect(container.querySelector('pre')).not.toHaveAttribute('data-mermaid-processed')
     expect(mockMermaidRender).not.toHaveBeenCalled()
   })

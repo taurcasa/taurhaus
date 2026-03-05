@@ -1,30 +1,51 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { renderMarkdown, highlightCode } from './markdown.js'
 
-// Mock shiki since it requires WASM (not available in jsdom)
-const loadedLangs = new Set(['javascript', 'rust'])
-const loadedThemes = new Set(['github-light', 'github-dark-dimmed'])
+const {
+  loadedLangs,
+  loadedThemes,
+  mockCreateHighlighter,
+  mockLoadLanguage,
+  mockLoadTheme,
+} = vi.hoisted(() => {
+  const loadedLangs = new Set()
+  const loadedThemes = new Set(['github-light', 'github-dark-dimmed'])
+  const mockLoadLanguage = vi.fn((lang) => {
+    if (lang === 'brainfuck') return Promise.reject(new Error('not found'))
+    loadedLangs.add(lang)
+    return Promise.resolve()
+  })
+  const mockLoadTheme = vi.fn((theme) => {
+    loadedThemes.add(theme)
+    return Promise.resolve()
+  })
+  const mockCreateHighlighter = vi.fn((opts = {}) => {
+    for (const lang of opts.langs ?? []) {
+      loadedLangs.add(String(lang).toLowerCase())
+    }
+    return Promise.resolve({
+      getLoadedLanguages: () => [...loadedLangs],
+      getLoadedThemes: () => [...loadedThemes],
+      loadLanguage: mockLoadLanguage,
+      loadTheme: mockLoadTheme,
+      codeToHtml: (code, options) => `<pre class="shiki" data-lang="${options?.lang ?? ''}"><code>${code}</code></pre>`,
+    })
+  })
+  return { loadedLangs, loadedThemes, mockCreateHighlighter, mockLoadLanguage, mockLoadTheme }
+})
+
 vi.mock('shiki', () => ({
-  createHighlighter: vi.fn(() => Promise.resolve({
-    getLoadedLanguages: () => [...loadedLangs],
-    getLoadedThemes: () => [...loadedThemes],
-    loadLanguage: vi.fn((lang) => {
-      // Simulate: some languages load, some don't
-      if (lang === 'brainfuck') return Promise.reject(new Error('not found'))
-      loadedLangs.add(lang)
-      return Promise.resolve()
-    }),
-    loadTheme: vi.fn((theme) => {
-      loadedThemes.add(theme)
-      return Promise.resolve()
-    }),
-    codeToHtml: (code, opts) => `<pre class="shiki"><code>${code}</code></pre>`,
-  })),
+  createHighlighter: mockCreateHighlighter,
 }))
 
 vi.mock('@shikijs/markdown-it/core', () => ({
   fromHighlighter: vi.fn(() => () => {}),
 }))
+
+beforeEach(() => {
+  mockLoadLanguage.mockClear()
+  mockLoadTheme.mockClear()
+})
 
 describe('renderMarkdown', () => {
   it('returns empty string for empty input', async () => {
@@ -124,14 +145,18 @@ describe('renderMarkdown', () => {
   it('loads non-default themes on demand', async () => {
     const html = await renderMarkdown('hello', 'dracula')
     expect(html).toContain('hello')
+    expect(mockLoadTheme).toHaveBeenCalledWith('dracula')
   })
 
   it('preloads fenced code block languages before rendering', async () => {
+    loadedLangs.delete('powershell')
+    mockLoadLanguage.mockClear()
     // powershell is not in the initial loaded set — should be loaded on demand
     const source = '```powershell\nGet-Process\n```'
     const html = await renderMarkdown(source)
     // Should render without throwing (language was preloaded)
     expect(html).toContain('Get-Process')
+    expect(mockLoadLanguage).toHaveBeenCalledWith('powershell')
   })
 
   it('replaces unknown fenced languages with text', async () => {
@@ -152,6 +177,35 @@ describe('renderMarkdown', () => {
 })
 
 describe('highlightCode', () => {
+  it('initializes highlighter with core language set', async () => {
+    await highlightCode('const x = 1', 'javascript')
+    const opts = mockCreateHighlighter.mock.calls[0]?.[0] ?? {}
+    expect(opts.langs).toEqual(
+      expect.arrayContaining([
+        'javascript', 'typescript', 'json', 'yaml', 'toml', 'markdown',
+        'html', 'css', 'rust', 'python', 'bash', 'svelte',
+      ])
+    )
+  })
+
+  it('highlights core languages without lazy language loads', async () => {
+    mockLoadLanguage.mockClear()
+    const core = [
+      'javascript',
+      'typescript',
+      'rust',
+      'python',
+      'bash',
+      'json',
+      'yaml',
+      'markdown',
+    ]
+    for (const lang of core) {
+      await highlightCode('const x = 1', lang)
+    }
+    expect(mockLoadLanguage).not.toHaveBeenCalled()
+  })
+
   it('returns empty string for empty input', async () => {
     expect(await highlightCode('')).toBe('')
     expect(await highlightCode(null)).toBe('')
@@ -166,6 +220,14 @@ describe('highlightCode', () => {
   it('falls back to text for unknown language', async () => {
     const html = await highlightCode('hello', 'brainfuck')
     expect(html).toContain('hello')
+  })
+
+  it('lazy-loads non-core languages on demand', async () => {
+    loadedLangs.delete('powershell')
+    mockLoadLanguage.mockClear()
+    const html = await highlightCode('Get-Process', 'powershell')
+    expect(html).toContain('Get-Process')
+    expect(mockLoadLanguage).toHaveBeenCalledWith('powershell')
   })
 
   it('accepts theme ID string', async () => {

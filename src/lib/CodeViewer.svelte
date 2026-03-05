@@ -1,11 +1,18 @@
 <script>
-  import { highlightCode } from './markdown.js'
   import { themeTokens } from './themeTokens.js'
 
   let { code = '', language = '', dark = false, codeTheme = 'github-light', scrollToLine = null } = $props()
 
   let highlightedHtml = $state('')
   let ready = $state(false)
+  let markdownModulePromise = null
+
+  async function getMarkdownModule() {
+    if (!markdownModulePromise) {
+      markdownModulePromise = import('./markdown.js')
+    }
+    return markdownModulePromise
+  }
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -20,15 +27,17 @@
     const theme = codeTheme
     if (!src) { highlightedHtml = ''; ready = true; return }
 
-    highlightCode(src, lang || 'text', theme).then(html => {
-      highlightedHtml = html
-      ready = true
-    }).catch((err) => {
-      // Shiki failed (e.g., WASM blocked by CSP) — show plain text fallback
-      highlightedHtml = ''
-      ready = true
-      console.error(`[code] Shiki failed for "${lang}": ${err}`)
-    })
+    getMarkdownModule()
+      .then(({ highlightCode }) => highlightCode(src, lang || 'text', theme))
+      .then(html => {
+        highlightedHtml = html
+        ready = true
+      }).catch((err) => {
+        // Shiki failed (e.g., WASM blocked by CSP) — show plain text fallback
+        highlightedHtml = ''
+        ready = true
+        console.error(`[code] Shiki failed for "${lang}": ${err}`)
+      })
   })
 
   // Split code into lines for fallback display

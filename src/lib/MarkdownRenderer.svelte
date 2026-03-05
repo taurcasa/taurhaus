@@ -1,6 +1,4 @@
 <script>
-  import DOMPurify from 'dompurify'
-  import { renderMarkdown } from './markdown.js'
   import { readProjectAsset, openExternalUrl } from './ipc.js'
   import * as assetCache from './assetCache.js'
   import { resolveRelativePath } from './pathUtils.js'
@@ -19,6 +17,14 @@
   let loading = $state(true)
   let container = $state(null)
   let mermaidRenderCounter = 0
+  let markdownModulePromise = null
+
+  async function getMarkdownModule() {
+    if (!markdownModulePromise) {
+      markdownModulePromise = import('./markdown.js')
+    }
+    return markdownModulePromise
+  }
 
   // Re-render when source, theme, or project changes.
   // renderMarkdown already falls back to plain markdown-it if Shiki fails,
@@ -27,14 +33,16 @@
     const src = source
     const theme = codeTheme
     loading = true
-    renderMarkdown(src, theme).then(result => {
-      html = result
-      loading = false
-    }).catch((err) => {
-      console.error(`[markdown] render failed completely: ${err}`)
-      html = `<pre style="white-space:pre-wrap;word-break:break-word">${src.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`
-      loading = false
-    })
+    getMarkdownModule()
+      .then(({ renderMarkdown }) => renderMarkdown(src, theme))
+      .then(result => {
+        html = result
+        loading = false
+      }).catch((err) => {
+        console.error(`[markdown] render failed completely: ${err}`)
+        html = `<pre style="white-space:pre-wrap;word-break:break-word">${src.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`
+        loading = false
+      })
   })
 
   // After HTML is rendered, resolve relative image src via cache or IPC
@@ -76,7 +84,10 @@
       const mermaidBlocks = Array.from(container.querySelectorAll('pre:has(> code.language-mermaid):not([data-mermaid-processed])'))
       if (mermaidBlocks.length === 0) return
 
-      const { default: mermaid } = await import('mermaid')
+      const [{ default: mermaid }, { default: DOMPurify }] = await Promise.all([
+        import('mermaid'),
+        import('dompurify'),
+      ])
       if (cancelled) return
 
       mermaid.initialize({

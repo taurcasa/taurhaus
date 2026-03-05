@@ -7,6 +7,17 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig({
   plugins: [svelte(), tailwindcss()],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('/markdown-it/')) return 'vendor-markdown'
+          if (id.includes('/@tauri-apps/')) return 'vendor-tauri'
+        },
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
