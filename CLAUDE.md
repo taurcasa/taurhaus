@@ -24,6 +24,7 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 - **Dark mode via `$derived` tokens**: All color switching through named `$derived` variables. Never inline ternaries for colors in the template.
 - **Tailwind v4 with `@theme` tokens**: Custom design tokens defined in `app.css`. Document any non-standard arbitrary values.
 - **Semantic HTML**: `<aside>` for sidebar, `<main>` for content, `<nav>` for navigation, `<section>` for content sections.
+- **Rust test placement**: Command-layer modules use an external sibling `tests.rs`; lower-level modules keep inline `#[cfg(test)] mod tests`.
 - **No over-engineering**: Don't abstract until there's actual duplication. Three similar lines beat a premature abstraction.
 
 ## Logging
@@ -151,7 +152,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
-- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm`) while preserving the existing initialize payload contract.
+- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`) while preserving the existing initialize payload contract.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
 Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/`](docs/architecture/) references.
@@ -163,12 +164,24 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/Shell.svelte` | Main app layout (titlebar, sidebar, content) |
 | `src/App.svelte` | Entry wrapper |
 | `src/app.css` | Design tokens + global styles |
-| `src/lib/ipc.js` | Tauri IPC commands + dev-mode mock fallbacks |
+| `src/lib/ipc.js` | Thin compatibility re-export. Real IPC implementations live in `src/lib/ipc/`. |
+| `src/lib/ipc/` | Frontend IPC domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`) plus payload/mocks modules. |
+| `src/lib/context/` | Frontend context providers (`ProjectContext.js`, `SessionContext.js`). |
 | `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
+| `src/lib/components/meshTabController.svelte.js` | Controller state/actions for `MeshTab.svelte`. |
 | `src/lib/components/MeshCanvas.svelte` | Runtime node canvas for lead/agent topology + connection status |
 | `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog and composition entry |
+| `src/lib/components/templateBrowserController.svelte.js` | Controller state/actions for template browsing/composition. |
 | `src/lib/components/TeamCustomizerPanel.svelte` | Team composition editor/validator before initialize |
 | `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
+| `src/lib/components/templateHistoryController.svelte.js` | Controller state/actions for template history/diff/revert. |
+| `src-tauri/src/startup/` | App bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`). |
+| `src-tauri/src/services/task_query.rs` | Shared task query service for backend consumers. |
+| `src-tauri/src/services/task_sync.rs` | Task synchronization service for daemon/IPC flows. |
+| `src-tauri/src/daemon_api.rs` | Daemon process API wrapper used by commands/startup flows. |
+| `src-tauri/src/project_provider.rs` | Active project resolution/provider utilities. |
+| `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
+| `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
@@ -177,6 +190,16 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |
 | `CHANGELOG.md` | Shipped milestones and release history |
 | `docs/design-workflow.md` | Design-first loop for UI specialist collaboration |
+
+## First File To Read By Task
+
+| Task type | Start here |
+|-----------|------------|
+| Add/modify IPC command | `src-tauri/src/commands/`, then `src-tauri/src/lib.rs` (handler registration), then `src/lib/ipc/` |
+| Add/fix a Svelte component | `src/lib/components/` (component file plus matching test in same directory) |
+| Fix file watcher behavior | `src-tauri/src/startup/watchers.rs`, `src-tauri/src/fs/watcher.rs`, `src-tauri/src/event_processor.rs` |
+| Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/idle/`, `src-tauri/src/session_scanner/process.rs` |
+| Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 
 ## Development Workflow (Phase 5)
 

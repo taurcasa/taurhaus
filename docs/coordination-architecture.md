@@ -266,14 +266,14 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 **Decision**: Template-driven team setup remains an adapter layer above coordination initialization, not a second orchestration path.
 
 - Backend template IPC (`templates_*`) handles role/preset storage, composition, history, diff, and revert.
-- Frontend template flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupForm`) resolves to the same `InitializeTeamRequest` shape used by manual setup.
+- Frontend template flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`) resolves to the same `InitializeTeamRequest` shape used by manual setup.
 - Coordination runtime continues to start teams only through `coordination_initialize_team` / `templates_apply_composition` (which forwards into the same initialize pipeline).
 
 **Integration points**:
-- `src-tauri/src/templates/storage.rs`: git-backed template persistence and pending-action state
+- `src-tauri/src/templates/storage/`: git-backed template persistence and pending-action state
 - `src-tauri/src/templates/composition.rs`: deterministic roster composition + validation
 - `src-tauri/src/commands/templates.rs`: template command surface (`templates_get_history`, `templates_get_diff`, `templates_revert`, etc.)
-- `src/lib/components/MeshSetupForm.svelte`: template-first + blank-slate UX bridge into initialize payload
+- `src/lib/components/MeshSetupView.svelte`: template-first + blank-slate UX bridge into initialize payload
 
 **Rationale**: This preserves one runtime lifecycle for team launch/resume/remove while enabling reusable template authoring and auditability through git-backed history.
 

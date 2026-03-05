@@ -19,7 +19,7 @@ Phase 4 covers mesh-backed multi-agent orchestration in `src-tauri/src/coordinat
 - IPC command: `coordination_resume_member`
 - Request/report types: `ResumeMemberRequest`, `ResumeAgentReport`
 - Resume modes: `ResumeContextMode::{Continue, Fresh}`
-- Pipeline owner: `coordination/pipelines.rs`
+- Pipeline owner: `coordination/pipelines/`
 - UI entrypoint: `MeshTeamRoster` Resume action on offline rows
 
 Behavior summary:
