@@ -87,6 +87,9 @@ describe('SearchOverlay', () => {
       props: { open: true },
     })
 
+    const overlay = screen.getByTestId('search-overlay')
+    expect(overlay.className).toContain('fixed')
+    expect(overlay.className).not.toContain('relative')
     expect(screen.getByText('Type to search across all projects')).toBeInTheDocument()
 
     rerender({ open: false })
