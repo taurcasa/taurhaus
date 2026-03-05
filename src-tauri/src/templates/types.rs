@@ -816,7 +816,9 @@ mod tests {
         let presets = load_team_presets();
         assert_eq!(presets.len(), 4, "expected four built-in team presets");
         assert!(
-            presets.iter().any(|preset| preset.preset_id == "standard-team"),
+            presets
+                .iter()
+                .any(|preset| preset.preset_id == "standard-team"),
             "expected standard-team preset in built-ins"
         );
 
