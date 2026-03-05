@@ -110,6 +110,34 @@ describe('ipc module', () => {
     })
   })
 
+  describe('createProject()', () => {
+    it('calls invoke with correct command and args', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const mockDetail = { id: 'p2', name: 'new-app', path: '/projects/new-app' }
+      tauriCore.invoke.mockResolvedValue(mockDetail)
+
+      const result = await ipc.createProject('new-app', '/projects')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('create_project', {
+        name: 'new-app',
+        parentDir: '/projects',
+      })
+      expect(result).toEqual(mockDetail)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to mock data when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.createProject('new-app', '/projects')
+
+      expect(result).toMatchObject({
+        name: 'new-app',
+        path: '/projects/new-app',
+      })
+    })
+  })
+
   describe('updateProject()', () => {
     it('calls invoke with correct command and args', async () => {
       window.__TAURI_INTERNALS__ = {}

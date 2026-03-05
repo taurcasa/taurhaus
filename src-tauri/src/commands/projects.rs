@@ -76,6 +76,77 @@ pub fn register_project(
     Ok(detail)
 }
 
+fn create_project_impl(
+    conn: &Connection,
+    name: &str,
+    parent_dir: &str,
+    thresholds: &crate::models::ActivityThresholds,
+) -> Result<ProjectDetail, crate::errors::AppError> {
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        return Err(crate::errors::AppError::InvalidPath(
+            "Project name cannot be empty".to_string(),
+        ));
+    }
+    if trimmed_name == "."
+        || trimmed_name == ".."
+        || trimmed_name.contains('/')
+        || trimmed_name.contains('\\')
+        || trimmed_name.contains('\0')
+    {
+        return Err(crate::errors::AppError::InvalidPath(format!(
+            "Invalid project name: {trimmed_name}"
+        )));
+    }
+
+    let parent_path = std::path::Path::new(parent_dir);
+    if !parent_path.is_dir() {
+        return Err(crate::errors::AppError::InvalidPath(format!(
+            "Parent directory does not exist or is not a directory: {parent_dir}"
+        )));
+    }
+
+    let target_dir = parent_path.join(trimmed_name);
+    if target_dir.exists() {
+        return Err(crate::errors::AppError::AlreadyExists(format!(
+            "Target directory already exists: {}",
+            target_dir.to_string_lossy()
+        )));
+    }
+
+    std::fs::create_dir_all(&target_dir)?;
+
+    let mut init_options = git2::RepositoryInitOptions::new();
+    init_options.initial_head("main");
+    git2::Repository::init_opts(&target_dir, &init_options)?;
+
+    project::register_project(
+        conn,
+        target_dir.to_string_lossy().as_ref(),
+        Some(trimmed_name),
+        thresholds,
+    )
+}
+
+#[tauri::command]
+pub fn create_project(
+    db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
+    name: String,
+    parent_dir: String,
+) -> Result<ProjectDetail, String> {
+    let expanded_parent = expand_tilde(&parent_dir);
+    let detail = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+        create_project_impl(&conn, &name, &expanded_parent, &settings.thresholds).sanitize_err()?
+    };
+
+    reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+
+    Ok(detail)
+}
+
 #[tauri::command]
 pub fn update_project(
     db: State<'_, DbState>,
@@ -691,5 +762,50 @@ mod tests {
         // DB should still be empty
         let count = crate::db::queries::project_count(&conn).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn create_project_initializes_git_on_main_and_registers_project() {
+        let (_db_state, _tmp) = test_db_state();
+        let parent = TempDir::new().unwrap();
+        let conn = _db_state.0.lock().unwrap();
+        let thresholds = ActivityThresholds::default();
+
+        let detail = create_project_impl(
+            &conn,
+            "new-project",
+            parent.path().to_str().unwrap(),
+            &thresholds,
+        )
+        .unwrap();
+
+        let created_path = parent.path().join("new-project");
+        assert!(created_path.is_dir());
+        assert_eq!(detail.path, created_path.to_string_lossy());
+        assert_eq!(detail.name, "new-project");
+
+        let repo = git2::Repository::open(&created_path).unwrap();
+        let head = repo.find_reference("HEAD").unwrap();
+        assert_eq!(head.symbolic_target(), Some("refs/heads/main"));
+
+        let is_registered =
+            crate::db::queries::project_exists_at_path(&conn, created_path.to_str().unwrap())
+                .unwrap();
+        assert!(is_registered);
+    }
+
+    #[test]
+    fn create_project_rejects_existing_target_directory() {
+        let (_db_state, _tmp) = test_db_state();
+        let parent = TempDir::new().unwrap();
+        let existing = parent.path().join("dupe");
+        std::fs::create_dir_all(&existing).unwrap();
+        let conn = _db_state.0.lock().unwrap();
+        let thresholds = ActivityThresholds::default();
+
+        let err = create_project_impl(&conn, "dupe", parent.path().to_str().unwrap(), &thresholds)
+            .unwrap_err();
+
+        assert!(matches!(err, crate::errors::AppError::AlreadyExists(_)));
     }
 }

@@ -365,6 +365,14 @@
     }
   }
 
+  async function handleProjectCreated(project) {
+    await loadProjects()
+    const created = projects.find((p) => p.id === project?.id) || project
+    if (created?.id) {
+      await selectProject(created)
+    }
+  }
+
 
   let _selectGeneration = 0
   function errorMessage(err) {
@@ -1061,7 +1069,12 @@
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />
 
   {#if showAddProject}
-    <AddProjectModal {dark} onClose={() => showAddProject = false} onProjectsChanged={loadProjects} />
+    <AddProjectModal
+      {dark}
+      onClose={() => showAddProject = false}
+      onProjectsChanged={loadProjects}
+      onProjectCreated={handleProjectCreated}
+    />
   {/if}
 
 </div>

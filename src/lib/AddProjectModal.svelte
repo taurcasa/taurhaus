@@ -1,9 +1,21 @@
 <script>
-  import { scanDirectory, registerProjectsBatch, listProjects, removeProject, validateProjectPath } from './ipc.js'
+  import {
+    scanDirectory,
+    registerProjectsBatch,
+    listProjects,
+    removeProject,
+    validateProjectPath,
+    createProject,
+  } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
   import DirectoryBrowser from './DirectoryBrowser.svelte'
 
-  let { dark = false, onClose = () => {}, onProjectsChanged = () => {} } = $props()
+  let {
+    dark = false,
+    onClose = () => {},
+    onProjectsChanged = () => {},
+    onProjectCreated = () => {},
+  } = $props()
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -39,10 +51,14 @@
   let selected = $state(new Set())
   let registering = $state(false)
   let scanError = $state(null)
-  let manualMode = $state(false)
+  let addMode = $state('scan') // 'scan' | 'manual' | 'create'
   let manualPath = $state('')
   let manualError = $state(null)
   let addSuccess = $state(null) // "3 projects added" message
+  let createProjectName = $state('')
+  let createParentDir = $state('~/projects')
+  let createError = $state(null)
+  let creating = $state(false)
 
   // Validation state
   let validation = $state(null)   // { exists, isGitRepo, isRegistered } or null
@@ -203,7 +219,7 @@
       if (result?.success) {
         addSuccess = '1 project added'
         manualPath = ''
-        manualMode = false
+        addMode = 'scan'
         validation = null
         await loadRegistered()
         showAddSection = false
@@ -215,6 +231,64 @@
       manualError = e?.toString() || 'Registration failed'
     } finally {
       registering = false
+    }
+  }
+
+  // ═══ ADD: CREATE NEW ═══
+
+  function isValidProjectName(name) {
+    const trimmed = name.trim()
+    if (!trimmed) return false
+    if (trimmed === '.' || trimmed === '..') return false
+    return !(/[\\/]/.test(trimmed) || /\0/.test(trimmed))
+  }
+
+  function joinProjectPath(parent, name) {
+    const trimmedParent = parent.trim()
+    if (trimmedParent === '/') return `/${name}`
+    const normalized = trimmedParent.replace(/[\\/]+$/, '')
+    if (normalized.includes('\\')) return `${normalized}\\${name}`
+    return `${normalized}/${name}`
+  }
+
+  async function handleCreateProject() {
+    const name = createProjectName.trim()
+    const parent = createParentDir.trim()
+    createError = null
+
+    if (!isValidProjectName(name)) {
+      createError = 'Enter a valid project name'
+      return
+    }
+    if (!parent) {
+      createError = 'Choose a parent directory'
+      return
+    }
+
+    creating = true
+    try {
+      const parentValidation = await validateProjectPath(parent)
+      if (!parentValidation?.exists) {
+        createError = 'Parent directory not found'
+        return
+      }
+
+      const targetPath = joinProjectPath(parent, name)
+      const targetValidation = await validateProjectPath(targetPath)
+      if (targetValidation?.exists) {
+        createError = 'Target directory already exists'
+        return
+      }
+
+      const created = await createProject(name, parent)
+      await loadRegistered()
+      onProjectsChanged()
+      onProjectCreated(created)
+      onClose()
+    } catch (e) {
+      createError = e?.toString() || 'Failed to create project'
+    } finally {
+      creating = false
     }
   }
 
@@ -348,7 +422,14 @@
         <div class="px-5 pb-4">
           <button
             class="w-full py-2 rounded-lg border border-dashed {t.keyline} text-[13px] {t.textTertiary} hover:border-brand-500 hover:text-brand-500 transition-colors flex items-center justify-center gap-2"
-            onclick={() => { showAddSection = true; handleScan() }}
+            onclick={() => {
+              showAddSection = true
+              addMode = 'scan'
+              manualError = null
+              scanError = null
+              createError = null
+              handleScan()
+            }}
             data-testid="show-add-section"
           >
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
@@ -361,11 +442,35 @@
             <h3 class="text-[11px] font-semibold uppercase tracking-wider {sectionLabel}">Add Projects</h3>
             <button
               class="text-[11px] {t.textTertiary} hover:text-zinc-600 transition-colors"
-              onclick={() => { showAddSection = false; manualMode = false; manualError = null; scanError = null }}
+              onclick={() => {
+                showAddSection = false
+                addMode = 'scan'
+                manualError = null
+                scanError = null
+                createError = null
+              }}
             >Close</button>
           </div>
 
-          {#if manualMode}
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <button
+              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === 'scan' ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+              onclick={() => { addMode = 'scan'; createError = null; if (discovered.length === 0 && !scanning) handleScan() }}
+              data-testid="mode-scan"
+            >Scan</button>
+            <button
+              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === 'manual' ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+              onclick={() => { addMode = 'manual'; createError = null }}
+              data-testid="mode-manual"
+            >Manual</button>
+            <button
+              class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === 'create' ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+              onclick={() => { addMode = 'create'; manualError = null }}
+              data-testid="mode-create"
+            >Create New</button>
+          </div>
+
+          {#if addMode === 'manual'}
             <!-- Manual path entry with directory browser -->
             <div>
               <label for="manual-path" class="text-[13px] {t.textSecondary} mb-1.5 block">Project path</label>
@@ -406,7 +511,7 @@
               <div class="flex items-center justify-between mt-3">
                 <button
                   class="text-[12px] {t.linkColor} transition-colors"
-                  onclick={() => { manualMode = false; manualError = null; validation = null }}
+                  onclick={() => { addMode = 'scan'; manualError = null; validation = null }}
                 >Back to scan</button>
                 <button
                   class="px-3 py-1.5 rounded-md bg-brand-600 text-white text-[12px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
@@ -414,6 +519,57 @@
                   disabled={!pathIsValid || registering}
                   data-testid="manual-add-button"
                 >{registering ? 'Adding...' : 'Add project'}</button>
+              </div>
+            </div>
+
+          {:else if addMode === 'create'}
+            <div>
+              <label for="create-project-name" class="text-[13px] {t.textSecondary} mb-1.5 block">Project name</label>
+              <input
+                id="create-project-name"
+                type="text"
+                placeholder="my-new-project"
+                bind:value={createProjectName}
+                class="w-full px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                onkeydown={(e) => e.key === 'Enter' && handleCreateProject()}
+                data-testid="create-name-input"
+              />
+
+              <label for="create-parent-dir" class="text-[13px] {t.textSecondary} mb-1.5 mt-3 block">Parent directory</label>
+              <input
+                id="create-parent-dir"
+                type="text"
+                placeholder="~/projects"
+                bind:value={createParentDir}
+                class="w-full px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                onkeydown={(e) => e.key === 'Enter' && handleCreateProject()}
+                data-testid="create-parent-input"
+              />
+
+              <div class="mt-3">
+                <DirectoryBrowser
+                  {dark}
+                  selectedPath={createParentDir}
+                  onSelect={(path) => { createParentDir = path }}
+                  maxHeight="180px"
+                />
+              </div>
+
+              {#if createError}
+                <p class="text-[12px] text-danger-500 mt-2" data-testid="create-error">{createError}</p>
+              {/if}
+
+              <div class="flex items-center justify-between mt-3">
+                <button
+                  class="text-[12px] {t.linkColor} transition-colors"
+                  onclick={() => { addMode = 'scan'; createError = null }}
+                >Back to scan</button>
+                <button
+                  class="px-3 py-1.5 rounded-md bg-brand-600 text-white text-[12px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
+                  onclick={handleCreateProject}
+                  disabled={!isValidProjectName(createProjectName) || !createParentDir.trim() || creating}
+                  data-testid="create-project-button"
+                >{creating ? 'Creating...' : 'Create project'}</button>
               </div>
             </div>
 
@@ -430,20 +586,20 @@
               <div class="flex items-center justify-center gap-3">
                 <button class="text-[12px] {t.linkColor} transition-colors" onclick={handleScan}>Try again</button>
                 <span class="{t.textTertiary}">·</span>
-                <button class="text-[12px] {t.linkColor} transition-colors" onclick={() => { scanError = null; manualMode = true }} data-testid="enter-manual-mode">Browse manually</button>
+                <button class="text-[12px] {t.linkColor} transition-colors" onclick={() => { scanError = null; addMode = 'manual' }} data-testid="enter-manual-mode">Browse manually</button>
               </div>
             </div>
 
           {:else if selectableProjects.length === 0 && discovered.length > 0}
             <div class="text-center py-4" data-testid="all-registered">
               <p class="text-[13px] {t.textSecondary}">All projects in ~/projects/ are already registered.</p>
-              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true }} data-testid="enter-manual-mode">Browse manually</button>
+              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { addMode = 'manual' }} data-testid="enter-manual-mode">Browse manually</button>
             </div>
 
           {:else if discovered.length === 0}
             <div class="text-center py-4" data-testid="empty-scan">
               <p class="text-[13px] {t.textSecondary}">No new projects found in ~/projects/.</p>
-              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { manualMode = true }} data-testid="enter-manual-mode">Browse manually</button>
+              <button class="text-[12px] {t.linkColor} transition-colors mt-2" onclick={() => { addMode = 'manual' }} data-testid="enter-manual-mode">Browse manually</button>
             </div>
 
           {:else}
@@ -484,13 +640,20 @@
             </div>
           {/if}
 
-          {#if !scanning && !manualMode && !scanError}
+          {#if !scanning && addMode === 'scan' && !scanError}
             <div class="flex items-center justify-between mt-3">
-              <button
-                class="text-[12px] {t.linkColor} transition-colors"
-                onclick={() => { manualMode = true }}
-                data-testid="enter-manual-mode"
-              >Enter path manually</button>
+              <div class="flex items-center gap-3">
+                <button
+                  class="text-[12px] {t.linkColor} transition-colors"
+                  onclick={() => { addMode = 'manual' }}
+                  data-testid="enter-manual-mode"
+                >Enter path manually</button>
+                <button
+                  class="text-[12px] {t.linkColor} transition-colors"
+                  onclick={() => { addMode = 'create' }}
+                  data-testid="enter-create-mode"
+                >Create new project</button>
+              </div>
               {#if selectableProjects.length > 0}
                 <button
                   class="px-3 py-1.5 rounded-md bg-brand-600 text-white text-[12px] font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"

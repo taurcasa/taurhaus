@@ -55,6 +55,15 @@ export function registerProject(path, name) {
   }))
 }
 
+/** Create and register a brand-new project under a parent directory. */
+export function createProject(name, parentDir) {
+  return invokeOrMock('create_project', { name, parentDir }, () => ({
+    ...MOCK_DETAIL,
+    name,
+    path: `${parentDir.replace(/[\\/]+$/, '')}/${name}`,
+  }))
+}
+
 /** Update a project's mutable fields. */
 export function updateProject(projectId, fields) {
   return invokeOrMock('update_project', { projectId, fields }, () => ({

@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 vi.mock('./ipc.js', () => ({
   scanDirectory: vi.fn(),
   registerProjectsBatch: vi.fn(),
+  createProject: vi.fn(),
   listProjects: vi.fn(),
   removeProject: vi.fn(),
   validateProjectPath: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock('./DirectoryBrowser.svelte', () => ({
 const {
   scanDirectory,
   registerProjectsBatch,
+  createProject,
   listProjects,
   removeProject,
   validateProjectPath,
@@ -62,6 +64,7 @@ describe('AddProjectModal', () => {
     ])
     scanDirectory.mockResolvedValue([])
     registerProjectsBatch.mockResolvedValue([{ success: true }])
+    createProject.mockResolvedValue({ id: 'p-new', name: 'new-project', path: '/projects/new-project' })
     removeProject.mockResolvedValue(undefined)
     validateProjectPath.mockResolvedValue({
       exists: true,
@@ -352,5 +355,57 @@ describe('AddProjectModal', () => {
 
     unmount()
     expect(vi.getTimerCount()).toBe(baselineTimers)
+  })
+
+  it('create mode validates project name before submit', async () => {
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.click(screen.getByTestId('mode-create'))
+
+    const createButton = screen.getByTestId('create-project-button')
+    expect(createButton).toBeDisabled()
+
+    await fireEvent.input(screen.getByTestId('create-name-input'), { target: { value: 'bad/name' } })
+    await fireEvent.input(screen.getByTestId('create-parent-input'), { target: { value: '/projects' } })
+    await fireEvent.click(createButton)
+
+    expect(screen.getByTestId('create-error')).toHaveTextContent('Enter a valid project name')
+    expect(createProject).not.toHaveBeenCalled()
+  })
+
+  it('creates a new project, closes modal, and emits callbacks', async () => {
+    const onClose = vi.fn()
+    const onProjectsChanged = vi.fn()
+    const onProjectCreated = vi.fn()
+    validateProjectPath
+      .mockResolvedValueOnce({ exists: true, isGitRepo: false, isRegistered: false }) // parent exists
+      .mockResolvedValueOnce({ exists: false, isGitRepo: false, isRegistered: false }) // target missing
+    createProject.mockResolvedValueOnce({
+      id: 'p-new',
+      name: 'new-project',
+      path: '/projects/new-project',
+    })
+
+    render(AddProjectModal, {
+      props: { dark: false, onClose, onProjectsChanged, onProjectCreated },
+    })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.click(screen.getByTestId('mode-create'))
+    await fireEvent.input(screen.getByTestId('create-name-input'), { target: { value: 'new-project' } })
+    await fireEvent.input(screen.getByTestId('create-parent-input'), { target: { value: '/projects' } })
+    await fireEvent.click(screen.getByTestId('create-project-button'))
+
+    await waitFor(() => {
+      expect(createProject).toHaveBeenCalledWith('new-project', '/projects')
+      expect(onProjectsChanged).toHaveBeenCalled()
+      expect(onProjectCreated).toHaveBeenCalledWith({
+        id: 'p-new',
+        name: 'new-project',
+        path: '/projects/new-project',
+      })
+      expect(onClose).toHaveBeenCalled()
+    })
   })
 })

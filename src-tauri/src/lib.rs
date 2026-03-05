@@ -542,6 +542,7 @@ pub fn run() {
             commands::projects::list_projects,
             commands::projects::get_project,
             commands::projects::register_project,
+            commands::projects::create_project,
             commands::projects::update_project,
             commands::projects::remove_project,
             commands::projects::scan_directory,
