@@ -22,13 +22,13 @@
   const t = $derived(themeTokens(dark))
   const inputTone = $derived(
     dark
-      ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500'
-      : 'border-brand-200 bg-white text-brand-900 placeholder:text-brand-700/60'
+      ? 'bg-zinc-950/50 border-white/[0.08] text-zinc-100 placeholder-zinc-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
+      : 'bg-white border-brand-200/60 text-zinc-900 placeholder-zinc-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10'
   )
   const sectionTone = $derived(
     dark
-      ? 'border-zinc-700/70 bg-zinc-900/40'
-      : 'border-brand-200 bg-linear-to-b from-brand-50 to-[#e6f7f4]'
+      ? 'border-white/[0.06] bg-white/[0.03]'
+      : 'border-brand-200/40 bg-brand-50/50'
   )
   const ghostTone = $derived(
     dark
@@ -49,6 +49,7 @@
   let isSavingPreset = $state(false)
   let presetSaveMessage = $state('')
   let presetSaveError = $state(false)
+  let presetSaveTimer = null
 
   const projectOptions = $derived.by(() =>
     (availableProjects ?? [])
@@ -172,6 +173,12 @@
     return 'codex-developer'
   }
 
+  function clearPresetSaveTimer() {
+    if (!presetSaveTimer) return
+    clearTimeout(presetSaveTimer)
+    presetSaveTimer = null
+  }
+
   async function handleSaveAsPreset() {
     if (hasErrors || !newPresetName.trim()) return
     if ((agents ?? []).length === 0) {
@@ -213,12 +220,14 @@
 
       presetSaveMessage = 'Preset saved to catalog'
       presetSaveError = false
-      setTimeout(() => {
+      clearPresetSaveTimer()
+      presetSaveTimer = setTimeout(() => {
         showSavePresetDialog = false
         presetSaveMessage = ''
         presetSaveError = false
         newPresetName = ''
         newPresetDescription = ''
+        presetSaveTimer = null
       }, 2000)
     } catch (err) {
       presetSaveError = true
@@ -257,16 +266,23 @@
     hydratedConfig = teamConfig
     hydrateFromConfig(teamConfig)
   })
+
+  $effect(() => {
+    return () => {
+      clearPresetSaveTimer()
+    }
+  })
 </script>
 
 <SlideOver {open} title="Customize Team" width={460} {dark} onClose={onClose}>
   {#snippet children()}
-    <section class="space-y-3" data-testid="team-customizer-panel">
-      <div class="space-y-2 rounded-[12px] border p-3 {sectionTone}" data-testid="team-customizer-header">
-        <label class="space-y-1 block">
-          <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Team name</span>
+    <section class="space-y-4 pb-20" data-testid="team-customizer-panel">
+      <!-- Header Section -->
+      <div class="space-y-3 p-3 rounded-xl border transition-all animate-in fade-in slide-in-from-bottom-1 duration-200 {sectionTone}" data-testid="team-customizer-header">
+        <label class="space-y-1.5 block">
+          <span class="text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Team name</span>
           <input
-            class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
+            class="h-10 w-full rounded-lg border px-3 text-base transition-all outline-none {inputTone}"
             value={localTeamName}
             oninput={(event) => {
               localTeamName = event.currentTarget.value
@@ -274,10 +290,10 @@
             data-testid="team-customizer-name-input"
           />
         </label>
-        <label class="space-y-1 block">
-          <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Description</span>
+        <label class="space-y-1.5 block">
+          <span class="text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Description</span>
           <input
-            class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
+            class="h-10 w-full rounded-lg border px-3 text-sm transition-all outline-none {inputTone}"
             value={localDescription}
             oninput={(event) => {
               localDescription = event.currentTarget.value
@@ -287,58 +303,73 @@
         </label>
       </div>
 
-      <ValidationBar issues={validationIssues} {dark} />
+      <div class="px-1">
+        <ValidationBar issues={validationIssues} {dark} />
+      </div>
 
       {#if context?.selectedRole}
-        <p class="text-xs {dark ? 'text-zinc-400' : 'text-brand-700'}" data-testid="team-customizer-selected-role">
-          Selected role from catalog: {context.selectedRole.name || context.selectedRole.roleId}
-        </p>
+        <div class="px-3 py-2 rounded-lg bg-brand-500/5 border border-brand-500/10 animate-in fade-in zoom-in-95 duration-200">
+          <p class="text-[11px] font-medium text-brand-500" data-testid="team-customizer-selected-role">
+            Selected role: <span class="font-bold">{context.selectedRole.name || context.selectedRole.roleId}</span>
+          </p>
+        </div>
       {/if}
 
+      <!-- Lead Section -->
       {#if lead}
-        <AgentCard
-          testId="team-customizer-lead"
-          role="lead"
-          name={lead.name}
-          tool={lead.tool}
-          model={lead.model}
-          projectId={lead.projectId}
-          description={lead.description}
-          {dark}
-          onSave={updateLead}
-        />
+        <div class="animate-in fade-in slide-in-from-bottom-1 duration-200 delay-75">
+          <AgentCard
+            testId="team-customizer-lead"
+            role="lead"
+            name={lead.name}
+            tool={lead.tool}
+            model={lead.model}
+            projectId={lead.projectId}
+            description={lead.description}
+            {dark}
+            onSave={updateLead}
+          />
+        </div>
       {/if}
 
-      <section class="space-y-2">
-        {#each agents as agent (agent.id)}
-          <AgentCard
-            testId={`team-customizer-agent-${agent.id}`}
-            role="agent"
-            name={agent.name}
-            tool={agent.tool}
-            model={agent.model}
-            projectId={agent.projectId}
-            description={agent.description}
-            {dark}
-            onSave={(payload) => updateAgent(agent.id, payload)}
-            onRemove={() => removeAgent(agent.id)}
-          />
+      <!-- Agents Section -->
+      <section class="space-y-3">
+        {#each agents as agent, i (agent.id)}
+          <div class="animate-in fade-in slide-in-from-bottom-1 duration-200" style:transition-delay={`${100 + (i * 50)}ms`}>
+            <AgentCard
+              testId={`team-customizer-agent-${agent.id}`}
+              role="agent"
+              name={agent.name}
+              tool={agent.tool}
+              model={agent.model}
+              projectId={agent.projectId}
+              description={agent.description}
+              {dark}
+              onSave={(payload) => updateAgent(agent.id, payload)}
+              onRemove={() => removeAgent(agent.id)}
+            />
+          </div>
         {/each}
       </section>
 
-      <button
-        class="rounded-[12px] border px-3 py-1.5 text-xs transition-colors {ghostTone}"
-        onclick={addAgent}
-        data-testid="team-customizer-add-agent"
-      >
-        + Agent
-      </button>
+      <div class="flex justify-center pt-1 animate-in fade-in duration-300 delay-200">
+        <button
+          class="h-10 px-6 rounded-lg border-2 border-dashed font-bold text-xs transition-all active:scale-95 flex items-center gap-2 {ghostTone}"
+          onclick={addAgent}
+          data-testid="team-customizer-add-agent"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          Add Agent Slot
+        </button>
+      </div>
 
-      {#if !showSavePresetDialog}
-        <div class="pt-2">
+      <!-- Save as Preset Drawer -->
+      <div class="pt-4 mt-4 border-t {t.keyline}">
+        {#if !showSavePresetDialog}
           <button
-            class="w-full rounded-[12px] border border-dashed py-3 text-xs font-medium transition-colors {ghostTone}"
+            class="w-full h-12 rounded-xl border border-dashed text-xs font-bold transition-all hover:border-brand-500/50 hover:bg-brand-500/5 active:scale-[0.99] flex items-center justify-center gap-2 {dark ? 'text-zinc-400 border-zinc-800' : 'text-zinc-500 border-zinc-200'}"
             onclick={() => {
+              clearPresetSaveTimer()
               showSavePresetDialog = true
               newPresetName = localTeamName
               presetSaveError = false
@@ -347,77 +378,100 @@
             disabled={hasErrors}
             data-testid="team-customizer-save-preset-trigger"
           >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
             Save as New Preset
           </button>
-        </div>
-      {:else}
-        <div class="space-y-3 rounded-[12px] border p-3 {sectionTone}" data-testid="save-preset-dialog">
-          <p class="text-[10px] font-bold uppercase tracking-wider {t.textMuted}">Save as New Preset</p>
-          <label class="space-y-1 block">
-            <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Preset Name*</span>
-            <input
-              class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
-              bind:value={newPresetName}
-              placeholder="e.g. My Feature Team"
-              data-testid="save-preset-name-input"
-            />
-          </label>
-          <label class="space-y-1 block">
-            <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Description</span>
-            <input
-              class="h-9 w-full rounded-[12px] border px-2.5 text-sm {inputTone}"
-              bind:value={newPresetDescription}
-              placeholder="Optional description"
-              data-testid="save-preset-description-input"
-            />
-          </label>
-          
-          {#if presetSaveMessage}
-            <p class="text-xs font-medium {presetSaveError ? 'text-danger-500' : 'text-success-600'}" data-testid="save-preset-feedback">
-              {presetSaveMessage}
-            </p>
-          {/if}
+        {:else}
+          <div class="space-y-4 p-4 -mx-4 border-t animate-in slide-in-from-bottom-2 duration-200 {dark ? 'bg-brand-950/40 border-brand-500/20' : 'bg-brand-50/80 border-brand-200'}" data-testid="save-preset-dialog">
+            <header class="flex items-center justify-between">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-brand-500">Save as New Preset</p>
+              <button 
+                class="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                onclick={() => {
+                  clearPresetSaveTimer()
+                  showSavePresetDialog = false
+                }}
+                aria-label="Close"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </header>
+            
+            <div class="space-y-3">
+              <label class="space-y-1.5 block">
+                <span class="text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Preset Name*</span>
+                <input
+                  class="h-10 w-full rounded-lg border px-3 text-sm {inputTone}"
+                  bind:value={newPresetName}
+                  placeholder="e.g. My Feature Team"
+                  data-testid="save-preset-name-input"
+                />
+              </label>
+              <label class="space-y-1.5 block">
+                <span class="text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Description</span>
+                <textarea
+                  class="w-full rounded-lg border px-3 py-2 text-sm transition-all outline-none resize-none {inputTone}"
+                  rows="2"
+                  bind:value={newPresetDescription}
+                  placeholder="Optional description"
+                  data-testid="save-preset-description-input"
+                ></textarea>
+              </label>
+            </div>
+            
+            {#if presetSaveMessage}
+              <div class={`p-2 rounded-lg border animate-in fade-in zoom-in-95 duration-200 ${presetSaveError ? 'bg-danger-500/10 border-danger-500/20' : 'bg-success-500/10 border-success-500/20'}`}>
+                <p class={`text-[11px] font-bold text-center ${presetSaveError ? 'text-danger-500' : 'text-success-600'}`} data-testid="save-preset-feedback">
+                  {presetSaveMessage}
+                </p>
+              </div>
+            {/if}
 
-          <div class="flex justify-end gap-2 pt-1">
-            <button
-              class="rounded-[12px] px-3 py-1.5 text-xs transition-colors {ghostTone}"
-              onclick={() => {
-                showSavePresetDialog = false
-                presetSaveMessage = ''
-                presetSaveError = false
-              }}
-              data-testid="save-preset-cancel"
-            >
-              Cancel
-            </button>
-            <button
-              class="rounded-[12px] bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
-              onclick={handleSaveAsPreset}
-              disabled={!newPresetName.trim() || isSavingPreset}
-              data-testid="save-preset-confirm"
-            >
-              {isSavingPreset ? 'Saving...' : 'Save Preset'}
-            </button>
+            <div class="flex justify-end gap-3 pt-1">
+              <button
+                class="h-10 px-4 rounded-lg text-xs font-bold transition-all active:scale-95 {dark ? 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05]' : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'}"
+                onclick={() => {
+                  clearPresetSaveTimer()
+                  showSavePresetDialog = false
+                  presetSaveMessage = ''
+                  presetSaveError = false
+                }}
+                data-testid="save-preset-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                class="h-10 px-6 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 active:scale-95 shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:pointer-events-none transition-all"
+                onclick={handleSaveAsPreset}
+                disabled={!newPresetName.trim() || isSavingPreset}
+                data-testid="save-preset-confirm"
+              >
+                {isSavingPreset ? 'Saving...' : 'Save Preset'}
+              </button>
+            </div>
           </div>
-        </div>
-      {/if}
+        {/if}
+      </div>
 
-      <div class="flex justify-end gap-2 border-t pt-3 {t.keyline}">
-        <button
-          class="rounded-[12px] border px-3 py-1.5 text-xs transition-colors {ghostTone}"
-          onclick={onReset}
-          data-testid="team-customizer-reset"
-        >
-          Reset to Empty
-        </button>
-        <button
-          class="rounded-[12px] bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-          onclick={handleSave}
-          disabled={hasErrors}
-          data-testid="team-customizer-save"
-        >
-          Apply
-        </button>
+      <!-- Footer Sticky Actions -->
+      <div class="fixed bottom-0 right-0 left-0 p-4 border-t backdrop-blur-md transition-all z-10 {dark ? 'bg-brand-950/80 border-white/[0.06]' : 'bg-white/80 border-brand-200/60'}" style="width: inherit; border-bottom-right-radius: inherit;">
+        <div class="flex items-center justify-between max-w-full">
+          <button
+            class="h-10 px-4 rounded-lg text-xs font-bold text-danger-500 hover:bg-danger-500/10 transition-all active:scale-95"
+            onclick={onReset}
+            data-testid="team-customizer-reset"
+          >
+            Reset to Empty
+          </button>
+          <button
+            class="h-10 px-8 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 active:scale-95 shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:pointer-events-none transition-all"
+            onclick={handleSave}
+            disabled={hasErrors}
+            data-testid="team-customizer-save"
+          >
+            Apply Changes
+          </button>
+        </div>
       </div>
     </section>
   {/snippet}

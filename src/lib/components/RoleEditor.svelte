@@ -43,18 +43,21 @@
     model.length > 0
   )
 
-  const inputTone = $derived(
+  const cardTone = $derived(
     dark
-      ? 'bg-zinc-900 border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:border-brand-500'
-      : 'bg-white border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:border-brand-500'
+      ? 'bg-white/[0.03] border-white/[0.06]'
+      : 'bg-brand-50/50 border-brand-200/40'
   )
 
-  const labelTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
-  const addButtonTone = $derived(
+  const inputTone = $derived(
     dark
-      ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
-      : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+      ? 'bg-zinc-950/50 border-white/[0.08] text-zinc-100 placeholder-zinc-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
+      : 'bg-white border-brand-200/60 text-zinc-900 placeholder-zinc-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10'
   )
+
+  const labelTone = 'text-zinc-500'
+  const sectionHeaderTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+
   function slugify(text) {
     return text
       .toString()
@@ -149,109 +152,138 @@
 </script>
 
 <SlideOver {open} title={isExisting ? 'Edit Role' : 'Create Role'} {dark} onClose={onCancel}>
-  <div class="space-y-6" data-testid="role-editor-container">
-    <!-- Basic Info -->
-    <div class="space-y-4">
-      <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-[10px] font-medium uppercase tracking-wider {labelTone}" for="role-name">
-            Role Name
-          </label>
-          <input
-            id="role-name"
-            type="text"
-            class="w-full h-9 px-3 rounded-md border text-sm transition-colors focus:outline-none {inputTone}"
-            placeholder="e.g. Frontend Developer"
-            value={name}
-            oninput={handleNameInput}
-            data-testid="role-editor-name-input"
-          />
+  <div class="space-y-4 pb-20" data-testid="role-editor-container">
+    
+    <!-- Basic Info Section -->
+    <section class="p-3 rounded-xl border transition-all duration-200 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
+      <header class="mb-3">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Basic Info</h3>
+      </header>
+      
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-name">
+              Role Name
+            </label>
+            <input
+              id="role-name"
+              type="text"
+              class="w-full h-9 px-3 rounded-lg border text-sm transition-all outline-none {inputTone}"
+              placeholder="e.g. Frontend Developer"
+              value={name}
+              oninput={handleNameInput}
+              data-testid="role-editor-name-input"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-id">
+              Role ID
+            </label>
+            <input
+              id="role-id"
+              type="text"
+              class="w-full h-9 px-3 rounded-lg border text-sm transition-all outline-none {inputTone} {isExisting ? 'opacity-50 cursor-not-allowed' : ''}"
+              placeholder="e.g. frontend-dev"
+              value={roleId}
+              oninput={handleIdInput}
+              disabled={isExisting}
+              data-testid="role-editor-id-input"
+            />
+          </div>
         </div>
-        <div class="space-y-1">
-          <label class="text-[10px] font-medium uppercase tracking-wider {labelTone}" for="role-id">
-            Role ID
-          </label>
-          <input
-            id="role-id"
-            type="text"
-            class="w-full h-9 px-3 rounded-md border text-sm transition-colors focus:outline-none {inputTone} {isExisting ? 'opacity-60 cursor-not-allowed' : ''}"
-            placeholder="e.g. frontend-dev"
-            value={roleId}
-            oninput={handleIdInput}
-            disabled={isExisting}
-            data-testid="role-editor-id-input"
-          />
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-tool">
+              Tool
+            </label>
+            <div class="relative">
+              <select
+                id="role-tool"
+                class="w-full h-9 px-2 rounded-lg border text-sm appearance-none transition-all outline-none {inputTone}"
+                value={tool}
+                onchange={handleToolChange}
+                data-testid="role-editor-tool-select"
+              >
+                {#each toolOptions as opt}
+                  <option value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
+                {/each}
+              </select>
+              <div class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>
+              </div>
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-model">
+              Model
+            </label>
+            <div class="relative">
+              <select
+                id="role-model"
+                class="w-full h-9 px-2 rounded-lg border text-sm appearance-none transition-all outline-none {inputTone}"
+                bind:value={model}
+                data-testid="role-editor-model-select"
+              >
+                {#each modelOptionsByTool[tool] as opt}
+                  <option value={opt}>{opt}</option>
+                {/each}
+              </select>
+              <div class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-[10px] font-medium uppercase tracking-wider {labelTone}" for="role-tool">
-            Tool
-          </label>
-          <select
-            id="role-tool"
-            class="w-full h-9 px-2 rounded-md border text-sm transition-colors focus:outline-none {inputTone}"
-            value={tool}
-            onchange={handleToolChange}
-            data-testid="role-editor-tool-select"
-          >
-            {#each toolOptions as opt}
-              <option value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="space-y-1">
-          <label class="text-[10px] font-medium uppercase tracking-wider {labelTone}" for="role-model">
-            Model
-          </label>
-          <select
-            id="role-model"
-            class="w-full h-9 px-2 rounded-md border text-sm transition-colors focus:outline-none {inputTone}"
-            bind:value={model}
-            data-testid="role-editor-model-select"
-          >
-            {#each modelOptionsByTool[tool] as opt}
-              <option value={opt}>{opt}</option>
-            {/each}
-          </select>
-        </div>
+    <!-- Instructions Section -->
+    <section class="p-3 rounded-xl border transition-all duration-200 delay-75 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
+      <header class="mb-3">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Instructions</h3>
+      </header>
+      <div class="space-y-1.5">
+        <label class="sr-only" for="role-instructions">Instructions</label>
+        <textarea
+          id="role-instructions"
+          class="w-full p-3 rounded-lg border text-xs font-mono transition-all outline-none resize-none {inputTone}"
+          rows="8"
+          placeholder="Role instructions (Markdown supported)..."
+          bind:value={instructions}
+          data-testid="role-editor-instructions-input"
+        ></textarea>
       </div>
-    </div>
+    </section>
 
-    <!-- Instructions -->
-    <div class="space-y-1">
-      <label class="text-[10px] font-medium uppercase tracking-wider {labelTone}" for="role-instructions">
-        Instructions
-      </label>
-      <textarea
-        id="role-instructions"
-        class="w-full p-3 rounded-md border text-sm font-mono transition-colors focus:outline-none {inputTone}"
-        rows="6"
-        placeholder="Role instructions (Markdown supported)..."
-        bind:value={instructions}
-        data-testid="role-editor-instructions-input"
-      ></textarea>
-    </div>
-
-    <!-- Behavioral Contract -->
-    <div class="space-y-2">
-      <div class="text-[10px] font-medium uppercase tracking-wider {labelTone}">
-        Behavioral Contract
-      </div>
+    <!-- Behavioral Contract Section -->
+    <section class="p-3 rounded-xl border transition-all duration-200 delay-100 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
+      <header class="mb-3">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Behavioral Contract</h3>
+      </header>
+      
       <div class="space-y-2">
         {#each behavioralContract as item, i}
-          <div class="flex items-center gap-2 p-2 rounded border {dark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-100 bg-zinc-50/50'}">
-            <input
-              type="checkbox"
-              checked={item.enabled}
-              onchange={() => toggleRule(i)}
-              class="w-4 h-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
-              data-testid="role-rule-{i}-checkbox"
-            />
-            <span class="flex-1 text-xs {t.textBody}">{item.rule}</span>
+          <div class="group flex items-start gap-2.5 p-2 rounded-lg border transition-all {dark ? 'border-white/[0.04] bg-white/[0.02] hover:bg-white/[0.04]' : 'border-brand-200/20 bg-white hover:bg-brand-50/30'}">
+            <label for="role-rule-{i}-checkbox-input" class="flex flex-1 items-start gap-2.5 cursor-pointer">
+              <div class="pt-0.5 relative flex items-center justify-center">
+                <input
+                  id="role-rule-{i}-checkbox-input"
+                  type="checkbox"
+                  checked={item.enabled}
+                  onchange={() => toggleRule(i)}
+                  class="peer appearance-none w-4 h-4 rounded border transition-all cursor-pointer {dark ? 'bg-zinc-900 border-white/[0.1] checked:bg-brand-500 checked:border-brand-500' : 'bg-white border-brand-300 checked:bg-brand-500 checked:border-brand-500'} focus:ring-2 focus:ring-brand-500/20"
+                  data-testid="role-rule-{i}-checkbox"
+                />
+                <svg class="absolute w-2.5 h-2.5 text-white pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              
+              <span class="flex-1 text-xs leading-5 {item.enabled ? t.textBody : t.textMuted + ' line-through opacity-50'}">{item.rule}</span>
+            </label>
+
             <button
-              class="text-zinc-500 hover:text-red-500 transition-colors"
+              class="h-8 w-8 flex items-center justify-center rounded-md {dark ? 'text-zinc-500' : 'text-zinc-600'} hover:text-danger-500 hover:bg-danger-500/10 transition-all opacity-0 group-hover:opacity-100"
               onclick={() => removeRule(i)}
               data-testid="role-rule-{i}-remove"
               aria-label="Remove rule"
@@ -260,97 +292,115 @@
             </button>
           </div>
         {/each}
-        <div class="flex gap-2">
+        
+        <div class="flex gap-2 pt-1">
           <input
             type="text"
-            class="flex-1 h-8 px-3 rounded-md border text-xs transition-colors focus:outline-none {inputTone}"
-            placeholder="Add a rule..."
+            class="flex-1 h-9 px-3 rounded-lg border text-xs transition-all outline-none {inputTone}"
+            placeholder="Add a hard constraint..."
             bind:value={newRule}
             onkeydown={(e) => e.key === 'Enter' && addRule()}
             data-testid="role-editor-add-rule-input"
           />
           <button
-            class="h-8 px-3 rounded-md text-xs transition-colors {addButtonTone}"
+            class="h-9 px-4 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10 disabled:opacity-50 disabled:pointer-events-none"
             onclick={addRule}
+            disabled={!newRule.trim()}
             data-testid="role-editor-add-rule-button"
           >
             Add
           </button>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Capabilities -->
-    <div class="space-y-2">
-      <div class="text-[10px] font-medium uppercase tracking-wider {labelTone}">
-        Capabilities
-      </div>
-      <div class="space-y-2">
-        <div class="flex flex-wrap gap-2">
+    <!-- Capabilities Section -->
+    <section class="p-3 rounded-xl border transition-all duration-200 delay-150 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
+      <header class="mb-3">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Capabilities</h3>
+      </header>
+      <div class="space-y-3">
+        <div class="flex flex-wrap gap-1.5">
           {#each capabilities as cap, i}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium {dark ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-700'}">
+            <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full text-[10px] font-bold border transition-all {dark ? 'bg-white/[0.04] border-white/[0.08] text-brand-400' : 'bg-brand-50 border-brand-200/50 text-brand-700'}">
               {cap}
               <button
-                class="hover:text-red-500 transition-colors"
+                class="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                 onclick={() => removeCapability(i)}
                 data-testid="role-capability-{i}-remove"
                 aria-label="Remove capability"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
             </span>
           {/each}
+          {#if capabilities.length === 0}
+            <p class="text-[10px] italic {t.textMuted} px-1">No custom capabilities defined.</p>
+          {/if}
         </div>
+        
         <div class="flex gap-2">
           <input
             type="text"
-            class="flex-1 h-8 px-3 rounded-md border text-xs transition-colors focus:outline-none {inputTone}"
-            placeholder="Add a capability tag..."
+            class="flex-1 h-9 px-3 rounded-lg border text-xs transition-all outline-none {inputTone}"
+            placeholder="Add capability tag..."
             bind:value={newCapability}
             onkeydown={(e) => e.key === 'Enter' && addCapability()}
             data-testid="role-editor-add-capability-input"
           />
           <button
-            class="h-8 px-3 rounded-md text-xs transition-colors {addButtonTone}"
+            class="h-9 px-4 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10 disabled:opacity-50 disabled:pointer-events-none"
             onclick={addCapability}
+            disabled={!newCapability.trim()}
             data-testid="role-editor-add-capability-button"
           >
             Add
           </button>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Actions -->
-    <div class="flex items-center justify-between pt-4 border-t {dark ? 'border-zinc-800' : 'border-zinc-100'}">
-      <div>
-        {#if isExisting && !isBuiltIn}
+    <!-- Floating Footer Actions -->
+    <div class="fixed bottom-0 right-0 left-0 p-4 border-t backdrop-blur-md transition-all z-10 {dark ? 'bg-brand-950/80 border-white/[0.06]' : 'bg-white/80 border-brand-200/60'}" style="width: inherit; border-bottom-right-radius: inherit;">
+      <div class="flex items-center justify-between max-w-full">
+        <div>
+          {#if isExisting && !isBuiltIn}
+            <button
+              class="h-9 px-3 rounded-lg text-xs text-danger-500 hover:bg-danger-500/10 font-bold transition-all active:scale-95"
+              onclick={() => onDelete(role.roleId)}
+              data-testid="role-editor-delete"
+            >
+              Delete Role
+            </button>
+          {/if}
+        </div>
+        <div class="flex gap-2">
           <button
-            class="text-xs text-red-500 hover:text-red-400 font-medium transition-colors"
-            onclick={() => onDelete(role.roleId)}
-            data-testid="role-editor-delete"
+            class="h-9 px-4 rounded-lg text-xs font-bold transition-all active:scale-95 {dark ? 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05]' : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'}"
+            onclick={onCancel}
+            data-testid="role-editor-cancel"
           >
-            Delete Role
+            Cancel
           </button>
-        {/if}
-      </div>
-      <div class="flex gap-3">
-        <button
-          class="px-4 py-2 rounded-md text-xs font-medium transition-colors {dark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-600 hover:text-zinc-900'}"
-          onclick={onCancel}
-          data-testid="role-editor-cancel"
-        >
-          Cancel
-        </button>
-        <button
-          class="px-4 py-2 rounded-md bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          onclick={handleSave}
-          disabled={!canSave}
-          data-testid="role-editor-save"
-        >
-          Save Role
-        </button>
+          <button
+            class="h-9 px-5 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 active:scale-95 shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:pointer-events-none transition-all"
+            onclick={handleSave}
+            disabled={!canSave}
+            data-testid="role-editor-save"
+          >
+            Save Role
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </SlideOver>
+
+<style>
+  /* Custom select arrow removal for Safari/Chrome */
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+</style>

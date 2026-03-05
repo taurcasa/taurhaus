@@ -27,25 +27,29 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
-  const tabBase = 'px-2 py-1 text-xs border-b-2 transition-colors'
-  const tabActive = $derived(dark ? `font-medium ${t.textPrimary} border-brand-500` : `font-medium ${t.textPrimary} border-brand-500`)
-  const tabInactive = $derived(`${t.textMuted} border-transparent hover:text-zinc-500`)
+  const tabBase = 'px-3 py-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 border-b-2'
+  const tabActive = $derived(dark ? `text-brand-400 border-brand-500 bg-brand-500/5` : `text-brand-600 border-brand-500 bg-brand-50/50`)
+  const tabInactive = $derived(`text-zinc-500 border-transparent hover:text-zinc-400 hover:bg-zinc-500/5`)
+  
   const inputTone = $derived(
     dark
-      ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500'
-      : 'border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400'
+      ? 'bg-zinc-950/50 border-white/[0.08] text-zinc-100 placeholder-zinc-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
+      : 'bg-white border-brand-200/60 text-zinc-900 placeholder-zinc-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10'
   )
+  
   const cardTone = $derived(
     dark
-      ? 'border-zinc-700/70 bg-zinc-900/70 hover:border-brand-700/60'
-      : 'border-zinc-200 bg-white hover:border-brand-300'
+      ? 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.05] hover:border-brand-500/30'
+      : 'bg-brand-50/50 border-brand-200/40 hover:bg-brand-50/80 hover:border-brand-500/30'
   )
+  
   const actionSecondary = $derived(
     dark
-      ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800/80'
-      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+      ? 'bg-white/[0.05] border-white/[0.08] text-zinc-300 hover:text-white hover:bg-white/[0.1] active:scale-95'
+      : 'bg-zinc-100 border-zinc-200 text-zinc-700 hover:bg-zinc-200 active:scale-95'
   )
-  const toneMuted = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
+  
+  const toneMuted = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
 
   let loading = $state(false)
   let errorMessage = $state('')
@@ -556,9 +560,9 @@
 
 <SlideOver {open} title="Templates" width={420} {dark} onClose={onClose}>
   {#snippet children()}
-    <section class="space-y-3" data-testid="template-browser-panel">
-      <header class="space-y-2">
-        <div class="flex items-center gap-1.5 border-b {t.keyline}">
+    <section class="space-y-4 animate-in fade-in duration-200" data-testid="template-browser-panel">
+      <header class="space-y-4">
+        <div class="flex items-center gap-1 border-b {t.keyline} -mx-4 px-4 bg-black/5 dark:bg-white/5">
           <button
             class="{tabBase} {activeTab === 'roles' ? tabActive : tabInactive}"
             onclick={() => setTab('roles')}
@@ -583,67 +587,92 @@
         </div>
 
         {#if activeTab !== 'history'}
-          <label class="flex flex-col gap-1">
-            <span class="text-[11px] uppercase tracking-wide {t.textMuted}">Filter</span>
-            <input
-              class="h-8 rounded-md border px-2 text-xs {inputTone}"
-              placeholder={activeTab === 'roles' ? 'Search roles by name, id, or model' : 'Search presets by name, id, or description'}
-              value={searchQuery}
-              oninput={(event) => {
-                searchQuery = event.currentTarget.value
-              }}
-              data-testid="template-browser-search-input"
-            />
-          </label>
+          <div class="px-1">
+            <label class="space-y-1.5 block">
+              <span class="text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Filter</span>
+              <div class="relative">
+                <input
+                  class="h-10 w-full rounded-lg border px-3 pr-10 text-sm transition-all outline-none {inputTone}"
+                  placeholder={activeTab === 'roles' ? 'Search roles by name, id, or model' : 'Search presets by name, id, or description'}
+                  value={searchQuery}
+                  oninput={(event) => {
+                    searchQuery = event.currentTarget.value
+                  }}
+                  data-testid="template-browser-search-input"
+                />
+                <div class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                </div>
+              </div>
+            </label>
+          </div>
         {/if}
       </header>
 
       {#if errorMessage}
-        <p class="rounded-md border border-danger-400/40 bg-danger-500/10 px-2 py-1 text-xs text-danger-400">
-          {errorMessage}
-        </p>
+        <div class="p-2 rounded-lg bg-danger-500/10 border border-danger-500/20 animate-in fade-in zoom-in-95 duration-200">
+          <p class="text-[11px] font-medium text-danger-500 text-center">
+            {errorMessage}
+          </p>
+        </div>
       {/if}
 
       {#if loading}
-        <p class="text-xs {t.textMuted}" data-testid="template-browser-loading">Loading templates...</p>
+        <div class="flex flex-col items-center justify-center py-12 space-y-3 opacity-50">
+          <div class="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+          <p class="text-[11px] font-bold uppercase tracking-widest text-brand-500" data-testid="template-browser-loading">Loading templates...</p>
+        </div>
       {:else if activeTab === 'roles'}
         {#if detailKind === 'role'}
-          <section class="rounded-md border p-3 space-y-2 {cardTone}" data-testid="template-role-detail">
+          <section class="rounded-xl border p-4 space-y-4 animate-in fade-in slide-in-from-left-2 duration-200 {cardTone}" data-testid="template-role-detail">
             <button
-              class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] {toneMuted} hover:text-brand-500"
+              class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wide {actionSecondary}"
               onclick={resetDetail}
               data-testid="template-role-back"
             >
-              ← Back
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              Back
             </button>
 
             {#if detailLoading}
-              <p class="text-xs {toneMuted}">Loading role details...</p>
+              <p class="text-xs text-center py-4 {toneMuted}">Loading role details...</p>
             {:else if selectedRole}
-              <h3 class="text-sm font-semibold {t.textPrimary}">
-                {selectedRole.name} ({selectedRole.roleId})
-              </h3>
-              <p class="text-xs {t.textSecondary}">
-                {selectedRole.instructions || 'No role instructions available.'}
-              </p>
+              <div class="space-y-2">
+                <div class="flex items-start justify-between">
+                  <h3 class="text-base font-bold {t.textPrimary}">
+                    {selectedRole.name}
+                  </h3>
+                  <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {roleKindBadgeTone(selectedRole.kind)}">{selectedRole.kind}</span>
+                </div>
+                <p class="text-[10px] font-mono {toneMuted}">{selectedRole.roleId}</p>
+              </div>
+              
+              <div class="p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5">
+                <p class="text-xs leading-relaxed {t.textSecondary}">
+                  {selectedRole.instructions || 'No role instructions available.'}
+                </p>
+              </div>
+              
               <button
-                class="rounded-md bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                class="w-full h-10 rounded-lg bg-brand-600 px-4 py-1 text-xs font-bold text-white hover:bg-brand-500 shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
                 onclick={() => onSelectRole(selectedRole)}
                 data-testid={`role-select-${selectedRole.roleId}`}
               >
-                Use role
+                Use this Role
               </button>
             {/if}
           </section>
         {:else if filteredRoleTemplates.length === 0}
-          <p class="rounded-md border px-2 py-2 text-xs {t.textMuted} {cardTone}">
-            No role templates match the current filter.
-          </p>
+          <div class="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-xl {dark ? 'border-zinc-800' : 'border-zinc-200'}">
+            <p class="text-xs {t.textMuted}">
+              No role templates match the current filter.
+            </p>
+          </div>
         {:else}
-          <div class="flex items-center justify-between">
-            <p class="text-xs font-medium {t.textSecondary}">Role Templates</p>
+          <div class="flex items-center justify-between px-1">
+            <p class="text-[10px] font-bold uppercase tracking-wider {t.textMuted}">Role Templates</p>
             <button
-              class="rounded border px-2 py-1 text-[11px] font-medium {actionSecondary}"
+              class="h-8 px-3 rounded-lg text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10"
               onclick={openCreateRoleEditor}
               data-testid="role-create-button"
             >
@@ -652,85 +681,96 @@
           </div>
 
           {#if !hasCustomRoles}
-            <p class="rounded-md border px-2 py-2 text-xs {t.textMuted} {cardTone}" data-testid="role-custom-empty-state">
-              No custom roles yet. Create one or capture from a live team.
-            </p>
+            <div class="p-4 rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center space-y-2 {dark ? 'border-zinc-800 bg-white/[0.01]' : 'border-zinc-200 bg-black/[0.01]'}" data-testid="role-custom-empty-state">
+              <p class="text-xs {t.textMuted}">No custom roles yet. Create one or capture from a live team.</p>
+            </div>
           {/if}
 
-          <div class="space-y-2" data-testid="template-role-list">
-            {#each filteredRoleTemplates as role}
-              <article class="rounded-md border p-2 transition-colors {cardTone}" data-testid={`role-template-card-${role.roleId}`}>
+          <div class="space-y-3" data-testid="template-role-list">
+            {#each filteredRoleTemplates as role, i}
+              <article class="group rounded-xl border p-3 transition-all animate-in fade-in slide-in-from-bottom-1 duration-200 {cardTone}" style:transition-delay={`${i * 30}ms`} data-testid={`role-template-card-${role.roleId}`}>
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
-                    <p class="truncate text-[13px] font-medium {t.textPrimary}">{role.name}</p>
-                    <p class="text-[10px] {t.textMuted}">{role.roleId}</p>
+                    <p class="truncate text-[14px] font-bold {t.textPrimary}">{role.name}</p>
+                    <p class="text-[10px] font-mono {toneMuted}">{role.roleId}</p>
                   </div>
-                  <span class="rounded-full px-1.5 py-0.5 text-[10px] {roleKindBadgeTone(role.kind)}">{role.kind}</span>
+                  <span class="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-tight {roleKindBadgeTone(role.kind)}">{role.kind}</span>
                 </div>
 
-                <div class="mt-1 flex flex-wrap items-center gap-1 text-[11px] {t.textSecondary}">
+                <div class="mt-3 flex flex-wrap items-center gap-1.5">
                   <span
-                    class="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] {capabilityChipTone()}"
+                    class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold {capabilityChipTone()}"
                     data-testid={`role-tool-badge-${role.roleId}`}
                   >
                     <svg class="h-3 w-3 shrink-0" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
                       <path d={getToolIcon(role.cliTool).path}></path>
                     </svg>
-                    <span>{getToolName(role.cliTool)}</span>
+                    <span class="uppercase tracking-tighter opacity-80">{getToolName(role.cliTool)}</span>
                   </span>
                   <span
-                    class="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] {capabilityChipTone()}"
+                    class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold {capabilityChipTone()}"
                     data-testid={`role-model-badge-${role.roleId}`}
                   >
                     {role.model || 'unspecified'}
                   </span>
                 </div>
 
-                <div class="mt-1 flex flex-wrap gap-1">
-                  {#each role.capabilities as capability}
-                    <span
-                      class="rounded-full px-1.5 py-0.5 text-[10px] {capabilityChipTone()}"
-                      data-testid={capabilityTestId(role.roleId, capability)}
-                    >
-                      {capability}
-                    </span>
-                  {/each}
-                </div>
+                {#if role.capabilities.length > 0}
+                  <div class="mt-2 flex flex-wrap gap-1">
+                    {#each role.capabilities as capability}
+                      <span
+                        class="rounded-full px-2 py-0.5 text-[9px] font-bold border border-transparent bg-black/5 dark:bg-white/5 {t.textSecondary}"
+                        data-testid={capabilityTestId(role.roleId, capability)}
+                      >
+                        {capability}
+                      </span>
+                    {/each}
+                  </div>
+                {/if}
 
-                <div class="mt-2 flex flex-wrap justify-end gap-1">
-                  <button
-                    class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
-                    onclick={() => onSelectRole(role)}
-                    data-testid={`role-use-${role.roleId}`}
-                  >
-                    Use
-                  </button>
-                  <button
-                    class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
-                    onclick={() => {
-                      void inspectRole(role)
-                    }}
-                    data-testid={`role-inspect-${role.roleId}`}
-                  >
-                    Inspect
-                  </button>
-                  {#if isCustomRole(role)}
+                <div class="mt-4 flex flex-wrap justify-end gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                  <div class="flex gap-1.5">
                     <button
-                      class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
+                      class="h-8 px-3 rounded-lg text-[11px] font-bold {actionSecondary}"
+                      onclick={() => onSelectRole(role)}
+                      data-testid={`role-use-${role.roleId}`}
+                    >
+                      Use
+                    </button>
+                    <button
+                      class="h-8 px-3 rounded-lg text-[11px] font-bold {actionSecondary}"
                       onclick={() => {
-                        void openEditRoleEditor(role)
+                        void inspectRole(role)
                       }}
-                      data-testid={`role-edit-${role.roleId}`}
+                      data-testid={`role-inspect-${role.roleId}`}
                     >
-                      Edit
+                      Inspect
                     </button>
-                    <button
-                      class="rounded border px-1.5 py-0.5 text-[10px] border-danger-400/50 text-danger-500 hover:bg-danger-500/10"
-                      onclick={() => requestRoleDelete(role)}
-                      data-testid={`role-delete-${role.roleId}`}
-                    >
-                      Delete
-                    </button>
+                  </div>
+                  
+                  {#if isCustomRole(role)}
+                    <div class="flex gap-1.5 ml-auto">
+                      <button
+                        class="h-8 w-8 flex items-center justify-center rounded-lg {actionSecondary}"
+                        onclick={() => {
+                          void openEditRoleEditor(role)
+                        }}
+                        aria-label="Edit role"
+                        title="Edit role"
+                        data-testid={`role-edit-${role.roleId}`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                      </button>
+                      <button
+                        class="h-8 w-8 flex items-center justify-center rounded-lg border border-danger-500/20 text-danger-500 hover:bg-danger-500/10 active:scale-95 transition-all"
+                        onclick={() => requestRoleDelete(role)}
+                        aria-label="Delete role"
+                        title="Delete role"
+                        data-testid={`role-delete-${role.roleId}`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      </button>
+                    </div>
                   {/if}
                 </div>
               </article>
@@ -739,41 +779,53 @@
         {/if}
       {:else if activeTab === 'presets'}
         {#if detailKind === 'preset'}
-          <section class="rounded-md border p-3 space-y-2 {cardTone}" data-testid="template-preset-detail">
+          <section class="rounded-xl border p-4 space-y-4 animate-in fade-in slide-in-from-left-2 duration-200 {cardTone}" data-testid="template-preset-detail">
             <button
-              class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] {toneMuted} hover:text-brand-500"
+              class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wide {actionSecondary}"
               onclick={resetDetail}
               data-testid="template-preset-back"
             >
-              ← Back
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              Back
             </button>
 
             {#if detailLoading}
-              <p class="text-xs {toneMuted}">Loading preset details...</p>
+              <p class="text-xs text-center py-4 {toneMuted}">Loading preset details...</p>
             {:else if selectedPreset}
-              <h3 class="text-sm font-semibold {t.textPrimary}">
-                {selectedPreset.name} ({selectedPreset.presetId})
-              </h3>
-              <p class="text-xs {t.textSecondary}">
-                {selectedPreset.description || 'No preset description provided.'}
-              </p>
-              <p class="text-[11px] {toneMuted}">
-                {(selectedPreset.agentSlots ?? []).length} slot(s) configured.
-              </p>
+              <div class="space-y-2">
+                <h3 class="text-base font-bold {t.textPrimary}">
+                  {selectedPreset.name}
+                </h3>
+                <p class="text-[10px] font-mono {toneMuted}">{selectedPreset.presetId}</p>
+              </div>
+              
+              <div class="p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5">
+                <p class="text-xs leading-relaxed {t.textSecondary}">
+                  {selectedPreset.description || 'No preset description provided.'}
+                </p>
+              </div>
+              
+              <div class="flex items-center gap-2 px-1">
+                <span class="text-[10px] font-bold uppercase tracking-widest text-brand-500">Configuration:</span>
+                <span class="text-[11px] font-medium {t.textSecondary}">
+                  {(selectedPreset.agentSlots ?? []).length} slot(s) configured.
+                </span>
+              </div>
+              
               <button
-                class="rounded-md bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                class="w-full h-10 rounded-lg bg-brand-600 px-4 py-1 text-xs font-bold text-white hover:bg-brand-500 shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
                 onclick={() => onSelectPreset(selectedPreset)}
                 data-testid={`preset-select-${selectedPreset.presetId}`}
               >
-                Use preset
+                Use this Preset
               </button>
             {/if}
           </section>
         {:else}
-          <div class="flex items-center justify-between">
-            <p class="text-xs font-medium {t.textSecondary}">Team Presets</p>
+          <div class="flex items-center justify-between px-1">
+            <p class="text-[10px] font-bold uppercase tracking-wider {t.textMuted}">Team Presets</p>
             <button
-              class="rounded border px-2 py-1 text-[11px] font-medium {actionSecondary}"
+              class="h-8 px-3 rounded-lg text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10"
               onclick={openCreatePresetEditor}
               data-testid="template-preset-create"
             >
@@ -782,13 +834,15 @@
           </div>
 
           {#if filteredTeamPresets.length === 0}
-            <p class="rounded-md border px-2 py-2 text-xs {t.textMuted} {cardTone}">
-              No team presets match the current filter.
-            </p>
+            <div class="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-xl {dark ? 'border-zinc-800' : 'border-zinc-200'}">
+              <p class="text-xs {t.textMuted}">
+                No team presets match the current filter.
+              </p>
+            </div>
           {:else}
-            <div class="space-y-2" data-testid="template-preset-list">
-              {#each filteredTeamPresets as preset}
-                <article class="space-y-1.5 rounded-md border p-2 transition-colors {cardTone}">
+            <div class="space-y-3" data-testid="template-preset-list">
+              {#each filteredTeamPresets as preset, i}
+                <article class="group space-y-3 rounded-xl border p-3 transition-all animate-in fade-in slide-in-from-bottom-1 duration-200 {cardTone}" style:transition-delay={`${i * 30}ms`}>
                   <PresetCard
                     dark={dark}
                     name={preset.name}
@@ -806,49 +860,60 @@
                     testId={`template-browser-preset-${preset.presetId}`}
                   />
 
-                  <div class="flex flex-wrap justify-end gap-1">
-                    <button
-                      class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
-                      onclick={() => onSelectPreset(preset)}
-                      data-testid={`template-preset-use-${preset.presetId}`}
-                    >
-                      Use
-                    </button>
-                    <button
-                      class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
-                      onclick={() => {
-                        void inspectPreset(preset)
-                      }}
-                      data-testid={`template-preset-inspect-${preset.presetId}`}
-                    >
-                      Inspect
-                    </button>
+                  <div class="flex flex-wrap justify-end gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                    <div class="flex gap-1.5">
+                      <button
+                        class="h-8 px-3 rounded-lg text-[11px] font-bold {actionSecondary}"
+                        onclick={() => onSelectPreset(preset)}
+                        data-testid={`template-preset-use-${preset.presetId}`}
+                      >
+                        Use
+                      </button>
+                      <button
+                        class="h-8 px-3 rounded-lg text-[11px] font-bold {actionSecondary}"
+                        onclick={() => {
+                          void inspectPreset(preset)
+                        }}
+                        data-testid={`template-preset-inspect-${preset.presetId}`}
+                      >
+                        Inspect
+                      </button>
+                    </div>
+                    
                     {#if isCustomPreset(preset)}
-                      <button
-                        class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
-                        onclick={() => {
-                          void openPresetEditorForMutation(preset, 'edit')
-                        }}
-                        data-testid={`template-preset-edit-${preset.presetId}`}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        class="rounded border px-1.5 py-0.5 text-[10px] {actionSecondary}"
-                        onclick={() => {
-                          void openPresetEditorForMutation(preset, 'duplicate')
-                        }}
-                        data-testid={`template-preset-duplicate-${preset.presetId}`}
-                      >
-                        Duplicate
-                      </button>
-                      <button
-                        class="rounded border px-1.5 py-0.5 text-[10px] border-danger-400/50 text-danger-500 hover:bg-danger-500/10"
-                        onclick={() => requestPresetDelete(preset)}
-                        data-testid={`template-preset-delete-${preset.presetId}`}
-                      >
-                        Delete
-                      </button>
+                      <div class="flex gap-1.5 ml-auto">
+                        <button
+                          class="h-8 w-8 flex items-center justify-center rounded-lg {actionSecondary}"
+                          onclick={() => {
+                            void openPresetEditorForMutation(preset, 'edit')
+                          }}
+                          aria-label="Edit preset"
+                          title="Edit preset"
+                          data-testid={`template-preset-edit-${preset.presetId}`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                        </button>
+                        <button
+                          class="h-8 w-8 flex items-center justify-center rounded-lg {actionSecondary}"
+                          onclick={() => {
+                            void openPresetEditorForMutation(preset, 'duplicate')
+                          }}
+                          aria-label="Duplicate preset"
+                          title="Duplicate preset"
+                          data-testid={`template-preset-duplicate-${preset.presetId}`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        </button>
+                        <button
+                          class="h-8 w-8 flex items-center justify-center rounded-lg border border-danger-500/20 text-danger-500 hover:bg-danger-500/10 active:scale-95 transition-all"
+                          onclick={() => requestPresetDelete(preset)}
+                          aria-label="Delete preset"
+                          title="Delete preset"
+                          data-testid={`template-preset-delete-${preset.presetId}`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                      </div>
                     {/if}
                   </div>
                 </article>
@@ -857,11 +922,13 @@
           {/if}
         {/if}
       {:else}
-        <TemplateHistoryPanel
-          dark={dark}
-          selectedTemplateId={historyTemplateId}
-          selectedTemplateKind={historyTemplateKind}
-        />
+        <div class="animate-in fade-in slide-in-from-right-2 duration-200">
+          <TemplateHistoryPanel
+            dark={dark}
+            selectedTemplateId={historyTemplateId}
+            selectedTemplateKind={historyTemplateKind}
+          />
+        </div>
       {/if}
     </section>
   {/snippet}
