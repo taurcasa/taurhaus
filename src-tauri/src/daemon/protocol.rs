@@ -157,6 +157,9 @@ pub struct GitCommitsInRangeParams {
     pub path: String,
     pub after: String,  // RFC 3339 timestamp
     pub before: String, // RFC 3339 timestamp
+    /// Optional cap for number of commits included in the response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_limit: Option<usize>,
 }
 
 /// `git_commits_in_range` result — commits + file paths
@@ -164,6 +167,10 @@ pub struct GitCommitsInRangeParams {
 pub struct GitCommitsInRangeResult {
     pub commits: Vec<crate::models::Commit>,
     pub files: Vec<String>,
+    #[serde(default)]
+    pub truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_count: Option<usize>,
 }
 
 /// `git_commit_files` params — get files changed by a specific commit

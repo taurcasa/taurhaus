@@ -5,7 +5,9 @@ use chrono::{DateTime, Utc};
 use crate::errors::AppError;
 use crate::fs::{reader, readme, tree};
 use crate::git::{commits, status};
-use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitStatus};
+use crate::models::{
+    Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
+};
 
 use super::ProjectProvider;
 
@@ -45,7 +47,8 @@ impl ProjectProvider for LocalProvider {
         project_path: &str,
         after: &str,
         before: &str,
-    ) -> Result<(Vec<Commit>, Vec<String>), AppError> {
+        commit_limit: Option<usize>,
+    ) -> Result<GitRangeResult, AppError> {
         let path = Path::new(project_path);
         let after_dt = chrono::DateTime::parse_from_rfc3339(after)
             .map_err(|e| AppError::InvalidPath(format!("Bad 'after' timestamp: {e}")))?
@@ -53,9 +56,7 @@ impl ProjectProvider for LocalProvider {
         let before_dt = chrono::DateTime::parse_from_rfc3339(before)
             .map_err(|e| AppError::InvalidPath(format!("Bad 'before' timestamp: {e}")))?
             .with_timezone(&chrono::Utc);
-        let range_commits = commits::get_commits_in_range(path, after_dt, before_dt)?;
-        let files = commits::get_files_changed_in_range(path, after_dt, before_dt)?;
-        Ok((range_commits, files))
+        commits::get_commits_and_files_in_range(path, after_dt, before_dt, commit_limit)
     }
 
     fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError> {

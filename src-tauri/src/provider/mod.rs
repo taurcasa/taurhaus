@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
 use crate::errors::AppError;
-use crate::models::{Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitStatus};
+use crate::models::{
+    Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
+};
 
 /// Abstraction over filesystem and git operations for a project.
 ///
@@ -39,7 +41,8 @@ pub trait ProjectProvider: Send + Sync {
         project_path: &str,
         after: &str,
         before: &str,
-    ) -> Result<(Vec<Commit>, Vec<String>), AppError>;
+        commit_limit: Option<usize>,
+    ) -> Result<GitRangeResult, AppError>;
 
     /// Get files changed by a specific commit (identified by hash prefix).
     fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError>;
@@ -136,8 +139,14 @@ mod tests {
             _: &str,
             _: &str,
             _: &str,
-        ) -> Result<(Vec<Commit>, Vec<String>), crate::errors::AppError> {
-            Ok((vec![], vec![]))
+            _: Option<usize>,
+        ) -> Result<GitRangeResult, crate::errors::AppError> {
+            Ok(GitRangeResult {
+                commits: vec![],
+                files: vec![],
+                truncated: false,
+                total_count: None,
+            })
         }
         fn commit_files(
             &self,

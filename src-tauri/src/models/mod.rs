@@ -406,6 +406,16 @@ pub struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitRangeResult {
+    pub commits: Vec<Commit>,
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub truncated: bool,
+    #[serde(default)]
+    pub total_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CommitFile {
     pub path: String,
     /// One of: "added", "modified", "deleted", "renamed"

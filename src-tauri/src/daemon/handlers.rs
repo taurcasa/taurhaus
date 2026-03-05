@@ -156,10 +156,21 @@ pub(crate) fn handle_git_commits_in_range(
         Ok(p) => p,
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
-    match provider.commits_in_range(&params.path, &params.after, &params.before) {
-        Ok((commits, files)) => {
-            DaemonResponse::ok(id, protocol::GitCommitsInRangeResult { commits, files })
-        }
+    match provider.commits_in_range(
+        &params.path,
+        &params.after,
+        &params.before,
+        params.commit_limit,
+    ) {
+        Ok(result) => DaemonResponse::ok(
+            id,
+            protocol::GitCommitsInRangeResult {
+                commits: result.commits,
+                files: result.files,
+                truncated: result.truncated,
+                total_count: result.total_count,
+            },
+        ),
         Err(e) => DaemonResponse::err(id, "GIT_ERROR", e.to_string()),
     }
 }

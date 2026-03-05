@@ -1,10 +1,34 @@
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use git2::Repository;
 
 use crate::errors::AppError;
 use crate::models::{Commit, CommitFile, DiffHunk, DiffLine};
+
+/// Upper bound for commit count returned by range-query IPC endpoints.
+pub const DEFAULT_RANGE_QUERY_COMMIT_CAP: usize = 500;
+const RANGE_QUERY_CACHE_TTL: Duration = Duration::from_secs(5);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct RangeCacheKey {
+    repo_path: String,
+    after_ts: i64,
+    before_ts: i64,
+    commit_cap: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct RangeCacheEntry {
+    cached_at: Instant,
+    result: crate::models::GitRangeResult,
+}
+
+static RANGE_QUERY_CACHE: OnceLock<Mutex<HashMap<RangeCacheKey, RangeCacheEntry>>> =
+    OnceLock::new();
 
 /// Extract subject (first line) and optional body (remaining lines after first blank line).
 fn extract_subject_and_body(raw: &str) -> (String, Option<String>) {
@@ -155,6 +179,165 @@ pub fn get_latest_commit_time(repo_path: &Path) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp(commit.time().seconds(), 0)
 }
 
+/// Get commits and changed files in a range using a single revwalk pass.
+///
+/// Results are memoized for a short TTL to avoid duplicate computation when UI
+/// rerenders request the exact same range repeatedly.
+pub fn get_commits_and_files_in_range(
+    repo_path: &Path,
+    after: DateTime<Utc>,
+    before: DateTime<Utc>,
+    commit_cap: Option<usize>,
+) -> Result<crate::models::GitRangeResult, AppError> {
+    get_commits_and_files_in_range_with_policy(
+        repo_path,
+        after,
+        before,
+        commit_cap,
+        RANGE_QUERY_CACHE_TTL,
+        true,
+    )
+}
+
+fn get_commits_and_files_in_range_with_policy(
+    repo_path: &Path,
+    after: DateTime<Utc>,
+    before: DateTime<Utc>,
+    commit_cap: Option<usize>,
+    cache_ttl: Duration,
+    use_cache: bool,
+) -> Result<crate::models::GitRangeResult, AppError> {
+    let key = RangeCacheKey {
+        repo_path: repo_path.to_string_lossy().to_string(),
+        after_ts: after.timestamp(),
+        before_ts: before.timestamp(),
+        commit_cap,
+    };
+
+    if use_cache && !cache_ttl.is_zero() {
+        let now = Instant::now();
+        let cache = RANGE_QUERY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = guard.get(&key) {
+            if now.duration_since(entry.cached_at) < cache_ttl {
+                return Ok(entry.result.clone());
+            }
+        }
+        guard.retain(|_, entry| now.duration_since(entry.cached_at) < cache_ttl);
+    }
+
+    let result = collect_range_single_pass(repo_path, after, before, commit_cap)?;
+
+    if use_cache && !cache_ttl.is_zero() {
+        let cache = RANGE_QUERY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.insert(
+            key,
+            RangeCacheEntry {
+                cached_at: Instant::now(),
+                result: result.clone(),
+            },
+        );
+    }
+
+    Ok(result)
+}
+
+fn collect_range_single_pass(
+    repo_path: &Path,
+    after: DateTime<Utc>,
+    before: DateTime<Utc>,
+    commit_cap: Option<usize>,
+) -> Result<crate::models::GitRangeResult, AppError> {
+    if before < after {
+        return Ok(crate::models::GitRangeResult {
+            commits: vec![],
+            files: vec![],
+            truncated: false,
+            total_count: None,
+        });
+    }
+
+    let repo = open_git_repo(repo_path)?;
+    let revwalk = match head_revwalk(&repo)? {
+        Some(revwalk) => revwalk,
+        None => {
+            return Ok(crate::models::GitRangeResult {
+                commits: vec![],
+                files: vec![],
+                truncated: false,
+                total_count: None,
+            });
+        }
+    };
+
+    let now = Utc::now();
+    let after_ts = after.timestamp();
+    let before_ts = before.timestamp();
+    let mut commits = Vec::new();
+    let mut files = BTreeSet::new();
+    let mut total_count = 0usize;
+    let mut truncated = false;
+
+    for oid_result in revwalk {
+        let oid = oid_result.map_err(git_err)?;
+        let commit = repo.find_commit(oid).map_err(git_err)?;
+        let ts = commit.time().seconds();
+
+        if ts < after_ts {
+            break;
+        }
+
+        if ts > before_ts {
+            continue;
+        }
+
+        total_count += 1;
+
+        let include_commit = commit_cap.is_none_or(|cap| commits.len() < cap);
+        if !include_commit {
+            truncated = true;
+            continue;
+        }
+
+        let (message, body) = extract_subject_and_body(commit.message().unwrap_or(""));
+        commits.push(Commit {
+            hash: format!("{:.8}", oid),
+            message,
+            body,
+            author: commit.author().name().unwrap_or("unknown").to_string(),
+            date: format_relative_time(ts, now),
+            timestamp: ts,
+        });
+
+        let tree = commit.tree().map_err(git_err)?;
+        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+        let diff = repo
+            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+            .map_err(git_err)?;
+
+        diff.foreach(
+            &mut |delta, _| {
+                if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                    files.insert(path.to_string());
+                }
+                true
+            },
+            None,
+            None,
+            None,
+        )
+        .map_err(git_err)?;
+    }
+
+    Ok(crate::models::GitRangeResult {
+        commits,
+        files: files.into_iter().collect(),
+        truncated,
+        total_count: truncated.then_some(total_count),
+    })
+}
+
 /// Get commits in a time range (inclusive), newest first.
 ///
 /// Returns commits whose author date falls within `[after, before]`.
@@ -218,7 +401,7 @@ pub fn get_files_changed_in_range(
 
     let after_ts = after.timestamp();
     let before_ts = before.timestamp();
-    let mut files = std::collections::BTreeSet::new();
+    let mut files = BTreeSet::new();
 
     for oid_result in revwalk {
         let oid = oid_result.map_err(git_err)?;
@@ -394,6 +577,14 @@ pub fn get_commit_diff(
 
 fn git_err(e: git2::Error) -> AppError {
     AppError::Git(e)
+}
+
+#[cfg(test)]
+fn clear_range_query_cache() {
+    if let Some(cache) = RANGE_QUERY_CACHE.get() {
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.clear();
+    }
 }
 
 #[cfg(test)]
@@ -875,5 +1066,133 @@ mod tests {
         // Added file: old_lineno is None, new_lineno is Some
         assert!(first_line.old_lineno.is_none());
         assert!(first_line.new_lineno.is_some());
+    }
+
+    #[test]
+    fn single_pass_range_matches_dual_pass_output() {
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "a.txt", "Add a");
+        create_commit_with_file(&repo, dir.path(), "b.txt", "Add b");
+        create_commit_with_file(&repo, dir.path(), "a.txt", "Update a");
+
+        let after = Utc::now() - chrono::Duration::hours(1);
+        let before = Utc::now() + chrono::Duration::hours(1);
+
+        let dual_pass_commits = get_commits_in_range(dir.path(), after, before).unwrap();
+        let dual_pass_files = get_files_changed_in_range(dir.path(), after, before).unwrap();
+        let single_pass = get_commits_and_files_in_range_with_policy(
+            dir.path(),
+            after,
+            before,
+            None,
+            std::time::Duration::from_secs(5),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(single_pass.commits, dual_pass_commits);
+        assert_eq!(single_pass.files, dual_pass_files);
+        assert!(!single_pass.truncated);
+        assert_eq!(single_pass.total_count, None);
+    }
+
+    #[test]
+    fn range_query_memoization_hits_within_ttl() {
+        clear_range_query_cache();
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "before.txt", "Before");
+
+        let after = Utc::now() - chrono::Duration::hours(1);
+        let before = Utc::now() + chrono::Duration::hours(1);
+
+        let first = get_commits_and_files_in_range_with_policy(
+            dir.path(),
+            after,
+            before,
+            Some(500),
+            std::time::Duration::from_secs(5),
+            true,
+        )
+        .unwrap();
+
+        // This commit should be ignored by the second call if cache is hit.
+        create_commit_with_file(&repo, dir.path(), "after.txt", "After");
+
+        let second = get_commits_and_files_in_range_with_policy(
+            dir.path(),
+            after,
+            before,
+            Some(500),
+            std::time::Duration::from_secs(5),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(second.commits, first.commits);
+        assert_eq!(second.files, first.files);
+        assert_eq!(second.total_count, first.total_count);
+    }
+
+    #[test]
+    fn range_query_memoization_expires_after_ttl() {
+        clear_range_query_cache();
+        let (dir, repo) = init_test_repo();
+        create_commit_with_file(&repo, dir.path(), "before.txt", "Before");
+
+        let after = Utc::now() - chrono::Duration::hours(1);
+        let before = Utc::now() + chrono::Duration::hours(1);
+        let ttl = std::time::Duration::from_millis(20);
+
+        let first = get_commits_and_files_in_range_with_policy(
+            dir.path(),
+            after,
+            before,
+            Some(500),
+            ttl,
+            true,
+        )
+        .unwrap();
+
+        create_commit_with_file(&repo, dir.path(), "after.txt", "After");
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        let second = get_commits_and_files_in_range_with_policy(
+            dir.path(),
+            after,
+            before,
+            Some(500),
+            ttl,
+            true,
+        )
+        .unwrap();
+
+        assert!(second.commits.len() > first.commits.len());
+        assert!(second.files.len() > first.files.len());
+    }
+
+    #[test]
+    fn range_query_truncates_when_commit_cap_exceeded() {
+        clear_range_query_cache();
+        let (dir, repo) = init_test_repo();
+        for i in 0..6 {
+            create_commit_with_file(&repo, dir.path(), &format!("file-{i}.txt"), "add");
+        }
+
+        let after = Utc::now() - chrono::Duration::hours(1);
+        let before = Utc::now() + chrono::Duration::hours(1);
+
+        let result = get_commits_and_files_in_range_with_policy(
+            dir.path(),
+            after,
+            before,
+            Some(3),
+            std::time::Duration::from_secs(5),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(result.commits.len(), 3);
+        assert!(result.truncated);
+        assert_eq!(result.total_count, Some(6));
     }
 }
