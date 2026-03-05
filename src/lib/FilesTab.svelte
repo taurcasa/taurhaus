@@ -49,6 +49,7 @@
   let fileTreeRefreshInFlight = false
   let fileTreeRefreshPending = false
   const fileReadGuard = createAsyncGuard()
+  let activeFileReadSequence = 0
 
   // Sync position outward for Shell's per-project position memory
   $effect(() => {
@@ -183,6 +184,7 @@
 
   function clearSelection() {
     fileReadGuard.invalidate()
+    activeFileReadSequence = 0
     selectedFile = null
     targetLineNumber = null
     targetAnchor = null
@@ -289,6 +291,7 @@
     const projectId = selectedProject.id
     const requestPath = relativePath
     const requestSequence = fileReadGuard.next()
+    activeFileReadSequence = requestSequence
     const isStale = () =>
       !fileReadGuard.isCurrent(requestSequence)
         || selectedProject?.id !== projectId
@@ -355,7 +358,7 @@
         fileError = 'error'
       }
     } finally {
-      if (!isStale()) {
+      if (activeFileReadSequence === requestSequence) {
         fileContentLoading = false
       }
     }
