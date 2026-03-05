@@ -13,6 +13,7 @@ pub mod models;
 mod sentinels;
 pub mod services;
 mod startup;
+mod watch_targets;
 
 pub mod git;
 

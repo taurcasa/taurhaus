@@ -2,15 +2,15 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use chrono::Utc;
-
 use tauri::Manager;
 
 use crate::commands::projects::DbState;
 use crate::db::settings_queries;
-use crate::models::{ActivityState, ActivityThresholds};
+use crate::models::ActivityThresholds;
 use crate::sentinels::{CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX};
-use crate::{daemon_lifecycle, db, event_processor, platform, provider, WatcherState};
+use crate::{
+    daemon_lifecycle, db, event_processor, platform, provider, watch_targets, WatcherState,
+};
 
 use super::SetupContext;
 
@@ -85,17 +85,6 @@ pub(crate) fn initialize(
     Ok(())
 }
 
-fn should_watch_for_activity(state: ActivityState) -> bool {
-    matches!(state, ActivityState::Active | ActivityState::Recent)
-}
-
-fn evaluate_project_activity(
-    project: &crate::models::Project,
-    thresholds: &ActivityThresholds,
-) -> ActivityState {
-    ActivityState::compute(project.last_activity_at.as_deref(), thresholds, Utc::now())
-}
-
 pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     let (projects, thresholds, has_daemon) = {
         let db_state = app.state::<DbState>();
@@ -151,30 +140,24 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     };
     let watched_ids: HashSet<String> = watcher_guard.watched_projects().into_iter().collect();
 
-    let mut by_id: HashMap<String, (String, String, ActivityState)> = HashMap::new();
-    for project in &projects {
-        by_id.insert(
-            project.id.clone(),
-            (
-                project.name.clone(),
-                project.path.clone(),
-                evaluate_project_activity(project, &thresholds),
-            ),
-        );
+    let planned_targets = watch_targets::plan_activity_watch_targets(&projects, &thresholds);
+    let mut by_id: HashMap<String, watch_targets::ActivityWatchTarget> = HashMap::new();
+    for target in planned_targets {
+        by_id.insert(target.project_id.clone(), target);
     }
 
     let mut watched = 0usize;
     let mut unwatched = 0usize;
     let mut watch_limit_hit = false;
 
-    for (project_id, (project_name, project_path, activity_state)) in &by_id {
-        if has_daemon && provider::path::is_wsl_path(project_path) {
+    for (project_id, target) in &by_id {
+        if has_daemon && provider::path::is_wsl_path(&target.project_path) {
             continue;
         }
 
-        let should_watch = should_watch_for_activity(*activity_state);
+        let should_watch = target.should_watch;
         let is_watched = watched_ids.contains(project_id);
-        let path = std::path::Path::new(project_path);
+        let path = std::path::Path::new(&target.project_path);
         let can_watch_path = path.is_dir();
 
         if should_watch && can_watch_path && !is_watched {
@@ -184,7 +167,7 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
                     let msg = error.to_string();
                     if platform::is_watch_limit_error(&msg) {
                         tracing::warn!(
-                            project = project_name,
+                            project = target.project_name,
                             error = %error,
                             reason,
                             "Watch limit reached — skipping project"
@@ -192,7 +175,7 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
                         watch_limit_hit = true;
                     } else {
                         tracing::debug!(
-                            project = project_name,
+                            project = target.project_name,
                             error = %error,
                             reason,
                             "Could not watch project directory (local)"
@@ -267,18 +250,5 @@ fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_watch_for_activity_only_active_and_recent() {
-        assert!(should_watch_for_activity(ActivityState::Active));
-        assert!(should_watch_for_activity(ActivityState::Recent));
-        assert!(!should_watch_for_activity(ActivityState::Stale));
-        assert!(!should_watch_for_activity(ActivityState::Dormant));
     }
 }
