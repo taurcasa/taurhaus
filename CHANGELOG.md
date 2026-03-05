@@ -10,32 +10,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Mesh View redesign**: full visual overhaul from foundational node canvas to runtime experience, including card-style nodes, slide-over panels, runtime bar, init/runtime animations, improved light mode variants, and toolbar/surface polish.
-- **Create New Project flow** in `AddProjectModal` for creating and registering projects directly from the app.
-- **New built-in role template**: `codex-architect` for architectural review and structural decision ownership.
-- **New built-in team preset**: `standard-team` (orchestrator + architect + two developers + UI specialist).
+**Mesh View Redesign (M1-M3)**
+- M1 foundation: node-canvas primitives, `SlideOver`, and mesh design-token groundwork
+- M2 integration: `MeshTab` orchestration flow, slide-over panel integration, and card-style agent presentation
+- M3 runtime: initialization/runtime animations, `MeshRuntimeBar`, and runtime-mode visual continuity
+- Designer-approved finish pass: shadows, glow, gradients, and a full-bleed canvas/surface overhaul
+- Expanded light-mode variants for mesh connections/surfaces to preserve contrast in non-dark themes
+
+**Team Composition & Presets**
+- New built-in role template: `codex-architect` for structural decision ownership
+- New built-in team preset: `standard-team` (orchestrator + architect + two developers + UI specialist)
+- Preset setup now resolves member names from slot `name_pattern` overrides and role `default_name_pattern` fallbacks, producing role-appropriate names (for example `architect`, `developer1`, `developer2`, `ui-specialist`) instead of generic `agent-N`
+
+**Project Bootstrap**
+- Create New Project flow in `AddProjectModal` for creating and registering projects directly from the app
 
 ### Changed
 
-- **Performance sprint across backend and frontend**:
-  - Daemon IPC latency reduced from **44ms to 0.114ms**.
-  - Git timeline/range queries optimized with single-pass range scans and TTL memoization.
-  - Session scanner cycle cost reduced via batched search-commit queries.
-  - Frontend rendering optimized with virtualization for heavy lists, bounded caches (LRU-style), and lazy loading for markdown/Shiki paths.
-  - Template IPC calls deduplicated and stale async result guards tightened.
-- **Test and quality infrastructure**:
-  - Added `just metrics` KPI reporting.
-  - Clarified and restructured `just test` / `just check` recipe semantics with a faster test lane.
-  - Frontend branch coverage improved from **54% to 65%**.
-- **Accessibility and UX polish** on template CRUD surfaces (labels, focus/interaction flows, async state handling, and visual consistency) across six components.
+**Performance Sprint (Backend + Frontend)**
+- Daemon IPC latency reduced from **44ms to 0.114ms**
+- Git timeline/range queries moved to single-pass scans with TTL memoization
+- Session-scanner cycle cost reduced with batched search-commit queries
+- Frontend rendering optimized with virtualization for heavy lists, bounded caches, and lazy-loaded markdown/Shiki paths
+- Template IPC calls deduplicated with stricter stale async result guards
+
+**Backend Error Handling & Core Hygiene**
+- Error handling overhauled around `SanitizeErr` for user-safe error surfaces
+- Mutex poison recovery and silent-drop logging added to improve degraded-path resilience
+- IPC casing normalization and targeted deduplication landed across shared paths
+
+**Frontend Reliability & Template UX**
+- Async guard hardening applied across file/markdown/search surfaces (including `CodeViewer`, `MarkdownRenderer`, and `SearchOverlay`) to prevent stale UI states
+- Template CRUD surfaces refined with role-aware agent forms, improved IPC wrappers, and Gemini session detection correctness
+- Built-in role behavioral contracts updated for clearer specialization:
+  - Orchestrator: stronger delegation-first execution contract
+  - Codex developer: explicit architect escalation for structural decisions
+  - Gemini UI specialist: frontend-only scope boundary
+
+**Quality & Test Infrastructure**
+- Added `just metrics` KPI reporting lane
+- Clarified `just test` vs `just check` semantics and added faster test workflow
+- Frontend branch coverage improved from **54% to 65%**
 
 ### Fixed
 
-- Files tab blank/stuck states after project switches and metadata-only updates.
-- Window state restore behavior for undecorated windows (height/restore correctness).
-- Platform hardening issues from review findings, including macOS `/proc` guard handling.
-- Flaky onboarding E2E behavior by switching to real temp project directories and more deterministic harness setup.
-- Additional backend/frontend reliability fixes: async guard hardening, IPC casing normalization cleanup, and backend error-path resilience improvements.
+- Files tab loading regressions after project switches and metadata-only updates (stuck/blank first-load cases)
+- Window-state restore behavior for undecorated windows (height/restore correctness on reopen)
+- Mesh visual regressions introduced during redesign (overlay behavior, runtime-surface continuity, and light-mode connection contrast)
+- Platform review hardening findings, including macOS `/proc` guard handling
+- Onboarding E2E flakiness via real temp project directories and deterministic harness improvements
+
+### Documentation
+
+- Added design-first workflow guide: `docs/design-workflow.md`
+- Refreshed release docs for v0.5.0 scope across architecture/contributing/coordination surfaces (`ARCHITECTURE.md`, `CONTRIBUTING.md`, and coordination documentation updates)
 
 ## [0.4.5] - 2026-03-04
 
