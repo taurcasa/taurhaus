@@ -15,9 +15,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::coordination::domain::MemberRole;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli;
+use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
+use crate::coordination::stores::TeamConfigStore;
 use crate::session_scanner::{scan_sessions, ActivityConfidence, SessionState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -51,6 +55,13 @@ pub enum StallSuppressionReason {
     PostMessageGrace,
     PostNudgeCooldown,
     RateLimited,
+    PendingNudge,
+    EvidenceNotAdvanced,
+    LongRunningCommand,
+    StrongActivity,
+    ExplicitBlockedStatus,
+    ExplicitInvestigatingStatus,
+    SystemUncertainty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -147,6 +158,7 @@ pub struct MemberStallState {
     pub suppression_until: Option<DateTime<Utc>>,
     pub stage: StallStage,
     pub nudge_count_window: NudgeCountWindow,
+    pub uncertainty_defer_active: bool,
 }
 
 impl MemberStallState {
@@ -161,6 +173,7 @@ impl MemberStallState {
             suppression_until: None,
             stage: StallStage::Healthy,
             nudge_count_window: NudgeCountWindow::default(),
+            uncertainty_defer_active: false,
         }
     }
 
@@ -241,7 +254,7 @@ impl SignalSnapshot {
     fn pane_command_is_medium(&self) -> bool {
         self.pane_current_command
             .as_ref()
-            .is_some_and(|cmd| !cmd.trim().is_empty())
+            .is_some_and(|cmd| is_long_running_command(cmd))
             && self.pane_is_shell != Some(true)
     }
 
@@ -315,6 +328,9 @@ struct TransitionDecision {
     trigger_stage: StallTriggerStage,
     signal_snapshot: StallSignalSnapshot,
     suppression_snapshot: StallSuppressionSnapshot,
+    runtime_snapshot: Option<SignalSnapshot>,
+    pending_nudge_id: Option<String>,
+    last_nudge_at: Option<DateTime<Utc>>,
 }
 
 type SessionScannerFn = dyn Fn(DateTime<Utc>) -> Vec<SessionSignal> + Send + Sync;
@@ -929,17 +945,50 @@ impl StallDetectorService {
             return Vec::new();
         }
         let snapshots = self.collect_signals_at(now);
+        let snapshots_by_member = build_signal_snapshot_index(&snapshots);
         self.ingest_signal_snapshots(&snapshots);
         self.finalize_recovery_windows(now);
         let Ok(mut states) = self.member_states.lock() else {
             return Vec::new();
         };
-        let decisions = evaluate_transitions(&self.config, &mut states, now);
+        let decisions = evaluate_transitions(&self.config, &mut states, &snapshots_by_member, now);
         let transitions: Vec<StageTransition> = decisions
             .iter()
             .map(|decision| decision.transition.clone())
             .collect();
         self.record_trigger_decisions(&decisions);
+        transitions
+    }
+
+    pub fn poll_once_with_orchestrator(
+        &self,
+        orchestrator: &mut CoordinationOrchestrator,
+    ) -> Vec<StageTransition> {
+        self.poll_once_with_orchestrator_at(Utc::now(), orchestrator)
+    }
+
+    pub fn poll_once_with_orchestrator_at(
+        &self,
+        now: DateTime<Utc>,
+        orchestrator: &mut CoordinationOrchestrator,
+    ) -> Vec<StageTransition> {
+        if !self.config.enabled {
+            return Vec::new();
+        }
+        let snapshots = self.collect_signals_at(now);
+        let snapshots_by_member = build_signal_snapshot_index(&snapshots);
+        self.ingest_signal_snapshots(&snapshots);
+        self.finalize_recovery_windows(now);
+        let Ok(mut states) = self.member_states.lock() else {
+            return Vec::new();
+        };
+        let decisions = evaluate_transitions(&self.config, &mut states, &snapshots_by_member, now);
+        let transitions: Vec<StageTransition> = decisions
+            .iter()
+            .map(|decision| decision.transition.clone())
+            .collect();
+        self.record_trigger_decisions(&decisions);
+        self.dispatch_escalations(orchestrator, &decisions);
         transitions
     }
 
@@ -991,9 +1040,11 @@ impl StallDetectorService {
                             config.require_medium_confidence_for_activity,
                         );
                     }
+                    let snapshots_by_member = build_signal_snapshot_index(&snapshots);
                     finalize_recovery_windows_for_history(&config, &trigger_history, now);
                     if let Ok(mut states) = member_states.lock() {
-                        let decisions = evaluate_transitions(&config, &mut states, now);
+                        let decisions =
+                            evaluate_transitions(&config, &mut states, &snapshots_by_member, now);
                         if !decisions.is_empty() {
                             record_trigger_decisions_for_history(
                                 &config,
@@ -1038,6 +1089,26 @@ impl StallDetectorService {
         member_name: &str,
         observed_at: DateTime<Utc>,
     ) {
+        let key = MemberKey {
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+        };
+        if let Ok(mut states) = self.member_states.lock() {
+            if let Some(state) = states.get_mut(&key) {
+                if state.stage != StallStage::Healthy {
+                    state.stage = StallStage::Healthy;
+                    state.pending_nudge_id = None;
+                    state.uncertainty_defer_active = false;
+                    state.suppression_until = Some(
+                        observed_at
+                            + chrono::Duration::seconds(
+                                self.config.post_nudge_cooldown_secs as i64,
+                            ),
+                    );
+                }
+            }
+        }
+
         let Ok(mut history) = self.trigger_history.lock() else {
             return;
         };
@@ -1099,6 +1170,64 @@ impl StallDetectorService {
             emit_trigger_log(&record);
             if self.config.persist_trigger_history {
                 history.push(record);
+            }
+        }
+    }
+
+    fn dispatch_escalations(
+        &self,
+        orchestrator: &mut CoordinationOrchestrator,
+        decisions: &[TransitionDecision],
+    ) {
+        for decision in decisions {
+            let result = match decision.trigger_stage {
+                StallTriggerStage::StageA => {
+                    let response_window_secs = self
+                        .config
+                        .hard_escalate_after_secs
+                        .saturating_sub(self.config.soft_nudge_after_secs);
+                    let response_minutes = std::cmp::max(1, response_window_secs.div_ceil(60));
+                    let message = format!(
+                        "Are you still working on Task #N? Reply with status (working, blocked, done) within {response_minutes} min."
+                    );
+                    orchestrator.deliver_message(DeliveryRequest::OperatorNotice(
+                        OperatorNoticeDelivery {
+                            member_name: decision.transition.member_name.clone(),
+                            team_name: decision.transition.team_name.clone(),
+                            message,
+                            sender_name: Some("stall-detector".to_string()),
+                        },
+                    ))
+                }
+                StallTriggerStage::StageB => {
+                    let lead_name =
+                        resolve_team_lead_name(orchestrator, &decision.transition.team_name);
+                    match lead_name {
+                        Ok(lead_name) => {
+                            let message =
+                                render_stage_b_evidence_message(decision, &decision.transition);
+                            orchestrator.deliver_message(DeliveryRequest::OperatorNotice(
+                                OperatorNoticeDelivery {
+                                    member_name: lead_name,
+                                    team_name: decision.transition.team_name.clone(),
+                                    message,
+                                    sender_name: Some("stall-detector".to_string()),
+                                },
+                            ))
+                        }
+                        Err(err) => Err(err),
+                    }
+                }
+            };
+
+            if let Err(err) = result {
+                tracing::warn!(
+                    team_name = %decision.transition.team_name,
+                    member_name = %decision.transition.member_name,
+                    stage = %decision.trigger_stage.as_str(),
+                    error = %err,
+                    "stall detector escalation delivery failed"
+                );
             }
         }
     }
@@ -1233,6 +1362,94 @@ fn matched_session_signal(
         .as_ref()
         .and_then(|path| sessions_by_project.get(path))
         .cloned()
+}
+
+fn build_signal_snapshot_index(snapshots: &[SignalSnapshot]) -> HashMap<MemberKey, SignalSnapshot> {
+    let mut index = HashMap::with_capacity(snapshots.len());
+    for snapshot in snapshots {
+        index.insert(
+            MemberKey {
+                team_name: snapshot.team_name.clone(),
+                member_name: snapshot.member_name.clone(),
+            },
+            snapshot.clone(),
+        );
+    }
+    index
+}
+
+fn resolve_team_lead_name(
+    orchestrator: &CoordinationOrchestrator,
+    team_name: &str,
+) -> Result<String, CoordinationError> {
+    let config = TeamConfigStore::load(&orchestrator.teams_dir, team_name)?;
+    config
+        .members
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+        .map(|member| member.name.clone())
+        .ok_or_else(|| {
+            CoordinationError::NotFound(format!("lead member not found in team '{team_name}'"))
+        })
+}
+
+fn format_optional_ts(value: Option<DateTime<Utc>>) -> String {
+    value
+        .map(|ts| ts.to_rfc3339())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn render_stage_b_evidence_message(
+    decision: &TransitionDecision,
+    transition: &StageTransition,
+) -> String {
+    let signal = &decision.signal_snapshot;
+    let runtime = decision.runtime_snapshot.as_ref();
+    let strong_signal_age = signal
+        .last_strong_signal_at
+        .map(|at| (transition.at.signed_duration_since(at).num_seconds()).max(0))
+        .unwrap_or(-1);
+    let session_state = runtime
+        .and_then(|snapshot| snapshot.session_state)
+        .map(|state| format!("{state:?}"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let session_confidence = runtime
+        .and_then(|snapshot| snapshot.session_confidence)
+        .map(|confidence| format!("{confidence:?}"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let pane_state = runtime
+        .map(|snapshot| {
+            format!(
+                "exists={:?}, dead={:?}, shell={:?}, cmd={}",
+                snapshot.pane_exists,
+                snapshot.pane_is_dead,
+                snapshot.pane_is_shell,
+                snapshot
+                    .pane_current_command
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string())
+            )
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    let strong_age = if strong_signal_age >= 0 {
+        format!("{strong_signal_age}s")
+    } else {
+        "unknown".to_string()
+    };
+
+    format!(
+        "Stage B stall escalation for {member}.\nEvidence: last strong signal age={strong_age}; session={session_state} ({session_confidence}); pane={pane_state}; nudge_id={nudge_id}; last_nudge_at={last_nudge_at}.\nStage C is manual intervention by team-lead.",
+        member = transition.member_name,
+        strong_age = strong_age,
+        session_state = session_state,
+        session_confidence = session_confidence,
+        pane_state = pane_state,
+        nudge_id = decision
+            .pending_nudge_id
+            .clone()
+            .unwrap_or_else(|| "none".to_string()),
+        last_nudge_at = format_optional_ts(decision.last_nudge_at),
+    )
 }
 
 fn apply_signal_snapshots_to_member_states(
@@ -1400,6 +1617,26 @@ fn elapsed_secs(now: DateTime<Utc>, then: DateTime<Utc>) -> u64 {
     }
 }
 
+fn is_long_running_command(command: &str) -> bool {
+    let normalized = command.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+
+    const ALLOWLIST: &[&str] = &[
+        "cargo", "bun", "vitest", "wdio", "pnpm", "npm", "yarn", "pytest", "nextest", "just", "go",
+    ];
+
+    let first = normalized.split_whitespace().next().unwrap_or_default();
+    let first = first.rsplit('/').next().unwrap_or(first);
+    ALLOWLIST.iter().any(|token| {
+        first == *token
+            || first.ends_with(token)
+            || normalized.contains(&format!(" {} ", token))
+            || normalized.starts_with(&format!("{token} "))
+    })
+}
+
 fn can_issue_nudge(
     nudge_window_secs: u64,
     window: &NudgeCountWindow,
@@ -1422,6 +1659,7 @@ fn can_issue_nudge(
 fn evaluate_transitions(
     config: &StallDetectorConfig,
     member_states: &mut HashMap<MemberKey, MemberStallState>,
+    snapshots_by_member: &HashMap<MemberKey, SignalSnapshot>,
     now: DateTime<Utc>,
 ) -> Vec<TransitionDecision> {
     let mut transitions = Vec::new();
@@ -1432,6 +1670,12 @@ fn evaluate_transitions(
             reason: None,
             suppression_until: state.suppression_until,
         };
+        let snapshot = snapshots_by_member.get(key).cloned();
+
+        if state.pending_nudge_id.is_some() && state.stage == StallStage::Healthy {
+            continue;
+        }
+
         if let Some(suppression_until) = state.suppression_until {
             if suppression_until > now {
                 continue;
@@ -1455,7 +1699,47 @@ fn evaluate_transitions(
         let Some(last_signal_at) = state.freshest_signal_at() else {
             continue;
         };
+
+        if state.stage == StallStage::Healthy
+            && state
+                .last_nudge_at
+                .is_some_and(|nudge_at| last_signal_at <= nudge_at)
+        {
+            continue;
+        }
+
         let idle_secs = elapsed_secs(now, last_signal_at);
+        if let Some(snapshot) = snapshot.as_ref() {
+            if snapshot.session_is_strong(config.require_medium_confidence_for_activity) {
+                continue;
+            }
+
+            if snapshot
+                .pane_current_command
+                .as_ref()
+                .is_some_and(|command| is_long_running_command(command))
+                && snapshot.pane_is_shell != Some(true)
+            {
+                continue;
+            }
+
+            match snapshot.mesh_status {
+                Some(MeshMemberStatus::Blocked) => {
+                    continue;
+                }
+                Some(MeshMemberStatus::Investigating) => {
+                    continue;
+                }
+                Some(MeshMemberStatus::Working)
+                | Some(MeshMemberStatus::Idle)
+                | Some(MeshMemberStatus::Unknown)
+                | None => {}
+            }
+
+            if snapshot.session_state.is_some() {
+                state.uncertainty_defer_active = false;
+            }
+        }
 
         match state.stage {
             StallStage::Healthy => {
@@ -1495,10 +1779,20 @@ fn evaluate_transitions(
                     trigger_stage: StallTriggerStage::StageA,
                     signal_snapshot,
                     suppression_snapshot,
+                    runtime_snapshot: snapshot.clone(),
+                    pending_nudge_id: state.pending_nudge_id.clone(),
+                    last_nudge_at: state.last_nudge_at,
                 });
             }
             StallStage::SoftNudged => {
                 if idle_secs < config.hard_escalate_after_secs {
+                    continue;
+                }
+                let uncertain = snapshot
+                    .as_ref()
+                    .is_none_or(|signal| signal.session_state.is_none());
+                if uncertain && !state.uncertainty_defer_active {
+                    state.uncertainty_defer_active = true;
                     continue;
                 }
                 let signal_snapshot = StallSignalSnapshot {
@@ -1510,6 +1804,7 @@ fn evaluate_transitions(
                 };
                 state.stage = StallStage::Escalated;
                 state.last_escalation_at = Some(now);
+                state.uncertainty_defer_active = false;
                 transitions.push(TransitionDecision {
                     transition: StageTransition {
                         team_name: key.team_name.clone(),
@@ -1521,6 +1816,9 @@ fn evaluate_transitions(
                     trigger_stage: StallTriggerStage::StageB,
                     signal_snapshot,
                     suppression_snapshot,
+                    runtime_snapshot: snapshot.clone(),
+                    pending_nudge_id: state.pending_nudge_id.clone(),
+                    last_nudge_at: state.last_nudge_at,
                 });
             }
             StallStage::Escalated => {}
@@ -1637,14 +1935,61 @@ impl Drop for StallDetectorService {
 mod tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
+    use std::path::PathBuf;
     use std::sync::Arc;
+    use tempfile::TempDir;
 
+    use crate::coordination::backend::fake::FakeBackend;
+    use crate::coordination::domain::{Member, MemberRole};
     use crate::coordination::runtime::RecordingCoordinationRuntime;
+    use crate::session_scanner::cli_tool::CliTool;
 
     fn ts(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
             .expect("valid timestamp")
             .with_timezone(&Utc)
+    }
+
+    fn sample_member(name: &str, role: MemberRole) -> Member {
+        Member {
+            name: name.to_string(),
+            role,
+            role_id: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
+            project_path: PathBuf::from("/tmp/project"),
+            cli_tool: CliTool::Codex,
+        }
+    }
+
+    fn test_orchestrator_with_team(
+        team_name: &str,
+    ) -> (
+        CoordinationOrchestrator,
+        Arc<FakeBackend>,
+        TempDir,
+        String,
+        String,
+    ) {
+        let teams_tmp = TempDir::new().expect("temp teams dir");
+        let backend = Arc::new(FakeBackend::default());
+        let mut orchestrator =
+            CoordinationOrchestrator::new(teams_tmp.path().to_path_buf(), backend.clone());
+        orchestrator
+            .create_team(team_name, None)
+            .expect("create team");
+
+        let lead_name = "team-lead".to_string();
+        let member_name = "agent-a".to_string();
+        orchestrator
+            .add_member(team_name, sample_member(&lead_name, MemberRole::Lead))
+            .expect("add lead");
+        orchestrator
+            .add_member(team_name, sample_member(&member_name, MemberRole::Agent))
+            .expect("add member");
+
+        (orchestrator, backend, teams_tmp, lead_name, member_name)
     }
 
     #[test]
@@ -1926,7 +2271,10 @@ mod tests {
             now - ChronoDuration::seconds(540),
         );
 
-        let transitions = service.poll_once_at(now);
+        let first = service.poll_once_at(now);
+        assert!(first.is_empty(), "first hard-window cycle should defer");
+
+        let transitions = service.poll_once_at(now + ChronoDuration::seconds(30));
         assert_eq!(transitions.len(), 1);
         assert_eq!(transitions[0].from, StallStage::SoftNudged);
         assert_eq!(transitions[0].to, StallStage::Escalated);
@@ -1935,7 +2283,10 @@ mod tests {
             .member_state("team-a", "agent-a")
             .expect("member state");
         assert_eq!(state.stage, StallStage::Escalated);
-        assert_eq!(state.last_escalation_at, Some(now));
+        assert_eq!(
+            state.last_escalation_at,
+            Some(now + ChronoDuration::seconds(30))
+        );
     }
 
     #[test]
@@ -2121,8 +2472,9 @@ mod tests {
             "agent-a",
             stage_a_now - ChronoDuration::seconds(540),
         );
-        let stage_b_now = stage_a_now + ChronoDuration::seconds(1);
+        let stage_b_now = stage_a_now + ChronoDuration::seconds(400);
         let _ = service.poll_once_at(stage_b_now);
+        let _ = service.poll_once_at(stage_b_now + ChronoDuration::seconds(30));
 
         let history = service.trigger_history();
         assert_eq!(history.len(), 2);
@@ -2145,7 +2497,7 @@ mod tests {
             )
             .expect("annotate stage a");
         service
-            .annotate_trigger(&stage_b_id, true, stage_b_now + ChronoDuration::seconds(30))
+            .annotate_trigger(&stage_b_id, true, stage_b_now + ChronoDuration::seconds(60))
             .expect("annotate stage b");
 
         let metrics = service.weekly_metrics(stage_b_now + ChronoDuration::seconds(120));
@@ -2183,5 +2535,219 @@ mod tests {
             .member_state("team-a", "agent-a")
             .expect("member state");
         assert_eq!(state.stage, StallStage::SoftNudged);
+    }
+
+    #[test]
+    fn stage_a_delivery_uses_operator_notice_path() {
+        let service = StallDetectorService::new(StallDetectorConfig::default());
+        let (mut orchestrator, backend, _tmp, _lead_name, member_name) =
+            test_orchestrator_with_team("team-a");
+        let now = ts("2026-03-05T13:00:00Z");
+        service.upsert_member("team-a", &member_name, now);
+        service.set_last_any_signal_for_tests(
+            "team-a",
+            &member_name,
+            now - ChronoDuration::seconds(300),
+        );
+
+        let transitions = service.poll_once_with_orchestrator_at(now, &mut orchestrator);
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].to, StallStage::SoftNudged);
+
+        let delivered = backend.delivered_requests();
+        assert_eq!(delivered.len(), 1);
+        let DeliveryRequest::OperatorNotice(payload) = &delivered[0] else {
+            panic!("expected operator notice");
+        };
+        assert_eq!(payload.team_name, "team-a");
+        assert_eq!(payload.member_name, member_name);
+        assert!(payload
+            .message
+            .contains("Are you still working on Task #N?"));
+    }
+
+    #[test]
+    fn stage_b_delivery_alerts_team_lead_with_evidence() {
+        let service = StallDetectorService::new(StallDetectorConfig::default());
+        let (mut orchestrator, backend, _tmp, lead_name, member_name) =
+            test_orchestrator_with_team("team-a");
+        let stage_a_now = ts("2026-03-05T13:10:00Z");
+        service.upsert_member("team-a", &member_name, stage_a_now);
+        service.set_last_any_signal_for_tests(
+            "team-a",
+            &member_name,
+            stage_a_now - ChronoDuration::seconds(300),
+        );
+        let _ = service.poll_once_with_orchestrator_at(stage_a_now, &mut orchestrator);
+
+        let stage_b_now = stage_a_now + ChronoDuration::seconds(240);
+        let first = service.poll_once_with_orchestrator_at(stage_b_now, &mut orchestrator);
+        assert!(
+            first.is_empty(),
+            "first stage-b check should defer for hysteresis"
+        );
+        let second = service.poll_once_with_orchestrator_at(
+            stage_b_now + ChronoDuration::seconds(30),
+            &mut orchestrator,
+        );
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].to, StallStage::Escalated);
+
+        let delivered = backend.delivered_requests();
+        assert_eq!(delivered.len(), 2);
+        let DeliveryRequest::OperatorNotice(payload) = &delivered[1] else {
+            panic!("expected operator notice");
+        };
+        assert_eq!(payload.member_name, lead_name);
+        assert!(payload.message.contains("Stage B stall escalation"));
+        assert!(payload.message.contains("nudge_id="));
+    }
+
+    #[test]
+    fn blocked_mesh_status_suppresses_stage_a() {
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let service = StallDetectorService::new_with_dependencies(
+            StallDetectorConfig::default(),
+            runtime,
+            Arc::new(|_| Vec::new()),
+            Arc::new(|_| {
+                let mut map = HashMap::new();
+                map.insert(
+                    "agent-a".to_string(),
+                    MeshMemberSignal {
+                        last_activity_at: None,
+                        status: Some(MeshMemberStatus::Blocked),
+                    },
+                );
+                map
+            }),
+        );
+
+        let now = ts("2026-03-05T14:00:00Z");
+        service.upsert_member("team-a", "agent-a", now);
+        service.set_last_any_signal_for_tests(
+            "team-a",
+            "agent-a",
+            now - ChronoDuration::seconds(400),
+        );
+
+        let transitions = service.poll_once_at(now);
+        assert!(transitions.is_empty());
+        assert_eq!(
+            service
+                .member_state("team-a", "agent-a")
+                .expect("member state")
+                .stage,
+            StallStage::Healthy
+        );
+    }
+
+    #[test]
+    fn non_allowlisted_short_command_does_not_suppress_stage_a() {
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_pane_exists("%44", true);
+        runtime.set_pane_dead("%44", false);
+        runtime.set_pane_shell("%44", false);
+        runtime.set_pane_current_command("%44", Some("ls -la"));
+
+        let service = StallDetectorService::new_with_dependencies(
+            StallDetectorConfig::default(),
+            runtime,
+            Arc::new(|_| Vec::new()),
+            Arc::new(|_| HashMap::new()),
+        );
+        let now = ts("2026-03-05T14:10:00Z");
+        service.upsert_member("team-a", "agent-a", now);
+        service.set_last_any_signal_for_tests(
+            "team-a",
+            "agent-a",
+            now - ChronoDuration::seconds(301),
+        );
+        service.upsert_member_signal_context(
+            "team-a",
+            "agent-a",
+            MemberSignalContext {
+                pane_id: Some("%44".to_string()),
+                ..MemberSignalContext::default()
+            },
+        );
+
+        let transitions = service.poll_once_at(now);
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].to, StallStage::SoftNudged);
+    }
+
+    #[test]
+    fn pending_nudge_blocks_second_stage_a() {
+        let service = StallDetectorService::new(StallDetectorConfig::default());
+        let now = ts("2026-03-05T14:20:00Z");
+        service.upsert_member("team-a", "agent-a", now);
+        service.set_last_any_signal_for_tests(
+            "team-a",
+            "agent-a",
+            now - ChronoDuration::seconds(500),
+        );
+
+        let key = MemberKey {
+            team_name: "team-a".to_string(),
+            member_name: "agent-a".to_string(),
+        };
+        if let Ok(mut states) = service.member_states.lock() {
+            if let Some(state) = states.get_mut(&key) {
+                state.pending_nudge_id = Some("nudge-1".to_string());
+            }
+        }
+
+        let transitions = service.poll_once_at(now);
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn evidence_must_advance_before_re_nudge() {
+        let service = StallDetectorService::new(StallDetectorConfig::default());
+        let now = ts("2026-03-05T14:30:00Z");
+        let last_signal = now - ChronoDuration::seconds(600);
+        service.upsert_member("team-a", "agent-a", now);
+        service.set_last_any_signal_for_tests("team-a", "agent-a", last_signal);
+
+        let key = MemberKey {
+            team_name: "team-a".to_string(),
+            member_name: "agent-a".to_string(),
+        };
+        if let Ok(mut states) = service.member_states.lock() {
+            if let Some(state) = states.get_mut(&key) {
+                state.last_nudge_at = Some(last_signal + ChronoDuration::seconds(60));
+            }
+        }
+
+        let transitions = service.poll_once_at(now);
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn max_nudges_per_hour_enforced() {
+        let service = StallDetectorService::new(StallDetectorConfig::default());
+        let now = ts("2026-03-05T14:40:00Z");
+        service.upsert_member("team-a", "agent-a", now);
+        service.set_last_any_signal_for_tests(
+            "team-a",
+            "agent-a",
+            now - ChronoDuration::seconds(600),
+        );
+
+        let key = MemberKey {
+            team_name: "team-a".to_string(),
+            member_name: "agent-a".to_string(),
+        };
+        if let Ok(mut states) = service.member_states.lock() {
+            if let Some(state) = states.get_mut(&key) {
+                state.nudge_count_window.window_started_at =
+                    Some(now - ChronoDuration::minutes(10));
+                state.nudge_count_window.count = 3;
+            }
+        }
+
+        let transitions = service.poll_once_at(now);
+        assert!(transitions.is_empty());
     }
 }
