@@ -14,28 +14,95 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.5.1] - 2026-03-06
 
-### Fixed
-
-- Windows app freeze when selecting projects with large workspaces (watcher reconciliation moved off IPC thread)
-- Atomic project view reveal restored (parallel loading with `Promise.all`, no waterfall)
-- Unified content-enter transitions across all tab views
-- Release builds now log at INFO level (was ERROR-only without `RUST_LOG`)
-- Silent error swallowing eliminated in event processor, daemon lifecycle, logging pipeline
-- Frontend IPC failures now logged with structured context before rethrow
-- `console.info` forwarding added to structured log bridge
+The largest release since the project started. 81 commits spanning a complete observability overhaul, architecture refactoring on both sides of the stack, a new coordination subsystem, Windows stability fixes, toolchain migration, and the first bundled mesh CLI with team-daemon support.
 
 ### Added
 
-- Mesh 0.2.0 bundled: IdleMonitor, task assign, nudge, actionable message lint, team-daemon
-- Mesh version lock manifest (`mesh.version` + `mesh.lock.json`) tracked in git
-- Mesh versioning build recipes: `mesh-verify-lock`, `update-mesh-lock`, `bundle-mesh`
-- Per-member activity snapshot export for mesh IdleMonitor (stall detector integration)
-- Structured session scanner completion events with timing/cache metrics
-- Practical orchestration design doc (auto-idle + communication quality)
+**Structured Logging Pipeline**
+- JSONL structured log sink with per-event context, replacing unstructured stderr logging
+- Complete IPC command lifecycle instrumentation — all 80 registered commands emit start/finish/error spans
+- Startup and daemon bootstrap events with phase-level timing
+- Watcher and event processor structured instrumentation with batch metrics
+- Frontend log bridge rewritten with interaction IDs and structured payloads (`console.*` → IPC → JSONL file)
+
+**Stall Detection & Coordination**
+- New `StallDetectorService` — detects agents that stop making progress on assigned tasks
+- Signal fusion scaffolding: combines session scanner signals, pane status checks, and mesh task state
+- Escalation delivery with suppression rules and rate limiting to prevent alert fatigue
+- Per-member activity snapshot export for mesh IdleMonitor integration
+
+**Mesh 0.2.0 Integration**
+- Bundled mesh 0.2.0: IdleMonitor (30s poll cycle), `mesh task assign`, `mesh nudge`, actionable message lint, centralized team-daemon
+- Mesh version lock manifest (`mesh.version` + `mesh.lock.json`) tracked in git with build-time verification
+- New build recipes: `mesh-verify-lock`, `update-mesh-lock`, `bundle-mesh`
+
+**E2E Test Infrastructure**
+- Failure artifact bundles collected automatically in `afterTest` hook (screenshots, logs, DOM state)
+- Template CRUD UI E2E coverage with slide-over interaction helpers
+- Annotated regression tests for sessionStore and bridge-missing fallback cases
+
+**Developer Tooling**
+- `just check-quick` fast feedback recipe: `cargo fmt` + `cargo check --tests` + frontend typecheck + frontend unit tests
+- Practical orchestration design doc (auto-idle detection + communication quality patterns)
 
 ### Changed
 
+**Architecture Refactoring — Backend**
+- Split `coordination/pipelines.rs` (2541 LOC) into domain-specific stage modules (`initialize`, `members`, `lifecycle`, `helpers`)
+- Split `templates/storage.rs` into focused modules (`roles`, `presets`, `git`, `state`)
+- Extracted `sentinels.rs` — shared watch-target planner module for watcher reconciliation
+- Startup refactored into phased bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`)
+- IPC error envelope standardized with `SanitizeErr` trait for user-safe error surfaces
+- Project identity normalization centralized across command handlers
+- Coordination command overloads collapsed to canonical internal implementations
+- Template mutations moved behind shared `mutate_and_commit` scaffold with store API
+
+**Architecture Refactoring — Frontend**
+- `MeshTab` decomposed: extracted `MeshRuntimeView`, `meshTabController.svelte.js`
+- IPC layer split from monolithic `ipc.js` into domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`)
+- Context providers extracted to `src/lib/context/` (`ProjectContext.js`, `SessionContext.js`)
+- Shell theme and mesh gate/notification modules extracted into focused files
+- IPC payload normalizers consolidated into shared module
+
+**Toolchain & Infrastructure**
+- Migrated from npm to bun for all JS tooling (`bun install`, `bun run`, `bunx`)
+- Replaced `notify-debouncer-full` with direct `notify`, migrated `serde_yaml` → `serde_yml`
+- Replaced bash resource monitor with Python implementation
+
+**Coordination Protocol**
 - Removed abandoned v0.2.0 orchestration protocol assumptions from `CLAUDE.md` and `AGENTS.md`
+- Documented practical orchestration direction grounded in available signals (file-based mesh + real-time taurhaus)
+
+### Fixed
+
+**Windows Stability**
+- App crash on project selection with large workspaces — watcher reconciliation moved off IPC thread
+- Daemon connection stall — removed blocking reconnect, added IPC timeout with regression tests
+- IPC camelCase/snake_case normalization — root cause of mesh setup wizard hang and E2E failures
+- P1 regressions: retry thread cap, stall detector timeout, removed panicking `expect` calls
+
+**Frontend**
+- Atomic project view reveal restored (parallel loading with `Promise.all`, no waterfall)
+- Unified content-enter transitions across all tab views
+- Search overlay layout fixed — CSS conflicts were breaking fixed positioning
+- Session scanner camelCase payload normalization + polling fallback for missing bridge events
+- User-facing error messages normalized, settings save feedback added
+- Accessibility improvements: theme tokens, focus management, error surfacing
+
+**Backend**
+- Release builds now log at INFO level (was ERROR-only without `RUST_LOG`)
+- Silent error swallowing eliminated in event processor, daemon lifecycle, logging pipeline
+- Daemon watch gitignore filtering, template concurrency, watcher classification fixes
+- Logger recursion guard + daemon error variant reclassification
+- Post-compaction idle prevention in onboarding templates
+
+**E2E**
+- Config group stall eliminated — settings fast-paths, resilient clicks, driver cleanup
+- Fresh selector in `ensureMainApp` to avoid stale element handles
+
+### Security
+
+- Bumped DOMPurify to 3.3.2+ to fix XSS vulnerability (GHSA-v2wj-7wpq-c8vv)
 
 ## [0.5.0] - 2026-03-05
 
