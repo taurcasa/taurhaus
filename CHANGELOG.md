@@ -6,11 +6,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-06
+
+Mesh canvas reliability release. Structurally resolves the recurring connection routing bug class by extracting a pure layout engine, adds a visual testing lane, and redesigns the project HoverCard.
+
+### Added
+
+**Mesh Layout Engine**
+- Pure `meshLayout.js` module that computes node placement and connection routing in one coordinated pass
+- Replaces scalar `bend` with explicit cubic control points (`start`, `end`, `control1`, `control2`)
+- 34 layout invariant tests covering 1–8 agents, row collapse, non-crossing ordering, center-agent degeneracy, and viewBox bounds
+- Architecture concept doc: `docs/architecture/mesh-canvas-layout-engine-concept.md`
+
+**Visual Testing Lane**
+- Vitest Browser Mode with Playwright provider — 34 screenshot tests across 5 component specs (MeshCanvas, HoverCard, MeshNodeDetail, Sidebar, smoke) in 7.6s
+- Fixture modules with named scenarios and shared builders for each component
+- Standalone Vite fixture host (`visual-host.html`) for manual component browsing with mock data
+- `just test-visual` recipe and `bun run dev:visual` script
+- Testing guide: `docs/testing-guide.md`
+
+**HoverCard Redesign**
+- Verdict-first layout: header → attention verdict → evidence stack → optional relationship
+- Prefers session summary over commit list, surfaces unresolved handoff items
+- Conversational copy replacing technical/formal phrasing
+- Dark/light theming via `$derived` tokens, 100ms/70ms enter/exit hover timing
+
+### Fixed
+
+- **Mesh connection routing** — 4 rounds of connection bugs (#395, #400, #401, #412) structurally resolved by the layout engine extraction. No more ad-hoc bend patching.
+- **Center agent invisible line** — straight line fallback when bezier would collapse to near-zero horizontal bend
+- **Lead anchor fan-out** — connections now use distinct anchor points spread across the lead card instead of originating from a single center point
+- **Connection curve overlap** — outer agents route outward, center agents stay straight
+- **Focus button wiring** — mesh Focus button now navigates to the correct tmux pane
+- **Onboarding test assertion** — aligned e2e test model expectation with gpt-5.3 fixture
+
+### Changed
+
+- `MeshConnection.svelte` is now a dumb renderer — receives pre-computed control points, no longer computes bezier curves internally
+- `MeshCanvas.svelte` delegates all layout to `meshLayout.js` — inline row-packing, anchor fan-out, and bend logic removed
+- Default Codex model updated to `gpt-5.4-high`
+- Mesh binary bumped to 0.2.1 (rejoin reactivation fix for `mesh send` after daemon restart)
+
 ### Documentation
 
-- Synced `ARCHITECTURE.md`, `CLAUDE.md`, and `AGENTS.md` with current implementation details (80 registered IPC commands, updated module/build references).
-- Refreshed `docs/architecture/ipc-reference.md` to match the active command surface, including templates command coverage and split `src/lib/ipc/` frontend wrappers.
-- Updated `docs/coordination-architecture.md` to point to the practical orchestration direction and explicitly mark the v0.2 protocol design as archived.
+- Synced `ARCHITECTURE.md`, `CLAUDE.md`, and `AGENTS.md` with current implementation details (80 registered IPC commands, updated module/build references)
+- Refreshed `docs/architecture/ipc-reference.md` to match the active command surface
+- Updated `docs/coordination-architecture.md` to point to the practical orchestration direction and explicitly mark the v0.2 protocol design as archived
+- Layout engine pipeline retro and visual testing pipeline lessons in `docs/retros/`
+- HoverCard vision and UI concept design documents
+- Mesh canvas library assessment (dagre, ELK — neither adopted; custom engine chosen)
 
 ## [0.5.1] - 2026-03-06
 

@@ -107,6 +107,8 @@ $effect(() => {
 })
 ```
 
+**Mesh route geometry lives in `meshLayout.js`**: `MeshCanvas.svelte` should consume explicit route geometry from `src/lib/components/meshLayout.js`, and `MeshConnection.svelte` should render that geometry directly. Do not add new caller-side `bend` math.
+
 ## Layout Dimensions
 
 | Element | Size | Notes |
@@ -190,6 +192,8 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 **Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), NOT from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the project root first.
 
+**Manual visual review host**: `bun run dev:visual` starts the Vite visual fixture host for mocked component states. Use it for rapid layout iteration; use `just test-visual` for automated screenshot coverage.
+
 ## Architecture Summary
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
@@ -216,9 +220,12 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/ipc.js` | Thin compatibility re-export. Real IPC implementations live in `src/lib/ipc/`. |
 | `src/lib/ipc/` | Frontend IPC domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`) plus payload/mocks modules. |
 | `src/lib/context/` | Frontend context providers (`ProjectContext.js`, `SessionContext.js`). |
+| `src/lib/HoverCard.svelte` | Sidebar hover preview focused on current activity, latest change, and relationship cues. |
 | `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
 | `src/lib/components/meshTabController.svelte.js` | Controller state/actions for `MeshTab.svelte`. |
-| `src/lib/components/MeshCanvas.svelte` | Runtime node canvas for lead/agent topology + connection status |
+| `src/lib/components/MeshCanvas.svelte` | Runtime node canvas that consumes `meshLayout.js` output. |
+| `src/lib/components/meshLayout.js` | Pure mesh canvas layout engine for node boxes and explicit connection routes. |
+| `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer fed by explicit control points from `meshLayout.js`. |
 | `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog and composition entry |
 | `src/lib/components/templateBrowserController.svelte.js` | Controller state/actions for template browsing/composition. |
 | `src/lib/components/TeamCustomizerPanel.svelte` | Team composition editor/validator before initialize |
@@ -234,6 +241,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
+| `docs/testing-guide.md` | Visual testing lane boundaries, usage, and screenshot conventions. |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |

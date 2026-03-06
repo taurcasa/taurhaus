@@ -46,8 +46,11 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `src/lib/FirstRunWizard.svelte` | Onboarding flow: project discovery and registration |
 | `src/lib/SplashScreen.svelte` | Startup splash with bootstrap chain progress |
 | `src/lib/SessionHistory.svelte` | Session timeline with handoff summaries |
+| `src/lib/HoverCard.svelte` | Decision-oriented project hover preview with live status, latest change, and relationship cue |
 | `src/lib/components/MeshTab.svelte` | Mesh View orchestration surface (gate/setup/init/runtime states) |
-| `src/lib/components/MeshCanvas.svelte` | Node-canvas runtime graph for lead/agents and connection state |
+| `src/lib/components/MeshCanvas.svelte` | Mesh runtime canvas that renders node/detail UI from layout-engine output |
+| `src/lib/components/meshLayout.js` | Pure mesh layout engine for node boxes and explicit connection routes |
+| `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer for explicit control-point geometry |
 | `src/lib/components/MeshRuntimeBar.svelte` | Runtime status controls (add-agent/disband/summary pills) |
 
 **Key patterns:**
@@ -55,6 +58,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 - **Derived theme tokens** — all color switching via `$derived` variables, never inline ternaries
 - **`$bindable` position memory** — each tab exposes view state, Shell saves/restores per project
 - **IPC layer** (`src/lib/ipc.js`) — Tauri `invoke()` wrappers with dev-mode mock fallbacks
+- **Visual testing lane** — Browser Mode screenshots live under `src/test/visual/`; a plain Vite fixture host lives at `visual-host.html`
 
 ## Backend (Rust)
 
@@ -158,7 +162,7 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Resume lifecycle**: offline members are resumed via `coordination_resume_member` with mode-aware commands (`Continue` or `Fresh`) and step-level reporting.
 - **Liveness reconciliation**: live-status reads call orchestrator write-on-drift reconciliation (missing pane, dead pane, or shell-returned pane via `pane_is_shell`) before returning UI status. Offline drift clears stale session IDs and cleans non-Claude daemon PIDs.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes for non-lead members).
-- **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) instead of force-sim layouts. Lead/agent positions are computed from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
+- **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model.
 
 See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
@@ -289,8 +293,15 @@ just check-quick      # Fast iteration gate: fmt + cargo check --tests + fronten
 just check            # Full gate: fmt + lint + typecheck + just test
 just test             # All non-E2E tests (Rust + frontend)
 just test-fast        # Fast lane: cargo check --tests + frontend tests
+just test-visual      # Browser-mode visual screenshot lane for mocked component states
 just metrics          # Quality KPI report snapshot
 just test-macos       # Run Rust tests on Mac Mini via SSH
+```
+
+Manual visual review uses the Vite fixture host:
+
+```bash
+bun run dev:visual
 ```
 
 ## Key Decisions
