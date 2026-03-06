@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl, getPlatform } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
   import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
@@ -728,6 +728,39 @@
     }
   }
 
+  async function handleMeshFocusPane(paneId) {
+    const normalizedPaneId = String(paneId || '').trim()
+    if (!normalizedPaneId) return
+
+    try {
+      const sessions = await listClaudeSessions()
+      const matchingSession = Array.isArray(sessions)
+        ? sessions.find((session) => {
+          const sessionPane = session?.tmux_pane ?? session?.tmuxPane ?? null
+          return sessionPane === normalizedPaneId
+        })
+        : null
+
+      const tmuxSession = matchingSession?.tmux_session ?? matchingSession?.tmuxSession ?? null
+      const tmuxWindow = matchingSession?.tmux_window ?? matchingSession?.tmuxWindow ?? null
+      const tmuxPane = matchingSession?.tmux_pane ?? matchingSession?.tmuxPane ?? null
+
+      if (!tmuxSession || !tmuxWindow || !tmuxPane) {
+        console.warn('[mesh] focus pane skipped: missing tmux coordinates', {
+          pane_id: normalizedPaneId,
+        })
+        return
+      }
+
+      await navigateToSession(tmuxSession, tmuxWindow, tmuxPane, true)
+    } catch (error) {
+      console.error('[mesh] focus pane failed:', {
+        pane_id: normalizedPaneId,
+        error_message: errorMessage(error),
+      })
+    }
+  }
+
   function switchTab(tab, navEntry) {
     visitedTabs = new Set([...visitedTabs, tab])
     activeTab = tab
@@ -1212,6 +1245,7 @@
             {dark}
             projectPath={selectedProject.path}
             availableProjects={projects}
+            onFocusPane={handleMeshFocusPane}
           />
         {/if}
       </div>
