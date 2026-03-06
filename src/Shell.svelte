@@ -70,7 +70,6 @@
 
   // Component-specific tokens
   const tabSeparator   = $derived(dark ? 'bg-zinc-700' : 'bg-zinc-200')
-  const panelBorder    = $derived(dark ? 'border border-zinc-800' : '')
 
   // --- Data state ---
   let projects = $state([])
@@ -982,11 +981,11 @@
 </script>
 
 {#if showWizard}
-  <div class="h-full bg-brand-950 font-sans antialiased" data-tauri-drag-region>
+  <div class="shell-frame h-full font-sans antialiased" data-tauri-drag-region>
     <FirstRunWizard {dark} onComplete={handleWizardComplete} />
   </div>
 {:else}
-<div class="h-full bg-brand-950 flex flex-col font-sans antialiased">
+<div class="shell-frame h-full flex flex-col font-sans antialiased">
 
   <!-- ═══ TITLEBAR ═══ -->
   <div class="h-[46px] flex items-end shrink-0 pl-1.5" data-tauri-drag-region>
@@ -1003,7 +1002,7 @@
     <div class="flex-1 flex items-end min-w-0" data-tauri-drag-region>
 
       <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
-      <div class="flex items-center px-4 h-[36px] {t.mainBg} rounded-t-lg ml-1.5">
+      <div class="shell-main-surface flex items-center px-4 h-[36px] rounded-t-lg ml-1.5">
         {#if settingsOpen}
           <span class="px-3 py-1 text-[13px] font-medium {t.textPrimary}">Settings</span>
         {:else}
@@ -1045,8 +1044,8 @@
       </div>
 
       <!-- Right scoop: inverse radius where tab pill meets dark frame -->
-      <div class="w-2.5 h-2.5 {t.mainBg} self-end overflow-hidden shrink-0">
-        <div class="w-full h-full bg-brand-950 rounded-bl-full"></div>
+      <div class="shell-main-surface w-2.5 h-2.5 self-end overflow-hidden shrink-0">
+        <div class="shell-frame-fill w-full h-full rounded-bl-full"></div>
       </div>
 
       <!-- Drag region (data-tauri-drag-region in production) -->
@@ -1120,7 +1119,7 @@
     />
 
     <!-- ═══ MAIN PANEL ═══ -->
-    <main class="flex-1 {t.mainBg} {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden {panelBorder}">
+    <main class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
 
       <!-- Non-blocking daemon reconnect notice -->
       {#if (daemonStatus === 'reconnecting' || daemonStatus === 'disconnected') && !settingsOpen}

@@ -125,6 +125,58 @@
   --validation-bar-bg-light-to: #e6f7f4;
   --validation-bar-text-dark: #e4e4e7;
   --validation-bar-text-light: #134E4A;
+
+  /* Shell depth treatment */
+  --shell-panel-bg-dark: rgba(9, 14, 17, 0.96);
+  --shell-panel-border-dark: rgba(255, 255, 255, 0.06);
+  --shell-panel-inner-highlight-dark: rgba(255, 255, 255, 0.035);
+  --shell-panel-shadow-dark:
+    0 10px 24px rgba(0, 0, 0, 0.24),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+  --shell-panel-gradient-dark:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 18%);
+
+  --shell-panel-bg-light: rgba(255, 255, 255, 0.94);
+  --shell-panel-border-light: rgba(19, 78, 74, 0.08);
+  --shell-panel-inner-highlight-light: rgba(255, 255, 255, 0.75);
+  --shell-panel-shadow-light:
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    0 2px 6px rgba(15, 23, 42, 0.06);
+  --shell-panel-gradient-light:
+    linear-gradient(180deg, rgba(240, 253, 250, 0.72) 0%, rgba(255, 255, 255, 0) 16%);
+
+  --shell-frame-surface-dark:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.035) 0%, transparent 42%),
+    radial-gradient(140% 120% at 50% 100%, rgba(0, 0, 0, 0.16) 0%, transparent 48%),
+    linear-gradient(180deg, #0c3532 0%, #0a2e2b 48%, #082725 100%);
+  --shell-frame-surface-light:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.045) 0%, transparent 44%),
+    radial-gradient(140% 120% at 50% 100%, rgba(6, 24, 23, 0.14) 0%, transparent 52%),
+    linear-gradient(180deg, #0d3a36 0%, #0b322f 48%, #092a27 100%);
+  --shell-frame-noise:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  --shell-frame-noise-opacity-dark: 0.02;
+  --shell-frame-noise-opacity-light: 0.018;
+}
+
+:root {
+  --shell-panel-bg: var(--shell-panel-bg-light);
+  --shell-panel-border: var(--shell-panel-border-light);
+  --shell-panel-inner-highlight: var(--shell-panel-inner-highlight-light);
+  --shell-panel-shadow: var(--shell-panel-shadow-light);
+  --shell-panel-gradient: var(--shell-panel-gradient-light);
+  --shell-frame-surface: var(--shell-frame-surface-light);
+  --shell-frame-noise-opacity: var(--shell-frame-noise-opacity-light);
+}
+
+html.dark {
+  --shell-panel-bg: var(--shell-panel-bg-dark);
+  --shell-panel-border: var(--shell-panel-border-dark);
+  --shell-panel-inner-highlight: var(--shell-panel-inner-highlight-dark);
+  --shell-panel-shadow: var(--shell-panel-shadow-dark);
+  --shell-panel-gradient: var(--shell-panel-gradient-dark);
+  --shell-frame-surface: var(--shell-frame-surface-dark);
+  --shell-frame-noise-opacity: var(--shell-frame-noise-opacity-dark);
 }
 
 html, body, #app {
@@ -135,6 +187,57 @@ html, body, #app {
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.shell-frame {
+  position: relative;
+  isolation: isolate;
+  background-color: #0a2e2b;
+  background-image: var(--shell-frame-surface);
+}
+
+.shell-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--shell-frame-noise);
+  background-size: 160px 160px;
+  opacity: var(--shell-frame-noise-opacity);
+  mix-blend-mode: soft-light;
+}
+
+.shell-frame > * {
+  position: relative;
+  z-index: 1;
+}
+
+.shell-frame-fill {
+  background-color: #0a2e2b;
+  background-image: var(--shell-frame-surface);
+}
+
+.shell-main-surface {
+  background-color: var(--shell-panel-bg);
+  background-image: var(--shell-panel-gradient);
+}
+
+.shell-main-panel {
+  position: relative;
+  border: 1px solid var(--shell-panel-border);
+  box-shadow: var(--shell-panel-shadow);
+}
+
+.shell-main-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 var(--shell-panel-inner-highlight),
+    inset 0 0 0 1px var(--shell-panel-border);
 }
 
 /* Command Center — sidebar session pills.
