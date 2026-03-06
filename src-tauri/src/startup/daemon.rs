@@ -83,7 +83,8 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
                         if daemon.reconnect().is_ok() {
                             tracing::info!("Background bootstrap: daemon connected");
                             daemon_lifecycle::respawn_daemon_watches(&app);
-                            let _ = app.emit(
+                            emit_frontend_event(
+                                &app,
                                 "daemon-status",
                                 serde_json::json!({ "status": "connected" }),
                             );
@@ -259,4 +260,14 @@ fn emit_startup_event(level: &str, event: &str, message: &'static str, fields: M
         Some(message.to_string()),
         fields,
     );
+}
+
+fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde_json::Value) {
+    if let Err(error) = app.emit(event_name, payload) {
+        tracing::warn!(
+            event_name,
+            error = %error,
+            "Failed to emit frontend event"
+        );
+    }
 }

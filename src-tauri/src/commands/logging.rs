@@ -257,9 +257,18 @@ pub fn emit_global(
     fields: Map<String, Value>,
 ) {
     if let Some(slot) = GLOBAL_LOG_EMITTER.get() {
-        if let Ok(emitter) = slot.read() {
-            emitter.emit(level, component, event, message, fields);
+        match slot.read() {
+            Ok(emitter) => {
+                emitter.emit(level, component, event, message, fields);
+            }
+            Err(error) => {
+                if should_emit_write_warning(now_millis()) {
+                    tracing::warn!(error = %error, "structured log emitter lock poisoned");
+                }
+            }
         }
+    } else if should_emit_write_warning(now_millis()) {
+        tracing::warn!("structured log emitter not installed; dropping event");
     }
 }
 
@@ -298,7 +307,7 @@ fn frontend_log_command_impl(
     if caught.is_err() {
         let error = "frontend_log handler panicked";
         emit_global(
-            "warn",
+            "error",
             "backend",
             "ipc.log.failed",
             Some("Frontend log IPC failed".to_string()),

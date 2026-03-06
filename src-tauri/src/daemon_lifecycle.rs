@@ -85,6 +85,16 @@ struct DaemonWatchRuntime {
 static DAEMON_WATCH_RUNTIME: LazyLock<Mutex<DaemonWatchRuntime>> =
     LazyLock::new(|| Mutex::new(DaemonWatchRuntime::default()));
 
+fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde_json::Value) {
+    if let Err(error) = app.emit(event_name, payload) {
+        tracing::warn!(
+            event_name,
+            error = %error,
+            "Failed to emit frontend event"
+        );
+    }
+}
+
 fn build_daemon_watch_plan_at(
     projects: &[models::Project],
     thresholds: &models::ActivityThresholds,
@@ -540,7 +550,8 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                         "Daemon health check failed"
                     );
                     if consecutive_failures >= 3 {
-                        let _ = app.emit(
+                        emit_frontend_event(
+                            &app,
                             "daemon-status",
                             serde_json::json!({ "status": "disconnected" }),
                         );
@@ -553,11 +564,16 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                 tracing::warn!(
                     "Max daemon restart attempts reached ({MAX_RESTART_ATTEMPTS}), giving up"
                 );
-                let _ = app.emit("daemon-status", serde_json::json!({ "status": "failed" }));
+                emit_frontend_event(
+                    &app,
+                    "daemon-status",
+                    serde_json::json!({ "status": "failed" }),
+                );
                 return;
             }
 
-            let _ = app.emit(
+            emit_frontend_event(
+                &app,
                 "daemon-status",
                 serde_json::json!({ "status": "reconnecting" }),
             );
@@ -575,7 +591,8 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                         crate::event_processor::reseed_daemon_watched_git_status(&app_for_reseed);
                     });
                 }
-                let _ = app.emit(
+                emit_frontend_event(
+                    &app,
                     "daemon-status",
                     serde_json::json!({ "status": "connected" }),
                 );
@@ -610,7 +627,8 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                                 );
                             });
                         }
-                        let _ = app.emit(
+                        emit_frontend_event(
+                            &app,
                             "daemon-status",
                             serde_json::json!({ "status": "connected" }),
                         );
@@ -707,7 +725,8 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                 crate::daemon::launcher::is_native_daemon(),
                             );
 
-                            let _ = app.emit(
+                            emit_frontend_event(
+                                &app,
                                 "sessions-updated",
                                 serde_json::json!({
                                     "version": update.version,

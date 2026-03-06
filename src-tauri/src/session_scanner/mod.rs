@@ -19,6 +19,7 @@ pub mod tmux;
 pub use cli_tool::CliTool;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -131,6 +132,10 @@ struct ScannerCache {
 
 static SCAN_CACHE: OnceLock<Mutex<ScannerCache>> = OnceLock::new();
 static TMUX_CHANGE_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+fn json_number_u64(value: u64) -> Value {
+    Value::Number(serde_json::Number::from(value))
+}
 
 /// Notify scanner cache that tmux layout metadata likely changed.
 ///
@@ -494,6 +499,42 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
         total_ms,
         sessions = sessions.len(),
         "session_scanner metrics"
+    );
+    let mut fields = Map::new();
+    fields.insert(
+        "process_scan_ms".to_string(),
+        json_number_u64(process_scan_ms),
+    );
+    fields.insert("tmux_ms".to_string(), json_number_u64(tmux_ms));
+    fields.insert(
+        "process_cache_hit".to_string(),
+        Value::Bool(process_cache_hit),
+    );
+    fields.insert("tmux_cache_hit".to_string(), Value::Bool(tmux_cache_hit));
+    fields.insert("classify_ms".to_string(), json_number_u64(classify_ms));
+    fields.insert(
+        "idle_ms".to_string(),
+        json_number_u64(idle_ms.as_millis() as u64),
+    );
+    fields.insert(
+        "process_signal_ms".to_string(),
+        json_number_u64(process_signal_ms.as_millis() as u64),
+    );
+    fields.insert(
+        "ownership_ms".to_string(),
+        json_number_u64(ownership_ms.as_millis() as u64),
+    );
+    fields.insert("duration_ms".to_string(), json_number_u64(total_ms));
+    fields.insert(
+        "session_count".to_string(),
+        Value::Number(serde_json::Number::from(sessions.len())),
+    );
+    crate::commands::logging::emit_global(
+        "debug",
+        "backend",
+        "session_scanner.scan.completed",
+        Some("Session scanner cycle completed".to_string()),
+        fields,
     );
 
     sessions

@@ -127,10 +127,15 @@ pub fn start_daemon(
 
     if let Some(ref daemon) = provider.daemon {
         if daemon.reconnect().is_ok() {
-            let _ = app.emit(
+            if let Err(error) = app.emit(
                 "daemon-status",
                 serde_json::json!({ "status": "connected" }),
-            );
+            ) {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to emit daemon-status event after reconnect"
+                );
+            }
             let result = Ok(OperationResult::success("Daemon started and connected"));
             span.finish_result(&result);
             return result;

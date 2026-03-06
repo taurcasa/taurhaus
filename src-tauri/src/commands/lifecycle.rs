@@ -132,7 +132,7 @@ impl IpcCommandSpan {
         fields.insert("error.code".to_string(), Value::String(error_code));
         fields.insert("error.message".to_string(), Value::String(error_message));
         logging::emit_global(
-            "warn",
+            "error",
             "backend",
             "ipc.command.failed",
             Some("IPC command failed".to_string()),

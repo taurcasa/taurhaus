@@ -89,7 +89,8 @@ pub(crate) fn refresh_project_git_status(
     }
 
     if emit_when_unchanged || changed {
-        let _ = app.emit(
+        emit_frontend_event(
+            app,
             "project-git-changed",
             serde_json::json!({
                 "project_id": project_id,
@@ -241,6 +242,26 @@ fn emit_search_file_index_failed_event(
         Some("Incremental file index update failed".to_string()),
         fields,
     );
+}
+
+fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: Value) {
+    if let Err(error) = app.emit(event_name, payload) {
+        tracing::warn!(
+            event_name,
+            error = %error,
+            "Failed to emit frontend event"
+        );
+    }
+}
+
+fn enqueue_task_trigger(
+    tx: &std::sync::mpsc::Sender<crate::bootstrap::TaskScanTrigger>,
+    trigger: crate::bootstrap::TaskScanTrigger,
+    source: &'static str,
+) {
+    if let Err(error) = tx.send(trigger) {
+        tracing::warn!(source, error = %error, "Failed to enqueue task scan trigger");
+    }
 }
 
 fn pending_git_status_retries() -> &'static Mutex<HashSet<String>> {
@@ -493,7 +514,11 @@ pub(crate) fn process_watch_events(
 
         // Fast-path: internal watch events (task directory) bypass batching.
         if is_internal_event(&first) {
-            let _ = task_trigger_tx.send(internal_task_trigger(&first));
+            enqueue_task_trigger(
+                &task_trigger_tx,
+                internal_task_trigger(&first),
+                "first_event",
+            );
             continue;
         }
 
@@ -511,7 +536,11 @@ pub(crate) fn process_watch_events(
             match rx.recv_timeout(timeout) {
                 Ok(event) => {
                     if is_internal_event(&event) {
-                        let _ = task_trigger_tx.send(internal_task_trigger(&event));
+                        enqueue_task_trigger(
+                            &task_trigger_tx,
+                            internal_task_trigger(&event),
+                            "batched_event",
+                        );
                     } else {
                         batch.accumulate(event);
                     }
@@ -609,7 +638,8 @@ pub(crate) fn process_watch_events(
             };
             match search::indexer::reindex_commits(&mut index, project_id, path, 50) {
                 Ok(count) if count > 0 => {
-                    let _ = app.emit(
+                    emit_frontend_event(
+                        &app,
                         "search-index-updated",
                         serde_json::json!({
                             "project_id": project_id,
@@ -634,7 +664,8 @@ pub(crate) fn process_watch_events(
             };
             match services::session_import::import_handoff(&conn, project_id, path) {
                 Ok(Some(session_id)) => {
-                    let _ = app.emit(
+                    emit_frontend_event(
+                        &app,
                         "session-imported",
                         serde_json::json!({
                             "project_id": project_id,
@@ -649,7 +680,8 @@ pub(crate) fn process_watch_events(
                     match search::indexer::index_session(&mut index, project_id, &session_id, &conn)
                     {
                         Ok(true) => {
-                            let _ = app.emit(
+                            emit_frontend_event(
+                                &app,
                                 "search-index-updated",
                                 serde_json::json!({
                                     "project_id": project_id,
@@ -688,7 +720,8 @@ pub(crate) fn process_watch_events(
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
                 .collect();
-            let _ = app.emit(
+            emit_frontend_event(
+                &app,
                 "project-files-changed",
                 serde_json::json!({
                     "project_id": project_id,
@@ -774,7 +807,8 @@ pub(crate) fn process_watch_events(
                 );
             }
             if updated > 0 {
-                let _ = app.emit(
+                emit_frontend_event(
+                    &app,
                     "search-index-updated",
                     serde_json::json!({
                         "project_id": project_id,
@@ -849,7 +883,8 @@ pub(crate) fn process_watch_events(
                         docs_updated = updated,
                         "gitignore changed — rebuilt project search index"
                     );
-                    let _ = app.emit(
+                    emit_frontend_event(
+                        &app,
                         "search-index-updated",
                         serde_json::json!({
                             "project_id": project_id,

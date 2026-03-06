@@ -426,7 +426,16 @@ fn determine_daemon_phase(conn: &rusqlite::Connection) -> DaemonPhase {
 }
 
 fn detect_wsl_distro(conn: &rusqlite::Connection) -> Option<String> {
-    let projects = db::queries::list_projects(conn).unwrap_or_default();
+    let projects = match db::queries::list_projects(conn) {
+        Ok(projects) => projects,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to list projects while detecting startup daemon distro"
+            );
+            Vec::new()
+        }
+    };
     if crate::daemon::launcher::is_native_daemon() {
         Some("native".to_string())
     } else {

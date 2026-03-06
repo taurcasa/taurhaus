@@ -49,6 +49,7 @@ mod test_support;
 use std::sync::Mutex;
 
 use tauri_plugin_window_state::StateFlags;
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 /// Managed state: holds the project provider for filesystem/git operations.
@@ -266,9 +267,15 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
 }
 
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    let default_directive = if cfg!(debug_assertions) {
+        LevelFilter::DEBUG
+    } else {
+        LevelFilter::INFO
+    };
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(default_directive.into())
+        .from_env_lossy();
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     #[cfg(target_os = "macos")]
     inherit_macos_shell_env();
