@@ -110,7 +110,7 @@ describe('Mesh flow smoke', () => {
         name: 'frontend-dev',
         role: 'member',
         cliTool: 'codex',
-        model: 'gpt-5.4-high',
+        model: 'gpt-5.4 high',
         projectId: 'proj-web',
         sessionStatus: 'idle',
         paneId: '%2',
@@ -184,7 +184,7 @@ describe('Mesh flow smoke', () => {
 
     listRoleTemplates.mockResolvedValue([
       { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
-      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.4-high' },
+      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.4 high' },
     ])
     listTeamPresets.mockResolvedValue([])
     getRoleTemplate.mockResolvedValue({ roleId: 'lead-default', instructions: 'Lead the team.' })

@@ -18,7 +18,7 @@ function createAgents(count) {
     id: `agent-${index + 1}`,
     name: `agent-${index + 1}`,
     tool: index % 2 === 0 ? 'codex' : 'gemini',
-    model: 'gpt-5.4-high',
+    model: 'gpt-5.4 high',
     status: index % 3 === 0 ? 'active' : 'idle',
   }))
 }

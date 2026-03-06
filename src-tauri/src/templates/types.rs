@@ -695,7 +695,7 @@ mod tests {
             kind: RoleKind::Agent,
             defaults: RoleDefaults {
                 cli_tool: CliTool::Codex,
-                model: "gpt-5.4-high".to_string(),
+                model: "gpt-5.4 high".to_string(),
                 default_name_pattern: "dev-{n}".to_string(),
             },
             instructions: "Execute scoped tasks.".to_string(),
@@ -731,7 +731,7 @@ mod tests {
                 project_binding: ProjectBinding::ExplicitProject,
                 project_id: Some("project-a".to_string()),
                 overrides: Some(SlotOverrides {
-                    model: Some("gpt-5.4-high".to_string()),
+                    model: Some("gpt-5.4 high".to_string()),
                     name_pattern: Some("dev-{n}".to_string()),
                     instructions_replace: Some("Replace instructions".to_string()),
                     instructions_append: Some("Append instructions".to_string()),
@@ -893,7 +893,7 @@ mod tests {
             kind: RoleKind::Agent,
             defaults: RoleDefaults {
                 cli_tool: CliTool::Codex,
-                model: "gpt-5.4-high".to_string(),
+                model: "gpt-5.4 high".to_string(),
                 default_name_pattern: "worker".to_string(),
             },
             instructions: "Agent".to_string(),

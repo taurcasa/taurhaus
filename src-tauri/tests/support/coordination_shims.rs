@@ -97,8 +97,10 @@ pub mod session_scanner {
                     if model.is_empty() || base.contains("-m ") || base.contains("--model") {
                         return base;
                     }
-                    let model = if model.eq_ignore_ascii_case("gpt-5.4") {
-                        "gpt-5.4-high".to_string()
+                    let model = if model.eq_ignore_ascii_case("gpt-5.4")
+                        || model.eq_ignore_ascii_case("gpt-5.4-high")
+                    {
+                        "gpt-5.4 high".to_string()
                     } else if model.eq_ignore_ascii_case("gpt-5.3") {
                         "gpt-5.3-codex".to_string()
                     } else {

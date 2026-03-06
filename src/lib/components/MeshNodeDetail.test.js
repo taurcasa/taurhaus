@@ -17,7 +17,7 @@ function renderDetail(props = {}) {
     name: 'frontend-dev',
     role: 'agent',
     tool: 'codex',
-    model: 'gpt-5.4-high',
+    model: 'gpt-5.4 high',
     status: 'active',
     projectId: 'taurhaus-web',
     description: 'Implements UI surface details for the mesh canvas.',
@@ -53,7 +53,7 @@ describe('MeshNodeDetail', () => {
     renderDetail()
 
     expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('frontend-dev')
-    expect(screen.getByTestId('mesh-node-detail-tool-model')).toHaveTextContent('Codex · gpt-5.4-high')
+    expect(screen.getByTestId('mesh-node-detail-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
     expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
     expect(screen.getByTestId('status-badge-active')).toBeInTheDocument()
   })
@@ -149,7 +149,7 @@ describe('MeshNodeDetail', () => {
         name: 'frontend-dev',
         role: 'agent',
         tool: 'codex',
-        model: 'gpt-5.4-high',
+        model: 'gpt-5.4 high',
         status: 'active',
         projectId: 'taurhaus-web',
         description: 'Implements UI surface details for the mesh canvas.',
@@ -191,7 +191,7 @@ describe('MeshNodeDetail', () => {
         name: 'frontend-dev',
         role: 'agent',
         tool: 'codex',
-        model: 'gpt-5.4-high',
+        model: 'gpt-5.4 high',
         status: 'active',
         projectId: 'taurhaus-web',
         description: 'Implements UI surface details for the mesh canvas.',
@@ -225,7 +225,7 @@ describe('MeshNodeDetail', () => {
         name: 'frontend-dev',
         role: 'agent',
         tool: 'codex',
-        model: 'gpt-5.4-high',
+        model: 'gpt-5.4 high',
         status: 'active',
         projectId: 'taurhaus-web',
         description: '',

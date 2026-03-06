@@ -84,7 +84,7 @@ export function createAgentMembers(count, {
       role: 'agent',
       tool,
       toolLabel,
-      model: tool === 'codex' ? 'gpt-5.4-high' : tool === 'gemini' ? '2.5-pro' : 'sonnet',
+      model: tool === 'codex' ? 'gpt-5.4 high' : tool === 'gemini' ? '2.5-pro' : 'sonnet',
       status: cycle(statusCycle, index),
       position: rowPosition(rowIndex, rowOffset, rowCount),
     })

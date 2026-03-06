@@ -9,7 +9,7 @@ kind: agent
 
 defaults:
   cli_tool: codex
-  model: gpt-5.4-high
+  model: "gpt-5.4 high"
   default_name_pattern: qa-{n}
 
 instructions: |

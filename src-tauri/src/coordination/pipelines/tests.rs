@@ -92,7 +92,7 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
             .expect("command"),
-        "codex --yolo -m 'gpt-5.4-high'"
+        "codex --yolo -m 'gpt-5.4 high'"
     );
 }
 

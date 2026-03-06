@@ -15,7 +15,7 @@
 
   const modelOptionsByTool = {
     claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-    codex: ['gpt-5.4-high', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-4o'],
+    codex: ['gpt-5.4 high', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-4o'],
     gemini: ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'],
   }
 

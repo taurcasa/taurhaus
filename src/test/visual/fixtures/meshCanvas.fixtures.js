@@ -52,10 +52,10 @@ export const runtime_fiveAgents_dark = createMeshCanvasScenario({
   theme: 'dark',
   agentCount: 5,
   agentOverrides: [
-    { id: 'architect', name: 'architect', tool: 'codex', model: 'gpt-5.4-high', status: 'active' },
-    { id: 'developer1', name: 'developer1', tool: 'codex', model: 'gpt-5.4-high', status: 'active' },
-    { id: 'developer2', name: 'developer2', tool: 'codex', model: 'gpt-5.4-high', status: 'active' },
-    { id: 'developer3', name: 'developer3', tool: 'codex', model: 'gpt-5.4-high', status: 'active' },
+    { id: 'architect', name: 'architect', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
+    { id: 'developer1', name: 'developer1', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
+    { id: 'developer2', name: 'developer2', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
+    { id: 'developer3', name: 'developer3', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
     { id: 'mesh-expert', name: 'mesh-expert', tool: 'gemini', model: '2.5-pro', status: 'active' },
   ],
 })
