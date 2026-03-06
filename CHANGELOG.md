@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Documentation
+
+- Synced `ARCHITECTURE.md`, `CLAUDE.md`, and `AGENTS.md` with current implementation details (80 registered IPC commands, updated module/build references).
+- Refreshed `docs/architecture/ipc-reference.md` to match the active command surface, including templates command coverage and split `src/lib/ipc/` frontend wrappers.
+- Updated `docs/coordination-architecture.md` to point to the practical orchestration direction and explicitly mark the v0.2 protocol design as archived.
+
 ## [0.5.1] - 2026-03-06
 
 ### Fixed

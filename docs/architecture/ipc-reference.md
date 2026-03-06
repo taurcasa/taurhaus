@@ -4,7 +4,7 @@ Reference for taurhaus Tauri IPC commands exposed from `src-tauri/src/commands/`
 
 ## Overview
 
-The backend currently registers 65 `#[tauri::command]` functions (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
+The backend currently registers 80 `#[tauri::command]` functions (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
 
 ## Projects commands
 
@@ -13,6 +13,7 @@ The backend currently registers 65 `#[tauri::command]` functions (with `mesh-bri
 | `list_projects` | none | `Result<Vec<ProjectSummary>, String>` | `projects.rs` | Lists all registered projects for the sidebar/project picker. |
 | `get_project` | `projectId: string` | `Result<ProjectDetail, String>` | `projects.rs` | Returns full metadata and summary data for one project. |
 | `register_project` | `path: string`, `name?: string` | `Result<ProjectDetail, String>` | `projects.rs` | Registers a project path in the database and returns saved details. |
+| `create_project` | `name: string`, `parentDir: string` | `Result<ProjectDetail, String>` | `projects.rs` | Creates a new git-initialized directory and registers it as a project. |
 | `update_project` | `projectId: string`, `fields: UpdateProjectFields` | `Result<ProjectDetail, String>` | `projects.rs` | Updates mutable project fields and returns the updated record. |
 | `remove_project` | `projectId: string` | `Result<(), String>` | `projects.rs` | Removes a project and related index/session metadata. |
 | `is_first_run` | none | `Result<bool, String>` | `projects.rs` | Returns whether the app has zero registered projects. |
@@ -28,9 +29,6 @@ The backend currently registers 65 `#[tauri::command]` functions (with `mesh-bri
 | `get_all_commits` | `projectId: string`, `limit?: number`, `offset?: number` | `Result<Vec<Commit>, String>` | `git.rs` | Returns paginated commit history for a project. |
 | `get_git_status` | `projectId: string` | `Result<GitStatus, String>` | `git.rs` | Returns branch/dirty/ahead-behind git status for a project. |
 | `get_remote_url` | `projectId: string` | `Result<Option<String>, String>` | `git.rs` | Returns normalized remote URL (prefers `origin`; SSH remotes normalized to HTTPS). |
-| `get_commit_files` | `projectPath: string`, `hash: string` | `Result<Vec<CommitFile>, String>` | `tasks.rs` | Returns files changed by a specific commit hash. |
-| `get_commit_diff` | `projectPath: string`, `hash: string`, `filePath: string` | `Result<Vec<DiffHunk>, String>` | `tasks.rs` | Returns parsed diff hunks for one file in one commit. |
-| `get_commits_in_range` | `projectPath: string`, `after: string`, `before: string` | `Result<GitCommitsInRangeResult, String>` | `tasks.rs` | Returns commits and changed files for a time range. |
 
 ## Files commands
 
@@ -73,24 +71,46 @@ The backend currently registers 65 `#[tauri::command]` functions (with `mesh-bri
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
-| `list_claude_sessions` | none | `Result<Vec<ClaudeSession>, String>` | `command_center.rs` | Lists active CLI sessions discovered from tmux/daemon state. |
-| `launch_claude_session` | `projectId: string`, `mode: LaunchMode`, `cliTool?: CliTool \| null` | `Result<LaunchSessionResult, String>` | `command_center.rs` | Starts a new Claude/Codex/Gemini session for a project. |
-| `stop_claude_session` | `tmuxPane: string`, `cliTool?: CliTool \| null` | `Result<(), String>` | `command_center.rs` | Stops a running session by tmux pane ID. |
+| `list_cli_sessions` | none | `Result<Vec<ClaudeSession>, String>` | `command_center.rs` | Lists active CLI sessions discovered from tmux/daemon state. |
+| `launch_cli_session` | `projectId: string`, `mode: LaunchMode`, `cliTool?: CliTool \| null` | `Result<LaunchSessionResult, String>` | `command_center.rs` | Starts a new Claude/Codex/Gemini session for a project. |
+| `stop_cli_session` | `tmuxPane: string`, `cliTool?: CliTool \| null` | `Result<(), String>` | `command_center.rs` | Stops a running session by tmux pane ID. |
 | `navigate_to_session` | `tmuxSession: string`, `tmuxWindow: string`, `tmuxPane: string`, `openTerminal?: boolean` | `Result<(), String>` | `command_center.rs` | Focuses/navigates the desktop terminal to a target session pane. |
 | `record_session_activity` | `projectPath: string`, `cliTool: string`, `startedAt: string`, `endedAt: string`, `activeDurationMs: number`, `totalDurationMs: number` | `Result<(), String>` | `command_center.rs` | Persists measured activity stats for a completed session. |
 | `get_project_activity` | `projectPath: string` | `Result<ProjectActivityStats, String>` | `command_center.rs` | Returns aggregated activity totals for a project path. |
 
 Session update behavior:
 - Tauri runtime uses event-driven `sessions-updated` (daemon long-poll bridge) for ongoing updates.
-- `list_claude_sessions` is still used for startup snapshot hydrate and for frontend-only mock-mode polling.
+- `list_cli_sessions` is still used for startup snapshot hydrate and for frontend-only mock-mode polling.
 
 ## Tasks commands
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
-| `get_project_tasks` | `projectPath: string` | `Result<TaskResult, String>` | `tasks.rs` | Returns persisted unified tasks (including `source_key`, archive metadata fields) for the project. |
-| `get_task_detail` | `projectPath: string`, `taskId: string`, `source: string`, `sourceKey: string` | `Result<TaskDetail, String>` | `tasks.rs` | Returns enriched task detail resolved by identity tuple `(source, sourceKey, taskId)`. |
-| `get_archived_sessions` | `projectPath: string` | `Result<ArchivedSessionsResult, String>` | `tasks.rs` | Returns archived session timeline data for history views. |
+| `get_project_tasks` | `projectId: string` | `Result<TaskResult, String>` | `tasks.rs` | Returns persisted unified tasks (including `source_key`, archive metadata fields) for the project. |
+| `get_task_detail` | `projectId: string`, `taskId: string`, `source: string`, `sourceKey: string` | `Result<TaskDetail, String>` | `tasks.rs` | Returns enriched task detail resolved by identity tuple `(source, sourceKey, taskId)`. |
+| `get_archived_sessions` | `projectId: string` | `Result<ArchivedSessionsResult, String>` | `tasks.rs` | Returns archived session timeline data for history views. |
+| `get_commit_files` | `projectId: string`, `hash: string` | `Result<Vec<CommitFile>, String>` | `tasks.rs` | Returns files changed by a specific commit hash. |
+| `get_commit_diff` | `projectId: string`, `hash: string`, `filePath: string` | `Result<Vec<DiffHunk>, String>` | `tasks.rs` | Returns parsed diff hunks for one file in one commit. |
+| `get_commits_in_range` | `projectId: string`, `after: string`, `before: string` | `Result<GitCommitsInRangeResult, String>` | `tasks.rs` | Returns commits and changed files for a time range. |
+
+## Templates commands
+
+| Command | Parameters (frontend args) | Return type | Module | Description |
+|---|---|---|---|---|
+| `templates_list_roles_full` | none | `Result<Vec<RoleTemplateFull>, String>` | `templates.rs` | Lists role templates with source/read-only metadata. |
+| `templates_get_role` | `roleId: string` | `Result<RoleTemplate, String>` | `templates.rs` | Returns one role template by id. |
+| `templates_upsert_role` | `request: TemplatesUpsertRoleRequest` | `Result<RoleTemplate, String>` | `templates.rs` | Creates or updates a role template. |
+| `templates_delete_role` | `roleId: string` | `Result<(), String>` | `templates.rs` | Deletes a user-defined role template. |
+| `templates_list_presets_full` | none | `Result<Vec<TeamPresetFull>, String>` | `templates.rs` | Lists team presets with source/read-only metadata. |
+| `templates_get_preset` | `presetId: string` | `Result<TeamPreset, String>` | `templates.rs` | Returns one team preset by id. |
+| `templates_upsert_preset` | `request: TemplatesUpsertPresetRequest` | `Result<TeamPreset, String>` | `templates.rs` | Creates or updates a team preset. |
+| `templates_delete_preset` | `presetId: string` | `Result<(), String>` | `templates.rs` | Deletes a user-defined team preset. |
+| `templates_compose_team` | `request: TemplatesComposeTeamRequest` | `Result<CompositionResult, String>` | `templates.rs` | Composes a runtime roster from role templates and preset-like slot input. |
+| `templates_get_storage_status` | none | `Result<TemplateStorageStatus, String>` | `templates.rs` | Returns storage mode, dirty state, and pending actions. |
+| `templates_get_history` | `limit?: number`, `cursor?: string \| null` | `Result<TemplateCommitPage, String>` | `templates.rs` | Returns paginated template git history. |
+| `templates_get_diff` | `commitId: string` | `Result<TemplateDiff, String>` | `templates.rs` | Returns the template diff for one commit id. |
+| `templates_revert` | `request: TemplateRevertRequest` | `Result<(), String>` | `templates.rs` | Reverts a template to a selected commit state. |
+| `templates_flush_pending` | none | `Result<TemplateFlushResult, String>` | `templates.rs` | Flushes pending template actions into a commit (used by E2E and maintenance flows). |
 
 ## Daemon commands
 
@@ -98,17 +118,16 @@ Session update behavior:
 |---|---|---|---|---|
 | `get_platform` | none | `String` | `daemon.rs` | Returns normalized host platform (`macos`, `linux`, `windows`). |
 | `get_daemon_status` | none | `Result<DaemonStatus, String>` | `daemon.rs` | Returns connection and runtime status for the daemon client. |
-| `start_daemon` | none | `Result<String, String>` | `daemon.rs` | Starts/restarts daemon processes and reapplies file watches. |
-| `stop_daemon` | none | `Result<String, String>` | `daemon.rs` | Stops daemon process management and watch loops. |
+| `start_daemon` | none | `Result<OperationResult, String>` | `daemon.rs` | Starts/restarts daemon processes and reapplies file watches. |
 | `check_daemon_install_status` | none | `Result<DaemonInstallStatus, String>` | `daemon.rs` | Returns daemon install/version/update status for onboarding UI. |
-| `install_daemon` | none | `Result<String, String>` | `daemon.rs` | Installs bundled daemon binary (or updates existing install). |
+| `install_daemon` | none | `Result<OperationResult, String>` | `daemon.rs` | Installs bundled daemon binary (or updates existing install). |
 
 ## Mesh install commands
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
 | `check_mesh_install_status` | none | `Result<MeshInstallStatus, String>` | `mesh.rs` | Checks installed mesh version vs bundled version and reports availability (native/WSL-aware). |
-| `install_mesh` | none | `Result<String, String>` | `mesh.rs` | Installs bundled mesh binary into the active environment (native or WSL). |
+| `install_mesh` | none | `Result<OperationResult, String>` | `mesh.rs` | Installs bundled mesh binary into the active environment (native or WSL). |
 
 ## Settings commands
 
@@ -121,7 +140,7 @@ Session update behavior:
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
-| `frontend_log` | `level: string`, `message: string` | `()` | `logging.rs` | Writes frontend log events to the shared backend log file. |
+| `frontend_log` | `payload?: FrontendLogPayload`, `level?: string` (legacy), `message?: string` (legacy) | `Result<(), String>` | `logging.rs` | Writes frontend structured log events to the shared backend JSONL sink (legacy level/message fields are still accepted). |
 
 ## Terminal settings
 
@@ -135,12 +154,13 @@ These commands are feature-gated behind `mesh-bridged-backend` (enabled by defau
 |---|---|---|---|---|
 | `coordination_create_team` | `teamName: string` | `Result<(), String>` | `coordination.rs` | Creates a persisted coordination team shell. |
 | `coordination_disband_team` | `teamName: string` | `Result<DisbandTeamResponse, String>` | `coordination.rs` | Disbands a team and returns status metadata for UI messaging. |
-| `coordination_add_member` | `teamName: string`, `memberName: string`, `backendKind: string` | `Result<(), String>` | `coordination.rs` | Adds a member definition to a team configuration. |
+| `coordination_add_member` | `teamName: string`, `memberName: string`, `backendKind: string`, `projectPath?: string \| null` | `Result<(), String>` | `coordination.rs` | Adds a member definition to a team configuration. |
 | `coordination_remove_member` | `teamName: string`, `memberName: string` | `Result<RemoveAgentReport, String>` | `coordination.rs` | Removes a member and returns teardown step diagnostics + warnings. |
 | `coordination_list_teams` | none | `Result<TeamDiscoveryResponse, String>` | `coordination.rs` | Lists discoverable coordination teams. |
 | `coordination_get_team_status` | `teamName: string` | `Result<TeamStatus, String>` | `coordination.rs` | Returns persisted team configuration and health summary. |
 | `coordination_initialize_team` | `request: InitializeTeamRequest` | `Result<InitializeReport, String>` | `coordination.rs` | Executes full team bootstrap (tmux, sessions, mesh onboarding). |
 | `coordination_add_agent` | `request: AddAgentRequest` | `Result<AddAgentReport, String>` | `coordination.rs` | Hot-adds one agent to an existing coordinated team. |
+| `coordination_resume_member` | `request: ResumeMemberRequest` | `Result<ResumeAgentReport, String>` | `coordination.rs` | Resumes an offline member in either continue or fresh mode. |
 | `coordination_reonboard` | `request: ReonboardRequest` | `Result<DeliveryResult, String>` | `coordination.rs` | Re-sends onboarding guidance to one member. |
 | `coordination_get_live_team_status` | `teamName: string` | `Result<LiveTeamStatus, String>` | `coordination.rs` | Returns runtime/live roster state (session status + pane IDs). |
 | `coordination_preflight_check` | `request: InitializeTeamRequest` | `Result<PreflightReport, String>` | `coordination.rs` | Validates prerequisites before initialization. |
@@ -148,19 +168,21 @@ These commands are feature-gated behind `mesh-bridged-backend` (enabled by defau
 
 ## Frontend usage
 
-### Wrapper pattern in `src/lib/ipc.js`
+### Wrapper pattern in `src/lib/ipc/`
 
-`src/lib/ipc.js` centralizes command calls via:
+The frontend IPC layer is split by domain modules under `src/lib/ipc/` and re-exported through `src/lib/ipc.js`.
+
+Shared invoke behavior lives in `src/lib/ipc/client.js`:
 
 - `invokeOrMock(command, args, mockFn)`
 - If `isTauri()` is true: dynamically imports `@tauri-apps/api/core` and calls `invoke(command, args)`
-- If false (frontend-only dev mode): returns `mockFn()` fallback data from `mockData.js`
+- If false (frontend-only dev mode): returns `mockFn()` fallback data from `src/lib/ipc/mocks/`
 
 This keeps UI code stable between full Tauri runs (`just dev`) and frontend-only runs.
 
 ### Error handling behavior
 
-`ipc.js` does not swallow backend errors; rejected `invoke(...)` promises propagate to callers.
+Domain wrappers in `src/lib/ipc/*.js` do not swallow backend errors; rejected `invoke(...)` promises propagate to callers.
 
 Exceptions used intentionally in this codebase:
 
@@ -171,13 +193,11 @@ Exceptions used intentionally in this codebase:
 
 ### Wrapper coverage and direct invokes
 
-Most commands in this reference have first-class wrappers in `ipc.js`. Notable direct/backend-only exceptions:
+Most commands in this reference have first-class wrappers in `src/lib/ipc/*.js`. Notable direct/backend-only exceptions:
 
 | Command | `ipc.js` wrapper | Notes |
 |---|---|---|
 | `frontend_log` | No | Called directly from `src/lib/logger.js` to patch console output. |
-| `start_daemon` | No | Called directly from `src/App.svelte` retry handler. |
-| `stop_daemon` | No | Registered backend command; currently no direct frontend wrapper call path. |
 
 Related frontend IPC surfaces:
 
@@ -190,7 +210,8 @@ Related frontend IPC surfaces:
 |---|---|
 | `src-tauri/src/lib.rs` | Registers all Tauri IPC commands via `generate_handler![]`. |
 | `src-tauri/src/commands/` | Backend command modules and command function definitions. |
-| `src/lib/ipc.js` | Frontend wrappers, invoke/mocks behavior, and command call surface. |
+| `src/lib/ipc/` | Frontend IPC domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`) and mocks. |
+| `src/lib/ipc.js` | Thin compatibility re-export for the `src/lib/ipc/` module surface. |
 | `src/lib/logger.js` | Direct frontend-to-backend logging IPC bridge for `frontend_log`. |
 
 ## Related documents

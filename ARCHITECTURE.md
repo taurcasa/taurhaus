@@ -79,7 +79,8 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `models/` | Shared data structures (Project, Session, ActivityState, etc.) |
 | `config/` | Application configuration |
 | `coordination/` | Multi-CLI team orchestration (behind `mesh-bridged-backend` feature flag) |
-| `bootstrap.rs` | Startup sequence: DB init, daemon connect, watcher, index, activity reseed |
+| `startup/` | Startup sequence orchestration (DB init, daemon connect, watcher/index bootstrap, task/session hydration) |
+| `sentinels.rs` | Shared sentinel/fallback utilities used by startup and command flows |
 | `event_processor.rs` | File/git event batching (300ms quiet window, 2s ceiling) |
 | `daemon_lifecycle.rs` | Daemon auto-launch, reconnection, shutdown |
 
@@ -103,7 +104,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (86)
+### IPC Commands (80)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
@@ -116,11 +117,11 @@ Grouped by command module:
 - **Relationships** (4): list/create/dismiss/remove
 - **Command Center** (6): launch/stop/navigate/list/record activity
 - **Tasks** (6): board data + detail + archive + commit context helpers
-- **Daemon** (6): platform/status/start/stop/install checks
+- **Daemon** (5): platform/status/start/install checks
 - **Mesh install** (2): check/install mesh binary
 - **Settings** (2): get/update
 - **Coordination** (13): team lifecycle + member lifecycle + live/preflight
-- **Templates** (19): role/preset CRUD, composition, storage status, history/diff/revert/import/flush/apply
+- **Templates** (14): role/preset CRUD, composition, storage status, history/diff/revert/flush
 - **Logging** (1): frontend `console.*` is bridged to `frontend_log` IPC with structured payloads. Backend emits structured events into a JSONL sink at `taurhaus.log.jsonl`.
 
 ### Logging and Observability
@@ -269,7 +270,7 @@ File changes detected
 CLI session state changes
   → Daemon bridge emits sessions-updated event to frontend
   → Frontend session store applies delta and refreshes indicators
-  → Startup hydration uses list_claude_sessions once (mock mode uses polling fallback)
+  → Startup hydration uses list_cli_sessions once (mock mode uses polling fallback)
   → Backend scanner inspects /proc (Linux) or libproc (macOS)
   → Sidebar shows tool indicator (active/idle)
   → HoverCard shows full session details on hover
@@ -284,12 +285,12 @@ just dev              # Tauri dev mode (hot-reload)
 just build-windows    # Sync to D:\, bun install, cargo build natively via cmd.exe
 just build-macos      # Sync to Mac Mini, build ARM DMG via SSH
 just build-macos-intel # Build Intel (x86_64) DMG via SSH
+just check-quick      # Fast iteration gate: fmt + cargo check --tests + frontend typecheck/tests
 just check            # Full gate: fmt + lint + typecheck + just test
 just test             # All non-E2E tests (Rust + frontend)
 just test-fast        # Fast lane: cargo check --tests + frontend tests
 just metrics          # Quality KPI report snapshot
 just test-macos       # Run Rust tests on Mac Mini via SSH
-just agent-quality    # Rust implementation quality gate: fmt + clippy + check --tests
 ```
 
 ## Key Decisions
