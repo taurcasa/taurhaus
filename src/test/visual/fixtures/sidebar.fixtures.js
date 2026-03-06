@@ -444,6 +444,55 @@ export const team_rail_three_light = createScenario({
   },
 })
 
+export const team_rail_two_light = createScenario({
+  name: 'team_rail_two_light',
+  theme: 'light',
+  projects: [teamRailTwoProject],
+  selectedProject: teamRailTwoProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-rail-pair': [
+        createSession({
+          pid: 11,
+          cli_tool: 'claude',
+          state: 'active',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-pair',
+          group_label: 'team-rail-pair',
+          member_name: 'team-lead',
+        }),
+        createSession({
+          pid: 12,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%4',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-pair',
+          group_label: 'team-rail-pair',
+          member_name: 'developer2',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-rail-pair': createSession({
+        pid: 11,
+        cli_tool: 'claude',
+        state: 'active',
+        group_kind: 'mesh_team',
+        group_id: 'team-rail-pair',
+        group_label: 'team-rail-pair',
+        member_name: 'team-lead',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Rail Pair', 'Claude: running', 'Codex: idle', 'Connected'],
+    selectedProjectName: 'Team Rail Pair',
+  },
+  compareAgainst: 'team_rail_two_dark',
+})
+
 export const team_stack_mixed_dark = createScenario({
   name: 'team_stack_mixed_dark',
   theme: 'dark',
@@ -522,6 +571,87 @@ export const team_stack_mixed_dark = createScenario({
     labels: ['Team Stack Mixed', 'team-stack-mixed: 5 team sessions active', 'Connected'],
     selectedProjectName: 'Team Stack Mixed',
   },
+})
+
+export const team_stack_mixed_light = createScenario({
+  name: 'team_stack_mixed_light',
+  theme: 'light',
+  projects: [teamStackMixedProject],
+  selectedProject: teamStackMixedProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-stack-mixed': [
+        createSession({
+          pid: 31,
+          cli_tool: 'claude',
+          state: 'active',
+          tmux_pane: '%31',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'team-lead',
+        }),
+        createSession({
+          pid: 32,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%32',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer1',
+        }),
+        createSession({
+          pid: 33,
+          cli_tool: 'gemini',
+          state: 'idle',
+          tmux_pane: '%33',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer2',
+        }),
+        createSession({
+          pid: 34,
+          cli_tool: 'codex',
+          state: 'active',
+          tmux_pane: '%34',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer3',
+        }),
+        createSession({
+          pid: 35,
+          cli_tool: 'claude',
+          state: 'idle',
+          tmux_pane: '%35',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer4',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-stack-mixed': createSession({
+        pid: 31,
+        cli_tool: 'claude',
+        state: 'active',
+        tmux_pane: '%31',
+        group_kind: 'mesh_team',
+        group_id: 'team-stack-mixed',
+        group_label: 'team-stack-mixed',
+        member_name: 'team-lead',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Stack Mixed', 'team-stack-mixed: 5 team sessions active', 'Connected'],
+    selectedProjectName: 'Team Stack Mixed',
+  },
+  compareAgainst: 'team_stack_mixed_dark',
 })
 
 export const team_plus_standalone_dark = createScenario({
@@ -654,8 +784,10 @@ export const sidebarScenarios = [
   active_claude_selected_light,
   groupHeaders_dark,
   team_rail_two_dark,
+  team_rail_two_light,
   team_rail_three_light,
   team_stack_mixed_dark,
+  team_stack_mixed_light,
   team_plus_standalone_dark,
   team_rail_threshold_dark,
 ]

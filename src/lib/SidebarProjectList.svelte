@@ -88,8 +88,8 @@
               {#if ind.kind === 'team'}
                 <span
                   class={ind.layout === 'stack'
-                    ? `sidebar-session-team-stack shrink-0 ${ind.colorClass}`
-                    : `sidebar-session-team-rail shrink-0 ${ind.colorClass}`}
+                    ? 'sidebar-session-team sidebar-session-team-stack shrink-0'
+                    : 'sidebar-session-team sidebar-session-team-rail shrink-0'}
                   data-activity={ind.tone}
                   aria-label={ind.ariaLabel}
                   data-testid="sidebar-team-indicator"
@@ -101,7 +101,7 @@
                           class="sidebar-session-team-stack-logo"
                           class:sidebar-session-team-stack-logo-first={index === 0}
                         >
-                          <svg class="w-[12px] h-[12px]" viewBox={tool.icon.viewBox} fill="currentColor">
+                          <svg class="sidebar-session-team-stack-glyph" viewBox={tool.icon.viewBox} fill="currentColor">
                             <path d={tool.icon.path}></path>
                           </svg>
                         </span>
@@ -111,7 +111,7 @@
                   {:else}
                     {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
                       <span class="sidebar-session-team-rail-logo" aria-hidden="true">
-                        <svg class="w-[12px] h-[12px]" viewBox={memberTool.icon.viewBox} fill="currentColor">
+                        <svg class="sidebar-session-team-rail-glyph" viewBox={memberTool.icon.viewBox} fill="currentColor">
                           <path d={memberTool.icon.path}></path>
                         </svg>
                       </span>

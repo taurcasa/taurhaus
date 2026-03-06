@@ -13,8 +13,8 @@ function toolName(session) {
 }
 
 /** Get the SVG icon data for a session's CLI tool. */
-export function toolIcon(session) {
-  return getToolIcon(session?.cli_tool || 'claude')
+export function toolIcon(session, variant = 'default') {
+  return getToolIcon(session?.cli_tool || 'claude', variant)
 }
 
 /** Return true when a row has an active or idle session. */
@@ -53,7 +53,7 @@ function compareGroupedMembers(left, right) {
   return toolName(left).localeCompare(toolName(right))
 }
 
-export function uniqueTools(sessions) {
+export function uniqueTools(sessions, variant = 'default') {
   if (!Array.isArray(sessions) || sessions.length === 0) return []
 
   const seen = new Set()
@@ -75,7 +75,8 @@ export function uniqueTools(sessions) {
   return ordered.map(tool => ({
     tool,
     fullName: getToolName(tool),
-    icon: getToolIcon(tool),
+    icon: getToolIcon(tool, variant),
+    iconVariant: variant,
   }))
 }
 
@@ -85,7 +86,7 @@ function buildTeamIndicator(group) {
   const count = members.length
   const activityLabel = isActive ? 'active' : 'idle'
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
-  const tools = uniqueTools(members).slice(0, 3)
+  const tools = uniqueTools(members, 'sidebarSmall').slice(0, 3)
 
   return {
     kind: 'team',
@@ -98,7 +99,8 @@ function buildTeamIndicator(group) {
     memberTools: members.map(member => ({
       tool: member?.cli_tool || 'claude',
       fullName: getToolName(member?.cli_tool || 'claude'),
-      icon: getToolIcon(member?.cli_tool || 'claude'),
+      icon: getToolIcon(member?.cli_tool || 'claude', 'sidebarSmall'),
+      iconVariant: 'sidebarSmall',
     })),
     isActive,
     interactive: false,
@@ -230,6 +232,7 @@ function singleSessionIndicator(session) {
     label: name[0],
     fullName: name,
     icon,
+    iconVariant: 'default',
     isActive,
     isUnattributed,
     interactive,

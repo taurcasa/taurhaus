@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { groupedSessionIndicators, hasLiveSession, isActiveSession, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
+import { getToolIcon } from './toolLogos.js'
 
 function session(overrides = {}) {
   return {
@@ -191,6 +192,8 @@ describe('sessionIndicator', () => {
     })
     expect(indicators[0].members.map(member => member.member_name)).toEqual(['lead', 'developer2'])
     expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex'])
+    expect(indicators[0].memberTools.map(tool => tool.iconVariant)).toEqual(['sidebarSmall', 'sidebarSmall'])
+    expect(indicators[0].memberTools[0].icon).toEqual(getToolIcon('claude', 'sidebarSmall'))
   })
 
   it('toolIndicators keeps 1-3 total live sessions as individual logos even when they share a team', () => {
@@ -231,9 +234,9 @@ describe('sessionIndicator', () => {
       layout: 'rail',
       count: 2,
       isActive: true,
-      colorClass: 'text-success-300',
     })
     expect(indicators.slice(1).map(indicator => indicator.fullName)).toEqual(['Gemini', 'Claude'])
+    expect(indicators.slice(1).every(indicator => indicator.iconVariant === 'default')).toBe(true)
   })
 
   it('toolIndicators uses a stacked unique-tool group at 4+ team members and keeps standalone sessions visible', () => {
@@ -252,9 +255,10 @@ describe('sessionIndicator', () => {
       layout: 'stack',
       count: 4,
       isActive: true,
-      colorClass: 'text-success-300',
     })
     expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(indicators[0].tools.map(tool => tool.iconVariant)).toEqual(['sidebarSmall', 'sidebarSmall', 'sidebarSmall'])
+    expect(indicators[0].tools[1].icon).toEqual(getToolIcon('codex', 'sidebarSmall'))
     expect(indicators[1]).toMatchObject({
       kind: 'session',
       fullName: 'Gemini',
@@ -272,7 +276,6 @@ describe('sessionIndicator', () => {
     expect(indicators[0].kind).toBe('team')
     expect(indicators[0].isActive).toBe(false)
     expect(indicators[0].layout).toBe('stack')
-    expect(indicators[0].colorClass).toBe('text-warning-300')
     expect(indicators[0].ariaLabel).toContain('idle')
   })
 

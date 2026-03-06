@@ -218,10 +218,9 @@ describe('Sidebar component branches', () => {
         count: 2,
         tone: 'active',
         isActive: true,
-        colorClass: 'text-success-300',
         memberTools: [
-          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
-          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
         ],
         ariaLabel: 'team-a: 2 team sessions active',
       },

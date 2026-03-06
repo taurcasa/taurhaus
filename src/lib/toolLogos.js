@@ -26,6 +26,22 @@ export const TOOL_ICONS = {
   },
 }
 
+/** Simplified small variants tuned for dense 12-13px sidebar rendering. */
+export const TOOL_SIDEBAR_SMALL_ICONS = {
+  claude: {
+    viewBox: '0 0 16 16',
+    path: 'M8 0.9l1.38 3.36 3.58-.9-.9 3.56L15.1 8l-3.04 1.08.9 3.56-3.58-.9L8 15.1l-1.38-3.36-3.58.9.9-3.56L.9 8l3.04-1.08-.9-3.56 3.58.9z',
+  },
+  codex: {
+    viewBox: '0 0 16 16',
+    path: 'M7.95 1.4c.98 0 1.77.79 1.77 1.77v1.01l.87-.5c.84-.49 1.92-.2 2.41.64.49.84.2 1.92-.64 2.41l-.87.5.87.5c.84.49 1.13 1.57.64 2.41-.49.84-1.57 1.13-2.41.64l-.87-.5v1.01c0 .98-.79 1.77-1.77 1.77s-1.77-.79-1.77-1.77v-1.01l-.87.5c-.84.49-1.92.2-2.41-.64-.49-.84-.2-1.92.64-2.41l.87-.5-.87-.5c-.84-.49-1.13-1.57-.64-2.41.49-.84 1.57-1.13 2.41-.64l.87.5V3.17c0-.98.79-1.77 1.77-1.77zM8 5.68A2.32 2.32 0 108 10.32 2.32 2.32 0 108 5.68z',
+  },
+  gemini: {
+    viewBox: '0 0 16 16',
+    path: 'M8 0.7c.3 0 .56.2.63.49.49 1.95 1.2 3.48 2.13 4.58.93.93 2.46 1.64 4.58 2.13.29.07.49.33.49.63 0 .3-.2.56-.49.63-1.95.49-3.48 1.2-4.58 2.13-.93.93-1.64 2.46-2.13 4.58-.07.29-.33.49-.63.49-.3 0-.56-.2-.63-.49-.49-1.95-1.2-3.48-2.13-4.58-.93-.93-2.46-1.64-4.58-2.13A.65.65 0 010 8c0-.3.2-.56.49-.63 1.95-.49 3.48-1.2 4.58-2.13.93-.93 1.64-2.46 2.13-4.58A.65.65 0 018 .7z',
+  },
+}
+
 /** Display names for each CLI tool. */
 export const TOOL_NAMES = {
   claude: 'Claude',
@@ -34,7 +50,10 @@ export const TOOL_NAMES = {
 }
 
 /** Get icon data for a tool key, with claude fallback. */
-export function getToolIcon(tool) {
+export function getToolIcon(tool, variant = 'default') {
+  if (variant === 'sidebarSmall') {
+    return TOOL_SIDEBAR_SMALL_ICONS[tool] || TOOL_SIDEBAR_SMALL_ICONS.claude
+  }
   return TOOL_ICONS[tool] || TOOL_ICONS.claude
 }
 
