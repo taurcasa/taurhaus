@@ -62,19 +62,26 @@ A living reference of observed behavioral traits, communication patterns, and ef
 
 ### Communication Template (What Works)
 ```
-EXECUTE Task #NNN now.
+ACTION REQUIRED: Implement [task description].
 Read `path/to/file.rs` and [specific investigation action].
 Then [concrete next step].
 [Expected deliverable].
 Run `just check-quick` as quality gate.
-No response needed — report findings when done.
+Mark task complete and report when done.
 ```
+
+**Message prefix convention:**
+- `ACTION REQUIRED:` — task that needs immediate execution (default for all assignments)
+- `INFO ONLY:` — context/background that does NOT need a response or action
+
+The prefix is the first thing the model reads and sets the execution expectation immediately.
 
 ### Communication Anti-patterns (What Fails)
 ```
 You have task #NNN assigned. Start working on it.     -- stalls after reading task
 Great work on #NNN! You're free for the next task.    -- stalls on ack
 Can you check your messages?                          -- reads messages, stops
+Status on #NNN?                                       -- reports status, stops
 ```
 
 ---

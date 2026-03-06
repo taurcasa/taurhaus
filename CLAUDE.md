@@ -28,6 +28,48 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 - **Bun-only JS workflows**: Use `bun install`, `bun run`, and `bunx`. Do not use `npm` or `npx` in this repo.
 - **No over-engineering**: Don't abstract until there's actual duplication. Three similar lines beat a premature abstraction.
 
+## Orchestration Protocol
+
+Use these conventions for all team orchestration messages.
+
+### Assignment Checklist (Mandatory)
+
+- Objective in one sentence.
+- Exact deliverable path or output contract.
+- Concrete first action (imperative verb + specific file/path).
+- Completion signal: "mark task complete and report".
+- Explicit response expectation (`no_response_needed` where applicable).
+
+### Message Prefix Convention
+
+- `ACTION REQUIRED:` for messages that require immediate execution.
+- `INFO ONLY:` for context that does not need a response; end with "no response needed".
+
+### Anti-Pattern Rules
+
+- No pure acknowledgments to active assignees.
+- No "check messages" without explicit action.
+- No split assignment across multiple micro-messages.
+- No "You have task X assigned" framing; give direct execution instructions.
+
+### Embedded `orchestration_v1` Template
+
+```text
+[orchestration_v1]
+intent: assign|nudge|info|close
+task_id: <task-id-or-empty>
+no_response_needed: true|false
+first_step: <single concrete first action>
+deliverable: <artifact path or output contract>
+completion_signal: <required completion response>
+precedence: <ordered policy list>
+[/orchestration_v1]
+
+<human-readable body>
+```
+
+Full protocol design: `docs/architecture/orchestration-protocol-design.md`
+
 ## Logging
 
 Unified structured logging pipeline:
