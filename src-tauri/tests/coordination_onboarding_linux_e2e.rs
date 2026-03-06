@@ -227,7 +227,7 @@ exit 0
     assert!(log.contains("--agent-name team-lead"));
     assert!(log.contains("--agent-id team-lead@linux-onboarding-e2e"));
     assert!(log.contains("--agent-type orchestrator"));
-    assert!(log.contains("tmux:send-keys -t %2 -l codex --yolo -m 'gpt-5.4-high'"));
+    assert!(log.contains("tmux:send-keys -t %2 -l codex --yolo -m 'gpt-5.3-codex'"));
     assert!(log.contains("tmux:send-keys -t %3 -l gemini --yolo"));
     assert!(log.contains("tmux:send-keys -t %1 Enter"));
     assert!(log.contains("tmux:send-keys -t %2 Enter"));
