@@ -127,6 +127,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 |--------|-------------|
 | `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
 | `just dev-frontend` | Frontend dev server only (no Rust backend) |
+| `just test-visual` | Browser-mode visual screenshot lane for mocked component states. |
 | `just metrics` | Quality KPI snapshot (tests, coverage, build health, code size, E2E inventory). |
 | `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |

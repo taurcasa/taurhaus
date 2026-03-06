@@ -124,6 +124,10 @@ test-rust-bisect-orchestrator:
 test-frontend:
     bun run test
 
+# Run browser-mode visual screenshot tests only.
+test-visual:
+    bunx vitest run --config vitest.visual.config.js
+
 # Run frontend tests in watch mode
 test-watch:
     bun run test:watch
