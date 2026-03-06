@@ -38,11 +38,11 @@ fn update_settings_with_span(
     settings: Settings,
 ) -> Result<Settings, String> {
     let span = IpcCommandSpan::start("update_settings");
-    let result = (|| {
+    let result = {
         let updated = update_settings_impl(db, settings)?;
         crate::startup::watchers::reconcile_activity_watches(app, "settings_updated");
         Ok(updated)
-    })();
+    };
     span.finish_result(&result);
     result
 }

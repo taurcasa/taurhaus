@@ -24,7 +24,7 @@ pub fn list_cli_sessions(
     provider: State<'_, ProviderState>,
 ) -> Result<Vec<ClaudeSession>, String> {
     let span = IpcCommandSpan::start("list_cli_sessions");
-    let result = (|| {
+    let result = {
         if let Some(ref daemon) = provider.daemon {
             if daemon.is_connected() {
                 let id = "list-sessions";
@@ -67,7 +67,7 @@ pub fn list_cli_sessions(
         tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
         promote_activity_from_sessions(&app, db.inner(), &fallback);
         Ok(fallback)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -421,7 +421,7 @@ pub fn navigate_to_session(
     open_terminal: Option<bool>,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("navigate_to_session");
-    let result = (|| {
+    let result = {
         let should_open = open_terminal.unwrap_or(false);
 
         let mut navigation_fields = Map::new();
@@ -488,7 +488,7 @@ pub fn navigate_to_session(
 
         crate::session_scanner::control::navigate_to_pane(&tmux_session, &tmux_window, &tmux_pane)
             .map_err(|e| format!("Failed to navigate: {e}"))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -547,11 +547,11 @@ pub fn get_project_activity(
     project_id: String,
 ) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
     let span = IpcCommandSpan::start("get_project_activity");
-    let result = (|| {
+    let result = {
         let project_path = resolve_project_path(db.inner(), &project_id)?;
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::activity_queries::get_project_activity(&conn, &project_path).sanitize_err()
-    })();
+    };
     span.finish_result(&result);
     result
 }

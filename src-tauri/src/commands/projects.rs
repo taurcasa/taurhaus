@@ -45,11 +45,11 @@ pub struct DiscoveredProject {
 #[tauri::command]
 pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, String> {
     let span = IpcCommandSpan::start("list_projects");
-    let result = (|| {
+    let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         project::list_projects(&conn, &settings.thresholds).sanitize_err()
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -61,7 +61,7 @@ pub fn get_project(
     project_id: String,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("get_project");
-    let result = (|| {
+    let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         // Project selection is explicit user activity; promote on read.
@@ -72,7 +72,7 @@ pub fn get_project(
 
         crate::startup::watchers::reconcile_activity_watches(&app, "project_selected");
         Ok(detail)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -85,7 +85,7 @@ pub fn register_project(
     name: Option<String>,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("register_project");
-    let result = (|| {
+    let result = {
         let expanded = expand_tilde(&path);
         let detail = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -98,7 +98,7 @@ pub fn register_project(
         reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
         Ok(detail)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -163,7 +163,7 @@ pub fn create_project(
     parent_dir: String,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("create_project");
-    let result = (|| {
+    let result = {
         let expanded_parent = expand_tilde(&parent_dir);
         let detail = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -175,7 +175,7 @@ pub fn create_project(
         reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
         Ok(detail)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -187,7 +187,7 @@ pub fn update_project(
     fields: UpdateProjectFields,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("update_project");
-    let result = (|| {
+    let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         let thresholds = settings.thresholds;
@@ -203,7 +203,7 @@ pub fn update_project(
 
         // Return the updated project.
         project::get_project(&conn, &project_id, &thresholds).sanitize_err()
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -215,7 +215,7 @@ pub fn remove_project(
     project_id: String,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("remove_project");
-    let result = (|| {
+    let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         project::remove_project(&conn, &project_id).sanitize_err()?;
 
@@ -232,7 +232,7 @@ pub fn remove_project(
             }
         }
         Ok(())
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -240,11 +240,11 @@ pub fn remove_project(
 #[tauri::command]
 pub fn is_first_run(db: State<'_, DbState>) -> Result<bool, String> {
     let span = IpcCommandSpan::start("is_first_run");
-    let result = (|| {
+    let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let count = crate::db::queries::project_count(&conn).sanitize_err()?;
         Ok(count == 0)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -267,7 +267,7 @@ pub fn register_projects_batch(
     paths: Vec<String>,
 ) -> Result<Vec<BatchRegistrationResult>, String> {
     let span = IpcCommandSpan::start("register_projects_batch");
-    let result = (|| {
+    let result = {
         let results = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
@@ -313,7 +313,7 @@ pub fn register_projects_batch(
             }
         }
         Ok(results)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -386,7 +386,7 @@ fn reseed_activity_for_project(
 #[tauri::command]
 pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
     let span = IpcCommandSpan::start("scan_directory");
-    let result = (|| {
+    let result = {
         let expanded = expand_tilde(&path);
         let results = crate::services::scanner::scan_directory(std::path::Path::new(&expanded), 2)?;
         Ok(results
@@ -397,7 +397,7 @@ pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
                 has_git: d.has_git,
             })
             .collect())
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -416,7 +416,7 @@ pub struct DirectoryEntry {
 #[tauri::command]
 pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
     let span = IpcCommandSpan::start("list_directory");
-    let result = (|| {
+    let result = {
         let expanded = expand_tilde(&path);
         let dir = std::path::Path::new(&expanded);
 
@@ -466,7 +466,7 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
 
         entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         Ok(entries)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -565,7 +565,7 @@ pub fn validate_project_path(
     path: String,
 ) -> Result<PathValidation, String> {
     let span = IpcCommandSpan::start("validate_project_path");
-    let result = (|| {
+    let result = {
         let expanded = expand_tilde(&path);
         let dir = std::path::Path::new(&expanded);
 
@@ -588,7 +588,7 @@ pub fn validate_project_path(
             is_git_repo,
             is_registered,
         })
-    })();
+    };
     span.finish_result(&result);
     result
 }

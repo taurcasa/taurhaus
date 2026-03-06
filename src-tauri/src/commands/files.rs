@@ -30,13 +30,13 @@ pub fn get_file_tree(
     project_id: String,
 ) -> Result<Vec<FileTreeNode>, String> {
     let span = IpcCommandSpan::start("get_file_tree");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let provider = providers.resolve(&path);
         provider
             .file_tree(&path)
             .map_err(|e| sanitize_error(&e.to_string()))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -103,7 +103,7 @@ pub fn read_file(
     relative_path: String,
 ) -> Result<FileContent, String> {
     let span = IpcCommandSpan::start("read_file");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         // Normalize backslashes — search index on Windows may store paths with
         // backslashes (e.g. "tests\test_integration.py") that the Linux daemon
@@ -113,7 +113,7 @@ pub fn read_file(
         provider
             .read_file(&path, &relative_path)
             .map_err(|e| sanitize_error(&e.to_string()))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -125,12 +125,12 @@ pub fn check_path_type(
     relative_path: String,
 ) -> Result<String, String> {
     let span = IpcCommandSpan::start("check_path_type");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         classify_path_type(Path::new(&path), &relative_path)
             .map(|kind| kind.to_string())
             .map_err(|e| sanitize_error(&e))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -142,7 +142,7 @@ pub fn get_readme(
     project_id: String,
 ) -> Result<Option<FileContent>, String> {
     let span = IpcCommandSpan::start("get_readme");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let is_wsl = crate::provider::path::is_wsl_path(&path);
         let has_daemon = providers.daemon.as_ref().is_some_and(|d| d.is_connected());
@@ -171,7 +171,7 @@ pub fn get_readme(
             tracing::debug!(project_id, "get_readme: no README found");
         }
         Ok(result)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -186,7 +186,7 @@ pub fn read_project_asset(
     relative_path: String,
 ) -> Result<String, String> {
     let span = IpcCommandSpan::start("read_project_asset");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let relative_path = relative_path.replace('\\', "/");
         let provider = providers.resolve(&path);
@@ -197,7 +197,7 @@ pub fn read_project_asset(
         let mime = mime_from_extension(&relative_path);
         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
         Ok(format!("data:{mime};base64,{b64}"))
-    })();
+    };
     span.finish_result(&result);
     result
 }

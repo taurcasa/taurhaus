@@ -104,13 +104,13 @@ pub fn get_recent_commits(
     limit: Option<usize>,
 ) -> Result<Vec<Commit>, String> {
     let span = IpcCommandSpan::start("get_recent_commits");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let provider = providers.resolve(&path);
         provider
             .recent_commits(&path, limit.unwrap_or(10).min(500))
             .map_err(|e| sanitize_error(&e.to_string()))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -124,13 +124,13 @@ pub fn get_all_commits(
     offset: Option<usize>,
 ) -> Result<Vec<Commit>, String> {
     let span = IpcCommandSpan::start("get_all_commits");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let provider = providers.resolve(&path);
         provider
             .all_commits(&path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
             .map_err(|e| sanitize_error(&e.to_string()))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -142,13 +142,13 @@ pub fn get_git_status(
     project_id: String,
 ) -> Result<GitStatus, String> {
     let span = IpcCommandSpan::start("get_git_status");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let provider = providers.resolve(&path);
         provider
             .git_status(&path)
             .map_err(|e| sanitize_error(&e.to_string()))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -159,11 +159,11 @@ pub fn get_remote_url(
     project_id: String,
 ) -> Result<Option<String>, String> {
     let span = IpcCommandSpan::start("get_remote_url");
-    let result = (|| {
+    let result = {
         let path = resolve_project_path(&db, &project_id)?;
         let repo = git2::Repository::open(&path).map_err(|e| sanitize_error(&e.to_string()))?;
         Ok(resolve_normalized_remote_url(&repo))
-    })();
+    };
     span.finish_result(&result);
     result
 }

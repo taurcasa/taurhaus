@@ -11,14 +11,14 @@ const MESH_VERSION_RESOURCE: &str = "mesh.version";
 #[tauri::command]
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
     let span = IpcCommandSpan::start("check_mesh_install_status");
-    let result = (|| {
+    let result = {
         let bundled_version = read_bundled_mesh_version(&app)?;
         if is_native_daemon() {
             check_mesh_install_native(&bundled_version)
         } else {
             check_mesh_install_wsl(&bundled_version)
         }
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -26,14 +26,14 @@ pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallSta
 #[tauri::command]
 pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let span = IpcCommandSpan::start("install_mesh");
-    let result = (|| {
+    let result = {
         let (bundled_binary, bundled_version) = resolve_bundled_mesh_assets(&app)?;
         if is_native_daemon() {
             install_mesh_native(&bundled_binary, &bundled_version)
         } else {
             install_mesh_wsl(&bundled_binary, &bundled_version)
         }
-    })();
+    };
     span.finish_result(&result);
     result
 }

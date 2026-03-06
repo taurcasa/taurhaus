@@ -56,7 +56,7 @@ pub fn coordination_initialize_team(
     request: InitializeTeamRequest,
 ) -> IpcResult<InitializeReport> {
     let span = IpcCommandSpan::start("coordination_initialize_team");
-    let result = (|| {
+    let result = {
         let request = normalize_initialize_request_paths(&db, request)?;
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let mut emit = |event: &StepProgressEvent| {
@@ -70,7 +70,7 @@ pub fn coordination_initialize_team(
             Some(&mut emit),
         )
         .ipc()
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -83,7 +83,7 @@ pub fn coordination_add_agent(
     request: AddAgentRequest,
 ) -> IpcResult<AddAgentReport> {
     let span = IpcCommandSpan::start("coordination_add_agent");
-    let result = (|| {
+    let result = {
         let request = normalize_add_agent_request_path(&db, request)?;
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let mut emit = |event: &StepProgressEvent| {
@@ -97,7 +97,7 @@ pub fn coordination_add_agent(
             Some(&mut emit),
         )
         .ipc()
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -110,7 +110,7 @@ pub fn coordination_resume_member(
     request: ResumeMemberRequest,
 ) -> IpcResult<ResumeAgentReport> {
     let span = IpcCommandSpan::start("coordination_resume_member");
-    let result = (|| {
+    let result = {
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let mut emit = |event: &StepProgressEvent| {
             let _ = app.emit("coordination-step-progress", event);
@@ -123,7 +123,7 @@ pub fn coordination_resume_member(
             Some(&mut emit),
         )
         .ipc()
-    })();
+    };
     span.finish_result(&result);
     result
 }

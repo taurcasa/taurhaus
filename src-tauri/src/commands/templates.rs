@@ -123,13 +123,13 @@ pub fn templates_list_roles_full(
     state: State<'_, TemplateStoreState>,
 ) -> Result<Vec<RoleTemplateFull>, String> {
     let span = IpcCommandSpan::start("templates_list_roles_full");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store
             .list_roles()
             .map(|roles| roles.into_iter().map(map_role_full).collect())
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -140,13 +140,13 @@ pub fn templates_get_role(
     role_id: String,
 ) -> Result<RoleTemplate, String> {
     let span = IpcCommandSpan::start("templates_get_role");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store
             .get_role(&role_id)
             .map(|record| record.template)
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -157,7 +157,7 @@ pub fn templates_upsert_role(
     request: TemplatesUpsertRoleRequest,
 ) -> Result<RoleTemplate, String> {
     let span = IpcCommandSpan::start("templates_upsert_role");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         let role_id = request.template.role_id.clone();
 
@@ -172,7 +172,7 @@ pub fn templates_upsert_role(
             .get_role(&role_id)
             .map(|record| record.template)
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -183,11 +183,11 @@ pub fn templates_delete_role(
     role_id: String,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("templates_delete_role");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store.delete_role(&role_id).map_err(map_template_error)?;
         Ok(())
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -197,13 +197,13 @@ pub fn templates_list_presets_full(
     state: State<'_, TemplateStoreState>,
 ) -> Result<Vec<TeamPresetFull>, String> {
     let span = IpcCommandSpan::start("templates_list_presets_full");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store
             .list_presets()
             .map(|presets| presets.into_iter().map(map_preset_full).collect())
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -214,13 +214,13 @@ pub fn templates_get_preset(
     preset_id: String,
 ) -> Result<TeamPreset, String> {
     let span = IpcCommandSpan::start("templates_get_preset");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store
             .get_preset(&preset_id)
             .map(|record| record.template)
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -231,7 +231,7 @@ pub fn templates_upsert_preset(
     request: TemplatesUpsertPresetRequest,
 ) -> Result<TeamPreset, String> {
     let span = IpcCommandSpan::start("templates_upsert_preset");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         let preset_id = request.preset.preset_id.clone();
 
@@ -246,7 +246,7 @@ pub fn templates_upsert_preset(
             .get_preset(&preset_id)
             .map(|record| record.template)
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -257,13 +257,13 @@ pub fn templates_delete_preset(
     preset_id: String,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("templates_delete_preset");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store
             .delete_preset(&preset_id)
             .map_err(map_template_error)?;
         Ok(())
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -274,7 +274,7 @@ pub fn templates_compose_team(
     request: TemplatesComposeTeamRequest,
 ) -> Result<CompositionResult, String> {
     let span = IpcCommandSpan::start("templates_compose_team");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         let catalog = store.load_catalog().map_err(map_template_error)?;
         let agent_slots: Vec<AgentSlot> = request.agent_slots.into_iter().map(Into::into).collect();
@@ -284,7 +284,7 @@ pub fn templates_compose_team(
             &catalog.roles,
             &request.overrides,
         ))
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -294,7 +294,7 @@ pub fn templates_get_storage_status(
     state: State<'_, TemplateStoreState>,
 ) -> Result<TemplateStorageStatus, String> {
     let span = IpcCommandSpan::start("templates_get_storage_status");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store.ensure_directories().map_err(map_template_error)?;
         let persisted = store.load_state().map_err(map_template_error)?;
@@ -315,7 +315,7 @@ pub fn templates_get_storage_status(
             pending_actions: persisted.pending_actions,
             last_commit: persisted.last_commit_at,
         })
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -327,10 +327,10 @@ pub fn templates_get_history(
     cursor: Option<String>,
 ) -> Result<TemplateCommitPage, String> {
     let span = IpcCommandSpan::start("templates_get_history");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store.get_history(limit, cursor).map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -341,10 +341,10 @@ pub fn templates_get_diff(
     commit_id: String,
 ) -> Result<TemplateDiff, String> {
     let span = IpcCommandSpan::start("templates_get_diff");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store.get_diff(&commit_id).map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -355,12 +355,12 @@ pub fn templates_revert(
     request: TemplateRevertRequest,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("templates_revert");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         store
             .revert_template(&request.id, &request.commit_hash)
             .map_err(map_template_error)
-    })();
+    };
     span.finish_result(&result);
     result
 }
@@ -370,14 +370,14 @@ pub fn templates_flush_pending(
     state: State<'_, TemplateStoreState>,
 ) -> Result<TemplateFlushResult, String> {
     let span = IpcCommandSpan::start("templates_flush_pending");
-    let result = (|| {
+    let result = {
         let store = &state.0;
         let commit_id = store.flush_pending_commits().map_err(map_template_error)?;
         Ok(TemplateFlushResult {
             committed: commit_id.is_some(),
             commit_id,
         })
-    })();
+    };
     span.finish_result(&result);
     result
 }

@@ -12,6 +12,7 @@ fn json_number_u64(value: u64) -> Value {
     Value::Number(serde_json::Number::from(value))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_daemon_rpc_event(
     level: &str,
     event: &str,
