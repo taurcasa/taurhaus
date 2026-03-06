@@ -602,11 +602,15 @@ impl CoordinationOrchestrator {
     }
 
     fn create_pane_for_agent(
-        &self,
+        &mut self,
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
         tmux_layout: &str,
     ) -> Result<(), CoordinationError> {
+        let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
+        self.add_member(&request.team_name, member)?;
+        runtime_state.member_added = true;
+
         let pane_id = self
             .runtime
             .create_aitx_pane(&request.agent.project_id, tmux_layout)?;

@@ -64,16 +64,40 @@ impl CoordinationOrchestrator {
         }
 
         if runtime_state.member_added {
-            if let Err(err) = self.remove_member(
-                &request.team_name,
-                &request.agent.name,
-                Some("hot-add rollback after pipeline failure".to_string()),
-            ) {
+            match TeamConfigStore::load(&self.teams_dir, &request.team_name) {
+                Ok(mut config) => {
+                    config
+                        .members
+                        .retain(|member| member.name != request.agent.name);
+                    if let Err(err) =
+                        TeamConfigStore::save(&self.teams_dir, &request.team_name, &config)
+                    {
+                        tracing::warn!(
+                            team = %request.team_name,
+                            member = %request.agent.name,
+                            error = %err,
+                            "hot-add rollback: failed to save team config after removing member"
+                        );
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        team = %request.team_name,
+                        member = %request.agent.name,
+                        error = %err,
+                        "hot-add rollback: failed to load team config for member removal"
+                    );
+                }
+            }
+
+            if let Err(err) =
+                MemberRuntimeStore::delete(&self.teams_dir, &request.team_name, &request.agent.name)
+            {
                 tracing::warn!(
                     team = %request.team_name,
                     member = %request.agent.name,
                     error = %err,
-                    "hot-add rollback: failed to remove member from roster"
+                    "hot-add rollback: failed to delete member runtime"
                 );
             }
         }
@@ -305,7 +329,6 @@ impl CoordinationOrchestrator {
         {
             *existing = desired_member;
             TeamConfigStore::save(&self.teams_dir, &request.team_name, &config)?;
-            runtime_state.member_added = false;
         } else {
             self.add_member(&request.team_name, desired_member)?;
             runtime_state.member_added = true;

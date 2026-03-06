@@ -382,6 +382,119 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
     }
 }
 
+#[derive(Debug)]
+struct ClaudeLaunchRosterRuntime {
+    inner: RecordingCoordinationRuntime,
+    teams_dir: PathBuf,
+    team_name: String,
+    member_name: String,
+}
+
+impl ClaudeLaunchRosterRuntime {
+    fn new(teams_dir: PathBuf, team_name: &str, member_name: &str) -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+            teams_dir,
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+        }
+    }
+}
+
+impl CoordinationRuntime for ClaudeLaunchRosterRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
+        if keys.contains("--agent-name") && keys.contains(self.member_name.as_str()) {
+            let config = TeamConfigStore::load(&self.teams_dir, &self.team_name)?;
+            if !config
+                .members
+                .iter()
+                .any(|member| member.name == self.member_name)
+            {
+                return Err(CoordinationError::Backend(format!(
+                    "member '{}' missing from roster before claude launch",
+                    self.member_name
+                )));
+            }
+        }
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.join_mesh(team_name, member_name, project_id)
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, _pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        Ok(None)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
+}
+
 fn initialize_request(team_name: &str) -> InitializeTeamRequest {
     InitializeTeamRequest {
         team_name: team_name.to_string(),
@@ -2168,6 +2281,42 @@ fn add_agent_update_roster_is_idempotent_when_mesh_preadds_member() {
         Some("test-pane-1"),
         "runtime should still capture pane created during hot-add"
     );
+}
+
+#[test]
+fn add_claude_agent_registers_member_before_launch() {
+    let tmp = TempDir::new().expect("tempdir");
+    let team_name = "architecture-final-hot-add-claude";
+    let member_name = "ponyhof-asset-generator";
+    let runtime = Arc::new(ClaudeLaunchRosterRuntime::new(
+        tmp.path().to_path_buf(),
+        team_name,
+        member_name,
+    ));
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    create_running_team(&mut orchestrator, team_name);
+    let request = add_agent_request(team_name, member_name, "claude");
+
+    let report = orchestrator
+        .add_agent_to_team(&request)
+        .expect("pipeline should return report");
+
+    assert!(
+        report.failed_step.is_none(),
+        "claude hot-add should not launch before roster registration: {}",
+        report.message
+    );
+
+    let status = orchestrator
+        .get_team_status(team_name)
+        .expect("status should load");
+    assert!(status
+        .config
+        .members
+        .iter()
+        .any(|member| member.name == member_name && member.cli_tool == CliTool::Claude));
 }
 
 #[test]
