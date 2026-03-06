@@ -45,6 +45,11 @@ Mesh should expose machine-readable metadata:
 
 `protocol_version` and `schema_version` are compatibility keys (not just SemVer).
 
+JSON endpoint compatibility rule:
+
+- within the same compatibility line, `mesh version --json` fields evolve additively only.
+- required fields `version`, `protocol_version`, and `schema_version` cannot be renamed or removed without a breaking bump.
+
 ### 2.3 Taurhaus Compatibility Contract
 
 Taurhaus pins and verifies:
@@ -147,6 +152,7 @@ Phase 2 (release discipline):
 
 - mesh publishes tagged releases (`vX.Y.Z`) + sha256 artifacts
 - `update-mesh-lock` can pin by release artifact checksum (not only local source tree)
+- mesh install docs/scripts should use correct home expansion (`$HOME`, not `$$HOME`)
 
 Phase 3 (contract freeze at `1.0.0`):
 
@@ -183,6 +189,7 @@ Feasible minimal mesh PR:
 - expose `protocol_version` and `schema_version` constants
 - add tests for JSON shape and non-empty version
 - document release/tag/checksum workflow
+- document install command examples with correct home expansion, e.g. `cargo install --path . --root "$HOME/.local" --force`
 
 Operational note:
 
