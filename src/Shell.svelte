@@ -19,6 +19,7 @@
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
+  import { loadProjectSelectionData } from './lib/projectSelection.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
@@ -543,16 +544,34 @@
     const restoredTab = savedPosition?.tab || 'overview'
     const generation = selectLoadGuard.next()
 
-    // Commit fast initial state so sidebar and tab shell are interactive immediately.
     projectLoadIssues = []
-    selectedProject = project
     detailLoading = true
+    const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
+      getProject,
+      getRecentCommits,
+      getLatestSession,
+      listSessions,
+      getReadme,
+      getRelationships,
+    })
+    if (!selectLoadGuard.isCurrent(generation)) return
+
+    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
+      .filter((result) => !result.ok)
+      .map((result) => ({ section: result.section, message: result.message }))
+    projectLoadIssues = loadIssues
+    if (loadIssues.length > 0) {
+      console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
+    }
+
+    // Commit everything in one synchronous block to avoid waterfall rendering.
+    selectedProject = detail.value ? { ...project, ...detail.value } : project
+    detailLoading = false
     showAllCommits = false
     activeTab = restoredTab
     visitedTabs = savedPosition?.visitedTabs || new Set([restoredTab])
     resetNav()
     pushNav({ tab: restoredTab, file: savedPosition?.file })
-    // Restore Git position via existing gitNavTarget mechanism
     if (savedPosition?.gitPosition?.selectedHash) {
       gitNavTarget = { type: 'commit', hash: savedPosition.gitPosition.selectedHash }
     } else if (savedPosition?.gitPosition?.rangeFilter) {
@@ -560,94 +579,16 @@
     } else {
       gitNavTarget = null
     }
-    // Restore Task position via separate restoreTarget prop
     taskNavTarget = savedPosition?.taskPosition ?? null
-    // Reset detail panels so they reveal progressively as each section loads.
-    recentCommits = []
-    commitsLoading = true
-    latestSession = null
-    sessionHistory = []
-    sessionLoading = true
-    readmeContent = null
-    relationships = []
-    relationshipsLoading = true
-    // Restore file position via navigateTarget — FilesTab loads its own tree
+    recentCommits = commits.value || []
+    commitsLoading = false
+    latestSession = latest.value
+    sessionHistory = sessionList.value || []
+    sessionLoading = false
+    readmeContent = readme.value
+    relationships = rels.value || []
+    relationshipsLoading = false
     filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
-
-    const issues = []
-    const addIssue = (section, error) => {
-      issues.push({ section, message: error?.message || `Couldn't load ${section.toLowerCase()}` })
-    }
-
-    try {
-      const detail = await getProject(projectId)
-      if (!selectLoadGuard.isCurrent(generation)) return
-      selectedProject = detail ? { ...project, ...detail } : project
-    } catch (error) {
-      if (!selectLoadGuard.isCurrent(generation)) return
-      addIssue('Project details', error)
-    } finally {
-      if (selectLoadGuard.isCurrent(generation)) {
-        detailLoading = false
-      }
-    }
-
-    try {
-      recentCommits = await getRecentCommits(projectId, 10)
-    } catch (error) {
-      recentCommits = []
-      addIssue('Recent commits', error)
-    } finally {
-      if (selectLoadGuard.isCurrent(generation)) {
-        commitsLoading = false
-      }
-    }
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    try {
-      latestSession = await getLatestSession(projectId)
-    } catch (error) {
-      latestSession = null
-      addIssue('Latest session', error)
-    }
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    try {
-      sessionHistory = await listSessions(projectId, 10) || []
-    } catch (error) {
-      sessionHistory = []
-      addIssue('Session history', error)
-    } finally {
-      if (selectLoadGuard.isCurrent(generation)) {
-        sessionLoading = false
-      }
-    }
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    try {
-      readmeContent = await getReadme(projectId)
-    } catch (error) {
-      readmeContent = null
-      addIssue('README', error)
-    }
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    try {
-      relationships = await getRelationships(projectId)
-    } catch (error) {
-      relationships = []
-      addIssue('Relationships', error)
-    } finally {
-      if (selectLoadGuard.isCurrent(generation)) {
-        relationshipsLoading = false
-      }
-    }
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    projectLoadIssues = issues
-    if (issues.length > 0) {
-      console.warn(`[shell] project ${projectId} loaded with degraded data`, issues)
-    }
   }
 
   async function loadSessions(projectId) {
