@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-06
+
+### Fixed
+
+- Windows app freeze when selecting projects with large workspaces (watcher reconciliation moved off IPC thread)
+- Atomic project view reveal restored (parallel loading with `Promise.all`, no waterfall)
+- Unified content-enter transitions across all tab views
+- Release builds now log at INFO level (was ERROR-only without `RUST_LOG`)
+- Silent error swallowing eliminated in event processor, daemon lifecycle, logging pipeline
+- Frontend IPC failures now logged with structured context before rethrow
+- `console.info` forwarding added to structured log bridge
+
+### Added
+
+- Mesh 0.2.0 bundled: IdleMonitor, task assign, nudge, actionable message lint, team-daemon
+- Mesh version lock manifest (`mesh.version` + `mesh.lock.json`) tracked in git
+- Mesh versioning build recipes: `mesh-verify-lock`, `update-mesh-lock`, `bundle-mesh`
+- Per-member activity snapshot export for mesh IdleMonitor (stall detector integration)
+- Structured session scanner completion events with timing/cache metrics
+- Practical orchestration design doc (auto-idle + communication quality)
+
+### Changed
+
+- Removed abandoned v0.2.0 orchestration protocol assumptions from `CLAUDE.md` and `AGENTS.md`
+
 ## [0.5.0] - 2026-03-05
 
 ### Added
