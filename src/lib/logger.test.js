@@ -18,6 +18,10 @@ function restoreConsole() {
   console.debug = realConsole.debug
 }
 
+function payloadForCall(invoke, index) {
+  return invoke.mock.calls[index][1].payload
+}
+
 async function setupLogger() {
   vi.resetModules()
   vi.clearAllMocks()
@@ -66,8 +70,11 @@ describe('logger bridge', () => {
     }
 
     expect(invoke).toHaveBeenCalledTimes(25)
-    expect(invoke).toHaveBeenNthCalledWith(25, 'frontend_log', {
+    expect(payloadForCall(invoke, 24)).toMatchObject({
       level: 'info',
+      component: 'frontend',
+      subsystem: 'console',
+      event: 'frontend.console.received',
       message: 'rate 24',
     })
 
@@ -75,7 +82,7 @@ describe('logger bridge', () => {
     console.log('rate after reset')
 
     expect(invoke).toHaveBeenCalledTimes(26)
-    expect(invoke).toHaveBeenNthCalledWith(26, 'frontend_log', {
+    expect(payloadForCall(invoke, 25)).toMatchObject({
       level: 'info',
       message: 'rate after reset',
     })
@@ -90,8 +97,11 @@ describe('logger bridge', () => {
     console.debug('debug stays forwarded')
 
     expect(invoke).toHaveBeenCalledTimes(1)
-    expect(invoke).toHaveBeenCalledWith('frontend_log', {
+    expect(payloadForCall(invoke, 0)).toMatchObject({
       level: 'debug',
+      component: 'frontend',
+      subsystem: 'console',
+      event: 'frontend.console.received',
       message: 'debug stays forwarded',
     })
   })
@@ -111,11 +121,58 @@ describe('logger bridge', () => {
       '[logger] failed to forward frontend log to backend:',
       error
     )
-    expect(invoke).toHaveBeenNthCalledWith(1, 'frontend_log', {
+    expect(payloadForCall(invoke, 0)).toMatchObject({
       level: 'info',
       message: 'trigger ipc failure',
     })
     expect(invoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('adds interaction_id for logs in the same user interaction chain', async () => {
+    const { invoke } = await setupLogger()
+    vi.setSystemTime(new Date('2026-03-05T00:00:01.500Z'))
+
+    window.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    console.log('first in click')
+    console.debug('second in click')
+
+    const firstInteractionId = payloadForCall(invoke, 0).interaction_id
+    const secondInteractionId = payloadForCall(invoke, 1).interaction_id
+    expect(firstInteractionId).toBeTypeOf('string')
+    expect(secondInteractionId).toBe(firstInteractionId)
+
+    vi.setSystemTime(new Date('2026-03-05T00:00:05.000Z'))
+    console.log('outside interaction window')
+    expect(payloadForCall(invoke, 2).interaction_id).toBeUndefined()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    console.log('new interaction')
+    expect(payloadForCall(invoke, 3).interaction_id).toBeTypeOf('string')
+    expect(payloadForCall(invoke, 3).interaction_id).not.toBe(firstInteractionId)
+  })
+
+  it('emits frontend.logs.dropped with dropped_count when logs are throttled', async () => {
+    const { invoke } = await setupLogger()
+    vi.setSystemTime(new Date('2026-03-05T00:00:01.000Z'))
+
+    for (let i = 0; i < 30; i++) {
+      console.log(`drop ${i}`)
+    }
+    expect(invoke).toHaveBeenCalledTimes(25)
+
+    vi.setSystemTime(new Date('2026-03-05T00:00:06.500Z'))
+    console.log('flush dropped metrics')
+
+    const payloads = invoke.mock.calls.map(call => call[1].payload)
+    const droppedEvent = payloads.find(payload => payload.event === 'frontend.logs.dropped')
+    expect(droppedEvent).toBeTruthy()
+    expect(droppedEvent).toMatchObject({
+      level: 'warn',
+      component: 'frontend',
+      subsystem: 'logger',
+      dropped_count: 5,
+      dropped_reason_counts: { rate_limit: 5 },
+    })
   })
 
   it('serializes edge-case values without throwing', async () => {
@@ -129,12 +186,15 @@ describe('logger bridge', () => {
     ).not.toThrow()
 
     expect(invoke).toHaveBeenCalledTimes(1)
-    const payload = invoke.mock.calls[0][1]
+    const payload = payloadForCall(invoke, 0)
     expect(payload.level).toBe('info')
     expect(payload.message).toContain('serialize edge')
     expect(payload.message).toContain('[unserializable]')
     expect(payload.message).toContain('"blob":"')
     expect(payload.message).toContain('42')
     expect(payload.message).toContain('Symbol(t)')
+    expect(payload.context).toMatchObject({
+      blob: largeObject.blob,
+    })
   })
 })
