@@ -1083,6 +1083,7 @@
       {selectedProject}
       daemonStatus={daemonStatus}
       {settingsOpen}
+      {dark}
     />
 
     <!-- ═══ MAIN PANEL ═══ -->

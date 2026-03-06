@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
+import { render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('./ipc.js', () => ({
-  getProjectActivity: vi.fn(),
+  getLatestSession: vi.fn(),
   getRecentCommits: vi.fn(),
+  getRelationships: vi.fn(),
 }))
 
 vi.mock('./sessionIndicator.js', () => ({
@@ -17,7 +18,7 @@ vi.mock('./format.js', () => ({
   formatDuration: vi.fn((ms) => `${Math.round(ms)}ms`),
 }))
 
-const { getProjectActivity, getRecentCommits } = await import('./ipc.js')
+const { getLatestSession, getRecentCommits, getRelationships } = await import('./ipc.js')
 
 import HoverCard from './HoverCard.svelte'
 
@@ -33,17 +34,24 @@ function createProject(overrides = {}) {
   }
 }
 
+function createLatestSession(overrides = {}) {
+  return {
+    date: new Date().toISOString(),
+    summary: 'Implement IPC error envelope fix',
+    open_questions: ['Should retry stay frontend-side?'],
+    next_steps: ['Verify daemon startup logs'],
+    ...overrides,
+  }
+}
+
 describe('HoverCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getProjectActivity.mockResolvedValue({
-      total_active_ms: 8_000,
-      session_count: 2,
-    })
+    getLatestSession.mockResolvedValue(createLatestSession())
     getRecentCommits.mockResolvedValue([
       { hash: 'abc1234', message: 'Fix tests', date: 'today' },
-      { hash: 'def5678', message: 'Refactor UI', date: 'yesterday' },
     ])
+    getRelationships.mockResolvedValue([])
   })
 
   it('does not render when project is missing', () => {
@@ -57,63 +65,56 @@ describe('HoverCard', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('renders project metadata, dirty state, commits, and no-sessions message', async () => {
+  it('renders verdict-first layout with dirty chip, session summary, and unresolved item', async () => {
     render(HoverCard, {
       props: {
         project: createProject({ isDirty: true }),
         sessions: [{ live: false }],
+        dark: true,
       },
     })
 
     await waitFor(() => {
-      expect(getProjectActivity).toHaveBeenCalledWith('proj-1')
-      expect(getRecentCommits).toHaveBeenCalledWith('proj-1', 3)
+      expect(getLatestSession).toHaveBeenCalledWith('proj-1')
+      expect(getRecentCommits).toHaveBeenCalledWith('proj-1', 1)
+      expect(getRelationships).toHaveBeenCalledWith('proj-1')
     })
 
     expect(screen.getByText('taurhaus')).toBeInTheDocument()
     expect(screen.getByText('main')).toBeInTheDocument()
-    expect(screen.getByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Dirty')).toBeInTheDocument()
-    expect(screen.getByText('No active sessions')).toBeInTheDocument()
-    expect(screen.getByText('abc1234')).toBeInTheDocument()
-    expect(screen.getByText('Fix tests')).toBeInTheDocument()
+    expect(screen.getByText('Recent handoff needs review')).toBeInTheDocument()
+    expect(screen.getByText('No live agent session')).toBeInTheDocument()
+    expect(screen.getByText('Session: Implement IPC error envelope fix')).toBeInTheDocument()
+    expect(screen.getByText('Open question: Should retry stay frontend-side?')).toBeInTheDocument()
   })
 
-  it('renders live sessions with status variants and technical metadata', async () => {
+  it('prioritizes the most relevant live session and appends +N more', async () => {
     const now = Date.now()
 
     render(HoverCard, {
       props: {
-        project: createProject({ activityState: 'unknown-state', branch: '' }),
+        project: createProject(),
         sessions: [
+          {
+            live: true,
+            state: 'idle',
+            _duration: 10_000,
+            _lastTransition: now - 500,
+            toolLabel: 'Claude',
+          },
           {
             live: true,
             state: 'active',
             _duration: 4_000,
-            _activeMs: 3_000,
-            _activePercent: 75,
             toolLabel: 'Codex',
-            session_id: 'session-abc-123456',
-            tmux_session: 'mesh',
-            tmux_window: 1,
-            pid: 42,
           },
           {
             live: true,
             state: 'idle',
             project_unattributed_active: true,
-            _duration: 10_000,
-            _activeMs: 4_000,
-            _activePercent: 40,
-            _lastTransition: now - 500,
+            _duration: 9_000,
             toolLabel: 'Gemini',
-          },
-          {
-            live: true,
-            state: 'idle',
-            project_unattributed_active: false,
-            _duration: null,
-            toolLabel: 'Claude',
           },
         ],
       },
@@ -123,43 +124,109 @@ describe('HoverCard', () => {
       expect(screen.getByRole('tooltip')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('Unknown')).toBeInTheDocument()
-    expect(screen.queryByText('main')).not.toBeInTheDocument()
-
-    expect(screen.getByText('working')).toBeInTheDocument()
-    expect(screen.getByText('project active (unattributed)')).toBeInTheDocument()
-    expect(screen.getByText('waiting for input')).toBeInTheDocument()
-
-    expect(screen.getByText('Active 3000ms (75%)')).toBeInTheDocument()
-    expect(screen.getByText(/^idle \d+ms$/)).toBeInTheDocument()
-
-    expect(screen.getByText('session-')).toBeInTheDocument()
-    expect(screen.getByText('mesh:1')).toBeInTheDocument()
-    expect(screen.getByText('pid 42')).toBeInTheDocument()
+    expect(screen.getByText('Active work in progress')).toBeInTheDocument()
+    expect(screen.getByText('Codex is working now +2 more')).toBeInTheDocument()
+    expect(screen.getByText('active 4000ms')).toBeInTheDocument()
   })
 
-  it('handles stats/commit fetch errors by hiding optional sections', async () => {
-    getProjectActivity.mockRejectedValueOnce(new Error('stats failed'))
-    getRecentCommits.mockRejectedValueOnce(new Error('commits failed'))
+  it('falls back to commit summary when latest session is stale', async () => {
+    getLatestSession.mockResolvedValueOnce(createLatestSession({
+      date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      summary: 'Old session summary',
+      open_questions: [],
+      next_steps: [],
+    }))
 
     render(HoverCard, {
       props: {
-        project: createProject(),
-        sessions: [{ live: false }],
+        project: createProject({ activityState: 'recent' }),
+        sessions: [],
       },
     })
 
     await waitFor(() => {
-      expect(getProjectActivity).toHaveBeenCalled()
-      expect(getRecentCommits).toHaveBeenCalled()
+      expect(screen.getByTestId('hovercard-latest-change')).toBeInTheDocument()
     })
 
-    expect(screen.queryByText(/across .* session/)).not.toBeInTheDocument()
-    expect(screen.queryByText('Fix tests')).not.toBeInTheDocument()
-    expect(screen.getByText('No active sessions')).toBeInTheDocument()
+    expect(screen.getByText('Commit: Fix tests')).toBeInTheDocument()
+    expect(screen.queryByText('Session: Old session summary')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('hovercard-unresolved')).not.toBeInTheDocument()
   })
 
-  it('positions card to stay in viewport when anchor would overflow right/bottom', async () => {
+  it('renders relationship cue when a strong relationship exists', async () => {
+    getRelationships.mockResolvedValueOnce([
+      {
+        source_project_id: 'proj-1',
+        target_project_id: 'proj-2',
+        relationship_type: 'depends_on',
+        detection_source: 'cargo_toml',
+      },
+    ])
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('hovercard-relationship')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Depends on')).toBeInTheDocument()
+    expect(screen.getByText(/This project depends on another project via Cargo.toml/)).toBeInTheDocument()
+  })
+
+  it('handles fetch errors by falling back to quiet empty-state copy', async () => {
+    getLatestSession.mockRejectedValueOnce(new Error('session failed'))
+    getRecentCommits.mockRejectedValueOnce(new Error('commits failed'))
+    getRelationships.mockRejectedValueOnce(new Error('relationships failed'))
+
+    render(HoverCard, {
+      props: {
+        project: createProject({ activityState: 'dormant' }),
+        sessions: [],
+      },
+    })
+
+    await waitFor(() => {
+      expect(getLatestSession).toHaveBeenCalled()
+      expect(getRecentCommits).toHaveBeenCalled()
+      expect(getRelationships).toHaveBeenCalled()
+    })
+
+    expect(screen.getByText('Quiet project')).toBeInTheDocument()
+    expect(screen.getByText('No session handoff or recent commit yet')).toBeInTheDocument()
+    expect(screen.queryByTestId('hovercard-relationship')).not.toBeInTheDocument()
+  })
+
+  it('applies dark and light theme surface classes', async () => {
+    const { rerender } = render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [],
+        dark: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('tooltip').className).toContain('bg-brand-950/96')
+
+    await rerender({
+      project: createProject(),
+      sessions: [],
+      dark: false,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('tooltip').className).toContain('bg-white/96')
+    })
+  })
+
+  it('positions card to stay in viewport when anchor would overflow right and bottom', async () => {
     const anchorEl = {
       getBoundingClientRect: () => ({
         left: 760,
@@ -181,9 +248,9 @@ describe('HoverCard', () => {
           return {
             left: 0,
             top: 0,
-            right: 280,
+            right: 288,
             bottom: 220,
-            width: 280,
+            width: 288,
             height: 220,
             x: 0,
             y: 0,
@@ -213,8 +280,8 @@ describe('HoverCard', () => {
 
     await waitFor(() => {
       const tooltip = screen.getByRole('tooltip')
-      expect(tooltip.style.left).toBe('472px')
-      expect(tooltip.style.top).toBe('372px')
+      expect(tooltip.style.left).toBe('462px')
+      expect(tooltip.style.top).toBe('368px')
     })
 
     rectSpy.mockRestore()
@@ -222,7 +289,7 @@ describe('HoverCard', () => {
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
   })
 
-  it('clamps top position to minimum edge padding', async () => {
+  it('clamps top position to minimum viewport inset', async () => {
     const anchorEl = {
       getBoundingClientRect: () => ({
         left: 10,
@@ -239,9 +306,9 @@ describe('HoverCard', () => {
           return {
             left: 0,
             top: 0,
-            right: 220,
+            right: 288,
             bottom: 260,
-            width: 220,
+            width: 288,
             height: 260,
             x: 0,
             y: 0,
@@ -270,7 +337,7 @@ describe('HoverCard', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('tooltip').style.top).toBe('8px')
+      expect(screen.getByRole('tooltip').style.top).toBe('12px')
     })
 
     rectSpy.mockRestore()

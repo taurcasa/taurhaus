@@ -16,6 +16,7 @@
     selectedProject: selectedProjectProp = null,
     daemonStatus: daemonStatusProp = null,
     settingsOpen = false,
+    dark = false,
     actions = {},
   } = $props()
   const projectContext = getProjectContext()
@@ -45,18 +46,28 @@
 
   // --- Hover card state ---
   let hoverCard = $state(null) // { project, sessions, anchorEl }
+  let hoverCardVisible = $state(false)
   let hoverTimeout = $state(null)
 
   function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
+    if (hoverCard) {
+      hoverCard = { project, sessions, anchorEl: el }
+      hoverCardVisible = true
+      return
+    }
     hoverTimeout = setTimeout(() => {
-      if (!ctxMenu) hoverCard = { project, sessions, anchorEl: el }
-    }, 80)
+      if (!ctxMenu) {
+        hoverCard = { project, sessions, anchorEl: el }
+        hoverCardVisible = true
+      }
+    }, 100)
   }
 
   function hideHoverCard() {
     clearTimeout(hoverTimeout)
-    hoverTimeout = setTimeout(() => { hoverCard = null }, 80)
+    hoverCardVisible = false
+    hoverTimeout = setTimeout(() => { hoverCard = null }, 70)
   }
 
   $effect(() => {
@@ -92,6 +103,7 @@
   })
 
   function handleProjectListScroll(event) {
+    hoverCardVisible = false
     hoverCard = null
     if (hoverTimeout) clearTimeout(hoverTimeout)
     projectListScrollTop = event.currentTarget?.scrollTop || 0
@@ -405,6 +417,7 @@
       {rowTintForSessions}
       onProjectClick={handleSelectProject}
       onProjectContextMenu={(event, project) => {
+        hoverCardVisible = false
         hoverCard = null
         clearTimeout(hoverTimeout)
         openContextMenu(event, project)
@@ -455,5 +468,11 @@
 {/if}
 
 {#if hoverCard}
-  <HoverCard project={hoverCard.project} sessions={hoverCard.sessions} anchorEl={hoverCard.anchorEl} />
+  <HoverCard
+    project={hoverCard.project}
+    sessions={hoverCard.sessions}
+    anchorEl={hoverCard.anchorEl}
+    {dark}
+    visible={hoverCardVisible}
+  />
 {/if}
