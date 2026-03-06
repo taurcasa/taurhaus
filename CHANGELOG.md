@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-06
+
+Bug fix release targeting team creation and agent communication reliability.
+
+### Fixed
+
+- **Codex model flag rejected** — `gpt-5.4-high` (hyphenated) was rejected by ChatGPT accounts. Changed to `gpt-5.4 high` (space-separated) with backward-compat normalization for legacy values.
+- **Claude hot-add "no inbox"** — Adding a Claude Code agent to a running team failed with "agent not found (no inbox)" because the add-agent pipeline launched the agent before registering it in team config. Fixed by pre-registering the member before pane creation.
+
+### Changed
+
+- **Shell depth treatment** — Subtle sealed-panel effect on main content area (faint top highlight, inner border, deeper shadow) and material gradient on dark teal frame. Both dark and light modes. No blur or translucency.
+
 ## [0.5.2] - 2026-03-06
 
 Mesh canvas reliability release. Structurally resolves the recurring connection routing bug class by extracting a pure layout engine, adds a visual testing lane, and redesigns the project HoverCard.
