@@ -673,8 +673,8 @@ fn coordination_get_project_mesh_snapshot_with_availability(
     availability: BackendAvailabilityReport,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     validate_non_empty("project_path", &project_path)?;
-    let project_path = Path::new(project_path.trim());
-    let discovery = discover_team_for_project_path(state.teams_dir(), project_path)
+    let project_path = crate::provider::path::normalize_project_path(project_path.trim());
+    let discovery = discover_team_for_project_path(state.teams_dir(), &project_path)
         .map_err(map_coordination_error)?;
 
     let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
@@ -942,7 +942,7 @@ struct ProjectPathDiscovery {
 
 fn discover_team_for_project_path(
     teams_dir: &Path,
-    project_path: &Path,
+    project_path: &str,
 ) -> Result<ProjectPathDiscovery, CoordinationError> {
     if !teams_dir.exists() {
         return Ok(ProjectPathDiscovery::default());
@@ -954,10 +954,11 @@ fn discover_team_for_project_path(
         match TeamConfigStore::load(teams_dir, &listed_team) {
             Ok(config) => {
                 if team_name.is_none()
-                    && config
-                        .members
-                        .iter()
-                        .any(|member| member.project_path.as_path() == project_path)
+                    && config.members.iter().any(|member| {
+                        crate::provider::path::normalize_project_path(
+                            &member.project_path.display().to_string(),
+                        ) == project_path
+                    })
                 {
                     team_name = Some(config.name);
                 }

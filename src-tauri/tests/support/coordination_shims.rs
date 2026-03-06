@@ -12,6 +12,12 @@ pub mod templates {
     }
 }
 
+pub mod provider {
+    pub mod path {
+        pub use taurhaus_lib::provider::path::*;
+    }
+}
+
 pub mod session_scanner {
     pub use taurhaus_lib::session_scanner::{scan_sessions, ActivityConfidence, SessionState};
 

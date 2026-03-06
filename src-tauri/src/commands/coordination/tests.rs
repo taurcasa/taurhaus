@@ -970,6 +970,38 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
 }
 
 #[test]
+fn project_mesh_snapshot_matches_windows_project_path_to_linux_team_config() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    let mut request = sample_preflight_request();
+    request.lead.project_id = "/home/user/projects/lead".to_string();
+    request.agents[0].project_id = "/mnt/c/Users/me/code/taurhaus".to_string();
+    request.agents[1].project_id = "/home/user/projects/reviewer".to_string();
+
+    coordination_initialize_team_internal(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        r"C:\Users\me\code\taurhaus".to_string(),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
+    assert!(snapshot.team_status.is_some());
+    assert!(snapshot.warnings.is_empty());
+}
+
+#[test]
 fn project_mesh_snapshot_reports_mesh_unavailable_when_binary_is_missing() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
