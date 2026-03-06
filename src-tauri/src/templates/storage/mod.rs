@@ -566,7 +566,7 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&path)?;
-            let parsed = serde_yml::from_str::<RoleTemplate>(&raw).map_err(|err| {
+            let parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
                 TemplateStoreError::Parse(format!("failed to parse role {}: {err}", path.display()))
             })?;
             roles.push(RoleTemplateFile { template: parsed });
@@ -585,7 +585,7 @@ impl TemplateStore {
             return Ok(None);
         }
         let raw = fs::read_to_string(&path)?;
-        let parsed = serde_yml::from_str::<RoleTemplate>(&raw).map_err(|err| {
+        let parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to parse role {}: {err}", path.display()))
         })?;
         Ok(Some(RoleTemplateFile { template: parsed }))
@@ -618,7 +618,7 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&path)?;
-            let parsed = serde_yml::from_str::<TeamPreset>(&raw).map_err(|err| {
+            let parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
                 TemplateStoreError::Parse(format!(
                     "failed to parse preset {}: {err}",
                     path.display()
@@ -640,7 +640,7 @@ impl TemplateStore {
             return Ok(None);
         }
         let raw = fs::read_to_string(&path)?;
-        let parsed = serde_yml::from_str::<TeamPreset>(&raw).map_err(|err| {
+        let parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to parse preset {}: {err}", path.display()))
         })?;
         Ok(Some(TeamPresetFile { template: parsed }))

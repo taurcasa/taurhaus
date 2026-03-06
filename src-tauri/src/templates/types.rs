@@ -771,7 +771,7 @@ mod tests {
             .into_iter()
             .map(|path| {
                 let raw = fs::read_to_string(&path).expect("read role template");
-                serde_yml::from_str::<RoleTemplate>(&raw)
+                serde_norway::from_str::<RoleTemplate>(&raw)
                     .unwrap_or_else(|err| panic!("parse role template {}: {err}", path.display()))
             })
             .collect()
@@ -789,7 +789,7 @@ mod tests {
             .into_iter()
             .map(|path| {
                 let raw = fs::read_to_string(&path).expect("read team preset");
-                serde_yml::from_str::<TeamPreset>(&raw)
+                serde_norway::from_str::<TeamPreset>(&raw)
                     .unwrap_or_else(|err| panic!("parse team preset {}: {err}", path.display()))
             })
             .collect()

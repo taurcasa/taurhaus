@@ -99,7 +99,7 @@ impl TemplateStore {
         }
 
         let relative_path = self.role_file_path(&template.role_id);
-        let payload = serde_yml::to_string(template).map_err(|err| {
+        let payload = serde_norway::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to serialize role '{}': {err}",
                 template.role_id
@@ -139,7 +139,7 @@ impl TemplateStore {
 
         // Updating built-ins creates/updates user override.
         let relative_path = self.role_file_path(role_id);
-        let payload = serde_yml::to_string(template).map_err(|err| {
+        let payload = serde_norway::to_string(template).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize role '{role_id}': {err}"))
         })?;
         self.apply_single_template_mutation(
@@ -191,7 +191,7 @@ impl TemplateStore {
         external_path: &Path,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
-        let template = serde_yml::from_str::<RoleTemplate>(&raw).map_err(|err| {
+        let template = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to parse external role {}: {err}",
                 external_path.display()

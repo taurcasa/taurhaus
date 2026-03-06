@@ -40,7 +40,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 git2 = { version = "0.19", features = ["vendored-openssl"] }
 ignore = "0.4"
 
-serde_yml = "0.0.12"
+serde_norway = "0.9.42"
 
 notify = "7"
 
