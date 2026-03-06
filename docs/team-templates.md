@@ -1,14 +1,28 @@
 # Team Templates Guide
 
-User guide for the template system used by Mesh team setup.
+User guide for the Mesh template system, with the correct mental model for role design.
 
-## Overview
+## Why Roles Matter
+
+Roles are not mainly about listing what a model can do. They exist to define a **context domain**.
+
+When a role owns a lane such as architecture, UI, or review, that agent keeps absorbing the same kind of work over time. As work accumulates, the agent builds domain-specific context. That matters even more after handoff or compaction, because the role continues steering future work back into the same lane instead of resetting the agent into a generic capability bucket.
+
+A good role template therefore answers:
+
+- what work this agent should keep absorbing
+- what decisions it should handle without escalation
+- what it should escalate immediately
+
+The best templates create **lane ownership** and **behavioral boundaries**. They help the lead route work cleanly and help the agent keep the right context alive over time.
+
+## Template System Overview
 
 Team templates let you define reusable team structure before launch:
 
-- **Role template**: one reusable lead/agent role definition (tool, model, instructions, constraints)
-- **Team preset**: a lead role plus agent slot counts
-- **Composition**: resolved roster generated from selected lead + agent slots
+- **Role template**: one reusable lead or agent definition
+- **Team preset**: a lead role plus agent slot counts and overrides
+- **Composition**: the resolved roster generated from the selected lead and agent slots
 
 The template flow is:
 
@@ -16,12 +30,102 @@ The template flow is:
 
 Manual setup remains available via **Blank slate**.
 
+## The Mental Model
+
+Treat each role as a durable lane definition, not a capability tag list.
+
+When you author a role, write down three things first:
+
+- `focus_area`: the main lane this agent should own
+- `context_summary`: the long-lived context it should keep accumulating
+- `behavior_summary`: the boundary for independent action vs escalation
+
+Those labels are the right authoring model even though the current persisted schema still centers on instructions, behavioral contract, and constraints. In today’s implementation, you express these ideas through the existing role instructions and behavioral contract fields.
+
+## What A Good Role Definition Looks Like
+
+A strong role definition is concise and lane-specific:
+
+- **Focus area**: one durable ownership domain
+- **Context summary**: the background this agent should keep carrying forward
+- **Behavioral boundary**: what it can decide alone and what must go back to the lead
+
+Good role definitions are usually about:
+
+- one domain, not many unrelated tasks
+- stable ownership, not ad hoc assignment
+- clear escalation rules, not vague “help where needed” language
+
+Weak role definitions usually look like:
+
+- broad capability lists without lane ownership
+- instructions that overlap heavily with other roles
+- no clear escalation boundary
+
+## Authoring Prompts
+
+Before saving a role, answer these questions:
+
+- What kind of work should this agent keep absorbing?
+- What should this agent handle without escalation?
+- What should this agent escalate immediately?
+
+If those answers are unclear, the role is still too generic.
+
+## Example Role Definition
+
+Use this as the conceptual template for a role:
+
+```yaml
+focus_area: "Architecture decisions and structural review"
+context_summary: "Carries long-lived context around module boundaries, design tradeoffs, and review history."
+behavior_summary: "Handles pattern choices independently; escalates direction changes immediately."
+```
+
+Then map that into the current template system by encoding the same meaning in:
+
+- role instructions
+- behavioral contract
+- constraints and defaults where needed
+
+## Current Structural Reference
+
+The current template system remains structurally the same:
+
+- **Role template**: tool, model defaults, instructions, behavioral contract, constraints, and current schema fields
+- **Team preset**: one lead role plus agent slots and preset-specific overrides
+- **Composition**: resolved roster produced from the selected lead and slots
+
+That means this guide changes **how to think about roles**, not how template composition works today.
+
+## Using Templates In Setup
+
+In Mesh setup, use **Start from template**:
+
+1. **Quick preset** to apply a known preset immediately
+2. **Browse catalog** to inspect role and preset metadata
+3. **Build custom team** to compose from role templates
+4. **Blank slate** to fall back to manual roster editing
+
+After composition, the roster is still editable in `MeshSetupView` for names, tools, models, project binding, and descriptions.
+
+## Composition And Validation
+
+`TeamCustomizerPanel` resolves roster members and runs live checks:
+
+- single-lead validation
+- name-collision detection
+- tool availability warnings
+- composition warnings and errors from the backend
+
+Apply sends the final roster in the same initialize shape used by manual setup.
+
 ## Template Sources
 
 Templates come from two sources:
 
 - **Built-in**: shipped with the app, read-only
-- **User**: created/updated in app data, writable
+- **User**: created or updated in app data, writable
 
 On mutation, taurhaus initializes a git repository under the template store and commits managed template files.
 
@@ -39,57 +143,39 @@ Managed layout:
 
 For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_DIR`, so template storage resolves under `<TAURHAUS_DATA_DIR>/templates/`.
 
-## Built-in Catalog (v0.5.0)
+## Built-In Catalog
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
 - **Roles (7)**: `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-architect`, `codex-developer`, `codex-qa`, `gemini-ui-specialist`
 - **Presets (4)**: `standard-team`, `fullstack-dev`, `research-dev`, `review-team`
 
-Notable updates:
-- `codex-architect` is a first-class built-in role template for architecture/review ownership.
-- `standard-team` is the default "full team" preset (lead orchestrator + architect + developers + UI specialist).
+These built-ins are most useful when you read them as lane definitions:
 
-## Using Templates in Setup
+- orchestrator owns routing and unblock decisions
+- architect owns structure and review boundaries
+- developer owns implementation lanes
+- UI specialist owns frontend presentation and polish
+- reviewer owns verification and risk spotting
 
-In Mesh setup, use **Start from template**:
-
-1. **Quick preset** to apply a known preset immediately
-2. **Browse catalog** to inspect role/preset metadata and open composition
-3. **Build custom team** to compose from role templates
-4. **Blank slate** to fall back to manual roster editing
-
-After composition, the roster is still editable in `MeshSetupView` (names, tools, models, project binding, descriptions).
-
-## Composition and Validation
-
-`TeamCustomizerPanel` resolves roster members and runs live checks:
-
-- single-lead validation
-- name-collision detection
-- tool availability warnings
-- composition warnings/errors from backend
-
-Apply sends the final roster in standard initialize shape (same shape as manual setup).
-
-## History, Diff, and Revert
+## History, Diff, And Revert
 
 `TemplateHistoryPanel` supports:
 
 - **Global history**: commits across all managed template files
-- **Selected template history**: commits touching a selected role/preset path
+- **Selected template history**: commits touching a selected role or preset path
 - **Commit details**: message, author, timestamp, changed files
-- **Diff view**: per-file hunks (+/- lines)
-- **Revert**: restore a template ID to a selected commit (creates a new forward commit)
+- **Diff view**: per-file hunks
+- **Revert**: restore a template ID to a selected commit by creating a new forward commit
 
 Revert is template-ID scoped and uses the backend `templates_revert` command.
 
-## Storage Status and Pending Actions
+## Storage Status And Pending Actions
 
 History UI exposes template storage status:
 
 - repo mode (`git` or fallback filesystem)
-- dirty state (uncommitted managed changes exist)
+- dirty state
 - pending action count from `_meta/state.json`
 
 Manual flush (`templates_flush_pending`) force-commits pending template mutations when needed.

@@ -7,6 +7,9 @@ export const MOCK_ROLE_TEMPLATES = [
     cliTool: 'claude',
     model: 'claude-opus-4-6',
     defaultNamePattern: 'lead-{project}',
+    focusArea: 'Team orchestration',
+    contextSummary: 'Keeps the team aligned on sequencing, blockers, and delivery quality.',
+    behaviorSummary: 'Coordinates specialists and avoids taking over implementation lanes.',
     capabilities: ['planning', 'coordination', 'review', 'triage'],
     builtIn: true,
     readOnly: true,
@@ -41,6 +44,9 @@ export const MOCK_ROLE_TEMPLATES = [
     cliTool: 'codex',
     model: 'gpt-5.4 high',
     defaultNamePattern: 'dev-{n}',
+    focusArea: 'Scoped implementation',
+    contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+    behaviorSummary: 'Implements narrowly and escalates blockers instead of broadening scope.',
     capabilities: ['implementation', 'testing', 'debugging'],
     builtIn: true,
     readOnly: true,
@@ -75,6 +81,9 @@ export const MOCK_ROLE_TEMPLATES = [
     cliTool: 'claude',
     model: 'claude-opus-4-6',
     defaultNamePattern: 'reviewer-{n}',
+    focusArea: 'Change review',
+    contextSummary: 'Reviews for correctness, regression risk, and missing coverage.',
+    behaviorSummary: 'Finds concrete risks and avoids speculative redesign requests.',
     capabilities: ['review', 'security', 'risk-analysis', 'testing'],
     builtIn: true,
     readOnly: true,
@@ -106,6 +115,9 @@ export const MOCK_ROLE_TEMPLATES = [
     cliTool: 'gemini',
     model: 'gemini-2.5-pro',
     defaultNamePattern: 'docs-{n}',
+    focusArea: 'Documentation systems',
+    contextSummary: 'Maintains operational docs and architecture-facing explanations.',
+    behaviorSummary: 'Clarifies shipped behavior without assuming implementation ownership.',
     capabilities: ['documentation', 'research'],
     builtIn: false,
     readOnly: false,
@@ -276,7 +288,9 @@ export function roleTemplateSummary(template) {
     kind: template.kind,
     cliTool: template.cliTool,
     model: template.model,
-    capabilities: template.capabilities ?? [],
+    focusArea: template.focusArea ?? '',
+    contextSummary: template.contextSummary ?? '',
+    behaviorSummary: template.behaviorSummary ?? '',
     builtIn: Boolean(template.builtIn),
     readOnly: Boolean(template.readOnly),
   }
@@ -288,7 +302,6 @@ export function teamPresetSummary(preset) {
     .filter(Boolean)
 
   const tools = [...new Set(referencedRoles.map((role) => role.cliTool))]
-  const capabilities = [...new Set(referencedRoles.flatMap((role) => role.capabilities ?? []))]
 
   return {
     presetId: preset.presetId,
@@ -298,7 +311,6 @@ export function teamPresetSummary(preset) {
     roleCount: preset.agentSlots?.length ?? 0,
     agentCount: (preset.agentSlots ?? []).reduce((total, slot) => total + (slot.count ?? 0), 0),
     tools,
-    capabilities,
     builtIn: Boolean(preset.builtIn),
     readOnly: Boolean(preset.readOnly),
   }

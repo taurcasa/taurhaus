@@ -55,6 +55,9 @@ describe('TemplateBrowserPanel', () => {
         kind: 'lead',
         cliTool: 'claude',
         model: 'claude-opus-4-6',
+        focusArea: 'Team orchestration',
+        contextSummary: 'Keeps the whole team aligned on sequencing and delivery risks.',
+        behaviorSummary: 'Coordinates work and escalates blockers instead of doing specialist implementation.',
         capabilities: ['planning', 'coordination'],
         builtIn: true,
         readOnly: true,
@@ -65,6 +68,9 @@ describe('TemplateBrowserPanel', () => {
         kind: 'agent',
         cliTool: 'gemini',
         model: 'gemini-2.5-pro',
+        focusArea: 'Documentation systems',
+        contextSummary: 'Maintains operational docs and architecture-facing explanations.',
+        behaviorSummary: 'Writes and clarifies docs without taking over code ownership lanes.',
         capabilities: ['documentation', 'research'],
         builtIn: false,
         readOnly: false,
@@ -74,6 +80,9 @@ describe('TemplateBrowserPanel', () => {
     getRoleTemplate.mockImplementation(async (id) => ({
       roleId: id,
       name: id === 'claude-orchestrator' ? 'Claude Orchestrator' : 'Documentation Writer',
+      focusArea: id === 'claude-orchestrator' ? 'Team orchestration' : 'Documentation systems',
+      contextSummary: 'Detailed context summary',
+      behaviorSummary: 'Detailed behavior boundary',
       instructions: 'Detailed role instructions',
     }))
 
@@ -530,14 +539,18 @@ describe('TemplateBrowserPanel', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders tool and capability badges on role cards', async () => {
+  it('renders tool, focus area, and behavior summary on role cards', async () => {
     render(TemplateBrowserPanel, { props: { open: true } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-tool-badge-custom-doc-writer')).toBeInTheDocument()
     })
     expect(screen.getByTestId('role-model-badge-custom-doc-writer')).toBeInTheDocument()
-    expect(screen.getByTestId('role-capability-custom-doc-writer-documentation')).toBeInTheDocument()
+    expect(screen.getByTestId('role-focus-area-custom-doc-writer')).toHaveTextContent('Documentation systems')
+    expect(screen.getByTestId('role-behavior-summary-custom-doc-writer')).toHaveTextContent(
+      'Writes and clarifies docs without taking over code ownership lanes.'
+    )
+    expect(screen.queryByText('documentation')).not.toBeInTheDocument()
   })
 
   it('ignores stale catalog responses when panel is reopened quickly', async () => {

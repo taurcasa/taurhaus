@@ -1,6 +1,11 @@
 import { BEHAVIORAL_CONTRACT_MODES, normalizeBehavioralContract } from './normalize.js'
 import { defaultModelForTool } from '../meshDefaults.js'
 
+function optionalTrimmedString(value) {
+  const normalized = String(value ?? '').trim()
+  return normalized.length > 0 ? normalized : null
+}
+
 export function normalizeRoleTemplateInput(roleData) {
   const source =
     roleData && typeof roleData === 'object' && roleData.template
@@ -54,10 +59,13 @@ export function normalizeRoleTemplateInput(roleData) {
       ),
     },
     instructions: String(source.instructions ?? '').trim(),
+    focusArea: optionalTrimmedString(source.focusArea ?? source.focus_area),
+    contextSummary: optionalTrimmedString(source.contextSummary ?? source.context_summary),
+    behaviorSummary: optionalTrimmedString(source.behaviorSummary ?? source.behavior_summary),
     behavioralContract: normalizeBehavioralContract(source.behavioralContract, {
       mode: BEHAVIORAL_CONTRACT_MODES.TEMPLATE_INPUT,
     }),
-    capabilities: capabilities.length > 0 ? capabilities : [roleKind === 'lead' ? 'orchestration' : 'implementation'],
+    capabilities,
     constraints: {
       minInstances: roleKind === 'lead' ? 1 : minInstances,
       maxInstances: roleKind === 'lead' ? 1 : Math.max(maxInstances, minInstances),

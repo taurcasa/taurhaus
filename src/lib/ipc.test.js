@@ -1255,7 +1255,9 @@ describe('ipc module', () => {
             cliTool: 'codex',
             model: 'gpt-5.4 high',
           },
-          capabilities: ['implementation'],
+          focus_area: 'Scoped implementation',
+          context_summary: 'Owns code changes, tests, and debugging within assigned scope.',
+          behavior_summary: 'Implements narrowly and escalates blockers instead of broadening scope.',
         },
       ])
 
@@ -1268,12 +1270,26 @@ describe('ipc module', () => {
           roleId: 'codex-developer',
           cliTool: 'codex',
           model: 'gpt-5.4 high',
-          capabilities: ['implementation'],
+          focusArea: 'Scoped implementation',
+          contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+          behaviorSummary: 'Implements narrowly and escalates blockers instead of broadening scope.',
           builtIn: true,
           readOnly: true,
         }),
       ])
       delete window.__TAURI_INTERNALS__
+    })
+
+    it('preserves builtIn roles in non-Tauri mock mode when source is absent', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.listRoleTemplates()
+      const orchestrator = result.find((role) => role.roleId === 'claude-orchestrator')
+
+      expect(orchestrator).toEqual(expect.objectContaining({
+        roleId: 'claude-orchestrator',
+        builtIn: true,
+      }))
     })
   })
 
@@ -1321,6 +1337,9 @@ describe('ipc module', () => {
           readOnly: true,
           cliTool: 'gemini',
           defaults: { model: 'gemini-3.1-pro' },
+          focus_area: 'Documentation systems',
+          context_summary: 'Maintains operational docs and architecture-facing explanations.',
+          behavior_summary: 'Clarifies shipped behavior without assuming implementation ownership.',
           capabilities: 'not-an-array',
         },
       ])
@@ -1332,7 +1351,9 @@ describe('ipc module', () => {
           roleId: 'role-a',
           cliTool: 'gemini',
           model: 'gemini-3.1-pro',
-          capabilities: [],
+          focusArea: 'Documentation systems',
+          contextSummary: 'Maintains operational docs and architecture-facing explanations.',
+          behaviorSummary: 'Clarifies shipped behavior without assuming implementation ownership.',
           builtIn: false,
           readOnly: true,
         }),
@@ -1373,7 +1394,6 @@ describe('ipc module', () => {
           roleCount: 1,
           agentCount: 3,
           tools: [],
-          capabilities: [],
           builtIn: true,
           readOnly: true,
         }),
@@ -1437,9 +1457,11 @@ describe('ipc module', () => {
         name: 'Frontend Dev',
         tool: 'codex',
         model: 'gpt-5.4 high',
+        focusArea: 'Frontend implementation',
+        contextSummary: 'Owns UI components, interaction flows, and regression-safe changes.',
+        behaviorSummary: 'Ships UI work directly and escalates architecture or product-direction calls.',
         instructions: 'Ship UI updates.',
         behavioralContract: [{ rule: 'Report progress', enabled: true }],
-        capabilities: ['frontend'],
       })
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('templates_upsert_role', {
@@ -1447,6 +1469,9 @@ describe('ipc module', () => {
           template: expect.objectContaining({
             roleId: 'frontend-dev',
             defaults: expect.objectContaining({ cliTool: 'codex' }),
+            focusArea: 'Frontend implementation',
+            contextSummary: 'Owns UI components, interaction flows, and regression-safe changes.',
+            behaviorSummary: 'Ships UI work directly and escalates architecture or product-direction calls.',
             behavioralContract: expect.objectContaining({
               execution: ['Report progress'],
             }),
@@ -1464,7 +1489,6 @@ describe('ipc module', () => {
         roleId: 'lead-alpha',
         name: 'Lead Alpha',
         kind: 'LEAD',
-        capabilities: [],
         behavioralContract: [],
         constraints: { minInstances: -5, maxInstances: 0 },
       })
@@ -1478,7 +1502,9 @@ describe('ipc module', () => {
               cliTool: 'claude',
               model: 'claude-opus-4-6',
             }),
-            capabilities: ['orchestration'],
+            focusArea: null,
+            contextSummary: null,
+            behaviorSummary: null,
             constraints: expect.objectContaining({
               minInstances: 1,
               maxInstances: 1,
@@ -1686,6 +1712,11 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
       const result = await ipc.composeTeam({ leadRoleId: 'lead-a' })
       expect(result.warnings).toContain('No agent slots selected; roster includes lead only.')
+      expect(result.roster[0]).toEqual(expect.objectContaining({
+        focusArea: 'Team orchestration',
+        contextSummary: 'Keeps the team aligned on sequencing, blockers, and delivery quality.',
+        behaviorSummary: 'Coordinates specialists and escalates blockers instead of taking over implementation lanes.',
+      }))
     })
 
     it('normalizes composeTeam backend failures to Error messages', async () => {
@@ -1858,6 +1889,8 @@ describe('ipc module', () => {
               role: 'lead',
               cliTool: 'claude',
               projectId: '/projects/arch',
+              isCrossProject: false,
+              projectLabel: '',
               description: 'Own orchestration',
               sessionStatus: 'active',
               paneId: '%1',

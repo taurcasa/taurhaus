@@ -25,12 +25,13 @@
   let roleId = $state('')
   let tool = $state('claude')
   let model = $state('claude-opus-4-6')
+  let focusArea = $state('')
+  let contextSummary = $state('')
+  let behaviorSummary = $state('')
   let instructions = $state('')
   let behavioralContract = $state([])
-  let capabilities = $state([])
 
   let newRule = $state('')
-  let newCapability = $state('')
   let manualId = $state(false)
 
   const isBuiltIn = $derived(role?.builtIn || false)
@@ -57,6 +58,12 @@
 
   const labelTone = 'text-zinc-500'
   const sectionHeaderTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const guidanceCardTone = $derived(
+    dark
+      ? 'border-white/[0.05] bg-black/20'
+      : 'border-brand-200/50 bg-white/80'
+  )
+  const guidanceTextTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-600')
 
   function slugify(text) {
     return text
@@ -102,15 +109,9 @@
     )
   }
 
-  function addCapability() {
-    if (newCapability.trim()) {
-      capabilities = [...capabilities, newCapability.trim()]
-      newCapability = ''
-    }
-  }
-
-  function removeCapability(index) {
-    capabilities = capabilities.filter((_, i) => i !== index)
+  function optionalValue(value) {
+    const normalized = String(value ?? '').trim()
+    return normalized.length > 0 ? normalized : null
   }
 
   function handleSave() {
@@ -120,9 +121,11 @@
       name,
       tool,
       model,
+      focusArea: optionalValue(focusArea),
+      contextSummary: optionalValue(contextSummary),
+      behaviorSummary: optionalValue(behaviorSummary),
       instructions,
-      behavioralContract: JSON.parse(JSON.stringify(behavioralContract)),
-      capabilities: [...capabilities]
+      behavioralContract: JSON.parse(JSON.stringify(behavioralContract))
     })
   }
 
@@ -131,20 +134,24 @@
       if (role) {
         name = role.name || ''
         roleId = role.roleId || ''
-        tool = role.tool || 'claude'
+        tool = role.tool || role.cliTool || 'claude'
         model = role.model || modelOptionsByTool[tool][0]
+        focusArea = role.focusArea ?? role.focus_area ?? ''
+        contextSummary = role.contextSummary ?? role.context_summary ?? ''
+        behaviorSummary = role.behaviorSummary ?? role.behavior_summary ?? ''
         instructions = role.instructions || ''
         behavioralContract = role.behavioralContract ? JSON.parse(JSON.stringify(role.behavioralContract)) : []
-        capabilities = role.capabilities ? [...role.capabilities] : []
         manualId = true
       } else {
         name = ''
         roleId = ''
         tool = 'claude'
         model = 'claude-opus-4-6'
+        focusArea = ''
+        contextSummary = ''
+        behaviorSummary = ''
         instructions = ''
         behavioralContract = []
-        capabilities = []
         manualId = false
       }
     }
@@ -239,8 +246,86 @@
       </div>
     </section>
 
-    <!-- Instructions Section -->
+    <!-- Context Steering Section -->
     <section class="p-3 rounded-xl border transition-all duration-200 delay-75 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
+      <header class="mb-3 space-y-1">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Context Steering</h3>
+        <p class="text-[11px] leading-relaxed {guidanceTextTone}">
+          Define the lane this role should keep warm over time. Think in accumulated context, not generic capabilities.
+        </p>
+      </header>
+
+      <div class="space-y-3">
+        <div class="rounded-xl border p-3 space-y-2 {guidanceCardTone}">
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-3">
+              <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-focus-area">
+                Focus Area
+              </label>
+              <span class="text-[9px] font-bold uppercase tracking-[0.18em] {sectionHeaderTone}">Lane</span>
+            </div>
+            <p class="text-[11px] leading-relaxed {guidanceTextTone}">
+              What domain does this agent specialize in?
+            </p>
+          </div>
+          <input
+            id="role-focus-area"
+            type="text"
+            class="w-full h-10 px-3 rounded-lg border text-sm transition-all outline-none {inputTone}"
+            placeholder="Frontend UI and component architecture"
+            bind:value={focusArea}
+            data-testid="role-editor-focus-area-input"
+          />
+        </div>
+
+        <div class="rounded-xl border p-3 space-y-2 {guidanceCardTone}">
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-3">
+              <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-context-summary">
+                Context Summary
+              </label>
+              <span class="text-[9px] font-bold uppercase tracking-[0.18em] {sectionHeaderTone}">Memory</span>
+            </div>
+            <p class="text-[11px] leading-relaxed {guidanceTextTone}">
+              What context should this agent accumulate over time?
+            </p>
+          </div>
+          <textarea
+            id="role-context-summary"
+            class="w-full p-3 rounded-lg border text-xs leading-5 transition-all outline-none resize-none {inputTone}"
+            rows="3"
+            placeholder="Component patterns, design tokens, accessibility rules, and visual test coverage."
+            bind:value={contextSummary}
+            data-testid="role-editor-context-summary-input"
+          ></textarea>
+        </div>
+
+        <div class="rounded-xl border p-3 space-y-2 {guidanceCardTone}">
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-3">
+              <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-behavior-summary">
+                Behavioral Boundary
+              </label>
+              <span class="text-[9px] font-bold uppercase tracking-[0.18em] {sectionHeaderTone}">Escalation</span>
+            </div>
+            <p class="text-[11px] leading-relaxed {guidanceTextTone}">
+              What should this agent handle directly versus escalate?
+            </p>
+          </div>
+          <textarea
+            id="role-behavior-summary"
+            class="w-full p-3 rounded-lg border text-xs leading-5 transition-all outline-none resize-none {inputTone}"
+            rows="3"
+            placeholder="Handles UI implementation independently; escalates architecture changes and product-direction calls."
+            bind:value={behaviorSummary}
+            data-testid="role-editor-behavior-summary-input"
+          ></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Instructions Section -->
+    <section class="p-3 rounded-xl border transition-all duration-200 delay-100 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
       <header class="mb-3">
         <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Instructions</h3>
       </header>
@@ -257,10 +342,13 @@
       </div>
     </section>
 
-    <!-- Behavioral Contract Section -->
-    <section class="p-3 rounded-xl border transition-all duration-200 delay-100 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
-      <header class="mb-3">
-        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Behavioral Contract</h3>
+    <!-- Operational Boundaries Section -->
+    <section class="p-3 rounded-xl border transition-all duration-200 delay-150 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
+      <header class="mb-3 space-y-1">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Operational Boundaries</h3>
+        <p class="text-[11px] leading-relaxed {guidanceTextTone}">
+          Capture the non-negotiable rules the lead can depend on when routing work to this role.
+        </p>
       </header>
       
       <div class="space-y-2">
@@ -297,7 +385,7 @@
           <input
             type="text"
             class="flex-1 h-9 px-3 rounded-lg border text-xs transition-all outline-none {inputTone}"
-            placeholder="Add a hard constraint..."
+            placeholder="Add a rule the lead can rely on..."
             bind:value={newRule}
             onkeydown={(e) => e.key === 'Enter' && addRule()}
             data-testid="role-editor-add-rule-input"
@@ -307,52 +395,6 @@
             onclick={addRule}
             disabled={!newRule.trim()}
             data-testid="role-editor-add-rule-button"
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Capabilities Section -->
-    <section class="p-3 rounded-xl border transition-all duration-200 delay-150 animate-in fade-in slide-in-from-bottom-1 {cardTone}">
-      <header class="mb-3">
-        <h3 class="text-[10px] font-bold uppercase tracking-wider {sectionHeaderTone}">Capabilities</h3>
-      </header>
-      <div class="space-y-3">
-        <div class="flex flex-wrap gap-1.5">
-          {#each capabilities as cap, i}
-            <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full text-[10px] font-bold border transition-all {dark ? 'bg-white/[0.04] border-white/[0.08] text-brand-400' : 'bg-brand-50 border-brand-200/50 text-brand-700'}">
-              {cap}
-              <button
-                class="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                onclick={() => removeCapability(i)}
-                data-testid="role-capability-{i}-remove"
-                aria-label="Remove capability"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </span>
-          {/each}
-          {#if capabilities.length === 0}
-            <p class="text-[10px] italic {t.textMuted} px-1">No custom capabilities defined.</p>
-          {/if}
-        </div>
-        
-        <div class="flex gap-2">
-          <input
-            type="text"
-            class="flex-1 h-9 px-3 rounded-lg border text-xs transition-all outline-none {inputTone}"
-            placeholder="Add capability tag..."
-            bind:value={newCapability}
-            onkeydown={(e) => e.key === 'Enter' && addCapability()}
-            data-testid="role-editor-add-capability-input"
-          />
-          <button
-            class="h-9 px-4 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10 disabled:opacity-50 disabled:pointer-events-none"
-            onclick={addCapability}
-            disabled={!newCapability.trim()}
-            data-testid="role-editor-add-capability-button"
           >
             Add
           </button>

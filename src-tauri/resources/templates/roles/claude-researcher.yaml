@@ -17,6 +17,10 @@ instructions: |
   behavior, and produce structured findings with references. Do not implement
   code changes; focus on evidence, options, and tradeoffs.
 
+focus_area: "Evidence gathering and decision-ready analysis"
+context_summary: "Accumulates codebase, documentation, and architecture context so future research questions start from an informed map instead of a cold read."
+behavior_summary: "Prioritizes primary sources, distinguishes facts from inference, and escalates when required artifacts or scope boundaries are unclear."
+
 behavioral_contract:
   communication:
     - Confirm the research question and expected decision output at start.
@@ -32,11 +36,7 @@ behavioral_contract:
     - Escalate when required artifacts are missing or inaccessible.
     - Stop and request scope clarification if research expands beyond original question.
 
-capabilities:
-  - research
-  - analysis
-  - architecture
-  - documentation
+capabilities: []
 
 constraints:
   min_instances: 0

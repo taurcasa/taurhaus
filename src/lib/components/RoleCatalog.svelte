@@ -1,8 +1,6 @@
 <script>
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import {
-    capabilityChipTone,
-    capabilityTestId,
     isCustomRole,
     roleKindBadgeTone,
   } from './templateBrowserUtils.js'
@@ -51,11 +49,55 @@
         <p class="text-[10px] font-mono {toneMuted}">{selectedRole.roleId}</p>
       </div>
 
-      <div class="p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5">
-        <p class="text-xs leading-relaxed {t.textSecondary}">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span
+          class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold {dark ? 'border-zinc-700 text-zinc-300 bg-zinc-900/80' : 'border-zinc-200 text-zinc-700 bg-zinc-50'}"
+          data-testid={`role-tool-badge-${selectedRole.roleId}`}
+        >
+          <svg class="h-3 w-3 shrink-0" viewBox={getToolIcon(selectedRole.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+            <path d={getToolIcon(selectedRole.cliTool).path}></path>
+          </svg>
+          <span class="uppercase tracking-tighter opacity-80">{getToolName(selectedRole.cliTool)}</span>
+        </span>
+        <span
+          class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold {dark ? 'border-zinc-700 text-zinc-300 bg-zinc-900/80' : 'border-zinc-200 text-zinc-700 bg-zinc-50'}"
+          data-testid={`role-model-badge-${selectedRole.roleId}`}
+        >
+          {selectedRole.model || 'unspecified'}
+        </span>
+      </div>
+
+      <div class="grid gap-2">
+        <section class="rounded-lg border p-3 {dark ? 'border-white/8 bg-white/[0.03]' : 'border-zinc-200 bg-white/70'}">
+          <p class="text-[10px] font-bold uppercase tracking-wide {toneMuted}">Focus area</p>
+          <p class="mt-1 text-xs font-semibold {t.textPrimary}">
+            {selectedRole.focusArea || 'No focus area defined.'}
+          </p>
+        </section>
+
+        <section class="rounded-lg border p-3 {dark ? 'border-white/8 bg-white/[0.03]' : 'border-zinc-200 bg-white/70'}">
+          <p class="text-[10px] font-bold uppercase tracking-wide {toneMuted}">Context summary</p>
+          <p class="mt-1 text-xs leading-relaxed {t.textSecondary}">
+            {selectedRole.contextSummary || 'No context summary available.'}
+          </p>
+        </section>
+
+        <section class="rounded-lg border p-3 {dark ? 'border-white/8 bg-white/[0.03]' : 'border-zinc-200 bg-white/70'}">
+          <p class="text-[10px] font-bold uppercase tracking-wide {toneMuted}">Behavioral boundary</p>
+          <p class="mt-1 text-xs leading-relaxed {t.textSecondary}">
+            {selectedRole.behaviorSummary || 'No behavioral boundary available.'}
+          </p>
+        </section>
+      </div>
+
+      <details class="rounded-lg border p-3 {dark ? 'border-white/8 bg-black/10' : 'border-zinc-200 bg-zinc-50/80'}">
+        <summary class="cursor-pointer text-[10px] font-bold uppercase tracking-wide {toneMuted}">
+          Raw instructions
+        </summary>
+        <p class="mt-2 text-xs leading-relaxed {t.textSecondary}">
           {selectedRole.instructions || 'No role instructions available.'}
         </p>
-      </div>
+      </details>
 
       <button
         class="w-full h-10 rounded-lg bg-brand-600 px-4 py-1 text-xs font-bold text-white hover:bg-brand-500 shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
@@ -103,7 +145,7 @@
 
         <div class="mt-3 flex flex-wrap items-center gap-1.5">
           <span
-            class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold {capabilityChipTone(dark)}"
+            class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold {dark ? 'border-zinc-700 text-zinc-300 bg-zinc-900/80' : 'border-zinc-200 text-zinc-700 bg-zinc-50'}"
             data-testid={`role-tool-badge-${role.roleId}`}
           >
             <svg class="h-3 w-3 shrink-0" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
@@ -112,25 +154,27 @@
             <span class="uppercase tracking-tighter opacity-80">{getToolName(role.cliTool)}</span>
           </span>
           <span
-            class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold {capabilityChipTone(dark)}"
+            class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold {dark ? 'border-zinc-700 text-zinc-300 bg-zinc-900/80' : 'border-zinc-200 text-zinc-700 bg-zinc-50'}"
             data-testid={`role-model-badge-${role.roleId}`}
           >
             {role.model || 'unspecified'}
           </span>
         </div>
 
-        {#if role.capabilities.length > 0}
-          <div class="mt-2 flex flex-wrap gap-1">
-            {#each role.capabilities as capability}
-              <span
-                class="rounded-full px-2 py-0.5 text-[9px] font-bold border border-transparent bg-black/5 dark:bg-white/5 {t.textSecondary}"
-                data-testid={capabilityTestId(role.roleId, capability)}
-              >
-                {capability}
-              </span>
-            {/each}
+        <div class="mt-3 space-y-2">
+          <div class="rounded-lg border px-2.5 py-2 {dark ? 'border-white/8 bg-white/[0.02]' : 'border-zinc-200 bg-white/70'}">
+            <p class="text-[10px] font-bold uppercase tracking-wide {toneMuted}">Focus area</p>
+            <p class="mt-1 text-[12px] font-semibold {t.textPrimary}" data-testid={`role-focus-area-${role.roleId}`}>
+              {role.focusArea || 'No focus area defined.'}
+            </p>
           </div>
-        {/if}
+          <div class="rounded-lg border px-2.5 py-2 {dark ? 'border-white/8 bg-white/[0.02]' : 'border-zinc-200 bg-white/70'}">
+            <p class="text-[10px] font-bold uppercase tracking-wide {toneMuted}">Behavior summary</p>
+            <p class="mt-1 text-[11px] leading-relaxed {t.textSecondary}" data-testid={`role-behavior-summary-${role.roleId}`}>
+              {role.behaviorSummary || role.contextSummary || 'No behavior summary available.'}
+            </p>
+          </div>
+        </div>
 
         <div class="mt-4 flex flex-wrap justify-end gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           <div class="flex gap-1.5">

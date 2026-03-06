@@ -20,15 +20,21 @@ export async function listRoleTemplates() {
     MOCK_ROLE_TEMPLATES.map(roleTemplateSummary)
   )
 
-  return (templates ?? []).map((template) => ({
-    ...template,
-    roleId: template?.roleId ?? '',
-    cliTool: template?.cliTool ?? template?.defaults?.cliTool ?? null,
-    model: template?.model ?? template?.defaults?.model ?? null,
-    capabilities: Array.isArray(template?.capabilities) ? template.capabilities : [],
-    builtIn: String(template?.source ?? '').toLowerCase() === 'built_in',
-    readOnly: Boolean(template?.readOnly),
-  }))
+  return (templates ?? []).map((template) => {
+    const { capabilities: _capabilities, source: _source, ...rest } = template ?? {}
+
+    return {
+      ...rest,
+      roleId: template?.roleId ?? '',
+      cliTool: template?.cliTool ?? template?.defaults?.cliTool ?? null,
+      model: template?.model ?? template?.defaults?.model ?? null,
+      focusArea: template?.focusArea ?? template?.focus_area ?? '',
+      contextSummary: template?.contextSummary ?? template?.context_summary ?? '',
+      behaviorSummary: template?.behaviorSummary ?? template?.behavior_summary ?? '',
+      builtIn: String(template?.source ?? '').toLowerCase() === 'built_in' || Boolean(template?.builtIn ?? template?.built_in),
+      readOnly: Boolean(template?.readOnly),
+    }
+  })
 }
 
 export function getRoleTemplate(id) {
@@ -63,17 +69,17 @@ export async function listTeamPresets() {
   )
 
   return (presets ?? []).map((preset) => {
+    const { capabilities: _capabilities, source: _source, ...rest } = preset ?? {}
     const leadRoleId = preset?.leadRoleId ?? ''
     const agentSlots = Array.isArray(preset?.agentSlots) ? preset.agentSlots : []
 
     return {
-      ...preset,
+      ...rest,
       leadRoleId,
       roleCount: agentSlots.length,
       agentCount: agentSlots.reduce((total, slot) => total + (slot?.count ?? 0), 0),
       tools: Array.isArray(preset?.tools) ? preset.tools : [],
-      capabilities: Array.isArray(preset?.capabilities) ? preset.capabilities : [],
-      builtIn: String(preset?.source ?? '').toLowerCase() === 'built_in',
+      builtIn: String(preset?.source ?? '').toLowerCase() === 'built_in' || Boolean(preset?.builtIn ?? preset?.built_in),
       readOnly: Boolean(preset?.readOnly),
     }
   })
@@ -120,13 +126,15 @@ export function composeTeam(request) {
           roleKind: 'lead',
           cliTool: 'claude',
           model: 'claude-opus-4-6',
+          focusArea: 'Team orchestration',
+          contextSummary: 'Keeps the team aligned on sequencing, blockers, and delivery quality.',
+          behaviorSummary: 'Coordinates specialists and escalates blockers instead of taking over implementation lanes.',
           instructions: 'Coordinate execution and unblock the team.',
           behavioralContract: {
             communication: ['Acknowledge assignments quickly.'],
             execution: ['Delegate scoped tasks and verify completion evidence.'],
             escalation: ['Escalate blockers immediately.'],
           },
-          capabilities: ['planning', 'coordination'],
           projectBinding: 'lead_project',
           projectId: null,
         },

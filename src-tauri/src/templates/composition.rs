@@ -34,6 +34,9 @@ pub struct ResolvedMember {
     pub cli_tool: CliTool,
     pub model: String,
     pub instructions: String,
+    pub focus_area: Option<String>,
+    pub context_summary: Option<String>,
+    pub behavior_summary: Option<String>,
     pub behavioral_contract: BehavioralContract,
     pub capabilities: Vec<String>,
     pub project_binding: ProjectBinding,
@@ -59,6 +62,9 @@ struct ResolvedFields {
     model: String,
     name_pattern: String,
     instructions: String,
+    focus_area: Option<String>,
+    context_summary: Option<String>,
+    behavior_summary: Option<String>,
     behavioral_contract: BehavioralContract,
     capabilities: Vec<String>,
 }
@@ -209,6 +215,9 @@ pub fn compose_team(
                 cli_tool: lead.defaults.cli_tool,
                 model: fields.model,
                 instructions: fields.instructions,
+                focus_area: fields.focus_area,
+                context_summary: fields.context_summary,
+                behavior_summary: fields.behavior_summary,
                 behavioral_contract: fields.behavioral_contract,
                 capabilities: fields.capabilities,
                 project_binding: ProjectBinding::LeadProject,
@@ -264,6 +273,9 @@ pub fn compose_team(
                 cli_tool: role.defaults.cli_tool,
                 model: fields.model,
                 instructions: fields.instructions,
+                focus_area: fields.focus_area,
+                context_summary: fields.context_summary,
+                behavior_summary: fields.behavior_summary,
                 behavioral_contract: fields.behavioral_contract,
                 capabilities: fields.capabilities,
                 project_binding: slot.project_binding,
@@ -326,6 +338,9 @@ fn resolve_fields(
         model: role.defaults.model.clone(),
         name_pattern: role.defaults.default_name_pattern.clone(),
         instructions: role.instructions.clone(),
+        focus_area: role.focus_area.clone(),
+        context_summary: role.context_summary.clone(),
+        behavior_summary: role.behavior_summary.clone(),
         behavioral_contract: role.behavioral_contract.clone(),
         capabilities: role.capabilities.clone(),
     };
@@ -357,6 +372,15 @@ fn apply_overrides(resolved: &mut ResolvedFields, overrides: &SlotOverrides) {
         }
         resolved.instructions.push_str(instructions_append);
     }
+    if let Some(focus_area) = overrides.focus_area.as_deref() {
+        resolved.focus_area = Some(focus_area.to_string());
+    }
+    if let Some(context_summary) = overrides.context_summary.as_deref() {
+        resolved.context_summary = Some(context_summary.to_string());
+    }
+    if let Some(behavior_summary) = overrides.behavior_summary.as_deref() {
+        resolved.behavior_summary = Some(behavior_summary.to_string());
+    }
 
     if let Some(contract_append) = overrides.behavioral_contract_append.as_ref() {
         resolved
@@ -371,19 +395,6 @@ fn apply_overrides(resolved: &mut ResolvedFields, overrides: &SlotOverrides) {
             .behavioral_contract
             .escalation
             .extend(contract_append.escalation.iter().cloned());
-    }
-
-    for capability in &overrides.capabilities_add {
-        if !resolved
-            .capabilities
-            .iter()
-            .any(|entry| entry == capability)
-        {
-            resolved.capabilities.push(capability.clone());
-        }
-    }
-    for capability in &overrides.capabilities_remove {
-        resolved.capabilities.retain(|entry| entry != capability);
     }
 }
 
@@ -541,9 +552,10 @@ mod tests {
                     name_pattern: Some("worker".to_string()),
                     instructions_replace: None,
                     instructions_append: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
                     behavioral_contract_append: None,
-                    capabilities_add: Vec::new(),
-                    capabilities_remove: Vec::new(),
                 }),
             },
             AgentSlot {
@@ -556,9 +568,10 @@ mod tests {
                     name_pattern: Some("worker".to_string()),
                     instructions_replace: None,
                     instructions_append: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
                     behavioral_contract_append: None,
-                    capabilities_add: Vec::new(),
-                    capabilities_remove: Vec::new(),
                 }),
             },
         ];
@@ -599,9 +612,10 @@ mod tests {
                 name_pattern: None,
                 instructions_replace: None,
                 instructions_append: Some("slot append".to_string()),
+                focus_area: Some("Slot focus".to_string()),
+                context_summary: Some("Slot context".to_string()),
+                behavior_summary: Some("Slot behavior".to_string()),
                 behavioral_contract_append: None,
-                capabilities_add: vec!["slot-cap".to_string()],
-                capabilities_remove: vec!["implementation".to_string()],
             }),
         }];
 
@@ -618,9 +632,10 @@ mod tests {
                         name_pattern: None,
                         instructions_replace: Some("instance replace".to_string()),
                         instructions_append: Some("instance append".to_string()),
+                        focus_area: Some("Instance focus".to_string()),
+                        context_summary: Some("Instance context".to_string()),
+                        behavior_summary: Some("Instance behavior".to_string()),
                         behavioral_contract_append: None,
-                        capabilities_add: vec!["inst-cap".to_string()],
-                        capabilities_remove: Vec::new(),
                     },
                 }],
                 project_name: Some("taurhaus".to_string()),
@@ -646,13 +661,12 @@ mod tests {
 
         assert_eq!(dev1.instructions, "instance replace\ninstance append");
         assert!(dev2.instructions.contains("slot append"));
-
-        assert!(!dev1
-            .capabilities
-            .iter()
-            .any(|entry| entry == "implementation"));
-        assert!(dev1.capabilities.iter().any(|entry| entry == "slot-cap"));
-        assert!(dev1.capabilities.iter().any(|entry| entry == "inst-cap"));
+        assert_eq!(dev1.focus_area.as_deref(), Some("Instance focus"));
+        assert_eq!(dev1.context_summary.as_deref(), Some("Instance context"));
+        assert_eq!(dev1.behavior_summary.as_deref(), Some("Instance behavior"));
+        assert_eq!(dev2.focus_area.as_deref(), Some("Slot focus"));
+        assert_eq!(dev2.context_summary.as_deref(), Some("Slot context"));
+        assert_eq!(dev2.behavior_summary.as_deref(), Some("Slot behavior"));
     }
 
     #[test]

@@ -106,6 +106,12 @@ pub struct RoleTemplate {
     pub kind: RoleKind,
     pub defaults: RoleDefaults,
     pub instructions: String,
+    #[serde(default, alias = "focus_area")]
+    pub focus_area: Option<String>,
+    #[serde(default, alias = "context_summary")]
+    pub context_summary: Option<String>,
+    #[serde(default, alias = "behavior_summary")]
+    pub behavior_summary: Option<String>,
     #[serde(alias = "behavioral_contract")]
     pub behavioral_contract: BehavioralContract,
     #[serde(default)]
@@ -140,6 +146,15 @@ impl RoleTemplate {
             &mut errors,
         );
         validate_non_empty("instructions", &self.instructions, &mut errors);
+        if let Some(focus_area) = self.focus_area.as_deref() {
+            validate_non_empty("focus_area", focus_area, &mut errors);
+        }
+        if let Some(context_summary) = self.context_summary.as_deref() {
+            validate_non_empty("context_summary", context_summary, &mut errors);
+        }
+        if let Some(behavior_summary) = self.behavior_summary.as_deref() {
+            validate_non_empty("behavior_summary", behavior_summary, &mut errors);
+        }
 
         if self.behavioral_contract.is_empty() {
             errors.push(format!(
@@ -151,12 +166,6 @@ impl RoleTemplate {
             .validate("behavioral_contract", &mut errors);
 
         validate_string_list("capabilities", &self.capabilities, &mut errors);
-        if self.capabilities.is_empty() {
-            errors.push(format!(
-                "role '{}' capabilities must include at least one tag",
-                self.role_id
-            ));
-        }
 
         if self.constraints.max_instances < self.constraints.min_instances {
             errors.push(format!(
@@ -213,12 +222,14 @@ pub struct SlotOverrides {
     pub instructions_replace: Option<String>,
     #[serde(alias = "instructions_append")]
     pub instructions_append: Option<String>,
+    #[serde(default, alias = "focus_area")]
+    pub focus_area: Option<String>,
+    #[serde(default, alias = "context_summary")]
+    pub context_summary: Option<String>,
+    #[serde(default, alias = "behavior_summary")]
+    pub behavior_summary: Option<String>,
     #[serde(alias = "behavioral_contract_append")]
     pub behavioral_contract_append: Option<BehavioralContract>,
-    #[serde(default, alias = "capabilities_add")]
-    pub capabilities_add: Vec<String>,
-    #[serde(default, alias = "capabilities_remove")]
-    pub capabilities_remove: Vec<String>,
 }
 
 impl SlotOverrides {
@@ -247,35 +258,28 @@ impl SlotOverrides {
                 errors,
             );
         }
+        if let Some(focus_area) = self.focus_area.as_deref() {
+            validate_non_empty(&format!("{field_prefix}.focus_area"), focus_area, errors);
+        }
+        if let Some(context_summary) = self.context_summary.as_deref() {
+            validate_non_empty(
+                &format!("{field_prefix}.context_summary"),
+                context_summary,
+                errors,
+            );
+        }
+        if let Some(behavior_summary) = self.behavior_summary.as_deref() {
+            validate_non_empty(
+                &format!("{field_prefix}.behavior_summary"),
+                behavior_summary,
+                errors,
+            );
+        }
         if let Some(contract) = self.behavioral_contract_append.as_ref() {
             contract.validate(
                 &format!("{field_prefix}.behavioral_contract_append"),
                 errors,
             );
-        }
-
-        validate_string_list(
-            &format!("{field_prefix}.capabilities_add"),
-            &self.capabilities_add,
-            errors,
-        );
-        validate_string_list(
-            &format!("{field_prefix}.capabilities_remove"),
-            &self.capabilities_remove,
-            errors,
-        );
-
-        let add_set: HashSet<&str> = self.capabilities_add.iter().map(String::as_str).collect();
-        let remove_set: HashSet<&str> = self
-            .capabilities_remove
-            .iter()
-            .map(String::as_str)
-            .collect();
-
-        for overlap in add_set.intersection(&remove_set) {
-            errors.push(format!(
-                "{field_prefix}.capabilities_add and capabilities_remove both contain '{overlap}'"
-            ));
         }
     }
 }
@@ -699,6 +703,13 @@ mod tests {
                 default_name_pattern: "dev-{n}".to_string(),
             },
             instructions: "Execute scoped tasks.".to_string(),
+            focus_area: Some("Implementation lane".to_string()),
+            context_summary: Some(
+                "Carries active implementation context for scoped code changes.".to_string(),
+            ),
+            behavior_summary: Some(
+                "Implements assigned work and escalates structural uncertainty.".to_string(),
+            ),
             behavioral_contract: BehavioralContract {
                 communication: vec!["post updates".to_string()],
                 execution: vec!["deliver tests".to_string()],
@@ -735,13 +746,14 @@ mod tests {
                     name_pattern: Some("dev-{n}".to_string()),
                     instructions_replace: Some("Replace instructions".to_string()),
                     instructions_append: Some("Append instructions".to_string()),
+                    focus_area: Some("Custom implementation lane".to_string()),
+                    context_summary: Some("Custom context summary".to_string()),
+                    behavior_summary: Some("Custom behavior summary".to_string()),
                     behavioral_contract_append: Some(BehavioralContract {
                         communication: vec!["sync daily".to_string()],
                         execution: vec!["ship incrementally".to_string()],
                         escalation: vec!["escalate quickly".to_string()],
                     }),
-                    capabilities_add: vec!["review".to_string()],
-                    capabilities_remove: vec!["triage".to_string()],
                 }),
             }],
             defaults: TeamPresetDefaults {
@@ -807,6 +819,30 @@ mod tests {
         for role in &roles {
             role.validate()
                 .unwrap_or_else(|err| panic!("role '{}' failed validation: {err}", role.role_id));
+            assert!(
+                role.focus_area
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty()),
+                "role '{}' should define focus_area",
+                role.role_id
+            );
+            assert!(
+                role.context_summary
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty()),
+                "role '{}' should define context_summary",
+                role.role_id
+            );
+            assert!(
+                role.behavior_summary
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty()),
+                "role '{}' should define behavior_summary",
+                role.role_id
+            );
         }
     }
 
@@ -869,6 +905,9 @@ mod tests {
                 default_name_pattern: "lead-{project}".to_string(),
             },
             instructions: "Lead".to_string(),
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["a".to_string()],
                 execution: vec!["b".to_string()],
@@ -897,6 +936,9 @@ mod tests {
                 default_name_pattern: "worker".to_string(),
             },
             instructions: "Agent".to_string(),
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["a".to_string()],
                 execution: vec!["b".to_string()],
@@ -932,9 +974,10 @@ mod tests {
                         name_pattern: Some("worker".to_string()),
                         instructions_replace: None,
                         instructions_append: None,
+                        focus_area: None,
+                        context_summary: None,
+                        behavior_summary: None,
                         behavioral_contract_append: None,
-                        capabilities_add: Vec::new(),
-                        capabilities_remove: Vec::new(),
                     }),
                 },
                 AgentSlot {
@@ -947,9 +990,10 @@ mod tests {
                         name_pattern: Some("worker".to_string()),
                         instructions_replace: None,
                         instructions_append: None,
+                        focus_area: None,
+                        context_summary: None,
+                        behavior_summary: None,
                         behavioral_contract_append: None,
-                        capabilities_add: Vec::new(),
-                        capabilities_remove: Vec::new(),
                     }),
                 },
             ],
@@ -1012,6 +1056,12 @@ mod tests {
         assert!(!object.contains_key("role_id"));
         assert!(object.contains_key("behavioralContract"));
         assert!(!object.contains_key("behavioral_contract"));
+        assert!(object.contains_key("focusArea"));
+        assert!(!object.contains_key("focus_area"));
+        assert!(object.contains_key("contextSummary"));
+        assert!(!object.contains_key("context_summary"));
+        assert!(object.contains_key("behaviorSummary"));
+        assert!(!object.contains_key("behavior_summary"));
 
         let defaults = object
             .get("defaults")
@@ -1081,11 +1131,75 @@ mod tests {
         assert!(!overrides.contains_key("instructions_replace"));
         assert!(overrides.contains_key("instructionsAppend"));
         assert!(!overrides.contains_key("instructions_append"));
+        assert!(overrides.contains_key("focusArea"));
+        assert!(!overrides.contains_key("focus_area"));
+        assert!(overrides.contains_key("contextSummary"));
+        assert!(!overrides.contains_key("context_summary"));
+        assert!(overrides.contains_key("behaviorSummary"));
+        assert!(!overrides.contains_key("behavior_summary"));
         assert!(overrides.contains_key("behavioralContractAppend"));
         assert!(!overrides.contains_key("behavioral_contract_append"));
-        assert!(overrides.contains_key("capabilitiesAdd"));
-        assert!(!overrides.contains_key("capabilities_add"));
-        assert!(overrides.contains_key("capabilitiesRemove"));
-        assert!(!overrides.contains_key("capabilities_remove"));
+    }
+
+    #[test]
+    fn role_template_allows_missing_or_empty_capabilities() {
+        let mut role = sample_role_template();
+        role.capabilities.clear();
+        role.validate()
+            .expect("empty capabilities should pass validation");
+
+        let value = serde_json::json!({
+            "schema": { "kind": "role_template", "version": 1 },
+            "roleId": "minimal-role",
+            "name": "Minimal Role",
+            "version": "1.0.0",
+            "kind": "agent",
+            "defaults": {
+                "cliTool": "codex",
+                "model": "gpt-5.4 high",
+                "defaultNamePattern": "dev-{n}"
+            },
+            "instructions": "Stay in lane.",
+            "focusArea": "Implementation lane",
+            "contextSummary": "Keeps active code-change context.",
+            "behaviorSummary": "Escalates structural ambiguity.",
+            "behavioralContract": {
+                "communication": ["updates"],
+                "execution": ["implement"],
+                "escalation": ["escalate"]
+            },
+            "constraints": {
+                "minInstances": 0,
+                "maxInstances": 2,
+                "allowedProjectBinding": "any"
+            }
+        });
+        let deserialized: RoleTemplate =
+            serde_json::from_value(value).expect("deserialize without capabilities");
+        assert!(deserialized.capabilities.is_empty());
+        deserialized
+            .validate()
+            .expect("missing capabilities should pass validation");
+    }
+
+    #[test]
+    fn role_template_serializes_new_context_fields() {
+        let role = sample_role_template();
+        let round_trip = serde_json::from_value::<RoleTemplate>(
+            serde_json::to_value(&role).expect("serialize role"),
+        )
+        .expect("deserialize role");
+        assert_eq!(
+            round_trip.focus_area.as_deref(),
+            Some("Implementation lane")
+        );
+        assert_eq!(
+            round_trip.context_summary.as_deref(),
+            Some("Carries active implementation context for scoped code changes.")
+        );
+        assert_eq!(
+            round_trip.behavior_summary.as_deref(),
+            Some("Implements assigned work and escalates structural uncertainty.")
+        );
     }
 }

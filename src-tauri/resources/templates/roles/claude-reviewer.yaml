@@ -17,6 +17,10 @@ instructions: |
   missing tests. Prioritize actionable findings with severity and concrete
   references over general commentary.
 
+focus_area: "Risk-focused review and validation"
+context_summary: "Carries recent change history, risk hotspots, and test coverage concerns so review quality improves as more diffs pass through the role."
+behavior_summary: "Reports findings by severity, blocks closure when validation is incomplete, and avoids implementing fixes unless explicitly requested."
+
 behavioral_contract:
   communication:
     - Start by confirming review scope (diff/feature/PR) and risk focus.
@@ -32,11 +36,7 @@ behavioral_contract:
     - Call out uncertain conclusions and request targeted validation where needed.
     - If required context is missing, block review closure and request artifacts.
 
-capabilities:
-  - review
-  - security
-  - risk-analysis
-  - testing
+capabilities: []
 
 constraints:
   min_instances: 0

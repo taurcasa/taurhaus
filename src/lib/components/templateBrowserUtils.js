@@ -1,5 +1,37 @@
 import { defaultModelForTool } from '../meshDefaults.js'
 
+function normalizeBehavioralContractForEditor(contract) {
+  if (Array.isArray(contract)) {
+    return contract
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          const rule = entry.trim()
+          return rule ? { rule, enabled: true } : null
+        }
+        if (entry && typeof entry === 'object') {
+          const rule = String(entry.rule ?? '').trim()
+          if (!rule) return null
+          return {
+            rule,
+            enabled: entry.enabled !== false,
+          }
+        }
+        return null
+      })
+      .filter(Boolean)
+  }
+
+  if (contract && typeof contract === 'object') {
+    return ['communication', 'execution', 'escalation']
+      .flatMap((section) => (Array.isArray(contract[section]) ? contract[section] : []))
+      .map((entry) => String(entry ?? '').trim())
+      .filter(Boolean)
+      .map((rule) => ({ rule, enabled: true }))
+  }
+
+  return []
+}
+
 export function normalizeRoleTemplate(value) {
   return {
     roleId: value?.roleId ?? value?.role_id ?? '',
@@ -7,9 +39,13 @@ export function normalizeRoleTemplate(value) {
     kind: String(value?.kind ?? 'agent').toLowerCase(),
     cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'claude').toLowerCase(),
     model: value?.model ?? '',
-    capabilities: Array.isArray(value?.capabilities) ? value.capabilities : [],
+    focusArea: value?.focusArea ?? value?.focus_area ?? '',
+    contextSummary: value?.contextSummary ?? value?.context_summary ?? '',
+    behaviorSummary: value?.behaviorSummary ?? value?.behavior_summary ?? '',
     instructions: value?.instructions ?? '',
-    behavioralContract: value?.behavioralContract ?? value?.behavioral_contract ?? [],
+    behavioralContract: normalizeBehavioralContractForEditor(
+      value?.behavioralContract ?? value?.behavioral_contract
+    ),
     builtIn: Boolean(value?.builtIn ?? value?.built_in),
     readOnly: Boolean(value?.readOnly ?? value?.read_only),
   }
@@ -24,7 +60,6 @@ export function normalizeTeamPreset(value) {
     roleCount: value?.roleCount ?? value?.role_count ?? 0,
     agentCount: value?.agentCount ?? value?.agent_count ?? 0,
     tools: Array.isArray(value?.tools) ? value.tools : [],
-    capabilities: Array.isArray(value?.capabilities) ? value.capabilities : [],
     builtIn: Boolean(value?.builtIn ?? value?.built_in),
     readOnly: Boolean(value?.readOnly ?? value?.read_only),
   }
@@ -155,15 +190,6 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
   }
 }
 
-export function capabilityTestId(roleId, capability) {
-  const normalized = String(capability ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return `role-capability-${roleId}-${normalized}`
-}
-
 export function roleKindBadgeTone(kind, dark) {
   if (kind === 'lead') {
     return dark
@@ -173,10 +199,4 @@ export function roleKindBadgeTone(kind, dark) {
   return dark
     ? 'border border-zinc-600 bg-zinc-800 text-zinc-300'
     : 'border border-zinc-300 bg-zinc-100 text-zinc-700'
-}
-
-export function capabilityChipTone(dark) {
-  return dark
-    ? 'border border-zinc-700 text-zinc-300 bg-zinc-900/80'
-    : 'border border-zinc-200 text-zinc-700 bg-zinc-50'
 }

@@ -302,12 +302,12 @@ export function createTemplateBrowserController({ getOpen }) {
     errorMessage = ''
     try {
       const detail = await getRoleTemplate(role.roleId)
-      selectedRole = { ...role, ...detail }
+      selectedRole = normalizeRoleTemplate({ ...role, ...detail })
       selectedPreset = null
       historyTemplateId = role.roleId
       historyTemplateKind = 'role'
     } catch (error) {
-      selectedRole = { ...role }
+      selectedRole = normalizeRoleTemplate({ ...role })
       selectedPreset = null
       errorMessage = error?.message || 'Failed to load role template details.'
     } finally {
