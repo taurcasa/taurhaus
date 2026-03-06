@@ -10,6 +10,7 @@
         "mermaid": "^11.12.3",
       },
       "devDependencies": {
+        "@crabnebula/tauri-driver": "^2.0.9",
         "@sveltejs/vite-plugin-svelte": "^5.0.0",
         "@tailwindcss/vite": "^4.0.0",
         "@tauri-apps/api": "^2.0.0",
@@ -80,6 +81,16 @@
     "@chevrotain/types": ["@chevrotain/types@11.1.2", "", {}, "sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw=="],
 
     "@chevrotain/utils": ["@chevrotain/utils@11.1.2", "", {}, "sha512-4mudFAQ6H+MqBTfqLmU7G1ZwRzCLfJEooL/fsF6rCX5eePMbGhoy5n4g+G4vlh2muDcsCTJtL+uKbOzWxs5LHA=="],
+
+    "@crabnebula/tauri-driver": ["@crabnebula/tauri-driver@2.0.9", "", { "optionalDependencies": { "@crabnebula/tauri-driver-darwin-arm64": "2.0.9", "@crabnebula/tauri-driver-darwin-x64": "2.0.9", "@crabnebula/tauri-driver-linux-x64-gnu": "2.0.9", "@crabnebula/tauri-driver-win32-x64-msvc": "2.0.9" }, "bin": { "tauri-driver": "cli.js" } }, "sha512-W+fOUkQnP0MOSu9jMykG7HSstYysTQLMnL2+b3IpenbyqPfBiBI/9uSoNC1nXjh0aYm46nPgwKC6RbiWsWa0XQ=="],
+
+    "@crabnebula/tauri-driver-darwin-arm64": ["@crabnebula/tauri-driver-darwin-arm64@2.0.9", "", { "os": "darwin", "cpu": "arm64" }, "sha512-VvO7OC6UkuEP3eU3klyl+Ka/jgWFc3yIUeCw6e8BtibQWDXSwQ/r2tzqvC0d+5psF/mWYiCqNAKMlg4v5+muvg=="],
+
+    "@crabnebula/tauri-driver-darwin-x64": ["@crabnebula/tauri-driver-darwin-x64@2.0.9", "", { "os": "darwin", "cpu": "x64" }, "sha512-AWm3CY+YjKRLxaaucYdBG9cA7sTPviBpuVjJW6rNsPHGIFlxiA3C7fOv0Eekf2L7ps6v9HRCgldjPjTLH0DvNQ=="],
+
+    "@crabnebula/tauri-driver-linux-x64-gnu": ["@crabnebula/tauri-driver-linux-x64-gnu@2.0.9", "", { "os": "linux", "cpu": "x64" }, "sha512-+H2HQtjKQrVJ+A9C5x4LaTl/6oX1QpEBlfRJxA4WqCdbJEE2NsmLgODGSQNueav+9QV7MOgjppRMl9fiW7IIqg=="],
+
+    "@crabnebula/tauri-driver-win32-x64-msvc": ["@crabnebula/tauri-driver-win32-x64-msvc@2.0.9", "", { "os": "win32", "cpu": "x64" }, "sha512-/xqSl8dmGy7u9FXXjtuxAe38PJuQ4g1yT6Txgft5SwRwicAVkcEvmtdLkHJ6wUqEcg64UBEsoja8Z0EbNqTIcg=="],
 
     "@csstools/color-helpers": ["@csstools/color-helpers@6.0.1", "", {}, "sha512-NmXRccUJMk2AWA5A7e5a//3bCIMyOu2hAtdRYrhPPHjDxINuCwX1w6rnIZ4xjLcp0ayv6h8Pc3X0eJUGiAAXHQ=="],
 
