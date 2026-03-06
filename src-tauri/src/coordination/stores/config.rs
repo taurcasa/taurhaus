@@ -262,7 +262,8 @@ impl TeamConfigStore {
                         lead_project_path,
                     });
                 }
-                Err(CoordinationError::NotFound(_)) | Err(CoordinationError::StoreError(_)) => {
+                Err(CoordinationError::NotFound(_)) => {}
+                Err(CoordinationError::StoreError(_)) => {
                     warnings.push(format!(
                         "skipped team folder '{team_name}' because config is missing or invalid"
                     ));
@@ -984,6 +985,26 @@ mod tests {
         assert_eq!(discovery.teams[0].team_name, valid_team);
         assert_eq!(discovery.warnings.len(), 1);
         assert!(discovery.warnings[0].contains(corrupt_team));
+    }
+
+    #[test]
+    fn discover_skips_missing_config_folder_without_warning() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let valid_team = "alpha";
+        TeamConfigStore::save(teams_dir, valid_team, &sample_config(valid_team))
+            .expect("save valid team");
+
+        let empty_team = "empty-team";
+        fs::create_dir_all(team_dir(teams_dir, empty_team)).expect("create empty team dir");
+
+        let discovery = TeamConfigStore::discover(teams_dir).expect("discover should succeed");
+        assert_eq!(discovery.teams.len(), 1);
+        assert_eq!(discovery.teams[0].team_name, valid_team);
+        assert!(
+            discovery.warnings.is_empty(),
+            "missing config directories should be silently skipped"
+        );
     }
 
     #[test]

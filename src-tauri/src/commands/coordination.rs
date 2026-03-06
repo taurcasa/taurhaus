@@ -963,7 +963,8 @@ fn discover_team_for_project_path(
                     team_name = Some(config.name);
                 }
             }
-            Err(CoordinationError::NotFound(_)) | Err(CoordinationError::StoreError(_)) => {
+            Err(CoordinationError::NotFound(_)) => {}
+            Err(CoordinationError::StoreError(_)) => {
                 warnings.push(format!(
                     "skipped team folder '{listed_team}' because config is missing or invalid"
                 ));

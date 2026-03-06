@@ -1020,6 +1020,45 @@ fn project_mesh_snapshot_reports_mesh_unavailable_when_binary_is_missing() {
 }
 
 #[test]
+fn project_mesh_snapshot_skips_missing_config_dirs_without_warning() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    std::fs::create_dir_all(tmp.path().join("default").join("inboxes")).expect("create stale dir");
+    std::fs::write(
+        tmp.path()
+            .join("default")
+            .join("inboxes")
+            .join("team-lead.json"),
+        "{}",
+    )
+    .expect("write stale inbox");
+
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        "proj-core".to_string(),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
+    assert!(
+        snapshot.warnings.is_empty(),
+        "missing config folders should be silently skipped"
+    );
+}
+
+#[test]
 fn initialize_team_request_round_trip() {
     let value = InitializeTeamRequest {
         team_name: "architecture-final".to_string(),
