@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -10,6 +11,38 @@ use crate::errors::{sanitize_error, SanitizeErr};
 use crate::models::{ProjectDetail, ProjectSummary};
 use crate::services::project;
 use crate::{ProviderState, SearchState};
+
+static PROJECT_SELECTION_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
+
+fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
+    if PROJECT_SELECTION_RECONCILE_QUEUED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    #[cfg(test)]
+    {
+        crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        PROJECT_SELECTION_RECONCILE_QUEUED.store(false, Ordering::Release);
+    }
+
+    #[cfg(not(test))]
+    {
+        std::thread::spawn(move || {
+            struct ResetQueuedFlag;
+            impl Drop for ResetQueuedFlag {
+                fn drop(&mut self) {
+                    PROJECT_SELECTION_RECONCILE_QUEUED.store(false, Ordering::Release);
+                }
+            }
+
+            let _reset_queued_flag = ResetQueuedFlag;
+            crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        });
+    }
+}
 
 /// Expand `~` or `~/` at the start of a path to the user's home directory.
 fn expand_tilde(path: &str) -> String {
@@ -70,7 +103,7 @@ pub fn get_project(
             project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()?;
         drop(conn);
 
-        crate::startup::watchers::reconcile_activity_watches(&app, "project_selected");
+        enqueue_activity_watch_reconcile(app.clone(), "project_selected");
         Ok(detail)
     };
     span.finish_result(&result);

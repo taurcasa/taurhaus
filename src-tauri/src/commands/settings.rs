@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
@@ -5,6 +7,38 @@ use crate::commands::projects::DbState;
 use crate::db::settings_queries;
 use crate::errors::SanitizeErr;
 use crate::models::Settings;
+
+static SETTINGS_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
+
+fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
+    if SETTINGS_RECONCILE_QUEUED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    #[cfg(test)]
+    {
+        crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        SETTINGS_RECONCILE_QUEUED.store(false, Ordering::Release);
+    }
+
+    #[cfg(not(test))]
+    {
+        std::thread::spawn(move || {
+            struct ResetQueuedFlag;
+            impl Drop for ResetQueuedFlag {
+                fn drop(&mut self) {
+                    SETTINGS_RECONCILE_QUEUED.store(false, Ordering::Release);
+                }
+            }
+
+            let _reset_queued_flag = ResetQueuedFlag;
+            crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        });
+    }
+}
 
 #[tauri::command]
 pub fn get_settings(db: State<'_, DbState>) -> Result<Settings, String> {
@@ -40,7 +74,7 @@ fn update_settings_with_span(
     let span = IpcCommandSpan::start("update_settings");
     let result = {
         let updated = update_settings_impl(db, settings)?;
-        crate::startup::watchers::reconcile_activity_watches(app, "settings_updated");
+        enqueue_activity_watch_reconcile(app.clone(), "settings_updated");
         Ok(updated)
     };
     span.finish_result(&result);
