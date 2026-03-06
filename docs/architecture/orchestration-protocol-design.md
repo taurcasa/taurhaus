@@ -1,5 +1,11 @@
 # Orchestration Protocol Design (Taurhaus)
 
+> [!WARNING]
+> ARCHIVED — historical proposal, NOT active implementation target.
+> This document records a superseded v0.2.0-oriented design exploration.
+> Do not treat the embedded-block parser, protocol index/journal, transition validator,
+> drift detector, or suppression evaluator sections as current implementation commitments.
+
 Date: 2026-03-06  
 Owner: architect  
 Contributors: architect + mesh-expert (feasibility review)

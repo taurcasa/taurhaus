@@ -34,7 +34,7 @@ Reason:
 
 Mesh should expose machine-readable metadata:
 
-- keep existing human output: `mesh --version` (e.g. `mesh 0.2.0`)
+- keep existing human output: `mesh --version` (e.g. `mesh X.Y.Z`)
 - add `mesh version --json` returning:
   - `version`
   - `git_commit`
@@ -69,11 +69,11 @@ Add a tracked lock file (proposal: `src-tauri/resources/mesh.lock.json` or repo-
 
 ```json
 {
-  "version": "0.2.0",
+  "version": "X.Y.Z",
   "protocol_version": 1,
   "schema_version": 1,
   "git_commit": "optional-exact-pin",
-  "release_tag": "v0.2.0",
+  "release_tag": "vX.Y.Z",
   "sha256": "optional-for-released-artifact"
 }
 ```
