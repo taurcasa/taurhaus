@@ -84,7 +84,7 @@ describe('HoverCard', () => {
     expect(screen.getByText('main')).toBeInTheDocument()
     expect(screen.getByText('Dirty')).toBeInTheDocument()
     expect(screen.getByText('Recent handoff needs review')).toBeInTheDocument()
-    expect(screen.getByText('No live agent session')).toBeInTheDocument()
+    expect(screen.getByText('No live session')).toBeInTheDocument()
     expect(screen.getByText('Session: Implement IPC error envelope fix')).toBeInTheDocument()
     expect(screen.getByText('Open question: Should retry stay frontend-side?')).toBeInTheDocument()
   })
@@ -197,7 +197,7 @@ describe('HoverCard', () => {
     })
 
     expect(screen.getByText('Quiet project')).toBeInTheDocument()
-    expect(screen.getByText('No session handoff or recent commit yet')).toBeInTheDocument()
+    expect(screen.getByText('No recent session or commit yet')).toBeInTheDocument()
     expect(screen.queryByTestId('hovercard-relationship')).not.toBeInTheDocument()
   })
 

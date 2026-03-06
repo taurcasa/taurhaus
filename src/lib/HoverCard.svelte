@@ -223,8 +223,8 @@
     if (!session) {
       return {
         tone: 'quiet',
-        body: 'No live agent session',
-        meta: 'No active work is visible right now',
+        body: 'No live session',
+        meta: 'Nothing running right now',
         icon: null,
       }
     }
@@ -237,7 +237,7 @@
       return {
         tone: 'active',
         body: `${badge.toolLabel} is working now${extraSuffix}`,
-        meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Live agent session detected',
+        meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Session is running',
         icon,
       }
     }
@@ -245,8 +245,8 @@
     if (session.project_unattributed_active) {
       return {
         tone: 'recent',
-        body: `${badge.toolLabel} shows project activity without attribution${extraSuffix}`,
-        meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Project activity detected',
+        body: `${badge.toolLabel} is active but we can't tell what it's doing${extraSuffix}`,
+        meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Something\'s happening',
         icon,
       }
     }
@@ -279,7 +279,7 @@
     }
 
     return {
-      body: 'No session handoff or recent commit yet',
+      body: 'No recent session or commit yet',
       meta: '',
     }
   }
@@ -287,14 +287,14 @@
   function buildUnresolvedItem(session) {
     if (Array.isArray(session?.open_questions) && session.open_questions.length > 0) {
       return {
-        label: 'Needs review',
+        label: 'Follow-up',
         body: `Open question: ${session.open_questions[0]}`,
       }
     }
 
     if (Array.isArray(session?.next_steps) && session.next_steps.length > 0) {
       return {
-        label: 'Needs review',
+        label: 'Follow-up',
         body: `Next: ${session.next_steps[0]}`,
       }
     }
@@ -308,8 +308,8 @@
         tone: 'active',
         label: 'Active work in progress',
         whyNow: project?.isDirty
-          ? 'Live agent work and uncommitted changes are both present.'
-          : 'A live agent session is actively working on this project.',
+          ? 'There\'s an active session and uncommitted changes.'
+          : 'An agent is actively working here right now.',
       }
     }
 
@@ -318,8 +318,8 @@
         tone: 'waiting',
         label: 'Waiting on user input',
         whyNow: project?.isDirty
-          ? 'The live session is idle and the working tree still has local changes.'
-          : 'A live agent session is paused and likely needs direction.',
+          ? 'The session is paused but there are uncommitted changes.'
+          : 'A session is waiting — it probably needs your input.',
       }
     }
 
@@ -327,7 +327,7 @@
       return {
         tone: 'recent',
         label: 'Recent handoff needs review',
-        whyNow: 'The latest session left follow-up context that may require action.',
+        whyNow: 'The last session left open questions worth checking.',
       }
     }
 
@@ -335,7 +335,7 @@
       return {
         tone: 'waiting',
         label: 'Uncommitted changes present',
-        whyNow: 'The working tree is dirty even though no live agent session is running.',
+        whyNow: 'There are uncommitted changes but no session running.',
       }
     }
 
@@ -343,7 +343,7 @@
       return {
         tone: 'recent',
         label: 'Recent change, no live session',
-        whyNow: 'Project activity is recent, but no agent is currently running.',
+        whyNow: 'Work happened recently but nothing\'s running now.',
       }
     }
 
@@ -351,7 +351,7 @@
       return {
         tone: 'waiting',
         label: 'Project may need attention',
-        whyNow: 'Older work exists here, but current activity looks quiet.',
+        whyNow: 'This project has been quiet for a while.',
       }
     }
 
@@ -359,14 +359,14 @@
       return {
         tone: 'quiet',
         label: 'Quiet project',
-        whyNow: 'No live work or recent handoff is visible.',
+        whyNow: 'Nothing happening here recently.',
       }
     }
 
     return {
       tone: 'quiet',
       label: 'Project status unavailable',
-      whyNow: 'Preview data is limited for this project.',
+      whyNow: 'Not enough data to show a preview.',
     }
   }
 
@@ -392,28 +392,28 @@
     if (relationship.relationship_type === 'references') {
       return {
         chip: 'Referenced',
-        body: `${outgoing ? 'Cross-project references originate here' : 'Another project references this one'}${moreSuffix}${sourceLabel}`,
+        body: `${outgoing ? 'This project references another' : 'Another project references this one'}${moreSuffix}${sourceLabel}`,
       }
     }
 
     if (relationship.relationship_type === 'mentioned_in_session') {
       return {
         chip: 'Mentioned',
-        body: `Session context links this project to another active area${moreSuffix}${sourceLabel}`,
+        body: `Mentioned in a recent session alongside another project${moreSuffix}${sourceLabel}`,
       }
     }
 
     if (relationship.relationship_type === 'workspace_sibling') {
       return {
         chip: 'Workspace',
-        body: `Related workspace context exists for this project${moreSuffix}${sourceLabel}`,
+        body: `Part of the same workspace${moreSuffix}${sourceLabel}`,
       }
     }
 
     if (relationship.relationship_type === 'includes') {
       return {
         chip: 'Includes',
-        body: `This project is part of a broader linked project set${moreSuffix}${sourceLabel}`,
+        body: `Includes other linked projects${moreSuffix}${sourceLabel}`,
       }
     }
 
@@ -481,7 +481,7 @@
 
     <div class="mt-3 grid gap-1.5">
       <section class="rounded-lg px-2.5 py-2 border {ui.evidenceRow}" data-testid="hovercard-motion">
-        <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Current motion</div>
+        <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Live session</div>
         <div class="mt-0.5 flex items-start gap-2">
           {#if motionRow.icon}
             <svg class="mt-[2px] h-[11px] w-[11px] shrink-0 {motionToneClass}" viewBox={motionRow.icon.viewBox} fill="currentColor" aria-hidden="true">
@@ -496,7 +496,7 @@
       </section>
 
       <section class="rounded-lg px-2.5 py-2 border {ui.evidenceRow}" data-testid="hovercard-latest-change">
-        <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Latest change</div>
+        <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Last update</div>
         <div class="mt-0.5 text-[12px] leading-[1.35] line-clamp-2 {ui.bodyText}">{latestChange.body}</div>
         {#if latestChange.meta}
           <div class="mt-0.5 text-[11px] leading-[1.3] {ui.secondaryText}">{latestChange.meta}</div>
