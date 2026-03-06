@@ -302,6 +302,40 @@
     }
   }
 
+  function buildConnections(agents, leadPos, leadWidth) {
+    if (!Array.isArray(agents) || agents.length === 0) return []
+
+    const anchorInset = Math.min(28, Math.max(16, Math.round(leadWidth * 0.18)))
+    const anchorSpan = Math.max(0, leadWidth - anchorInset * 2)
+    const ranked = [...agents]
+      .map((agent, index) => ({ agent, index }))
+      .sort((left, right) => {
+        const delta = left.agent.position.x - right.agent.position.x
+        return delta !== 0 ? delta : left.index - right.index
+      })
+
+    const anchorById = new Map()
+    for (const [rank, entry] of ranked.entries()) {
+      const anchorX = ranked.length === 1
+        ? leadPos.x
+        : leadPos.x - anchorSpan / 2 + (anchorSpan * rank) / (ranked.length - 1)
+      anchorById.set(entry.agent.id, anchorX)
+    }
+
+    return agents.map((agent, index) => ({
+      id: agent.id,
+      from: {
+        x: anchorById.get(agent.id) ?? leadPos.x,
+        y: leadPos.y,
+      },
+      to: agent.position,
+      nodeHeight: Math.round((72 + Number(agent.height ?? 64)) / 2),
+      status: normalizedMode === 'runtime' ? agent.status : normalizedMode,
+      delay: normalizedMode === 'initializing' ? index * 200 : 0,
+      duration: normalizedMode === 'initializing' ? 400 : 0,
+    }))
+  }
+
   const layout = $derived.by(() => {
     const cw = containerWidth || 600
     const ch = Math.max(460, containerHeight || 0)
@@ -349,15 +383,8 @@
       }))
     }
 
-    const connections = positionedAgents.map((agent, index) => ({
-      id: agent.id,
-      from: leadPos,
-      to: agent.position,
-      nodeHeight: Math.round((72 + Number(agent.height ?? 64)) / 2),
-      status: normalizedMode === 'runtime' ? agent.status : normalizedMode,
-      delay: normalizedMode === 'initializing' ? index * 200 : 0,
-      duration: normalizedMode === 'initializing' ? 400 : 0,
-    }))
+    const leadWidth = Math.max(180, nodeW)
+    const connections = buildConnections(positionedAgents, leadPos, leadWidth)
 
     const lastAgent = positionedAgents[positionedAgents.length - 1] ?? null
     const addNode = normalizedMode === 'setup'
@@ -376,7 +403,7 @@
       lead: {
         ...leadData,
         position: leadPos,
-        width: Math.max(180, nodeW),
+        width: leadWidth,
         height: 72,
       },
       agents: positionedAgents,

@@ -61,6 +61,12 @@ function connectionXBounds(connectionPath) {
   }
 }
 
+function connectionStartX(connectionPath) {
+  const raw = String(connectionPath?.getAttribute('d') ?? '')
+  const numbers = raw.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+  return numbers[0]
+}
+
 function latestAnchor(mockFn) {
   const anchors = mockFn.mock.calls
     .map(([anchor]) => anchor)
@@ -182,6 +188,35 @@ describe('MeshCanvas', () => {
         expect(bounds.max).toBeLessThanOrEqual(viewBoxWidth)
       }
     }
+  })
+
+  it('preserves distinct lead-side connection anchors when collapsing from two rows to one', async () => {
+    const { rerender } = render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(8),
+        mode: 'runtime',
+      },
+    })
+
+    await rerender({
+      lead,
+      agents: makeAgents(5),
+      mode: 'runtime',
+    })
+
+    const agentRows = new Set(
+      screen
+        .getAllByTestId('mesh-node-agent')
+        .map((node) => Math.round(centerY(node)))
+    )
+    expect(agentRows.size).toBe(1)
+
+    const startXs = screen
+      .getAllByTestId('mesh-connection')
+      .map((connection) => connectionStartX(connection))
+
+    expect(new Set(startXs).size).toBe(5)
   })
 
   it('shows add node in setup mode and hides it in runtime mode', async () => {
