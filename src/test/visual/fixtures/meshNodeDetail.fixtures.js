@@ -6,6 +6,8 @@ function createMember({
   status = 'active',
   model = '',
   projectId = 'taurhaus',
+  isCrossProject = false,
+  projectLabel = '',
   description = '',
   paneId = '',
   sessionId = '',
@@ -20,6 +22,8 @@ function createMember({
     status,
     model,
     projectId,
+    isCrossProject,
+    projectLabel,
     description,
     paneId,
     sessionId,
@@ -129,6 +133,58 @@ export const idle_gemini_dark = createDetailScenario({
   }),
 })
 
+export const cross_project_gemini_dark = createDetailScenario({
+  name: 'cross_project_gemini_dark',
+  theme: 'dark',
+  mode: 'runtime',
+  focusEnabled: true,
+  member: createMember({
+    name: 'mesh-expert',
+    role: 'agent',
+    tool: 'gemini',
+    toolLabel: 'Gemini',
+    status: 'active',
+    model: '2.5-pro',
+    projectId: '/home/user/projects/mesh',
+    isCrossProject: true,
+    projectLabel: 'mesh',
+    description: 'Works in the mesh codebase and advises on protocol changes.',
+    paneId: '%33',
+    sessionId: 'sess-mesh-expert',
+    sessionState: 'Reviewing remote repo flow',
+    sessionTiming: {
+      startedLabel: 'Started 22m ago',
+      activeLabel: 'Active for 21m',
+    },
+  }),
+})
+
+export const cross_project_gemini_light = createDetailScenario({
+  name: 'cross_project_gemini_light',
+  theme: 'light',
+  mode: 'runtime',
+  focusEnabled: true,
+  member: createMember({
+    name: 'mesh-expert',
+    role: 'agent',
+    tool: 'gemini',
+    toolLabel: 'Gemini',
+    status: 'active',
+    model: '2.5-pro',
+    projectId: '/home/user/projects/mesh',
+    isCrossProject: true,
+    projectLabel: 'mesh',
+    description: 'Works in the mesh codebase and advises on protocol changes.',
+    paneId: '%33',
+    sessionId: 'sess-mesh-expert',
+    sessionState: 'Reviewing remote repo flow',
+    sessionTiming: {
+      startedLabel: 'Started 22m ago',
+      activeLabel: 'Active for 21m',
+    },
+  }),
+})
+
 export const disconnected_dark = createDetailScenario({
   name: 'disconnected_dark',
   theme: 'dark',
@@ -178,6 +234,8 @@ export const meshNodeDetailScenarios = [
   active_claude_light,
   idle_codex_dark,
   idle_gemini_dark,
+  cross_project_gemini_dark,
+  cross_project_gemini_light,
   disconnected_dark,
   noSession_dark,
 ]

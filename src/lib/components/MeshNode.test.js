@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/svelte'
+import { render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 import { readFileSync } from 'node:fs'
 import MeshNode from './MeshNode.svelte'
@@ -62,5 +62,25 @@ describe('MeshNode', () => {
     expect(source).toContain('var(--mesh-node-status-shadow-light)')
     expect(source).not.toMatch(/#[0-9A-Fa-f]{3,8}/)
     expect(source).not.toMatch(/\brgba?\(/)
+  })
+
+  it('shows a compact project chip only for cross-project members', async () => {
+    const view = render(MeshNode, {
+      props: {
+        role: 'agent',
+        isCrossProject: true,
+        projectLabel: 'mesh',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-project-chip-agent')).toHaveTextContent('[mesh]')
+
+    await view.rerender({
+      role: 'agent',
+      isCrossProject: false,
+      projectLabel: '',
+    })
+
+    expect(screen.queryByTestId('mesh-node-project-chip-agent')).not.toBeInTheDocument()
   })
 })

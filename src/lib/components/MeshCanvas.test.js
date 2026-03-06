@@ -209,6 +209,33 @@ describe('MeshCanvas', () => {
     expect(screen.getAllByTestId('mesh-connection')).toHaveLength(5)
   })
 
+  it('passes cross-project rendering flags to the target agent node and connection', () => {
+    const agents = makeAgents(2)
+    agents[1] = {
+      ...agents[1],
+      name: 'mesh-expert',
+      status: 'active',
+      isCrossProject: true,
+      projectLabel: 'mesh',
+    }
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents,
+        mode: 'runtime',
+      },
+    })
+
+    const connections = screen.getAllByTestId('mesh-connection')
+    const crossProjectConnection = connections[1]
+    const chip = screen.getByText('[mesh]')
+
+    expect(chip).toBeInTheDocument()
+    expect(crossProjectConnection.getAttribute('style') || '').toContain('opacity: 0.8')
+    expect(crossProjectConnection.getAttribute('style') || '').toContain('stroke-dasharray: 6,4')
+  })
+
   it('renders exactly five non-empty connection paths for the 5-agent runtime layout', () => {
     render(MeshCanvas, {
       props: {

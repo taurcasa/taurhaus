@@ -10,6 +10,9 @@ export function createMember({
   toolLabel = 'Claude',
   model = '',
   status = 'offline',
+  projectId = '',
+  isCrossProject = false,
+  projectLabel = '',
   position = { x: 0, y: 0 },
 } = {}) {
   return {
@@ -20,6 +23,9 @@ export function createMember({
     toolLabel,
     model,
     status,
+    projectId,
+    isCrossProject,
+    projectLabel,
     position,
   }
 }

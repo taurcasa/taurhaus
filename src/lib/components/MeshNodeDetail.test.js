@@ -12,6 +12,8 @@ function renderDetail(props = {}) {
   if (props.model !== undefined) legacyNode.model = props.model
   if (props.status !== undefined) legacyNode.status = props.status
   if (props.projectId !== undefined) legacyNode.projectId = props.projectId
+  if (props.isCrossProject !== undefined) legacyNode.isCrossProject = props.isCrossProject
+  if (props.projectLabel !== undefined) legacyNode.projectLabel = props.projectLabel
   if (props.description !== undefined) legacyNode.description = props.description
   const node = {
     name: 'frontend-dev',
@@ -34,6 +36,8 @@ function renderDetail(props = {}) {
   delete passthrough.model
   delete passthrough.status
   delete passthrough.projectId
+  delete passthrough.isCrossProject
+  delete passthrough.projectLabel
   delete passthrough.description
   delete passthrough.node
   delete passthrough.actions
@@ -235,5 +239,38 @@ describe('MeshNodeDetail', () => {
     })
 
     expect(screen.queryByTestId('mesh-node-detail-description')).not.toBeInTheDocument()
+  })
+
+  it('shows project label and location for cross-project members only', async () => {
+    const view = renderDetail({
+      projectId: '/home/user/projects/mesh',
+      isCrossProject: true,
+      projectLabel: 'mesh',
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: mesh')
+    expect(screen.getByTestId('mesh-node-detail-project-context')).toHaveTextContent('/home/user/projects/mesh')
+    expect(screen.getByTestId('mesh-node-detail-location')).toHaveTextContent('Location: other project')
+
+    await view.rerender({
+      node: {
+        name: 'frontend-dev',
+        role: 'agent',
+        tool: 'codex',
+        model: 'gpt-5.4 high',
+        status: 'active',
+        projectId: 'taurhaus-web',
+        isCrossProject: false,
+        projectLabel: '',
+        description: 'Implements UI surface details for the mesh canvas.',
+      },
+      mode: 'runtime',
+      dark: true,
+      actions: {},
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: taurhaus-web')
+    expect(screen.queryByTestId('mesh-node-detail-project-context')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-node-detail-location')).not.toBeInTheDocument()
   })
 })

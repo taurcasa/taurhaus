@@ -83,4 +83,18 @@ describe('MeshConnection', () => {
     expect(style).toContain('opacity: 0.28')
     expect(style).toContain('filter: url("#mesh-glow")')
   })
+
+  it('renders cross-project runtime connections as dashed and slightly dimmed', () => {
+    render(MeshConnection, {
+      props: {
+        ...explicitRoute(),
+        status: 'active',
+        isCrossProject: true,
+      },
+    })
+
+    const style = screen.getByTestId('mesh-connection').getAttribute('style') || ''
+    expect(style).toContain('stroke-dasharray: 6,4')
+    expect(style).toContain('opacity: 0.8')
+  })
 })

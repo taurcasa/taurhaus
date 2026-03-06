@@ -42,6 +42,12 @@ function normalizePatternProjectName(path) {
   return segments.at(-1) || 'project'
 }
 
+function normalizeProjectLabel(path) {
+  const normalized = normalizeProjectPath(path)
+  const segments = normalized.split('/').filter(Boolean)
+  return segments.at(-1) || ''
+}
+
 function isSameProjectPath(left, right) {
   const leftNormalized = normalizeProjectPath(left)
   const rightNormalized = normalizeProjectPath(right)
@@ -76,6 +82,8 @@ export function createLead(overrides = {}, projectPath = '') {
     model: String(overrides.model ?? defaultModelForTool(overrides.tool ?? overrides.cliTool)),
     status: normalizeStatus(overrides.status),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
+    isCrossProject: false,
+    projectLabel: '',
     description: overrides.description ?? 'Team lead',
     paneId: overrides.paneId ?? null,
     roleId: overrides.roleId ?? null,
@@ -94,6 +102,8 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     model: String(overrides.model ?? defaultModelForTool(normalizedTool)),
     status: normalizeStatus(overrides.status),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
+    isCrossProject: Boolean(overrides.isCrossProject ?? overrides.is_cross_project),
+    projectLabel: String(overrides.projectLabel ?? overrides.project_label ?? ''),
     description: overrides.description ?? null,
     paneId: overrides.paneId ?? null,
     roleId: overrides.roleId ?? null,
@@ -101,6 +111,39 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     behavioralContract: overrides.behavioralContract ?? null,
     capabilities: Array.isArray(overrides.capabilities) ? overrides.capabilities : null,
   }
+}
+
+export function deriveCrossProjectMeta(member, leadProjectId = '') {
+  const explicitFlag = member?.isCrossProject ?? member?.is_cross_project
+  const memberProjectId = String(member?.projectId ?? member?.project_id ?? '')
+  const normalizedMemberProject = canonicalProjectIdentity(memberProjectId)
+  const normalizedLeadProject = canonicalProjectIdentity(leadProjectId)
+  const fallbackIsCrossProject = Boolean(
+    normalizedMemberProject
+    && normalizedLeadProject
+    && normalizedMemberProject !== normalizedLeadProject
+  )
+  const isCrossProject = typeof explicitFlag === 'boolean'
+    ? explicitFlag
+    : fallbackIsCrossProject
+  const explicitLabel = String(member?.projectLabel ?? member?.project_label ?? '').trim()
+  const projectLabel = isCrossProject
+    ? (explicitLabel || normalizeProjectLabel(memberProjectId))
+    : ''
+
+  return {
+    isCrossProject,
+    projectLabel,
+  }
+}
+
+function canonicalProjectIdentity(path) {
+  const normalized = normalizeProjectPath(path)
+  return isWindowsMountPath(normalized) ? normalized.toLowerCase() : normalized
+}
+
+function isWindowsMountPath(path) {
+  return /^\/mnt\/[a-z](?:\/|$)/i.test(path)
 }
 
 export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], projectPath = '') {
@@ -220,7 +263,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     tool: normalizeTool(member?.cliTool),
     model: String(member?.model || defaultModelForTool(member?.cliTool)),
     status: normalizeStatus(member?.sessionStatus),
-    projectId: String(member?.projectId ?? projectPath ?? ''),
+    projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
     description: member?.description ?? null,
     paneId: member?.paneId ?? null,
     roleId: member?.roleId ?? null,
@@ -231,26 +274,32 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
 
   const leadMember = normalizedMembers.find((member) => member.role === 'lead')
   const fallbackLeadName = status?.leadName ?? 'team-lead'
+  const leadProjectId = String(leadMember?.projectId ?? projectPath ?? '')
+  const membersWithCrossProjectMeta = normalizedMembers.map((member) => ({
+    ...member,
+    ...deriveCrossProjectMeta(member, leadProjectId),
+  }))
+  const normalizedLeadMember = membersWithCrossProjectMeta.find((member) => member.role === 'lead')
 
   const lead = createLead(
     {
-      id: String(leadMember?.name ?? 'lead'),
-      name: leadMember?.name ?? fallbackLeadName,
-      tool: leadMember?.tool ?? 'claude',
-      model: leadMember?.model ?? defaultModelForTool(leadMember?.tool ?? 'claude'),
-      status: leadMember?.status ?? 'active',
-      projectId: leadMember?.projectId ?? projectPath,
-      description: leadMember?.description ?? 'Team lead',
-      paneId: leadMember?.paneId ?? null,
-      roleId: leadMember?.roleId ?? null,
-      instructions: leadMember?.instructions ?? null,
-      behavioralContract: leadMember?.behavioralContract ?? null,
-      capabilities: leadMember?.capabilities ?? null,
+      id: String(normalizedLeadMember?.name ?? 'lead'),
+      name: normalizedLeadMember?.name ?? fallbackLeadName,
+      tool: normalizedLeadMember?.tool ?? 'claude',
+      model: normalizedLeadMember?.model ?? defaultModelForTool(normalizedLeadMember?.tool ?? 'claude'),
+      status: normalizedLeadMember?.status ?? 'active',
+      projectId: normalizedLeadMember?.projectId ?? projectPath,
+      description: normalizedLeadMember?.description ?? 'Team lead',
+      paneId: normalizedLeadMember?.paneId ?? null,
+      roleId: normalizedLeadMember?.roleId ?? null,
+      instructions: normalizedLeadMember?.instructions ?? null,
+      behavioralContract: normalizedLeadMember?.behavioralContract ?? null,
+      capabilities: normalizedLeadMember?.capabilities ?? null,
     },
     projectPath
   )
 
-  const agents = normalizedMembers
+  const agents = membersWithCrossProjectMeta
     .filter((member) => member.role !== 'lead')
     .map((member, index) =>
       createAgent(
@@ -262,6 +311,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
           model: member.model,
           status: member.status,
           projectId: member.projectId,
+          isCrossProject: member.isCrossProject,
+          projectLabel: member.projectLabel,
           description: member.description,
           paneId: member.paneId,
           roleId: member.roleId,

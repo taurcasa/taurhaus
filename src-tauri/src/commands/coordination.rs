@@ -415,20 +415,16 @@ fn coordination_get_live_team_status_impl(
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-    let lead_name = status
+    let lead_member = status
         .config
         .members
         .iter()
         .find(|member| member.role == MemberRole::Lead)
+        .or_else(|| status.config.members.first());
+    let lead_name = lead_member
         .map(|member| member.name.clone())
-        .or_else(|| {
-            status
-                .config
-                .members
-                .first()
-                .map(|member| member.name.clone())
-        })
         .unwrap_or_default();
+    let lead_project_path = lead_member.map(|member| member.project_path.clone());
 
     let members = status
         .config
@@ -436,6 +432,10 @@ fn coordination_get_live_team_status_impl(
         .into_iter()
         .map(|member| {
             let runtime = runtime_by_member.get(&member.name);
+            let cross_project = member_cross_project_status(
+                lead_project_path.as_deref(),
+                member.project_path.as_path(),
+            );
             LiveAgentStatus {
                 name: member.name,
                 role: match member.role {
@@ -445,6 +445,8 @@ fn coordination_get_live_team_status_impl(
                 cli_tool: member.cli_tool.to_string(),
                 model: String::new(),
                 project_id: member.project_path.display().to_string(),
+                is_cross_project: cross_project.is_cross_project,
+                project_label: cross_project.project_label,
                 description: member.instructions,
                 session_status: runtime
                     .map(|entry| session_status_from_health(entry.health))
@@ -997,14 +999,16 @@ fn map_fast_team_snapshot(
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-    let lead_name = status
+    let lead_member = status
         .config
         .members
         .iter()
         .find(|member| member.role == MemberRole::Lead)
-        .or_else(|| status.config.members.first())
+        .or_else(|| status.config.members.first());
+    let lead_name = lead_member
         .map(|member| member.name.clone())
         .unwrap_or_default();
+    let lead_project_path = lead_member.map(|member| member.project_path.clone());
 
     let members = status
         .config
@@ -1012,6 +1016,10 @@ fn map_fast_team_snapshot(
         .into_iter()
         .map(|member| {
             let runtime = runtime_by_member.get(&member.name);
+            let cross_project = member_cross_project_status(
+                lead_project_path.as_deref(),
+                member.project_path.as_path(),
+            );
             FastAgentSnapshot {
                 name: member.name,
                 role: match member.role {
@@ -1020,6 +1028,8 @@ fn map_fast_team_snapshot(
                 },
                 cli_tool: member.cli_tool.to_string(),
                 project_id: member.project_path.display().to_string(),
+                is_cross_project: cross_project.is_cross_project,
+                project_label: cross_project.project_label,
                 description: member.instructions,
                 session_status: runtime
                     .map(|entry| session_status_from_health(entry.health))
@@ -1030,6 +1040,74 @@ fn map_fast_team_snapshot(
         .collect();
 
     FastTeamSnapshot { lead_name, members }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct CrossProjectStatus {
+    is_cross_project: bool,
+    project_label: String,
+}
+
+fn member_cross_project_status(
+    lead_project_path: Option<&Path>,
+    member_project_path: &Path,
+) -> CrossProjectStatus {
+    lead_project_path
+        .map(|lead_project_path| {
+            derive_cross_project_status(lead_project_path, member_project_path)
+        })
+        .unwrap_or_default()
+}
+
+fn derive_cross_project_status(
+    lead_project_path: &Path,
+    member_project_path: &Path,
+) -> CrossProjectStatus {
+    let lead_project_path = canonical_project_identity(&lead_project_path.display().to_string());
+    let member_project_path =
+        canonical_project_identity(&member_project_path.display().to_string());
+    let is_cross_project = lead_project_path != member_project_path;
+    let project_label = if is_cross_project {
+        project_label_from_path(&member_project_path)
+    } else {
+        String::new()
+    };
+
+    CrossProjectStatus {
+        is_cross_project,
+        project_label,
+    }
+}
+
+fn canonical_project_identity(project_path: &str) -> String {
+    let normalized = crate::provider::path::normalize_project_path(project_path);
+    if is_windows_mount_path(&normalized) {
+        normalized.to_ascii_lowercase()
+    } else {
+        normalized
+    }
+}
+
+fn is_windows_mount_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 7
+        && path.starts_with("/mnt/")
+        && bytes[5].is_ascii_alphabetic()
+        && (bytes[6] == b'/' || bytes[6] == b'\\')
+}
+
+fn project_label_from_path(project_path: &str) -> String {
+    Path::new(project_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            project_path
+                .rsplit('/')
+                .find(|segment| !segment.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_default()
 }
 
 fn resolve_legacy_member_project_path(

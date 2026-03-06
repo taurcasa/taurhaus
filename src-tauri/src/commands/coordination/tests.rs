@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 
 use tempfile::TempDir;
@@ -763,6 +764,61 @@ fn add_member_defaults_to_lead_project_path_instead_of_process_cwd() {
 }
 
 #[test]
+fn derive_cross_project_status_returns_false_for_same_normalized_path() {
+    let status = derive_cross_project_status(
+        Path::new("/home/user/projects/taurhaus"),
+        Path::new("/home/user/projects/taurhaus/"),
+    );
+
+    assert!(!status.is_cross_project);
+    assert_eq!(status.project_label, "");
+}
+
+#[test]
+fn derive_cross_project_status_returns_true_for_different_project_path() {
+    let status = derive_cross_project_status(
+        Path::new("/home/user/projects/taurhaus"),
+        Path::new("/home/user/projects/mesh"),
+    );
+
+    assert!(status.is_cross_project);
+    assert_eq!(status.project_label, "mesh");
+}
+
+#[test]
+fn derive_cross_project_status_matches_windows_and_linux_forms() {
+    let status = derive_cross_project_status(
+        Path::new("/mnt/c/Users/me/code/taurhaus"),
+        Path::new(r"C:\Users\me\code\taurhaus"),
+    );
+
+    assert!(!status.is_cross_project);
+    assert_eq!(status.project_label, "");
+}
+
+#[test]
+fn derive_cross_project_status_matches_case_variant_windows_paths() {
+    let status = derive_cross_project_status(
+        Path::new(r"C:\Users\Me\Code\Taurhaus"),
+        Path::new(r"c:\users\me\code\taurhaus"),
+    );
+
+    assert!(!status.is_cross_project);
+    assert_eq!(status.project_label, "");
+}
+
+#[test]
+fn derive_cross_project_status_matches_wsl_unc_and_linux_forms() {
+    let status = derive_cross_project_status(
+        Path::new("/home/user/projects/mesh"),
+        Path::new(r"\\wsl.localhost\Ubuntu\home\user\projects\mesh"),
+    );
+
+    assert!(!status.is_cross_project);
+    assert_eq!(status.project_label, "");
+}
+
+#[test]
 fn remove_member_happy_path_removes_member() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -965,6 +1021,8 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
     assert_eq!(frontend_dev.role, AgentRole::Member);
     assert_eq!(frontend_dev.cli_tool, "codex");
     assert_eq!(frontend_dev.project_id, "proj-web");
+    assert!(frontend_dev.is_cross_project);
+    assert_eq!(frontend_dev.project_label, "proj-web");
     assert_eq!(frontend_dev.session_status, SessionStatus::Active);
     assert_eq!(frontend_dev.pane_id.as_deref(), Some("%9"));
 }
@@ -1258,6 +1316,8 @@ fn live_team_status_round_trip() {
                 cli_tool: "claude".to_string(),
                 model: "opus".to_string(),
                 project_id: "proj-core".to_string(),
+                is_cross_project: false,
+                project_label: String::new(),
                 description: Some("orchestrates work".to_string()),
                 session_status: SessionStatus::Active,
                 pane_id: Some("%1".to_string()),
@@ -1268,6 +1328,8 @@ fn live_team_status_round_trip() {
                 cli_tool: "codex".to_string(),
                 model: "gpt-5.3".to_string(),
                 project_id: "proj-web".to_string(),
+                is_cross_project: true,
+                project_label: "proj-web".to_string(),
                 description: None,
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
@@ -1294,6 +1356,8 @@ fn project_mesh_snapshot_round_trip() {
                 role: AgentRole::Member,
                 cli_tool: "codex".to_string(),
                 project_id: "proj-web".to_string(),
+                is_cross_project: true,
+                project_label: "proj-web".to_string(),
                 description: Some("UI implementation".to_string()),
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
@@ -1327,6 +1391,13 @@ fn live_status_test_helper_invokes_live_status_impl() {
     assert_eq!(status.team_name, "architecture-final");
     assert_eq!(status.lead_name, "team-lead");
     assert!(!status.members.is_empty());
+    let frontend_dev = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev should be present");
+    assert!(frontend_dev.is_cross_project);
+    assert_eq!(frontend_dev.project_label, "proj-web");
 }
 
 #[test]

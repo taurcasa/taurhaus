@@ -8,6 +8,8 @@
     tool = 'claude',
     model = '',
     status = 'offline',
+    isCrossProject = false,
+    projectLabel = '',
     selected = false,
     position = { x: 0, y: 0 },
     width = 180,
@@ -22,6 +24,8 @@
   const safeName = $derived(String(name || '').trim() || 'unnamed')
   const safeModel = $derived(String(model || '').trim())
   const hasModel = $derived(safeModel.length > 0)
+  const safeProjectLabel = $derived(String(projectLabel || '').trim())
+  const showProjectChip = $derived(Boolean(isCrossProject) && safeProjectLabel.length > 0)
 
   const safeTool = $derived.by(() => {
     const value = String(tool || '').trim().toLowerCase()
@@ -97,6 +101,16 @@
 
     {#if hasModel}
       <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
+    {/if}
+
+    {#if showProjectChip}
+      <span
+        class="mesh-node-project-chip"
+        data-testid={`mesh-node-project-chip-${normalizedRole}`}
+        title={`Works in ${safeProjectLabel}`}
+      >
+        [{safeProjectLabel}]
+      </span>
     {/if}
   </span>
 </button>
@@ -227,8 +241,33 @@
     text-overflow: ellipsis;
   }
 
+  .mesh-node-project-chip {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    max-width: 100%;
+    border: 1px solid var(--mesh-node-border-dark);
+    border-radius: 9999px;
+    padding: 2px 8px;
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--mesh-node-model-dark);
+    background: color-mix(in srgb, var(--mesh-node-bg-dark) 84%, white 16%);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .mesh-node.is-light .mesh-node-model {
     color: var(--mesh-node-model-light);
+  }
+
+  .mesh-node.is-light .mesh-node-project-chip {
+    border-color: var(--mesh-node-border-light);
+    color: var(--mesh-node-model-light);
+    background: color-mix(in srgb, var(--mesh-node-bg-light) 86%, white 14%);
   }
 
   .mesh-node.is-light .mesh-node-tool {

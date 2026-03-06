@@ -20,6 +20,8 @@
     model: String(member?.model ?? ''),
     status: String(member?.status ?? 'offline'),
     projectId: String(member?.projectId ?? ''),
+    isCrossProject: Boolean(member?.isCrossProject ?? member?.is_cross_project),
+    projectLabel: String(member?.projectLabel ?? member?.project_label ?? ''),
     description: String(member?.description ?? ''),
     paneId: String(member?.paneId ?? ''),
     sessionId: String(member?.sessionId ?? ''),

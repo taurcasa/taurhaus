@@ -16,10 +16,18 @@
   const model = $derived.by(() => String(node?.model ?? ''))
   const status = $derived.by(() => String(node?.status ?? 'offline'))
   const projectId = $derived.by(() => String(node?.projectId ?? ''))
+  const isCrossProject = $derived.by(() => Boolean(node?.isCrossProject ?? node?.is_cross_project))
+  const projectLabel = $derived.by(() => String(node?.projectLabel ?? node?.project_label ?? '').trim())
   const description = $derived.by(() => String(node?.description ?? '').trim())
   const paneId = $derived.by(() => String(node?.paneId ?? '').trim())
   const sessionId = $derived.by(() => String(node?.sessionId ?? '').trim())
   const sessionState = $derived.by(() => String(node?.sessionState ?? '').trim())
+  const displayProject = $derived.by(() => projectLabel || projectId || 'No project')
+  const displayProjectContext = $derived.by(() => {
+    if (!isCrossProject || !projectId) return ''
+    if (!projectLabel) return projectId
+    return projectId === projectLabel ? '' : projectId
+  })
 
   const t = $derived(themeTokens(dark))
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
@@ -183,9 +191,28 @@
       data-testid="mesh-node-detail-project"
       title={projectId || 'No project'}
     >
-      <span aria-hidden="true">Project:</span> {projectId || 'No project'}
+      <span aria-hidden="true">Project:</span> {displayProject}
     </p>
+
+    {#if isCrossProject}
+      <p
+        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] {metaPillTone}"
+        data-testid="mesh-node-detail-location"
+      >
+        <span aria-hidden="true">Location:</span> other project
+      </p>
+    {/if}
   </div>
+
+  {#if displayProjectContext}
+    <p
+      class="mt-2 text-[11px] break-all {dark ? t.textMuted : 'text-zinc-600'}"
+      data-testid="mesh-node-detail-project-context"
+      title={displayProjectContext}
+    >
+      Path: {displayProjectContext}
+    </p>
+  {/if}
 
   {#if description.length > 0}
     <section class="mt-3 rounded-xl border p-2.5 {cardTone}">

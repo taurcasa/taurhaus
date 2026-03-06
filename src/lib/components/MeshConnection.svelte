@@ -5,6 +5,7 @@
     control1 = { x: 0, y: 0 },
     control2 = { x: 0, y: 0 },
     status = 'setup',
+    isCrossProject = false,
     dark = false,
     delay = 0,
     duration = 400,
@@ -64,7 +65,7 @@
       'transition: stroke 150ms ease-out, opacity 150ms ease-out',
     ]
 
-    if (normalizedStatus === 'setup') {
+    if (normalizedStatus === 'setup' || (isCrossProject && normalizedStatus !== 'initializing')) {
       styles.push('stroke-dasharray: 6,4')
     }
 
@@ -89,6 +90,10 @@
     if (normalizedStatus === 'offline') {
       styles.push('stroke-dasharray: 6,4')
       styles.push('opacity: 0.28')
+    }
+
+    if (isCrossProject && normalizedStatus !== 'offline') {
+      styles.push(`opacity: ${normalizedStatus === 'idle' ? '0.48' : '0.8'}`)
     }
 
     if (dark && glowFilterId) {

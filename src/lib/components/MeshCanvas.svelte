@@ -270,6 +270,9 @@
       })),
       connections: computed.connections.map((connection, index) => ({
         ...connection,
+        isCrossProject: Boolean(
+          computed.agents.find((agent) => agent.id === connection.toId)?.isCrossProject
+        ),
         status: normalizedMode === 'runtime'
           ? computed.agents.find((agent) => agent.id === connection.toId)?.status ?? 'offline'
           : normalizedMode,
@@ -407,6 +410,7 @@
           end={connection.end}
           control1={connection.control1}
           control2={connection.control2}
+          isCrossProject={connection.isCrossProject}
           status={connection.status}
           delay={connection.delay}
           duration={connection.duration}
@@ -424,6 +428,8 @@
         tool={layout.lead.tool}
         model={layout.lead.model}
         status={layout.lead.status}
+        isCrossProject={layout.lead.isCrossProject}
+        projectLabel={layout.lead.projectLabel}
         selected={isSelected(layout.lead.id)}
         position={layout.lead.position}
         width={layout.lead.width}
@@ -439,6 +445,8 @@
           tool={agent.tool}
           model={agent.model}
           status={agent.status}
+          isCrossProject={agent.isCrossProject}
+          projectLabel={agent.projectLabel}
           selected={isSelected(agent.id)}
           position={agent.position}
           width={agent.width}

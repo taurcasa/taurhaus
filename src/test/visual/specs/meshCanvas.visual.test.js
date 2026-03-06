@@ -5,6 +5,8 @@ import { commands } from 'vitest/browser'
 import {
   empty_noAgents_light,
   meshCanvasScenarios,
+  runtime_fiveAgents_dark,
+  runtime_fiveAgents_light,
   runtime_threeAgents_dark,
 } from '../fixtures/meshCanvas.fixtures.js'
 import MeshCanvasVisualHost from './MeshCanvasVisualHost.svelte'
@@ -54,6 +56,10 @@ describe('MeshCanvas visual pilot', () => {
     } else {
       expect(screen.getAllByTestId('mesh-node-agent')).toHaveLength(scenario.connections.length)
       expect(screen.getAllByTestId('mesh-connection')).toHaveLength(scenario.connections.length)
+    }
+
+    if (scenario === runtime_fiveAgents_dark || scenario === runtime_fiveAgents_light) {
+      expect(screen.getByText('[mesh]')).toBeInTheDocument()
     }
 
     const screenshotPath = await captureVisual(`meshCanvas/${scenario.name}.png`)

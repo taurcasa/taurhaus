@@ -52,6 +52,8 @@
       model: selectedNode.model ?? selectedNode.modelName ?? selectedNode.model_name,
       status: selectedNode.status ?? selectedNode.sessionStatus ?? selectedNode.session_status,
       projectId: selectedNode.projectId ?? selectedNode.project_id,
+      isCrossProject: selectedNode.isCrossProject ?? selectedNode.is_cross_project ?? false,
+      projectLabel: selectedNode.projectLabel ?? selectedNode.project_label ?? '',
       description: selectedNode.description ?? '',
       paneId: selectedNode.paneId ?? selectedNode.pane_id ?? '',
       sessionId: selectedNode.sessionId ?? selectedNode.session_id ?? '',
