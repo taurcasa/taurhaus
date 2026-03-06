@@ -61,6 +61,15 @@ pub enum ActivityAttribution {
     None,
 }
 
+/// Grouping metadata used by sidebar session indicators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionGroupKind {
+    MeshTeam,
+    #[default]
+    Standalone,
+}
+
 /// A detected CLI tool session with all available metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClaudeSession {
@@ -97,6 +106,18 @@ pub struct ClaudeSession {
     /// Project has active session-file signal that could not be tied to this PID.
     #[serde(default)]
     pub project_unattributed_active: bool,
+    /// Grouping mode used by session indicators.
+    #[serde(default)]
+    pub group_kind: SessionGroupKind,
+    /// Stable grouping key when the session belongs to a managed team.
+    #[serde(default)]
+    pub group_id: Option<String>,
+    /// User-facing grouping label when the session belongs to a managed team.
+    #[serde(default)]
+    pub group_label: Option<String>,
+    /// Managed team member name associated with this session.
+    #[serde(default)]
+    pub member_name: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -465,6 +486,10 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                 activity_confidence,
                 activity_attribution,
                 project_unattributed_active,
+                group_kind: SessionGroupKind::Standalone,
+                group_id: None,
+                group_label: None,
+                member_name: None,
             }
         })
         .collect();
@@ -579,6 +604,10 @@ where
                 activity_confidence: ActivityConfidence::Low,
                 activity_attribution: ActivityAttribution::None,
                 project_unattributed_active: false,
+                group_kind: SessionGroupKind::Standalone,
+                group_id: None,
+                group_label: None,
+                member_name: None,
             }
         })
         .collect();
@@ -630,6 +659,10 @@ mod tests {
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -641,6 +674,7 @@ mod tests {
         assert_eq!(json["session_id"], "abc-123");
         assert_eq!(json["activity_confidence"], "high");
         assert_eq!(json["activity_attribution"], "attributed");
+        assert_eq!(json["group_kind"], "standalone");
     }
 
     #[test]
@@ -661,6 +695,10 @@ mod tests {
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
             project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
         };
 
         let json = serde_json::to_value(&session).unwrap();

@@ -22,6 +22,11 @@ function createSession({
   tmux_session = 'team',
   tmux_window = '1',
   tmux_pane = '%3',
+  pid = 1,
+  group_kind = 'standalone',
+  group_id = null,
+  group_label = null,
+  member_name = null,
   _duration = 8 * 60_000,
   _lastTransition = Date.now() - 90_000,
   project_unattributed_active = false,
@@ -32,6 +37,11 @@ function createSession({
     tmux_session,
     tmux_window,
     tmux_pane,
+    pid,
+    group_kind,
+    group_id,
+    group_label,
+    member_name,
     _duration,
     _lastTransition,
     project_unattributed_active,
@@ -100,6 +110,46 @@ const dormantCleanProject = createProject({
   activityState: 'dormant',
   branch: 'main',
   isDirty: false,
+})
+
+const teamRailTwoProject = createProject({
+  id: 'project-team-rail-two',
+  name: 'Team Rail Pair',
+  path: '/projects/team-rail-pair',
+  activityState: 'active',
+  branch: 'mesh/pair',
+})
+
+const teamRailThreeProject = createProject({
+  id: 'project-team-rail-three',
+  name: 'Team Rail Trio',
+  path: '/projects/team-rail-trio',
+  activityState: 'active',
+  branch: 'mesh/trio',
+})
+
+const teamStackMixedProject = createProject({
+  id: 'project-team-stack-mixed',
+  name: 'Team Stack Mixed',
+  path: '/projects/team-stack-mixed',
+  activityState: 'active',
+  branch: 'mesh/mixed',
+})
+
+const teamPlusStandaloneProject = createProject({
+  id: 'project-team-plus-standalone',
+  name: 'Team Plus Standalone',
+  path: '/projects/team-plus-standalone',
+  activityState: 'active',
+  branch: 'mesh/handoff',
+})
+
+const teamRailThresholdProject = createProject({
+  id: 'project-team-rail-threshold',
+  name: 'Team Rail Threshold',
+  path: '/projects/team-rail-threshold',
+  activityState: 'active',
+  branch: 'mesh/threshold',
 })
 
 const groupedProjects = [
@@ -286,6 +336,315 @@ export const groupHeaders_dark = createScenario({
   },
 })
 
+export const team_rail_two_dark = createScenario({
+  name: 'team_rail_two_dark',
+  theme: 'dark',
+  projects: [teamRailTwoProject],
+  selectedProject: teamRailTwoProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-rail-pair': [
+        createSession({
+          pid: 11,
+          cli_tool: 'claude',
+          state: 'active',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-pair',
+          group_label: 'team-rail-pair',
+          member_name: 'team-lead',
+        }),
+        createSession({
+          pid: 12,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%4',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-pair',
+          group_label: 'team-rail-pair',
+          member_name: 'developer2',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-rail-pair': createSession({
+        pid: 11,
+        cli_tool: 'claude',
+        state: 'active',
+        group_kind: 'mesh_team',
+        group_id: 'team-rail-pair',
+        group_label: 'team-rail-pair',
+        member_name: 'team-lead',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Rail Pair', 'Claude: running', 'Codex: idle', 'Connected'],
+    selectedProjectName: 'Team Rail Pair',
+  },
+})
+
+export const team_rail_three_light = createScenario({
+  name: 'team_rail_three_light',
+  theme: 'light',
+  projects: [teamRailThreeProject],
+  selectedProject: teamRailThreeProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-rail-trio': [
+        createSession({
+          pid: 21,
+          cli_tool: 'claude',
+          state: 'idle',
+          tmux_pane: '%21',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-trio',
+          group_label: 'team-rail-trio',
+          member_name: 'developer1',
+        }),
+        createSession({
+          pid: 22,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%22',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-trio',
+          group_label: 'team-rail-trio',
+          member_name: 'developer2',
+        }),
+        createSession({
+          pid: 23,
+          cli_tool: 'gemini',
+          state: 'idle',
+          tmux_pane: '%23',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-trio',
+          group_label: 'team-rail-trio',
+          member_name: 'developer3',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-rail-trio': createSession({
+        pid: 21,
+        cli_tool: 'claude',
+        state: 'idle',
+        tmux_pane: '%21',
+        group_kind: 'mesh_team',
+        group_id: 'team-rail-trio',
+        group_label: 'team-rail-trio',
+        member_name: 'developer1',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Rail Trio', 'Claude: idle', 'Codex: idle', 'Gemini: idle', 'Connected'],
+    selectedProjectName: 'Team Rail Trio',
+  },
+})
+
+export const team_stack_mixed_dark = createScenario({
+  name: 'team_stack_mixed_dark',
+  theme: 'dark',
+  projects: [teamStackMixedProject],
+  selectedProject: teamStackMixedProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-stack-mixed': [
+        createSession({
+          pid: 31,
+          cli_tool: 'claude',
+          state: 'active',
+          tmux_pane: '%31',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'team-lead',
+        }),
+        createSession({
+          pid: 32,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%32',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer1',
+        }),
+        createSession({
+          pid: 33,
+          cli_tool: 'gemini',
+          state: 'idle',
+          tmux_pane: '%33',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer2',
+        }),
+        createSession({
+          pid: 34,
+          cli_tool: 'codex',
+          state: 'active',
+          tmux_pane: '%34',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer3',
+        }),
+        createSession({
+          pid: 35,
+          cli_tool: 'claude',
+          state: 'idle',
+          tmux_pane: '%35',
+          group_kind: 'mesh_team',
+          group_id: 'team-stack-mixed',
+          group_label: 'team-stack-mixed',
+          member_name: 'developer4',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-stack-mixed': createSession({
+        pid: 31,
+        cli_tool: 'claude',
+        state: 'active',
+        tmux_pane: '%31',
+        group_kind: 'mesh_team',
+        group_id: 'team-stack-mixed',
+        group_label: 'team-stack-mixed',
+        member_name: 'team-lead',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Stack Mixed', 'team-stack-mixed: 5 team sessions active', 'Connected'],
+    selectedProjectName: 'Team Stack Mixed',
+  },
+})
+
+export const team_plus_standalone_dark = createScenario({
+  name: 'team_plus_standalone_dark',
+  theme: 'dark',
+  projects: [teamPlusStandaloneProject],
+  selectedProject: teamPlusStandaloneProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-plus-standalone': [
+        createSession({
+          pid: 41,
+          cli_tool: 'claude',
+          state: 'active',
+          tmux_pane: '%41',
+          group_kind: 'mesh_team',
+          group_id: 'team-plus-standalone',
+          group_label: 'team-plus-standalone',
+          member_name: 'team-lead',
+        }),
+        createSession({
+          pid: 42,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%42',
+          group_kind: 'mesh_team',
+          group_id: 'team-plus-standalone',
+          group_label: 'team-plus-standalone',
+          member_name: 'developer2',
+        }),
+        createSession({
+          pid: 43,
+          cli_tool: 'gemini',
+          state: 'active',
+          tmux_pane: '%43',
+          group_kind: 'standalone',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-plus-standalone': createSession({
+        pid: 41,
+        cli_tool: 'claude',
+        state: 'active',
+        tmux_pane: '%41',
+        group_kind: 'mesh_team',
+        group_id: 'team-plus-standalone',
+        group_label: 'team-plus-standalone',
+        member_name: 'team-lead',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Plus Standalone', 'Claude: running', 'Codex: idle', 'Gemini: running', 'Connected'],
+    selectedProjectName: 'Team Plus Standalone',
+  },
+})
+
+export const team_rail_threshold_dark = createScenario({
+  name: 'team_rail_threshold_dark',
+  theme: 'dark',
+  projects: [teamRailThresholdProject],
+  selectedProject: teamRailThresholdProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/team-rail-threshold': [
+        createSession({
+          pid: 51,
+          cli_tool: 'claude',
+          state: 'active',
+          tmux_pane: '%51',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-threshold',
+          group_label: 'team-rail-threshold',
+          member_name: 'team-lead',
+        }),
+        createSession({
+          pid: 52,
+          cli_tool: 'codex',
+          state: 'idle',
+          tmux_pane: '%52',
+          group_kind: 'mesh_team',
+          group_id: 'team-rail-threshold',
+          group_label: 'team-rail-threshold',
+          member_name: 'developer2',
+        }),
+        createSession({
+          pid: 53,
+          cli_tool: 'gemini',
+          state: 'idle',
+          tmux_pane: '%53',
+          group_kind: 'standalone',
+        }),
+        createSession({
+          pid: 54,
+          cli_tool: 'claude',
+          state: 'active',
+          tmux_pane: '%54',
+          group_kind: 'standalone',
+        }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/team-rail-threshold': createSession({
+        pid: 51,
+        cli_tool: 'claude',
+        state: 'active',
+        tmux_pane: '%51',
+        group_kind: 'mesh_team',
+        group_id: 'team-rail-threshold',
+        group_label: 'team-rail-threshold',
+        member_name: 'team-lead',
+      }),
+    },
+  },
+  expected: {
+    labels: ['Team Rail Threshold', 'team-rail-threshold: 2 team sessions active', 'Gemini: idle', 'Claude: running', 'Connected'],
+    selectedProjectName: 'Team Rail Threshold',
+  },
+})
+
 export const sidebarScenarios = [
   active_claude_selected_dark,
   active_multiTool_dark,
@@ -294,4 +653,9 @@ export const sidebarScenarios = [
   dormant_clean_dark,
   active_claude_selected_light,
   groupHeaders_dark,
+  team_rail_two_dark,
+  team_rail_three_light,
+  team_stack_mixed_dark,
+  team_plus_standalone_dark,
+  team_rail_threshold_dark,
 ]

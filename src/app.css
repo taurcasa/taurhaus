@@ -157,6 +157,22 @@
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
   --shell-frame-noise-opacity-dark: 0.02;
   --shell-frame-noise-opacity-light: 0.018;
+
+  /* Sidebar team session visuals */
+  --sidebar-team-rail-active-dark: rgba(134, 239, 172, 0.18);
+  --sidebar-team-rail-idle-dark: rgba(252, 211, 77, 0.22);
+  --sidebar-team-rail-active-light: rgba(22, 163, 74, 0.16);
+  --sidebar-team-rail-idle-light: rgba(217, 119, 6, 0.18);
+  --sidebar-team-count-active-dark: rgba(134, 239, 172, 0.18);
+  --sidebar-team-count-active-border-dark: rgba(134, 239, 172, 0.5);
+  --sidebar-team-count-idle-dark: rgba(252, 211, 77, 0.2);
+  --sidebar-team-count-idle-border-dark: rgba(252, 211, 77, 0.52);
+  --sidebar-team-count-active-light: rgba(22, 163, 74, 0.14);
+  --sidebar-team-count-active-border-light: rgba(22, 163, 74, 0.36);
+  --sidebar-team-count-idle-light: rgba(217, 119, 6, 0.14);
+  --sidebar-team-count-idle-border-light: rgba(217, 119, 6, 0.34);
+  --sidebar-team-stack-ring-dark: rgba(9, 14, 17, 0.94);
+  --sidebar-team-stack-ring-light: rgba(255, 255, 255, 0.92);
 }
 
 :root {
@@ -167,6 +183,13 @@
   --shell-panel-gradient: var(--shell-panel-gradient-light);
   --shell-frame-surface: var(--shell-frame-surface-light);
   --shell-frame-noise-opacity: var(--shell-frame-noise-opacity-light);
+  --sidebar-team-rail-active: var(--sidebar-team-rail-active-light);
+  --sidebar-team-rail-idle: var(--sidebar-team-rail-idle-light);
+  --sidebar-team-count-active: var(--sidebar-team-count-active-light);
+  --sidebar-team-count-active-border: var(--sidebar-team-count-active-border-light);
+  --sidebar-team-count-idle: var(--sidebar-team-count-idle-light);
+  --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-light);
+  --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-light);
 }
 
 html.dark {
@@ -177,6 +200,13 @@ html.dark {
   --shell-panel-gradient: var(--shell-panel-gradient-dark);
   --shell-frame-surface: var(--shell-frame-surface-dark);
   --shell-frame-noise-opacity: var(--shell-frame-noise-opacity-dark);
+  --sidebar-team-rail-active: var(--sidebar-team-rail-active-dark);
+  --sidebar-team-rail-idle: var(--sidebar-team-rail-idle-dark);
+  --sidebar-team-count-active: var(--sidebar-team-count-active-dark);
+  --sidebar-team-count-active-border: var(--sidebar-team-count-active-border-dark);
+  --sidebar-team-count-idle: var(--sidebar-team-count-idle-dark);
+  --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-dark);
+  --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-dark);
 }
 
 html, body, #app {
@@ -254,6 +284,96 @@ body {
   box-shadow:
     inset 0 0 0 1px rgba(251, 191, 36, 0.2),
     0 0 0 1px rgba(251, 191, 36, 0.15);
+}
+
+.sidebar-session-team-rail {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 14px;
+  padding-inline: 0;
+}
+
+.sidebar-session-team-rail::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 3px;
+  height: 8px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.sidebar-session-team-rail[data-activity='active']::before {
+  background: var(--sidebar-team-rail-active);
+}
+
+.sidebar-session-team-rail[data-activity='idle']::before {
+  background: var(--sidebar-team-rail-idle);
+}
+
+.sidebar-session-team-rail-logo {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-session-team-stack {
+  display: inline-flex;
+  align-items: center;
+  height: 14px;
+}
+
+.sidebar-session-team-stack-logos {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+}
+
+.sidebar-session-team-stack-logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  margin-left: -4px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sidebar-team-stack-ring);
+}
+
+.sidebar-session-team-stack-logo-first {
+  margin-left: 0;
+}
+
+.sidebar-session-team-count {
+  min-width: 12px;
+  height: 12px;
+  padding-inline: 3px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-session-team-stack[data-activity='active'] .sidebar-session-team-count {
+  background: var(--sidebar-team-count-active);
+  box-shadow: inset 0 0 0 1px var(--sidebar-team-count-active-border);
+}
+
+.sidebar-session-team-stack[data-activity='idle'] .sidebar-session-team-count {
+  background: var(--sidebar-team-count-idle);
+  box-shadow: inset 0 0 0 1px var(--sidebar-team-count-idle-border);
 }
 
 @keyframes session-pill-breathe {

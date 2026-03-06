@@ -724,6 +724,11 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                 distro.as_deref(),
                                 crate::daemon::launcher::is_native_daemon(),
                             );
+                            crate::commands::command_center::enrich_sessions_with_team_membership(
+                                app.state::<crate::coordination::state::CoordinationState>()
+                                    .teams_dir(),
+                                &mut sessions,
+                            );
 
                             emit_frontend_event(
                                 &app,
@@ -800,6 +805,10 @@ mod tests {
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,
+            group_kind: crate::session_scanner::SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
         }
     }
 

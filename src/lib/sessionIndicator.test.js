@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { hasLiveSession, isActiveSession, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators } from './sessionIndicator.js'
+import { groupedSessionIndicators, hasLiveSession, isActiveSession, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
+
+function session(overrides = {}) {
+  return {
+    state: 'active',
+    cli_tool: 'claude',
+    pid: 1,
+    group_kind: 'standalone',
+    group_id: null,
+    group_label: null,
+    member_name: null,
+    ...overrides,
+  }
+}
 
 describe('sessionIndicator', () => {
   it('detects live sessions', () => {
@@ -81,15 +94,28 @@ describe('sessionIndicator', () => {
     expect(rowTintForSessions(null)).toBe('')
   })
 
+  it('uniqueTools deduplicates tools in stable sidebar order', () => {
+    const tools = uniqueTools([
+      session({ cli_tool: 'gemini' }),
+      session({ cli_tool: 'codex', pid: 2 }),
+      session({ cli_tool: 'claude', pid: 3 }),
+      session({ cli_tool: 'codex', pid: 4 }),
+    ])
+
+    expect(tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(tools.map(tool => tool.fullName)).toEqual(['Claude', 'Codex', 'Gemini'])
+  })
+
   it('toolIndicators returns one indicator per live session with icon data', () => {
     const sessions = [
-      { state: 'active', cli_tool: 'claude', tmux_session: '0', tmux_window: '1', tmux_pane: '%3' },
-      { state: 'idle', cli_tool: 'codex', tmux_session: '0', tmux_window: '1', tmux_pane: '%4' },
+      session({ state: 'active', cli_tool: 'claude', tmux_session: '0', tmux_window: '1', tmux_pane: '%3' }),
+      session({ state: 'idle', cli_tool: 'codex', pid: 2, tmux_session: '0', tmux_window: '1', tmux_pane: '%4' }),
     ]
     const indicators = toolIndicators(sessions)
     expect(indicators).toHaveLength(2)
 
     // Claude indicator (active)
+    expect(indicators[0].kind).toBe('session')
     expect(indicators[0].fullName).toBe('Claude')
     expect(indicators[0].isActive).toBe(true)
     expect(indicators[0].interactive).toBe(true)
@@ -114,9 +140,9 @@ describe('sessionIndicator', () => {
 
   it('toolIndicators for all three tools have distinct icons', () => {
     const sessions = [
-      { state: 'active', cli_tool: 'claude' },
-      { state: 'active', cli_tool: 'codex' },
-      { state: 'idle', cli_tool: 'gemini' },
+      session({ state: 'active', cli_tool: 'claude' }),
+      session({ state: 'active', cli_tool: 'codex', pid: 2 }),
+      session({ state: 'idle', cli_tool: 'gemini', pid: 3 }),
     ]
     const indicators = toolIndicators(sessions)
     expect(indicators).toHaveLength(3)
@@ -131,18 +157,142 @@ describe('sessionIndicator', () => {
   })
 
   it('toolIndicators carries session reference', () => {
-    const session = { state: 'active', cli_tool: 'claude', pid: 12345 }
-    const indicators = toolIndicators([session])
-    expect(indicators[0].session).toBe(session)
+    const active = session({ state: 'active', cli_tool: 'claude', pid: 12345 })
+    const indicators = toolIndicators([active])
+    expect(indicators[0].session).toBe(active)
   })
 
   it('toolIndicators marks unattributed project activity distinctly', () => {
     const indicators = toolIndicators([
-      { state: 'idle', cli_tool: 'codex', project_unattributed_active: true },
+      session({ state: 'idle', cli_tool: 'codex', project_unattributed_active: true }),
     ])
     expect(indicators[0].isActive).toBe(false)
     expect(indicators[0].isUnattributed).toBe(true)
     expect(indicators[0].colorClass).toBe('text-info-300')
     expect(indicators[0].ariaLabel).toContain('unattributed')
+  })
+
+  it('groupedSessionIndicators collapses matching team sessions into one active token', () => {
+    const indicators = groupedSessionIndicators([
+      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
+      session({ state: 'idle', cli_tool: 'gemini', pid: 3, group_kind: 'standalone' }),
+    ])
+
+    expect(indicators).toHaveLength(1)
+    expect(indicators[0]).toMatchObject({
+      kind: 'team',
+      groupId: 'team-a',
+      groupLabel: 'team-a',
+      count: 2,
+      layout: 'rail',
+      isActive: true,
+      tone: 'active',
+    })
+    expect(indicators[0].members.map(member => member.member_name)).toEqual(['lead', 'developer2'])
+    expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex'])
+  })
+
+  it('toolIndicators keeps 1-3 total live sessions as individual logos even when they share a team', () => {
+    const indicators = toolIndicators([
+      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
+      session({ pid: 3, cli_tool: 'gemini', state: 'idle' }),
+    ])
+
+    expect(indicators).toHaveLength(3)
+    expect(indicators.every(indicator => indicator.kind === 'session')).toBe(true)
+    expect(indicators.map(indicator => indicator.fullName)).toEqual(['Claude', 'Codex', 'Gemini'])
+  })
+
+  it('toolIndicators leaves one-member team sessions as standalone logos', () => {
+    const indicators = toolIndicators([
+      session({ group_kind: 'mesh_team', group_id: 'solo-team', group_label: 'solo-team', member_name: 'developer2' }),
+      session({ pid: 2, cli_tool: 'codex', state: 'idle', group_kind: 'standalone' }),
+    ])
+
+    expect(indicators).toHaveLength(2)
+    expect(indicators.every(indicator => indicator.kind === 'session')).toBe(true)
+    expect(indicators.map(indicator => indicator.fullName)).toEqual(['Claude', 'Codex'])
+  })
+
+  it('toolIndicators uses a rail group once the row reaches 4+ total live sessions', () => {
+    const indicators = toolIndicators([
+      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2', state: 'idle' }),
+      session({ pid: 3, cli_tool: 'gemini', state: 'idle', group_kind: 'standalone' }),
+      session({ pid: 4, cli_tool: 'claude', state: 'active', group_kind: 'standalone' }),
+    ])
+
+    expect(indicators).toHaveLength(3)
+    expect(indicators[0]).toMatchObject({
+      kind: 'team',
+      groupId: 'team-a',
+      layout: 'rail',
+      count: 2,
+      isActive: true,
+      colorClass: 'text-success-300',
+    })
+    expect(indicators.slice(1).map(indicator => indicator.fullName)).toEqual(['Gemini', 'Claude'])
+  })
+
+  it('toolIndicators uses a stacked unique-tool group at 4+ team members and keeps standalone sessions visible', () => {
+    const indicators = toolIndicators([
+      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2', state: 'idle' }),
+      session({ pid: 3, cli_tool: 'gemini', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3', state: 'idle' }),
+      session({ pid: 4, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer4', state: 'active' }),
+      session({ pid: 5, cli_tool: 'gemini', state: 'idle' }),
+    ])
+
+    expect(indicators).toHaveLength(2)
+    expect(indicators[0]).toMatchObject({
+      kind: 'team',
+      groupId: 'team-a',
+      layout: 'stack',
+      count: 4,
+      isActive: true,
+      colorClass: 'text-success-300',
+    })
+    expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(indicators[1]).toMatchObject({
+      kind: 'session',
+      fullName: 'Gemini',
+    })
+  })
+
+  it('toolIndicators derives idle aggregate state when all grouped members are idle', () => {
+    const indicators = toolIndicators([
+      session({ state: 'idle', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ state: 'idle', pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
+      session({ state: 'idle', pid: 3, cli_tool: 'gemini', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3' }),
+      session({ state: 'idle', pid: 4, cli_tool: 'claude', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer4' }),
+    ])
+
+    expect(indicators[0].kind).toBe('team')
+    expect(indicators[0].isActive).toBe(false)
+    expect(indicators[0].layout).toBe('stack')
+    expect(indicators[0].colorClass).toBe('text-warning-300')
+    expect(indicators[0].ariaLabel).toContain('idle')
+  })
+
+  it('toolIndicators stacks single-tool teams without duplicating the logo legend', () => {
+    const indicators = toolIndicators([
+      session({ state: 'idle', cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'codex-team', group_label: 'codex-team', member_name: 'developer1' }),
+      session({ state: 'idle', pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'codex-team', group_label: 'codex-team', member_name: 'developer2' }),
+      session({ state: 'idle', pid: 3, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'codex-team', group_label: 'codex-team', member_name: 'developer3' }),
+      session({ state: 'idle', pid: 4, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'codex-team', group_label: 'codex-team', member_name: 'developer4' }),
+      session({ state: 'idle', pid: 5, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'codex-team', group_label: 'codex-team', member_name: 'developer5' }),
+      session({ state: 'idle', pid: 6, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'codex-team', group_label: 'codex-team', member_name: 'developer6' }),
+    ])
+
+    expect(indicators).toHaveLength(1)
+    expect(indicators[0]).toMatchObject({
+      kind: 'team',
+      layout: 'stack',
+      count: 6,
+      tone: 'idle',
+    })
+    expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['codex'])
   })
 })

@@ -85,7 +85,40 @@
         {#if indicators.length > 0}
           <span class="flex items-center gap-1 shrink-0">
             {#each indicators as ind}
-              {#if ind.interactive}
+              {#if ind.kind === 'team'}
+                <span
+                  class={ind.layout === 'stack'
+                    ? `sidebar-session-team-stack shrink-0 ${ind.colorClass}`
+                    : `sidebar-session-team-rail shrink-0 ${ind.colorClass}`}
+                  data-activity={ind.tone}
+                  aria-label={ind.ariaLabel}
+                  data-testid="sidebar-team-indicator"
+                >
+                  {#if ind.layout === 'stack'}
+                    <span class="sidebar-session-team-stack-logos" aria-hidden="true">
+                      {#each ind.tools as tool, index (tool.tool)}
+                        <span
+                          class="sidebar-session-team-stack-logo"
+                          class:sidebar-session-team-stack-logo-first={index === 0}
+                        >
+                          <svg class="w-[12px] h-[12px]" viewBox={tool.icon.viewBox} fill="currentColor">
+                            <path d={tool.icon.path}></path>
+                          </svg>
+                        </span>
+                      {/each}
+                    </span>
+                    <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
+                  {:else}
+                    {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
+                      <span class="sidebar-session-team-rail-logo" aria-hidden="true">
+                        <svg class="w-[12px] h-[12px]" viewBox={memberTool.icon.viewBox} fill="currentColor">
+                          <path d={memberTool.icon.path}></path>
+                        </svg>
+                      </span>
+                    {/each}
+                  {/if}
+                </span>
+              {:else if ind.interactive}
                 <span
                   class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
                   role="button"

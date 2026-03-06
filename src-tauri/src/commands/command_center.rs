@@ -1,17 +1,19 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::daemon::protocol::{self, LaunchMode};
 use crate::errors::SanitizeErr;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
-use crate::session_scanner::{ClaudeSession, SessionState};
+use crate::session_scanner::{ClaudeSession, SessionGroupKind, SessionState};
 use crate::ProviderState;
 use serde_json::{Map, Value};
 
@@ -50,6 +52,11 @@ pub fn list_cli_sessions(
                             }
                         }
 
+                        enrich_sessions_with_team_membership(
+                            app.state::<crate::coordination::state::CoordinationState>()
+                                .teams_dir(),
+                            &mut sessions,
+                        );
                         promote_activity_from_sessions(&app, db.inner(), &sessions);
                         return Ok(sessions);
                     }
@@ -63,8 +70,13 @@ pub fn list_cli_sessions(
             }
         }
 
-        let fallback = crate::session_scanner::scan_sessions();
+        let mut fallback = crate::session_scanner::scan_sessions();
         tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
+        enrich_sessions_with_team_membership(
+            app.state::<crate::coordination::state::CoordinationState>()
+                .teams_dir(),
+            &mut fallback,
+        );
         promote_activity_from_sessions(&app, db.inner(), &fallback);
         Ok(fallback)
     };
@@ -81,6 +93,157 @@ fn normalize_project_path_key(path: &str) -> String {
         normalized.to_ascii_lowercase()
     } else {
         normalized
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SessionMembershipMetadata {
+    group_id: String,
+    group_label: String,
+    member_name: String,
+    pane_id: Option<String>,
+}
+
+pub(crate) fn enrich_sessions_with_team_membership(
+    teams_dir: &Path,
+    sessions: &mut [ClaudeSession],
+) {
+    if sessions.is_empty() {
+        return;
+    }
+
+    let memberships = load_session_memberships(teams_dir);
+
+    let mut sessions_by_key = HashMap::new();
+
+    for (index, session) in sessions.iter_mut().enumerate() {
+        session.group_kind = SessionGroupKind::Standalone;
+        session.group_id = None;
+        session.group_label = None;
+        session.member_name = None;
+
+        let key = (
+            crate::provider::path::normalize_project_path(&session.project_path),
+            session.cli_tool,
+        );
+        sessions_by_key
+            .entry(key)
+            .or_insert_with(Vec::new)
+            .push(index);
+    }
+
+    for (key, session_indices) in sessions_by_key {
+        let Some(candidates) = memberships.get(&key) else {
+            continue;
+        };
+        assign_session_memberships(sessions, &session_indices, candidates);
+    }
+}
+
+fn load_session_memberships(
+    teams_dir: &Path,
+) -> HashMap<(String, CliTool), Vec<SessionMembershipMetadata>> {
+    let team_names = match TeamConfigStore::list(teams_dir) {
+        Ok(team_names) => team_names,
+        Err(error) => {
+            tracing::warn!(
+                teams_dir = %teams_dir.display(),
+                error = %error,
+                "Failed to list team configs while enriching session metadata"
+            );
+            return HashMap::new();
+        }
+    };
+
+    let mut memberships = HashMap::new();
+
+    for team_name in team_names {
+        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(
+                    team_name = %team_name,
+                    error = %error,
+                    "Failed to load team config while enriching session metadata"
+                );
+                continue;
+            }
+        };
+        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
+            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
+            Err(error) => {
+                tracing::warn!(
+                    team_name = %team_name,
+                    error = %error,
+                    "Failed to load runtime records while enriching session metadata"
+                );
+                HashMap::new()
+            }
+        };
+
+        for member in config.members {
+            let key = (
+                crate::provider::path::normalize_project_path(
+                    &member.project_path.display().to_string(),
+                ),
+                member.cli_tool,
+            );
+
+            memberships
+                .entry(key)
+                .or_insert_with(Vec::new)
+                .push(SessionMembershipMetadata {
+                    group_id: config.name.clone(),
+                    group_label: config.name.clone(),
+                    member_name: member.name.clone(),
+                    pane_id: runtime_by_member
+                        .get(&member.name)
+                        .and_then(|runtime| runtime.pane_id.clone()),
+                });
+        }
+    }
+
+    memberships
+}
+
+fn assign_session_memberships(
+    sessions: &mut [ClaudeSession],
+    session_indices: &[usize],
+    candidates: &[SessionMembershipMetadata],
+) {
+    if session_indices.is_empty() || candidates.is_empty() {
+        return;
+    }
+
+    let mut unused_candidates = candidates.to_vec();
+    let mut assigned = HashMap::new();
+
+    for &index in session_indices {
+        let Some(tmux_pane) = sessions[index].tmux_pane.as_deref() else {
+            continue;
+        };
+        let Some(candidate_index) = unused_candidates
+            .iter()
+            .position(|candidate| candidate.pane_id.as_deref() == Some(tmux_pane))
+        else {
+            continue;
+        };
+        assigned.insert(index, unused_candidates.remove(candidate_index));
+    }
+
+    let mut fallback_candidates = unused_candidates.into_iter();
+    for &index in session_indices {
+        let metadata = assigned
+            .remove(&index)
+            .or_else(|| fallback_candidates.next());
+        let Some(metadata) = metadata else {
+            continue;
+        };
+
+        sessions[index].group_kind = SessionGroupKind::MeshTeam;
+        sessions[index].group_id = Some(metadata.group_id);
+        sessions[index].group_label = Some(metadata.group_label);
+        sessions[index].member_name = Some(metadata.member_name);
     }
 }
 
@@ -581,11 +744,16 @@ fn decode_daemon_launch_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coordination::domain::HealthState;
+    use crate::coordination::domain::{Member, MemberRole};
+    use crate::coordination::stores::{MemberRuntimeRecord, TeamConfig};
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
+    use std::path::Path;
     use std::sync::Mutex;
     use std::thread;
     use tempfile::NamedTempFile;
+    use tempfile::TempDir;
 
     struct StubDaemon {
         addr: String,
@@ -720,7 +888,76 @@ mod tests {
             activity_confidence: crate::session_scanner::ActivityConfidence::High,
             activity_attribution: crate::session_scanner::ActivityAttribution::Attributed,
             project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
         }
+    }
+
+    fn save_team_member(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        project_path: &str,
+        cli_tool: CliTool,
+    ) {
+        TeamConfigStore::save(
+            teams_dir,
+            team_name,
+            &TeamConfig {
+                schema_version: 1,
+                name: team_name.to_string(),
+                description: None,
+                created_at: chrono::Utc::now(),
+                members: vec![Member {
+                    name: member_name.to_string(),
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    capabilities: None,
+                    project_path: project_path.into(),
+                    cli_tool,
+                }],
+            },
+        )
+        .expect("save team config");
+    }
+
+    fn save_team_members(teams_dir: &Path, team_name: &str, members: Vec<Member>) {
+        TeamConfigStore::save(
+            teams_dir,
+            team_name,
+            &TeamConfig {
+                schema_version: 1,
+                name: team_name.to_string(),
+                description: None,
+                created_at: chrono::Utc::now(),
+                members,
+            },
+        )
+        .expect("save team config");
+    }
+
+    fn save_member_runtime(teams_dir: &Path, team_name: &str, member_name: &str, pane_id: &str) {
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &MemberRuntimeRecord {
+                schema_version: 1,
+                member_name: member_name.to_string(),
+                pane_id: Some(pane_id.to_string()),
+                session_id: None,
+                daemon_pid: None,
+                health: HealthState::Healthy,
+                delivery_lease: None,
+                attached_at: Some(chrono::Utc::now()),
+                last_seen_at: Some(chrono::Utc::now()),
+            },
+        )
+        .expect("save runtime record");
     }
 
     #[test]
@@ -755,6 +992,132 @@ mod tests {
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].project_path, "/tmp/project-a");
         assert_eq!(sessions[1].project_path, "/tmp/project-b");
+        assert_eq!(sessions[0].group_kind, SessionGroupKind::Standalone);
+        assert_eq!(sessions[1].group_kind, SessionGroupKind::Standalone);
+    }
+
+    #[test]
+    fn enrich_sessions_with_team_membership_marks_matching_sessions() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        save_team_member(
+            tmp.path(),
+            "architecture-final",
+            "developer2",
+            "/home/dev/projects/taurhaus",
+            CliTool::Codex,
+        );
+
+        let mut sessions = vec![active_session_for(
+            r"\\wsl.localhost\Ubuntu\home\dev\projects\taurhaus",
+        )];
+
+        enrich_sessions_with_team_membership(tmp.path(), &mut sessions);
+
+        assert_eq!(sessions[0].group_kind, SessionGroupKind::MeshTeam);
+        assert_eq!(sessions[0].group_id.as_deref(), Some("architecture-final"));
+        assert_eq!(
+            sessions[0].group_label.as_deref(),
+            Some("architecture-final")
+        );
+        assert_eq!(sessions[0].member_name.as_deref(), Some("developer2"));
+    }
+
+    #[test]
+    fn enrich_sessions_with_team_membership_leaves_unmatched_tool_standalone() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        save_team_member(
+            tmp.path(),
+            "architecture-final",
+            "lead",
+            "/home/dev/projects/taurhaus",
+            CliTool::Claude,
+        );
+
+        let mut sessions = vec![active_session_for("/home/dev/projects/taurhaus")];
+
+        enrich_sessions_with_team_membership(tmp.path(), &mut sessions);
+
+        assert_eq!(sessions[0].group_kind, SessionGroupKind::Standalone);
+        assert_eq!(sessions[0].group_id, None);
+        assert_eq!(sessions[0].group_label, None);
+        assert_eq!(sessions[0].member_name, None);
+    }
+
+    #[test]
+    fn enrich_sessions_with_team_membership_skips_invalid_team_configs() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        save_team_member(
+            tmp.path(),
+            "valid-team",
+            "developer2",
+            "/home/dev/projects/taurhaus",
+            CliTool::Codex,
+        );
+        let broken_dir = tmp.path().join("broken-team");
+        std::fs::create_dir_all(&broken_dir).expect("create broken dir");
+        std::fs::write(broken_dir.join("config.json"), "{ invalid json")
+            .expect("write broken config");
+
+        let mut sessions = vec![
+            active_session_for("/home/dev/projects/taurhaus"),
+            active_session_for("/home/dev/projects/other"),
+        ];
+
+        enrich_sessions_with_team_membership(tmp.path(), &mut sessions);
+
+        assert_eq!(sessions[0].group_kind, SessionGroupKind::MeshTeam);
+        assert_eq!(sessions[0].group_id.as_deref(), Some("valid-team"));
+        assert_eq!(sessions[1].group_kind, SessionGroupKind::Standalone);
+        assert_eq!(sessions[1].group_id, None);
+    }
+
+    #[test]
+    fn enrich_sessions_with_team_membership_distinguishes_same_tool_members_by_pane() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        save_team_members(
+            tmp.path(),
+            "architecture-final",
+            vec![
+                Member {
+                    name: "developer1".to_string(),
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    capabilities: None,
+                    project_path: "/home/dev/projects/taurhaus".into(),
+                    cli_tool: CliTool::Codex,
+                },
+                Member {
+                    name: "developer2".to_string(),
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    capabilities: None,
+                    project_path: "/home/dev/projects/taurhaus".into(),
+                    cli_tool: CliTool::Codex,
+                },
+            ],
+        );
+        save_member_runtime(tmp.path(), "architecture-final", "developer1", "%11");
+        save_member_runtime(tmp.path(), "architecture-final", "developer2", "%12");
+
+        let mut first = active_session_for("/home/dev/projects/taurhaus");
+        first.tmux_pane = Some("%11".to_string());
+        let mut second = active_session_for("/home/dev/projects/taurhaus");
+        second.pid = 4321;
+        second.tmux_pane = Some("%12".to_string());
+        second.session_id = Some("sid-2".to_string());
+
+        let mut sessions = vec![first, second];
+        enrich_sessions_with_team_membership(tmp.path(), &mut sessions);
+
+        assert_eq!(sessions[0].group_kind, SessionGroupKind::MeshTeam);
+        assert_eq!(sessions[1].group_kind, SessionGroupKind::MeshTeam);
+        assert_eq!(sessions[0].member_name.as_deref(), Some("developer1"));
+        assert_eq!(sessions[1].member_name.as_deref(), Some("developer2"));
+        assert_ne!(sessions[0].member_name, sessions[1].member_name);
     }
 
     #[test]

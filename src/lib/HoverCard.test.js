@@ -12,6 +12,7 @@ vi.mock('./sessionIndicator.js', () => ({
   sessionBadge: vi.fn((session) => ({ toolLabel: session.toolLabel || 'Codex' })),
   hasLiveSession: vi.fn((session) => Boolean(session.live)),
   toolIcon: vi.fn(() => ({ viewBox: '0 0 10 10', path: 'M0 0h10v10z' })),
+  groupedSessionIndicators: vi.fn(() => []),
 }))
 
 vi.mock('./format.js', () => ({
@@ -127,6 +128,45 @@ describe('HoverCard', () => {
     expect(screen.getByText('Active work in progress')).toBeInTheDocument()
     expect(screen.getByText('Codex is working now +2 more')).toBeInTheDocument()
     expect(screen.getByText('active 4000ms')).toBeInTheDocument()
+  })
+
+  it('renders grouped team roster when grouped token metadata is present', async () => {
+    const { groupedSessionIndicators } = await import('./sessionIndicator.js')
+    groupedSessionIndicators.mockReturnValueOnce([
+      {
+        kind: 'team',
+        groupId: 'team-a',
+        groupLabel: 'team-a',
+        count: 2,
+        isActive: true,
+        members: [
+          { member_name: 'team-lead', toolLabel: 'Claude', state: 'active' },
+          { member_name: 'developer2', toolLabel: 'Codex', state: 'idle' },
+        ],
+      },
+    ])
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [
+          { live: true, state: 'active', toolLabel: 'Claude' },
+          { live: true, state: 'idle', toolLabel: 'Codex' },
+          { live: true, state: 'active', toolLabel: 'Gemini' },
+          { live: true, state: 'idle', toolLabel: 'Claude' },
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('hovercard-team-roster')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('team-a')).toBeInTheDocument()
+    expect(screen.getByText('team-lead')).toBeInTheDocument()
+    expect(screen.getByText('developer2')).toBeInTheDocument()
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Idle')).toBeInTheDocument()
   })
 
   it('falls back to commit summary when latest session is stale', async () => {

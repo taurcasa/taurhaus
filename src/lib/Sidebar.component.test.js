@@ -173,6 +173,7 @@ describe('Sidebar component branches', () => {
     getSessionsForProject.mockImplementation(() => [interactiveSession])
     toolIndicators.mockImplementation(() => ([
       {
+        kind: 'session',
         interactive: true,
         colorClass: 'text-success-400',
         isActive: true,
@@ -181,6 +182,7 @@ describe('Sidebar component branches', () => {
         session: interactiveSession,
       },
       {
+        kind: 'session',
         interactive: false,
         colorClass: 'text-zinc-400',
         isActive: false,
@@ -199,6 +201,50 @@ describe('Sidebar component branches', () => {
 
     await fireEvent.click(screen.getByLabelText('Codex active'))
     expect(navigateToSession).toHaveBeenCalledWith('team', '1', '%3')
+  })
+
+  it('renders grouped team token before standalone session icons', async () => {
+    const projects = [makeProjects(1)[0]]
+    getSessionsForProject.mockImplementation(() => [
+      { state: 'active', group_kind: 'mesh_team' },
+      { state: 'idle', group_kind: 'mesh_team' },
+      { state: 'idle', group_kind: 'standalone' },
+      { state: 'active', group_kind: 'standalone' },
+    ])
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'team',
+        layout: 'rail',
+        count: 2,
+        tone: 'active',
+        isActive: true,
+        colorClass: 'text-success-300',
+        memberTools: [
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
+        ],
+        ariaLabel: 'team-a: 2 team sessions active',
+      },
+      {
+        kind: 'session',
+        interactive: false,
+        colorClass: 'text-warning-300',
+        isActive: false,
+        ariaLabel: 'Gemini idle',
+        icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' },
+        session: { state: 'idle' },
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-team-indicator')).toBeInTheDocument()
+      expect(screen.getByLabelText('Gemini idle')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('sidebar-team-indicator').className).toContain('sidebar-session-team-rail')
+    expect(screen.getByTestId('sidebar-team-indicator').querySelectorAll('.sidebar-session-team-rail-logo')).toHaveLength(2)
   })
 
   it('context menu supports copy path and two-click remove confirmation', async () => {

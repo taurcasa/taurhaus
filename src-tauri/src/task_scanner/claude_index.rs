@@ -261,6 +261,10 @@ mod tests {
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,
+            group_kind: crate::session_scanner::SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
         }
     }
 
