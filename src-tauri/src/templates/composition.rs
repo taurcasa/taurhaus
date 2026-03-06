@@ -614,7 +614,7 @@ mod tests {
                     slot_index: 0,
                     member_index: 1,
                     overrides: SlotOverrides {
-                        model: Some("gpt-5.3-codex".to_string()),
+                        model: Some("gpt-5.4-high".to_string()),
                         name_pattern: None,
                         instructions_replace: Some("instance replace".to_string()),
                         instructions_append: Some("instance append".to_string()),
@@ -641,7 +641,7 @@ mod tests {
             .find(|member| member.name == "dev-2")
             .expect("dev-2 exists");
 
-        assert_eq!(dev1.model, "gpt-5.3-codex");
+        assert_eq!(dev1.model, "gpt-5.4-high");
         assert_eq!(dev2.model, "gpt-5-mini");
 
         assert_eq!(dev1.instructions, "instance replace\ninstance append");

@@ -12,13 +12,13 @@ describe('AgentCard', () => {
         testId: 'agent-card',
         name: 'dev-1',
         tool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         projectId: '/projects/taurhaus',
       },
     })
 
     expect(screen.getByTestId('agent-card-name')).toHaveTextContent('dev-1')
-    expect(screen.getByTestId('agent-card-tool-model')).toHaveTextContent('Codex · gpt-5.3-codex')
+    expect(screen.getByTestId('agent-card-tool-model')).toHaveTextContent('Codex · gpt-5.4-high')
     expect(screen.getByTestId('agent-card-project')).toHaveTextContent('/projects/taurhaus')
   })
 
@@ -57,7 +57,7 @@ describe('AgentCard', () => {
         testId: 'agent-card',
         name: 'dev-1',
         tool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         projectId: '/projects/taurhaus',
         description: 'Initial',
         onSave,

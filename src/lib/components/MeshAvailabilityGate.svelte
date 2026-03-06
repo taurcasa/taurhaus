@@ -1,5 +1,6 @@
 <script>
   import { checkMeshInstallStatus, coordinationPreflightCheck, installMesh } from '../ipc.js'
+  import { defaultModelForTool } from '../meshDefaults.js'
   import { themeTokens } from '../themeTokens.js'
 
   let { dark = false, projectPath = '', children } = $props()
@@ -33,7 +34,7 @@
         {
           name: 'codex-check',
           cliTool: 'codex',
-          model: 'gpt-5.3-codex',
+          model: defaultModelForTool('codex'),
           projectId,
           description: null,
         },

@@ -1,4 +1,5 @@
 import { BEHAVIORAL_CONTRACT_MODES, normalizeBehavioralContract } from './normalize.js'
+import { defaultModelForTool } from '../meshDefaults.js'
 
 export function normalizeRoleTemplateInput(roleData) {
   const source =
@@ -22,7 +23,7 @@ export function normalizeRoleTemplateInput(roleData) {
       source.defaults?.model ??
       (cliTool === 'claude'
         ? 'claude-opus-4-6'
-        : (cliTool === 'gemini' ? 'gemini-3.1-pro' : 'gpt-5.3-codex'))
+        : (cliTool === 'gemini' ? 'gemini-3.1-pro' : defaultModelForTool('codex')))
   )
   const roleId = String(source.roleId ?? '').trim()
   const capabilities = Array.isArray(source.capabilities)

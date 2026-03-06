@@ -208,7 +208,7 @@ function makeRoleTemplate(roleId, { name, instructions, version = '1.0.0' } = {}
     kind: 'agent',
     defaults: {
       cli_tool: 'codex',
-      model: 'gpt-5.3-codex',
+      model: 'gpt-5.4-high',
       default_name_pattern: `${roleId}-{n}`,
     },
     instructions: instructions ?? `Instructions for ${roleId}`,

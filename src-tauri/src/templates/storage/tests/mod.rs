@@ -37,7 +37,7 @@ pub(super) fn lead_role_yaml(role_id: &str, instructions: &str) -> String {
 
 pub(super) fn agent_role_yaml(role_id: &str, instructions: &str) -> String {
     format!(
-        "schema:\n  kind: role_template\n  version: 1\nrole_id: {role_id}\nname: Dev\nversion: \"1.0.0\"\nkind: agent\ndefaults:\n  cli_tool: codex\n  model: gpt-5.3-codex\n  default_name_pattern: dev-{{n}}\ninstructions: \"{instructions}\"\nbehavioral_contract:\n  communication:\n    - updates\n  execution:\n    - implement\n  escalation:\n    - escalate\ncapabilities:\n  - implementation\nconstraints:\n  min_instances: 0\n  max_instances: 8\n  allowed_project_binding: any\n"
+        "schema:\n  kind: role_template\n  version: 1\nrole_id: {role_id}\nname: Dev\nversion: \"1.0.0\"\nkind: agent\ndefaults:\n  cli_tool: codex\n  model: gpt-5.4-high\n  default_name_pattern: dev-{{n}}\ninstructions: \"{instructions}\"\nbehavioral_contract:\n  communication:\n    - updates\n  execution:\n    - implement\n  escalation:\n    - escalate\ncapabilities:\n  - implementation\nconstraints:\n  min_instances: 0\n  max_instances: 8\n  allowed_project_binding: any\n"
     )
 }
 

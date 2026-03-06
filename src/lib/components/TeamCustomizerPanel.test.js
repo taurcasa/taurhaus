@@ -22,7 +22,7 @@ function baseTeamConfig() {
         id: 'agent-1',
         name: 'dev-1',
         tool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         projectId: '/projects/taurhaus',
         description: 'Agent one',
       },

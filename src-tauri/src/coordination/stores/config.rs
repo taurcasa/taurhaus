@@ -373,7 +373,7 @@ fn mesh_compatible_wire(
 fn default_model_for_cli(cli_tool: CliTool) -> &'static str {
     match cli_tool {
         CliTool::Claude => "claude-opus-4-6",
-        CliTool::Codex => "gpt-5.3-codex",
+        CliTool::Codex => "gpt-5.4-high",
         CliTool::Gemini => "gemini-2.5-pro",
     }
 }
@@ -885,7 +885,7 @@ mod tests {
     {
       "name": "codex-dev",
       "agentType": "general-purpose",
-      "model": "gpt-5.3-codex",
+      "model": "gpt-5.4-high",
       "cwd": "/home/mstie/projects/taurhaus",
       "roleId": "codex-developer",
       "instructions": "Implement safely",

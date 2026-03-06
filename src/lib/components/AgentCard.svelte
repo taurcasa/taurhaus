@@ -1,4 +1,5 @@
 <script>
+  import { MODEL_OPTIONS_BY_TOOL } from '../meshDefaults.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
 
   let {
@@ -15,11 +16,7 @@
     testId = 'agent-card',
   } = $props()
 
-  const modelOptionsByTool = {
-    claude: ['opus', 'sonnet', 'haiku'],
-    codex: ['gpt-5.3-codex', 'gpt-5-mini'],
-    gemini: ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-  }
+  const modelOptionsByTool = MODEL_OPTIONS_BY_TOOL
 
   const toolOptions = ['claude', 'codex', 'gemini']
 

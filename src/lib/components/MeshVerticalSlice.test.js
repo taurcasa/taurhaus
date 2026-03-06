@@ -101,7 +101,7 @@ describe('Mesh vertical slice smoke', () => {
         name: 'frontend-dev',
         role: 'member',
         cliTool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         projectId: 'proj-web',
         sessionStatus: 'idle',
         paneId: '%2',
@@ -175,7 +175,7 @@ describe('Mesh vertical slice smoke', () => {
 
     listRoleTemplates.mockResolvedValue([
       { role_id: 'lead-default', name: 'Lead', kind: 'lead', cli_tool: 'claude', model: 'opus' },
-      { role_id: 'agent-default', name: 'Agent', kind: 'agent', cli_tool: 'codex', model: 'gpt-5.3-codex' },
+      { role_id: 'agent-default', name: 'Agent', kind: 'agent', cli_tool: 'codex', model: 'gpt-5.4-high' },
     ])
     listTeamPresets.mockResolvedValue([])
     getRoleTemplate.mockResolvedValue({ role_id: 'lead-default', instructions: 'Lead the team.' })

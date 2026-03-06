@@ -1,3 +1,5 @@
+import { defaultModelForTool } from '../meshDefaults.js'
+
 export function normalizeRoleTemplate(value) {
   return {
     roleId: value?.roleId ?? value?.role_id ?? '',
@@ -129,7 +131,7 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
         id: `agent-${nextAgent}`,
         name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
         tool: role?.cliTool ?? 'codex',
-        model: role?.model ?? 'gpt-5.3-codex',
+        model: role?.model ?? defaultModelForTool('codex'),
         projectId: '',
         description: slot.roleId,
       })

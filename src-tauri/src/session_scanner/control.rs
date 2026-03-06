@@ -382,6 +382,9 @@ fn codex_command_has_model_arg(command: &str) -> bool {
 
 fn normalize_codex_model(model: &str) -> String {
     let trimmed = model.trim();
+    if trimmed.eq_ignore_ascii_case("gpt-5.4") {
+        return "gpt-5.4-high".to_string();
+    }
     if trimmed.eq_ignore_ascii_case("gpt-5.3") {
         return "gpt-5.3-codex".to_string();
     }
@@ -674,8 +677,8 @@ mod tests {
     fn build_team_launch_command_for_codex_appends_model_when_missing() {
         let cmds = crate::models::CliCommandSettings::default();
         assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3"),
-            "codex --yolo -m 'gpt-5.3-codex'"
+            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4"),
+            "codex --yolo -m 'gpt-5.4-high'"
         );
     }
 
@@ -693,7 +696,7 @@ mod tests {
         let mut cmds = crate::models::CliCommandSettings::default();
         cmds.codex.fresh = "codex --yolo --model gpt-6".to_string();
         assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3"),
+            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4"),
             "codex --yolo --model gpt-6"
         );
     }

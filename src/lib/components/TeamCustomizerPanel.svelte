@@ -2,6 +2,7 @@
   import SlideOver from './SlideOver.svelte'
   import AgentCard from './AgentCard.svelte'
   import ValidationBar from './ValidationBar.svelte'
+  import { defaultModelForTool } from '../meshDefaults.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
@@ -74,7 +75,7 @@
       id: `agent-${index + 1}`,
       name: `agent-${index + 1}`,
       tool: 'codex',
-      model: 'gpt-5.3-codex',
+      model: defaultModelForTool('codex'),
       projectId: projectPath || projectOptions[0]?.id || '',
       description: '',
       roleId: null,
@@ -103,7 +104,7 @@
       id: String(agent.id ?? `agent-${index + 1}`),
       name: String(agent.name ?? `agent-${index + 1}`),
       tool: String(agent.tool ?? agent.cliTool ?? 'codex').toLowerCase(),
-      model: String(agent.model ?? 'gpt-5.3-codex'),
+      model: String(agent.model ?? defaultModelForTool('codex')),
       projectId: String(agent.projectId ?? agent.project_id ?? projectPath ?? ''),
       description: String(agent.description ?? ''),
       roleId: agent.roleId ?? null,

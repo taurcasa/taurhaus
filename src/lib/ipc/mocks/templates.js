@@ -39,7 +39,7 @@ export const MOCK_ROLE_TEMPLATES = [
     version: '1.0.0',
     kind: 'agent',
     cliTool: 'codex',
-    model: 'gpt-5.3-codex',
+    model: 'gpt-5.4-high',
     defaultNamePattern: 'dev-{n}',
     capabilities: ['implementation', 'testing', 'debugging'],
     builtIn: true,

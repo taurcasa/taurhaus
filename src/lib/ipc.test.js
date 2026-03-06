@@ -1253,7 +1253,7 @@ describe('ipc module', () => {
           readOnly: true,
           defaults: {
             cliTool: 'codex',
-            model: 'gpt-5.3-codex',
+            model: 'gpt-5.4-high',
           },
           capabilities: ['implementation'],
         },
@@ -1267,7 +1267,7 @@ describe('ipc module', () => {
         expect.objectContaining({
           roleId: 'codex-developer',
           cliTool: 'codex',
-          model: 'gpt-5.3-codex',
+          model: 'gpt-5.4-high',
           capabilities: ['implementation'],
           builtIn: true,
           readOnly: true,
@@ -1436,7 +1436,7 @@ describe('ipc module', () => {
         roleId: 'frontend-dev',
         name: 'Frontend Dev',
         tool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         instructions: 'Ship UI updates.',
         behavioralContract: [{ rule: 'Report progress', enabled: true }],
         capabilities: ['frontend'],

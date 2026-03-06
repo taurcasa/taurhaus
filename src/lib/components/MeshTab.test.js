@@ -116,7 +116,7 @@ describe('MeshTab', () => {
           name: 'frontend-dev',
           role: 'member',
           cliTool: 'codex',
-          model: 'gpt-5.3-codex',
+          model: 'gpt-5.4-high',
           projectId: 'proj-web',
           description: 'Implements UI surface details for the mesh canvas.',
           sessionStatus: 'idle',
@@ -169,7 +169,7 @@ describe('MeshTab', () => {
 
     listRoleTemplates.mockResolvedValue([
       { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
-      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.3-codex' },
+      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.4-high' },
     ])
     listTeamPresets.mockResolvedValue([
       {
@@ -551,7 +551,7 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-capture-role-name-input')).toHaveValue('frontend-dev')
     expect(screen.getByTestId('mesh-capture-role-id-input')).toHaveValue('frontend-dev')
     expect(screen.getByTestId('mesh-capture-role-tool-input')).toHaveValue('codex')
-    expect(screen.getByTestId('mesh-capture-role-model-input')).toHaveValue('gpt-5.3-codex')
+    expect(screen.getByTestId('mesh-capture-role-model-input')).toHaveValue('gpt-5.4-high')
     expect(screen.getByTestId('mesh-capture-role-description-input')).toHaveValue(
       'Implements UI surface details for the mesh canvas.'
     )
@@ -575,7 +575,7 @@ describe('MeshTab', () => {
           kind: 'agent',
           defaults: expect.objectContaining({
             cliTool: 'codex',
-            model: 'gpt-5.3-codex',
+            model: 'gpt-5.4-high',
           }),
         })
       )
@@ -643,7 +643,7 @@ describe('MeshTab', () => {
         name: 'Codex Architect',
         kind: 'agent',
         cliTool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         defaults: { defaultNamePattern: 'architect-{n}' },
       },
       {
@@ -651,7 +651,7 @@ describe('MeshTab', () => {
         name: 'Codex Developer',
         kind: 'agent',
         cliTool: 'codex',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4-high',
         defaults: { defaultNamePattern: 'dev-{n}' },
       },
       {
@@ -842,7 +842,7 @@ describe('MeshTab', () => {
           name: 'frontend-dev',
           role: 'member',
           cliTool: 'codex',
-          model: 'gpt-5.3-codex',
+          model: 'gpt-5.4-high',
           projectId: 'proj-web',
           description: 'Offline agent',
           sessionStatus: 'offline',

@@ -92,7 +92,7 @@ describe('RoleEditor', () => {
 
     await fireEvent.input(screen.getByTestId('role-editor-name-input'), { target: { value: 'Frontend' } })
     await fireEvent.change(screen.getByTestId('role-editor-tool-select'), { target: { value: 'codex' } })
-    await fireEvent.change(screen.getByTestId('role-editor-model-select'), { target: { value: 'gpt-5.3-codex' } })
+    await fireEvent.change(screen.getByTestId('role-editor-model-select'), { target: { value: 'gpt-5.4-high' } })
 
     expect(saveButton).not.toBeDisabled()
   })
@@ -108,7 +108,7 @@ describe('RoleEditor', () => {
 
     await fireEvent.input(screen.getByTestId('role-editor-name-input'), { target: { value: 'Frontend' } })
     await fireEvent.change(screen.getByTestId('role-editor-tool-select'), { target: { value: 'codex' } })
-    await fireEvent.change(screen.getByTestId('role-editor-model-select'), { target: { value: 'gpt-5.3-codex' } })
+    await fireEvent.change(screen.getByTestId('role-editor-model-select'), { target: { value: 'gpt-5.4-high' } })
     await fireEvent.input(screen.getByTestId('role-editor-instructions-input'), { target: { value: 'Work hard' } })
     
     // Add a rule
@@ -125,7 +125,7 @@ describe('RoleEditor', () => {
       roleId: 'frontend',
       name: 'Frontend',
       tool: 'codex',
-      model: 'gpt-5.3-codex',
+      model: 'gpt-5.4-high',
       instructions: 'Work hard',
       behavioralContract: [
         { rule: 'Be fast', enabled: true }

@@ -81,7 +81,7 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     let agent = AgentSetupConfig {
         name: "builder".to_string(),
         cli_tool: "codex".to_string(),
-        model: "gpt-5.3".to_string(),
+        model: "gpt-5.4".to_string(),
         project_id: "/tmp/project".to_string(),
         description: None,
         role_id: None,
@@ -92,7 +92,7 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
             .expect("command"),
-        "codex --yolo -m 'gpt-5.3-codex'"
+        "codex --yolo -m 'gpt-5.4-high'"
     );
 }
 
