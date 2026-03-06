@@ -414,12 +414,12 @@ mod tests {
     #[test]
     fn parse_mesh_version_returns_token_after_prefix() {
         assert_eq!(
-            parse_mesh_version(b"mesh 0.1.0\n"),
-            Some("0.1.0".to_string())
+            parse_mesh_version(b"mesh 0.2.0\n"),
+            Some("0.2.0".to_string())
         );
         assert_eq!(
-            parse_mesh_version(b"mesh 0.1.0-dev+abc\n"),
-            Some("0.1.0-dev+abc".to_string())
+            parse_mesh_version(b"mesh 0.2.0-dev+abc\n"),
+            Some("0.2.0-dev+abc".to_string())
         );
     }
 
