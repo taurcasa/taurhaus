@@ -19,6 +19,10 @@
   const isCrossProject = $derived.by(() => Boolean(node?.isCrossProject ?? node?.is_cross_project))
   const projectLabel = $derived.by(() => String(node?.projectLabel ?? node?.project_label ?? '').trim())
   const description = $derived.by(() => String(node?.description ?? '').trim())
+  const roleName = $derived.by(() => String(node?.roleName ?? node?.role_name ?? '').trim())
+  const focusArea = $derived.by(() => String(node?.focusArea ?? node?.focus_area ?? '').trim())
+  const contextSummary = $derived.by(() => String(node?.contextSummary ?? node?.context_summary ?? '').trim())
+  const behaviorSummary = $derived.by(() => String(node?.behaviorSummary ?? node?.behavior_summary ?? '').trim())
   const paneId = $derived.by(() => String(node?.paneId ?? '').trim())
   const sessionId = $derived.by(() => String(node?.sessionId ?? '').trim())
   const sessionState = $derived.by(() => String(node?.sessionState ?? '').trim())
@@ -59,6 +63,9 @@
   const runtimeHasDiagnostics = $derived(
     normalizedMode === 'runtime' && (paneId.length > 0 || sessionId.length > 0 || sessionState.length > 0)
   )
+  const hasRoleSection = $derived(
+    roleName.length > 0 || focusArea.length > 0 || contextSummary.length > 0 || behaviorSummary.length > 0
+  )
 
   const surfaceClass = $derived(
     dark
@@ -80,6 +87,23 @@
       ? 'bg-white/[0.05] border-white/10 text-zinc-200'
       : 'bg-white border-brand-200 text-zinc-700'
   )
+  const crossProjectCardTone = $derived(
+    dark
+      ? 'bg-brand-500/[0.08] border-brand-400/20 text-zinc-100'
+      : 'bg-brand-50/85 border-brand-200/90 text-zinc-900'
+  )
+  const crossProjectProjectTone = $derived(
+    dark
+      ? 'bg-brand-500/16 border-brand-400/35 text-brand-100'
+      : 'bg-white border-brand-300 text-brand-700'
+  )
+  const crossProjectLocationTone = $derived(
+    dark
+      ? 'bg-white/[0.05] border-white/12 text-zinc-200'
+      : 'bg-white/90 border-zinc-300 text-zinc-700'
+  )
+  const crossProjectLabelTone = $derived(dark ? 'text-brand-100/90' : 'text-brand-700')
+  const crossProjectPathTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const roleChipTone = $derived(
     normalizedRole === 'lead'
       ? (dark
@@ -186,25 +210,57 @@
       {toolLabel} {model ? `· ${model}` : ''}
     </p>
 
-    <p
-      class="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] {metaPillTone}"
-      data-testid="mesh-node-detail-project"
-      title={projectId || 'No project'}
-    >
-      <span aria-hidden="true">Project:</span> {displayProject}
-    </p>
-
-    {#if isCrossProject}
+    {#if !isCrossProject}
       <p
-        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] {metaPillTone}"
-        data-testid="mesh-node-detail-location"
+        class="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] {metaPillTone}"
+        data-testid="mesh-node-detail-project"
+        title={projectId || 'No project'}
       >
-        <span aria-hidden="true">Location:</span> other project
+        <span aria-hidden="true">Project:</span> {displayProject}
       </p>
     {/if}
   </div>
 
-  {#if displayProjectContext}
+  {#if isCrossProject}
+    <section
+      class="mt-3 rounded-xl border p-2.5 space-y-2 {crossProjectCardTone}"
+      data-testid="mesh-node-detail-project-card"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-[10px] font-semibold uppercase tracking-[0.16em] {crossProjectLabelTone}">
+          Project Context
+        </p>
+        <span class="text-[10px] {dark ? 'text-zinc-400' : 'text-zinc-500'}">other project</span>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <p
+          class="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] font-medium {crossProjectProjectTone}"
+          data-testid="mesh-node-detail-project"
+          title={projectId || 'No project'}
+        >
+          <span aria-hidden="true">Project:</span> {displayProject}
+        </p>
+
+        <p
+          class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium {crossProjectLocationTone}"
+          data-testid="mesh-node-detail-location"
+        >
+          <span aria-hidden="true">Location:</span> other project
+        </p>
+      </div>
+
+      {#if displayProjectContext}
+        <p
+          class="text-[11px] leading-relaxed break-all {crossProjectPathTone}"
+          data-testid="mesh-node-detail-project-context"
+          title={displayProjectContext}
+        >
+          Path: {displayProjectContext}
+        </p>
+      {/if}
+    </section>
+  {:else if displayProjectContext}
     <p
       class="mt-2 text-[11px] break-all {dark ? t.textMuted : 'text-zinc-600'}"
       data-testid="mesh-node-detail-project-context"
@@ -212,6 +268,26 @@
     >
       Path: {displayProjectContext}
     </p>
+  {/if}
+
+  {#if hasRoleSection}
+    <section class="mt-3 rounded-xl border p-2.5 space-y-2 {cardTone}" data-testid="mesh-node-detail-role-section">
+      <p class="text-[10px] font-semibold uppercase tracking-wide {dark ? 'text-zinc-400' : 'text-zinc-500'}">Role</p>
+      {#if roleName.length > 0}
+        <p class="text-[12px] font-semibold" data-testid="mesh-node-detail-role-name">{roleName}</p>
+      {/if}
+      {#if focusArea.length > 0}
+        <p class="text-[11px] leading-relaxed" data-testid="mesh-node-detail-focus-area">
+          <span class="font-medium">Focus:</span> {focusArea}
+        </p>
+      {/if}
+      {#if contextSummary.length > 0}
+        <p class="text-[11px] leading-relaxed" data-testid="mesh-node-detail-context-summary">{contextSummary}</p>
+      {/if}
+      {#if behaviorSummary.length > 0}
+        <p class="text-[11px] leading-relaxed" data-testid="mesh-node-detail-behavior-summary">{behaviorSummary}</p>
+      {/if}
+    </section>
   {/if}
 
   {#if description.length > 0}

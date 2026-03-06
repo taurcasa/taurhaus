@@ -62,6 +62,29 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('status-badge-active')).toBeInTheDocument()
   })
 
+  it('renders a compact role section when runtime role metadata is present', () => {
+    renderDetail({
+      node: {
+        roleName: 'Codex Architect',
+        focusArea: 'Architecture decisions and structural review',
+        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-role-section')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-role-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByTestId('mesh-node-detail-focus-area')).toHaveTextContent(
+      'Architecture decisions and structural review'
+    )
+    expect(screen.getByTestId('mesh-node-detail-context-summary')).toHaveTextContent(
+      'Carries long-lived context around module boundaries and reviews.'
+    )
+    expect(screen.getByTestId('mesh-node-detail-behavior-summary')).toHaveTextContent(
+      'Handles pattern choices and escalates direction changes.'
+    )
+  })
+
   it('renders lead role chip and runtime diagnostics when supplied', () => {
     renderDetail({
       mode: 'runtime',
@@ -248,6 +271,7 @@ describe('MeshNodeDetail', () => {
       projectLabel: 'mesh',
     })
 
+    expect(screen.getByTestId('mesh-node-detail-project-card')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: mesh')
     expect(screen.getByTestId('mesh-node-detail-project-context')).toHaveTextContent('/home/user/projects/mesh')
     expect(screen.getByTestId('mesh-node-detail-location')).toHaveTextContent('Location: other project')
@@ -270,7 +294,42 @@ describe('MeshNodeDetail', () => {
     })
 
     expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: taurhaus-web')
+    expect(screen.queryByTestId('mesh-node-detail-project-card')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mesh-node-detail-project-context')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mesh-node-detail-location')).not.toBeInTheDocument()
+  })
+
+  it('uses dedicated cross-project styling in dark and light themes', async () => {
+    const view = renderDetail({
+      dark: true,
+      projectId: '/home/user/projects/mesh',
+      isCrossProject: true,
+      projectLabel: 'mesh',
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-project-card').className).toContain('bg-brand-500/[0.08]')
+    expect(screen.getByTestId('mesh-node-detail-project').className).toContain('border-brand-400/35')
+    expect(screen.getByTestId('mesh-node-detail-location').className).toContain('border-white/12')
+
+    await view.rerender({
+      node: {
+        name: 'frontend-dev',
+        role: 'agent',
+        tool: 'codex',
+        model: 'gpt-5.4 high',
+        status: 'active',
+        projectId: '/home/user/projects/mesh',
+        isCrossProject: true,
+        projectLabel: 'mesh',
+        description: 'Implements UI surface details for the mesh canvas.',
+      },
+      mode: 'runtime',
+      dark: false,
+      actions: {},
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-project-card').className).toContain('bg-brand-50/85')
+    expect(screen.getByTestId('mesh-node-detail-project').className).toContain('border-brand-300')
+    expect(screen.getByTestId('mesh-node-detail-location').className).toContain('border-zinc-300')
   })
 })

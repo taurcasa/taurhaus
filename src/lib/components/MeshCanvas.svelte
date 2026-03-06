@@ -3,6 +3,7 @@
   import MeshConnection from './MeshConnection.svelte'
   import { computeMeshLayout } from './meshLayout.js'
   import MeshNode from './MeshNode.svelte'
+  import MeshNodeRoleCard from './MeshNodeRoleCard.svelte'
 
   let {
     lead = null,
@@ -27,6 +28,13 @@
   const detailEstimatedHeight = 224
   const detailGap = 12
   const detailMargin = 8
+  const hoverWidth = 224
+  const hoverMinWidth = 192
+  const hoverEstimatedHeight = 170
+  const hoverDelayMs = 200
+  let hoverNodeId = $state(null)
+  let hoverAnchor = $state(null)
+  let hoverTimer = $state(null)
 
   function clamp(value, min, max) {
     if (max < min) return min
@@ -58,18 +66,24 @@
     return null
   }
 
-  function calculateDetailAnchor() {
-    const currentNodeId = selectedNodeId
-    if (!currentNodeId || !canvasElement) return null
-    const selectedElement = findSelectedNodeElement(currentNodeId)
+  function calculateFloatingAnchor(nodeId, options = {}) {
+    if (!nodeId || !canvasElement) return null
+    const selectedElement = findSelectedNodeElement(nodeId)
     if (!selectedElement) return null
 
+    const {
+      width = detailWidth,
+      minWidth = detailMinWidth,
+      estimatedHeight = detailEstimatedHeight,
+      gap = detailGap,
+      margin = detailMargin,
+    } = options
     const canvasRect = canvasElement.getBoundingClientRect()
     const nodeRect = selectedElement.getBoundingClientRect()
     const canvasW = Math.max(0, Math.round(canvasRect.width || containerWidth || 600))
     const canvasH = Math.max(0, Math.round(canvasRect.height || canvasHeight || 460))
-    const availableWidth = Math.max(detailMinWidth, canvasW - detailMargin * 2)
-    const cardWidth = Math.min(detailWidth, availableWidth)
+    const availableWidth = Math.max(minWidth, canvasW - margin * 2)
+    const cardWidth = Math.min(width, availableWidth)
     const fallbackCenterX = Number(selectedElement.getAttribute('data-center-x') || '0')
     const fallbackCenterY = Number(selectedElement.getAttribute('data-center-y') || '0')
     const fallbackNodeHeight = Number(selectedElement.getAttribute('data-node-height') || '64')
@@ -84,18 +98,18 @@
     const nodeTop = centerY - nodeHeight / 2
     const nodeBottom = centerY + nodeHeight / 2
 
-    const preferredTop = nodeTop - detailGap - detailEstimatedHeight
+    const preferredTop = nodeTop - gap - estimatedHeight
     let placement = 'top'
     let top = preferredTop
-    if (preferredTop < detailMargin) {
+    if (preferredTop < margin) {
       placement = 'bottom'
-      top = nodeBottom + detailGap
+      top = nodeBottom + gap
     }
 
-    const maxLeft = Math.max(detailMargin, canvasW - cardWidth - detailMargin)
-    const left = clamp(centerX - cardWidth / 2, detailMargin, maxLeft)
-    const maxTop = Math.max(detailMargin, canvasH - detailEstimatedHeight - detailMargin)
-    const clampedTop = clamp(top, detailMargin, maxTop)
+    const maxLeft = Math.max(margin, canvasW - cardWidth - margin)
+    const left = clamp(centerX - cardWidth / 2, margin, maxLeft)
+    const maxTop = Math.max(margin, canvasH - estimatedHeight - margin)
+    const clampedTop = clamp(top, margin, maxTop)
 
     return {
       left,
@@ -103,6 +117,82 @@
       placement,
       cardWidth,
     }
+  }
+
+  function calculateDetailAnchor() {
+    return calculateFloatingAnchor(selectedNodeId, {
+      width: detailWidth,
+      minWidth: detailMinWidth,
+      estimatedHeight: detailEstimatedHeight,
+      gap: detailGap,
+      margin: detailMargin,
+    })
+  }
+
+  function calculateHoverAnchor(nodeId) {
+    return calculateFloatingAnchor(nodeId, {
+      width: hoverWidth,
+      minWidth: hoverMinWidth,
+      estimatedHeight: hoverEstimatedHeight,
+      gap: detailGap,
+      margin: detailMargin,
+    })
+  }
+
+  function clearHoverTimer() {
+    if (hoverTimer) {
+      clearTimeout(hoverTimer)
+      hoverTimer = null
+    }
+  }
+
+  function hasRoleSummary(node) {
+    return Boolean(
+      String(node?.roleName ?? node?.role_name ?? '').trim()
+      || String(node?.focusArea ?? node?.focus_area ?? '').trim()
+      || String(node?.contextSummary ?? node?.context_summary ?? '').trim()
+      || String(node?.behaviorSummary ?? node?.behavior_summary ?? '').trim()
+    )
+  }
+
+  function hoverSuppressed() {
+    if (normalizedMode !== 'runtime') return true
+    if (selectedNodeId) return true
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    return window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches
+  }
+
+  function findLayoutNode(nodeId) {
+    if (!nodeId) return null
+    if (layout.lead && String(layout.lead.id) === String(nodeId)) return layout.lead
+    return layout.agents.find((agent) => String(agent.id) === String(nodeId)) ?? null
+  }
+
+  function dismissHoverCard() {
+    clearHoverTimer()
+    hoverNodeId = null
+    hoverAnchor = null
+  }
+
+  function scheduleHoverCard(nodeId) {
+    if (!nodeId || hoverSuppressed()) return
+    const node = findLayoutNode(nodeId)
+    if (!node || !hasRoleSummary(node)) return
+
+    clearHoverTimer()
+    hoverTimer = setTimeout(() => {
+      if (hoverSuppressed()) return
+      const activeNode = findLayoutNode(nodeId)
+      if (!activeNode || !hasRoleSummary(activeNode)) return
+      hoverNodeId = String(nodeId)
+      hoverAnchor = calculateHoverAnchor(nodeId)
+      hoverTimer = null
+    }, hoverDelayMs)
+  }
+
+  function refreshHoverAnchor() {
+    if (!hoverNodeId) return
+    hoverAnchor = calculateHoverAnchor(hoverNodeId)
   }
 
   function refreshDetailAnchor() {
@@ -324,13 +414,14 @@
   })
 
   $effect(() => {
-    if (!canvasElement || !selectedNodeId) return
+    if (!canvasElement || (!selectedNodeId && !hoverNodeId)) return
 
     let frame = 0
     const schedule = () => {
       if (frame) cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         refreshDetailAnchor()
+        refreshHoverAnchor()
       })
     }
 
@@ -373,6 +464,13 @@
       window.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('pointerdown', onPointerDown)
     }
+  })
+
+  $effect(() => {
+    void selectedNodeId
+    void normalizedMode
+    if (!hoverSuppressed()) return
+    dismissHoverCard()
   })
 </script>
 
@@ -425,6 +523,10 @@
         nodeId={layout.lead.id}
         name={layout.lead.name}
         role="lead"
+        roleName={layout.lead.roleName}
+        focusArea={layout.lead.focusArea}
+        contextSummary={layout.lead.contextSummary}
+        behaviorSummary={layout.lead.behaviorSummary}
         tool={layout.lead.tool}
         model={layout.lead.model}
         status={layout.lead.status}
@@ -435,6 +537,8 @@
         width={layout.lead.width}
         {dark}
         onClick={() => onNodeClick(layout.lead.id)}
+        onHoverStart={() => scheduleHoverCard(layout.lead.id)}
+        onHoverEnd={dismissHoverCard}
       />
 
       {#each layout.agents as agent (agent.id)}
@@ -442,6 +546,10 @@
           nodeId={agent.id}
           name={agent.name}
           role="agent"
+          roleName={agent.roleName}
+          focusArea={agent.focusArea}
+          contextSummary={agent.contextSummary}
+          behaviorSummary={agent.behaviorSummary}
           tool={agent.tool}
           model={agent.model}
           status={agent.status}
@@ -452,6 +560,8 @@
           width={agent.width}
           {dark}
           onClick={() => onNodeClick(agent.id)}
+          onHoverStart={() => scheduleHoverCard(agent.id)}
+          onHoverEnd={dismissHoverCard}
         />
       {/each}
 
@@ -466,6 +576,19 @@
         >
           +
         </button>
+      {/if}
+
+      {#if hoverNodeId && hoverAnchor && !selectedNodeId}
+        {@const hoverNode = findLayoutNode(hoverNodeId)}
+        {#if hoverNode}
+          <div class="pointer-events-none absolute inset-0 z-20" data-testid="mesh-node-role-card-host">
+            <MeshNodeRoleCard
+              node={hoverNode}
+              {dark}
+              anchor={hoverAnchor}
+            />
+          </div>
+        {/if}
       {/if}
     </div>
   {/if}

@@ -68,12 +68,16 @@ describe('MeshNode', () => {
     const view = render(MeshNode, {
       props: {
         role: 'agent',
+        model: 'gpt-5.4 high',
         isCrossProject: true,
         projectLabel: 'mesh',
       },
     })
 
-    expect(screen.getByTestId('mesh-node-project-chip-agent')).toHaveTextContent('[mesh]')
+    const chip = screen.getByTestId('mesh-node-project-chip-agent')
+    expect(chip).toHaveTextContent('[mesh]')
+    expect(chip.parentElement).toHaveAttribute('data-testid', 'mesh-node-meta-row-agent')
+    expect(screen.getByTestId('mesh-node-model-agent').parentElement).toBe(chip.parentElement)
 
     await view.rerender({
       role: 'agent',

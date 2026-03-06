@@ -116,4 +116,50 @@ describe('meshTabUtils cross-project metadata', () => {
       }),
     ])
   })
+
+  it('preserves runtime role summary fields from backend member status', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          sessionStatus: 'active',
+          roleName: 'Claude Orchestrator',
+          focusArea: 'Team sequencing and escalation',
+          contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+          behaviorSummary: 'Coordinates specialists and escalates blockers.',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          sessionStatus: 'active',
+          role_name: 'Codex Architect',
+          focus_area: 'Architecture decisions and structural review',
+          context_summary: 'Carries long-lived context around module boundaries and reviews.',
+          behavior_summary: 'Handles pattern choices and escalates direction changes.',
+        },
+      ],
+    })
+
+    expect(config.lead).toEqual(expect.objectContaining({
+      roleName: 'Claude Orchestrator',
+      focusArea: 'Team sequencing and escalation',
+      contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+      behaviorSummary: 'Coordinates specialists and escalates blockers.',
+    }))
+    expect(config.agents).toEqual([
+      expect.objectContaining({
+        id: 'frontend-dev',
+        roleName: 'Codex Architect',
+        focusArea: 'Architecture decisions and structural review',
+        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+      }),
+    ])
+  })
 })

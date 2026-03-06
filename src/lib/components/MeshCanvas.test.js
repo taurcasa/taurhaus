@@ -424,6 +424,109 @@ describe('MeshCanvas', () => {
     expect(onNodeClick).toHaveBeenCalledWith('agent-1')
   })
 
+  it('shows a runtime role summary card after delayed hover', async () => {
+    vi.useFakeTimers()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: [
+          {
+            ...makeAgents(1)[0],
+            id: 'agent-1',
+            name: 'frontend-dev',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+          },
+        ],
+        mode: 'runtime',
+      },
+    })
+
+    const node = screen.getByTestId('mesh-node-agent')
+    await fireEvent.mouseEnter(node)
+
+    await vi.advanceTimersByTimeAsync(199)
+    expect(screen.queryByTestId('mesh-node-role-card')).not.toBeInTheDocument()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
+      'Architecture decisions and structural review'
+    )
+    expect(screen.getByTestId('mesh-node-role-card-behavior')).toHaveTextContent(
+      'Handles pattern choices and escalates direction changes.'
+    )
+
+    await fireEvent.mouseLeave(node)
+    expect(screen.queryByTestId('mesh-node-role-card')).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('shows the runtime role summary card on keyboard focus', async () => {
+    vi.useFakeTimers()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: [
+          {
+            ...makeAgents(1)[0],
+            id: 'agent-1',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+          },
+        ],
+        mode: 'runtime',
+      },
+    })
+
+    const node = screen.getByTestId('mesh-node-agent')
+    await fireEvent.focus(node)
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
+
+    await fireEvent.blur(node)
+    expect(screen.queryByTestId('mesh-node-role-card')).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('suppresses the hover card while the click detail panel is open', async () => {
+    vi.useFakeTimers()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: [
+          {
+            ...makeAgents(1)[0],
+            id: 'agent-1',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+          },
+        ],
+        mode: 'runtime',
+        selectedNodeId: 'agent-1',
+      },
+    })
+
+    const node = screen.getByTestId('mesh-node-agent')
+    await fireEvent.mouseEnter(node)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(screen.queryByTestId('mesh-node-role-card')).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
   it('calls onAddClick when add node is clicked', async () => {
     const onAddClick = vi.fn()
 

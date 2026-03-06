@@ -5,6 +5,10 @@
     nodeId = '',
     name = '',
     role = 'agent',
+    roleName = '',
+    focusArea = '',
+    contextSummary = '',
+    behaviorSummary = '',
     tool = 'claude',
     model = '',
     status = 'offline',
@@ -15,6 +19,8 @@
     width = 180,
     dark = false,
     onClick = () => {},
+    onHoverStart = () => {},
+    onHoverEnd = () => {},
   } = $props()
 
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
@@ -76,6 +82,10 @@
   data-node-width={width}
   data-node-height={nodeHeight}
   onclick={onClick}
+  onmouseenter={onHoverStart}
+  onmouseleave={onHoverEnd}
+  onfocus={onHoverStart}
+  onblur={onHoverEnd}
   style={surfaceStyle}
 >
   <span class="mesh-node-content">
@@ -99,17 +109,25 @@
       <span class="mesh-node-status" style={`background-color: ${statusColor};`}></span>
     </span>
 
-    {#if hasModel}
-      <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
-    {/if}
-
-    {#if showProjectChip}
+    {#if hasModel || showProjectChip}
       <span
-        class="mesh-node-project-chip"
-        data-testid={`mesh-node-project-chip-${normalizedRole}`}
-        title={`Works in ${safeProjectLabel}`}
+        class="mesh-node-meta-row"
+        class:chip-only={!hasModel && showProjectChip}
+        data-testid={`mesh-node-meta-row-${normalizedRole}`}
       >
-        [{safeProjectLabel}]
+        {#if hasModel}
+          <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
+        {/if}
+
+        {#if showProjectChip}
+          <span
+            class="mesh-node-project-chip"
+            data-testid={`mesh-node-project-chip-${normalizedRole}`}
+            title={`Works in ${safeProjectLabel}`}
+          >
+            [{safeProjectLabel}]
+          </span>
+        {/if}
       </span>
     {/if}
   </span>
@@ -199,7 +217,7 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     min-width: 0;
   }
 
@@ -236,25 +254,41 @@
     font-size: 11px;
     line-height: 1.25;
     color: var(--mesh-node-model-dark);
+    min-width: 0;
+    flex: 1 1 auto;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
+  .mesh-node-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mesh-node-meta-row.chip-only {
+    justify-content: flex-end;
+  }
+
   .mesh-node-project-chip {
     display: inline-flex;
     align-items: center;
-    align-self: flex-start;
-    max-width: 100%;
-    border: 1px solid var(--mesh-node-border-dark);
+    flex: 0 0 auto;
+    max-width: 88px;
+    margin-left: auto;
+    border: 1px solid color-mix(in srgb, var(--mesh-node-border-dark) 58%, var(--color-brand-400) 42%);
     border-radius: 9999px;
-    padding: 2px 8px;
-    font-size: 10px;
-    line-height: 1.2;
+    padding: 2px 7px;
+    font-size: 9.5px;
+    line-height: 1.15;
     font-weight: 600;
-    letter-spacing: 0.02em;
-    color: var(--mesh-node-model-dark);
-    background: color-mix(in srgb, var(--mesh-node-bg-dark) 84%, white 16%);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--mesh-node-text-dark) 68%, var(--color-brand-300) 32%);
+    background: color-mix(in srgb, var(--mesh-node-bg-dark) 76%, var(--color-brand-500) 24%);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -265,9 +299,9 @@
   }
 
   .mesh-node.is-light .mesh-node-project-chip {
-    border-color: var(--mesh-node-border-light);
-    color: var(--mesh-node-model-light);
-    background: color-mix(in srgb, var(--mesh-node-bg-light) 86%, white 14%);
+    border-color: color-mix(in srgb, var(--mesh-node-border-light) 46%, var(--color-brand-300) 54%);
+    color: color-mix(in srgb, var(--mesh-node-text-light) 72%, var(--color-brand-700) 28%);
+    background: color-mix(in srgb, var(--mesh-node-bg-light) 82%, var(--color-brand-100) 18%);
   }
 
   .mesh-node.is-light .mesh-node-tool {
