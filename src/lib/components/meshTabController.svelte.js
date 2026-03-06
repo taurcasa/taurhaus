@@ -1,14 +1,16 @@
+import { untrack } from 'svelte'
 import {
   coordinationAddAgent,
   coordinationDisbandTeam,
+  coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
-  coordinationListTeams,
   coordinationRemoveMember,
   coordinationResumeMember,
   getTeamPreset,
   listRoleTemplates,
   upsertRoleTemplate,
 } from '../ipc.js'
+import { getMeshCache, setMeshCache } from '../meshCache.svelte.js'
 import { defaultModelForTool, normalizeTool } from '../meshDefaults.js'
 import { normalizeProjectOption } from '../projectOptions.js'
 import {
@@ -16,21 +18,15 @@ import {
   buildInitializationRequest,
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
-  coerceTeams,
   composeConfigFromPayload,
   contractHasRules,
   createAgent,
   createLead,
   inferTeamName,
   normalizeBehavioralContract,
-  normalizeTeamName,
   slugifyRoleId,
-  teamMatchesProject,
 } from './meshTabUtils.js'
-import {
-  bootstrapFromGateWorkflow,
-  refreshRuntimeTeamConfigWorkflow,
-} from './meshTabGateWorkflow.js'
+import { refreshRuntimeTeamConfigWorkflow } from './meshTabGateWorkflow.js'
 import { autoDismissNotice } from './meshTabNotifications.js'
 
 export function createMeshTabController({
@@ -80,7 +76,7 @@ export function createMeshTabController({
     },
   ]
 
-  let mode = $state('gate')
+  let mode = $state('empty')
   let teamName = $state('')
   let teamConfig = $state(null)
   let slideOver = $state(null)
@@ -90,11 +86,11 @@ export function createMeshTabController({
   let errorMessage = $state('')
   let runtimeMessage = $state('')
   let confirmContext = $state(null)
+  let availabilityMessage = $state('')
   let roleTemplates = $state([])
   let loadingRoles = $state(false)
   let captureRoleDialog = $state(null)
 
-  let gateBootstrapping = false
   let discoverySequence = 0
   let presetSelectionSequence = 0
   let runtimeMessageTimer = null
@@ -142,7 +138,84 @@ export function createMeshTabController({
     return String(draft.name || '').trim().length > 0 && String(draft.roleId || '').trim().length > 0
   })
 
-  async function refreshRuntimeTeamConfig(nextTeamName, sequence) {
+  function normalizeProjectMeshSnapshot(snapshot) {
+    return {
+      meshAvailable: snapshot?.meshAvailable ?? snapshot?.mesh_available ?? true,
+      tmuxAvailable: snapshot?.tmuxAvailable ?? snapshot?.tmux_available ?? true,
+      teamName: snapshot?.teamName ?? snapshot?.team_name ?? null,
+      teamStatus: snapshot?.teamStatus ?? snapshot?.team_status ?? null,
+      warnings: Array.isArray(snapshot?.warnings) ? snapshot.warnings : [],
+    }
+  }
+
+  function buildAvailabilityMessage(snapshot) {
+    const messages = []
+    if (!snapshot.meshAvailable) messages.push('Mesh CLI is unavailable for this environment.')
+    if (!snapshot.tmuxAvailable) messages.push('tmux is unavailable for this environment.')
+    for (const warning of snapshot.warnings) {
+      const message = String(warning || '').trim()
+      if (message && !messages.includes(message)) messages.push(message)
+    }
+    return messages.join(' ')
+  }
+
+  function buildCachedSnapshotFromLiveStatus(snapshot, report) {
+    const normalized = normalizeProjectMeshSnapshot(snapshot)
+    const members = Array.isArray(report?.members)
+      ? report.members.map((member) => ({
+          name: member?.name ?? '',
+          role: member?.role ?? 'member',
+          cliTool: member?.cliTool ?? member?.cli_tool ?? 'codex',
+          model: member?.model ?? '',
+          projectId: member?.projectId ?? member?.project_id ?? '',
+          description: member?.description ?? null,
+          sessionStatus: member?.sessionStatus ?? member?.session_status ?? 'offline',
+          paneId: member?.paneId ?? member?.pane_id ?? null,
+        }))
+      : []
+
+    return {
+      meshAvailable: normalized.meshAvailable,
+      tmuxAvailable: normalized.tmuxAvailable,
+      teamName: normalized.teamName,
+      warnings: normalized.warnings,
+      teamStatus: normalized.teamName
+        ? {
+            leadName: report?.leadName ?? report?.lead_name ?? 'team-lead',
+            members,
+          }
+        : null,
+    }
+  }
+
+  function applyProjectSnapshot(snapshot, projectPath) {
+    const normalized = normalizeProjectMeshSnapshot(snapshot)
+    availabilityMessage = buildAvailabilityMessage(normalized)
+    errorMessage = ''
+    runtimeMessage = ''
+
+    if (normalized.teamName && normalized.teamStatus) {
+      teamName = normalized.teamName
+      teamConfig = buildTeamConfigFromRuntimeStatus(
+        {
+          teamName: normalized.teamName,
+          leadName: normalized.teamStatus?.leadName ?? normalized.teamStatus?.lead_name ?? 'team-lead',
+          members: Array.isArray(normalized.teamStatus?.members) ? normalized.teamStatus.members : [],
+        },
+        projectPath
+      )
+      mode = 'runtime'
+      return normalized
+    }
+
+    teamName = inferTeamName(projectPath)
+    teamConfig = null
+    mode = 'empty'
+    return normalized
+  }
+
+  async function refreshRuntimeTeamConfig(nextTeamName, sequence, snapshot = null) {
+    let nextConfig = null
     await refreshRuntimeTeamConfigWorkflow({
       nextTeamName,
       sequence,
@@ -150,53 +223,91 @@ export function createMeshTabController({
       coordinationGetLiveTeamStatus,
       buildTeamConfigFromRuntimeStatus,
       getProjectPath,
-      onTeamConfig: (nextConfig) => {
-        teamConfig = nextConfig
+      onTeamConfig: (value) => {
+        nextConfig = value
+        teamConfig = value
       },
     })
+    if (nextConfig && snapshot) {
+      setMeshCache(getProjectPath(), buildCachedSnapshotFromLiveStatus(snapshot, {
+        teamName: nextTeamName,
+        leadName: nextConfig.lead?.name ?? 'team-lead',
+        members: [
+          nextConfig.lead
+            ? {
+                name: nextConfig.lead.name,
+                role: 'lead',
+                cliTool: nextConfig.lead.tool,
+                model: nextConfig.lead.model,
+                projectId: nextConfig.lead.projectId,
+                description: nextConfig.lead.description,
+                sessionStatus: nextConfig.lead.status,
+                paneId: nextConfig.lead.paneId,
+              }
+            : null,
+          ...(nextConfig.agents ?? []).map((member) => ({
+            name: member.name,
+            role: 'member',
+            cliTool: member.tool,
+            model: member.model,
+            projectId: member.projectId,
+            description: member.description,
+            sessionStatus: member.status,
+            paneId: member.paneId,
+          })),
+        ].filter(Boolean),
+      }))
+    }
   }
 
-  async function bootstrapFromGate() {
+  async function hydrateProjectMesh(projectPath, sequence) {
+    try {
+      const snapshot = await coordinationGetProjectMeshSnapshot(projectPath)
+      if (sequence !== discoverySequence) return
+      setMeshCache(projectPath, snapshot)
+      const normalized = applyProjectSnapshot(snapshot, projectPath)
+      if (normalized.teamName && normalized.teamStatus) {
+        void refreshRuntimeTeamConfig(normalized.teamName, sequence, snapshot)
+      }
+    } catch (error) {
+      if (sequence !== discoverySequence) return
+      availabilityMessage = ''
+      errorMessage = error?.message || 'Failed to load Mesh team state.'
+      teamName = inferTeamName(projectPath)
+      teamConfig = null
+      mode = 'empty'
+    }
+  }
+
+  function ensureHydrated() {
+    const projectPath = getProjectPath()
     const sequence = ++discoverySequence
+    teamName = inferTeamName(projectPath)
+    teamConfig = null
+    selectedNodeId = null
+    initProgress = null
+    slideOver = null
+    slideOverContext = null
+    captureRoleDialog = null
+    confirmContext = null
+    availabilityMessage = ''
     errorMessage = ''
     runtimeMessage = ''
-    await bootstrapFromGateWorkflow({
-      sequence,
-      getDiscoverySequence: () => discoverySequence,
-      coordinationListTeams,
-      coerceTeams,
-      teamMatchesProject,
-      getProjectPath,
-      normalizeTeamName,
-      inferTeamName,
-      onRuntimeTeamMatched: async (matchedTeamName, matchSequence) => {
-        teamName = matchedTeamName
-        mode = 'runtime'
-        selectedNodeId = null
-        initProgress = null
-        await refreshRuntimeTeamConfig(matchedTeamName, matchSequence)
-      },
-      onEmptyTeamState: (nextTeamName) => {
-        teamName = nextTeamName
-        teamConfig = null
-        selectedNodeId = null
-        initProgress = null
-        mode = 'empty'
-      },
-      onEmptyTeamStateWithError: (message, nextTeamName) => {
-        errorMessage = message
-        teamName = nextTeamName
-        mode = 'empty'
-      },
-    })
+
+    const cachedSnapshot = untrack(() => getMeshCache(projectPath))
+    if (cachedSnapshot) {
+      const normalized = applyProjectSnapshot(cachedSnapshot, projectPath)
+      if (normalized.teamName && normalized.teamStatus) {
+        void refreshRuntimeTeamConfig(normalized.teamName, sequence, cachedSnapshot)
+      }
+      return
+    }
+
+    void hydrateProjectMesh(projectPath, sequence)
   }
 
   function ensureGateReady() {
-    if (mode !== 'gate' || gateBootstrapping) return
-    gateBootstrapping = true
-    void bootstrapFromGate().finally(() => {
-      gateBootstrapping = false
-    })
+    ensureHydrated()
   }
 
   function closeSlideOver() {
@@ -570,7 +681,7 @@ export function createMeshTabController({
 
   $effect(() => {
     void getProjectPath()
-    mode = 'gate'
+    mode = 'empty'
     teamName = ''
     teamConfig = null
     slideOver = null
@@ -581,7 +692,8 @@ export function createMeshTabController({
     errorMessage = ''
     runtimeMessage = ''
     confirmContext = null
-    gateBootstrapping = false
+    availabilityMessage = ''
+    ensureHydrated()
   })
 
   $effect(() => {
@@ -651,6 +763,9 @@ export function createMeshTabController({
     },
     get runtimeMessage() {
       return runtimeMessage
+    },
+    get availabilityMessage() {
+      return availabilityMessage
     },
     get confirmContext() {
       return confirmContext

@@ -7,6 +7,7 @@ vi.mock('../ipc.js', () => ({
   composeTeam: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
+  coordinationGetProjectMeshSnapshot: vi.fn(),
   coordinationGetLiveTeamStatus: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
   coordinationListTeams: vi.fn(),
@@ -26,6 +27,7 @@ const {
   composeTeam,
   coordinationAddAgent,
   coordinationDisbandTeam,
+  coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
   coordinationInitializeTeam,
   coordinationListTeams,
@@ -41,6 +43,7 @@ const {
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
+import { resetMeshCache } from '../meshCache.svelte.js'
 
 let previousResizeObserver
 
@@ -64,8 +67,29 @@ afterAll(() => {
 describe('Mesh vertical slice smoke', () => {
   let rosterMembers
 
+  function buildProjectMeshSnapshot(overrides = {}) {
+    return {
+      meshAvailable: overrides.meshAvailable ?? true,
+      tmuxAvailable: overrides.tmuxAvailable ?? true,
+      teamName: overrides.teamName ?? null,
+      teamStatus: overrides.teamStatus ?? null,
+      warnings: overrides.warnings ?? [],
+    }
+  }
+
+  function buildRuntimeSnapshot(teamName = 'taurhaus-team') {
+    return buildProjectMeshSnapshot({
+      teamName,
+      teamStatus: {
+        leadName: 'team-lead',
+        members: rosterMembers.map(({ model, ...member }) => member),
+      },
+    })
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
+    resetMeshCache()
 
     checkMeshInstallStatus.mockResolvedValue({
       installed: true,
@@ -86,6 +110,7 @@ describe('Mesh vertical slice smoke', () => {
     })
 
     coordinationListTeams.mockResolvedValue([])
+    coordinationGetProjectMeshSnapshot.mockResolvedValue(buildProjectMeshSnapshot())
 
     rosterMembers = [
       {
@@ -203,9 +228,7 @@ describe('Mesh vertical slice smoke', () => {
   })
 
   it('normalizes snake_case team metadata for runtime discovery and disband', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { team_name: 'taurhaus-team', lead_project_path: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot('taurhaus-team'))
 
     render(MeshTab, {
       props: {
@@ -234,9 +257,7 @@ describe('Mesh vertical slice smoke', () => {
   })
 
   it('hot-add failure shows inline error and keeps runtime view', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { team_name: 'taurhaus-team', lead_project_path: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot('taurhaus-team'))
     coordinationAddAgent.mockRejectedValueOnce(new Error('hot-add failed'))
 
     render(MeshTab, {

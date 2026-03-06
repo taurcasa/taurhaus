@@ -4,6 +4,7 @@ import {
   buildMockAddAgentReport,
   buildMockInitializeReport,
   buildMockLiveTeamStatus,
+  buildMockProjectMeshSnapshot,
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 import { normalizeInitializeTeamPayload } from './coordinationPayloads.js'
@@ -104,6 +105,12 @@ export function coordinationPreflightCheck(request) {
 export function coordinationGetLiveTeamStatus(teamName) {
   return invokeOrMock('coordination_get_live_team_status', { teamName }, () =>
     buildMockLiveTeamStatus(teamName)
+  )
+}
+
+export function coordinationGetProjectMeshSnapshot(projectPath) {
+  return invokeOrMock('coordination_get_project_mesh_snapshot', { projectPath }, () =>
+    buildMockProjectMeshSnapshot(projectPath)
   )
 }
 

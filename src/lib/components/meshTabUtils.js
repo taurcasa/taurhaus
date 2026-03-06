@@ -218,7 +218,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     name: String(member?.name ?? `member-${index + 1}`),
     role: String(member?.role ?? '').toLowerCase(),
     tool: normalizeTool(member?.cliTool),
-    model: String(member?.model ?? ''),
+    model: String(member?.model || defaultModelForTool(member?.cliTool)),
     status: normalizeStatus(member?.sessionStatus),
     projectId: String(member?.projectId ?? projectPath ?? ''),
     description: member?.description ?? null,

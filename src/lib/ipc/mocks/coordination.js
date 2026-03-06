@@ -64,3 +64,26 @@ export function buildMockLiveTeamStatus(teamName) {
     ],
   }
 }
+
+export function buildMockProjectMeshSnapshot(projectPath) {
+  return {
+    meshAvailable: true,
+    tmuxAvailable: true,
+    teamName: 'mock-team',
+    teamStatus: {
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          projectId: projectPath,
+          description: 'Own orchestration',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+      ],
+    },
+    warnings: [],
+  }
+}

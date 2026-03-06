@@ -7,6 +7,7 @@ vi.mock('../ipc.js', () => ({
   composeTeam: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
+  coordinationGetProjectMeshSnapshot: vi.fn(),
   coordinationGetLiveTeamStatus: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
   coordinationListTeams: vi.fn(),
@@ -26,6 +27,7 @@ const {
   composeTeam,
   coordinationAddAgent,
   coordinationDisbandTeam,
+  coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
   coordinationInitializeTeam,
   coordinationListTeams,
@@ -41,6 +43,7 @@ const {
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
+import { resetMeshCache } from '../meshCache.svelte.js'
 
 function deferred() {
   let resolve
@@ -74,8 +77,19 @@ afterAll(() => {
 describe('Mesh flow smoke', () => {
   let rosterMembers
 
+  function buildProjectMeshSnapshot(overrides = {}) {
+    return {
+      meshAvailable: overrides.meshAvailable ?? true,
+      tmuxAvailable: overrides.tmuxAvailable ?? true,
+      teamName: overrides.teamName ?? null,
+      teamStatus: overrides.teamStatus ?? null,
+      warnings: overrides.warnings ?? [],
+    }
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
+    resetMeshCache()
 
     checkMeshInstallStatus.mockResolvedValue({
       installed: true,
@@ -95,6 +109,7 @@ describe('Mesh flow smoke', () => {
     })
 
     coordinationListTeams.mockResolvedValue([])
+    coordinationGetProjectMeshSnapshot.mockResolvedValue(buildProjectMeshSnapshot())
 
     rosterMembers = [
       {
@@ -298,10 +313,10 @@ describe('Mesh flow smoke', () => {
   })
 
   it('unavailable mode shows blocking error', async () => {
-    coordinationPreflightCheck.mockResolvedValue({
-      blockingErrors: ['mesh binary not found'],
-      agentWarnings: [],
-    })
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
+      meshAvailable: false,
+      warnings: ['mesh binary not found'],
+    }))
 
     render(MeshTab, {
       props: {
@@ -311,9 +326,9 @@ describe('Mesh flow smoke', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-availability-title')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-availability-inline')).toBeInTheDocument()
     })
 
-    expect(screen.getByTestId('mesh-availability-error')).toHaveTextContent('mesh binary not found')
+    expect(screen.getByTestId('mesh-availability-inline')).toHaveTextContent('mesh binary not found')
   })
 })

@@ -1844,6 +1844,44 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    it('coordinationGetProjectMeshSnapshot calls invoke and returns deterministic mock shape', async () => {
+      const mockModeResult = await ipc.coordinationGetProjectMeshSnapshot('/projects/arch')
+      expect(mockModeResult).toEqual({
+        meshAvailable: true,
+        tmuxAvailable: true,
+        teamName: 'mock-team',
+        teamStatus: {
+          leadName: 'team-lead',
+          members: [
+            {
+              name: 'team-lead',
+              role: 'lead',
+              cliTool: 'claude',
+              projectId: '/projects/arch',
+              description: 'Own orchestration',
+              sessionStatus: 'active',
+              paneId: '%1',
+            },
+          ],
+        },
+        warnings: [],
+      })
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        meshAvailable: false,
+        tmuxAvailable: true,
+        teamName: null,
+        teamStatus: null,
+        warnings: ['mesh missing'],
+      })
+      await ipc.coordinationGetProjectMeshSnapshot('/projects/arch')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_project_mesh_snapshot', {
+        projectPath: '/projects/arch',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('coordinationDisbandTeam returns structured mock response', async () => {
       const result = await ipc.coordinationDisbandTeam('arch')
       expect(result).toEqual({

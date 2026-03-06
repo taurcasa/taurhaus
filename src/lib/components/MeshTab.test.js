@@ -9,9 +9,9 @@ vi.mock('../ipc.js', () => ({
   composeTeam: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
+  coordinationGetProjectMeshSnapshot: vi.fn(),
   coordinationGetLiveTeamStatus: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
-  coordinationListTeams: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
   coordinationRemoveMember: vi.fn(),
   coordinationResumeMember: vi.fn(),
@@ -29,9 +29,9 @@ const {
   composeTeam,
   coordinationAddAgent,
   coordinationDisbandTeam,
+  coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
   coordinationInitializeTeam,
-  coordinationListTeams,
   coordinationPreflightCheck,
   coordinationRemoveMember,
   coordinationResumeMember,
@@ -45,6 +45,7 @@ const {
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
+import { clearMeshCache, getMeshCache, resetMeshCache, setMeshCache } from '../meshCache.svelte.js'
 
 const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
 
@@ -56,6 +57,58 @@ function deferred() {
     reject = rej
   })
   return { promise, resolve, reject }
+}
+
+function buildLiveTeamStatus(overrides = {}) {
+  return {
+    teamName: overrides.teamName ?? 'architecture-final',
+    leadName: overrides.leadName ?? 'team-lead',
+    members: overrides.members ?? [
+      {
+        name: 'team-lead',
+        role: 'lead',
+        cliTool: 'claude',
+        model: 'opus',
+        projectId: 'proj-core',
+        sessionStatus: 'active',
+        paneId: '%1',
+      },
+      {
+        name: 'frontend-dev',
+        role: 'member',
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        projectId: 'proj-web',
+        description: 'Implements UI surface details for the mesh canvas.',
+        sessionStatus: 'idle',
+        paneId: '%2',
+      },
+    ],
+  }
+}
+
+function buildProjectMeshSnapshot(overrides = {}) {
+  return {
+    meshAvailable: overrides.meshAvailable ?? true,
+    tmuxAvailable: overrides.tmuxAvailable ?? true,
+    teamName: overrides.teamName ?? null,
+    teamStatus: overrides.teamStatus ?? null,
+    warnings: overrides.warnings ?? [],
+  }
+}
+
+function buildRuntimeSnapshot(overrides = {}) {
+  const liveStatus = buildLiveTeamStatus(overrides)
+  return buildProjectMeshSnapshot({
+    meshAvailable: overrides.meshAvailable ?? true,
+    tmuxAvailable: overrides.tmuxAvailable ?? true,
+    teamName: liveStatus.teamName,
+    warnings: overrides.warnings ?? [],
+    teamStatus: {
+      leadName: liveStatus.leadName,
+      members: liveStatus.members.map(({ model, ...member }) => member),
+    },
+  })
 }
 
 let previousResizeObserver
@@ -80,6 +133,7 @@ afterAll(() => {
 describe('MeshTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetMeshCache()
 
     checkMeshInstallStatus.mockResolvedValue({
       installed: true,
@@ -98,32 +152,8 @@ describe('MeshTab', () => {
       message: 'Mesh installed successfully: mesh 0.1.0',
     })
 
-    coordinationListTeams.mockResolvedValue([])
-    coordinationGetLiveTeamStatus.mockResolvedValue({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'frontend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.4 high',
-          projectId: 'proj-web',
-          description: 'Implements UI surface details for the mesh canvas.',
-          sessionStatus: 'idle',
-          paneId: '%2',
-        },
-      ],
-    })
+    coordinationGetProjectMeshSnapshot.mockResolvedValue(buildProjectMeshSnapshot())
+    coordinationGetLiveTeamStatus.mockResolvedValue(buildLiveTeamStatus())
 
     coordinationInitializeTeam.mockResolvedValue({
       teamName: 'architecture-final',
@@ -218,9 +248,7 @@ describe('MeshTab', () => {
   })
 
   async function renderRuntime(overrides = {}) {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {
@@ -235,7 +263,11 @@ describe('MeshTab', () => {
     })
   }
 
-  it('renders availability gate in gate mode before resolving project team state', () => {
+  it('renders from cached snapshot immediately on revisit without snapshot IPC', () => {
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    const liveRefresh = deferred()
+    coordinationGetLiveTeamStatus.mockReturnValueOnce(liveRefresh.promise)
+
     render(MeshTab, {
       props: {
         dark: false,
@@ -243,11 +275,22 @@ describe('MeshTab', () => {
       },
     })
 
-    expect(screen.getByTestId('mesh-mode-gate')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+    expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+
+    liveRefresh.resolve(buildLiveTeamStatus())
   })
 
-  it('transitions to empty mode when no existing team matches project', async () => {
-    coordinationListTeams.mockResolvedValueOnce([])
+  it('cache miss triggers snapshot IPC and updates the cache', async () => {
+    const snapshot = buildProjectMeshSnapshot({
+      meshAvailable: true,
+      tmuxAvailable: true,
+      teamName: null,
+      teamStatus: null,
+      warnings: [],
+    })
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(snapshot)
 
     render(MeshTab, {
       props: {
@@ -260,13 +303,14 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
     expect(screen.getByTestId('mesh-empty-state')).toBeInTheDocument()
+    expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledWith('/projects/taurhaus')
+    expect(getMeshCache('/projects/taurhaus')).toEqual(snapshot)
   })
 
-  it('transitions to runtime mode when matching project team exists', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-      { teamName: 'ops-team', leadProjectPath: '/projects/ops' },
-    ])
+  it('background live refresh patches member status after cached render', async () => {
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    const liveRefresh = deferred()
+    coordinationGetLiveTeamStatus.mockReturnValueOnce(liveRefresh.promise)
 
     render(MeshTab, {
       props: {
@@ -278,7 +322,61 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+    })
+
+    liveRefresh.resolve(buildLiveTeamStatus({
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: 'proj-core',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          projectId: 'proj-web',
+          description: 'Implements UI surface details for the mesh canvas.',
+          sessionStatus: 'active',
+          paneId: '%2',
+        },
+      ],
+    }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
+    })
+  })
+
+  it('shows availability inline and skips preflight gating on mount', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
+      meshAvailable: false,
+      tmuxAvailable: true,
+      warnings: ['Mesh CLI is unavailable for this environment.'],
+    }))
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('mesh-mode-gate')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-availability-inline')).toHaveTextContent('Mesh CLI is unavailable')
+    expect(coordinationPreflightCheck).not.toHaveBeenCalled()
   })
 
   it('empty -> setup transition via start custom', async () => {
@@ -350,9 +448,7 @@ describe('MeshTab', () => {
   })
 
   it('opens and closes template, customizer, and add-agent slideovers', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     const runtimeView = render(MeshTab, {
       props: {
@@ -382,6 +478,7 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
 
     runtimeView.unmount()
+    clearMeshCache('/projects/taurhaus')
 
     render(MeshTab, {
       props: {
@@ -442,9 +539,7 @@ describe('MeshTab', () => {
   })
 
   it('submits add-agent flow in runtime mode', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {
@@ -486,9 +581,7 @@ describe('MeshTab', () => {
   })
 
   it('shows loading state for role picker while role templates load', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
     const rolesLoad = deferred()
     listRoleTemplates.mockReturnValueOnce(rolesLoad.promise)
 
@@ -523,9 +616,7 @@ describe('MeshTab', () => {
   })
 
   it('captures runtime node as role and saves through upsertRoleTemplate', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {
@@ -719,9 +810,7 @@ describe('MeshTab', () => {
   })
 
   it('matches teams when lead project path uses windows drive notation', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: 'C:\\projects\\taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {
@@ -736,9 +825,7 @@ describe('MeshTab', () => {
   })
 
   it('matches WSL UNC distro-root path to linux root', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '\\\\wsl$\\Ubuntu\\' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {
@@ -753,7 +840,7 @@ describe('MeshTab', () => {
   })
 
   it('shows discovery error and allows dismissing the error banner', async () => {
-    coordinationListTeams.mockRejectedValueOnce(new Error('discovery failed'))
+    coordinationGetProjectMeshSnapshot.mockRejectedValueOnce(new Error('discovery failed'))
 
     render(MeshTab, {
       props: {
@@ -1062,9 +1149,7 @@ describe('MeshTab', () => {
   })
 
   it('cancels capture dialog without saving', async () => {
-    coordinationListTeams.mockResolvedValueOnce([
-      { teamName: 'architecture-final', leadProjectPath: '/projects/taurhaus' },
-    ])
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {

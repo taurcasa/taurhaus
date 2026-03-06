@@ -5,8 +5,10 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
+use crate::coordination::domain::HealthState;
 use crate::coordination::runtime::RecordingCoordinationRuntime;
 use crate::coordination::state::CoordinationState;
+use crate::coordination::stores::MemberRuntimeStore;
 
 #[derive(Debug, Default)]
 struct MockBinaryLookup {
@@ -902,6 +904,90 @@ fn get_team_status_error_mapping_not_found() {
 }
 
 #[test]
+fn project_mesh_snapshot_returns_null_team_when_project_has_no_match() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        "/projects/missing".to_string(),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
+
+    assert!(snapshot.mesh_available);
+    assert!(snapshot.tmux_available);
+    assert_eq!(snapshot.team_name, None);
+    assert_eq!(snapshot.team_status, None);
+    assert!(snapshot.warnings.is_empty());
+}
+
+#[test]
+fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("load runtime");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
+    assert!(snapshot.warnings.is_empty());
+
+    let team_status = snapshot.team_status.expect("team status should be present");
+    assert_eq!(team_status.lead_name, "team-lead");
+    assert_eq!(team_status.members.len(), 3);
+
+    let frontend_dev = team_status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev should be present");
+    assert_eq!(frontend_dev.role, AgentRole::Member);
+    assert_eq!(frontend_dev.cli_tool, "codex");
+    assert_eq!(frontend_dev.project_id, "proj-web");
+    assert_eq!(frontend_dev.session_status, SessionStatus::Active);
+    assert_eq!(frontend_dev.pane_id.as_deref(), Some("%9"));
+}
+
+#[test]
+fn project_mesh_snapshot_reports_mesh_unavailable_when_binary_is_missing() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["tmux"]);
+
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        "proj-core".to_string(),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
+
+    assert!(!snapshot.mesh_available);
+    assert!(snapshot.tmux_available);
+    assert_eq!(snapshot.team_name, None);
+}
+
+#[test]
 fn initialize_team_request_round_trip() {
     let value = InitializeTeamRequest {
         team_name: "architecture-final".to_string(),
@@ -1121,6 +1207,33 @@ fn live_team_status_round_trip() {
     let json = serde_json::to_string(&value).expect("serialize live team status");
     let decoded: LiveTeamStatus =
         serde_json::from_str(&json).expect("deserialize live team status");
+    assert_eq!(decoded, value);
+}
+
+#[test]
+fn project_mesh_snapshot_round_trip() {
+    let value = ProjectMeshSnapshotResponse {
+        mesh_available: true,
+        tmux_available: true,
+        team_name: Some("architecture-final".to_string()),
+        team_status: Some(FastTeamSnapshot {
+            lead_name: "team-lead".to_string(),
+            members: vec![FastAgentSnapshot {
+                name: "frontend-dev".to_string(),
+                role: AgentRole::Member,
+                cli_tool: "codex".to_string(),
+                project_id: "proj-web".to_string(),
+                description: Some("UI implementation".to_string()),
+                session_status: SessionStatus::Idle,
+                pane_id: Some("%2".to_string()),
+            }],
+        }),
+        warnings: vec!["skipped team folder 'broken-team'".to_string()],
+    };
+
+    let json = serde_json::to_string(&value).expect("serialize project mesh snapshot");
+    let decoded: ProjectMeshSnapshotResponse =
+        serde_json::from_str(&json).expect("deserialize project mesh snapshot");
     assert_eq!(decoded, value);
 }
 

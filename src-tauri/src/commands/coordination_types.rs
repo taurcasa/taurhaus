@@ -167,6 +167,38 @@ pub struct LiveTeamStatus {
     pub members: Vec<LiveAgentStatus>,
 }
 
+/// Fast snapshot row returned without tmux/daemon reconciliation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FastAgentSnapshot {
+    pub name: String,
+    pub role: AgentRole,
+    pub cli_tool: String,
+    pub project_id: String,
+    pub description: Option<String>,
+    pub session_status: SessionStatus,
+    pub pane_id: Option<String>,
+}
+
+/// Fast team snapshot built from persisted config + runtime only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FastTeamSnapshot {
+    pub lead_name: String,
+    pub members: Vec<FastAgentSnapshot>,
+}
+
+/// One-shot mesh snapshot used to avoid frontend waterfall loading.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMeshSnapshotResponse {
+    pub mesh_available: bool,
+    pub tmux_available: bool,
+    pub team_name: Option<String>,
+    pub team_status: Option<FastTeamSnapshot>,
+    pub warnings: Vec<String>,
+}
+
 /// Streamed progress event payload emitted during long operations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

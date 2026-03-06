@@ -1,7 +1,7 @@
 //! Coordination IPC commands for team management (M0 surface).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -23,6 +23,7 @@ use crate::coordination::requests::{
     self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
 };
 use crate::coordination::state::CoordinationState;
+use crate::coordination::stores::TeamConfigStore;
 use crate::errors::{CommandResultExt, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -242,6 +243,17 @@ pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityR
     result
 }
 
+#[tauri::command]
+pub fn coordination_get_project_mesh_snapshot(
+    state: State<'_, CoordinationState>,
+    project_path: String,
+) -> IpcResult<ProjectMeshSnapshotResponse> {
+    let span = IpcCommandSpan::start("coordination_get_project_mesh_snapshot");
+    let result = coordination_get_project_mesh_snapshot_impl(state.inner(), project_path).ipc();
+    span.finish_result(&result);
+    result
+}
+
 fn coordination_initialize_team_internal(
     state: &CoordinationState,
     request: InitializeTeamRequest,
@@ -394,7 +406,7 @@ fn coordination_get_live_team_status_impl(
     let status = state
         .with_orchestrator(|orchestrator| {
             orchestrator.reconcile_team_liveness(&team_name)?;
-            orchestrator.get_team_status(&team_name)
+            orchestrator.get_team_status_fast(&team_name)
         })
         .map_err(map_coordination_error)?;
 
@@ -608,6 +620,14 @@ fn coordination_get_team_status_impl(
         })
 }
 
+fn coordination_get_project_mesh_snapshot_impl(
+    state: &CoordinationState,
+    project_path: String,
+) -> Result<ProjectMeshSnapshotResponse, String> {
+    let availability = availability_check();
+    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+}
+
 fn coordination_preflight_check_impl(
     request: InitializeTeamRequest,
 ) -> Result<PreflightReport, String> {
@@ -635,6 +655,46 @@ fn coordination_get_feature_availability_with_lookup<L: BinaryLookup + ?Sized>(
     lookup: &L,
 ) -> FeatureAvailabilityReport {
     map_feature_availability_report(availability_check_with_lookup(lookup))
+}
+
+#[cfg(test)]
+fn coordination_get_project_mesh_snapshot_with_lookup<L: BinaryLookup + ?Sized>(
+    state: &CoordinationState,
+    project_path: String,
+    lookup: &L,
+) -> Result<ProjectMeshSnapshotResponse, String> {
+    let availability = availability_check_with_lookup(lookup);
+    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+}
+
+fn coordination_get_project_mesh_snapshot_with_availability(
+    state: &CoordinationState,
+    project_path: String,
+    availability: BackendAvailabilityReport,
+) -> Result<ProjectMeshSnapshotResponse, String> {
+    validate_non_empty("project_path", &project_path)?;
+    let project_path = Path::new(project_path.trim());
+    let discovery = discover_team_for_project_path(state.teams_dir(), project_path)
+        .map_err(map_coordination_error)?;
+
+    let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
+        Some(
+            state
+                .with_orchestrator(|orchestrator| orchestrator.get_team_status_fast(team_name))
+                .map(map_fast_team_snapshot)
+                .map_err(map_coordination_error)?,
+        )
+    } else {
+        None
+    };
+
+    Ok(ProjectMeshSnapshotResponse {
+        mesh_available: availability.mesh_available,
+        tmux_available: availability.tmux_available,
+        team_name: discovery.team_name,
+        team_status,
+        warnings: discovery.warnings,
+    })
 }
 
 fn validate_and_collect_preflight_agents(
@@ -872,6 +932,102 @@ fn session_status_from_health(health: HealthState) -> SessionStatus {
         | HealthState::Suppressed => SessionStatus::Idle,
         HealthState::SessionDead => SessionStatus::Offline,
     }
+}
+
+#[derive(Debug, Default)]
+struct ProjectPathDiscovery {
+    team_name: Option<String>,
+    warnings: Vec<String>,
+}
+
+fn discover_team_for_project_path(
+    teams_dir: &Path,
+    project_path: &Path,
+) -> Result<ProjectPathDiscovery, CoordinationError> {
+    if !teams_dir.exists() {
+        return Ok(ProjectPathDiscovery::default());
+    }
+
+    let mut team_name = None;
+    let mut warnings = Vec::new();
+    for listed_team in TeamConfigStore::list(teams_dir)? {
+        match TeamConfigStore::load(teams_dir, &listed_team) {
+            Ok(config) => {
+                if team_name.is_none()
+                    && config
+                        .members
+                        .iter()
+                        .any(|member| member.project_path.as_path() == project_path)
+                {
+                    team_name = Some(config.name);
+                }
+            }
+            Err(CoordinationError::NotFound(_)) | Err(CoordinationError::StoreError(_)) => {
+                warnings.push(format!(
+                    "skipped team folder '{listed_team}' because config is missing or invalid"
+                ));
+            }
+            Err(CoordinationError::Io(err)) => {
+                warnings.push(format!(
+                    "skipped team folder '{listed_team}' due to IO error: {err}"
+                ));
+            }
+            Err(other) => {
+                warnings.push(format!(
+                    "skipped team folder '{listed_team}' due to discovery error: {other}"
+                ));
+            }
+        }
+    }
+    warnings.sort();
+
+    Ok(ProjectPathDiscovery {
+        team_name,
+        warnings,
+    })
+}
+
+fn map_fast_team_snapshot(
+    status: crate::coordination::orchestrator::TeamStatus,
+) -> FastTeamSnapshot {
+    let runtime_by_member = status
+        .members_runtime
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+
+    let lead_name = status
+        .config
+        .members
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+        .or_else(|| status.config.members.first())
+        .map(|member| member.name.clone())
+        .unwrap_or_default();
+
+    let members = status
+        .config
+        .members
+        .into_iter()
+        .map(|member| {
+            let runtime = runtime_by_member.get(&member.name);
+            FastAgentSnapshot {
+                name: member.name,
+                role: match member.role {
+                    MemberRole::Lead => AgentRole::Lead,
+                    MemberRole::Agent => AgentRole::Member,
+                },
+                cli_tool: member.cli_tool.to_string(),
+                project_id: member.project_path.display().to_string(),
+                description: member.instructions,
+                session_status: runtime
+                    .map(|entry| session_status_from_health(entry.health))
+                    .unwrap_or(SessionStatus::Offline),
+                pane_id: runtime.and_then(|entry| entry.pane_id.clone()),
+            }
+        })
+        .collect();
+
+    FastTeamSnapshot { lead_name, members }
 }
 
 fn resolve_legacy_member_project_path(

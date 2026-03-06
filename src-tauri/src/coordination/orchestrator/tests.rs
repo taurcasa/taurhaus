@@ -770,6 +770,63 @@ fn add_member_then_get_status() {
 }
 
 #[test]
+fn get_team_status_fast_returns_disk_snapshot_without_runtime_calls() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-fast-read";
+    let member_name = "existing-dev";
+
+    create_running_team(&mut orchestrator, team_name);
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    let status = orchestrator
+        .get_team_status_fast(team_name)
+        .expect("status should load");
+
+    assert_eq!(status.config.name, team_name);
+    assert_eq!(status.config.members.len(), 2);
+    assert_eq!(status.members_runtime.len(), 2);
+    assert!(status
+        .members_runtime
+        .iter()
+        .any(|(name, runtime_record)| name == member_name && runtime_record == &record));
+    assert!(
+        runtime.calls().is_empty(),
+        "fast read should not touch tmux or process runtime checks"
+    );
+}
+
+#[test]
+fn get_team_status_fast_matches_existing_status_path_before_reconciliation() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(&tmp);
+    let team_name = "architecture-fast-read-match";
+    let member_name = "existing-dev";
+
+    create_running_team(&mut orchestrator, team_name);
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    let fast = orchestrator
+        .get_team_status_fast(team_name)
+        .expect("fast status should load");
+    let existing = orchestrator
+        .get_team_status(team_name)
+        .expect("existing status should load");
+
+    assert_eq!(fast, existing);
+}
+
+#[test]
 fn add_duplicate_member_returns_conflict() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);

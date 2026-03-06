@@ -85,6 +85,15 @@
     </div>
   {/if}
 
+  {#if controller.availabilityMessage}
+    <div
+      class="border-l-2 border-warning-400/80 pl-3 pr-2 py-1 text-xs text-warning-700/95 bg-warning-50/50 dark:bg-warning-500/8 dark:text-warning-200/95"
+      data-testid="mesh-availability-inline"
+    >
+      {controller.availabilityMessage}
+    </div>
+  {/if}
+
   {#if mode === 'runtime'}
     <MeshRuntimeView
       {dark}

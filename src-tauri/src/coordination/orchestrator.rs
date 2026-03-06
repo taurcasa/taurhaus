@@ -415,8 +415,8 @@ impl CoordinationOrchestrator {
         })
     }
 
-    /// Get team config and runtime snapshot.
-    pub fn get_team_status(&self, team_name: &str) -> Result<TeamStatus, CoordinationError> {
+    /// Get team config and runtime snapshot without any runtime reconciliation.
+    pub fn get_team_status_fast(&self, team_name: &str) -> Result<TeamStatus, CoordinationError> {
         validate_team_name(team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let members_runtime = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
@@ -424,6 +424,11 @@ impl CoordinationOrchestrator {
             config,
             members_runtime,
         })
+    }
+
+    /// Get team config and runtime snapshot.
+    pub fn get_team_status(&self, team_name: &str) -> Result<TeamStatus, CoordinationError> {
+        self.get_team_status_fast(team_name)
     }
 
     /// Reconcile member liveness for a team using pane + daemon state.
