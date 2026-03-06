@@ -6,9 +6,8 @@ Contributors: architect + mesh-expert (feasibility review)
 
 Inputs:
 - [`docs/ai-agent-characteristics.md`](/home/mstie/projects/taurhaus/docs/ai-agent-characteristics.md)
-- coordination subsystem and stall detector implementation
-- mesh-expert feasibility feedback (2026-03-05 23:28 UTC)
-- team-lead transport constraint note (2026-03-05 23:44 UTC): Claude `SendMessage` currently supports only `type`, `recipient`, `content`, `summary`
+- team-lead complete signal/data inventory (2026-03-06)
+- mesh-expert feasibility guidance on current mesh constraints
 
 ## 1. Vision & Mission
 
@@ -16,392 +15,278 @@ Inputs:
 
 Excellent multi-agent orchestration in taurhaus means:
 
-- Assignments are operational and self-executing, not conversationally ambiguous.
-- Lead remains an orchestrator, especially under pressure and after compaction.
-- Task state is authoritative and consistent across UI, messages, and automation.
-- Model-specific quirks are handled by protocol + guardrails, not memory or luck.
+- Assignments are operational and self-executing.
+- Lead stays in orchestration role under pressure and after compaction.
+- Task state remains authoritative across tasks, messages, and UI signals.
+- Known model/tool quirks are handled by protocol and guardrails.
 
 ### Mission
 
-Define a compatibility-first orchestration protocol and rollout that eliminates known coordination failure modes without breaking existing mesh consumers.
+Define a reliable orchestration protocol that works with current real interfaces:
 
-### Measurable goals
+- `SendMessage(type, recipient, content, summary)` only
+- task files + task update APIs as structured authority
+- fixed inbox schema that cannot preserve unknown fields
 
-1. `0` stall-on-ack incidents per rolling 14 days.
-2. Median assignment overhead `< 2` message round-trips per task.
-3. `>= 95%` of assignments transition to `executing` within 3 minutes.
-4. `0` lead role-drift incidents after compaction.
-5. `0` task-state divergence incidents (task DB vs message flow).
-6. `>= 90%` protocol-lint pass rate on first send.
+## 2. Hard Constraints (Inventory-Grounded)
 
-### Scope
+1. `SendMessage` has only 4 fields. No direct protocol metadata transport fields exist.
+2. Inbox rewrite paths drop unknown JSON fields. Inbox cannot be protocol metadata storage.
+3. Structured task data exists and is authoritative (`TaskCreate`, `TaskUpdate`, task JSON files).
+4. Runtime/health signals exist (`runtime/{agent}.json`, heartbeat/status APIs, idle reminder files, taurhaus telemetry).
+5. Protocol lint, task/message correlation, and transition validation do not exist yet and must be built.
 
-In scope:
+## 3. Design Decisions (Answers To Key Questions)
 
-- Orchestration protocol envelope and lint rules.
-- Guardrails for assignment quality, stalls, and drift.
-- Layer boundaries between mesh infra, taurhaus conventions, and per-model framing.
-- Migration path from permissive current behavior to enforceable protocol.
+### Q1. Embedded content block: still right approach?
 
-Out of scope:
+Yes, but narrowed.
 
-- Modifying base model internals.
-- Big-bang breaking changes to existing mesh inbox consumers.
-- Replacing mesh transport primitives.
+- Use embedded block for message semantics that cannot come from task tools (`intent` for non-task messages, `no_response_needed`, optional explicit `task_id`, optional execution directives).
+- Do not rely on embedded block as primary assignment lifecycle truth.
+- Assignment lifecycle truth comes from task updates/files.
 
-## 2. Current State Assessment
+### Q2. Is time-window sender/recipient correlation reliable enough?
 
-### Observed failure modes
+Not by itself.
 
-| Failure mode | Root cause | Current workaround | Workaround cost |
-|---|---|---|---|
-| Stall-on-ack | Ack-only messages terminate Codex execution loop | Lead avoids pure acknowledgments manually | High cognitive load; brittle |
-| Task-read-not-execute | “You have task X” framing is informational, not operational | Re-send with imperative first step | Extra round-trips |
-| Priority inversion | Conflicting directives (task brief vs repo policy vs message) lack explicit precedence | Manual clarification | Delayed starts, confusion |
-| Split directives | One instruction spread over multiple micro-messages | Manual consolidation | Message noise, missed context |
-| Post-compaction role drift (lead) | Lead resumes implementation instead of orchestration | Manual reminders/corrections | Orchestrator bottleneck |
-| Task state drift | Task status, message stream, and docs diverge | Manual reconciliation | Hidden inconsistency, duplicate work |
-| Idle ambiguity | Silence interpreted without typed intent/state | Manual “check messages” pings | Produces read-and-stop loops |
+Reliable rule set:
 
-### Root takeaway
+1. Primary correlation key: explicit `task_id` in embedded block.
+2. Secondary correlation key: exactly one candidate assignment context for same sender->recipient in bounded window.
+3. If secondary is ambiguous or empty: no silent inference; emit blocker/lint error and require explicit `task_id`.
 
-Most failures are protocol-quality failures, not model-capability failures.
+This keeps behavior deterministic and avoids heuristic guessing.
 
-### Existing capabilities we can leverage now
+### Q3. What mesh infrastructure must be built?
 
-Already available in mesh/taurhaus stack:
+See Section 7 for exact build list. Core additions are:
 
-- Message IDs and explicit ack/ack-status.
-- Heartbeat API (activity freshness).
-- Explicit member status (`blocked|investigating|working`) with TTL semantics.
-- Idle reminder/task fallback nudge primitives.
-- Structured task tools (`TaskCreate`, `TaskUpdate`) with rich metadata (`taskId`, `owner`, `status`, `description`, `activeForm`, `metadata`, dependencies).
-- Taurhaus stall detector + orchestration runtime telemetry.
+- protocol index/journal (separate from inbox)
+- embedded block parser + validator
+- task/message correlator
+- transition edge validator
+- nudge suppression evaluator using runtime + idle reminder signals
+- drift detector + telemetry
 
-## 3. Separation of Concerns
+### Q4. Map every protocol field to concrete source
 
-### Mesh infrastructure responsibility
+See Section 5 field-source mapping table.
 
-Mesh should own protocol mechanics and transport-safe enforcement:
+### Q5. Include runtime health/last_seen and idle_reminded in suppression
 
-- Typed orchestration metadata envelope (compatibility-first extension fields).
-- Field derivation/correlation pipeline (task events + messages -> canonical protocol fields).
-- `mesh protocol lint` and mode control (`warn` vs `enforce`).
-- Task transition API + edge validation + idempotency.
-- Message/task drift detection at protocol layer.
-- Telemetry for delivery, transition latency, lint outcomes.
+Included in Section 6 suppression algorithm with explicit precedence and thresholds.
 
-### Taurhaus/project responsibility
+## 4. Task-Anchored Hybrid v1 (Current-Interface Compatible)
 
-Taurhaus/team should own domain conventions and operating policy:
+### 4.1 Source-of-truth split
 
-- Role definitions and task assignment checklist.
-- Quality gate conventions (`check-quick`, `agent-quality`, etc.).
-- Repository policy precedence declaration.
-- UI surfacing of drift/stall signals and remediation UX.
+- Task lifecycle authority: task tools + task files.
+- Message semantics authority: embedded `orchestration_v1` block in `content`.
+- Protocol persistence authority: mesh protocol index/journal (not inbox).
 
-### Per-model adaptation responsibility
+### 4.2 Canonical normalized record (stored in protocol index)
 
-Adapter layer should own framing transformation, not truth:
+Canonical record key:
 
-- Render protocol payload into model-specific message style.
-- Suppress model-specific anti-patterns.
-- Normalize completion/blocker reporting format.
+- `record_id` (mesh-generated, primary)
+- optional `message_id` (when available from mesh delivery path)
+- optional `task_id`
 
-### Boundary rule
+Canonical fields:
 
-- Infrastructure enforces mechanics.
-- Project policy defines intent.
-- Model adapters shape presentation.
+- `protocol_version`
+- `message_id`
+- `intent`
+- `task_id`
+- `action_required`
+- `no_response_needed`
+- `first_step`
+- `deliverable`
+- `completion_signal`
+- `precedence`
+- `sender`
+- `recipient`
+- `message_type`
+- `timestamp`
+- `task_owner`
+- `task_status`
+- `blocked_by`
+- `blocks`
 
-No duplication of authoritative task state across layers.
+### 4.3 Field authority precedence
 
-## 4. Design Proposals
+1. Task lifecycle/dependency fields: task data is authoritative.
+2. Message semantics fields: embedded block is authoritative.
+3. Free-text outside block: never authoritative; warning/suggestion only.
 
-### 4.1 Transport-compatible Orchestration Protocol v1
+No optional `SendMessage` schema extension is required for v1.
 
-Current hard constraint:
+## 5. Protocol Field -> Concrete Data Source Mapping
 
-- Claude lead currently sends via `SendMessage(type, recipient, content, summary)` only.
-- No direct metadata fields are currently attachable from that interface.
+| Protocol field | Concrete source | Rule |
+|---|---|---|
+| `protocol_version` | mesh protocol normalizer constant | fixed to `1` |
+| `message_id` | mesh delivery layer existing message id | optional (present when available) |
+| `sender` | message envelope sender | required |
+| `recipient` | `SendMessage.recipient` | required |
+| `message_type` | `SendMessage.type` | required |
+| `timestamp` | inbox message timestamp / send event timestamp | required |
+| `intent` (task assignment) | task-mutation journal + correlated `TaskUpdate` owner/status + optional embedded block consistency check | infer `assign` when deterministic assignment context exists |
+| `intent` (non-task) | embedded block `intent` | required for actionable non-task messages |
+| `task_id` | embedded block `task_id` OR correlated task id from task context | required for assignment/nudge/close |
+| `action_required` | derived from intent (`assign|nudge` => true, `info` => false) unless explicitly set in embedded block | deterministic derive |
+| `no_response_needed` | embedded block field (or default true for explicit `info`) | required for info/broadcast protocol compliance |
+| `first_step` | task `metadata.orchestration.first_step` OR embedded block `first_step` | required for assign/nudge |
+| `deliverable` | task `metadata.orchestration.deliverable` OR embedded block `deliverable` | required for assign |
+| `completion_signal` | task `metadata.orchestration.completion_signal` OR embedded block `completion_signal` | required for assign |
+| `precedence` | task `metadata.orchestration.precedence` OR embedded block `precedence` | recommended for actionable intents |
+| `task_owner` | task file `owner` | task-authoritative |
+| `task_status` | task file `status` | task-authoritative |
+| `blocked_by` | task file `blockedBy` | task-authoritative |
+| `blocks` | task file `blocks` | task-authoritative |
+| `mutation_actor` | task-mutation journal | required for authoritative sender correlation |
+| `mutation_timestamp` | task-mutation journal | required for authoritative time correlation |
 
-Compatibility placement contract (authoritative persisted form):
+Notes:
 
-- Target canonical message placement: `extensions.orchestration_v1`.
-- Legacy consumers that ignore unknown extension keys remain unaffected.
-- Current mesh constraint: inbox typed deserialize/re-serialize paths drop unknown fields on rewrite.
-- Therefore, v1 launch must not depend on unknown-field passthrough in inbox JSON until mesh persistence is fixed.
-- Interim persistence: protocol-normalized records keyed by `message_id` in mesh protocol index/audit data; mirror to `extensions.orchestration_v1` once lossless persistence is available.
+- If both task metadata and embedded block provide `first_step`/`deliverable`/`completion_signal`, lint warns on mismatch and uses embedded block as message semantics authority.
+- Task lifecycle fields are never overridden by embedded block text.
+- `activeForm` is fallback hint only and is never a primary source for required execution fields.
 
-Canonical v1 metadata contract (`extensions.orchestration_v1`):
+## 6. Deterministic Correlation + Nudge Suppression
 
-- required: `protocol_version`, `message_id`, `intent`
-- conditional by intent: `task_id`, `action_required`, `no_response_needed`, `first_step`, `deliverable`, `completion_signal`, `precedence`
+### 6.1 Assignment correlation algorithm
 
-Protocol source model (task-anchored hybrid v1):
+Inputs:
 
-1. Task-derived profile (preferred for assignments):
-   - correlate `TaskCreate`/`TaskUpdate` events with subsequent `SendMessage`.
-   - example assignment signal: task owner set to recipient and task status moved to active (`assigned`/`in_progress`) in near-time window.
-   - derive assignment core fields (`intent=assign`, `task_id`, `action_required=true`) from structured task events.
-   - execution details are expected from message semantics payload; task metadata/description are fallback hints only.
-2. Content-embedded profile (default fallback for general messages and current Claude constraints):
-   - embed a deterministic metadata block at the top of `content`, namespaced as `orchestration_v1`.
-   - mesh parses and normalizes this into `extensions.orchestration_v1` server-side.
-3. Structured message profile (future, if `SendMessage` gains optional fields):
-   - optional protocol fields are supplied directly by client/tool.
-   - mesh writes them directly to `extensions.orchestration_v1`.
+- task events (`TaskCreate`/`TaskUpdate`)
+- task file snapshots
+- task-mutation journal entries (`task_id`, actor, timestamp, changed fields)
+- `SendMessage` event (`sender`, `recipient`, `content`, `summary`, `timestamp`)
 
-Source precedence rules:
+Algorithm:
 
-1. Task tool data (highest, authoritative for lifecycle truth):
-   - `task_id`, owner, status/lifecycle, dependencies, `active_form`
-   - source: `TaskCreate`/`TaskUpdate` and task records
-2. SendMessage optional protocol fields (future additive layer):
-   - if implemented later, canonical for message semantics
-3. Message convention payload (`content` embedded `orchestration_v1` block):
-   - canonical message semantics path for current 4-parameter interface
-4. Free-text heuristics (lowest):
-   - warning/suggestion only, never authoritative
+1. Parse embedded block if present.
+2. In enforce mode, actionable messages must include explicit `task_id` in block.
+3. If block has `task_id`, bind directly to that task id.
+4. Else find assignment candidates where:
+   - task `owner == recipient`
+   - task status in active set (`pending` for queued assignment, `in_progress` for active execution)
+   - mutation actor aligns with message sender (from mutation journal)
+   - event in tight bounded window (`<= 90s`)
+5. If exactly one candidate, correlate.
+6. If zero or >1 candidates, mark as uncorrelated and emit blocker/lint error for actionable message.
 
-Field authority mapping:
+Authoritative correlation requirement:
 
-- task-lifecycle fields (`task_id`, owner, status/lifecycle, dependencies):
-  - task tool data first; other sources may reference but not override task truth.
-- message-semantics fields (`intent`, `action_required`, `no_response_needed`, `first_step`, `deliverable`, `completion_signal`, `precedence`):
-  - structured message profile when available
-  - otherwise parsed embedded `orchestration_v1` block
-  - heuristics only for warnings/suggestions when explicit semantics are missing.
+- task files alone are insufficient for actor/time correlation.
+- mesh must persist task-mutation journal at write time.
+- if journal is unavailable, correlation is best-effort only (warn mode) and cannot be authoritative.
 
-Conflict rule when multiple sources are present:
+### 6.2 Nudge suppression (must use runtime + state signals)
 
-- task data is authoritative for lifecycle fields.
-- for message-semantics fields, structured profile (when available) is authoritative over embedded payload.
-- lint emits mismatch findings for diverging sources.
+Suppress idle/stall nudge when any strong-active signal is true:
 
-Default rollout mode: `warn` lint, not hard enforcement.
+1. Member status API indicates `working|blocked|investigating` with live TTL.
+2. Heartbeat freshness `<= 3m`.
+3. Taurhaus stall detector reports recent pane/tool activity.
+4. `config.json` member `lastActivityAt <= 2m`.
 
-### 4.2 Linting and enforcement strategy
+Runtime signal handling:
 
-Add `mesh protocol lint` with modes:
+- `runtime/{agent}.json.last_seen_at` is delivery/attachment freshness only; not proof of read or execution progress.
+- `runtime/{agent}.json.health` is used for dead/offline escalation logic, not as positive work-progress suppressor.
 
-- `warn` (default): emits lint findings, allows send.
-- `enforce` (opt-in team setting): blocks send on error-level violations.
+Duplicate-nudge suppression:
 
-Lint input sources:
+1. If `state/{agent}.idle_reminded` exists and file mtime is within cooldown (`<= 10m`), skip repeat nudge (anti-spam only).
+2. Clear/remove idle reminder flag after fresh activity is observed.
 
-- structured message protocol fields (when present).
-- task-derived fields from correlated `TaskCreate`/`TaskUpdate`.
-- parsed `content` embedded block for 4-parameter `SendMessage` senders.
+Escalate instead of nudge when:
 
-Lint evaluation rule:
+- runtime health is non-healthy for >5m, or
+- stall detector indicates no output and no active process signal across suppression window.
 
-- evaluate required fields on the canonical normalized record after derivation.
-- for assignment intents, `intent`, `task_id`, and lifecycle context may be satisfied by task-derived data.
-- for assignment execution fields (`first_step`, `deliverable`, `completion_signal`), require structured message fields or embedded content block; lint if missing.
-- for non-task general messages, embedded or structured fields are required to satisfy protocol checks.
+### 6.3 Task transition validation (deterministic)
 
-Conflict rules:
+Authoritative transition API target:
 
-- protocol `task_id` conflicting with correlated task record/event -> lint error (block in enforce mode).
-- embedded block conflicting with structured message profile -> structured wins; lint mismatch.
-- message indicates completion while task state is not transitioned -> drift event.
+- `pending -> in_progress -> completed|deleted`
 
-Ack-only detection rollout:
-
-- Phase A: heuristic warn-first (canned short-ack patterns).
-- Phase B: promote to enforce for actionable conversations.
-
-### 4.3 Task transition ownership and migration
-
-Target authoritative API:
-
-- `mesh task transition --task-id ... --to assigned|executing|completed|blocked|failed|closed`
-
-Allowed edges (strict mode):
-
-- `assigned -> executing -> completed|blocked|failed|closed`
-- idempotent replays of same transition allowed.
-
-Canonical legacy -> strict transition mapping:
+Canonical strict lifecycle mapping (for protocol semantics):
 
 - `pending -> assigned`
 - `in_progress -> executing`
 - `completed -> completed`
-- `deleted -> failed|closed` (policy-defined by team/project)
+- `deleted -> failed|closed` (policy-defined closure mapping)
 
-Migration bridge:
+Validation rules:
 
-- Continue applying canonical mapping for legacy statuses (`pending/in_progress/completed/deleted`) during transition window.
-- Tighten to strict edge validation once adoption and telemetry are stable.
+1. Reject illegal backward edges in enforce mode.
+2. Allow idempotent replay of same transition.
+3. Emit drift event if message semantics indicate completion but task status remains non-terminal.
 
-### 4.4 Automated guardrails
+## 7. Mesh Build Plan (New Code vs Existing)
 
-#### A) Assignment quality gate (pre-send)
+### 7.1 Already exists (reuse)
 
-Warn/block rules:
+- message send + message ids + read tracking
+- task CRUD + dependencies
+- heartbeat API
+- member status API
+- idle reminder primitive
 
-- actionable intent missing `first_step`.
-- actionable intent missing `task_id`.
-- missing `completion_signal` for assignment.
-- informational broadcast missing `no_response_needed=true`.
+### 7.2 Must build (new)
 
-#### B) Task-read-not-execute detector
+1. Protocol index/journal store:
+   - persistent normalized protocol records keyed by `record_id` (+ optional `message_id`/`task_id` indexes)
+   - separate from inbox JSON
+2. Task-mutation journal:
+   - append-only write-time log: `task_id`, actor, timestamp, changed fields
+   - required for authoritative sender/time correlation
+3. Embedded block parser:
+   - deterministic parser for `[orchestration_v1] ... [/orchestration_v1]`
+4. Correlation service:
+   - joins send events with task updates using deterministic rules
+5. Protocol lint engine:
+   - `warn` and `enforce` modes on normalized records
+6. Transition validator:
+   - strict task transition edges + canonical legacy mapping
+7. Drift detector:
+   - detects task/message completion mismatches and orphan transitions
+8. Suppression evaluator:
+   - evaluates heartbeat/status/runtime/config/stall/idle-reminded signals
+9. Telemetry counters:
+   - lint failures, correlation ambiguity count, suppression-hit rate, assignment->executing latency, drift count
 
-If assignment delivered and no `task -> executing` within timeout:
+## 8. Rollout (Reality-First)
 
-- auto-nudge with concrete first step.
-- suppress nudge when fresh heartbeat/status indicates active or blocked/investigating work.
-- default freshness windows for suppression:
-  - heartbeat `<= 3m`
-  - status `<= 10m`
+Phase 1:
 
-#### C) Drift monitor
+- adopt embedded block template and task metadata keys for execution semantics
+- run lint in `warn` mode
 
-Detect and surface when task authoritative state and message protocol state disagree:
+Phase 2:
 
-- message says done but task not transitioned.
-- task transitioned without completion signal message.
+- ship protocol index/journal + deterministic correlator
+- enforce blocker on ambiguous assignment correlation
 
-#### D) Lead role-drift detection
+Phase 3:
 
-Primary detector location: taurhaus orchestration runtime.
+- enable strict transition validator + drift detector
+- enable nudge suppression evaluator with runtime/idle-reminded inputs
 
-Why: taurhaus sees pane/session command telemetry and queue depth context; mesh alone does not.
+Phase 4:
 
-Mesh contributes supporting signals:
+- switch key lint rules to `enforce` after telemetry stabilization
 
-- backlog depth
-- heartbeat freshness
-- status freshness
-
-### 4.5 Convention changes (team behavior)
-
-Assignment checklist (mandatory):
-
-1. Objective in one sentence.
-2. Exact deliverable path/output contract.
-3. Concrete first action.
-4. Completion signal.
-5. Explicit response expectation (`no_response_needed` where applicable).
-
-Anti-pattern enforcement:
-
-- no pure acknowledgments to active assignees.
-- no “check messages” without explicit action.
-- no split assignment across many micro-messages when one complete payload is possible.
-
-### 4.6 Failure mode -> solution mapping
-
-| Failure mode | Primary fix |
-|---|---|
-| Stall-on-ack | info intent + `no_response_needed=true` + ack lint |
-| Task-read-not-execute | required first step + execution timeout nudge |
-| Priority inversion | explicit precedence field + conflict contract |
-| Split directives | single structured assignment payload |
-| Role drift | taurhaus role-drift detector + delegation reminder |
-| Task/message drift | authoritative transition API + drift monitor |
-| Idle ambiguity | typed status/heartbeat-aware nudge suppression |
-
-### 4.7 Rollout plan (aligned with mesh-expert feasibility)
-
-Phase 1: conventions now
-
-- apply assignment checklist and anti-pattern rules immediately.
-- enforce `no_response_needed` discipline for informational traffic.
-
-Phase 2: task-tool integration + content-embedded profile + lint warn mode
-
-- implement task/message correlation to derive assignment protocol fields from `TaskCreate`/`TaskUpdate`.
-- ship canonical `orchestration_v1` content block template for lead-assignment messages.
-- parse/normalize embedded block into canonical protocol record.
-- run `mesh protocol lint` in warn mode against parsed canonical fields.
-- collect lint and transition latency metrics.
-
-Phase 3: automation + optional structured profile
-
-- enable `assign -> executing` timeout auto-nudge.
-- suppress using heartbeat and explicit status (`blocked|investigating`).
-- if mesh confirms `SendMessage` extensibility, add optional structured protocol fields and dual-write validation.
-
-Phase 4: enforce mode + strict transitions
-
-- enable lint enforce for actionable intents.
-- adopt strict `task transition` edges as team default.
-
-## 5. Success Criteria
-
-### Metrics
-
-Weekly dashboard:
-
-- `stall_on_ack_count`
-- `assignment_round_trips_p50`
-- `assignment_to_executing_p50_secs`
-- `protocol_lint_fail_rate`
-- `task_message_drift_count`
-- `lead_role_drift_incidents`
-
-Targets:
-
-1. `stall_on_ack_count = 0`
-2. `assignment_round_trips_p50 < 2`
-3. `assignment_to_executing_p50_secs < 180`
-4. `protocol_lint_fail_rate < 5%` after rollout week 2
-5. `task_message_drift_count = 0` for 14 consecutive days
-6. `lead_role_drift_incidents = 0` for 14 consecutive days
-
-### Done definition
-
-The design is “done” when:
-
-1. Protocol v1 metadata + lint mode control are implemented and adopted.
-2. Task transition API is authoritative for actionable lifecycle state.
-3. Auto-nudge and drift monitors are running with suppression safeguards.
-4. Role-drift detection is active in taurhaus with mesh support signals.
-5. Metrics meet thresholds for two consecutive weekly windows.
-
-## Appendix A: Protocol Field Table (v1)
-
-| Field | Assign | Nudge | Info | Close | Required? |
-|---|---|---|---|---|---|
-| `protocol_version` | yes | yes | yes | yes | always |
-| `message_id` | yes | yes | yes | yes | always |
-| `intent` | yes | yes | yes | yes | always |
-| `task_id` | yes | yes | no | yes | by intent |
-| `action_required` | yes | yes | no | no | by intent |
-| `no_response_needed` | optional | optional | yes | optional | by intent |
-| `first_step` | yes | yes | no | no | by intent |
-| `deliverable` | yes | optional | no | optional | by intent |
-| `completion_signal` | yes | optional | no | optional | by intent |
-| `precedence` | optional | optional | no | optional | recommended for actionable intents |
-
-Transport note:
-
-- For current Claude lead flows, these fields are carried in `content` via embedded `orchestration_v1` block and normalized server-side.
-- For task-related assignment flows, core lifecycle fields may be derived from `TaskCreate`/`TaskUpdate` correlation.
-- For future extended `SendMessage`, fields may be passed directly as optional structured parameters.
-- Until inbox unknown-field persistence is fixed, canonical normalized protocol data should be persisted outside lossy inbox rewrite paths.
-
-## Appendix B: Initial Lint Matrix
-
-| Rule | Warn mode | Enforce mode |
-|---|---|---|
-| Actionable intent missing `task_id` | warn | block |
-| Actionable intent missing `first_step` | warn | block |
-| Assign missing `completion_signal` | warn | block |
-| Info missing `no_response_needed=true` | warn | block |
-| Ack-only message to active assignee | warn | block (after rollout hardening) |
-
-## Appendix C: Embedded Content Template (current default transport)
+## 9. Embedded Block Template (Current SendMessage-Compatible)
 
 ```text
 [orchestration_v1]
-protocol_version: 1
-message_id: <uuid>
 intent: assign|nudge|info|close
 task_id: <task-id-or-empty>
-action_required: true|false
 no_response_needed: true|false
 first_step: <single concrete first action>
 deliverable: <artifact path or output contract>
@@ -409,53 +294,22 @@ completion_signal: <required completion response>
 precedence: <ordered policy list>
 [/orchestration_v1]
 
-<human-readable assignment body follows>
+<human-readable body>
 ```
 
 Parser requirements:
 
-- deterministic key parsing, tolerant to field order.
-- unknown keys ignored with warn-level lint.
-- missing required fields follow lint mode policy (`warn` vs `enforce`).
+- deterministic key parsing; ignore unknown keys with lint warn
+- block is optional for non-actionable casual messages
+- block required for actionable non-task messages
+- for task assignments, block is required in enforce mode (must include explicit `task_id`)
+- if task assignment block omits execution fields, task metadata must satisfy required execution fields
 
-## Appendix D: Task-Tool Correlation Rules (assignment path)
+## 10. Success Criteria
 
-Correlation key:
-
-- same sender, recipient equals task owner, and message timestamp near task mutation window.
-
-Initial default window:
-
-- `TaskUpdate`/`TaskCreate` to `SendMessage` correlation window: `<= 5m`.
-
-Derived assignment minimum:
-
-- `intent=assign`
-- `task_id=<taskId>`
-- `action_required=true`
-
-Derived assignment details (in order):
-
-1. structured `SendMessage` optional protocol fields (if available later)
-2. embedded `orchestration_v1` content block (current required source)
-3. task metadata/activeForm/description extraction as fallback hints (warn-only if still incomplete)
-
-Safety behavior:
-
-- primary task match key: explicit `task_id` from structured/embedded profile when present.
-- secondary match key (if no explicit `task_id`): bounded time-window + sender/recipient/owner correlation.
-- ambiguous multi-task match -> emit structured blocker (no silent inference) and require explicit task reference.
-- no match -> treat as general message path.
-
-Assignment rule:
-
-- when task correlation infers assignment, require executable message semantics (`first_step`, `deliverable`, `completion_signal`) in structured or embedded message payload.
-
-## Key aligned proposals
-
-- Hybrid rollout that uses task-tool structured context for assignments and content embedding for general 4-field `SendMessage` traffic.
-- v1 launch is feasible without extending `SendMessage`; optional fields are additive when/if available.
-- Warn-first linting with planned enforce mode.
-- Strict task transitions via dedicated API, with migration mapping from legacy statuses.
-- Role-drift detection primarily in taurhaus runtime; mesh provides supporting signals.
-- Incremental rollout with measurable gates at each phase.
+1. `stall_on_ack_count = 0` (14-day rolling)
+2. `assignment_to_executing_p50_secs < 180`
+3. `protocol_lint_fail_rate < 5%` after week 2
+4. `correlation_ambiguity_count = 0` in enforce mode
+5. `task_message_drift_count = 0` for 14 consecutive days
+6. `lead_role_drift_incidents = 0` for 14 consecutive days
