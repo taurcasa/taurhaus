@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use ignore::gitignore::Gitignore;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use serde_json::{Map, Value};
 
 use crate::sentinels::PYTHON_CACHE_DIR;
 
@@ -203,6 +204,79 @@ pub struct ProjectWatcher {
 /// Duration to debounce git internal events (ADR-020).
 const GIT_DEBOUNCE_SECS: u64 = 2;
 
+fn emit_watch_local_registered(project_id: &str, project_root: &Path) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert(
+        "project_path".to_string(),
+        Value::String(project_root.display().to_string()),
+    );
+    fields.insert("watch_mode".to_string(), Value::String("local".to_string()));
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "watch.local.registered",
+        Some("Local project watcher registered".to_string()),
+        fields,
+    );
+}
+
+fn emit_watch_local_unregistered(project_id: &str, project_root: &Path) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert(
+        "project_path".to_string(),
+        Value::String(project_root.display().to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "watch.local.unregistered",
+        Some("Local project watcher unregistered".to_string()),
+        fields,
+    );
+}
+
+fn emit_watch_event_dropped(project_id: &str, watch_event: &str, error_message: &str) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert(
+        "watch_event".to_string(),
+        Value::String(watch_event.to_string()),
+    );
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "warn",
+        "backend",
+        "watch.event.dropped",
+        Some("Watch event dropped before processing".to_string()),
+        fields,
+    );
+}
+
+fn send_watch_event(
+    tx: &mpsc::Sender<WatchEvent>,
+    event: WatchEvent,
+    project_id: &str,
+    watch_event: &str,
+) {
+    if let Err(error) = tx.send(event) {
+        emit_watch_event_dropped(project_id, watch_event, &error.to_string());
+    }
+}
+
 impl ProjectWatcher {
     /// Create a new ProjectWatcher. Returns the watcher and a receiver for events.
     pub fn new() -> (Self, mpsc::Receiver<WatchEvent>) {
@@ -247,6 +321,7 @@ impl ProjectWatcher {
         )?;
 
         watcher.watch(&project_root, RecursiveMode::Recursive)?;
+        emit_watch_local_registered(&project_id, &project_root);
         self.watchers.insert(project_id, (project_root, watcher));
         Ok(())
     }
@@ -255,6 +330,7 @@ impl ProjectWatcher {
     pub fn unwatch_project(&mut self, project_id: &str) {
         if let Some((root, mut watcher)) = self.watchers.remove(project_id) {
             let _ = watcher.unwatch(&root);
+            emit_watch_local_unregistered(project_id, &root);
         }
         let mut gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
         gis.remove(project_id);
@@ -302,36 +378,58 @@ fn handle_notify_event(
     );
 
     if classified.emit_git_changed {
-        let _ = tx.send(WatchEvent::GitChanged {
-            project_id: project_id.to_string(),
-        });
+        send_watch_event(
+            tx,
+            WatchEvent::GitChanged {
+                project_id: project_id.to_string(),
+            },
+            project_id,
+            "git_changed",
+        );
     }
 
     for path in classified.session_files {
-        let _ = tx.send(WatchEvent::SessionFileCreated {
-            project_id: project_id.to_string(),
-            path,
-        });
+        send_watch_event(
+            tx,
+            WatchEvent::SessionFileCreated {
+                project_id: project_id.to_string(),
+                path,
+            },
+            project_id,
+            "session_file_created",
+        );
     }
 
     if classified.gitignore_changed {
-        let _ = tx.send(WatchEvent::GitignoreChanged {
-            project_id: project_id.to_string(),
-        });
+        send_watch_event(
+            tx,
+            WatchEvent::GitignoreChanged {
+                project_id: project_id.to_string(),
+            },
+            project_id,
+            "gitignore_changed",
+        );
     }
 
     if !classified.regular_files.is_empty() {
-        let _ = tx.send(WatchEvent::FileChanged {
-            project_id: project_id.to_string(),
-            paths: classified.regular_files,
-        });
+        send_watch_event(
+            tx,
+            WatchEvent::FileChanged {
+                project_id: project_id.to_string(),
+                paths: classified.regular_files,
+            },
+            project_id,
+            "file_changed",
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
     use std::path::PathBuf;
+    use std::time::{Duration, Instant};
 
     fn root() -> PathBuf {
         PathBuf::from("/home/user/projects/taurhaus")
@@ -339,6 +437,29 @@ mod tests {
 
     fn empty_gitignores() -> Arc<Mutex<HashMap<String, Gitignore>>> {
         Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let lines: Vec<String> = content
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| line.to_string())
+                    .collect();
+                if lines.len() >= expected {
+                    return lines;
+                }
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for watcher log lines at {}",
+                    path.display()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     // --- classify_event tests ---
@@ -703,5 +824,74 @@ mod tests {
                 "Should ignore tool directory path: {path}"
             );
         }
+    }
+
+    #[test]
+    fn watcher_emits_structured_register_and_unregister_events() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let log_dir = tempfile::TempDir::new().expect("temp log dir");
+        let log_path = log_dir.path().join("watcher-events.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let project_dir = tempfile::TempDir::new().expect("temp project");
+        let (mut watcher, _rx) = ProjectWatcher::new();
+
+        watcher
+            .watch_project("p-watch".to_string(), project_dir.path().to_path_buf())
+            .expect("watch project");
+        watcher.unwatch_project("p-watch");
+
+        let lines = wait_for_lines(&log_path, 2);
+        let events: Vec<serde_json::Value> = lines
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+
+        let registered = events
+            .iter()
+            .find(|value| value["event"] == "watch.local.registered")
+            .expect("watch.local.registered");
+        assert_eq!(registered["project_id"], "p-watch");
+        assert_eq!(registered["watch_mode"], "local");
+
+        let unregistered = events
+            .iter()
+            .find(|value| value["event"] == "watch.local.unregistered")
+            .expect("watch.local.unregistered");
+        assert_eq!(unregistered["project_id"], "p-watch");
+    }
+
+    #[test]
+    fn watcher_emits_structured_drop_event_when_channel_is_closed() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let log_dir = tempfile::TempDir::new().expect("temp log dir");
+        let log_path = log_dir.path().join("watcher-drop.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let (tx, rx) = mpsc::channel();
+        drop(rx);
+
+        let project_root = root();
+        let debounce = Arc::new(Mutex::new(HashMap::new()));
+        let gis = empty_gitignores();
+
+        let event = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Any,
+            )),
+            paths: vec![project_root.join("src/main.rs")],
+            attrs: Default::default(),
+        };
+
+        handle_notify_event(&tx, "p-drop", &project_root, &debounce, &gis, event);
+
+        let lines = wait_for_lines(&log_path, 1);
+        let dropped: serde_json::Value = serde_json::from_str(&lines[0]).expect("json");
+        assert_eq!(dropped["event"], "watch.event.dropped");
+        assert_eq!(dropped["project_id"], "p-drop");
+        assert_eq!(dropped["watch_event"], "file_changed");
+        assert_eq!(dropped["level"], "WARN");
     }
 }

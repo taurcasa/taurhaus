@@ -3,6 +3,7 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::bootstrap;
@@ -103,6 +104,144 @@ pub(crate) fn refresh_project_git_status(
 
 const MAX_PENDING_GIT_STATUS_RETRIES: usize = 32;
 const GITIGNORE_REBUILD_MIN_INTERVAL: Duration = Duration::from_secs(10);
+
+fn json_number_u64(value: u64) -> Value {
+    Value::Number(serde_json::Number::from(value))
+}
+
+fn json_number_usize(value: usize) -> Value {
+    Value::Number(serde_json::Number::from(value))
+}
+
+fn emit_watch_batch_flushed_event(
+    batch_size: usize,
+    file_projects: usize,
+    git_projects: usize,
+    session_files: usize,
+    elapsed_ms: u64,
+) {
+    let mut fields = Map::new();
+    fields.insert("batch_size".to_string(), json_number_usize(batch_size));
+    fields.insert(
+        "file_projects".to_string(),
+        json_number_usize(file_projects),
+    );
+    fields.insert("git_projects".to_string(), json_number_usize(git_projects));
+    fields.insert(
+        "session_files".to_string(),
+        json_number_usize(session_files),
+    );
+    fields.insert("elapsed_ms".to_string(), json_number_u64(elapsed_ms));
+    crate::commands::logging::emit_global(
+        "debug",
+        "backend",
+        "watch.batch.flushed",
+        Some("Watch event batch flushed".to_string()),
+        fields,
+    );
+}
+
+fn emit_watch_git_status_refreshed_event(
+    project_id: &str,
+    retry_scheduled: bool,
+    duration_ms: u64,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert("retry_scheduled".to_string(), Value::Bool(retry_scheduled));
+    fields.insert("duration_ms".to_string(), json_number_u64(duration_ms));
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "watch.git_status.refreshed",
+        Some("Git status refreshed from watcher event".to_string()),
+        fields,
+    );
+}
+
+fn emit_watch_git_status_refresh_failed_event(
+    project_id: &str,
+    retry_scheduled: bool,
+    duration_ms: u64,
+    error_message: &str,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert("retry_scheduled".to_string(), Value::Bool(retry_scheduled));
+    fields.insert("duration_ms".to_string(), json_number_u64(duration_ms));
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "warn",
+        "backend",
+        "watch.git_status.refresh_failed",
+        Some("Git status refresh failed from watcher event".to_string()),
+        fields,
+    );
+}
+
+fn emit_search_file_index_updated_event(
+    project_id: &str,
+    docs_updated: usize,
+    changed_path_count: usize,
+    duration_ms: u64,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert("docs_updated".to_string(), json_number_usize(docs_updated));
+    fields.insert(
+        "changed_path_count".to_string(),
+        json_number_usize(changed_path_count),
+    );
+    fields.insert("duration_ms".to_string(), json_number_u64(duration_ms));
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "search.file_index.updated",
+        Some("Incremental file index update completed".to_string()),
+        fields,
+    );
+}
+
+fn emit_search_file_index_failed_event(
+    project_id: &str,
+    changed_path_count: usize,
+    duration_ms: u64,
+    error_message: &str,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert(
+        "changed_path_count".to_string(),
+        json_number_usize(changed_path_count),
+    );
+    fields.insert("duration_ms".to_string(), json_number_u64(duration_ms));
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "warn",
+        "backend",
+        "search.file_index.failed",
+        Some("Incremental file index update failed".to_string()),
+        fields,
+    );
+}
 
 fn pending_git_status_retries() -> &'static Mutex<HashSet<String>> {
     static PENDING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -397,6 +536,13 @@ pub(crate) fn process_watch_events(
             elapsed_ms = batch_start.elapsed().as_millis() as u64,
             "flushing watch event batch"
         );
+        emit_watch_batch_flushed_event(
+            batch_size,
+            batch.file_paths.len(),
+            batch.git_projects.len(),
+            batch.session_files.len(),
+            batch_start.elapsed().as_millis() as u64,
+        );
 
         // Bump last_activity_at once per project.
         let db = app.state::<DbState>();
@@ -428,13 +574,29 @@ pub(crate) fn process_watch_events(
             };
             let path = std::path::Path::new(&project_path);
 
-            if let Err(err) = refresh_project_git_status(&app, project_id, true) {
-                tracing::warn!(
-                    project_id = project_id,
-                    error = %err,
-                    "git status refresh failed for watcher event; scheduling one retry"
-                );
-                schedule_git_status_retry(app.clone(), project_id.clone());
+            let git_refresh_started = Instant::now();
+            match refresh_project_git_status(&app, project_id, true) {
+                Ok(_) => {
+                    emit_watch_git_status_refreshed_event(
+                        project_id,
+                        false,
+                        git_refresh_started.elapsed().as_millis() as u64,
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        project_id = project_id,
+                        error = %err,
+                        "git status refresh failed for watcher event; scheduling one retry"
+                    );
+                    schedule_git_status_retry(app.clone(), project_id.clone());
+                    emit_watch_git_status_refresh_failed_event(
+                        project_id,
+                        true,
+                        git_refresh_started.elapsed().as_millis() as u64,
+                        &err,
+                    );
+                }
             }
 
             let ss = app.state::<SearchState>();
@@ -515,10 +677,12 @@ pub(crate) fn process_watch_events(
 
         // File change events (one per project, all paths merged).
         for (project_id, paths) in &batch.file_paths {
+            let file_index_started = Instant::now();
             // Dedup paths within the batch (same file may appear in multiple events).
             let mut unique: Vec<&std::path::PathBuf> = paths.iter().collect();
             unique.sort();
             unique.dedup();
+            let changed_path_count = unique.len();
 
             let path_strs: Vec<String> = unique
                 .iter()
@@ -551,10 +715,17 @@ pub(crate) fn process_watch_events(
                         error = %error,
                         "Skipping file watcher indexing: search index lock poisoned"
                     );
+                    emit_search_file_index_failed_event(
+                        project_id,
+                        changed_path_count,
+                        file_index_started.elapsed().as_millis() as u64,
+                        &error.to_string(),
+                    );
                     continue;
                 }
             };
             let mut updated = 0;
+            let mut first_error: Option<String> = None;
             for path in &unique {
                 match search::indexer::update_file_batched(
                     &mut index,
@@ -564,6 +735,9 @@ pub(crate) fn process_watch_events(
                 ) {
                     Ok(true) => updated += 1,
                     Err(e) => {
+                        if first_error.is_none() {
+                            first_error = Some(e.to_string());
+                        }
                         tracing::warn!(
                             path = %path.display(),
                             error = %e,
@@ -580,11 +754,25 @@ pub(crate) fn process_watch_events(
                         error = %e,
                         "Failed to commit batched search index update"
                     );
+                    emit_search_file_index_failed_event(
+                        project_id,
+                        changed_path_count,
+                        file_index_started.elapsed().as_millis() as u64,
+                        &e.to_string(),
+                    );
                     drop(index);
                     continue;
                 }
             }
             drop(index);
+            if let Some(error_message) = first_error {
+                emit_search_file_index_failed_event(
+                    project_id,
+                    changed_path_count,
+                    file_index_started.elapsed().as_millis() as u64,
+                    &error_message,
+                );
+            }
             if updated > 0 {
                 let _ = app.emit(
                     "search-index-updated",
@@ -593,6 +781,12 @@ pub(crate) fn process_watch_events(
                         "reason": "file_changed",
                         "docs_updated": updated,
                     }),
+                );
+                emit_search_file_index_updated_event(
+                    project_id,
+                    updated,
+                    changed_path_count,
+                    file_index_started.elapsed().as_millis() as u64,
                 );
             }
         }
@@ -701,8 +895,10 @@ pub(crate) fn is_internal_event(event: &fs::watcher::WatchEvent) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
     use pretty_assertions::assert_eq;
     use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
     use tempfile::TempDir;
 
     fn retry_test_lock() -> &'static Mutex<()> {
@@ -731,6 +927,29 @@ mod tests {
         };
         crate::db::queries::insert_project(&conn, &project).expect("insert project");
         (conn, db_dir)
+    }
+
+    fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let lines: Vec<String> = content
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| line.to_string())
+                    .collect();
+                if lines.len() >= expected {
+                    return lines;
+                }
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for event_processor log lines at {}",
+                    path.display()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]
@@ -818,5 +1037,81 @@ mod tests {
         assert!(!should_run_gitignore_rebuild("p1"));
         assert!(should_run_gitignore_rebuild("p2"));
         clear_gitignore_rebuild_timestamps();
+    }
+
+    #[test]
+    fn emits_structured_watch_batch_and_git_status_events() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let log_dir = tempfile::TempDir::new().expect("temp log dir");
+        let log_path = log_dir.path().join("watch-events.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        emit_watch_batch_flushed_event(7, 2, 1, 3, 250);
+        emit_watch_git_status_refreshed_event("p1", false, 17);
+        emit_watch_git_status_refresh_failed_event("p2", true, 42, "git status failed");
+
+        let lines = wait_for_lines(&log_path, 3);
+        let events: Vec<serde_json::Value> = lines
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+
+        let batch = events
+            .iter()
+            .find(|value| value["event"] == "watch.batch.flushed")
+            .expect("watch.batch.flushed");
+        assert_eq!(batch["batch_size"], 7);
+        assert_eq!(batch["file_projects"], 2);
+        assert_eq!(batch["git_projects"], 1);
+
+        let refreshed = events
+            .iter()
+            .find(|value| value["event"] == "watch.git_status.refreshed")
+            .expect("watch.git_status.refreshed");
+        assert_eq!(refreshed["project_id"], "p1");
+        assert_eq!(refreshed["retry_scheduled"], false);
+
+        let failed = events
+            .iter()
+            .find(|value| value["event"] == "watch.git_status.refresh_failed")
+            .expect("watch.git_status.refresh_failed");
+        assert_eq!(failed["project_id"], "p2");
+        assert_eq!(failed["retry_scheduled"], true);
+        assert_eq!(failed["error.message"], "git status failed");
+    }
+
+    #[test]
+    fn emits_structured_search_file_index_events() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let log_dir = tempfile::TempDir::new().expect("temp log dir");
+        let log_path = log_dir.path().join("search-file-index-events.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        emit_search_file_index_updated_event("p-search", 4, 9, 120);
+        emit_search_file_index_failed_event("p-search", 9, 140, "index lock poisoned");
+
+        let lines = wait_for_lines(&log_path, 2);
+        let events: Vec<serde_json::Value> = lines
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+
+        let updated = events
+            .iter()
+            .find(|value| value["event"] == "search.file_index.updated")
+            .expect("search.file_index.updated");
+        assert_eq!(updated["project_id"], "p-search");
+        assert_eq!(updated["docs_updated"], 4);
+        assert_eq!(updated["changed_path_count"], 9);
+
+        let failed = events
+            .iter()
+            .find(|value| value["event"] == "search.file_index.failed")
+            .expect("search.file_index.failed");
+        assert_eq!(failed["project_id"], "p-search");
+        assert_eq!(failed["changed_path_count"], 9);
+        assert_eq!(failed["error.message"], "index lock poisoned");
     }
 }
