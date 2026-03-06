@@ -57,6 +57,15 @@
   // Group + sort tasks by status.
   // Memoized helper returns stable references for identical task-array inputs.
   const grouped = $derived.by(() => groupTasksByStatus(tasks))
+  const activeBoardRevealKey = $derived.by(() => {
+    if (activeSubTab !== 'active' || loading) return null
+    const projectRef = projectId || projectPath || 'unknown'
+    return `${projectRef}:${tasks.length}:${errors.length}`
+  })
+  const historyRevealKey = $derived.by(() => {
+    if (activeSubTab !== 'history') return null
+    return `${projectId || projectPath || 'unknown'}:history`
+  })
 
   // Pending restore target — applied once tasks finish loading
   let pendingRestore = $state(null)
@@ -316,74 +325,80 @@
           <p class="mt-2 text-[13px] leading-relaxed {t.textTertiary}">Tasks appear automatically when Claude, Codex, or Gemini create plans or task lists in your project.</p>
         </div>
       </div>
-    {:else}
-
-      <!-- Error indicators (per-source) -->
-      {#if taskDetailError}
-        <div class="px-5 pb-2 shrink-0">
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}" data-testid="task-detail-error">
-            <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z" />
-            </svg>
-            <span>{taskDetailError}</span>
-          </div>
-        </div>
-      {/if}
-
-      {#if errors.length > 0}
-        <div class="px-5 pb-2 space-y-1 shrink-0">
-          {#each errors as [source, message]}
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
-              <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-              <span>{SOURCE_LABELS[source] || source}: {message}</span>
+    {:else if activeBoardRevealKey}
+      {#key activeBoardRevealKey}
+        <div class="flex-1 flex flex-col min-h-0 content-enter">
+          <!-- Error indicators (per-source) -->
+          {#if taskDetailError}
+            <div class="px-5 pb-2 shrink-0">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}" data-testid="task-detail-error">
+                <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z" />
+                </svg>
+                <span>{taskDetailError}</span>
+              </div>
             </div>
-          {/each}
-        </div>
-      {/if}
+          {/if}
 
-      <!-- Kanban columns -->
-      <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden min-h-0">
-        {#each COLUMNS as col}
-          {@const colTasks = grouped[col.key] || []}
-          <section class="flex-1 flex flex-col min-w-0 rounded-lg {columnBg} min-h-0" data-testid="kanban-column">
-            <!-- Column header -->
-            <div class="flex items-center gap-2 px-3 pt-3 pb-2 shrink-0">
-              <span class="w-[6px] h-[6px] rounded-full {dotColors[col.key]}"></span>
-              <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary}">{col.label}</span>
-              <span class="text-[10px] {t.textMuted}">{colTasks.length}</span>
-            </div>
-
-            <!-- Scrollable card list -->
-            <div class="flex-1 overflow-y-auto px-2 pb-2 min-h-0">
-              {#each colTasks as task}
-                {@render taskCard(task)}
-              {:else}
-                <div class="px-2 py-6 text-center">
-                  <span class="text-[11px] {t.textMuted}">No tasks</span>
+          {#if errors.length > 0}
+            <div class="px-5 pb-2 space-y-1 shrink-0">
+              {#each errors as [source, message]}
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded text-[11px] {dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600'}">
+                  <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  <span>{SOURCE_LABELS[source] || source}: {message}</span>
                 </div>
               {/each}
             </div>
-          </section>
-        {/each}
-      </div>
+          {/if}
 
+          <!-- Kanban columns -->
+          <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden min-h-0">
+            {#each COLUMNS as col}
+              {@const colTasks = grouped[col.key] || []}
+              <section class="flex-1 flex flex-col min-w-0 rounded-lg {columnBg} min-h-0" data-testid="kanban-column">
+                <!-- Column header -->
+                <div class="flex items-center gap-2 px-3 pt-3 pb-2 shrink-0">
+                  <span class="w-[6px] h-[6px] rounded-full {dotColors[col.key]}"></span>
+                  <span class="text-[11px] font-semibold uppercase tracking-[0.06em] {t.textTertiary}">{col.label}</span>
+                  <span class="text-[10px] {t.textMuted}">{colTasks.length}</span>
+                </div>
+
+                <!-- Scrollable card list -->
+                <div class="flex-1 overflow-y-auto px-2 pb-2 min-h-0">
+                  {#each colTasks as task}
+                    {@render taskCard(task)}
+                  {:else}
+                    <div class="px-2 py-6 text-center">
+                      <span class="text-[11px] {t.textMuted}">No tasks</span>
+                    </div>
+                  {/each}
+                </div>
+              </section>
+            {/each}
+          </div>
+        </div>
+      {/key}
     {/if}
   {:else}
     <!-- History sub-tab — SessionHistory accordion -->
-    <div class="flex-1 overflow-hidden" data-testid="history-tab-content">
-      <SessionHistory
-        {projectPath}
-        {dark}
-        {projectId}
-        isActive={isActive && activeSubTab === 'history'}
-        onSelectTask={selectTask}
-        onNavigateToCommit={navigateToCommit}
-        onNavigateToFile={navigateToFile}
-        onNavigateToCommitRange={navigateToCommitRange}
-      />
-    </div>
+    {#if historyRevealKey}
+      {#key historyRevealKey}
+        <div class="flex-1 overflow-hidden content-enter" data-testid="history-tab-content">
+          <SessionHistory
+            {projectPath}
+            {dark}
+            {projectId}
+            isActive={isActive && activeSubTab === 'history'}
+            onSelectTask={selectTask}
+            onNavigateToCommit={navigateToCommit}
+            onNavigateToFile={navigateToFile}
+            onNavigateToCommitRange={navigateToCommitRange}
+          />
+        </div>
+      {/key}
+    {/if}
   {/if}
   </div>
 

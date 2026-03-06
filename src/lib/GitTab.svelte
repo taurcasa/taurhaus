@@ -317,6 +317,20 @@
 
   /** Get the selected commit object. */
   const selectedCommit = $derived(commits.find(c => c.hash === selectedHash))
+  const selectedCommitFilesRevealKey = $derived.by(() => {
+    if (!selectedHash || filesLoading) return null
+    return `${selectedHash}:${commitFiles.length}`
+  })
+  const selectedDiffRevealKey = $derived.by(() => {
+    if (!selectedHash || !selectedFilePath || diffLoading) return null
+    return `${selectedHash}:${selectedFilePath}:${diffHunks.length}`
+  })
+  const commitListRevealKey = $derived.by(() => {
+    if (loading) return null
+    const after = rangeFilter?.after || 'all'
+    const before = rangeFilter?.before || 'all'
+    return `${after}:${before}:${commits.length}:${currentOffset}`
+  })
 
   /** Group commits by date for visual grouping headers. */
   function getDateLabel(ts) {
@@ -384,7 +398,7 @@
       </div>
     {:else if selectedCommit}
       <!-- Commit header -->
-      <div class="px-6 pt-5 pb-4 border-b {t.keyline} shrink-0">
+      <div class="px-6 pt-5 pb-4 border-b {t.keyline} shrink-0 content-enter">
         <div class="flex items-baseline gap-3">
           <span class="font-mono text-[13px] {t.hashColor}">{selectedCommit.hash}</span>
           <span class="text-[11px] {t.textTertiary}">{selectedCommit.author}</span>
@@ -454,28 +468,34 @@
                     </div>
                   {/each}
                 </div>
-              {:else if diffHunks.length === 0}
-                <p class="text-[12px] {t.textMuted}" data-testid="diff-empty">Binary file or no changes</p>
-              {:else}
-                <div class="rounded border {t.keyline} overflow-hidden" data-testid="diff-content">
-                  {#each diffHunks as hunk, hunkIdx}
-                    <!-- Hunk header -->
-                    <div class="px-3 py-1 {hunkHeaderBg} {hunkHeaderText} text-[11px] font-mono border-b {t.keyline}">
-                      @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},{hunk.new_lines} @@
-                    </div>
-                    <!-- Diff lines -->
-                    {#each hunk.lines as line}
-                      {@const bgClass = line.origin === '+' ? diffAddBg : line.origin === '-' ? diffDelBg : ''}
-                      {@const textClass = line.origin === '+' ? diffAddText : line.origin === '-' ? diffDelText : t.textBody}
-                      <div class="flex font-mono text-[12px] leading-[20px] {bgClass}" data-testid="diff-line">
-                        <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {t.keyline}">{line.old_lineno ?? ''}</span>
-                        <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {t.keyline}">{line.new_lineno ?? ''}</span>
-                        <span class="w-4 shrink-0 text-center select-none {textClass}">{line.origin}</span>
-                        <span class="flex-1 px-1 whitespace-pre {textClass}">{line.content}</span>
+              {:else if selectedDiffRevealKey}
+                {#key selectedDiffRevealKey}
+                  <div class="content-enter">
+                    {#if diffHunks.length === 0}
+                      <p class="text-[12px] {t.textMuted}" data-testid="diff-empty">Binary file or no changes</p>
+                    {:else}
+                      <div class="rounded border {t.keyline} overflow-hidden" data-testid="diff-content">
+                        {#each diffHunks as hunk, hunkIdx}
+                          <!-- Hunk header -->
+                          <div class="px-3 py-1 {hunkHeaderBg} {hunkHeaderText} text-[11px] font-mono border-b {t.keyline}">
+                            @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},{hunk.new_lines} @@
+                          </div>
+                          <!-- Diff lines -->
+                          {#each hunk.lines as line}
+                            {@const bgClass = line.origin === '+' ? diffAddBg : line.origin === '-' ? diffDelBg : ''}
+                            {@const textClass = line.origin === '+' ? diffAddText : line.origin === '-' ? diffDelText : t.textBody}
+                            <div class="flex font-mono text-[12px] leading-[20px] {bgClass}" data-testid="diff-line">
+                              <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {t.keyline}">{line.old_lineno ?? ''}</span>
+                              <span class="w-[36px] shrink-0 text-right pr-1 select-none {lineNoText} {lineNoBg} border-r {t.keyline}">{line.new_lineno ?? ''}</span>
+                              <span class="w-4 shrink-0 text-center select-none {textClass}">{line.origin}</span>
+                              <span class="flex-1 px-1 whitespace-pre {textClass}">{line.content}</span>
+                            </div>
+                          {/each}
+                        {/each}
                       </div>
-                    {/each}
-                  {/each}
-                </div>
+                    {/if}
+                  </div>
+                {/key}
               {/if}
             </div>
           </div>
@@ -498,22 +518,28 @@
                   </div>
                 {/each}
               </div>
-            {:else if commitFiles.length === 0}
-              <p class="text-[12px] {t.textMuted}">No files changed</p>
-            {:else}
-              <div class="space-y-0.5">
-                {#each commitFiles as file}
-                  {@const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.modified}
-                  <button
-                    class="w-full text-left flex items-center gap-2 h-[28px] px-2 rounded transition-colors {t.fileBg}"
-                    onclick={() => handleFileClick(file.path)}
-                    data-testid="commit-file"
-                  >
-                    <span class="w-3 text-center font-mono text-[11px] font-bold {display.color} shrink-0">{display.icon}</span>
-                    <span class="text-[12px] font-mono {t.textBody} truncate">{file.path}</span>
-                  </button>
-                {/each}
-              </div>
+            {:else if selectedCommitFilesRevealKey}
+              {#key selectedCommitFilesRevealKey}
+                <div class="content-enter">
+                  {#if commitFiles.length === 0}
+                    <p class="text-[12px] {t.textMuted}">No files changed</p>
+                  {:else}
+                    <div class="space-y-0.5">
+                      {#each commitFiles as file}
+                        {@const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.modified}
+                        <button
+                          class="w-full text-left flex items-center gap-2 h-[28px] px-2 rounded transition-colors {t.fileBg}"
+                          onclick={() => handleFileClick(file.path)}
+                          data-testid="commit-file"
+                        >
+                          <span class="w-3 text-center font-mono text-[11px] font-bold {display.color} shrink-0">{display.icon}</span>
+                          <span class="text-[12px] font-mono {t.textBody} truncate">{file.path}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/key}
             {/if}
           </div>
         {/if}
@@ -557,73 +583,79 @@
             </div>
           {/each}
         </div>
-      {:else if commits.length === 0}
-        <div class="flex-1 flex items-center justify-center px-4" data-testid="git-empty">
-          <div class="text-center max-w-xs">
-            <svg class="w-12 h-12 {t.textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p class="mt-4 text-[15px] font-medium {t.textMuted}">
-              {rangeFilter ? 'No commits in this range' : 'No commits found'}
-            </p>
-            <p class="mt-2 text-[13px] leading-relaxed {t.textTertiary}">
-              {rangeFilter ? 'Try adjusting the date range filter.' : 'This project has no git history yet.'}
-            </p>
-          </div>
-        </div>
-      {:else}
-        {#each commits as commit, idx (commit.hash)}
-          {@const isSelected = selectedHash === commit.hash}
-          {@const prevCommit = idx > 0 ? commits[idx - 1] : null}
-          {@const currentLabel = commit.timestamp ? getDateLabel(commit.timestamp) : ''}
-          {@const prevLabel = prevCommit?.timestamp ? getDateLabel(prevCommit.timestamp) : ''}
-          {@const showHeader = currentLabel && currentLabel !== prevLabel}
-
-          <!-- Date group header -->
-          {#if showHeader}
-            <div class="sticky top-0 z-10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] {groupHeaderBg} {groupHeaderText} {idx > 0 ? 'mt-1' : ''}">
-              {currentLabel}
-            </div>
-          {/if}
-
-          <!-- Commit row -->
-          <button
-            class="w-full flex items-center h-[46px] text-left px-3 gap-2.5 transition-colors border-b {rowBorder}
-              {isSelected ? t.listSelected : t.listHover}"
-            onclick={() => selectCommit(commit.hash)}
-            oncontextmenu={(e) => openCommitContextMenu(e, commit)}
-            data-testid="commit-row"
-            aria-current={isSelected ? 'true' : undefined}
-          >
-            <!-- Author initial circle — hue derived from author string -->
-            <div
-              class="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium"
-              style={isSelected ? '' : avatarStyle(commit.author)}
-            >
-              {authorInitial(commit.author)}
-            </div>
-
-            <!-- Message + metadata -->
-            <div class="flex-1 flex flex-col justify-center min-w-0">
-              <span class="text-[13px] truncate {isSelected ? '' : commitMsg}">{commit.message}</span>
-              <div class="flex items-center gap-1.5 mt-0.5">
-                <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : commitMeta}">{commit.hash}</span>
-                <span class="{isSelected ? 'opacity-40' : commitMeta} text-[8px]">&#183;</span>
-                <span class="text-[10px] truncate {isSelected ? 'opacity-60' : commitMeta}">{commit.author}</span>
+      {:else if commitListRevealKey}
+        {#key commitListRevealKey}
+          <div class="content-enter">
+            {#if commits.length === 0}
+              <div class="flex-1 flex items-center justify-center px-4" data-testid="git-empty">
+                <div class="text-center max-w-xs">
+                  <svg class="w-12 h-12 {t.textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p class="mt-4 text-[15px] font-medium {t.textMuted}">
+                    {rangeFilter ? 'No commits in this range' : 'No commits found'}
+                  </p>
+                  <p class="mt-2 text-[13px] leading-relaxed {t.textTertiary}">
+                    {rangeFilter ? 'Try adjusting the date range filter.' : 'This project has no git history yet.'}
+                  </p>
+                </div>
               </div>
-            </div>
+            {:else}
+              {#each commits as commit, idx (commit.hash)}
+                {@const isSelected = selectedHash === commit.hash}
+                {@const prevCommit = idx > 0 ? commits[idx - 1] : null}
+                {@const currentLabel = commit.timestamp ? getDateLabel(commit.timestamp) : ''}
+                {@const prevLabel = prevCommit?.timestamp ? getDateLabel(prevCommit.timestamp) : ''}
+                {@const showHeader = currentLabel && currentLabel !== prevLabel}
 
-            <!-- Timestamp (right-aligned) -->
-            <span class="text-[11px] shrink-0 {isSelected ? '' : timeColor}">{commit.date}</span>
-          </button>
-        {/each}
-        {#if hasMore && !rangeFilter}
-          <div bind:this={sentinelEl} class="h-8 flex items-center justify-center" data-testid="scroll-sentinel">
-            {#if loadingMore}
-              <span class="text-[10px] {t.textTertiary}">Loading...</span>
+                <!-- Date group header -->
+                {#if showHeader}
+                  <div class="sticky top-0 z-10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] {groupHeaderBg} {groupHeaderText} {idx > 0 ? 'mt-1' : ''}">
+                    {currentLabel}
+                  </div>
+                {/if}
+
+                <!-- Commit row -->
+                <button
+                  class="w-full flex items-center h-[46px] text-left px-3 gap-2.5 transition-colors border-b {rowBorder}
+                    {isSelected ? t.listSelected : t.listHover}"
+                  onclick={() => selectCommit(commit.hash)}
+                  oncontextmenu={(e) => openCommitContextMenu(e, commit)}
+                  data-testid="commit-row"
+                  aria-current={isSelected ? 'true' : undefined}
+                >
+                  <!-- Author initial circle — hue derived from author string -->
+                  <div
+                    class="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium"
+                    style={isSelected ? '' : avatarStyle(commit.author)}
+                  >
+                    {authorInitial(commit.author)}
+                  </div>
+
+                  <!-- Message + metadata -->
+                  <div class="flex-1 flex flex-col justify-center min-w-0">
+                    <span class="text-[13px] truncate {isSelected ? '' : commitMsg}">{commit.message}</span>
+                    <div class="flex items-center gap-1.5 mt-0.5">
+                      <span class="font-mono text-[10px] {isSelected ? 'opacity-70' : commitMeta}">{commit.hash}</span>
+                      <span class="{isSelected ? 'opacity-40' : commitMeta} text-[8px]">&#183;</span>
+                      <span class="text-[10px] truncate {isSelected ? 'opacity-60' : commitMeta}">{commit.author}</span>
+                    </div>
+                  </div>
+
+                  <!-- Timestamp (right-aligned) -->
+                  <span class="text-[11px] shrink-0 {isSelected ? '' : timeColor}">{commit.date}</span>
+                </button>
+              {/each}
+              {#if hasMore && !rangeFilter}
+                <div bind:this={sentinelEl} class="h-8 flex items-center justify-center" data-testid="scroll-sentinel">
+                  {#if loadingMore}
+                    <span class="text-[10px] {t.textTertiary}">Loading...</span>
+                  {/if}
+                </div>
+              {/if}
             {/if}
           </div>
-        {/if}
+        {/key}
       {/if}
     </div>
   </div>

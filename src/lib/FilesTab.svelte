@@ -54,6 +54,11 @@
   let initializedProjectId = null
   let wasActive = false
 
+  const fileContentRevealKey = $derived.by(() => {
+    if (!selectedFile || fileContentLoading) return null
+    return `${selectedFile}:${activeFileReadSequence}`
+  })
+
   // Sync position outward for Shell's per-project position memory
   $effect(() => {
     position = { selectedFile }
@@ -539,42 +544,48 @@
               <div class="h-3 rounded bg-zinc-200/50 animate-pulse" style="width: {40 + Math.random() * 50}%"></div>
             {/each}
           </div>
-        {:else if fileError}
-          <div class="flex flex-col items-center justify-center h-full gap-2 {t.textTertiary}">
-            {#if fileError === 'binary'}
-              <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-              <span class="text-[13px]">Binary file — cannot display as text</span>
-            {:else if fileError === 'pdf'}
-              <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-              <span class="text-[13px]">PDF viewer coming soon</span>
-            {:else if fileError === 'too-large'}
-              <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-              <span class="text-[13px]">File too large to display (&gt;5 MB)</span>
-            {:else}
-              <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
-              <span class="text-[13px]">Error loading file</span>
-            {/if}
-          </div>
-        {:else if imageDataUri}
-          <div class="flex items-center justify-center p-6 h-full">
-            <img src={imageDataUri} alt={selectedFile} class="max-w-full max-h-full object-contain rounded-lg" />
-          </div>
-        {:else if fileContent}
-          {#if fileType === 'markdown'}
-            <div class="p-6 overflow-auto">
-              <MarkdownRenderer
-                source={fileContent.content}
-                {dark}
-                {codeTheme}
-                projectId={selectedProject?.id}
-                filePath={selectedFile}
-                scrollToAnchor={targetAnchor}
-                onNavigate={onMarkdownNavigate}
-              />
+        {:else if fileContentRevealKey}
+          {#key fileContentRevealKey}
+            <div class="h-full content-enter">
+              {#if fileError}
+                <div class="flex flex-col items-center justify-center h-full gap-2 {t.textTertiary}">
+                  {#if fileError === 'binary'}
+                    <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                    <span class="text-[13px]">Binary file — cannot display as text</span>
+                  {:else if fileError === 'pdf'}
+                    <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                    <span class="text-[13px]">PDF viewer coming soon</span>
+                  {:else if fileError === 'too-large'}
+                    <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                    <span class="text-[13px]">File too large to display (&gt;5 MB)</span>
+                  {:else}
+                    <svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <span class="text-[13px]">Error loading file</span>
+                  {/if}
+                </div>
+              {:else if imageDataUri}
+                <div class="flex items-center justify-center p-6 h-full">
+                  <img src={imageDataUri} alt={selectedFile} class="max-w-full max-h-full object-contain rounded-lg" />
+                </div>
+              {:else if fileContent}
+                {#if fileType === 'markdown'}
+                  <div class="p-6 overflow-auto">
+                    <MarkdownRenderer
+                      source={fileContent.content}
+                      {dark}
+                      {codeTheme}
+                      projectId={selectedProject?.id}
+                      filePath={selectedFile}
+                      scrollToAnchor={targetAnchor}
+                      onNavigate={onMarkdownNavigate}
+                    />
+                  </div>
+                {:else}
+                  <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} {codeTheme} scrollToLine={targetLineNumber} />
+                {/if}
+              {/if}
             </div>
-          {:else}
-            <CodeViewer code={fileContent.content} language={fileContent.language || ''} {dark} {codeTheme} scrollToLine={targetLineNumber} />
-          {/if}
+          {/key}
         {/if}
       </div>
     {/if}

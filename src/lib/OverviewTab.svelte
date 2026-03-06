@@ -44,6 +44,19 @@
     : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700 border-zinc-200')
 
   let showAllCommits = $state(false)
+  const commitsRevealKey = $derived.by(() => {
+    if (commitsLoading) return null
+    return `${selectedProject?.id ?? 'none'}:${recentCommits.length}:${showAllCommits ? 'all' : 'top'}`
+  })
+  const sessionsRevealKey = $derived.by(() => {
+    if (sessionLoading) return null
+    const latestMarker = latestSession?.date ?? latestSession?.summary ?? 'none'
+    return `${selectedProject?.id ?? 'none'}:${latestMarker}:${sessionHistory.length}`
+  })
+  const relationshipsRevealKey = $derived.by(() => {
+    if (relationshipsLoading) return null
+    return `${selectedProject?.id ?? 'none'}:${relationships.length}`
+  })
 
   const readmeForOverview = $derived.by(() => {
     if (!readmeContent?.content) return ''
@@ -191,29 +204,35 @@
             </div>
           {/each}
         </div>
-      {:else if recentCommits.length === 0}
-        <p class="text-[13px] {t.textMuted}">No commits found.</p>
-      {:else}
-        <div>
-          {#each recentCommits as commit}
-            <button
-              class="w-full flex items-center h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
-              onclick={() => handleNavigateToCommit(commit.hash)}
-              data-testid="overview-commit-row"
-            >
-              <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
-              <span class="{t.textBody} truncate flex-1">{commit.message}</span>
-              <span class="text-[11px] {timeColor} shrink-0 ml-3">{commit.date}</span>
-            </button>
-          {/each}
-        </div>
-        {#if !showAllCommits}
-          <button
-            data-testid="view-all-commits"
-            class="mt-1 text-[11px] {t.textTertiary} hover:underline"
-            onclick={handleViewAllCommits}
-          >View all &rarr;</button>
-        {/if}
+      {:else if commitsRevealKey}
+        {#key commitsRevealKey}
+          <div class="content-enter">
+            {#if recentCommits.length === 0}
+              <p class="text-[13px] {t.textMuted}">No commits found.</p>
+            {:else}
+              <div>
+                {#each recentCommits as commit}
+                  <button
+                    class="w-full flex items-center h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
+                    onclick={() => handleNavigateToCommit(commit.hash)}
+                    data-testid="overview-commit-row"
+                  >
+                    <span class="font-mono text-[11px] {hashColor} w-[58px] shrink-0">{commit.hash}</span>
+                    <span class="{t.textBody} truncate flex-1">{commit.message}</span>
+                    <span class="text-[11px] {timeColor} shrink-0 ml-3">{commit.date}</span>
+                  </button>
+                {/each}
+              </div>
+              {#if !showAllCommits}
+                <button
+                  data-testid="view-all-commits"
+                  class="mt-1 text-[11px] {t.textTertiary} hover:underline"
+                  onclick={handleViewAllCommits}
+                >View all &rarr;</button>
+              {/if}
+            {/if}
+          </div>
+        {/key}
       {/if}
     </section>
 
@@ -231,52 +250,56 @@
             <div class="h-3 w-3/4 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
             <div class="h-3 w-1/2 rounded {dark ? 'bg-zinc-700' : 'bg-zinc-200'}"></div>
           </div>
-        {:else}
-          {#if latestSession}
-            <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint} mb-3">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-[11px] font-medium {t.textTertiary}">Latest</span>
-                <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
-              </div>
-              <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
-              {#if latestSession.next_steps && latestSession.next_steps.length > 0}
-                <div class="mt-3">
-                  <span class="text-[11px] {t.textTertiary}">Next steps</span>
-                  <ul class="mt-1 space-y-0.5">
-                    {#each latestSession.next_steps as step}
-                      <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                        <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
-                        <span>{step}</span>
-                      </li>
-                    {/each}
-                  </ul>
+        {:else if sessionsRevealKey}
+          {#key sessionsRevealKey}
+            <div class="content-enter">
+              {#if latestSession}
+                <div class="border-l-[3px] {sessionBorder} pl-5 py-3 -ml-0.5 rounded-r-sm {sessionTint} mb-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] font-medium {t.textTertiary}">Latest</span>
+                    <span class="text-[11px] {t.textTertiary}">{formatSessionDate(latestSession.date)}</span>
+                  </div>
+                  <p class="text-[13px] {t.textBody}">{latestSession.summary}</p>
+                  {#if latestSession.next_steps && latestSession.next_steps.length > 0}
+                    <div class="mt-3">
+                      <span class="text-[11px] {t.textTertiary}">Next steps</span>
+                      <ul class="mt-1 space-y-0.5">
+                        {#each latestSession.next_steps as step}
+                          <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                            <span class="text-[10px] {t.textTertiary} mt-1 shrink-0">&#9656;</span>
+                            <span>{step}</span>
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                  {#if latestSession.open_questions && latestSession.open_questions.length > 0}
+                    <div class="mt-3">
+                      <span class="text-[11px] {t.textTertiary}">Open questions</span>
+                      <ul class="mt-1 space-y-0.5">
+                        {#each latestSession.open_questions as question}
+                          <li class="text-[13px] {t.textBody} flex items-start gap-2">
+                            <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
+                            <span>{question}</span>
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
                 </div>
               {/if}
-              {#if latestSession.open_questions && latestSession.open_questions.length > 0}
-                <div class="mt-3">
-                  <span class="text-[11px] {t.textTertiary}">Open questions</span>
-                  <ul class="mt-1 space-y-0.5">
-                    {#each latestSession.open_questions as question}
-                      <li class="text-[13px] {t.textBody} flex items-start gap-2">
-                        <span class="text-[10px] {t.questionMark} mt-1 shrink-0">?</span>
-                        <span>{question}</span>
-                      </li>
-                    {/each}
-                  </ul>
+              {#if sessionHistory.length > 0}
+                <div>
+                  {#each sessionHistory as session}
+                    <div class="flex items-start gap-3 py-1.5 {t.hoverRow} -mx-2 px-2 rounded">
+                      <span class="text-[11px] {t.textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
+                      <span class="text-[13px] {t.textBody} flex-1">{session.summary}</span>
+                    </div>
+                  {/each}
                 </div>
               {/if}
             </div>
-          {/if}
-          {#if sessionHistory.length > 0}
-            <div>
-              {#each sessionHistory as session}
-                <div class="flex items-start gap-3 py-1.5 {t.hoverRow} -mx-2 px-2 rounded">
-                  <span class="text-[11px] {t.textTertiary} shrink-0 w-[72px] pt-0.5">{formatSessionDate(session.date)}</span>
-                  <span class="text-[13px] {t.textBody} flex-1">{session.summary}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
+          {/key}
         {/if}
       </section>
     {/if}
@@ -300,44 +323,46 @@
               </div>
             {/each}
           </div>
-        {:else}
-          <div>
-            {#each relationships as rel}
-              {@const direction = getRelationshipDirection(rel)}
-              {@const projectName = getRelatedProjectName(rel)}
-              {@const typeLabel = RELATIONSHIP_TYPE_LABELS[rel.relationship_type] || rel.relationship_type}
-              {@const sourceLabel = DETECTION_SOURCE_LABELS[rel.detection_source] || rel.detection_source}
-              <div class="flex items-center h-[30px] text-[13px] {t.hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
-                <span class="w-5 text-center shrink-0 {t.textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
+        {:else if relationshipsRevealKey}
+          {#key relationshipsRevealKey}
+            <div class="content-enter">
+              {#each relationships as rel}
+                {@const direction = getRelationshipDirection(rel)}
+                {@const projectName = getRelatedProjectName(rel)}
+                {@const typeLabel = RELATIONSHIP_TYPE_LABELS[rel.relationship_type] || rel.relationship_type}
+                {@const sourceLabel = DETECTION_SOURCE_LABELS[rel.detection_source] || rel.detection_source}
+                <div class="flex items-center h-[30px] text-[13px] {t.hoverRow} -mx-2 px-2 rounded group" data-testid="relationship-row">
+                  <span class="w-5 text-center shrink-0 {t.textTertiary}" title={direction === 'outgoing' ? 'outgoing' : 'incoming'}>{direction === 'outgoing' ? '\u2192' : '\u2190'}</span>
 
-                <button
-                  class="text-[13px] {t.linkColor} truncate transition-colors"
-                  onclick={() => {
-                    const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
-                    const p = projects.find(pr => pr.id === otherId)
-                    if (p) handleSelectProject(p)
-                  }}
-                >{projectName}</button>
-
-                <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded {tagBg} shrink-0">{typeLabel}</span>
-
-                <span class="ml-2 text-[10px] {t.textTertiary} shrink-0">{sourceLabel}</span>
-
-                {#if rel.detection_source !== 'manual'}
                   <button
-                    class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {t.textMuted} hover:{t.textSecondary} transition-all shrink-0"
-                    onclick={() => onDismissRelationship(rel.id)}
-                    aria-label="Dismiss relationship"
-                    data-testid="dismiss-relationship"
-                  >
-                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
-                    </svg>
-                  </button>
-                {/if}
-              </div>
-            {/each}
-          </div>
+                    class="text-[13px] {t.linkColor} truncate transition-colors"
+                    onclick={() => {
+                      const otherId = direction === 'outgoing' ? rel.target_project_id : rel.source_project_id
+                      const p = projects.find(pr => pr.id === otherId)
+                      if (p) handleSelectProject(p)
+                    }}
+                  >{projectName}</button>
+
+                  <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded {tagBg} shrink-0">{typeLabel}</span>
+
+                  <span class="ml-2 text-[10px] {t.textTertiary} shrink-0">{sourceLabel}</span>
+
+                  {#if rel.detection_source !== 'manual'}
+                    <button
+                      class="ml-auto opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded {t.textMuted} hover:{t.textSecondary} transition-all shrink-0"
+                      onclick={() => onDismissRelationship(rel.id)}
+                      aria-label="Dismiss relationship"
+                      data-testid="dismiss-relationship"
+                    >
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                      </svg>
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/key}
         {/if}
       </section>
     {/if}

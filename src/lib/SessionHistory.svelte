@@ -196,7 +196,7 @@
 
   {:else if sessions.length === 0}
     <!-- Empty state -->
-    <div class="flex-1 flex items-center justify-center" data-testid="history-empty">
+    <div class="flex-1 flex items-center justify-center content-enter" data-testid="history-empty">
       <div class="text-center max-w-xs">
         <svg class="w-12 h-12 {t.textMuted} mx-auto opacity-30" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -222,7 +222,7 @@
     {/if}
 
     <!-- Session accordion list -->
-    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1.5">
+    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1.5 content-enter">
       {#each sessions as session, idx (session.session_id ?? `unknown-${idx}`)}
         {@const sessionKey = session.session_id ?? `unknown-${idx}`}
         {@const open = isExpanded(sessionKey)}
@@ -291,7 +291,7 @@
           {#if open}
             {@const detail = expandedData.get(sessionKey)}
             <div
-              class="px-4 pb-3 pt-1 {detailBg} rounded-b-lg"
+              class="px-4 pb-3 pt-1 {detailBg} rounded-b-lg {detail?.loading ? '' : 'content-enter'}"
               data-testid="session-detail"
             >
               {#if session.enrichment_warnings?.length > 0}
