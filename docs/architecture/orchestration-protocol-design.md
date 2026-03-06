@@ -130,7 +130,7 @@ No optional `SendMessage` schema extension is required for v1.
 | `message_id` | mesh delivery layer existing message id | optional (present when available) |
 | `sender` | message envelope sender | required |
 | `recipient` | `SendMessage.recipient` | required |
-| `message_type` | `SendMessage.type` | required |
+| `message_type` | `SendMessage.type` | optional for inbox-only observed events; default to `message` when not surfaced |
 | `timestamp` | inbox message timestamp / send event timestamp | required |
 | `intent` (task assignment) | task-mutation journal + correlated `TaskUpdate` owner/status + optional embedded block consistency check | infer `assign` when deterministic assignment context exists |
 | `intent` (non-task) | embedded block `intent` | required for actionable non-task messages |
