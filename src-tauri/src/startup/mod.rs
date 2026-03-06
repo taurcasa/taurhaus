@@ -644,6 +644,7 @@ mod tests {
     #[test]
     fn startup_emitters_use_inventory_specific_event_names() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("startup-events.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");

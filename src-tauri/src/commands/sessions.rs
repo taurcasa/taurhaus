@@ -204,6 +204,7 @@ mod tests {
 
     #[test]
     fn list_sessions_emits_lifecycle_events() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let (db, _tmp) = test_db_state();
         insert_project(&db, "p1");
         insert_session(&db, "s1", "p1", "2026-02-01");

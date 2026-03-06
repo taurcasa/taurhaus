@@ -3,12 +3,18 @@ use std::fs::{File, OpenOptions};
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
 static HEAVY_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static GLOBAL_LOG_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Guard that serializes heavy integration-style tests (daemon sockets,
 /// filesystem watchers) both within a process and across test binaries.
 pub struct HeavyTestGuard {
     _in_process: MutexGuard<'static, ()>,
     lock_file: File,
+}
+
+/// Guard that serializes tests mutating the process-global structured log sink.
+pub struct GlobalLogTestGuard {
+    _in_process: MutexGuard<'static, ()>,
 }
 
 impl Drop for HeavyTestGuard {
@@ -46,5 +52,15 @@ pub fn acquire_heavy_test_guard() -> HeavyTestGuard {
     HeavyTestGuard {
         _in_process: in_process,
         lock_file,
+    }
+}
+
+/// Acquire the shared guard for tests that install a process-global log sink.
+pub fn acquire_global_log_test_guard() -> GlobalLogTestGuard {
+    let in_process = GLOBAL_LOG_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    GlobalLogTestGuard {
+        _in_process: in_process,
     }
 }

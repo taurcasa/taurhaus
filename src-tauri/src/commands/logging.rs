@@ -538,6 +538,7 @@ mod tests {
 
     #[test]
     fn frontend_log_command_emits_ipc_log_received_audit_event() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join(JSONL_LOG_FILE_NAME);
         let state = LogFileState::new(log_path.clone()).expect("create log state");

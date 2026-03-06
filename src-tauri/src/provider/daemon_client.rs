@@ -604,8 +604,10 @@ mod tests {
         }
     }
 
-    fn start_daemon_on_port(port: u16) -> TestDaemon {
-        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+    fn start_daemon_on_port_with_guard(
+        port: u16,
+        heavy_guard: crate::test_support::HeavyTestGuard,
+    ) -> TestDaemon {
         let shutdown = Arc::new(AtomicBool::new(false));
         let config = DaemonConfig {
             port,
@@ -624,6 +626,11 @@ mod tests {
             _heavy_guard: heavy_guard,
             handle: Some(handle),
         }
+    }
+
+    fn start_daemon_on_port(port: u16) -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        start_daemon_on_port_with_guard(port, heavy_guard)
     }
 
     /// Start a test daemon server with an ephemeral port.
@@ -946,12 +953,19 @@ mod tests {
 
     #[test]
     fn emits_daemon_connection_lifecycle_events_on_connect_reconnect_and_disconnect() {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("daemon-connection-lifecycle.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&state);
 
-        let daemon = start_daemon();
+        let daemon = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            drop(listener);
+            start_daemon_on_port_with_guard(port, heavy_guard)
+        };
         let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         assert!(provider.reconnect().is_ok());
         provider.mark_disconnected("test_disconnect");

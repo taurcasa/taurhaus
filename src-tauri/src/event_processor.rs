@@ -1077,6 +1077,7 @@ mod tests {
     #[test]
     fn emits_structured_watch_batch_and_git_status_events() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let log_dir = tempfile::TempDir::new().expect("temp log dir");
         let log_path = log_dir.path().join("watch-events.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
@@ -1119,6 +1120,7 @@ mod tests {
     #[test]
     fn emits_structured_search_file_index_events() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let log_dir = tempfile::TempDir::new().expect("temp log dir");
         let log_path = log_dir.path().join("search-file-index-events.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");

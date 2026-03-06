@@ -189,6 +189,7 @@ mod tests {
     #[test]
     fn daemon_rpc_span_emits_sent_and_response_fields() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("daemon-rpc.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
@@ -230,6 +231,7 @@ mod tests {
     #[test]
     fn daemon_rpc_span_emits_timeout_fields() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("daemon-rpc-timeout.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
@@ -260,6 +262,7 @@ mod tests {
     #[test]
     fn daemon_rpc_span_emits_failed_with_error_fields() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("daemon-rpc-failed.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
@@ -291,6 +294,7 @@ mod tests {
     #[test]
     fn daemon_connection_events_emit_expected_fields() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("daemon-connection.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");

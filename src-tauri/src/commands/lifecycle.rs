@@ -176,6 +176,7 @@ mod tests {
 
     #[test]
     fn span_emits_received_completed_and_lock_wait_events() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("lifecycle.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
@@ -206,6 +207,7 @@ mod tests {
 
     #[test]
     fn span_emits_failed_with_error_fields() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("lifecycle-error.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");

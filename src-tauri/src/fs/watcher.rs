@@ -829,6 +829,7 @@ mod tests {
     #[test]
     fn watcher_emits_structured_register_and_unregister_events() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let log_dir = tempfile::TempDir::new().expect("temp log dir");
         let log_path = log_dir.path().join("watcher-events.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");
@@ -865,6 +866,7 @@ mod tests {
     #[test]
     fn watcher_emits_structured_drop_event_when_channel_is_closed() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let log_dir = tempfile::TempDir::new().expect("temp log dir");
         let log_path = log_dir.path().join("watcher-drop.log.jsonl");
         let state = LogFileState::new(log_path.clone()).expect("log state");

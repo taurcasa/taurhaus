@@ -159,6 +159,7 @@ mod tests {
 
     #[test]
     fn get_settings_emits_lifecycle_events() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let (db, _tmp) = test_db_state();
         let dir = tempfile::TempDir::new().expect("temp dir");
         let log_path = dir.path().join("settings-lifecycle.log.jsonl");
