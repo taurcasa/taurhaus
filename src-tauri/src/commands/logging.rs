@@ -10,6 +10,8 @@ use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::commands::lifecycle::IpcCommandSpan;
+
 pub const JSONL_LOG_FILE_NAME: &str = "taurhaus.log.jsonl";
 const ROTATION_BYTES: u64 = 20 * 1024 * 1024;
 const RETENTION_DAYS: i64 = 7;
@@ -267,9 +269,74 @@ pub fn frontend_log(
     level: Option<String>,
     message: Option<String>,
     log_file: tauri::State<LogFileState>,
-) {
+) -> Result<(), String> {
+    let span = IpcCommandSpan::start("frontend_log");
     let payload = payload.unwrap_or_else(|| FrontendLogPayload::from_legacy(level, message));
-    frontend_log_impl(payload, log_file.inner());
+    let result = frontend_log_command_impl(payload, log_file.inner());
+    span.finish_result(&result);
+    result
+}
+
+fn frontend_log_command_impl(
+    payload: FrontendLogPayload,
+    log_file: &LogFileState,
+) -> Result<(), String> {
+    let frontend_level = payload.level.clone();
+    let frontend_event = payload.event.clone();
+    emit_global(
+        "debug",
+        "backend",
+        "ipc.log.received",
+        Some("Frontend log IPC received".to_string()),
+        frontend_log_audit_fields(&frontend_level, frontend_event.as_deref(), None),
+    );
+
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        frontend_log_impl(payload, log_file);
+    }));
+
+    if caught.is_err() {
+        let error = "frontend_log handler panicked";
+        emit_global(
+            "warn",
+            "backend",
+            "ipc.log.failed",
+            Some("Frontend log IPC failed".to_string()),
+            frontend_log_audit_fields(&frontend_level, frontend_event.as_deref(), Some(error)),
+        );
+        return Err(error.to_string());
+    }
+
+    Ok(())
+}
+
+fn frontend_log_audit_fields(
+    frontend_level: &str,
+    frontend_event: Option<&str>,
+    error_message: Option<&str>,
+) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert(
+        "command".to_string(),
+        Value::String("frontend_log".to_string()),
+    );
+    fields.insert(
+        "frontend_level".to_string(),
+        Value::String(frontend_level.to_string()),
+    );
+    if let Some(event) = frontend_event {
+        fields.insert(
+            "frontend_event".to_string(),
+            Value::String(event.to_string()),
+        );
+    }
+    if let Some(error) = error_message {
+        fields.insert(
+            "error.message".to_string(),
+            Value::String(error.to_string()),
+        );
+    }
+    fields
 }
 
 fn frontend_log_impl(payload: FrontendLogPayload, log_file: &LogFileState) {
@@ -458,6 +525,28 @@ mod tests {
         assert_eq!(value["component"], "frontend");
         assert_eq!(value["event"], "frontend.console.received");
         assert_eq!(value["message"], "hello from ui");
+    }
+
+    #[test]
+    fn frontend_log_command_emits_ipc_log_received_audit_event() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join(JSONL_LOG_FILE_NAME);
+        let state = LogFileState::new(log_path.clone()).expect("create log state");
+        install_global_sink(&state);
+
+        frontend_log_command_impl(frontend_payload("info", "from command"), &state)
+            .expect("frontend_log command should succeed");
+        let lines = wait_for_lines(&log_path, 2);
+        assert_eq!(lines.len(), 2);
+
+        let audit: Value = serde_json::from_str(&lines[0]).expect("audit json");
+        let frontend: Value = serde_json::from_str(&lines[1]).expect("frontend json");
+
+        assert_eq!(audit["event"], "ipc.log.received");
+        assert_eq!(audit["command"], "frontend_log");
+        assert_eq!(audit["frontend_level"], "info");
+        assert_eq!(frontend["event"], "frontend.console.received");
+        assert_eq!(frontend["message"], "from command");
     }
 
     #[test]

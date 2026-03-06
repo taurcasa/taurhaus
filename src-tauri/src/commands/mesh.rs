@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{is_native_daemon, validate_wsl_distro, wsl_command};
 use crate::models::{MeshInstallStatus, OperationResult};
 use tauri::Manager;
@@ -9,22 +10,32 @@ const MESH_VERSION_RESOURCE: &str = "mesh.version";
 
 #[tauri::command]
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
-    let bundled_version = read_bundled_mesh_version(&app)?;
-    if is_native_daemon() {
-        check_mesh_install_native(&bundled_version)
-    } else {
-        check_mesh_install_wsl(&bundled_version)
-    }
+    let span = IpcCommandSpan::start("check_mesh_install_status");
+    let result = (|| {
+        let bundled_version = read_bundled_mesh_version(&app)?;
+        if is_native_daemon() {
+            check_mesh_install_native(&bundled_version)
+        } else {
+            check_mesh_install_wsl(&bundled_version)
+        }
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
-    let (bundled_binary, bundled_version) = resolve_bundled_mesh_assets(&app)?;
-    if is_native_daemon() {
-        install_mesh_native(&bundled_binary, &bundled_version)
-    } else {
-        install_mesh_wsl(&bundled_binary, &bundled_version)
-    }
+    let span = IpcCommandSpan::start("install_mesh");
+    let result = (|| {
+        let (bundled_binary, bundled_version) = resolve_bundled_mesh_assets(&app)?;
+        if is_native_daemon() {
+            install_mesh_native(&bundled_binary, &bundled_version)
+        } else {
+            install_mesh_wsl(&bundled_binary, &bundled_version)
+        }
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn resolve_bundled_mesh_assets(app: &tauri::AppHandle) -> Result<(PathBuf, String), String> {

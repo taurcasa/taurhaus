@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::commands::terminal_settings::load_terminal_settings;
@@ -22,48 +23,53 @@ pub fn list_cli_sessions(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
 ) -> Result<Vec<ClaudeSession>, String> {
-    if let Some(ref daemon) = provider.daemon {
-        if daemon.is_connected() {
-            let id = "list-sessions";
-            let request = protocol::DaemonRequest::new(
-                id,
-                protocol::method::LIST_CLAUDE_SESSIONS,
-                serde_json::Value::Null,
-            );
-            match daemon.send_status_request(&request) {
-                Ok(response) if response.is_ok() => {
-                    let mut sessions = decode_daemon_session_list(response.result)?;
+    let span = IpcCommandSpan::start("list_cli_sessions");
+    let result = (|| {
+        if let Some(ref daemon) = provider.daemon {
+            if daemon.is_connected() {
+                let id = "list-sessions";
+                let request = protocol::DaemonRequest::new(
+                    id,
+                    protocol::method::LIST_CLAUDE_SESSIONS,
+                    serde_json::Value::Null,
+                );
+                match daemon.send_status_request(&request) {
+                    Ok(response) if response.is_ok() => {
+                        let mut sessions = decode_daemon_session_list(response.result)?;
 
-                    if !crate::daemon::launcher::is_native_daemon() {
-                        if let Some(ref distro) = provider.wsl_distro {
-                            for session in &mut sessions {
-                                if session.project_path.starts_with('/') {
-                                    session.project_path = crate::provider::path::to_windows(
-                                        &session.project_path,
-                                        distro,
-                                    );
+                        if !crate::daemon::launcher::is_native_daemon() {
+                            if let Some(ref distro) = provider.wsl_distro {
+                                for session in &mut sessions {
+                                    if session.project_path.starts_with('/') {
+                                        session.project_path = crate::provider::path::to_windows(
+                                            &session.project_path,
+                                            distro,
+                                        );
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    promote_activity_from_sessions(&app, db.inner(), &sessions);
-                    return Ok(sessions);
-                }
-                Ok(response) => {
-                    tracing::warn!(error = ?response.error, "Daemon returned error for session listing");
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to reach daemon for session listing");
+                        promote_activity_from_sessions(&app, db.inner(), &sessions);
+                        return Ok(sessions);
+                    }
+                    Ok(response) => {
+                        tracing::warn!(error = ?response.error, "Daemon returned error for session listing");
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to reach daemon for session listing");
+                    }
                 }
             }
         }
-    }
 
-    let fallback = crate::session_scanner::scan_sessions();
-    tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
-    promote_activity_from_sessions(&app, db.inner(), &fallback);
-    Ok(fallback)
+        let fallback = crate::session_scanner::scan_sessions();
+        tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
+        promote_activity_from_sessions(&app, db.inner(), &fallback);
+        Ok(fallback)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn normalize_project_path_key(path: &str) -> String {
@@ -187,14 +193,17 @@ pub fn launch_cli_session(
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
 ) -> Result<protocol::LaunchSessionResult, String> {
-    launch_cli_session_impl(
+    let span = IpcCommandSpan::start("launch_cli_session");
+    let result = launch_cli_session_impl(
         db.inner(),
         provider.inner(),
         log_file.inner(),
         project_id,
         mode,
         cli_tool,
-    )
+    );
+    span.finish_result(&result);
+    result
 }
 
 fn launch_cli_session_impl(
@@ -357,7 +366,10 @@ pub fn stop_cli_session(
     tmux_pane: String,
     cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
-    stop_cli_session_impl(provider.inner(), tmux_pane, cli_tool)
+    let span = IpcCommandSpan::start("stop_cli_session");
+    let result = stop_cli_session_impl(provider.inner(), tmux_pane, cli_tool);
+    span.finish_result(&result);
+    result
 }
 
 fn stop_cli_session_impl(
@@ -408,72 +420,77 @@ pub fn navigate_to_session(
     tmux_pane: String,
     open_terminal: Option<bool>,
 ) -> Result<(), String> {
-    let should_open = open_terminal.unwrap_or(false);
+    let span = IpcCommandSpan::start("navigate_to_session");
+    let result = (|| {
+        let should_open = open_terminal.unwrap_or(false);
 
-    let mut navigation_fields = Map::new();
-    navigation_fields.insert(
-        "tmux_session".to_string(),
-        Value::String(tmux_session.clone()),
-    );
-    navigation_fields.insert(
-        "tmux_window".to_string(),
-        Value::String(tmux_window.clone()),
-    );
-    navigation_fields.insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
-    navigation_fields.insert("open_terminal".to_string(), Value::Bool(should_open));
-    log_file.emit(
-        "info",
-        "command_center",
-        "command_center.navigate",
-        Some("Navigate to tmux session".to_string()),
-        navigation_fields,
-    );
-    if let Some(ref daemon) = provider.daemon {
-        if daemon.is_connected() {
-            let id = "navigate-session";
-            let request = protocol::DaemonRequest::new(
-                id,
-                protocol::method::NAVIGATE_TO_SESSION,
-                protocol::NavigateToSessionParams {
-                    tmux_session: tmux_session.clone(),
-                    tmux_window: tmux_window.clone(),
-                    tmux_pane: tmux_pane.clone(),
-                },
-            );
-            match daemon.send_status_request(&request) {
-                Ok(response) if response.is_ok() => {
-                    let ts = load_terminal_settings(&db);
-                    let intent = if should_open || cfg!(target_os = "macos") {
-                        crate::terminal::TerminalIntent::EnsureOpen {
-                            distro: provider.wsl_distro.clone(),
-                            tmux_session: tmux_session.clone(),
-                            emulator: ts.emulator,
-                            custom_command: ts.custom_command,
-                        }
-                    } else {
-                        crate::terminal::TerminalIntent::FocusOnly {
-                            emulator: ts.emulator,
-                        }
-                    };
-                    let _ = crate::terminal::handle_terminal(intent);
-                    return Ok(());
-                }
-                Ok(response) => {
-                    let msg = response
-                        .error
-                        .map(|e| e.message)
-                        .unwrap_or_else(|| "Unknown error".to_string());
-                    return Err(format!("Failed to navigate: {msg}"));
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Daemon unreachable for navigate");
+        let mut navigation_fields = Map::new();
+        navigation_fields.insert(
+            "tmux_session".to_string(),
+            Value::String(tmux_session.clone()),
+        );
+        navigation_fields.insert(
+            "tmux_window".to_string(),
+            Value::String(tmux_window.clone()),
+        );
+        navigation_fields.insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+        navigation_fields.insert("open_terminal".to_string(), Value::Bool(should_open));
+        log_file.emit(
+            "info",
+            "command_center",
+            "command_center.navigate",
+            Some("Navigate to tmux session".to_string()),
+            navigation_fields,
+        );
+        if let Some(ref daemon) = provider.daemon {
+            if daemon.is_connected() {
+                let id = "navigate-session";
+                let request = protocol::DaemonRequest::new(
+                    id,
+                    protocol::method::NAVIGATE_TO_SESSION,
+                    protocol::NavigateToSessionParams {
+                        tmux_session: tmux_session.clone(),
+                        tmux_window: tmux_window.clone(),
+                        tmux_pane: tmux_pane.clone(),
+                    },
+                );
+                match daemon.send_status_request(&request) {
+                    Ok(response) if response.is_ok() => {
+                        let ts = load_terminal_settings(&db);
+                        let intent = if should_open || cfg!(target_os = "macos") {
+                            crate::terminal::TerminalIntent::EnsureOpen {
+                                distro: provider.wsl_distro.clone(),
+                                tmux_session: tmux_session.clone(),
+                                emulator: ts.emulator,
+                                custom_command: ts.custom_command,
+                            }
+                        } else {
+                            crate::terminal::TerminalIntent::FocusOnly {
+                                emulator: ts.emulator,
+                            }
+                        };
+                        let _ = crate::terminal::handle_terminal(intent);
+                        return Ok(());
+                    }
+                    Ok(response) => {
+                        let msg = response
+                            .error
+                            .map(|e| e.message)
+                            .unwrap_or_else(|| "Unknown error".to_string());
+                        return Err(format!("Failed to navigate: {msg}"));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Daemon unreachable for navigate");
+                    }
                 }
             }
         }
-    }
 
-    crate::session_scanner::control::navigate_to_pane(&tmux_session, &tmux_window, &tmux_pane)
-        .map_err(|e| format!("Failed to navigate: {e}"))
+        crate::session_scanner::control::navigate_to_pane(&tmux_session, &tmux_window, &tmux_pane)
+            .map_err(|e| format!("Failed to navigate: {e}"))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -486,7 +503,8 @@ pub fn record_session_activity(
     active_duration_ms: i64,
     total_duration_ms: i64,
 ) -> Result<(), String> {
-    record_session_activity_impl(
+    let span = IpcCommandSpan::start("record_session_activity");
+    let result = record_session_activity_impl(
         db.inner(),
         project_id,
         cli_tool,
@@ -494,7 +512,9 @@ pub fn record_session_activity(
         ended_at,
         active_duration_ms,
         total_duration_ms,
-    )
+    );
+    span.finish_result(&result);
+    result
 }
 
 fn record_session_activity_impl(
@@ -526,9 +546,14 @@ pub fn get_project_activity(
     db: State<'_, DbState>,
     project_id: String,
 ) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
-    let project_path = resolve_project_path(db.inner(), &project_id)?;
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::activity_queries::get_project_activity(&conn, &project_path).sanitize_err()
+    let span = IpcCommandSpan::start("get_project_activity");
+    let result = (|| {
+        let project_path = resolve_project_path(db.inner(), &project_id)?;
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::activity_queries::get_project_activity(&conn, &project_path).sanitize_err()
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn decode_daemon_session_list(

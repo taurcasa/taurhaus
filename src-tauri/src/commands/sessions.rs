@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::session_queries;
 use crate::errors::SanitizeErr;
@@ -10,7 +11,17 @@ pub fn get_latest_session(
     db: State<'_, DbState>,
     project_id: String,
 ) -> Result<Option<SessionDetail>, String> {
-    get_latest_session_impl(db.inner(), project_id)
+    get_latest_session_with_span(db.inner(), project_id)
+}
+
+fn get_latest_session_with_span(
+    db: &DbState,
+    project_id: String,
+) -> Result<Option<SessionDetail>, String> {
+    let span = IpcCommandSpan::start("get_latest_session");
+    let result = get_latest_session_impl(db, project_id);
+    span.finish_result(&result);
+    result
 }
 
 fn get_latest_session_impl(
@@ -28,7 +39,19 @@ pub fn list_sessions(
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Vec<SessionSummary>, String> {
-    list_sessions_impl(db.inner(), project_id, limit, offset)
+    list_sessions_with_span(db.inner(), project_id, limit, offset)
+}
+
+fn list_sessions_with_span(
+    db: &DbState,
+    project_id: String,
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<Vec<SessionSummary>, String> {
+    let span = IpcCommandSpan::start("list_sessions");
+    let result = list_sessions_impl(db, project_id, limit, offset);
+    span.finish_result(&result);
+    result
 }
 
 fn list_sessions_impl(
@@ -49,7 +72,14 @@ fn list_sessions_impl(
 
 #[tauri::command]
 pub fn get_session(db: State<'_, DbState>, session_id: String) -> Result<SessionDetail, String> {
-    get_session_impl(db.inner(), session_id)
+    get_session_with_span(db.inner(), session_id)
+}
+
+fn get_session_with_span(db: &DbState, session_id: String) -> Result<SessionDetail, String> {
+    let span = IpcCommandSpan::start("get_session");
+    let result = get_session_impl(db, session_id);
+    span.finish_result(&result);
+    result
 }
 
 fn get_session_impl(db: &DbState, session_id: String) -> Result<SessionDetail, String> {
@@ -62,6 +92,8 @@ fn get_session_impl(db: &DbState, session_id: String) -> Result<SessionDetail, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
+    use serde_json::Value;
     use std::sync::Mutex;
     use tempfile::NamedTempFile;
 
@@ -148,5 +180,51 @@ mod tests {
         let err =
             get_latest_session_impl(&db, "p1".to_string()).expect_err("poisoned lock should fail");
         assert!(err.to_lowercase().contains("poison"));
+    }
+
+    fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let lines: Vec<String> = content
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| line.to_string())
+                    .collect();
+                if lines.len() >= expected {
+                    return lines;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for log lines in {}", path.display());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn list_sessions_emits_lifecycle_events() {
+        let (db, _tmp) = test_db_state();
+        insert_project(&db, "p1");
+        insert_session(&db, "s1", "p1", "2026-02-01");
+
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join("sessions-lifecycle.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let listed =
+            list_sessions_with_span(&db, "p1".to_string(), Some(10), Some(0)).expect("list");
+        assert_eq!(listed.len(), 1);
+
+        let lines = wait_for_lines(&log_path, 2);
+        let received: Value = serde_json::from_str(&lines[0]).expect("received json");
+        let completed: Value = serde_json::from_str(&lines[1]).expect("completed json");
+
+        assert_eq!(received["event"], "ipc.command.received");
+        assert_eq!(received["command"], "list_sessions");
+        assert_eq!(completed["event"], "ipc.command.completed");
+        assert_eq!(completed["command"], "list_sessions");
+        assert_eq!(completed["status"], "ok");
     }
 }

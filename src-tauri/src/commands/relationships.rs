@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::relationship_queries;
 use crate::errors::SanitizeErr;
@@ -10,7 +11,17 @@ pub fn get_relationships(
     db: State<'_, DbState>,
     project_id: String,
 ) -> Result<Vec<Relationship>, String> {
-    get_relationships_impl(db.inner(), project_id)
+    get_relationships_with_span(db.inner(), project_id)
+}
+
+fn get_relationships_with_span(
+    db: &DbState,
+    project_id: String,
+) -> Result<Vec<Relationship>, String> {
+    let span = IpcCommandSpan::start("get_relationships");
+    let result = get_relationships_impl(db, project_id);
+    span.finish_result(&result);
+    result
 }
 
 fn get_relationships_impl(db: &DbState, project_id: String) -> Result<Vec<Relationship>, String> {
@@ -20,7 +31,14 @@ fn get_relationships_impl(db: &DbState, project_id: String) -> Result<Vec<Relati
 
 #[tauri::command]
 pub fn dismiss_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
-    dismiss_relationship_impl(db.inner(), relationship_id)
+    dismiss_relationship_with_span(db.inner(), relationship_id)
+}
+
+fn dismiss_relationship_with_span(db: &DbState, relationship_id: String) -> Result<(), String> {
+    let span = IpcCommandSpan::start("dismiss_relationship");
+    let result = dismiss_relationship_impl(db, relationship_id);
+    span.finish_result(&result);
+    result
 }
 
 fn dismiss_relationship_impl(db: &DbState, relationship_id: String) -> Result<(), String> {
@@ -36,7 +54,19 @@ pub fn create_relationship(
     target_id: String,
     relationship_type: String,
 ) -> Result<Relationship, String> {
-    create_relationship_impl(db.inner(), source_id, target_id, relationship_type)
+    create_relationship_with_span(db.inner(), source_id, target_id, relationship_type)
+}
+
+fn create_relationship_with_span(
+    db: &DbState,
+    source_id: String,
+    target_id: String,
+    relationship_type: String,
+) -> Result<Relationship, String> {
+    let span = IpcCommandSpan::start("create_relationship");
+    let result = create_relationship_impl(db, source_id, target_id, relationship_type);
+    span.finish_result(&result);
+    result
 }
 
 fn create_relationship_impl(
@@ -65,7 +95,14 @@ fn create_relationship_impl(
 
 #[tauri::command]
 pub fn remove_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
-    remove_relationship_impl(db.inner(), relationship_id)
+    remove_relationship_with_span(db.inner(), relationship_id)
+}
+
+fn remove_relationship_with_span(db: &DbState, relationship_id: String) -> Result<(), String> {
+    let span = IpcCommandSpan::start("remove_relationship");
+    let result = remove_relationship_impl(db, relationship_id);
+    span.finish_result(&result);
+    result
 }
 
 fn remove_relationship_impl(db: &DbState, relationship_id: String) -> Result<(), String> {
@@ -77,6 +114,8 @@ fn remove_relationship_impl(db: &DbState, relationship_id: String) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
+    use serde_json::Value;
     use std::sync::Mutex;
     use tempfile::NamedTempFile;
 
@@ -165,5 +204,48 @@ mod tests {
         let err =
             get_relationships_impl(&db, "p1".to_string()).expect_err("poisoned lock should fail");
         assert!(err.to_lowercase().contains("poison"));
+    }
+
+    fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let lines: Vec<String> = content
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| line.to_string())
+                    .collect();
+                if lines.len() >= expected {
+                    return lines;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for log lines in {}", path.display());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn get_relationships_emits_lifecycle_events() {
+        let (db, _tmp) = test_db_state();
+        insert_project(&db, "p1", "/tmp/project-1");
+
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join("relationships-lifecycle.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let _ = get_relationships_with_span(&db, "p1".to_string()).expect("get relationships");
+
+        let lines = wait_for_lines(&log_path, 2);
+        let received: Value = serde_json::from_str(&lines[0]).expect("received json");
+        let completed: Value = serde_json::from_str(&lines[1]).expect("completed json");
+
+        assert_eq!(received["event"], "ipc.command.received");
+        assert_eq!(received["command"], "get_relationships");
+        assert_eq!(completed["event"], "ipc.command.completed");
+        assert_eq!(completed["command"], "get_relationships");
+        assert_eq!(completed["status"], "ok");
     }
 }

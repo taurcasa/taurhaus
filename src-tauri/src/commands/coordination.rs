@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 
 pub use crate::commands::coordination_types::*;
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::coordination::backend::bridged::{
     availability_check, preflight_check, AvailabilityReport as BackendAvailabilityReport,
@@ -54,19 +55,24 @@ pub fn coordination_initialize_team(
     state: State<'_, CoordinationState>,
     request: InitializeTeamRequest,
 ) -> IpcResult<InitializeReport> {
-    let request = normalize_initialize_request_paths(&db, request)?;
-    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-    let mut emit = |event: &StepProgressEvent| {
-        let _ = app.emit("coordination-step-progress", event);
-    };
-    coordination_initialize_team_internal(
-        state.inner(),
-        request,
-        &cli_commands,
-        &tmux_layout,
-        Some(&mut emit),
-    )
-    .ipc()
+    let span = IpcCommandSpan::start("coordination_initialize_team");
+    let result = (|| {
+        let request = normalize_initialize_request_paths(&db, request)?;
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let mut emit = |event: &StepProgressEvent| {
+            let _ = app.emit("coordination-step-progress", event);
+        };
+        coordination_initialize_team_internal(
+            state.inner(),
+            request,
+            &cli_commands,
+            &tmux_layout,
+            Some(&mut emit),
+        )
+        .ipc()
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -76,19 +82,24 @@ pub fn coordination_add_agent(
     state: State<'_, CoordinationState>,
     request: AddAgentRequest,
 ) -> IpcResult<AddAgentReport> {
-    let request = normalize_add_agent_request_path(&db, request)?;
-    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-    let mut emit = |event: &StepProgressEvent| {
-        let _ = app.emit("coordination-step-progress", event);
-    };
-    coordination_add_agent_internal(
-        state.inner(),
-        request,
-        &cli_commands,
-        &tmux_layout,
-        Some(&mut emit),
-    )
-    .ipc()
+    let span = IpcCommandSpan::start("coordination_add_agent");
+    let result = (|| {
+        let request = normalize_add_agent_request_path(&db, request)?;
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let mut emit = |event: &StepProgressEvent| {
+            let _ = app.emit("coordination-step-progress", event);
+        };
+        coordination_add_agent_internal(
+            state.inner(),
+            request,
+            &cli_commands,
+            &tmux_layout,
+            Some(&mut emit),
+        )
+        .ipc()
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -98,18 +109,23 @@ pub fn coordination_resume_member(
     state: State<'_, CoordinationState>,
     request: ResumeMemberRequest,
 ) -> IpcResult<ResumeAgentReport> {
-    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-    let mut emit = |event: &StepProgressEvent| {
-        let _ = app.emit("coordination-step-progress", event);
-    };
-    coordination_resume_member_internal(
-        state.inner(),
-        request,
-        &cli_commands,
-        &tmux_layout,
-        Some(&mut emit),
-    )
-    .ipc()
+    let span = IpcCommandSpan::start("coordination_resume_member");
+    let result = (|| {
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let mut emit = |event: &StepProgressEvent| {
+            let _ = app.emit("coordination-step-progress", event);
+        };
+        coordination_resume_member_internal(
+            state.inner(),
+            request,
+            &cli_commands,
+            &tmux_layout,
+            Some(&mut emit),
+        )
+        .ipc()
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -117,7 +133,10 @@ pub fn coordination_reonboard(
     state: State<'_, CoordinationState>,
     request: ReonboardRequest,
 ) -> IpcResult<DeliveryResult> {
-    coordination_reonboard_impl(state.inner(), request).ipc()
+    let span = IpcCommandSpan::start("coordination_reonboard");
+    let result = coordination_reonboard_impl(state.inner(), request).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -125,7 +144,10 @@ pub fn coordination_get_live_team_status(
     state: State<'_, CoordinationState>,
     team_name: String,
 ) -> IpcResult<LiveTeamStatus> {
-    coordination_get_live_team_status_impl(state.inner(), team_name).ipc()
+    let span = IpcCommandSpan::start("coordination_get_live_team_status");
+    let result = coordination_get_live_team_status_impl(state.inner(), team_name).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -133,7 +155,10 @@ pub fn coordination_create_team(
     state: State<'_, CoordinationState>,
     team_name: String,
 ) -> IpcResult<()> {
-    coordination_create_team_impl(state.inner(), team_name).ipc()
+    let span = IpcCommandSpan::start("coordination_create_team");
+    let result = coordination_create_team_impl(state.inner(), team_name).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -141,7 +166,10 @@ pub fn coordination_disband_team(
     state: State<'_, CoordinationState>,
     team_name: String,
 ) -> IpcResult<DisbandTeamResponse> {
-    coordination_disband_team_impl(state.inner(), team_name).ipc()
+    let span = IpcCommandSpan::start("coordination_disband_team");
+    let result = coordination_disband_team_impl(state.inner(), team_name).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -152,14 +180,17 @@ pub fn coordination_add_member(
     backend_kind: String,
     project_path: Option<String>,
 ) -> IpcResult<()> {
-    coordination_add_member_impl(
+    let span = IpcCommandSpan::start("coordination_add_member");
+    let result = coordination_add_member_impl(
         state.inner(),
         team_name,
         member_name,
         backend_kind,
         project_path,
     )
-    .ipc()
+    .ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -168,14 +199,20 @@ pub fn coordination_remove_member(
     team_name: String,
     member_name: String,
 ) -> IpcResult<RemoveAgentReport> {
-    coordination_remove_member_impl(state.inner(), team_name, member_name).ipc()
+    let span = IpcCommandSpan::start("coordination_remove_member");
+    let result = coordination_remove_member_impl(state.inner(), team_name, member_name).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn coordination_list_teams(
     state: State<'_, CoordinationState>,
 ) -> IpcResult<TeamDiscoveryResponse> {
-    coordination_list_teams_impl(state.inner()).ipc()
+    let span = IpcCommandSpan::start("coordination_list_teams");
+    let result = coordination_list_teams_impl(state.inner()).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -183,17 +220,26 @@ pub fn coordination_get_team_status(
     state: State<'_, CoordinationState>,
     team_name: String,
 ) -> IpcResult<TeamStatus> {
-    coordination_get_team_status_impl(state.inner(), team_name).ipc()
+    let span = IpcCommandSpan::start("coordination_get_team_status");
+    let result = coordination_get_team_status_impl(state.inner(), team_name).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn coordination_preflight_check(request: InitializeTeamRequest) -> IpcResult<PreflightReport> {
-    coordination_preflight_check_impl(request).ipc()
+    let span = IpcCommandSpan::start("coordination_preflight_check");
+    let result = coordination_preflight_check_impl(request).ipc();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityReport> {
-    Ok(coordination_get_feature_availability_impl())
+    let span = IpcCommandSpan::start("coordination_get_feature_availability");
+    let result = Ok(coordination_get_feature_availability_impl());
+    span.finish_result(&result);
+    result
 }
 
 fn coordination_initialize_team_internal(

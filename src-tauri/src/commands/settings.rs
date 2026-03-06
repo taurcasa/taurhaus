@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::settings_queries;
 use crate::errors::SanitizeErr;
@@ -7,7 +8,14 @@ use crate::models::Settings;
 
 #[tauri::command]
 pub fn get_settings(db: State<'_, DbState>) -> Result<Settings, String> {
-    get_settings_impl(db.inner())
+    get_settings_with_span(db.inner())
+}
+
+fn get_settings_with_span(db: &DbState) -> Result<Settings, String> {
+    let span = IpcCommandSpan::start("get_settings");
+    let result = get_settings_impl(db);
+    span.finish_result(&result);
+    result
 }
 
 fn get_settings_impl(db: &DbState) -> Result<Settings, String> {
@@ -21,9 +29,22 @@ pub fn update_settings(
     db: State<'_, DbState>,
     settings: Settings,
 ) -> Result<Settings, String> {
-    let updated = update_settings_impl(db.inner(), settings)?;
-    crate::startup::watchers::reconcile_activity_watches(&app, "settings_updated");
-    Ok(updated)
+    update_settings_with_span(&app, db.inner(), settings)
+}
+
+fn update_settings_with_span(
+    app: &tauri::AppHandle,
+    db: &DbState,
+    settings: Settings,
+) -> Result<Settings, String> {
+    let span = IpcCommandSpan::start("update_settings");
+    let result = (|| {
+        let updated = update_settings_impl(db, settings)?;
+        crate::startup::watchers::reconcile_activity_watches(app, "settings_updated");
+        Ok(updated)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, String> {
@@ -35,6 +56,8 @@ fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
+    use serde_json::Value;
     use std::sync::Mutex;
     use tempfile::NamedTempFile;
 
@@ -78,5 +101,46 @@ mod tests {
 
         let err = get_settings_impl(&db).expect_err("poisoned lock should fail");
         assert!(err.to_lowercase().contains("poison"));
+    }
+
+    fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let lines: Vec<String> = content
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| line.to_string())
+                    .collect();
+                if lines.len() >= expected {
+                    return lines;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for log lines in {}", path.display());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn get_settings_emits_lifecycle_events() {
+        let (db, _tmp) = test_db_state();
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join("settings-lifecycle.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let _ = get_settings_with_span(&db).expect("get settings");
+
+        let lines = wait_for_lines(&log_path, 2);
+        let received: Value = serde_json::from_str(&lines[0]).expect("received json");
+        let completed: Value = serde_json::from_str(&lines[1]).expect("completed json");
+
+        assert_eq!(received["event"], "ipc.command.received");
+        assert_eq!(received["command"], "get_settings");
+        assert_eq!(completed["event"], "ipc.command.completed");
+        assert_eq!(completed["command"], "get_settings");
+        assert_eq!(completed["status"], "ok");
     }
 }

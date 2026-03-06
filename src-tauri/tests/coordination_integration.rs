@@ -36,6 +36,18 @@ mod commands {
             CliCommandSettings::default()
         }
     }
+
+    pub mod lifecycle {
+        pub struct IpcCommandSpan;
+
+        impl IpcCommandSpan {
+            pub fn start(_command: &'static str) -> Self {
+                Self
+            }
+
+            pub fn finish_result<T, E: std::fmt::Display>(&self, _result: &Result<T, E>) {}
+        }
+    }
 }
 
 #[path = "../src/coordination/mod.rs"]

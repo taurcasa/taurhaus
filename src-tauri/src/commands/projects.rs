@@ -4,6 +4,7 @@ use rusqlite::Connection;
 use serde::Deserialize;
 use tauri::{Emitter, State};
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::db::{queries, settings_queries};
 use crate::errors::{sanitize_error, SanitizeErr};
 use crate::models::{ProjectDetail, ProjectSummary};
@@ -43,9 +44,14 @@ pub struct DiscoveredProject {
 
 #[tauri::command]
 pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-    project::list_projects(&conn, &settings.thresholds).sanitize_err()
+    let span = IpcCommandSpan::start("list_projects");
+    let result = (|| {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+        project::list_projects(&conn, &settings.thresholds).sanitize_err()
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -54,15 +60,21 @@ pub fn get_project(
     db: State<'_, DbState>,
     project_id: String,
 ) -> Result<ProjectDetail, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-    // Project selection is explicit user activity; promote on read.
-    project::touch_activity(&conn, &project_id).sanitize_err()?;
-    let detail = project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()?;
-    drop(conn);
+    let span = IpcCommandSpan::start("get_project");
+    let result = (|| {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+        // Project selection is explicit user activity; promote on read.
+        project::touch_activity(&conn, &project_id).sanitize_err()?;
+        let detail =
+            project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()?;
+        drop(conn);
 
-    crate::startup::watchers::reconcile_activity_watches(&app, "project_selected");
-    Ok(detail)
+        crate::startup::watchers::reconcile_activity_watches(&app, "project_selected");
+        Ok(detail)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -72,18 +84,23 @@ pub fn register_project(
     path: String,
     name: Option<String>,
 ) -> Result<ProjectDetail, String> {
-    let expanded = expand_tilde(&path);
-    let detail = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-        project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds)
-            .sanitize_err()?
-    }; // conn dropped here — lock released
+    let span = IpcCommandSpan::start("register_project");
+    let result = (|| {
+        let expanded = expand_tilde(&path);
+        let detail = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+            project::register_project(&conn, &expanded, name.as_deref(), &settings.thresholds)
+                .sanitize_err()?
+        }; // conn dropped here — lock released
 
-    // Correct last_activity_at from git (needs its own lock)
-    reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+        // Correct last_activity_at from git (needs its own lock)
+        reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
-    Ok(detail)
+        Ok(detail)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn create_project_impl(
@@ -145,16 +162,22 @@ pub fn create_project(
     name: String,
     parent_dir: String,
 ) -> Result<ProjectDetail, String> {
-    let expanded_parent = expand_tilde(&parent_dir);
-    let detail = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-        create_project_impl(&conn, &name, &expanded_parent, &settings.thresholds).sanitize_err()?
-    };
+    let span = IpcCommandSpan::start("create_project");
+    let result = (|| {
+        let expanded_parent = expand_tilde(&parent_dir);
+        let detail = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+            create_project_impl(&conn, &name, &expanded_parent, &settings.thresholds)
+                .sanitize_err()?
+        };
 
-    reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+        reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
-    Ok(detail)
+        Ok(detail)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -163,21 +186,26 @@ pub fn update_project(
     project_id: String,
     fields: UpdateProjectFields,
 ) -> Result<ProjectDetail, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-    let thresholds = settings.thresholds;
+    let span = IpcCommandSpan::start("update_project");
+    let result = (|| {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+        let thresholds = settings.thresholds;
 
-    project::update_project(
-        &conn,
-        &project_id,
-        fields.name.as_deref(),
-        fields.description.as_ref().map(|d| d.as_deref()),
-        fields.hero_preference.as_ref().map(|h| h.as_deref()),
-    )
-    .sanitize_err()?;
+        project::update_project(
+            &conn,
+            &project_id,
+            fields.name.as_deref(),
+            fields.description.as_ref().map(|d| d.as_deref()),
+            fields.hero_preference.as_ref().map(|h| h.as_deref()),
+        )
+        .sanitize_err()?;
 
-    // Return the updated project.
-    project::get_project(&conn, &project_id, &thresholds).sanitize_err()
+        // Return the updated project.
+        project::get_project(&conn, &project_id, &thresholds).sanitize_err()
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -186,29 +214,39 @@ pub fn remove_project(
     search: State<'_, SearchState>,
     project_id: String,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    project::remove_project(&conn, &project_id).sanitize_err()?;
+    let span = IpcCommandSpan::start("remove_project");
+    let result = (|| {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        project::remove_project(&conn, &project_id).sanitize_err()?;
 
-    // Clean up search index entries for this project
-    match search.0.lock() {
-        Ok(mut index) => {
-            index.remove_by_project(&project_id);
-            if let Err(e) = index.commit() {
-                tracing::warn!(project_id, error = %e, "search index commit failed after project removal");
+        // Clean up search index entries for this project
+        match search.0.lock() {
+            Ok(mut index) => {
+                index.remove_by_project(&project_id);
+                if let Err(e) = index.commit() {
+                    tracing::warn!(project_id, error = %e, "search index commit failed after project removal");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(project_id, error = %e, "search index lock failed during project removal");
             }
         }
-        Err(e) => {
-            tracing::warn!(project_id, error = %e, "search index lock failed during project removal");
-        }
-    }
-    Ok(())
+        Ok(())
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn is_first_run(db: State<'_, DbState>) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let count = crate::db::queries::project_count(&conn).sanitize_err()?;
-    Ok(count == 0)
+    let span = IpcCommandSpan::start("is_first_run");
+    let result = (|| {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let count = crate::db::queries::project_count(&conn).sanitize_err()?;
+        Ok(count == 0)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 /// Result of a single registration attempt within a batch.
@@ -228,52 +266,56 @@ pub fn register_projects_batch(
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<BatchRegistrationResult>, String> {
-    let results = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-        let total = paths.len();
-        let mut results = Vec::with_capacity(total);
+    let span = IpcCommandSpan::start("register_projects_batch");
+    let result = (|| {
+        let results = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+            let total = paths.len();
+            let mut results = Vec::with_capacity(total);
 
-        for (index, path) in paths.iter().enumerate() {
-            let expanded = expand_tilde(path);
-            let result =
-                match project::register_project(&conn, &expanded, None, &settings.thresholds) {
-                    Ok(detail) => {
-                        let _ = app.emit(
-                            "batch-registration-progress",
-                            serde_json::json!({
-                                "projectName": detail.name,
-                                "index": index,
-                                "total": total,
-                            }),
-                        );
-                        BatchRegistrationResult {
-                            path: path.clone(),
-                            success: true,
-                            project: Some(detail),
-                            error: None,
+            for (index, path) in paths.iter().enumerate() {
+                let expanded = expand_tilde(path);
+                let result =
+                    match project::register_project(&conn, &expanded, None, &settings.thresholds) {
+                        Ok(detail) => {
+                            let _ = app.emit(
+                                "batch-registration-progress",
+                                serde_json::json!({
+                                    "projectName": detail.name,
+                                    "index": index,
+                                    "total": total,
+                                }),
+                            );
+                            BatchRegistrationResult {
+                                path: path.clone(),
+                                success: true,
+                                project: Some(detail),
+                                error: None,
+                            }
                         }
-                    }
-                    Err(e) => BatchRegistrationResult {
-                        path: path.clone(),
-                        success: false,
-                        project: None,
-                        error: Some(e.to_string()),
-                    },
-                };
-            results.push(result);
-        }
-        results
-    }; // conn dropped here — lock released
+                        Err(e) => BatchRegistrationResult {
+                            path: path.clone(),
+                            success: false,
+                            project: None,
+                            error: Some(e.to_string()),
+                        },
+                    };
+                results.push(result);
+            }
+            results
+        }; // conn dropped here — lock released
 
-    // Correct last_activity_at from git for all new projects (needs its own lock)
-    for r in &results {
-        if let Some(ref detail) = r.project {
-            reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+        // Correct last_activity_at from git for all new projects (needs its own lock)
+        for r in &results {
+            if let Some(ref detail) = r.project {
+                reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
+            }
         }
-    }
-
-    Ok(results)
+        Ok(results)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 /// Reseed a single project's git status and last_activity_at from git.
@@ -343,16 +385,21 @@ fn reseed_activity_for_project(
 
 #[tauri::command]
 pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
-    let expanded = expand_tilde(&path);
-    let results = crate::services::scanner::scan_directory(std::path::Path::new(&expanded), 2)?;
-    Ok(results
-        .into_iter()
-        .map(|d| DiscoveredProject {
-            path: d.path,
-            name: d.name,
-            has_git: d.has_git,
-        })
-        .collect())
+    let span = IpcCommandSpan::start("scan_directory");
+    let result = (|| {
+        let expanded = expand_tilde(&path);
+        let results = crate::services::scanner::scan_directory(std::path::Path::new(&expanded), 2)?;
+        Ok(results
+            .into_iter()
+            .map(|d| DiscoveredProject {
+                path: d.path,
+                name: d.name,
+                has_git: d.has_git,
+            })
+            .collect())
+    })();
+    span.finish_result(&result);
+    result
 }
 
 /// A directory entry returned by list_directory.
@@ -368,55 +415,60 @@ pub struct DirectoryEntry {
 /// Used by the directory tree browser for manual path selection.
 #[tauri::command]
 pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
-    let expanded = expand_tilde(&path);
-    let dir = std::path::Path::new(&expanded);
+    let span = IpcCommandSpan::start("list_directory");
+    let result = (|| {
+        let expanded = expand_tilde(&path);
+        let dir = std::path::Path::new(&expanded);
 
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
-
-    let read_dir = std::fs::read_dir(dir).map_err(|e| sanitize_error(&e.to_string()))?;
-    let mut entries: Vec<DirectoryEntry> = Vec::new();
-
-    for entry in read_dir {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        // Skip hidden directories
-        if name.starts_with('.') {
-            continue;
+        if !dir.is_dir() {
+            return Ok(Vec::new());
         }
 
-        let file_type = match entry.file_type() {
-            Ok(ft) => ft,
-            Err(_) => continue,
-        };
+        let read_dir = std::fs::read_dir(dir).map_err(|e| sanitize_error(&e.to_string()))?;
+        let mut entries: Vec<DirectoryEntry> = Vec::new();
 
-        if !file_type.is_dir() {
-            continue;
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip hidden directories
+            if name.starts_with('.') {
+                continue;
+            }
+
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            if !file_type.is_dir() {
+                continue;
+            }
+
+            let full_path = entry.path().to_string_lossy().to_string();
+
+            // Assume all directories are expandable (lazy-check).
+            // Eagerly checking via nested read_dir is an N+1 penalty and on macOS
+            // it triggers TCC permission prompts for protected folders like
+            // ~/Desktop, ~/Documents, etc., which block the IPC thread.
+            let is_expandable = true;
+
+            entries.push(DirectoryEntry {
+                name,
+                path: full_path,
+                is_expandable,
+            });
         }
 
-        let full_path = entry.path().to_string_lossy().to_string();
-
-        // Assume all directories are expandable (lazy-check).
-        // Eagerly checking via nested read_dir is an N+1 penalty and on macOS
-        // it triggers TCC permission prompts for protected folders like
-        // ~/Desktop, ~/Documents, etc., which block the IPC thread.
-        let is_expandable = true;
-
-        entries.push(DirectoryEntry {
-            name,
-            path: full_path,
-            is_expandable,
-        });
-    }
-
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(entries)
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        Ok(entries)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 /// Return filesystem root entries for the directory tree browser.
@@ -424,71 +476,76 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
 /// On Linux/macOS: just ["/"]
 #[tauri::command]
 pub fn get_system_roots() -> Vec<DirectoryEntry> {
-    #[cfg(target_os = "windows")]
-    {
-        let mut roots = Vec::new();
-
-        // Check drives A-Z for existence
-        for letter in b'A'..=b'Z' {
-            let drive = format!("{}:\\", letter as char);
-            let path = std::path::Path::new(&drive);
-            if path.exists() {
-                let is_expandable = std::fs::read_dir(path)
-                    .map(|rd| {
-                        rd.filter_map(|e| e.ok())
-                            .any(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-                    })
-                    .unwrap_or(false);
-                roots.push(DirectoryEntry {
-                    name: drive.clone(),
-                    path: drive,
-                    is_expandable,
-                });
-            }
-        }
-
-        // Discover WSL distributions via `wsl --list --quiet`.
-        // The \\wsl$\ UNC root can't be listed with read_dir, but individual
-        // distro paths like \\wsl$\Ubuntu\ work fine.
-        if let Ok(output) = std::process::Command::new("wsl")
-            .args(["--list", "--quiet"])
-            .output()
+    let span = IpcCommandSpan::start("get_system_roots");
+    let roots = {
+        #[cfg(target_os = "windows")]
         {
-            // wsl.exe outputs UTF-16LE; decode and parse distro names
-            let text = String::from_utf16_lossy(
-                &output
-                    .stdout
-                    .chunks_exact(2)
-                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                    .collect::<Vec<_>>(),
-            );
-            for line in text.lines() {
-                let distro = line.trim();
-                if distro.is_empty() {
-                    continue;
-                }
-                let wsl_path = format!("\\\\wsl$\\{}", distro);
-                if std::path::Path::new(&wsl_path).is_dir() {
+            let mut roots = Vec::new();
+
+            // Check drives A-Z for existence
+            for letter in b'A'..=b'Z' {
+                let drive = format!("{}:\\", letter as char);
+                let path = std::path::Path::new(&drive);
+                if path.exists() {
+                    let is_expandable = std::fs::read_dir(path)
+                        .map(|rd| {
+                            rd.filter_map(|e| e.ok())
+                                .any(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+                        })
+                        .unwrap_or(false);
                     roots.push(DirectoryEntry {
-                        name: format!("WSL: {}", distro),
-                        path: wsl_path,
-                        is_expandable: true,
+                        name: drive.clone(),
+                        path: drive,
+                        is_expandable,
                     });
                 }
             }
+
+            // Discover WSL distributions via `wsl --list --quiet`.
+            // The \\wsl$\ UNC root can't be listed with read_dir, but individual
+            // distro paths like \\wsl$\Ubuntu\ work fine.
+            if let Ok(output) = std::process::Command::new("wsl")
+                .args(["--list", "--quiet"])
+                .output()
+            {
+                // wsl.exe outputs UTF-16LE; decode and parse distro names
+                let text = String::from_utf16_lossy(
+                    &output
+                        .stdout
+                        .chunks_exact(2)
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .collect::<Vec<_>>(),
+                );
+                for line in text.lines() {
+                    let distro = line.trim();
+                    if distro.is_empty() {
+                        continue;
+                    }
+                    let wsl_path = format!("\\\\wsl$\\{}", distro);
+                    if std::path::Path::new(&wsl_path).is_dir() {
+                        roots.push(DirectoryEntry {
+                            name: format!("WSL: {}", distro),
+                            path: wsl_path,
+                            is_expandable: true,
+                        });
+                    }
+                }
+            }
+
+            roots
         }
 
-        roots
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        vec![DirectoryEntry {
-            name: "/".to_string(),
-            path: "/".to_string(),
-            is_expandable: true,
-        }]
-    }
+        #[cfg(not(target_os = "windows"))]
+        {
+            vec![DirectoryEntry {
+                name: "/".to_string(),
+                path: "/".to_string(),
+                is_expandable: true,
+            }]
+        }
+    };
+    span.complete();
+    roots
 }
 
 /// Result of validating a project path.
@@ -507,28 +564,33 @@ pub fn validate_project_path(
     db: State<'_, DbState>,
     path: String,
 ) -> Result<PathValidation, String> {
-    let expanded = expand_tilde(&path);
-    let dir = std::path::Path::new(&expanded);
+    let span = IpcCommandSpan::start("validate_project_path");
+    let result = (|| {
+        let expanded = expand_tilde(&path);
+        let dir = std::path::Path::new(&expanded);
 
-    let exists = dir.is_dir();
-    if !exists {
-        return Ok(PathValidation {
-            exists: false,
-            is_git_repo: false,
-            is_registered: false,
-        });
-    }
+        let exists = dir.is_dir();
+        if !exists {
+            return Ok(PathValidation {
+                exists: false,
+                is_git_repo: false,
+                is_registered: false,
+            });
+        }
 
-    let is_git_repo = git2::Repository::open(dir).is_ok();
+        let is_git_repo = git2::Repository::open(dir).is_ok();
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let is_registered = queries::project_exists_at_path(&conn, &expanded).sanitize_err()?;
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let is_registered = queries::project_exists_at_path(&conn, &expanded).sanitize_err()?;
 
-    Ok(PathValidation {
-        exists,
-        is_git_repo,
-        is_registered,
-    })
+        Ok(PathValidation {
+            exists,
+            is_git_repo,
+            is_registered,
+        })
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[cfg(test)]

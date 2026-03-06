@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::queries;
 use crate::errors::sanitize_error;
@@ -102,11 +103,16 @@ pub fn get_recent_commits(
     project_id: String,
     limit: Option<usize>,
 ) -> Result<Vec<Commit>, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let provider = providers.resolve(&path);
-    provider
-        .recent_commits(&path, limit.unwrap_or(10).min(500))
-        .map_err(|e| sanitize_error(&e.to_string()))
+    let span = IpcCommandSpan::start("get_recent_commits");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let provider = providers.resolve(&path);
+        provider
+            .recent_commits(&path, limit.unwrap_or(10).min(500))
+            .map_err(|e| sanitize_error(&e.to_string()))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -117,11 +123,16 @@ pub fn get_all_commits(
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Vec<Commit>, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let provider = providers.resolve(&path);
-    provider
-        .all_commits(&path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
-        .map_err(|e| sanitize_error(&e.to_string()))
+    let span = IpcCommandSpan::start("get_all_commits");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let provider = providers.resolve(&path);
+        provider
+            .all_commits(&path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
+            .map_err(|e| sanitize_error(&e.to_string()))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -130,11 +141,16 @@ pub fn get_git_status(
     providers: State<'_, ProviderState>,
     project_id: String,
 ) -> Result<GitStatus, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let provider = providers.resolve(&path);
-    provider
-        .git_status(&path)
-        .map_err(|e| sanitize_error(&e.to_string()))
+    let span = IpcCommandSpan::start("get_git_status");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let provider = providers.resolve(&path);
+        provider
+            .git_status(&path)
+            .map_err(|e| sanitize_error(&e.to_string()))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -142,9 +158,14 @@ pub fn get_remote_url(
     db: State<'_, DbState>,
     project_id: String,
 ) -> Result<Option<String>, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let repo = git2::Repository::open(&path).map_err(|e| sanitize_error(&e.to_string()))?;
-    Ok(resolve_normalized_remote_url(&repo))
+    let span = IpcCommandSpan::start("get_remote_url");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let repo = git2::Repository::open(&path).map_err(|e| sanitize_error(&e.to_string()))?;
+        Ok(resolve_normalized_remote_url(&repo))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[cfg(test)]

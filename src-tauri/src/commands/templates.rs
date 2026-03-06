@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::errors::sanitize_error;
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
@@ -121,11 +122,16 @@ pub struct TemplateFlushResult {
 pub fn templates_list_roles_full(
     state: State<'_, TemplateStoreState>,
 ) -> Result<Vec<RoleTemplateFull>, String> {
-    let store = &state.0;
-    store
-        .list_roles()
-        .map(|roles| roles.into_iter().map(map_role_full).collect())
-        .map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_list_roles_full");
+    let result = (|| {
+        let store = &state.0;
+        store
+            .list_roles()
+            .map(|roles| roles.into_iter().map(map_role_full).collect())
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -133,11 +139,16 @@ pub fn templates_get_role(
     state: State<'_, TemplateStoreState>,
     role_id: String,
 ) -> Result<RoleTemplate, String> {
-    let store = &state.0;
-    store
-        .get_role(&role_id)
-        .map(|record| record.template)
-        .map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_get_role");
+    let result = (|| {
+        let store = &state.0;
+        store
+            .get_role(&role_id)
+            .map(|record| record.template)
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -145,20 +156,25 @@ pub fn templates_upsert_role(
     state: State<'_, TemplateStoreState>,
     request: TemplatesUpsertRoleRequest,
 ) -> Result<RoleTemplate, String> {
-    let store = &state.0;
-    let role_id = request.template.role_id.clone();
+    let span = IpcCommandSpan::start("templates_upsert_role");
+    let result = (|| {
+        let store = &state.0;
+        let role_id = request.template.role_id.clone();
 
-    match store.get_role(&role_id) {
-        Ok(_) => store.update_role(&role_id, &request.template),
-        Err(TemplateStoreError::NotFound(_)) => store.create_role(&request.template),
-        Err(err) => Err(err),
-    }
-    .map_err(map_template_error)?;
+        match store.get_role(&role_id) {
+            Ok(_) => store.update_role(&role_id, &request.template),
+            Err(TemplateStoreError::NotFound(_)) => store.create_role(&request.template),
+            Err(err) => Err(err),
+        }
+        .map_err(map_template_error)?;
 
-    store
-        .get_role(&role_id)
-        .map(|record| record.template)
-        .map_err(map_template_error)
+        store
+            .get_role(&role_id)
+            .map(|record| record.template)
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -166,20 +182,30 @@ pub fn templates_delete_role(
     state: State<'_, TemplateStoreState>,
     role_id: String,
 ) -> Result<(), String> {
-    let store = &state.0;
-    store.delete_role(&role_id).map_err(map_template_error)?;
-    Ok(())
+    let span = IpcCommandSpan::start("templates_delete_role");
+    let result = (|| {
+        let store = &state.0;
+        store.delete_role(&role_id).map_err(map_template_error)?;
+        Ok(())
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn templates_list_presets_full(
     state: State<'_, TemplateStoreState>,
 ) -> Result<Vec<TeamPresetFull>, String> {
-    let store = &state.0;
-    store
-        .list_presets()
-        .map(|presets| presets.into_iter().map(map_preset_full).collect())
-        .map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_list_presets_full");
+    let result = (|| {
+        let store = &state.0;
+        store
+            .list_presets()
+            .map(|presets| presets.into_iter().map(map_preset_full).collect())
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -187,11 +213,16 @@ pub fn templates_get_preset(
     state: State<'_, TemplateStoreState>,
     preset_id: String,
 ) -> Result<TeamPreset, String> {
-    let store = &state.0;
-    store
-        .get_preset(&preset_id)
-        .map(|record| record.template)
-        .map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_get_preset");
+    let result = (|| {
+        let store = &state.0;
+        store
+            .get_preset(&preset_id)
+            .map(|record| record.template)
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -199,20 +230,25 @@ pub fn templates_upsert_preset(
     state: State<'_, TemplateStoreState>,
     request: TemplatesUpsertPresetRequest,
 ) -> Result<TeamPreset, String> {
-    let store = &state.0;
-    let preset_id = request.preset.preset_id.clone();
+    let span = IpcCommandSpan::start("templates_upsert_preset");
+    let result = (|| {
+        let store = &state.0;
+        let preset_id = request.preset.preset_id.clone();
 
-    match store.get_preset(&preset_id) {
-        Ok(_) => store.update_preset(&preset_id, &request.preset),
-        Err(TemplateStoreError::NotFound(_)) => store.create_preset(&request.preset),
-        Err(err) => Err(err),
-    }
-    .map_err(map_template_error)?;
+        match store.get_preset(&preset_id) {
+            Ok(_) => store.update_preset(&preset_id, &request.preset),
+            Err(TemplateStoreError::NotFound(_)) => store.create_preset(&request.preset),
+            Err(err) => Err(err),
+        }
+        .map_err(map_template_error)?;
 
-    store
-        .get_preset(&preset_id)
-        .map(|record| record.template)
-        .map_err(map_template_error)
+        store
+            .get_preset(&preset_id)
+            .map(|record| record.template)
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -220,11 +256,16 @@ pub fn templates_delete_preset(
     state: State<'_, TemplateStoreState>,
     preset_id: String,
 ) -> Result<(), String> {
-    let store = &state.0;
-    store
-        .delete_preset(&preset_id)
-        .map_err(map_template_error)?;
-    Ok(())
+    let span = IpcCommandSpan::start("templates_delete_preset");
+    let result = (|| {
+        let store = &state.0;
+        store
+            .delete_preset(&preset_id)
+            .map_err(map_template_error)?;
+        Ok(())
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -232,41 +273,51 @@ pub fn templates_compose_team(
     state: State<'_, TemplateStoreState>,
     request: TemplatesComposeTeamRequest,
 ) -> Result<CompositionResult, String> {
-    let store = &state.0;
-    let catalog = store.load_catalog().map_err(map_template_error)?;
-    let agent_slots: Vec<AgentSlot> = request.agent_slots.into_iter().map(Into::into).collect();
-    Ok(compose_team(
-        &request.lead_role_id,
-        &agent_slots,
-        &catalog.roles,
-        &request.overrides,
-    ))
+    let span = IpcCommandSpan::start("templates_compose_team");
+    let result = (|| {
+        let store = &state.0;
+        let catalog = store.load_catalog().map_err(map_template_error)?;
+        let agent_slots: Vec<AgentSlot> = request.agent_slots.into_iter().map(Into::into).collect();
+        Ok(compose_team(
+            &request.lead_role_id,
+            &agent_slots,
+            &catalog.roles,
+            &request.overrides,
+        ))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn templates_get_storage_status(
     state: State<'_, TemplateStoreState>,
 ) -> Result<TemplateStorageStatus, String> {
-    let store = &state.0;
-    store.ensure_directories().map_err(map_template_error)?;
-    let persisted = store.load_state().map_err(map_template_error)?;
+    let span = IpcCommandSpan::start("templates_get_storage_status");
+    let result = (|| {
+        let store = &state.0;
+        store.ensure_directories().map_err(map_template_error)?;
+        let persisted = store.load_state().map_err(map_template_error)?;
 
-    let git_dir = store.templates_dir().join(".git");
-    let mode = if git_dir.exists() {
-        TemplateStorageMode::Git
-    } else {
-        TemplateStorageMode::PlainFilesystem
-    };
+        let git_dir = store.templates_dir().join(".git");
+        let mode = if git_dir.exists() {
+            TemplateStorageMode::Git
+        } else {
+            TemplateStorageMode::PlainFilesystem
+        };
 
-    let dirty = store.managed_dirty_status().map_err(map_template_error)?;
+        let dirty = store.managed_dirty_status().map_err(map_template_error)?;
 
-    Ok(TemplateStorageStatus {
-        mode,
-        repo_initialized: persisted.repo_initialized || git_dir.exists(),
-        dirty,
-        pending_actions: persisted.pending_actions,
-        last_commit: persisted.last_commit_at,
-    })
+        Ok(TemplateStorageStatus {
+            mode,
+            repo_initialized: persisted.repo_initialized || git_dir.exists(),
+            dirty,
+            pending_actions: persisted.pending_actions,
+            last_commit: persisted.last_commit_at,
+        })
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -275,8 +326,13 @@ pub fn templates_get_history(
     limit: Option<usize>,
     cursor: Option<String>,
 ) -> Result<TemplateCommitPage, String> {
-    let store = &state.0;
-    store.get_history(limit, cursor).map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_get_history");
+    let result = (|| {
+        let store = &state.0;
+        store.get_history(limit, cursor).map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -284,8 +340,13 @@ pub fn templates_get_diff(
     state: State<'_, TemplateStoreState>,
     commit_id: String,
 ) -> Result<TemplateDiff, String> {
-    let store = &state.0;
-    store.get_diff(&commit_id).map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_get_diff");
+    let result = (|| {
+        let store = &state.0;
+        store.get_diff(&commit_id).map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -293,22 +354,32 @@ pub fn templates_revert(
     state: State<'_, TemplateStoreState>,
     request: TemplateRevertRequest,
 ) -> Result<(), String> {
-    let store = &state.0;
-    store
-        .revert_template(&request.id, &request.commit_hash)
-        .map_err(map_template_error)
+    let span = IpcCommandSpan::start("templates_revert");
+    let result = (|| {
+        let store = &state.0;
+        store
+            .revert_template(&request.id, &request.commit_hash)
+            .map_err(map_template_error)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
 pub fn templates_flush_pending(
     state: State<'_, TemplateStoreState>,
 ) -> Result<TemplateFlushResult, String> {
-    let store = &state.0;
-    let commit_id = store.flush_pending_commits().map_err(map_template_error)?;
-    Ok(TemplateFlushResult {
-        committed: commit_id.is_some(),
-        commit_id,
-    })
+    let span = IpcCommandSpan::start("templates_flush_pending");
+    let result = (|| {
+        let store = &state.0;
+        let commit_id = store.flush_pending_commits().map_err(map_template_error)?;
+        Ok(TemplateFlushResult {
+            committed: commit_id.is_some(),
+            commit_id,
+        })
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn map_role_full(record: RoleTemplateRecord) -> RoleTemplateFull {

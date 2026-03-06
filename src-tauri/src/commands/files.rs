@@ -3,6 +3,7 @@ use std::path::{Component, Path};
 use base64::Engine as _;
 use tauri::State;
 
+use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::queries;
 use crate::errors::sanitize_error;
@@ -28,11 +29,16 @@ pub fn get_file_tree(
     providers: State<'_, ProviderState>,
     project_id: String,
 ) -> Result<Vec<FileTreeNode>, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let provider = providers.resolve(&path);
-    provider
-        .file_tree(&path)
-        .map_err(|e| sanitize_error(&e.to_string()))
+    let span = IpcCommandSpan::start("get_file_tree");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let provider = providers.resolve(&path);
+        provider
+            .file_tree(&path)
+            .map_err(|e| sanitize_error(&e.to_string()))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn classify_path_type(project_root: &Path, relative_path: &str) -> Result<&'static str, String> {
@@ -96,15 +102,20 @@ pub fn read_file(
     project_id: String,
     relative_path: String,
 ) -> Result<FileContent, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    // Normalize backslashes — search index on Windows may store paths with
-    // backslashes (e.g. "tests\test_integration.py") that the Linux daemon
-    // can't resolve. Belt-and-suspenders with the indexer normalization.
-    let relative_path = relative_path.replace('\\', "/");
-    let provider = providers.resolve(&path);
-    provider
-        .read_file(&path, &relative_path)
-        .map_err(|e| sanitize_error(&e.to_string()))
+    let span = IpcCommandSpan::start("read_file");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        // Normalize backslashes — search index on Windows may store paths with
+        // backslashes (e.g. "tests\test_integration.py") that the Linux daemon
+        // can't resolve. Belt-and-suspenders with the indexer normalization.
+        let relative_path = relative_path.replace('\\', "/");
+        let provider = providers.resolve(&path);
+        provider
+            .read_file(&path, &relative_path)
+            .map_err(|e| sanitize_error(&e.to_string()))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -113,10 +124,15 @@ pub fn check_path_type(
     project_id: String,
     relative_path: String,
 ) -> Result<String, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    classify_path_type(Path::new(&path), &relative_path)
-        .map(|kind| kind.to_string())
-        .map_err(|e| sanitize_error(&e))
+    let span = IpcCommandSpan::start("check_path_type");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        classify_path_type(Path::new(&path), &relative_path)
+            .map(|kind| kind.to_string())
+            .map_err(|e| sanitize_error(&e))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 #[tauri::command]
@@ -125,34 +141,39 @@ pub fn get_readme(
     providers: State<'_, ProviderState>,
     project_id: String,
 ) -> Result<Option<FileContent>, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let is_wsl = crate::provider::path::is_wsl_path(&path);
-    let has_daemon = providers.daemon.as_ref().is_some_and(|d| d.is_connected());
-    let using_daemon = is_wsl && has_daemon;
-    tracing::debug!(
-        project_id,
-        path,
-        is_wsl,
-        has_daemon,
-        using_daemon,
-        "get_readme: resolving provider"
-    );
-    let provider = providers.resolve(&path);
-    let result = provider
-        .read_readme(&path)
-        .map_err(|e| sanitize_error(&e.to_string()))?;
-    if let Some(ref content) = result {
+    let span = IpcCommandSpan::start("get_readme");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let is_wsl = crate::provider::path::is_wsl_path(&path);
+        let has_daemon = providers.daemon.as_ref().is_some_and(|d| d.is_connected());
+        let using_daemon = is_wsl && has_daemon;
         tracing::debug!(
             project_id,
-            readme_path = content.path,
-            content_len = content.content.len(),
-            content_preview = &content.content[..content.content.len().min(80)],
-            "get_readme: returning content"
+            path,
+            is_wsl,
+            has_daemon,
+            using_daemon,
+            "get_readme: resolving provider"
         );
-    } else {
-        tracing::debug!(project_id, "get_readme: no README found");
-    }
-    Ok(result)
+        let provider = providers.resolve(&path);
+        let result = provider
+            .read_readme(&path)
+            .map_err(|e| sanitize_error(&e.to_string()))?;
+        if let Some(ref content) = result {
+            tracing::debug!(
+                project_id,
+                readme_path = content.path,
+                content_len = content.content.len(),
+                content_preview = &content.content[..content.content.len().min(80)],
+                "get_readme: returning content"
+            );
+        } else {
+            tracing::debug!(project_id, "get_readme: no README found");
+        }
+        Ok(result)
+    })();
+    span.finish_result(&result);
+    result
 }
 
 /// Read a binary file from a project directory and return it as a base64 data URI.
@@ -164,16 +185,21 @@ pub fn read_project_asset(
     project_id: String,
     relative_path: String,
 ) -> Result<String, String> {
-    let path = resolve_project_path(&db, &project_id)?;
-    let relative_path = relative_path.replace('\\', "/");
-    let provider = providers.resolve(&path);
-    let bytes = provider
-        .read_asset(&path, &relative_path)
-        .map_err(|e| sanitize_error(&e.to_string()))?;
+    let span = IpcCommandSpan::start("read_project_asset");
+    let result = (|| {
+        let path = resolve_project_path(&db, &project_id)?;
+        let relative_path = relative_path.replace('\\', "/");
+        let provider = providers.resolve(&path);
+        let bytes = provider
+            .read_asset(&path, &relative_path)
+            .map_err(|e| sanitize_error(&e.to_string()))?;
 
-    let mime = mime_from_extension(&relative_path);
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(format!("data:{mime};base64,{b64}"))
+        let mime = mime_from_extension(&relative_path);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok(format!("data:{mime};base64,{b64}"))
+    })();
+    span.finish_result(&result);
+    result
 }
 
 fn mime_from_extension(path: &str) -> &'static str {
