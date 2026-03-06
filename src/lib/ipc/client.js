@@ -53,6 +53,21 @@ export async function invokeOrMock(command, args, mockFn) {
     const { invoke } = await import('@tauri-apps/api/core')
     return args === undefined ? invoke(command) : invoke(command, args)
   } catch (error) {
-    throw normalizeInvokeError(error)
+    const normalized = normalizeInvokeError(error)
+    const context = {
+      command,
+      has_args: args !== undefined,
+      code: normalized.code ?? null,
+      retryable: normalized.retryable ?? null,
+      error_message: normalized.message,
+    }
+
+    if (normalized.retryable === true) {
+      console.warn('[ipc] invoke failed with retryable error', context)
+    } else {
+      console.error('[ipc] invoke failed', context)
+    }
+
+    throw normalized
   }
 }

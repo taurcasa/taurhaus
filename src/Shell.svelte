@@ -185,6 +185,16 @@
     switchTab('files', { tab: 'files', file: path, lineNumber })
   }
 
+  function errorMessage(error) {
+    if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) {
+      return error.message
+    }
+    if (typeof error === 'string' && error.trim()) {
+      return error
+    }
+    return String(error)
+  }
+
   function handleProjectRemoved(id) {
     projects = projects.filter((project) => project.id !== id)
     if (selectedProject?.id === id) {
@@ -235,6 +245,9 @@
       const first = await isFirstRun()
       showWizard = first
     } catch (e) {
+      console.warn('[startup] first-run check failed; defaulting to non-wizard startup', {
+        error_message: errorMessage(e),
+      })
       showWizard = false
     } finally {
       wizardChecked = true
@@ -308,7 +321,11 @@
       if (status.status !== 'connected') {
         daemonStatus = status.status
       }
-    } catch { /* ignore — not critical */ }
+    } catch (error) {
+      console.warn('[daemon] status check failed; preserving current status', {
+        error_message: errorMessage(error),
+      })
+    }
 
     // Non-blocking: check if daemon binary needs updating
     checkDaemonUpdate()
@@ -326,7 +343,11 @@
           bundled_version: bundledVersion,
         }
       }
-    } catch { /* ignore — not critical */ }
+    } catch (error) {
+      console.warn('[daemon] install-status check failed; skipping update banner', {
+        error_message: errorMessage(error),
+      })
+    }
   }
 
   async function handleDaemonUpdate() {
@@ -506,6 +527,9 @@
       // The cache is refreshed by the file watcher and startup reseed.
     } catch (e) {
       sidebarError = e.message || 'Failed to load projects'
+      console.error('[shell] failed to load projects', {
+        error_message: errorMessage(e),
+      })
     } finally {
       sidebarLoading = false
     }
@@ -602,8 +626,12 @@
       if (!sessionsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       latestSession = latest
       sessionHistory = history || []
-    } catch {
+    } catch (error) {
       if (!sessionsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
+      console.warn('[sessions] failed to refresh session data; using empty fallback', {
+        project_id: projectId,
+        error_message: errorMessage(error),
+      })
       latestSession = null
       sessionHistory = []
     } finally {
@@ -619,8 +647,12 @@
       const readme = await getReadme(projectId)
       if (!readmeLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       readmeContent = readme
-    } catch {
+    } catch (error) {
       if (!readmeLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
+      console.warn('[overview] failed to load README; clearing README panel', {
+        project_id: projectId,
+        error_message: errorMessage(error),
+      })
       readmeContent = null
     }
   }
@@ -632,8 +664,12 @@
       const loadedRelationships = await getRelationships(projectId)
       if (!relationshipsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       relationships = loadedRelationships
-    } catch {
+    } catch (error) {
       if (!relationshipsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
+      console.warn('[overview] failed to load relationships; using empty fallback', {
+        project_id: projectId,
+        error_message: errorMessage(error),
+      })
       relationships = []
     } finally {
       if (relationshipsLoadGuard.isCurrent(sequence) && selectedProject?.id === projectId) {
@@ -658,7 +694,13 @@
       recentCommits = await (showAllCommits
         ? getAllCommits(projectId, 50)
         : getRecentCommits(projectId, limit))
-    } catch {
+    } catch (error) {
+      console.warn('[overview] failed to load commits; using empty fallback', {
+        project_id: projectId,
+        limit,
+        show_all_commits: showAllCommits,
+        error_message: errorMessage(error),
+      })
       recentCommits = []
     } finally {
       commitsLoading = false

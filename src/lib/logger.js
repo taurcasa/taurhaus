@@ -1,5 +1,5 @@
 /**
- * Frontend log bridge — wraps console.log/warn/error to also forward
+ * Frontend log bridge — wraps console.log/info/warn/error/debug to also forward
  * structured events to the Rust backend via IPC, which writes JSONL.
  *
  * Import this module once at app startup (main.js) for it to take effect.
@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 const _log = console.log.bind(console)
+const _info = console.info.bind(console)
 const _warn = console.warn.bind(console)
 const _error = console.error.bind(console)
 const _debug = console.debug.bind(console)
@@ -201,6 +202,7 @@ function forward(level, ...args) {
 
 installInteractionTracking()
 console.log = (...args) => { _log(...args); forward('info', ...args) }
+console.info = (...args) => { _info(...args); forward('info', ...args) }
 console.warn = (...args) => { _warn(...args); forward('warn', ...args) }
 console.error = (...args) => { _error(...args); forward('error', ...args) }
 console.debug = (...args) => { _debug(...args); forward('debug', ...args) }

@@ -6,6 +6,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 const realConsole = {
   log: console.log,
+  info: console.info,
   warn: console.warn,
   error: console.error,
   debug: console.debug,
@@ -13,6 +14,7 @@ const realConsole = {
 
 function restoreConsole() {
   console.log = realConsole.log
+  console.info = realConsole.info
   console.warn = realConsole.warn
   console.error = realConsole.error
   console.debug = realConsole.debug
@@ -30,11 +32,13 @@ async function setupLogger() {
 
   const sink = {
     log: vi.fn(),
+    info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
   }
   console.log = sink.log
+  console.info = sink.info
   console.warn = sink.warn
   console.error = sink.error
   console.debug = sink.debug
@@ -85,6 +89,19 @@ describe('logger bridge', () => {
     expect(payloadForCall(invoke, 25)).toMatchObject({
       level: 'info',
       message: 'rate after reset',
+    })
+  })
+
+  it('forwards console.info as info level', async () => {
+    const { invoke } = await setupLogger()
+
+    console.info('info channel works', { source: 'test' })
+
+    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(payloadForCall(invoke, 0)).toMatchObject({
+      level: 'info',
+      message: 'info channel works {"source":"test"}',
+      context: { source: 'test' },
     })
   })
 

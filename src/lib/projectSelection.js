@@ -39,11 +39,18 @@ export async function withFallback(
     const value = await withTimeout(promise, timeoutMs, section)
     return { ok: true, section, value, message: null }
   } catch (err) {
+    const message = formatUserFacingError(err, `Couldn't load ${section.toLowerCase()}`)
+    console.warn('[project-load] section fallback applied', {
+      section,
+      timeout_ms: timeoutMs,
+      error_message: message,
+    })
+
     return {
       ok: false,
       section,
       value: fallback,
-      message: formatUserFacingError(err, `Couldn't load ${section.toLowerCase()}`),
+      message,
     }
   }
 }
