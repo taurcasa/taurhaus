@@ -102,6 +102,23 @@ function latestAnchor(mockFn) {
 }
 
 describe('MeshCanvas', () => {
+  it.each([1, 3, 5, 8])('renders visible connection paths for %i agents', (count) => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(count),
+        mode: 'runtime',
+      },
+    })
+
+    const connections = screen.getAllByTestId('mesh-connection')
+    expect(connections).toHaveLength(count)
+
+    for (const connection of connections) {
+      expect(connection.getAttribute('d')).toMatch(/^M\s/)
+    }
+  })
+
   it('renders lead node when lead prop is provided', () => {
     render(MeshCanvas, {
       props: {
@@ -192,6 +209,23 @@ describe('MeshCanvas', () => {
     expect(screen.getAllByTestId('mesh-connection')).toHaveLength(5)
   })
 
+  it('renders exactly five non-empty connection paths for the 5-agent runtime layout', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(5),
+        mode: 'runtime',
+      },
+    })
+
+    const connections = screen.getAllByTestId('mesh-connection')
+    expect(connections).toHaveLength(5)
+
+    for (const connection of connections) {
+      expect(String(connection.getAttribute('d') ?? '').trim().length).toBeGreaterThan(0)
+    }
+  })
+
   it('keeps all 5-6 agent connections within canvas bounds', async () => {
     const { container, rerender } = render(MeshCanvas, {
       props: {
@@ -246,6 +280,30 @@ describe('MeshCanvas', () => {
     expect(new Set(startXs).size).toBe(5)
   })
 
+  it('keeps the correct connection count after removing the center agent and rerendering', async () => {
+    const { rerender } = render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(5),
+        mode: 'runtime',
+      },
+    })
+
+    expect(screen.getAllByTestId('mesh-connection')).toHaveLength(5)
+
+    await rerender({
+      lead,
+      agents: [makeAgents(5)[0], makeAgents(5)[1], makeAgents(5)[3], makeAgents(5)[4]],
+      mode: 'runtime',
+    })
+
+    const remainingConnections = screen.getAllByTestId('mesh-connection')
+    expect(remainingConnections).toHaveLength(4)
+    for (const connection of remainingConnections) {
+      expect(connection.getAttribute('d')).toMatch(/^M\s/)
+    }
+  })
+
   it('fans 5-agent runtime connections outward instead of keeping all bezier control points on the same vertical rails', () => {
     render(MeshCanvas, {
       props: {
@@ -277,7 +335,7 @@ describe('MeshCanvas', () => {
     expect(controls[3].control1).toBeLessThan(controls[4].control1)
   })
 
-  it('renders the center 5-agent runtime connection as an explicit vertical line instead of a degenerate curve', () => {
+  it('fans the center 5-agent runtime connection with a visible bend instead of a hidden vertical line', () => {
     render(MeshCanvas, {
       props: {
         lead,
@@ -297,11 +355,11 @@ describe('MeshCanvas', () => {
 
     const centerConnection = connections[2]
     const commands = pathCommands(centerConnection)
-    const endpoints = pathEndpoints(centerConnection)
+    const controls = connectionControlXs(centerConnection)
 
-    expect(commands).toEqual(['M', 'L'])
-    expect(endpoints.startX).toBeCloseTo(endpoints.endX, 3)
-    expect(endpoints.endY).toBeGreaterThan(endpoints.startY)
+    expect(commands).toEqual(['M', 'C'])
+    expect(controls.control1).not.toBeCloseTo(controls.start, 3)
+    expect(controls.control2).not.toBeCloseTo(controls.end, 3)
   })
 
   it('shows add node in setup mode and hides it in runtime mode', async () => {

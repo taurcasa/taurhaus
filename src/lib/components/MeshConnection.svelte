@@ -1,11 +1,11 @@
 <script>
   let {
-    from = { x: 0, y: 0 },
-    to = { x: 0, y: 0 },
+    start = { x: 0, y: 0 },
+    end = { x: 0, y: 0 },
+    control1 = { x: 0, y: 0 },
+    control2 = { x: 0, y: 0 },
     status = 'setup',
     dark = false,
-    nodeHeight = 64,
-    bend = 0,
     delay = 0,
     duration = 400,
     glowFilterId = '',
@@ -25,23 +25,16 @@
   })
 
   const path = $derived.by(() => {
-    const fromX = Number(from?.x ?? 0)
-    const fromY = Number(from?.y ?? 0)
-    const toX = Number(to?.x ?? 0)
-    const toY = Number(to?.y ?? 0)
-    const halfHeight = Number(nodeHeight) / 2
-    const midY = (fromY + toY) / 2
-    const horizontalBend = Number.isFinite(Number(bend)) ? Number(bend) : 0
-    const control1X = fromX + horizontalBend
-    const control2X = toX + horizontalBend
-    const startY = fromY + halfHeight
-    const endY = toY - halfHeight
+    const startX = Number(start?.x ?? 0)
+    const startY = Number(start?.y ?? 0)
+    const endX = Number(end?.x ?? 0)
+    const endY = Number(end?.y ?? 0)
+    const control1X = Number(control1?.x ?? startX)
+    const control1Y = Number(control1?.y ?? startY)
+    const control2X = Number(control2?.x ?? endX)
+    const control2Y = Number(control2?.y ?? endY)
 
-    if (Math.abs(horizontalBend) < 0.5 && Math.abs(fromX - toX) < 0.5) {
-      return `M ${fromX},${startY} L ${toX},${endY}`
-    }
-
-    return `M ${fromX},${startY} C ${control1X},${midY} ${control2X},${midY} ${toX},${endY}`
+    return `M ${startX},${startY} C ${control1X},${control1Y} ${control2X},${control2Y} ${endX},${endY}`
   })
 
   const initDelay = $derived.by(() => {

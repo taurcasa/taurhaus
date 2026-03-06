@@ -1,6 +1,7 @@
 <script>
   import { tick } from 'svelte'
   import MeshConnection from './MeshConnection.svelte'
+  import { computeMeshLayout } from './meshLayout.js'
   import MeshNode from './MeshNode.svelte'
 
   let {
@@ -238,180 +239,44 @@
     })
   })
 
-  function buildRow(items, startIndex, rowCount, y, cw, nodeW, gap) {
-    if (rowCount <= 0) return []
-    const rowItems = items.slice(startIndex, startIndex + rowCount)
-    const totalW = rowCount * nodeW + (rowCount - 1) * gap
-    const startX = (cw - totalW) / 2
-
-    return rowItems.map((agent, i) => ({
-      ...agent,
-      position: {
-        x: startX + i * (nodeW + gap) + nodeW / 2,
-        y,
-      },
-      width: nodeW,
-      height: 64,
-    }))
-  }
-
-  function fitHorizontalLayout(rowCount, availableWidth, preferredNodeW, preferredGap) {
-    if (rowCount <= 0) {
-      return { nodeW: preferredNodeW, gap: preferredGap }
-    }
-
-    if (rowCount === 1) {
-      return {
-        nodeW: Math.min(preferredNodeW, Math.floor(availableWidth)),
-        gap: 0,
-      }
-    }
-
-    const minGap = 12
-    const minNodeW = 120
-    const hardMinNodeW = 88
-
-    let nodeW = preferredNodeW
-    let gap = preferredGap
-
-    const totalPreferred = rowCount * nodeW + (rowCount - 1) * gap
-    if (totalPreferred <= availableWidth) {
-      return { nodeW, gap }
-    }
-
-    nodeW = Math.min(
-      preferredNodeW,
-      Math.max(minNodeW, Math.floor((availableWidth - (rowCount - 1) * minGap) / rowCount))
-    )
-    gap = Math.min(
-      preferredGap,
-      Math.max(minGap, Math.floor((availableWidth - rowCount * nodeW) / (rowCount - 1)))
-    )
-
-    if (rowCount * nodeW + (rowCount - 1) * gap > availableWidth) {
-      gap = minGap
-      nodeW = Math.max(
-        hardMinNodeW,
-        Math.floor((availableWidth - (rowCount - 1) * minGap) / rowCount)
-      )
-    }
-
-    return {
-      nodeW: Math.max(hardMinNodeW, nodeW),
-      gap: Math.max(minGap, gap),
-    }
-  }
-
-  function buildConnections(agents, leadPos, leadWidth) {
-    if (!Array.isArray(agents) || agents.length === 0) return []
-
-    const anchorInset = Math.min(28, Math.max(16, Math.round(leadWidth * 0.18)))
-    const anchorSpan = Math.max(0, leadWidth - anchorInset * 2)
-    const ranked = [...agents]
-      .map((agent, index) => ({ agent, index }))
-      .sort((left, right) => {
-        const delta = left.agent.position.x - right.agent.position.x
-        return delta !== 0 ? delta : left.index - right.index
-      })
-
-    const anchorById = new Map()
-    for (const [rank, entry] of ranked.entries()) {
-      const anchorX = ranked.length === 1
-        ? leadPos.x
-        : leadPos.x - anchorSpan / 2 + (anchorSpan * rank) / (ranked.length - 1)
-      anchorById.set(entry.agent.id, anchorX)
-    }
-
-    return agents.map((agent, index) => ({
-      id: agent.id,
-      from: {
-        x: anchorById.get(agent.id) ?? leadPos.x,
-        y: leadPos.y,
-      },
-      to: agent.position,
-      nodeHeight: Math.round((72 + Number(agent.height ?? 64)) / 2),
-      status: normalizedMode === 'runtime' ? agent.status : normalizedMode,
-      bend: Math.round(
-        Math.max(-42, Math.min(42, (agent.position.x - (anchorById.get(agent.id) ?? leadPos.x)) * 0.18))
-      ),
-      delay: normalizedMode === 'initializing' ? index * 200 : 0,
-      duration: normalizedMode === 'initializing' ? 400 : 0,
-    }))
-  }
-
   const layout = $derived.by(() => {
-    const cw = containerWidth || 600
-    const ch = Math.max(460, containerHeight || 0)
     const leadData = normalizedLead
     if (!leadData) return { lead: null, agents: [], connections: [], addNode: null }
 
-    const members = normalizedAgents
-    const count = members.length
-    const preferredGap = count >= 7 ? 20 : 28
-    const preferredNodeW = count >= 7 ? 140 : (count >= 5 ? 160 : 180)
-    const maxRowCount = count >= 7 ? Math.ceil(count / 2) : count
-    const horizontalPadding = 24
-    const availableWidth = Math.max(cw - horizontalPadding * 2, 320)
-    const { nodeW, gap } = fitHorizontalLayout(
-      maxRowCount,
-      availableWidth,
-      preferredNodeW,
-      preferredGap
-    )
-    const leadPos = { x: cw / 2, y: Math.round(ch * 0.3) }
-    const primaryAgentY = Math.round(ch * 0.65)
-
-    let positionedAgents = []
-
-    if (count >= 7) {
-      const row1Count = Math.ceil(count / 2)
-      const row2Count = count - row1Count
-      const rowOffset = 44
-      positionedAgents = [
-        ...buildRow(members, 0, row1Count, primaryAgentY - rowOffset, cw, nodeW, gap),
-        ...buildRow(members, row1Count, row2Count, primaryAgentY + rowOffset, cw, nodeW, gap),
-      ]
-    } else if (count > 0) {
-      const totalW = count * nodeW + (count - 1) * gap
-      const startX = (cw - totalW) / 2
-
-      positionedAgents = members.map((agent, i) => ({
-        ...agent,
-        position: {
-          x: startX + i * (nodeW + gap) + nodeW / 2,
-          y: primaryAgentY,
-        },
-        width: nodeW,
-        height: 64,
-      }))
-    }
-
-    const leadWidth = Math.max(180, nodeW)
-    const connections = buildConnections(positionedAgents, leadPos, leadWidth)
-
-    const lastAgent = positionedAgents[positionedAgents.length - 1] ?? null
-    const addNode = normalizedMode === 'setup'
-      ? (lastAgent
-        ? {
-          x: lastAgent.position.x + nodeW / 2 + gap + 24,
-          y: lastAgent.position.y,
-        }
-        : {
-          x: leadPos.x,
-          y: primaryAgentY,
-        })
-      : null
+    const computed = computeMeshLayout({
+      width: containerWidth || 600,
+      height: Math.max(460, containerHeight || 0),
+      mode: normalizedMode,
+      lead: leadData,
+      agents: normalizedAgents,
+    })
 
     return {
-      lead: {
-        ...leadData,
-        position: leadPos,
-        width: leadWidth,
-        height: 72,
-      },
-      agents: positionedAgents,
-      connections,
-      addNode,
+      lead: computed.lead
+        ? {
+          ...computed.lead,
+          position: {
+            x: computed.lead.x,
+            y: computed.lead.y,
+          },
+        }
+        : null,
+      agents: computed.agents.map((agent) => ({
+        ...agent,
+        position: {
+          x: agent.x,
+          y: agent.y,
+        },
+      })),
+      connections: computed.connections.map((connection, index) => ({
+        ...connection,
+        status: normalizedMode === 'runtime'
+          ? computed.agents.find((agent) => agent.id === connection.toId)?.status ?? 'offline'
+          : normalizedMode,
+        delay: normalizedMode === 'initializing' ? index * 200 : 0,
+        duration: normalizedMode === 'initializing' ? 400 : 0,
+      })),
+      addNode: computed.addNode,
     }
   })
 
@@ -538,14 +403,14 @@
 
       {#each layout.connections as connection (connection.id)}
         <MeshConnection
-          from={connection.from}
-          to={connection.to}
+          start={connection.start}
+          end={connection.end}
+          control1={connection.control1}
+          control2={connection.control2}
           status={connection.status}
-          bend={connection.bend}
           delay={connection.delay}
           duration={connection.duration}
           glowFilterId={connectionGlowFilterId}
-          nodeHeight={connection.nodeHeight}
           {dark}
         />
       {/each}
