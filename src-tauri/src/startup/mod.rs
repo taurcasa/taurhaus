@@ -40,108 +40,312 @@ struct DaemonPhase {
     daemon_connected_at_startup: bool,
 }
 
-struct StartupPhaseSpan {
-    phase: &'static str,
-    started_at: Instant,
-    daemon_addr: Option<String>,
-    connected_at_startup: Option<bool>,
+fn emit_startup_event(level: &str, event: &str, message: &'static str, fields: Map<String, Value>) {
+    commands::logging::emit_global(level, "backend", event, Some(message.to_string()), fields);
 }
 
-impl StartupPhaseSpan {
-    fn start(
-        phase: &'static str,
-        daemon_addr: Option<String>,
-        connected_at_startup: Option<bool>,
-    ) -> Self {
-        emit_startup_phase_event(
-            "info",
-            "startup.phase.started",
-            phase,
-            None,
-            daemon_addr.clone(),
-            connected_at_startup,
-            None,
-            None,
-        );
-        Self {
-            phase,
-            started_at: Instant::now(),
-            daemon_addr,
-            connected_at_startup,
-        }
-    }
-
-    fn complete(&self) {
-        emit_startup_phase_event(
-            "info",
-            "startup.phase.completed",
-            self.phase,
-            Some(self.started_at.elapsed().as_millis() as u64),
-            self.daemon_addr.clone(),
-            self.connected_at_startup,
-            None,
-            None,
-        );
-    }
-
-    fn fail(&self, error_code: &str, error_message: &str) {
-        emit_startup_phase_event(
-            "error",
-            "startup.phase.failed",
-            self.phase,
-            Some(self.started_at.elapsed().as_millis() as u64),
-            self.daemon_addr.clone(),
-            self.connected_at_startup,
-            Some(error_code),
-            Some(error_message),
-        );
-    }
+fn startup_base_fields() -> Map<String, Value> {
+    Map::new()
 }
 
-fn emit_startup_phase_event(
-    level: &str,
-    event: &str,
-    phase: &str,
-    duration_ms: Option<u64>,
-    daemon_addr: Option<String>,
-    connected_at_startup: Option<bool>,
-    error_code: Option<&str>,
-    error_message: Option<&str>,
+fn emit_startup_app_started() {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "app_version".to_string(),
+        Value::String(env!("CARGO_PKG_VERSION").to_string()),
+    );
+    let platform = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    fields.insert("platform".to_string(), Value::String(platform.to_string()));
+    fields.insert(
+        "pid".to_string(),
+        Value::Number(serde_json::Number::from(std::process::id())),
+    );
+    emit_startup_event(
+        "info",
+        "startup.app.started",
+        "Startup bootstrap entered",
+        fields,
+    );
+}
+
+fn emit_startup_paths_resolved(setup_paths: &SetupPaths) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "data_dir".to_string(),
+        Value::String(setup_paths.data_dir.display().to_string()),
+    );
+    fields.insert(
+        "db_path".to_string(),
+        Value::String(setup_paths.db_path.display().to_string()),
+    );
+    fields.insert(
+        "log_path".to_string(),
+        Value::String(setup_paths.log_path.display().to_string()),
+    );
+    fields.insert(
+        "used_data_dir_override".to_string(),
+        Value::Bool(env_path_override(DATA_DIR_OVERRIDE_ENV).is_some()),
+    );
+    fields.insert(
+        "used_claude_dir_override".to_string(),
+        Value::Bool(env_path_override(CLAUDE_DIR_OVERRIDE_ENV).is_some()),
+    );
+    emit_startup_event(
+        "info",
+        "startup.paths.resolved",
+        "Startup paths resolved",
+        fields,
+    );
+}
+
+fn emit_startup_logging_initialized(setup_paths: &SetupPaths) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "log_path".to_string(),
+        Value::String(setup_paths.log_path.display().to_string()),
+    );
+    fields.insert("format".to_string(), Value::String("jsonl".to_string()));
+    fields.insert("rotation_enabled".to_string(), Value::Bool(true));
+    emit_startup_event(
+        "info",
+        "startup.logging.initialized",
+        "Startup logging sink initialized",
+        fields,
+    );
+}
+
+fn emit_startup_database_started(setup_paths: &SetupPaths) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "db_path".to_string(),
+        Value::String(setup_paths.db_path.display().to_string()),
+    );
+    emit_startup_event(
+        "info",
+        "startup.database.started",
+        "Startup database initialization started",
+        fields,
+    );
+}
+
+fn emit_startup_database_completed(setup_paths: &SetupPaths, duration_ms: u64) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "db_path".to_string(),
+        Value::String(setup_paths.db_path.display().to_string()),
+    );
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    fields.insert(
+        "migration_count".to_string(),
+        Value::Number(serde_json::Number::from(0_u64)),
+    );
+    emit_startup_event(
+        "info",
+        "startup.database.completed",
+        "Startup database initialization completed",
+        fields,
+    );
+}
+
+fn emit_startup_database_failed(setup_paths: &SetupPaths, error: &str) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "db_path".to_string(),
+        Value::String(setup_paths.db_path.display().to_string()),
+    );
+    fields.insert(
+        "error.code".to_string(),
+        Value::String("STARTUP_DATABASE_INIT_FAILED".to_string()),
+    );
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error.to_string()),
+    );
+    emit_startup_event(
+        "error",
+        "startup.database.failed",
+        "Startup database initialization failed",
+        fields,
+    );
+}
+
+fn emit_startup_daemon_phase_started() {
+    let fields = startup_base_fields();
+    emit_startup_event(
+        "info",
+        "startup.daemon_phase.started",
+        "Startup daemon phase determination started",
+        fields,
+    );
+}
+
+fn emit_startup_daemon_phase_completed(
+    context: &SetupContext,
+    wsl_distro: Option<&str>,
+    duration_ms: u64,
 ) {
-    let mut fields = Map::new();
-    fields.insert("phase".to_string(), Value::String(phase.to_string()));
-    if let Some(duration_ms) = duration_ms {
+    let mut fields = startup_base_fields();
+    if let Some(wsl_distro) = wsl_distro {
         fields.insert(
-            "duration_ms".to_string(),
-            Value::Number(serde_json::Number::from(duration_ms)),
+            "wsl_distro".to_string(),
+            Value::String(wsl_distro.to_string()),
         );
     }
-    if let Some(daemon_addr) = daemon_addr {
-        fields.insert("daemon_addr".to_string(), Value::String(daemon_addr));
-    }
-    if let Some(connected_at_startup) = connected_at_startup {
+    if let Some(daemon_addr) = context.daemon_addr.as_ref() {
         fields.insert(
-            "connected_at_startup".to_string(),
-            Value::Bool(connected_at_startup),
+            "daemon_addr".to_string(),
+            Value::String(daemon_addr.clone()),
         );
     }
-    if let Some(error_code) = error_code {
+    fields.insert(
+        "daemon_connected_at_startup".to_string(),
+        Value::Bool(context.daemon_connected_at_startup),
+    );
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    emit_startup_event(
+        "info",
+        "startup.daemon_phase.completed",
+        "Startup daemon phase determination completed",
+        fields,
+    );
+}
+
+fn emit_startup_daemon_connect_succeeded(daemon_addr: &str, duration_ms: u64) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "daemon_addr".to_string(),
+        Value::String(daemon_addr.to_string()),
+    );
+    fields.insert("mode".to_string(), Value::String("fast_path".to_string()));
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    emit_startup_event(
+        "info",
+        "startup.daemon_connect.succeeded",
+        "Startup daemon fast-path connect succeeded",
+        fields,
+    );
+}
+
+fn emit_startup_daemon_connect_deferred(
+    daemon_addr: &str,
+    wsl_distro: Option<&str>,
+    reason: &str,
+    duration_ms: u64,
+) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "daemon_addr".to_string(),
+        Value::String(daemon_addr.to_string()),
+    );
+    if let Some(wsl_distro) = wsl_distro {
         fields.insert(
-            "error.code".to_string(),
-            Value::String(error_code.to_string()),
+            "wsl_distro".to_string(),
+            Value::String(wsl_distro.to_string()),
         );
     }
-    if let Some(error_message) = error_message {
-        fields.insert(
-            "error.message".to_string(),
-            Value::String(error_message.to_string()),
-        );
-    }
-    commands::logging::emit_global(
-        level,
-        "backend",
-        event,
-        Some("Startup phase lifecycle event".to_string()),
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    emit_startup_event(
+        "warn",
+        "startup.daemon_connect.deferred",
+        "Startup daemon fast-path connect deferred",
+        fields,
+    );
+}
+
+fn emit_startup_orchestration_started() {
+    let mut fields = startup_base_fields();
+    let steps = vec![
+        Value::String("daemon".to_string()),
+        Value::String("watchers".to_string()),
+        Value::String("search".to_string()),
+        Value::String("background_tasks".to_string()),
+    ];
+    fields.insert("steps".to_string(), Value::Array(steps));
+    emit_startup_event(
+        "info",
+        "startup.orchestration.started",
+        "Startup orchestration started",
+        fields,
+    );
+}
+
+fn emit_startup_orchestration_completed(duration_ms: u64) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    emit_startup_event(
+        "info",
+        "startup.orchestration.completed",
+        "Startup orchestration completed",
+        fields,
+    );
+}
+
+fn emit_startup_watchers_initialized(
+    duration_ms: u64,
+    local_watcher_enabled: bool,
+    daemon_watch_bootstrap: bool,
+) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "local_watcher_enabled".to_string(),
+        Value::Bool(local_watcher_enabled),
+    );
+    fields.insert(
+        "daemon_watch_bootstrap".to_string(),
+        Value::Bool(daemon_watch_bootstrap),
+    );
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    emit_startup_event(
+        "info",
+        "startup.watchers.initialized",
+        "Startup watchers initialized",
+        fields,
+    );
+}
+
+fn emit_startup_search_initialized(index_path: PathBuf, doc_count: u64, duration_ms: u64) {
+    let mut fields = startup_base_fields();
+    fields.insert(
+        "index_path".to_string(),
+        Value::String(index_path.display().to_string()),
+    );
+    fields.insert(
+        "doc_count".to_string(),
+        Value::Number(serde_json::Number::from(doc_count)),
+    );
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    emit_startup_event(
+        "info",
+        "startup.search.initialized",
+        "Startup search initialized",
         fields,
     );
 }
@@ -150,20 +354,37 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
     tracing::info!("taurhaus starting");
 
     let setup_paths = initialize_paths_and_logging(app)?;
-    let bootstrap_phase = StartupPhaseSpan::start("bootstrap", None, None);
+    emit_startup_app_started();
+    emit_startup_paths_resolved(&setup_paths);
+    emit_startup_logging_initialized(&setup_paths);
+    emit_startup_database_started(&setup_paths);
+    let database_started_at = Instant::now();
     let conn = match initialize_database(&setup_paths) {
         Ok(conn) => conn,
         Err(error) => {
-            bootstrap_phase.fail("STARTUP_DATABASE_INIT_FAILED", &error.to_string());
+            emit_startup_database_failed(&setup_paths, &error.to_string());
             return Err(error);
         }
     };
+    emit_startup_database_completed(
+        &setup_paths,
+        database_started_at.elapsed().as_millis() as u64,
+    );
+    emit_startup_daemon_phase_started();
+    let daemon_phase_started_at = Instant::now();
     let daemon_phase = determine_daemon_phase(&conn);
     let context = build_setup_context(&setup_paths, &daemon_phase);
+    emit_startup_daemon_phase_completed(
+        &context,
+        daemon_phase.wsl_distro.as_deref(),
+        daemon_phase_started_at.elapsed().as_millis() as u64,
+    );
 
     register_managed_state(app, conn, &setup_paths, daemon_phase);
-    bootstrap_phase.complete();
+    emit_startup_orchestration_started();
+    let orchestration_started_at = Instant::now();
     run_startup_orchestration(app, &context)?;
+    emit_startup_orchestration_completed(orchestration_started_at.elapsed().as_millis() as u64);
 
     tracing::info!(db_path = %context.db_path.display(), "database initialized");
     Ok(())
@@ -224,13 +445,24 @@ fn connect_daemon_provider(
 
     let port = crate::daemon::server::DEFAULT_PORT;
     let addr = format!("127.0.0.1:{port}");
+    let connect_started_at = Instant::now();
     match provider::daemon_client::DaemonProvider::connect(&addr) {
         Ok(provider) => {
             tracing::info!("Connected to existing daemon (fast path)");
+            emit_startup_daemon_connect_succeeded(
+                &addr,
+                connect_started_at.elapsed().as_millis() as u64,
+            );
             (Some(provider), true)
         }
         Err(_) => {
             tracing::info!(addr, "Daemon not running — will start in background");
+            emit_startup_daemon_connect_deferred(
+                &addr,
+                wsl_distro.as_deref(),
+                "daemon_unavailable_at_startup",
+                connect_started_at.elapsed().as_millis() as u64,
+            );
             (
                 Some(provider::daemon_client::DaemonProvider::new_disconnected(
                     &addr,
@@ -283,36 +515,61 @@ fn run_startup_orchestration(
     app: &mut tauri::App,
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let daemon_phase = StartupPhaseSpan::start(
-        "daemon",
-        context.daemon_addr.clone(),
-        Some(context.daemon_connected_at_startup),
-    );
     daemon::spawn_background_bootstrap(app.handle().clone(), context);
     daemon::start_runtime_monitors(app.handle().clone(), context);
-    daemon_phase.complete();
-
-    let watchers_phase = StartupPhaseSpan::start(
-        "watchers",
-        context.daemon_addr.clone(),
-        Some(context.daemon_connected_at_startup),
-    );
+    let watchers_started_at = Instant::now();
     if let Err(error) = watchers::initialize(app, context) {
-        watchers_phase.fail("STARTUP_WATCHERS_INIT_FAILED", &error.to_string());
+        let mut fields = startup_base_fields();
+        fields.insert(
+            "error.code".to_string(),
+            Value::String("STARTUP_WATCHERS_INIT_FAILED".to_string()),
+        );
+        fields.insert(
+            "error.message".to_string(),
+            Value::String(error.to_string()),
+        );
+        emit_startup_event(
+            "error",
+            "startup.watchers.failed",
+            "Startup watchers initialization failed",
+            fields,
+        );
         return Err(error);
     }
-    watchers_phase.complete();
-
-    let search_phase = StartupPhaseSpan::start(
-        "search",
-        context.daemon_addr.clone(),
-        Some(context.daemon_connected_at_startup),
+    emit_startup_watchers_initialized(
+        watchers_started_at.elapsed().as_millis() as u64,
+        true,
+        context.daemon_connected_at_startup && context.daemon_addr.is_some(),
     );
-    if let Err(error) = search::initialize(app, context) {
-        search_phase.fail("STARTUP_SEARCH_INIT_FAILED", &error.to_string());
-        return Err(error);
-    }
-    search_phase.complete();
+
+    let search_started_at = Instant::now();
+    let search_doc_count = match search::initialize(app, context) {
+        Ok(doc_count) => doc_count,
+        Err(error) => {
+            let mut fields = startup_base_fields();
+            fields.insert(
+                "error.code".to_string(),
+                Value::String("STARTUP_SEARCH_INIT_FAILED".to_string()),
+            );
+            fields.insert(
+                "error.message".to_string(),
+                Value::String(error.to_string()),
+            );
+            emit_startup_event(
+                "error",
+                "startup.search.failed",
+                "Startup search initialization failed",
+                fields,
+            );
+            return Err(error);
+        }
+    };
+    let index_path = context.data_dir.join("search_index");
+    emit_startup_search_initialized(
+        index_path,
+        search_doc_count,
+        search_started_at.elapsed().as_millis() as u64,
+    );
 
     bootstrap::spawn_background_startup_tasks(app.handle().clone());
     Ok(())
@@ -346,4 +603,110 @@ pub(crate) fn resolve_claude_tasks_dir() -> Option<PathBuf> {
         return Some(path.join("tasks"));
     }
     dirs::home_dir().map(|home| home.join(".claude").join("tasks"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
+    use std::path::Path;
+    use std::time::Duration;
+
+    fn read_lines(path: &Path) -> Vec<String> {
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        content
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect()
+    }
+
+    fn wait_for_lines(path: &Path, expected_minimum: usize) -> Vec<String> {
+        for _ in 0..100 {
+            let lines = read_lines(path);
+            if lines.len() >= expected_minimum {
+                return lines;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        read_lines(path)
+    }
+
+    #[test]
+    fn startup_emitters_use_inventory_specific_event_names() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join("startup-events.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let setup_paths = SetupPaths {
+            data_dir: dir.path().join("data"),
+            log_path: log_path.clone(),
+            db_path: dir.path().join("taurhaus.db"),
+        };
+        let context = SetupContext {
+            data_dir: setup_paths.data_dir.clone(),
+            log_path: setup_paths.log_path.clone(),
+            db_path: setup_paths.db_path.clone(),
+            wsl_distro: Some("Ubuntu".to_string()),
+            daemon_addr: Some("127.0.0.1:17233".to_string()),
+            daemon_connected_at_startup: false,
+        };
+
+        emit_startup_app_started();
+        emit_startup_paths_resolved(&setup_paths);
+        emit_startup_logging_initialized(&setup_paths);
+        emit_startup_database_started(&setup_paths);
+        emit_startup_database_completed(&setup_paths, 1);
+        emit_startup_daemon_phase_started();
+        emit_startup_daemon_phase_completed(&context, Some("Ubuntu"), 2);
+        emit_startup_daemon_connect_succeeded("127.0.0.1:17233", 1);
+        emit_startup_daemon_connect_deferred(
+            "127.0.0.1:17233",
+            Some("Ubuntu"),
+            "daemon_unavailable_at_startup",
+            1,
+        );
+        emit_startup_orchestration_started();
+        emit_startup_orchestration_completed(3);
+        emit_startup_watchers_initialized(4, true, false);
+        emit_startup_search_initialized(context.data_dir.join("search_index"), 0, 5);
+
+        let lines = wait_for_lines(&log_path, 13);
+        let events: Vec<serde_json::Value> = lines
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("valid json"))
+            .collect();
+
+        let expected = [
+            "startup.app.started",
+            "startup.paths.resolved",
+            "startup.logging.initialized",
+            "startup.database.started",
+            "startup.database.completed",
+            "startup.daemon_phase.started",
+            "startup.daemon_phase.completed",
+            "startup.daemon_connect.succeeded",
+            "startup.daemon_connect.deferred",
+            "startup.orchestration.started",
+            "startup.orchestration.completed",
+            "startup.watchers.initialized",
+            "startup.search.initialized",
+        ];
+        for event_name in expected {
+            assert!(
+                events.iter().any(|value| value["event"] == event_name),
+                "missing expected startup event: {event_name}"
+            );
+        }
+        assert!(
+            events
+                .iter()
+                .all(|value| value["event"] != "startup.phase.started"
+                    && value["event"] != "startup.phase.completed"
+                    && value["event"] != "startup.phase.failed"),
+            "legacy generic startup phase events must not be emitted"
+        );
+    }
 }

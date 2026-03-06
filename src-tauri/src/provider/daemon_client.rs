@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 
 use crate::daemon_api::protocol::{self, DaemonRequest, DaemonResponse};
-use crate::daemon_api::{is_timeout_transport_error, DaemonRpcSpan};
+use crate::daemon_api::{emit_daemon_connection_event, is_timeout_transport_error, DaemonRpcSpan};
 use crate::errors::AppError;
 use crate::models::{
     Commit, CommitFile, DiffHunk, FileContent, FileTreeNode, GitRangeResult, GitStatus,
@@ -72,19 +72,28 @@ impl DaemonProvider {
 
     /// Create a new DaemonProvider connected to the given address.
     pub fn connect(addr: &str) -> Result<Self, AppError> {
+        let connect_started_at = Instant::now();
         let stream = Self::connect_stream(addr)?;
         let reader = BufReader::new(stream.try_clone().map_err(|error| {
             AppError::DaemonTransport(format!("Failed to clone daemon stream at {addr}: {error}"))
         })?);
 
-        Ok(Self {
+        let provider = Self {
             conn: Mutex::new(Some(Connection { stream, reader })),
             addr: addr.to_string(),
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(true),
             last_reconnect_attempt: Mutex::new(None),
             auth_token: Mutex::new(Self::read_auth_token()),
-        })
+        };
+        emit_daemon_connection_event(
+            "info",
+            "daemon.connection.established",
+            addr,
+            Some("initial_connect"),
+            Some(connect_started_at.elapsed().as_millis() as u64),
+        );
+        Ok(provider)
     }
 
     /// Create a DaemonProvider that is initially disconnected.
@@ -153,6 +162,14 @@ impl DaemonProvider {
     /// Replaces the TCP stream and reader. On success, marks the provider
     /// as connected.
     pub fn reconnect(&self) -> Result<(), AppError> {
+        let reconnect_started_at = Instant::now();
+        emit_daemon_connection_event(
+            "info",
+            "daemon.connection.reconnecting",
+            &self.addr,
+            Some("reconnect_requested"),
+            None,
+        );
         let stream = Self::connect_stream(&self.addr)?;
         let reader = BufReader::new(stream.try_clone().map_err(|error| {
             AppError::DaemonTransport(format!(
@@ -182,6 +199,13 @@ impl DaemonProvider {
         }
 
         tracing::debug!(addr = %self.addr, "Daemon reconnected");
+        emit_daemon_connection_event(
+            "info",
+            "daemon.connection.established",
+            &self.addr,
+            Some("reconnect"),
+            Some(reconnect_started_at.elapsed().as_millis() as u64),
+        );
         Ok(())
     }
 
@@ -226,10 +250,17 @@ impl DaemonProvider {
     }
 
     /// Mark the provider as disconnected (clears the TCP connection).
-    fn mark_disconnected(&self) {
+    fn mark_disconnected(&self, reason: &str) {
         self.connected.store(false, Ordering::Relaxed);
         let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
+        emit_daemon_connection_event(
+            "warn",
+            "daemon.connection.lost",
+            &self.addr,
+            Some(reason),
+            None,
+        );
     }
 
     /// Generate a unique request ID.
@@ -256,8 +287,8 @@ impl DaemonProvider {
         let result = self.send_request_inner(request, timeout);
         match &result {
             Ok(response) => {
-                if response.error.is_some() {
-                    rpc_span.response("error");
+                if let Some(error) = response.error.as_ref() {
+                    rpc_span.failed(&error.code, &error.message);
                 } else {
                     rpc_span.response("ok");
                 }
@@ -265,13 +296,19 @@ impl DaemonProvider {
             Err(AppError::DaemonTransport(message)) if is_timeout_transport_error(message) => {
                 rpc_span.timeout();
             }
+            Err(AppError::DaemonProtocol(message)) => {
+                rpc_span.failed("DAEMON_PROTOCOL_ERROR", message);
+            }
+            Err(AppError::DaemonTransport(message)) => {
+                rpc_span.failed("DAEMON_TRANSPORT_ERROR", message);
+            }
             Err(_) => {
-                rpc_span.response("error");
+                rpc_span.failed("DAEMON_RPC_ERROR", "daemon rpc call failed");
             }
         }
-        if let Err(AppError::DaemonTransport(_)) = &result {
+        if let Err(AppError::DaemonTransport(message)) = &result {
             tracing::warn!("Daemon I/O error, marking disconnected");
-            self.mark_disconnected();
+            self.mark_disconnected(message);
         }
         result
     }
@@ -543,9 +580,11 @@ impl ProjectProvider for DaemonProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logging::{install_global_sink, LogFileState};
     use crate::daemon::server::DaemonConfig;
     use crate::provider::local::LocalProvider;
     use git2::{Repository, Signature};
+    use std::path::Path;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
@@ -593,6 +632,26 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         drop(listener);
         start_daemon_on_port(port)
+    }
+
+    fn read_lines(path: &Path) -> Vec<String> {
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        content
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect()
+    }
+
+    fn wait_for_lines(path: &Path, expected_minimum: usize) -> Vec<String> {
+        for _ in 0..100 {
+            let lines = read_lines(path);
+            if lines.len() >= expected_minimum {
+                return lines;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        read_lines(path)
     }
 
     fn init_test_repo(dir: &std::path::Path) {
@@ -883,5 +942,35 @@ mod tests {
         assert!(!result2);
         // Should return very quickly (< 100ms), not spending time on TCP connect
         assert!(start.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn emits_daemon_connection_lifecycle_events_on_connect_reconnect_and_disconnect() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join("daemon-connection-lifecycle.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let daemon = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
+        assert!(provider.reconnect().is_ok());
+        provider.mark_disconnected("test_disconnect");
+
+        let lines = wait_for_lines(&log_path, 4);
+        let events: Vec<serde_json::Value> = lines
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("valid json"))
+            .collect();
+        assert!(events
+            .iter()
+            .any(|value| value["event"] == "daemon.connection.established"));
+        assert!(events
+            .iter()
+            .any(|value| value["event"] == "daemon.connection.reconnecting"));
+        assert!(events
+            .iter()
+            .any(|value| value["event"] == "daemon.connection.lost"));
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 }

@@ -10,12 +10,13 @@ use crate::{search, SearchState};
 pub(crate) fn initialize(
     app: &mut tauri::App,
     context: &SetupContext,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<u64, Box<dyn std::error::Error>> {
     let index_dir = context.data_dir.join("search_index");
     let search_index = open_with_fallback(&index_dir)?;
+    let doc_count = search_index.doc_count().unwrap_or(0);
 
     app.manage(SearchState(Mutex::new(search_index)));
-    Ok(())
+    Ok(doc_count)
 }
 
 fn open_with_fallback(index_dir: &Path) -> Result<search::indexer::SearchIndex, io::Error> {
