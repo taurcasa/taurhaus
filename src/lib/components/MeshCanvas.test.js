@@ -67,6 +67,17 @@ function connectionStartX(connectionPath) {
   return numbers[0]
 }
 
+function connectionControlXs(connectionPath) {
+  const raw = String(connectionPath?.getAttribute('d') ?? '')
+  const numbers = raw.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+  return {
+    start: numbers[0],
+    control1: numbers[2],
+    control2: numbers[4],
+    end: numbers[6],
+  }
+}
+
 function latestAnchor(mockFn) {
   const anchors = mockFn.mock.calls
     .map(([anchor]) => anchor)
@@ -217,6 +228,37 @@ describe('MeshCanvas', () => {
       .map((connection) => connectionStartX(connection))
 
     expect(new Set(startXs).size).toBe(5)
+  })
+
+  it('fans 5-agent runtime connections outward instead of keeping all bezier control points on the same vertical rails', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: makeAgents(5),
+        mode: 'runtime',
+      },
+    })
+
+    const controls = screen
+      .getAllByTestId('mesh-connection')
+      .map((connection) => connectionControlXs(connection))
+
+    expect(controls).toHaveLength(5)
+
+    expect(controls[0].control1).toBeLessThan(controls[0].start)
+    expect(controls[1].control1).toBeLessThan(controls[1].start)
+    expect(controls[3].control1).toBeGreaterThan(controls[3].start)
+    expect(controls[4].control1).toBeGreaterThan(controls[4].start)
+
+    expect(controls[0].control2).toBeLessThan(controls[0].end)
+    expect(controls[1].control2).toBeLessThan(controls[1].end)
+    expect(controls[3].control2).toBeGreaterThan(controls[3].end)
+    expect(controls[4].control2).toBeGreaterThan(controls[4].end)
+
+    expect(controls[0].control1).toBeLessThan(controls[1].control1)
+    expect(controls[1].control1).toBeLessThan(controls[2].control1)
+    expect(controls[2].control1).toBeLessThan(controls[3].control1)
+    expect(controls[3].control1).toBeLessThan(controls[4].control1)
   })
 
   it('shows add node in setup mode and hides it in runtime mode', async () => {

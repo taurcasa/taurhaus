@@ -5,6 +5,7 @@
     status = 'setup',
     dark = false,
     nodeHeight = 64,
+    bend = 0,
     delay = 0,
     duration = 400,
     glowFilterId = '',
@@ -30,8 +31,11 @@
     const toY = Number(to?.y ?? 0)
     const halfHeight = Number(nodeHeight) / 2
     const midY = (fromY + toY) / 2
+    const horizontalBend = Number.isFinite(Number(bend)) ? Number(bend) : 0
+    const control1X = fromX + horizontalBend
+    const control2X = toX + horizontalBend
 
-    return `M ${fromX},${fromY + halfHeight} C ${fromX},${midY} ${toX},${midY} ${toX},${toY - halfHeight}`
+    return `M ${fromX},${fromY + halfHeight} C ${control1X},${midY} ${control2X},${midY} ${toX},${toY - halfHeight}`
   })
 
   const initDelay = $derived.by(() => {

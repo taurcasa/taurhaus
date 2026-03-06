@@ -331,6 +331,9 @@
       to: agent.position,
       nodeHeight: Math.round((72 + Number(agent.height ?? 64)) / 2),
       status: normalizedMode === 'runtime' ? agent.status : normalizedMode,
+      bend: Math.round(
+        Math.max(-42, Math.min(42, (agent.position.x - (anchorById.get(agent.id) ?? leadPos.x)) * 0.18))
+      ),
       delay: normalizedMode === 'initializing' ? index * 200 : 0,
       duration: normalizedMode === 'initializing' ? 400 : 0,
     }))
@@ -538,6 +541,7 @@
           from={connection.from}
           to={connection.to}
           status={connection.status}
+          bend={connection.bend}
           delay={connection.delay}
           duration={connection.duration}
           glowFilterId={connectionGlowFilterId}
