@@ -34,8 +34,14 @@
     const horizontalBend = Number.isFinite(Number(bend)) ? Number(bend) : 0
     const control1X = fromX + horizontalBend
     const control2X = toX + horizontalBend
+    const startY = fromY + halfHeight
+    const endY = toY - halfHeight
 
-    return `M ${fromX},${fromY + halfHeight} C ${control1X},${midY} ${control2X},${midY} ${toX},${toY - halfHeight}`
+    if (Math.abs(horizontalBend) < 0.5 && Math.abs(fromX - toX) < 0.5) {
+      return `M ${fromX},${startY} L ${toX},${endY}`
+    }
+
+    return `M ${fromX},${startY} C ${control1X},${midY} ${control2X},${midY} ${toX},${endY}`
   })
 
   const initDelay = $derived.by(() => {

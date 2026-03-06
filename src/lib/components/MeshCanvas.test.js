@@ -78,6 +78,22 @@ function connectionControlXs(connectionPath) {
   }
 }
 
+function pathEndpoints(connectionPath) {
+  const raw = String(connectionPath?.getAttribute('d') ?? '')
+  const numbers = raw.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+  return {
+    startX: numbers[0],
+    startY: numbers[1],
+    endX: numbers.at(-2),
+    endY: numbers.at(-1),
+  }
+}
+
+function pathCommands(connectionPath) {
+  const raw = String(connectionPath?.getAttribute('d') ?? '')
+  return raw.match(/[A-Za-z]/g) ?? []
+}
+
 function latestAnchor(mockFn) {
   const anchors = mockFn.mock.calls
     .map(([anchor]) => anchor)
@@ -259,6 +275,33 @@ describe('MeshCanvas', () => {
     expect(controls[1].control1).toBeLessThan(controls[2].control1)
     expect(controls[2].control1).toBeLessThan(controls[3].control1)
     expect(controls[3].control1).toBeLessThan(controls[4].control1)
+  })
+
+  it('renders the center 5-agent runtime connection as an explicit vertical line instead of a degenerate curve', () => {
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: [
+          { id: 'architect', name: 'architect', tool: 'codex', model: 'gpt-5', status: 'active' },
+          { id: 'developer1', name: 'developer1', tool: 'codex', model: 'gpt-5', status: 'active' },
+          { id: 'developer2', name: 'developer2', tool: 'codex', model: 'gpt-5', status: 'active' },
+          { id: 'developer3', name: 'developer3', tool: 'codex', model: 'gpt-5', status: 'active' },
+          { id: 'mesh-expert', name: 'mesh-expert', tool: 'gemini', model: 'gemini-3.1-pro', status: 'active' },
+        ],
+        mode: 'runtime',
+      },
+    })
+
+    const connections = screen.getAllByTestId('mesh-connection')
+    expect(connections).toHaveLength(5)
+
+    const centerConnection = connections[2]
+    const commands = pathCommands(centerConnection)
+    const endpoints = pathEndpoints(centerConnection)
+
+    expect(commands).toEqual(['M', 'L'])
+    expect(endpoints.startX).toBeCloseTo(endpoints.endX, 3)
+    expect(endpoints.endY).toBeGreaterThan(endpoints.startY)
   })
 
   it('shows add node in setup mode and hides it in runtime mode', async () => {
