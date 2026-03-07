@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte'
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
   import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
@@ -192,6 +193,11 @@
       return error
     }
     return String(error)
+  }
+
+  function recordProjectSwitchPerformance(measurement) {
+    console.info('[perf] project switch', measurement)
+    globalThis.__TAURHAUS_PROJECT_SWITCH_MEASURE__?.(measurement)
   }
 
   function handleProjectRemoved(id) {
@@ -559,6 +565,9 @@
 
   async function selectProject(project) {
     const projectId = project.id
+    const previousProjectId = selectedProject?.id ?? null
+    const previousTab = activeTab
+    const selectionStart = performance.now()
 
     // Save position in the current project before switching away
     saveProjectPosition()
@@ -569,7 +578,11 @@
 
     projectLoadIssues = []
     detailLoading = true
-    const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
+    commitsLoading = true
+    sessionLoading = true
+    relationshipsLoading = true
+
+    const selectionDataPromise = loadProjectSelectionData(projectId, {
       getProject,
       getRecentCommits,
       getLatestSession,
@@ -577,19 +590,10 @@
       getReadme,
       getRelationships,
     })
-    if (!selectLoadGuard.isCurrent(generation)) return
 
-    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
-      .filter((result) => !result.ok)
-      .map((result) => ({ section: result.section, message: result.message }))
-    projectLoadIssues = loadIssues
-    if (loadIssues.length > 0) {
-      console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
-    }
-
-    // Commit everything in one synchronous block to avoid waterfall rendering.
-    selectedProject = detail.value ? { ...project, ...detail.value } : project
-    detailLoading = false
+    // Commit the project shell immediately so the previous Mesh view disappears
+    // without waiting on project-detail IPC.
+    selectedProject = project
     showAllCommits = false
     activeTab = restoredTab
     visitedTabs = savedPosition?.visitedTabs || new Set([restoredTab])
@@ -603,6 +607,31 @@
       gitNavTarget = null
     }
     taskNavTarget = savedPosition?.taskPosition ?? null
+    recentCommits = []
+    latestSession = null
+    sessionHistory = []
+    readmeContent = null
+    relationships = []
+    filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
+
+    await tick()
+    if (!selectLoadGuard.isCurrent(generation)) return
+    const visibleCommitAt = performance.now()
+
+    const { detail, commits, latest, sessionList, readme, rels } = await selectionDataPromise
+    if (!selectLoadGuard.isCurrent(generation)) return
+    const dataLoadedAt = performance.now()
+
+    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
+      .filter((result) => !result.ok)
+      .map((result) => ({ section: result.section, message: result.message }))
+    projectLoadIssues = loadIssues
+    if (loadIssues.length > 0) {
+      console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
+    }
+
+    selectedProject = detail.value ? { ...project, ...detail.value } : project
+    detailLoading = false
     recentCommits = commits.value || []
     commitsLoading = false
     latestSession = latest.value
@@ -611,7 +640,19 @@
     readmeContent = readme.value
     relationships = rels.value || []
     relationshipsLoading = false
-    filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
+
+    await tick()
+    const renderedAt = performance.now()
+    recordProjectSwitchPerformance({
+      fromProjectId: previousProjectId,
+      toProjectId: projectId,
+      fromTab: previousTab,
+      toTab: restoredTab,
+      visibleMs: Math.round((visibleCommitAt - selectionStart) * 100) / 100,
+      dataLoadMs: Math.round((dataLoadedAt - selectionStart) * 100) / 100,
+      renderCommitMs: Math.round((renderedAt - dataLoadedAt) * 100) / 100,
+      totalMs: Math.round((renderedAt - selectionStart) * 100) / 100,
+    })
   }
 
   async function loadSessions(projectId) {
