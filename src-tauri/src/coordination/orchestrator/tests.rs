@@ -1201,6 +1201,106 @@ fn disband_tears_down_non_lead_members() {
 }
 
 #[test]
+fn disband_tears_down_mesh_backed_lead_resources() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "architecture-final-mesh-lead";
+
+    orchestrator
+        .create_team(team_name, Some("mesh lead".to_string()))
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Codex, "/tmp/lead"),
+        )
+        .expect("add lead");
+
+    let mut runtime_record =
+        MemberRuntimeStore::load(tmp.path(), team_name, "team-lead").expect("load runtime");
+    runtime_record.pane_id = Some("%42".to_string());
+    runtime_record.daemon_pid = Some(4242);
+    runtime_record.attached_at = Some(Utc::now());
+    runtime_record.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, "team-lead", &runtime_record)
+        .expect("save runtime");
+
+    orchestrator
+        .disband_team(team_name, Some("cleanup".to_string()))
+        .expect("disband should succeed");
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::ClearDaemonPidFile { team_name: recorded_team, member_name }
+            if recorded_team == team_name && member_name == "team-lead"
+    )));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%42")));
+    assert_eq!(
+        fake.call_counts(),
+        (0, 0, 0, 1),
+        "disband should leave mesh for the mesh-backed lead"
+    );
+}
+
+#[test]
+fn disband_preserves_attach_existing_claude_lead() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "architecture-final-attach-lead";
+
+    orchestrator
+        .create_team(team_name, Some("attach existing".to_string()))
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+
+    orchestrator
+        .disband_team(team_name, Some("cleanup".to_string()))
+        .expect("disband should succeed");
+
+    let calls = runtime.calls();
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::KillPane { .. })),
+        "attach-existing Claude lead should not have pane teardown forced"
+    );
+    assert!(
+        !calls.iter().any(|call| matches!(call, RuntimeCall::ClearDaemonPidFile { member_name, .. } if member_name == "team-lead")),
+        "attach-existing Claude lead should not run member daemon cleanup"
+    );
+    assert_eq!(
+        fake.call_counts(),
+        (0, 0, 0, 0),
+        "attach-existing Claude lead should not trigger backend teardown on disband"
+    );
+}
+
+#[test]
 fn add_member_then_get_status() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);
@@ -2012,6 +2112,127 @@ fn liveness_reconcile_restarts_stale_non_running_daemon_for_live_pane() {
             .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)),
         "dead daemon pid should be replaced, not terminated"
     );
+}
+
+#[test]
+fn liveness_reconcile_restarts_running_daemon_when_binary_has_drifted() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pid_running(4242, true);
+    runtime.set_pid_current_mesh_binary(4242, false);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.session_id, Some("session-123".to_string()));
+    assert_eq!(updated.daemon_pid, Some(10000));
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 4242)));
+    assert!(calls.iter().any(
+        |call| matches!(call, RuntimeCall::CheckPidCurrentMeshBinary { pid } if *pid == 4242)
+    ));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { pane_id, team_name, member_name } if pane_id == "%9" && team_name == "architecture-final" && member_name == "codex-reviewer")));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)));
+}
+
+#[test]
+fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_daemon() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pid_running(4242, true);
+    runtime.set_pid_current_mesh_binary(4242, false);
+    runtime.set_team_daemon_current_mesh_binary(team_name, false);
+
+    let result = orchestrator
+        .trigger_team_self_heal(team_name)
+        .expect("self-heal should succeed");
+
+    assert!(result.runtime_candidate_found);
+    assert!(result.member_liveness_reconciled);
+    assert!(result.team_daemon_ensured);
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.daemon_pid, Some(10000));
+
+    let calls = runtime.calls();
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::CheckTeamDaemonCurrentMeshBinary { team_name: recorded_team }
+            if recorded_team == team_name
+    )));
+    assert!(calls.iter().any(
+        |call| matches!(call, RuntimeCall::CheckPidCurrentMeshBinary { pid } if *pid == 4242)
+    ));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnDaemon {
+            pane_id,
+            team_name: recorded_team,
+            member_name: recorded_member,
+        } if pane_id == "%9" && recorded_team == team_name && recorded_member == member_name
+    )));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::StopTeamDaemon { team_name: recorded_team } if recorded_team == team_name
+    )));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnTeamDaemon { team_name: recorded_team, .. } if recorded_team == team_name
+    )));
 }
 
 #[test]
@@ -3009,8 +3230,48 @@ fn initialize_failure_send_onboarding_triggers_disband_teardown() {
     assert!(!tmp.path().join("architecture-final-init-cleanup").exists());
     assert_eq!(
         fake.call_counts(),
-        (0, 1, 0, 2),
-        "initialize cleanup should tear down both non-lead members"
+        (0, 1, 0, 3),
+        "initialize cleanup should tear down the app-owned lead and both non-lead members"
+    );
+}
+
+#[test]
+fn initialize_failure_send_onboarding_cleans_up_mesh_backed_lead() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = Arc::new(FakeBackend::default());
+    fake.set_deliver_error(CoordinationError::Backend(
+        "simulated onboarding failure".to_string(),
+    ));
+    let backend: Arc<dyn CoordinationBackend> = fake.clone();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let mut request = initialize_request("architecture-final-init-mesh-lead-cleanup");
+    request.lead.cli_tool = "codex".to_string();
+    request.lead.model = "gpt-5.4".to_string();
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+    assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+    assert!(!tmp
+        .path()
+        .join("architecture-final-init-mesh-lead-cleanup")
+        .exists());
+
+    let calls = runtime.calls();
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::ClearDaemonPidFile { team_name, member_name }
+            if team_name == "architecture-final-init-mesh-lead-cleanup" && member_name == "team-lead"
+    )));
+    assert_eq!(
+        fake.call_counts(),
+        (0, 1, 0, 3),
+        "initialize cleanup should tear down the mesh-backed lead and both agents"
     );
 }
 

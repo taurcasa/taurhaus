@@ -36,6 +36,18 @@ impl CoordinationOrchestrator {
             }
         }
 
+        if let Err(err) = self
+            .runtime
+            .clear_mesh_daemon_pid_file(&request.team_name, &request.agent.name)
+        {
+            tracing::warn!(
+                team = %request.team_name,
+                member = %request.agent.name,
+                error = %err,
+                "hot-add rollback: failed to clear daemon pid file"
+            );
+        }
+
         if runtime_state.mesh_joined {
             if let Err(err) = self.backend.teardown(TeardownRequest {
                 member_name: request.agent.name.clone(),
@@ -192,6 +204,18 @@ impl CoordinationOrchestrator {
                     "resume rollback: failed to stop daemon process"
                 );
             }
+        }
+
+        if let Err(err) = self
+            .runtime
+            .clear_mesh_daemon_pid_file(&request.team_name, &request.member_name)
+        {
+            tracing::warn!(
+                team = %request.team_name,
+                member = %request.member_name,
+                error = %err,
+                "resume rollback: failed to clear daemon pid file"
+            );
         }
 
         if runtime_state.mesh_joined {

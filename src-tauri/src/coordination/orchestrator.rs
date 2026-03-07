@@ -64,6 +64,15 @@ pub struct RemoveMemberResult {
     pub warnings: Vec<String>,
 }
 
+/// Result of a bounded team self-heal pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamSelfHealResult {
+    pub team_name: String,
+    pub runtime_candidate_found: bool,
+    pub member_liveness_reconciled: bool,
+    pub team_daemon_ensured: bool,
+}
+
 /// Per-step teardown status for runtime member removal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveMemberStepResult {
@@ -182,11 +191,9 @@ impl CoordinationOrchestrator {
             }
         };
 
-        for member in config
-            .members
-            .iter()
-            .filter(|member| member.role != MemberRole::Lead)
-        {
+        for member in config.members.iter().filter(|member| {
+            should_teardown_member_on_team_cleanup(member, runtime_by_member.get(&member.name))
+        }) {
             self.teardown_member_resources_best_effort(
                 name,
                 &member.name,
@@ -519,7 +526,8 @@ impl CoordinationOrchestrator {
 
     /// Reconcile member liveness for a team using pane + daemon state.
     ///
-    /// This is a write-on-drift pass used by the live status query path.
+    /// This is a write-on-drift repair pass for explicit recovery and background
+    /// self-heal flows. It is intentionally not used on UI-critical snapshot paths.
     pub fn reconcile_team_liveness(&mut self, team_name: &str) -> Result<(), CoordinationError> {
         validate_team_name(team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
@@ -626,10 +634,42 @@ impl CoordinationOrchestrator {
                 let mut retained_daemon_pid = None;
                 let daemon_needs_restart = match runtime.daemon_pid {
                     Some(pid) => match self.runtime.is_process_running_by_pid(pid) {
-                        Ok(true) => {
-                            retained_daemon_pid = Some(pid);
-                            false
-                        }
+                        Ok(true) => match self.runtime.mesh_daemon_uses_current_binary(pid) {
+                            Ok(true) => {
+                                retained_daemon_pid = Some(pid);
+                                false
+                            }
+                            Ok(false) => {
+                                if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                                    tracing::warn!(
+                                        team = %team_name,
+                                        member = %member_name,
+                                        pid = pid,
+                                        error = %err,
+                                        "failed to terminate binary-drifted mesh daemon during liveness reconciliation"
+                                    );
+                                }
+                                runtime.daemon_pid = None;
+                                runtime_changed = true;
+                                tracing::info!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pid = pid,
+                                    "detected running mesh daemon binary drift during liveness reconciliation"
+                                );
+                                true
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pid = pid,
+                                    error = %err,
+                                    "failed to verify mesh daemon binary identity during liveness reconciliation"
+                                );
+                                false
+                            }
+                        },
                         Ok(false) => {
                             runtime.daemon_pid = None;
                             runtime_changed = true;
@@ -735,6 +775,56 @@ impl CoordinationOrchestrator {
         }
 
         Ok(())
+    }
+
+    /// Run a bounded self-heal pass for a single team.
+    ///
+    /// This repairs per-member liveness drift and ensures the team daemon is
+    /// running, but only when the persisted runtime indicates there is active or
+    /// recoverable team state worth healing.
+    pub fn trigger_team_self_heal(
+        &mut self,
+        team_name: &str,
+    ) -> Result<TeamSelfHealResult, CoordinationError> {
+        validate_team_name(team_name)?;
+
+        let initial_status = self.get_team_status_fast(team_name)?;
+        let team_daemon_binary_drifted =
+            !self.runtime.team_daemon_uses_current_binary(team_name)?;
+        let runtime_candidate_found = team_is_self_heal_candidate(&initial_status.members_runtime)
+            || team_daemon_binary_drifted;
+        if !runtime_candidate_found {
+            return Ok(TeamSelfHealResult {
+                team_name: team_name.to_string(),
+                runtime_candidate_found: false,
+                member_liveness_reconciled: false,
+                team_daemon_ensured: false,
+            });
+        }
+
+        self.reconcile_team_liveness(team_name)?;
+
+        if team_daemon_binary_drifted {
+            tracing::info!(
+                team = %team_name,
+                "detected running team daemon binary drift during self-heal"
+            );
+            self.stop_team_daemon_best_effort(team_name);
+        }
+
+        let refreshed_status = self.get_team_status_fast(team_name)?;
+        let team_daemon_ensured = team_daemon_binary_drifted
+            || team_should_ensure_daemon(&refreshed_status.members_runtime);
+        if team_daemon_ensured {
+            self.ensure_team_daemon_running_best_effort(team_name);
+        }
+
+        Ok(TeamSelfHealResult {
+            team_name: team_name.to_string(),
+            runtime_candidate_found,
+            member_liveness_reconciled: true,
+            team_daemon_ensured,
+        })
     }
 
     fn reconcile_team_runtime_state(&self, team_name: &str) -> Result<(), CoordinationError> {
@@ -1295,6 +1385,41 @@ fn discovered_team_to_status(team: DiscoveredTeam) -> DiscoveredTeamStatus {
         team_name: team.team_name,
         lead_project_path: team.lead_project_path,
     }
+}
+
+fn should_teardown_member_on_team_cleanup(
+    member: &Member,
+    runtime: Option<&MemberRuntimeRecord>,
+) -> bool {
+    if member.role != MemberRole::Lead {
+        return true;
+    }
+
+    if member.cli_tool != CliTool::Claude {
+        return true;
+    }
+
+    runtime.is_some_and(|record| {
+        record.daemon_pid.is_some() || (record.pane_id.is_some() && record.attached_at.is_some())
+    })
+}
+
+fn team_is_self_heal_candidate(runtime_records: &[(String, MemberRuntimeRecord)]) -> bool {
+    runtime_records.iter().any(|(_, record)| {
+        record.health != HealthState::SessionDead
+            || record.daemon_pid.is_some()
+            || record.pane_id.is_some()
+            || record.session_id.is_some()
+            || record.attached_at.is_some()
+    })
+}
+
+fn team_should_ensure_daemon(runtime_records: &[(String, MemberRuntimeRecord)]) -> bool {
+    runtime_records.iter().any(|(_, record)| {
+        record.health != HealthState::SessionDead
+            || record.daemon_pid.is_some()
+            || record.session_id.is_some()
+    })
 }
 
 fn ordered_members_for_team_resume(members: &[Member]) -> Vec<Member> {

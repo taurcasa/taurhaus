@@ -1130,6 +1130,19 @@ fn project_mesh_snapshot_classifies_degraded_when_live_and_offline_members_mix()
         .pane_id
         .expect("pane id");
     runtime.set_pane_exists(&offline_pane, false);
+    let mut offline_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+            .expect("reload runtime");
+    offline_runtime.health = HealthState::SessionDead;
+    offline_runtime.session_id = None;
+    offline_runtime.daemon_pid = None;
+    MemberRuntimeStore::save(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+        &offline_runtime,
+    )
+    .expect("persist offline runtime");
 
     let snapshot =
         coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
@@ -1162,11 +1175,21 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
     .expect("initialize should succeed");
 
     for member_name in ["team-lead", "frontend-dev", "reviewer"] {
-        let pane_id = MemberRuntimeStore::load(tmp.path(), "architecture-final", member_name)
-            .expect("load runtime")
-            .pane_id
-            .expect("pane id");
+        let mut runtime_record =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", member_name)
+                .expect("load runtime");
+        let pane_id = runtime_record.pane_id.clone().expect("pane id");
         runtime.set_pane_exists(&pane_id, false);
+        runtime_record.health = HealthState::SessionDead;
+        runtime_record.session_id = None;
+        runtime_record.daemon_pid = None;
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            member_name,
+            &runtime_record,
+        )
+        .expect("persist offline runtime");
     }
 
     let snapshot =

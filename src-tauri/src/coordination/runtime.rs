@@ -92,6 +92,12 @@ pub trait CoordinationRuntime: Send + Sync {
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError>;
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError>;
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError>;
+    fn mesh_daemon_uses_current_binary(&self, _pid: u32) -> Result<bool, CoordinationError> {
+        Ok(true)
+    }
+    fn team_daemon_uses_current_binary(&self, _team_name: &str) -> Result<bool, CoordinationError> {
+        Ok(true)
+    }
     fn clear_mesh_daemon_pid_file(
         &self,
         _team_name: &str,
@@ -321,9 +327,17 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     ) -> Result<u32, CoordinationError> {
         let daemon_pid_path = resolve_team_daemon_pid_path(team_name);
         if let Some(pid_path) = daemon_pid_path.as_deref() {
-            if let Some(pid) = read_pid_file(pid_path) {
-                if is_process_running_by_pid_system(pid)? {
-                    return Ok(pid);
+            if let Some(pid) = validated_team_daemon_pid_file(pid_path, team_name, true)? {
+                return Ok(pid);
+            }
+            if pid_path.exists() {
+                if let Err(err) = delete_pid_file_if_present(Some(pid_path)) {
+                    tracing::warn!(
+                        team = %team_name,
+                        path = %pid_path.display(),
+                        error = %err,
+                        "failed to clear invalid team daemon pid file before restart"
+                    );
                 }
             }
         }
@@ -342,7 +356,27 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         }
         let mesh_path = mesh_cli::mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
         let invocation = mesh_cli::command_invocation(&mesh_path, &args);
-        spawn_command_and_resolve_daemon_pid(&invocation, daemon_pid_path.as_deref())
+        let mut child = spawn_system_command(&invocation)?;
+
+        let Some(pid_path) = daemon_pid_path.as_deref() else {
+            return Ok(child.id());
+        };
+
+        match wait_for_team_daemon_pid_file(pid_path, team_name) {
+            Ok(pid) => Ok(pid),
+            Err(err) => {
+                let launcher_status = child
+                    .try_wait()
+                    .map_err(CoordinationError::Io)?
+                    .map(|status| format!("launcher exited with status {status}"))
+                    .unwrap_or_else(|| format!("launcher pid {} still alive", child.id()));
+                Err(CoordinationError::Backend(format!(
+                    "team daemon startup verification failed for {} {}: {err}; {launcher_status}",
+                    invocation.program,
+                    invocation.args.join(" ")
+                )))
+            }
+        }
     }
 
     fn pane_belongs_to_project(
@@ -447,22 +481,7 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     }
 
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
-        #[cfg(target_os = "windows")]
-        let pid_arg = pid.to_string();
-        #[cfg(not(target_os = "windows"))]
-        let pid_arg = validate_unix_pid(pid)?;
-
-        #[cfg(target_os = "windows")]
-        let invocation = CommandInvocation {
-            program: "taskkill".to_string(),
-            args: vec!["/PID".to_string(), pid_arg, "/F".to_string()],
-        };
-        #[cfg(not(target_os = "windows"))]
-        let invocation = CommandInvocation {
-            program: "kill".to_string(),
-            args: vec!["-TERM".to_string(), pid_arg],
-        };
-
+        let invocation = terminate_pid_invocation(pid, false)?;
         let output = run_system_command(&invocation)?;
         if output.status.success() {
             Ok(())
@@ -481,6 +500,26 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         is_process_running_by_pid_system(pid)
     }
 
+    fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+        process_uses_current_mesh_binary(pid)
+    }
+
+    fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
+        let Some(pid_path) = resolve_team_daemon_pid_path(team_name) else {
+            return Ok(true);
+        };
+        let Some(pid) = read_pid_file(&pid_path) else {
+            return Ok(true);
+        };
+        if !is_process_running_by_pid_system(pid)? {
+            return Ok(true);
+        }
+        if !process_matches_team_daemon(pid, team_name)? {
+            return Ok(true);
+        }
+        process_uses_current_mesh_binary(pid)
+    }
+
     fn clear_mesh_daemon_pid_file(
         &self,
         team_name: &str,
@@ -494,6 +533,11 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         if let Some(pid_path) = pid_path.as_deref() {
             if let Some(pid) = read_pid_file(pid_path) {
                 if is_process_running_by_pid_system(pid)? {
+                    if !process_matches_team_daemon(pid, team_name)? {
+                        return Err(CoordinationError::Backend(format!(
+                            "refusing to stop pid {pid}: process is not the expected mesh team daemon for {team_name}"
+                        )));
+                    }
                     self.terminate_process_by_pid(pid)?;
                 }
             }
@@ -583,6 +627,12 @@ pub enum RuntimeCall {
     CheckPid {
         pid: u32,
     },
+    CheckPidCurrentMeshBinary {
+        pid: u32,
+    },
+    CheckTeamDaemonCurrentMeshBinary {
+        team_name: String,
+    },
     ClearDaemonPidFile {
         team_name: String,
         member_name: String,
@@ -601,6 +651,8 @@ pub struct RecordingCoordinationRuntime {
     pane_command: Mutex<HashMap<String, Option<String>>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
     pid_running: Mutex<HashMap<u32, bool>>,
+    pid_current_mesh_binary: Mutex<HashMap<u32, bool>>,
+    team_daemon_current_mesh_binary: Mutex<HashMap<String, bool>>,
     daemon_matches: Mutex<HashMap<(String, String, String), Vec<u32>>>,
     pane_counter: AtomicUsize,
     pid_counter: AtomicU32,
@@ -653,6 +705,18 @@ impl RecordingCoordinationRuntime {
     pub fn set_pid_running(&self, pid: u32, running: bool) {
         if let Ok(mut map) = self.pid_running.lock() {
             map.insert(pid, running);
+        }
+    }
+
+    pub fn set_pid_current_mesh_binary(&self, pid: u32, current: bool) {
+        if let Ok(mut map) = self.pid_current_mesh_binary.lock() {
+            map.insert(pid, current);
+        }
+    }
+
+    pub fn set_team_daemon_current_mesh_binary(&self, team_name: &str, current: bool) {
+        if let Ok(mut map) = self.team_daemon_current_mesh_binary.lock() {
+            map.insert(team_name.to_string(), current);
         }
     }
 
@@ -878,6 +942,30 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         Ok(running)
     }
 
+    fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.push_call(RuntimeCall::CheckPidCurrentMeshBinary { pid });
+        let current = self
+            .pid_current_mesh_binary
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&pid).copied())
+            .unwrap_or(true);
+        Ok(current)
+    }
+
+    fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
+        self.push_call(RuntimeCall::CheckTeamDaemonCurrentMeshBinary {
+            team_name: team_name.to_string(),
+        });
+        let current = self
+            .team_daemon_current_mesh_binary
+            .lock()
+            .ok()
+            .and_then(|map| map.get(team_name).copied())
+            .unwrap_or(true);
+        Ok(current)
+    }
+
     fn clear_mesh_daemon_pid_file(
         &self,
         team_name: &str,
@@ -958,10 +1046,69 @@ fn wait_for_daemon_pid_file_with_retries(
     )))
 }
 
+fn wait_for_team_daemon_pid_file(
+    daemon_pid_path: &Path,
+    team_name: &str,
+) -> Result<u32, CoordinationError> {
+    wait_for_team_daemon_pid_file_with_retries(
+        daemon_pid_path,
+        team_name,
+        DAEMON_START_ATTEMPTS,
+        DAEMON_START_INTERVAL,
+    )
+}
+
+fn wait_for_team_daemon_pid_file_with_retries(
+    daemon_pid_path: &Path,
+    team_name: &str,
+    attempts: usize,
+    interval: Duration,
+) -> Result<u32, CoordinationError> {
+    for attempt in 0..attempts {
+        if let Some(pid) = validated_team_daemon_pid_file(daemon_pid_path, team_name, true)? {
+            return Ok(pid);
+        }
+        if attempt + 1 < attempts {
+            thread::sleep(interval);
+        }
+    }
+
+    Err(CoordinationError::Backend(format!(
+        "timed out waiting for valid team daemon pid at {}",
+        daemon_pid_path.display()
+    )))
+}
+
 fn read_pid_file(pid_path: &Path) -> Option<u32> {
     fs::read_to_string(pid_path)
         .ok()
         .and_then(|raw| raw.trim().parse::<u32>().ok())
+}
+
+fn validated_team_daemon_pid_file(
+    pid_path: &Path,
+    team_name: &str,
+    require_current_binary: bool,
+) -> Result<Option<u32>, CoordinationError> {
+    let Some(pid) = read_pid_file(pid_path) else {
+        return Ok(None);
+    };
+    if !is_process_running_by_pid_system(pid)? {
+        return Ok(None);
+    }
+    if !process_matches_team_daemon(pid, team_name)? {
+        return Ok(None);
+    }
+    if require_current_binary && !process_uses_current_mesh_binary(pid)? {
+        return Ok(None);
+    }
+    Ok(Some(pid))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    device: u64,
+    inode: u64,
 }
 
 fn delete_pid_file_if_present(pid_path: Option<&Path>) -> Result<(), CoordinationError> {
@@ -992,7 +1139,7 @@ fn find_existing_mesh_daemon_pids_system(
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     {
         for entry in fs::read_dir("/proc").map_err(CoordinationError::Io)? {
             let entry = entry.map_err(CoordinationError::Io)?;
@@ -1000,6 +1147,18 @@ fn find_existing_mesh_daemon_pids_system(
             let Ok(pid) = raw_name.to_string_lossy().parse::<u32>() else {
                 continue;
             };
+            if matches.contains(&pid) {
+                continue;
+            }
+            if process_matches_mesh_daemon(pid, pane_id, team_name, member_name)? {
+                matches.push(pid);
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        for pid in list_process_ids_via_ps()? {
             if matches.contains(&pid) {
                 continue;
             }
@@ -1066,38 +1225,18 @@ fn process_matches_mesh_daemon(
     team_name: &str,
     member_name: &str,
 ) -> Result<bool, CoordinationError> {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = (pid, pane_id, team_name, member_name);
-        Ok(true)
+    if !process_uses_current_mesh_binary(pid)? {
+        return Ok(false);
     }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        if !is_process_running_by_pid_system(pid)? {
-            return Ok(false);
-        }
-        let cmdline_path = PathBuf::from("/proc").join(pid.to_string()).join("cmdline");
-        let raw = match fs::read(cmdline_path) {
-            Ok(raw) => raw,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(CoordinationError::Io(err)),
-        };
-        if raw.is_empty() {
-            return Ok(false);
-        }
-        let args = raw
-            .split(|byte| *byte == 0)
-            .filter(|part| !part.is_empty())
-            .map(|part| String::from_utf8_lossy(part).to_string())
-            .collect::<Vec<_>>();
-        Ok(command_matches_mesh_daemon(
-            &args,
-            pane_id,
-            team_name,
-            member_name,
-        ))
-    }
+    let Some(args) = read_process_cmdline_args(pid)? else {
+        return Ok(false);
+    };
+    Ok(command_matches_mesh_daemon(
+        &args,
+        pane_id,
+        team_name,
+        member_name,
+    ))
 }
 
 fn command_matches_mesh_daemon(
@@ -1106,15 +1245,7 @@ fn command_matches_mesh_daemon(
     team_name: &str,
     member_name: &str,
 ) -> bool {
-    let Some(program) = args.first() else {
-        return false;
-    };
-    let binary = program
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(program)
-        .to_ascii_lowercase();
-    if binary != "mesh" && binary != "mesh.exe" {
+    if !command_matches_mesh_binary(args) {
         return false;
     }
     args.iter().any(|arg| arg == "daemon")
@@ -1123,26 +1254,47 @@ fn command_matches_mesh_daemon(
         && command_has_flag_value(args, "--name", member_name)
 }
 
+fn process_matches_team_daemon(pid: u32, team_name: &str) -> Result<bool, CoordinationError> {
+    let Some(args) = read_process_cmdline_args(pid)? else {
+        return Ok(false);
+    };
+    Ok(command_matches_team_daemon(&args, team_name))
+}
+
+fn command_matches_team_daemon(args: &[String], team_name: &str) -> bool {
+    if !command_matches_mesh_binary(args) {
+        return false;
+    }
+    args.iter().any(|arg| arg == "team-daemon")
+        && args.iter().any(|arg| arg == "start")
+        && command_has_flag_value(args, "--team", team_name)
+}
+
+fn command_matches_mesh_binary(args: &[String]) -> bool {
+    let Some(program) = args.first() else {
+        return false;
+    };
+    let binary = program
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+    binary == "mesh" || binary == "mesh.exe"
+}
+
 fn command_has_flag_value(args: &[String], flag: &str, expected: &str) -> bool {
     args.windows(2)
         .any(|pair| pair[0] == flag && pair[1] == expected)
 }
 
 fn is_process_running_by_pid_system(pid: u32) -> Result<bool, CoordinationError> {
-    #[cfg(target_os = "windows")]
-    let pid_arg = pid.to_string();
-    #[cfg(not(target_os = "windows"))]
     if pid == 0 || pid > i32::MAX as u32 {
         return Ok(false);
     }
-    #[cfg(not(target_os = "windows"))]
-    let pid_arg = pid.to_string();
+    let pid_arg = validate_coordination_pid(pid)?;
 
     #[cfg(target_os = "windows")]
-    let invocation = CommandInvocation {
-        program: "tasklist".to_string(),
-        args: vec!["/FI".to_string(), format!("PID eq {pid_arg}")],
-    };
+    let invocation = wsl_kill_invocation("-0", &pid_arg);
     #[cfg(not(target_os = "windows"))]
     let invocation = CommandInvocation {
         program: "kill".to_string(),
@@ -1150,30 +1302,281 @@ fn is_process_running_by_pid_system(pid: u32) -> Result<bool, CoordinationError>
     };
 
     let output = run_system_command(&invocation)?;
+    if output.status.success() {
+        return Ok(true);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+    if stderr.contains("operation not permitted") {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn read_process_cmdline_args(pid: u32) -> Result<Option<Vec<String>>, CoordinationError> {
+    if !is_process_running_by_pid_system(pid)? {
+        return Ok(None);
+    }
+
     #[cfg(target_os = "windows")]
     {
+        let output = run_system_command(&wsl_cat_proc_cmdline_invocation(pid))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             return Err(CoordinationError::Backend(format!(
-                "pid check failed ({} {}): {}",
-                invocation.program,
-                invocation.args.join(" "),
-                stderr
+                "failed to read process command line for pid {pid}: {stderr}"
             )));
         }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.contains(&pid_arg))
+        Ok(parse_process_cmdline_bytes(&output.stdout))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let cmdline_path = PathBuf::from("/proc").join(pid.to_string()).join("cmdline");
+        let raw = match fs::read(cmdline_path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(CoordinationError::Io(err)),
+        };
+        Ok(parse_process_cmdline_bytes(&raw))
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let output = run_system_command(&CommandInvocation {
+            program: "ps".to_string(),
+            args: vec![
+                "-ww".to_string(),
+                "-o".to_string(),
+                "command=".to_string(),
+                "-p".to_string(),
+                pid.to_string(),
+            ],
+        })?;
+        if !output.status.success() {
+            return Ok(None);
+        }
+        Ok(parse_process_command_text(&output.stdout))
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn parse_process_cmdline_bytes(raw: &[u8]) -> Option<Vec<String>> {
+    let args = raw
+        .split(|byte| *byte == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| String::from_utf8_lossy(part).to_string())
+        .collect::<Vec<_>>();
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn parse_process_command_text(raw: &[u8]) -> Option<Vec<String>> {
+    let text = String::from_utf8_lossy(raw);
+    let line = text.lines().find(|line| !line.trim().is_empty())?.trim();
+    let args = line
+        .split_whitespace()
+        .map(|part| part.to_string())
+        .collect::<Vec<_>>();
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
+}
+
+fn process_uses_current_mesh_binary(pid: u32) -> Result<bool, CoordinationError> {
+    let Some(mesh_path) = mesh_cli::mesh_binary_path() else {
+        return Ok(true);
+    };
+
+    let Some(process_identity) = process_executable_identity(pid)? else {
+        return Ok(false);
+    };
+    let Some(installed_identity) = mesh_binary_identity(&mesh_path)? else {
+        return Ok(true);
+    };
+    Ok(process_identity == installed_identity)
+}
+
+fn mesh_binary_identity(mesh_path: &str) -> Result<Option<FileIdentity>, CoordinationError> {
+    #[cfg(target_os = "windows")]
+    {
+        wsl_file_identity(mesh_path)
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if output.status.success() {
-            return Ok(true);
+        unix_file_identity(Path::new(mesh_path))
+    }
+}
+
+fn process_executable_identity(pid: u32) -> Result<Option<FileIdentity>, CoordinationError> {
+    #[cfg(target_os = "windows")]
+    {
+        wsl_file_identity(&format!("/proc/{pid}/exe"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        unix_file_identity(&PathBuf::from("/proc").join(pid.to_string()).join("exe"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let path = process_executable_path_macos(pid)?;
+        match path {
+            Some(path) => unix_file_identity(&path),
+            None => Ok(None),
         }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unix_file_identity(path: &Path) -> Result<Option<FileIdentity>, CoordinationError> {
+    use std::os::unix::fs::MetadataExt;
+
+    match fs::metadata(path) {
+        Ok(metadata) => Ok(Some(FileIdentity {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        })),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(CoordinationError::Io(err)),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn process_executable_path_macos(pid: u32) -> Result<Option<PathBuf>, CoordinationError> {
+    use libproc::libproc::proc_pid::pidpath;
+
+    let pid = validate_coordination_pid(pid)?
+        .parse::<i32>()
+        .map_err(|_| CoordinationError::Validation(format!("pid out of supported range: {pid}")))?;
+    match pidpath(pid) {
+        Ok(path) => Ok(Some(PathBuf::from(path))),
+        Err(err) if err.contains("No such process") => Ok(None),
+        Err(err) => Err(CoordinationError::Backend(format!(
+            "failed to resolve executable path for pid {pid}: {err}"
+        ))),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn list_process_ids_via_ps() -> Result<Vec<u32>, CoordinationError> {
+    let output = run_system_command(&CommandInvocation {
+        program: "ps".to_string(),
+        args: vec!["-axo".to_string(), "pid=".to_string()],
+    })?;
+    if !output.status.success() {
+        return Err(CoordinationError::Backend(format!(
+            "failed to enumerate process ids via ps: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<u32>().ok())
+        .collect())
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_file_identity(path: &str) -> Result<Option<FileIdentity>, CoordinationError> {
+    let invocation = CommandInvocation {
+        program: "wsl".to_string(),
+        args: vec![
+            "--".to_string(),
+            "stat".to_string(),
+            "-Lc".to_string(),
+            "%d:%i".to_string(),
+            path.to_string(),
+        ],
+    };
+    let output = run_system_command(&invocation)?;
+    if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
-        if stderr.contains("operation not permitted") {
-            return Ok(true);
+        if stderr.contains("no such file") || stderr.contains("cannot stat") {
+            return Ok(None);
         }
-        Ok(false)
+        return Err(CoordinationError::Backend(format!(
+            "failed to stat WSL path {path}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    parse_file_identity(&output.stdout)
+}
+
+#[cfg(target_os = "windows")]
+fn parse_file_identity(raw: &[u8]) -> Result<Option<FileIdentity>, CoordinationError> {
+    let text = String::from_utf8_lossy(raw);
+    let Some(line) = text.lines().find(|line| !line.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let Some((device, inode)) = line.trim().split_once(':') else {
+        return Err(CoordinationError::Backend(format!(
+            "invalid file identity output: {}",
+            line.trim()
+        )));
+    };
+    Ok(Some(FileIdentity {
+        device: device
+            .parse()
+            .map_err(|_| CoordinationError::Backend(format!("invalid device id: {device}")))?,
+        inode: inode
+            .parse()
+            .map_err(|_| CoordinationError::Backend(format!("invalid inode id: {inode}")))?,
+    }))
+}
+
+fn terminate_pid_invocation(pid: u32, force: bool) -> Result<CommandInvocation, CoordinationError> {
+    #[cfg(target_os = "windows")]
+    {
+        let pid_arg = validate_coordination_pid(pid)?;
+        let signal = if force { "-KILL" } else { "-TERM" };
+        Ok(wsl_kill_invocation(signal, &pid_arg))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let pid_arg = validate_unix_pid(pid)?;
+        let signal = if force { "-KILL" } else { "-TERM" };
+        Ok(CommandInvocation {
+            program: "kill".to_string(),
+            args: vec![signal.to_string(), pid_arg],
+        })
+    }
+}
+
+fn validate_coordination_pid(pid: u32) -> Result<String, CoordinationError> {
+    if pid == 0 || pid > i32::MAX as u32 {
+        return Err(CoordinationError::Validation(format!(
+            "pid out of supported range: {pid}"
+        )));
+    }
+    Ok(pid.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_kill_invocation(signal: &str, pid_arg: &str) -> CommandInvocation {
+    CommandInvocation {
+        program: "wsl".to_string(),
+        args: vec![
+            "--".to_string(),
+            "kill".to_string(),
+            signal.to_string(),
+            pid_arg.to_string(),
+        ],
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_cat_proc_cmdline_invocation(pid: u32) -> CommandInvocation {
+    CommandInvocation {
+        program: "wsl".to_string(),
+        args: vec![
+            "--".to_string(),
+            "cat".to_string(),
+            format!("/proc/{pid}/cmdline"),
+        ],
     }
 }
 
@@ -1473,7 +1876,43 @@ mod tests {
     use super::*;
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::stores::MemberRuntimeRecord;
+    use fs2::FileExt;
+    #[cfg(not(target_os = "windows"))]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    use std::sync::{LazyLock, Mutex, MutexGuard};
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct EnvTestGuard {
+        _in_process: MutexGuard<'static, ()>,
+        lock_file: std::fs::File,
+    }
+
+    impl Drop for EnvTestGuard {
+        fn drop(&mut self) {
+            let _ = self.lock_file.unlock();
+        }
+    }
+
+    fn acquire_env_test_guard() -> EnvTestGuard {
+        let in_process = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let lock_path = std::env::temp_dir().join("taurhaus-env-tests.lock");
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap_or_else(|e| panic!("failed to open env test lock at {:?}: {e}", lock_path));
+        lock_file
+            .lock_exclusive()
+            .unwrap_or_else(|e| panic!("failed to lock env test lock at {:?}: {e}", lock_path));
+        EnvTestGuard {
+            _in_process: in_process,
+            lock_file,
+        }
+    }
 
     fn sample_member(name: &str, project_path: &str) -> Member {
         Member {
@@ -1504,6 +1943,22 @@ mod tests {
             attached_at: None,
             last_seen_at: None,
         }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn write_executable_script(path: &std::path::Path, body: &str) {
+        std::fs::write(path, body).expect("write script");
+        let mut permissions = std::fs::metadata(path).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).expect("chmod");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn copy_executable(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::copy(from, to).expect("copy executable");
+        let mut permissions = std::fs::metadata(to).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(to, permissions).expect("chmod");
     }
 
     #[test]
@@ -1569,6 +2024,21 @@ mod tests {
         let runtime = SystemCoordinationRuntime;
         assert!(!runtime.is_process_running_by_pid(u32::MAX).unwrap());
         assert!(!runtime.is_process_running_by_pid(0).unwrap());
+    }
+
+    #[test]
+    fn command_matches_team_daemon_requires_expected_team() {
+        let args = vec![
+            "/home/mstie/.local/bin/mesh".to_string(),
+            "team-daemon".to_string(),
+            "start".to_string(),
+            "--team".to_string(),
+            "alpha".to_string(),
+            "--name".to_string(),
+            "operator".to_string(),
+        ];
+        assert!(command_matches_team_daemon(&args, "alpha"));
+        assert!(!command_matches_team_daemon(&args, "beta"));
     }
 
     #[test]
@@ -1642,6 +2112,123 @@ mod tests {
         assert!(err
             .to_string()
             .contains("timed out waiting for live daemon pid"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn wait_for_team_daemon_pid_file_with_retries_rejects_non_matching_pid() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let pid_path = dir.path().join("team.pid");
+        let script_path = dir.path().join("sleepy.sh");
+        write_executable_script(&script_path, "#!/bin/sh\nsleep 5\n");
+
+        let mut child = std::process::Command::new(&script_path)
+            .spawn()
+            .expect("spawn");
+        std::fs::write(&pid_path, format!("{}\n", child.id())).expect("write pid");
+
+        let err = wait_for_team_daemon_pid_file_with_retries(&pid_path, "alpha", 1, Duration::ZERO)
+            .expect_err("non-matching pid should be rejected");
+
+        assert!(err
+            .to_string()
+            .contains("timed out waiting for valid team daemon pid"));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn wait_for_team_daemon_pid_file_with_retries_accepts_matching_pid() {
+        let _guard = acquire_env_test_guard();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let pid_path = dir.path().join("team.pid");
+        let install_dir = dir.path().join(".local").join("bin");
+        std::fs::create_dir_all(&install_dir).expect("install dir");
+        let mesh_path = dir.path().join("mesh");
+        std::os::unix::fs::symlink("/bin/sh", &mesh_path).expect("symlink mesh");
+        std::os::unix::fs::symlink(&mesh_path, install_dir.join("mesh")).expect("install mesh");
+
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", dir.path());
+
+        let mut child = std::process::Command::new(&mesh_path)
+            .args([
+                "-c",
+                "sleep 5",
+                "team-daemon",
+                "start",
+                "--team",
+                "alpha",
+                "--name",
+                "operator",
+            ])
+            .spawn()
+            .expect("spawn");
+        std::fs::write(&pid_path, format!("{}\n", child.id())).expect("write pid");
+
+        let pid = wait_for_team_daemon_pid_file_with_retries(&pid_path, "alpha", 1, Duration::ZERO)
+            .expect("matching pid should be accepted");
+
+        assert_eq!(pid, child.id());
+        let _ = child.kill();
+        let _ = child.wait();
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn process_uses_current_mesh_binary_detects_replaced_install() {
+        let _guard = acquire_env_test_guard();
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let install_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&install_dir).expect("install dir");
+        let installed_mesh = install_dir.join("mesh");
+        let old_mesh = temp_home.path().join("mesh-old");
+        let source_mesh = PathBuf::from("/bin/sh");
+        copy_executable(&source_mesh, &old_mesh);
+        copy_executable(&source_mesh, &installed_mesh);
+
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp_home.path());
+
+        let mut old_child = std::process::Command::new(&old_mesh)
+            .args([
+                "-c", "sleep 5", "mesh", "daemon", "--pane", "%9", "--team", "alpha", "--name",
+                "agent",
+            ])
+            .spawn()
+            .expect("spawn old mesh");
+        assert!(
+            !process_uses_current_mesh_binary(old_child.id()).expect("drift check"),
+            "running process from replaced inode should be treated as drifted"
+        );
+        let _ = old_child.kill();
+        let _ = old_child.wait();
+
+        let mut current_child = std::process::Command::new(&installed_mesh)
+            .args([
+                "-c", "sleep 5", "mesh", "daemon", "--pane", "%9", "--team", "alpha", "--name",
+                "agent",
+            ])
+            .spawn()
+            .expect("spawn current mesh");
+        assert!(
+            process_uses_current_mesh_binary(current_child.id()).expect("current identity"),
+            "running process from installed inode should be treated as current"
+        );
+        let _ = current_child.kill();
+        let _ = current_child.wait();
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
     }
 
     #[cfg(not(target_os = "windows"))]

@@ -8,7 +8,7 @@ use crate::coordination::backend::{
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli;
-use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -16,6 +16,15 @@ type BackendFactory =
     dyn Fn(BackendKind) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> + Send + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BackgroundSelfHealPassResult {
+    pub teams_scanned: usize,
+    pub teams_skipped: usize,
+    pub teams_reconciled: usize,
+    pub team_daemons_ensured: usize,
+    pub team_errors: usize,
+}
 
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
@@ -104,6 +113,39 @@ impl CoordinationState {
         op(orchestrator)
     }
 
+    pub fn trigger_team_self_heal(
+        &self,
+        team_name: &str,
+    ) -> Result<TeamSelfHealResult, CoordinationError> {
+        self.with_orchestrator(|orchestrator| orchestrator.trigger_team_self_heal(team_name))
+    }
+
+    pub fn run_background_self_heal_pass(
+        &self,
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.with_orchestrator(|orchestrator| {
+            let team_names = orchestrator.list_teams()?;
+            let mut summary = BackgroundSelfHealPassResult::default();
+
+            for team_name in team_names {
+                summary.teams_scanned += 1;
+                match orchestrator.trigger_team_self_heal(&team_name) {
+                    Ok(result) => apply_self_heal_result(&mut summary, &result),
+                    Err(err) => {
+                        summary.team_errors += 1;
+                        tracing::warn!(
+                            team = %team_name,
+                            error = %err,
+                            "background coordination self-heal failed"
+                        );
+                    }
+                }
+            }
+
+            Ok(summary)
+        })
+    }
+
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select(CliTool::Codex);
         let backend = (self.backend_factory)(kind)?;
@@ -157,25 +199,265 @@ fn default_teams_dir() -> PathBuf {
     base.join(".claude").join("teams")
 }
 
+fn apply_self_heal_result(summary: &mut BackgroundSelfHealPassResult, result: &TeamSelfHealResult) {
+    if !result.runtime_candidate_found {
+        summary.teams_skipped += 1;
+        return;
+    }
+
+    if result.member_liveness_reconciled {
+        summary.teams_reconciled += 1;
+    }
+    if result.team_daemon_ensured {
+        summary.team_daemons_ensured += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use fs2::FileExt;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::LazyLock;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
     use tempfile::TempDir;
 
     use super::*;
     use crate::coordination::backend::fake::FakeBackend;
+    use crate::coordination::domain::{HealthState, Member, MemberRole};
+    use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+    use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+    use crate::coordination::stores::MemberRuntimeStore;
 
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct EnvTestGuard {
+        _in_process: MutexGuard<'static, ()>,
+        lock_file: std::fs::File,
+    }
+
+    impl Drop for EnvTestGuard {
+        fn drop(&mut self) {
+            let _ = self.lock_file.unlock();
+        }
+    }
+
+    fn acquire_env_test_guard() -> EnvTestGuard {
+        let in_process = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let lock_path = std::env::temp_dir().join("taurhaus-env-tests.lock");
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap_or_else(|e| panic!("failed to open env test lock at {:?}: {e}", lock_path));
+        lock_file
+            .lock_exclusive()
+            .unwrap_or_else(|e| panic!("failed to lock env test lock at {:?}: {e}", lock_path));
+        EnvTestGuard {
+            _in_process: in_process,
+            lock_file,
+        }
+    }
 
     fn fake_factory_with_counter(counter: Arc<AtomicUsize>) -> Arc<BackendFactory> {
         Arc::new(move |_kind| {
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
         })
+    }
+
+    fn sample_member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
+        Member {
+            name: name.to_string(),
+            role,
+            role_id: None,
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
+            project_path: PathBuf::from(project_path),
+            cli_tool: tool,
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct FlakyTeamDaemonRuntime {
+        inner: RecordingCoordinationRuntime,
+        fail_spawn_team_daemon_count: AtomicUsize,
+    }
+
+    impl FlakyTeamDaemonRuntime {
+        fn new(failures: usize) -> Self {
+            Self {
+                inner: RecordingCoordinationRuntime::default(),
+                fail_spawn_team_daemon_count: AtomicUsize::new(failures),
+            }
+        }
+
+        fn calls(&self) -> Vec<RuntimeCall> {
+            self.inner.calls()
+        }
+
+        fn set_pane_exists(&self, pane_id: &str, exists: bool) {
+            self.inner.set_pane_exists(pane_id, exists);
+        }
+
+        fn set_pane_dead(&self, pane_id: &str, dead: bool) {
+            self.inner.set_pane_dead(pane_id, dead);
+        }
+
+        fn set_pane_shell(&self, pane_id: &str, shell: bool) {
+            self.inner.set_pane_shell(pane_id, shell);
+        }
+
+        fn set_pid_running(&self, pid: u32, running: bool) {
+            self.inner.set_pid_running(pid, running);
+        }
+
+        fn set_pid_current_mesh_binary(&self, pid: u32, current: bool) {
+            self.inner.set_pid_current_mesh_binary(pid, current);
+        }
+
+        fn set_team_daemon_current_mesh_binary(&self, team_name: &str, current: bool) {
+            self.inner
+                .set_team_daemon_current_mesh_binary(team_name, current);
+        }
+    }
+
+    impl CoordinationRuntime for FlakyTeamDaemonRuntime {
+        fn create_aitx_pane(
+            &self,
+            project_id: &str,
+            tmux_layout: &str,
+        ) -> Result<String, CoordinationError> {
+            self.inner.create_aitx_pane(project_id, tmux_layout)
+        }
+
+        fn send_tmux_keys_with_enter(
+            &self,
+            pane_id: &str,
+            keys: &str,
+        ) -> Result<(), CoordinationError> {
+            self.inner.send_tmux_keys_with_enter(pane_id, keys)
+        }
+
+        fn detect_session_id(
+            &self,
+            pane_id: &str,
+            cli_tool: CliTool,
+        ) -> Result<Option<String>, CoordinationError> {
+            self.inner.detect_session_id(pane_id, cli_tool)
+        }
+
+        fn join_mesh(
+            &self,
+            team_name: &str,
+            member_name: &str,
+            project_id: &str,
+        ) -> Result<(), CoordinationError> {
+            self.inner.join_mesh(team_name, member_name, project_id)
+        }
+
+        fn spawn_mesh_daemon(
+            &self,
+            pane_id: &str,
+            team_name: &str,
+            member_name: &str,
+        ) -> Result<u32, CoordinationError> {
+            self.inner
+                .spawn_mesh_daemon(pane_id, team_name, member_name)
+        }
+
+        fn spawn_team_daemon(
+            &self,
+            team_name: &str,
+            operator_name: &str,
+        ) -> Result<u32, CoordinationError> {
+            if self.fail_spawn_team_daemon_count.load(Ordering::SeqCst) > 0 {
+                self.inner.spawn_team_daemon(team_name, operator_name)?;
+                self.fail_spawn_team_daemon_count
+                    .fetch_sub(1, Ordering::SeqCst);
+                return Err(CoordinationError::Backend(
+                    "simulated team daemon restart failure".to_string(),
+                ));
+            }
+            self.inner.spawn_team_daemon(team_name, operator_name)
+        }
+
+        fn find_existing_mesh_daemon_pids(
+            &self,
+            pane_id: &str,
+            team_name: &str,
+            member_name: &str,
+        ) -> Result<Vec<u32>, CoordinationError> {
+            self.inner
+                .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+        }
+
+        fn pane_belongs_to_project(
+            &self,
+            pane_id: &str,
+            project_id: &str,
+        ) -> Result<bool, CoordinationError> {
+            self.inner.pane_belongs_to_project(pane_id, project_id)
+        }
+
+        fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+            self.inner.pane_exists(pane_id)
+        }
+
+        fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+            self.inner.pane_is_dead(pane_id)
+        }
+
+        fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+            self.inner.pane_is_shell(pane_id)
+        }
+
+        fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+            self.inner.pane_current_command(pane_id)
+        }
+
+        fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+            self.inner.kill_aitx_pane(pane_id)
+        }
+
+        fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+            self.inner.terminate_process_by_pid(pid)
+        }
+
+        fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+            self.inner.is_process_running_by_pid(pid)
+        }
+
+        fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+            self.inner.mesh_daemon_uses_current_binary(pid)
+        }
+
+        fn team_daemon_uses_current_binary(
+            &self,
+            team_name: &str,
+        ) -> Result<bool, CoordinationError> {
+            self.inner.team_daemon_uses_current_binary(team_name)
+        }
+
+        fn clear_mesh_daemon_pid_file(
+            &self,
+            team_name: &str,
+            member_name: &str,
+        ) -> Result<(), CoordinationError> {
+            self.inner
+                .clear_mesh_daemon_pid_file(team_name, member_name)
+        }
+
+        fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+            self.inner.stop_team_daemon(team_name)
+        }
     }
 
     #[test]
@@ -278,7 +560,7 @@ mod tests {
 
     #[test]
     fn default_teams_dir_uses_claude_override_when_set() {
-        let _guard = ENV_LOCK.lock().expect("env lock");
+        let _guard = acquire_env_test_guard();
         let override_dir = TempDir::new().expect("tempdir");
         std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, override_dir.path());
         let resolved = default_teams_dir();
@@ -289,11 +571,379 @@ mod tests {
 
     #[test]
     fn default_teams_dir_ignores_empty_override() {
-        let _guard = ENV_LOCK.lock().expect("env lock");
+        let _guard = acquire_env_test_guard();
         std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, "");
         let resolved = default_teams_dir();
         std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
 
         assert!(resolved.ends_with(PathBuf::from(".claude").join("teams")));
+    }
+
+    #[test]
+    fn trigger_team_self_heal_repairs_active_team() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("architecture-final", None)?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member(
+                        "existing-dev",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        "/tmp/app",
+                    ),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+
+        let mut runtime_record =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
+                .expect("load runtime");
+        runtime_record.pane_id = Some("%9".to_string());
+        runtime_record.health = HealthState::SessionDead;
+        runtime_record.daemon_pid = None;
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            "existing-dev",
+            &runtime_record,
+        )
+        .expect("save runtime");
+
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_pane_shell("%9", false);
+
+        let result = state
+            .trigger_team_self_heal("architecture-final")
+            .expect("self-heal succeeds");
+
+        assert!(result.runtime_candidate_found);
+        assert!(result.member_liveness_reconciled);
+        assert!(result.team_daemon_ensured);
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::SpawnDaemon {
+                member_name,
+                ..
+            } if member_name == "existing-dev"
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final"
+        )));
+    }
+
+    #[test]
+    fn background_self_heal_pass_skips_inactive_teams() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("idle-team", None)?;
+                orch.add_member(
+                    "idle-team",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                orch.add_member(
+                    "idle-team",
+                    sample_member(
+                        "existing-dev",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        "/tmp/app",
+                    ),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+
+        let summary = state
+            .run_background_self_heal_pass()
+            .expect("background pass succeeds");
+
+        assert_eq!(summary.teams_scanned, 1);
+        assert_eq!(summary.teams_skipped, 1);
+        assert_eq!(summary.teams_reconciled, 0);
+        assert_eq!(summary.team_daemons_ensured, 0);
+        assert_eq!(summary.team_errors, 0);
+        assert!(
+            runtime.calls().iter().all(|call| matches!(
+                call,
+                RuntimeCall::CheckTeamDaemonCurrentMeshBinary { team_name }
+                    if team_name == "idle-team"
+            )),
+            "inactive team should only perform the cheap team-daemon identity probe"
+        );
+    }
+
+    #[test]
+    fn background_self_heal_pass_cycles_stale_team_daemon_for_active_team() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("architecture-final", None)?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member(
+                        "existing-dev",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        "/tmp/app",
+                    ),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+
+        let mut runtime_record =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
+                .expect("load runtime");
+        runtime_record.pane_id = Some("%9".to_string());
+        runtime_record.health = HealthState::Healthy;
+        runtime_record.session_id = Some("session-123".to_string());
+        runtime_record.daemon_pid = Some(4242);
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            "existing-dev",
+            &runtime_record,
+        )
+        .expect("save runtime");
+
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_pane_shell("%9", false);
+        runtime.set_pid_running(4242, true);
+        runtime.set_pid_current_mesh_binary(4242, false);
+        runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
+
+        let summary = state
+            .run_background_self_heal_pass()
+            .expect("background pass succeeds");
+
+        assert_eq!(summary.teams_scanned, 1);
+        assert_eq!(summary.teams_skipped, 0);
+        assert_eq!(summary.teams_reconciled, 1);
+        assert_eq!(summary.team_daemons_ensured, 1);
+        assert_eq!(summary.team_errors, 0);
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckTeamDaemonCurrentMeshBinary { team_name }
+                if team_name == "architecture-final"
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::StopTeamDaemon { team_name } if team_name == "architecture-final"
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final"
+        )));
+    }
+
+    #[test]
+    fn background_self_heal_upgrade_cycle_restores_delivery_after_daemon_rotation() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let fake = FakeBackend::default();
+        let fake_for_factory = fake.clone();
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(move |_kind| {
+                Ok(Arc::new(fake_for_factory.clone()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("architecture-final", None)?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member(
+                        "existing-dev",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        "/tmp/app",
+                    ),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+
+        let mut runtime_record =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
+                .expect("load runtime");
+        runtime_record.pane_id = Some("%9".to_string());
+        runtime_record.health = HealthState::Healthy;
+        runtime_record.session_id = Some("session-123".to_string());
+        runtime_record.daemon_pid = Some(4242);
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            "existing-dev",
+            &runtime_record,
+        )
+        .expect("save runtime");
+
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_pane_shell("%9", false);
+        runtime.set_pid_running(4242, true);
+        runtime.set_pid_current_mesh_binary(4242, false);
+        runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
+
+        let summary = state
+            .run_background_self_heal_pass()
+            .expect("self-heal succeeds");
+        assert_eq!(summary.teams_reconciled, 1);
+        assert_eq!(summary.team_daemons_ensured, 1);
+
+        state
+            .with_orchestrator(|orch| {
+                orch.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                    team_name: "architecture-final".to_string(),
+                    member_name: "existing-dev".to_string(),
+                    message: "post-upgrade ping".to_string(),
+                    sender_name: Some("team-lead".to_string()),
+                }))
+            })
+            .expect("delivery after upgrade cycle");
+
+        let delivered = fake.delivered_requests();
+        assert_eq!(delivered.len(), 1);
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::TerminatePid { pid } if *pid == 4242
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::SpawnDaemon { member_name, .. } if member_name == "existing-dev"
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::StopTeamDaemon { team_name } if team_name == "architecture-final"
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final"
+        )));
+    }
+
+    #[test]
+    fn background_self_heal_retries_team_daemon_recovery_after_previous_restart_failure() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(FlakyTeamDaemonRuntime::new(1));
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("architecture-final", None)?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member(
+                        "existing-dev",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        "/tmp/app",
+                    ),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+
+        let mut runtime_record =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
+                .expect("load runtime");
+        runtime_record.pane_id = Some("%9".to_string());
+        runtime_record.health = HealthState::Healthy;
+        runtime_record.session_id = Some("session-123".to_string());
+        runtime_record.daemon_pid = Some(4242);
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            "existing-dev",
+            &runtime_record,
+        )
+        .expect("save runtime");
+
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_pane_shell("%9", false);
+        runtime.set_pid_running(4242, true);
+        runtime.set_pid_current_mesh_binary(4242, false);
+        runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
+
+        let first = state
+            .run_background_self_heal_pass()
+            .expect("first self-heal pass");
+        let second = state
+            .run_background_self_heal_pass()
+            .expect("second self-heal pass");
+
+        assert_eq!(first.teams_scanned, 1);
+        assert_eq!(second.teams_scanned, 1);
+        assert!(
+            runtime.calls().iter().filter(|call| matches!(
+                call,
+                RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final"
+            )).count() >= 2,
+            "recovery should attempt team-daemon spawn again on the next self-heal pass"
+        );
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::StopTeamDaemon { team_name } if team_name == "architecture-final"
+        )));
     }
 }

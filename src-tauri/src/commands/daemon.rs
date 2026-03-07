@@ -8,6 +8,7 @@ use crate::models::{DaemonInstallStatus, DaemonStatus, OperationResult};
 use crate::ProviderState;
 
 const BUNDLED_VERSION: &str = env!("CARGO_PKG_VERSION");
+const WSL_INSTALL_RESTART_MARKER: &str = "__TAURHAUS_DAEMON_WAS_RUNNING__=";
 
 /// Get the current platform identifier.
 ///
@@ -488,89 +489,112 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<OperationResul
     let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
         .unwrap_or_else(|| bundled_binary_str.to_string());
 
-    // Create target directory
-    let mkdir = wsl_command()
-        .args(["-d", &distro, "--", "mkdir", "-p", "$HOME/.local/bin"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to create target directory: {e}"))?;
-
-    if !mkdir.status.success() {
-        let stderr = String::from_utf8_lossy(&mkdir.stderr);
-        return Err(format!("Failed to create ~/.local/bin: {stderr}"));
-    }
-
-    // Copy binary
-    let cp = wsl_command()
+    let output = wsl_command()
         .args([
             "-d",
             &distro,
             "--",
-            "cp",
+            "sh",
+            "-lc",
+            install_daemon_wsl_script(),
+            "taurhaus-install",
             &wsl_source_path,
-            "$HOME/.local/bin/taurhaus-daemon",
         ])
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
-        .map_err(|e| format!("Failed to copy daemon binary: {e}"))?;
+        .map_err(|e| format!("Failed to install daemon in WSL: {e}"))?;
 
-    if !cp.status.success() {
-        let stderr = String::from_utf8_lossy(&cp.stderr);
-        return Err(format!("Failed to copy daemon binary: {stderr}"));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Failed to install daemon in WSL: {stderr}"));
     }
 
-    // Set executable permissions
-    let chmod = wsl_command()
-        .args([
-            "-d",
-            &distro,
-            "--",
-            "chmod",
-            "+x",
-            "$HOME/.local/bin/taurhaus-daemon",
-        ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to set permissions: {e}"))?;
+    let result = parse_wsl_install_output(&output.stdout)?;
 
-    if !chmod.status.success() {
-        let stderr = String::from_utf8_lossy(&chmod.stderr);
-        return Err(format!("Failed to set executable permission: {stderr}"));
+    if result.daemon_was_running {
+        crate::daemon::launcher::try_restart_daemon(&distro, DEFAULT_PORT)
+            .map_err(|e| format!("Daemon installed but restart failed: {e}"))?;
     }
 
-    // Verify installation
-    let verify = wsl_command()
-        .args([
-            "-d",
-            &distro,
-            "--",
-            "$HOME/.local/bin/taurhaus-daemon",
-            "--version",
-        ])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let message = if result.daemon_was_running {
+        format!(
+            "Daemon installed successfully: {} (daemon restarted)",
+            result.version
+        )
+    } else {
+        format!("Daemon installed successfully: {}", result.version)
+    };
 
-    match verify {
-        Ok(output) if output.status.success() => {
-            let raw = String::from_utf8_lossy(&output.stdout);
-            let version = raw.trim();
-            Ok(OperationResult::success(format!(
-                "Daemon installed successfully: {version}"
-            )))
+    Ok(OperationResult::success(message))
+}
+
+#[derive(Debug)]
+struct WslInstallResult {
+    version: String,
+    daemon_was_running: bool,
+}
+
+fn install_daemon_wsl_script() -> &'static str {
+    r#"set -eu
+source_path="$1"
+target_dir="$HOME/.local/bin"
+target_path="$target_dir/taurhaus-daemon"
+temp_path="$target_dir/.taurhaus-daemon.new.$$"
+pattern='[t]aurhaus-daemon([[:space:]]|$)'
+was_running=0
+
+mkdir -p "$target_dir"
+
+if pgrep -f "$pattern" >/dev/null 2>&1; then
+  was_running=1
+  pids="$(pgrep -f "$pattern" || true)"
+  if [ -n "$pids" ]; then
+    kill -TERM $pids || true
+    for _ in $(seq 1 50); do
+      if ! pgrep -f "$pattern" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    if pgrep -f "$pattern" >/dev/null 2>&1; then
+      kill -KILL $pids || true
+    fi
+  fi
+fi
+
+cp "$source_path" "$temp_path"
+chmod +x "$temp_path"
+mv -f "$temp_path" "$target_path"
+"$target_path" --version
+printf '%s%s\n' "${WSL_INSTALL_RESTART_MARKER:-__TAURHAUS_DAEMON_WAS_RUNNING__=}" "$was_running"
+"#
+}
+
+fn parse_wsl_install_output(stdout: &[u8]) -> Result<WslInstallResult, String> {
+    let text = String::from_utf8_lossy(stdout);
+    let mut version = None;
+    let mut daemon_was_running = false;
+
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if let Some(raw) = line.strip_prefix(WSL_INSTALL_RESTART_MARKER) {
+            daemon_was_running = raw == "1";
+            continue;
         }
-        Ok(_) => Err(
-            "Daemon was copied but --version check failed. The binary may be corrupted."
-                .to_string(),
-        ),
-        Err(e) => Err(format!("Daemon was copied but verification failed: {e}")),
+        if version.is_none() {
+            version = Some(line.to_string());
+        }
     }
+
+    let version = version.ok_or_else(|| {
+        "WSL install completed but no daemon version was returned for verification".to_string()
+    })?;
+
+    Ok(WslInstallResult {
+        version,
+        daemon_was_running,
+    })
 }
 
 /// Simple semver less-than comparison.
@@ -697,5 +721,29 @@ mod tests {
             parse_distro_from_wsl_output(raw),
             Some("Ubuntu-22.04".to_string())
         );
+    }
+
+    #[test]
+    fn parse_wsl_install_output_reads_version_and_restart_marker() {
+        let raw = b"taurhaus-daemon 0.5.3\n__TAURHAUS_DAEMON_WAS_RUNNING__=1\n";
+        let result = parse_wsl_install_output(raw).expect("parsed");
+        assert_eq!(result.version, "taurhaus-daemon 0.5.3");
+        assert!(result.daemon_was_running);
+    }
+
+    #[test]
+    fn parse_wsl_install_output_requires_version_line() {
+        let err = parse_wsl_install_output(b"__TAURHAUS_DAEMON_WAS_RUNNING__=0\n")
+            .expect_err("missing version should fail");
+        assert!(err.contains("no daemon version"));
+    }
+
+    #[test]
+    fn install_daemon_wsl_script_uses_atomic_swap_and_running_daemon_coordination() {
+        let script = install_daemon_wsl_script();
+        assert!(script.contains("kill -TERM"));
+        assert!(script.contains("kill -KILL"));
+        assert!(script.contains("mv -f \"$temp_path\" \"$target_path\""));
+        assert!(script.contains("\"$target_path\" --version"));
     }
 }

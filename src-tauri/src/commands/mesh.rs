@@ -7,6 +7,8 @@ use tauri::Manager;
 
 const MESH_BINARY_NAME: &str = "mesh";
 const MESH_VERSION_RESOURCE: &str = "mesh.version";
+const WSL_INSTALL_MEMBER_DAEMON_MARKER: &str = "__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=";
+const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=";
 
 #[tauri::command]
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
@@ -31,7 +33,7 @@ pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
         if is_native_daemon() {
             install_mesh_native(&bundled_binary, &bundled_version)
         } else {
-            install_mesh_wsl(&bundled_binary, &bundled_version)
+            install_mesh_wsl(&app, &bundled_binary, &bundled_version)
         }
     };
     span.finish_result(&result);
@@ -330,6 +332,7 @@ fn install_mesh_native(
 }
 
 fn install_mesh_wsl(
+    app: &tauri::AppHandle,
     bundled_binary: &Path,
     bundled_version: &str,
 ) -> Result<OperationResult, String> {
@@ -340,76 +343,201 @@ fn install_mesh_wsl(
     let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
         .unwrap_or_else(|| bundled_binary_str.to_string());
 
-    let mkdir = wsl_command()
-        .args(["-d", &distro, "--", "mkdir", "-p", "$HOME/.local/bin"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to create target directory: {e}"))?;
-    if !mkdir.status.success() {
-        let stderr = String::from_utf8_lossy(&mkdir.stderr);
-        return Err(format!("Failed to create ~/.local/bin: {stderr}"));
-    }
-
-    let cp = wsl_command()
+    let output = wsl_command()
         .args([
             "-d",
             &distro,
             "--",
-            "cp",
+            "sh",
+            "-lc",
+            install_mesh_wsl_script(),
+            "taurhaus-install",
             &wsl_source_path,
-            "$HOME/.local/bin/mesh",
         ])
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
-        .map_err(|e| format!("Failed to copy mesh binary: {e}"))?;
-    if !cp.status.success() {
-        let stderr = String::from_utf8_lossy(&cp.stderr);
-        return Err(format!("Failed to copy mesh binary: {stderr}"));
+        .map_err(|e| format!("Failed to install mesh in WSL: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Failed to install mesh in WSL: {stderr}"));
     }
 
-    let chmod = wsl_command()
-        .args(["-d", &distro, "--", "chmod", "+x", "$HOME/.local/bin/mesh"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to set permissions: {e}"))?;
-    if !chmod.status.success() {
-        let stderr = String::from_utf8_lossy(&chmod.stderr);
-        return Err(format!("Failed to set executable permission: {stderr}"));
+    let result = parse_mesh_wsl_install_output(&output.stdout)?;
+    if result.version != format!("mesh {bundled_version}") {
+        let installed_version =
+            parse_mesh_version(result.version.as_bytes()).unwrap_or_else(|| result.version.clone());
+        return Err(format!(
+            "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
+        ));
     }
 
-    let verify = wsl_command()
-        .args(["-d", &distro, "--", "$HOME/.local/bin/mesh", "--version"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let any_daemons_were_running =
+        result.member_daemons_were_running || result.team_daemons_were_running;
+    let self_heal_summary = if any_daemons_were_running {
+        Some(run_mesh_install_self_heal(app)?)
+    } else {
+        None
+    };
 
-    match verify {
-        Ok(output) if output.status.success() => {
-            let installed_version = parse_mesh_version(&output.stdout)
-                .ok_or("Mesh was installed but version output was invalid")?;
-            if installed_version != bundled_version {
-                return Err(format!(
-                    "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
-                ));
-            }
-            Ok(OperationResult::success(format!(
-                "Mesh installed successfully: mesh {installed_version}"
-            )))
+    let message = match self_heal_summary {
+        Some(summary) => format!(
+            "Mesh installed successfully: {} (cycled {} team daemon{}, repaired {} team{})",
+            result.version,
+            summary.team_daemons_ensured,
+            if summary.team_daemons_ensured == 1 {
+                ""
+            } else {
+                "s"
+            },
+            summary.teams_reconciled,
+            if summary.teams_reconciled == 1 {
+                ""
+            } else {
+                "s"
+            },
+        ),
+        None => format!("Mesh installed successfully: {}", result.version),
+    };
+
+    Ok(OperationResult::success(message))
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_mesh_install_self_heal(
+    app: &tauri::AppHandle,
+) -> Result<crate::coordination::state::BackgroundSelfHealPassResult, String> {
+    let state = app.state::<crate::coordination::state::CoordinationState>();
+    let summary = state
+        .run_background_self_heal_pass()
+        .map_err(|e| format!("Mesh installed but daemon self-heal failed: {e}"))?;
+    if summary.team_errors > 0 {
+        return Err(format!(
+            "Mesh installed but daemon self-heal reported {} team error{}",
+            summary.team_errors,
+            if summary.team_errors == 1 { "" } else { "s" }
+        ));
+    }
+    Ok(summary)
+}
+
+#[cfg(not(feature = "mesh-bridged-backend"))]
+fn run_mesh_install_self_heal(app: &tauri::AppHandle) -> Result<(), String> {
+    let _ = app;
+    Ok(())
+}
+
+#[derive(Debug)]
+struct WslMeshInstallResult {
+    version: String,
+    member_daemons_were_running: bool,
+    team_daemons_were_running: bool,
+}
+
+fn install_mesh_wsl_script() -> &'static str {
+    r#"set -eu
+source_path="$1"
+target_dir="$HOME/.local/bin"
+target_path="$target_dir/mesh"
+temp_path="$target_dir/.mesh.new.$$"
+member_pattern='[m]esh([[:space:]]|$).*[[:space:]]daemon([[:space:]]|$).*--pane([[:space:]]|$)'
+team_pattern='[m]esh([[:space:]]|$).*team-daemon([[:space:]]|$).*start([[:space:]]|$)'
+member_daemons_were_running=0
+team_daemons_were_running=0
+
+mkdir -p "$target_dir"
+
+if pgrep -f "$member_pattern" >/dev/null 2>&1; then
+  member_daemons_were_running=1
+  member_pids="$(pgrep -f "$member_pattern" || true)"
+  if [ -n "$member_pids" ]; then
+    kill -TERM $member_pids || true
+    for _ in $(seq 1 50); do
+      if ! pgrep -f "$member_pattern" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    if pgrep -f "$member_pattern" >/dev/null 2>&1; then
+      kill -KILL $member_pids || true
+    fi
+  fi
+fi
+
+if pgrep -f "$team_pattern" >/dev/null 2>&1; then
+  team_daemons_were_running=1
+  team_pids="$(pgrep -f "$team_pattern" || true)"
+  if [ -n "$team_pids" ]; then
+    kill -TERM $team_pids || true
+    for _ in $(seq 1 50); do
+      if ! pgrep -f "$team_pattern" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    if pgrep -f "$team_pattern" >/dev/null 2>&1; then
+      kill -KILL $team_pids || true
+    fi
+  fi
+fi
+
+cp "$source_path" "$temp_path"
+chmod +x "$temp_path"
+mv -f "$temp_path" "$target_path"
+"$target_path" --version
+printf '%s%s\n' "${WSL_INSTALL_MEMBER_DAEMON_MARKER:-__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=}" "$member_daemons_were_running"
+printf '%s%s\n' "${WSL_INSTALL_TEAM_DAEMON_MARKER:-__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=}" "$team_daemons_were_running"
+"#
+}
+
+fn parse_mesh_wsl_install_output(stdout: &[u8]) -> Result<WslMeshInstallResult, String> {
+    let text = String::from_utf8_lossy(stdout);
+    let mut version = None;
+    let mut member_daemons_were_running = false;
+    let mut team_daemons_were_running = false;
+
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if let Some(raw) = line.strip_prefix(WSL_INSTALL_MEMBER_DAEMON_MARKER) {
+            member_daemons_were_running = raw == "1";
+            continue;
         }
-        Ok(_) => Err("Mesh was copied but --version check failed.".to_string()),
-        Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
+        if let Some(raw) = line.strip_prefix(WSL_INSTALL_TEAM_DAEMON_MARKER) {
+            team_daemons_were_running = raw == "1";
+            continue;
+        }
+        if version.is_none() {
+            version = Some(line.to_string());
+        }
     }
+
+    let version = version.ok_or_else(|| {
+        "WSL install completed but no mesh version was returned for verification".to_string()
+    })?;
+
+    Ok(WslMeshInstallResult {
+        version,
+        member_daemons_were_running,
+        team_daemons_were_running,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+    use std::time::Duration;
+
+    #[cfg(not(target_os = "windows"))]
+    fn write_executable(path: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::write(path, body).expect("write script");
+        let mut permissions = std::fs::metadata(path).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).expect("chmod");
+    }
 
     #[test]
     fn parse_mesh_version_returns_token_after_prefix() {
@@ -436,5 +564,114 @@ mod tests {
             parse_distro_from_wsl_output(raw),
             Some("Ubuntu".to_string())
         );
+    }
+
+    #[test]
+    fn parse_mesh_wsl_install_output_reads_version_and_daemon_markers() {
+        let raw = b"mesh 0.5.3\n__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=1\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n";
+        let result = parse_mesh_wsl_install_output(raw).expect("parsed");
+        assert_eq!(result.version, "mesh 0.5.3");
+        assert!(result.member_daemons_were_running);
+        assert!(!result.team_daemons_were_running);
+    }
+
+    #[test]
+    fn parse_mesh_wsl_install_output_requires_version_line() {
+        let err = parse_mesh_wsl_install_output(
+            b"__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=0\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n",
+        )
+        .expect_err("missing version should fail");
+        assert!(err.contains("no mesh version"));
+    }
+
+    #[test]
+    fn install_mesh_wsl_script_uses_atomic_swap_and_emits_daemon_cycle_markers() {
+        let script = install_mesh_wsl_script();
+        assert!(script.contains("temp_path=\"$target_dir/.mesh.new.$$\""));
+        assert!(script.contains("mv -f \"$temp_path\" \"$target_path\""));
+        assert!(script.contains("pgrep -f \"$member_pattern\""));
+        assert!(script.contains("pgrep -f \"$team_pattern\""));
+        assert!(script.contains("[[:space:]]daemon([[:space:]]|$).*--pane"));
+        assert!(script.contains("kill -TERM $member_pids || true"));
+        assert!(script.contains("kill -TERM $team_pids || true"));
+        assert!(script.contains(WSL_INSTALL_MEMBER_DAEMON_MARKER));
+        assert!(script.contains(WSL_INSTALL_TEAM_DAEMON_MARKER));
+        assert!(script.contains("\"$target_path\" --version"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn install_mesh_wsl_script_executes_atomic_swap_with_live_daemon_like_processes() {
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let bin_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+        let installed_mesh = bin_dir.join("mesh");
+        let source_mesh = temp_home.path().join("mesh-new");
+
+        write_executable(
+            &installed_mesh,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "mesh 0.1.0"
+  exit 0
+fi
+exit 0
+"#,
+        );
+        write_executable(
+            &source_mesh,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "mesh 9.9.9"
+  exit 0
+fi
+exit 0
+"#,
+        );
+
+        let mut member = Command::new("bash")
+            .args([
+                "-lc",
+                "exec -a 'mesh daemon --pane %9 --team alpha --name dev' sleep 100",
+            ])
+            .spawn()
+            .expect("spawn member daemon");
+        let mut team = Command::new("bash")
+            .args([
+                "-lc",
+                "exec -a 'mesh team-daemon start --team alpha --name lead' sleep 100",
+            ])
+            .spawn()
+            .expect("spawn team daemon");
+
+        std::thread::sleep(Duration::from_millis(150));
+
+        let output = Command::new("sh")
+            .arg("-lc")
+            .arg(install_mesh_wsl_script())
+            .arg("taurhaus-install")
+            .arg(&source_mesh)
+            .env("HOME", temp_home.path())
+            .output()
+            .expect("run install script");
+
+        assert!(
+            output.status.success(),
+            "install script failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let parsed = parse_mesh_wsl_install_output(&output.stdout).expect("parse install output");
+        assert_eq!(parsed.version, "mesh 9.9.9");
+        assert_eq!(
+            std::fs::read_to_string(&installed_mesh).expect("installed mesh"),
+            std::fs::read_to_string(&source_mesh).expect("source mesh"),
+            "installed binary should be atomically replaced by the new source"
+        );
+
+        let _ = member.kill();
+        let _ = member.wait();
+        let _ = team.kill();
+        let _ = team.wait();
     }
 }

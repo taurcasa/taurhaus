@@ -10,8 +10,8 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode, ResumeContextMode,
-    ResumeMemberRequest, StepStatus,
+    AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
+    ResumeContextMode, ResumeMemberRequest, StepStatus,
 };
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
@@ -838,10 +838,66 @@ fn resume_failure_cleans_created_resources_and_keeps_member_config() {
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 10000)));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::ClearDaemonPidFile { team_name, member_name }
+            if team_name == "architecture-final" && member_name == "builder"
+    )));
     assert!(
         !calls
             .iter()
             .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%77")),
         "reused pane must not be killed during rollback"
+    );
+}
+
+#[test]
+fn add_agent_failure_clears_daemon_pid_file() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    backend.set_deliver_error(CoordinationError::Backend("delivery failed".to_string()));
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+
+    let report = orchestrator
+        .add_agent_to_team(&AddAgentRequest {
+            team_name: "architecture-final".to_string(),
+            agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+        })
+        .expect("add-agent report");
+    assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 10000)));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::ClearDaemonPidFile { team_name, member_name }
+            if team_name == "architecture-final" && member_name == "builder"
+    )));
+
+    let config = TeamConfigStore::load(tmp.path(), "architecture-final").expect("team config");
+    assert!(
+        !config.members.iter().any(|entry| entry.name == "builder"),
+        "failed hot-add should not leave the member in config"
     );
 }

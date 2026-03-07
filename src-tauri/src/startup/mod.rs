@@ -526,6 +526,8 @@ fn run_startup_orchestration(
 ) -> Result<(), Box<dyn std::error::Error>> {
     daemon::spawn_background_bootstrap(app.handle().clone(), context);
     daemon::start_runtime_monitors(app.handle().clone(), context);
+    #[cfg(feature = "mesh-bridged-backend")]
+    spawn_coordination_self_heal_monitor(app.handle().clone());
     let watchers_started_at = Instant::now();
     if let Err(error) = watchers::initialize(app, context) {
         let mut fields = startup_base_fields();
@@ -582,6 +584,45 @@ fn run_startup_orchestration(
 
     bootstrap::spawn_background_startup_tasks(app.handle().clone());
     Ok(())
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn spawn_coordination_self_heal_monitor(app: tauri::AppHandle) {
+    use std::time::Duration;
+
+    const INITIAL_DELAY: Duration = Duration::from_secs(5);
+    const CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
+    std::thread::spawn(move || {
+        std::thread::sleep(INITIAL_DELAY);
+        loop {
+            let state = app.state::<crate::coordination::state::CoordinationState>();
+            match state.run_background_self_heal_pass() {
+                Ok(summary) => {
+                    if summary.teams_reconciled > 0
+                        || summary.team_daemons_ensured > 0
+                        || summary.team_errors > 0
+                    {
+                        tracing::info!(
+                            teams_scanned = summary.teams_scanned,
+                            teams_skipped = summary.teams_skipped,
+                            teams_reconciled = summary.teams_reconciled,
+                            team_daemons_ensured = summary.team_daemons_ensured,
+                            team_errors = summary.team_errors,
+                            "background coordination self-heal pass completed"
+                        );
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "background coordination self-heal pass failed"
+                    );
+                }
+            }
+            std::thread::sleep(CHECK_INTERVAL);
+        }
+    });
 }
 
 fn env_path_override(var: &str) -> Option<PathBuf> {
