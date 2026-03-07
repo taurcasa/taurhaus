@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{Manager, State};
@@ -8,6 +9,8 @@ use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::coordination::requests::{ResumeContextMode, ResumeMemberRequest};
+use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::daemon::protocol::{self, LaunchMode};
 use crate::errors::SanitizeErr;
@@ -102,6 +105,19 @@ struct SessionMembershipMetadata {
     group_label: String,
     member_name: String,
     pane_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TeamMemberMatch {
+    team_name: String,
+    member_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TeamMemberMatchResult {
+    None,
+    Unique(TeamMemberMatch),
+    Ambiguous,
 }
 
 pub(crate) fn enrich_sessions_with_team_membership(
@@ -255,6 +271,141 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
     Ok(project.path)
 }
 
+fn find_unique_team_member_match(
+    teams_dir: &Path,
+    project_path: &str,
+    cli_tool: CliTool,
+) -> TeamMemberMatchResult {
+    let team_names = match TeamConfigStore::list(teams_dir) {
+        Ok(team_names) => team_names,
+        Err(error) => {
+            tracing::warn!(
+                teams_dir = %teams_dir.display(),
+                error = %error,
+                "Failed to list team configs while resolving generic resume delegation"
+            );
+            return TeamMemberMatchResult::None;
+        }
+    };
+
+    let project_key = crate::provider::path::normalize_project_path(project_path);
+    let mut matches = Vec::new();
+
+    for team_name in team_names {
+        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(
+                    team_name = %team_name,
+                    error = %error,
+                    "Failed to load team config while resolving generic resume delegation"
+                );
+                continue;
+            }
+        };
+
+        for member in config.members {
+            if member.cli_tool != cli_tool {
+                continue;
+            }
+
+            if crate::provider::path::normalize_project_path(
+                &member.project_path.display().to_string(),
+            ) != project_key
+            {
+                continue;
+            }
+
+            matches.push(TeamMemberMatch {
+                team_name: team_name.clone(),
+                member_name: member.name,
+            });
+
+            if matches.len() > 1 {
+                return TeamMemberMatchResult::Ambiguous;
+            }
+        }
+    }
+
+    matches
+        .into_iter()
+        .next()
+        .map(TeamMemberMatchResult::Unique)
+        .unwrap_or(TeamMemberMatchResult::None)
+}
+
+fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
+    let mut tmux_session = TMUX_SESSION_NAME.to_string();
+    let mut tmux_window = "0".to_string();
+
+    if let Ok(output) = Command::new("tmux")
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            pane_id,
+            "#{session_name}\t#{window_index}",
+        ])
+        .output()
+    {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let mut parts = raw.trim().splitn(2, '\t');
+            if let Some(session_name) = parts.next().filter(|value| !value.is_empty()) {
+                tmux_session = session_name.to_string();
+            }
+            if let Some(window_index) = parts.next().filter(|value| !value.is_empty()) {
+                tmux_window = window_index.to_string();
+            }
+        }
+    }
+
+    protocol::LaunchSessionResult {
+        tmux_session: Some(tmux_session),
+        tmux_window,
+        tmux_pane: pane_id.to_string(),
+    }
+}
+
+fn delegate_launch_to_coordination_resume(
+    db: &DbState,
+    coordination_state: &CoordinationState,
+    target: &TeamMemberMatch,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let terminal_settings = load_terminal_settings(db);
+    let request = ResumeMemberRequest {
+        team_name: target.team_name.clone(),
+        member_name: target.member_name.clone(),
+        context_mode: ResumeContextMode::Continue,
+    };
+
+    let report = coordination_state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.resume_member_with_cli_commands_and_layout(
+                &request,
+                &terminal_settings.cli_commands,
+                &terminal_settings.tmux_layout,
+            )
+        })
+        .map_err(|error| error.to_string())?;
+
+    if !report.resumed {
+        return Err(format!(
+            "Failed to resume team member '{}': {}",
+            target.member_name, report.message
+        ));
+    }
+
+    let pane_id = report.pane_id.ok_or_else(|| {
+        format!(
+            "Coordination resume did not return a pane id for '{}'",
+            target.member_name
+        )
+    })?;
+
+    Ok(tmux_launch_result_for_pane(&pane_id))
+}
+
 fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
     if SESSION_ACTIVITY_RECONCILE_QUEUED
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -352,6 +503,7 @@ pub fn launch_cli_session(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     log_file: State<'_, LogFileState>,
+    coordination_state: State<'_, CoordinationState>,
     project_id: String,
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
@@ -361,6 +513,7 @@ pub fn launch_cli_session(
         db.inner(),
         provider.inner(),
         log_file.inner(),
+        Some(coordination_state.inner()),
         project_id,
         mode,
         cli_tool,
@@ -373,6 +526,7 @@ fn launch_cli_session_impl(
     db: &DbState,
     provider: &ProviderState,
     log_file: &LogFileState,
+    coordination_state: Option<&CoordinationState>,
     project_id: String,
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
@@ -406,6 +560,51 @@ fn launch_cli_session_impl(
         Some("Resolved project path for launch".to_string()),
         path_fields,
     );
+
+    if matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
+        if let Some(coordination_state) = coordination_state {
+            match find_unique_team_member_match(coordination_state.teams_dir(), &linux_path, tool) {
+                TeamMemberMatchResult::Unique(target) => {
+                    let mut delegated_fields = Map::new();
+                    delegated_fields.insert(
+                        "team_name".to_string(),
+                        Value::String(target.team_name.clone()),
+                    );
+                    delegated_fields.insert(
+                        "member_name".to_string(),
+                        Value::String(target.member_name.clone()),
+                    );
+                    log_file.emit(
+                        "info",
+                        "command_center",
+                        "command_center.launch.coordination_delegate",
+                        Some("Delegating team-member resume to coordination pipeline".to_string()),
+                        delegated_fields,
+                    );
+                    return delegate_launch_to_coordination_resume(db, coordination_state, &target);
+                }
+                TeamMemberMatchResult::Ambiguous => {
+                    let mut ambiguous_fields = Map::new();
+                    ambiguous_fields.insert(
+                        "project_path".to_string(),
+                        Value::String(linux_path.clone()),
+                    );
+                    ambiguous_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+                    log_file.emit(
+                        "warn",
+                        "command_center",
+                        "command_center.launch.team_match_ambiguous",
+                        Some(
+                            "Multiple team members matched generic resume; using raw launch"
+                                .to_string(),
+                        ),
+                        ambiguous_fields,
+                    );
+                }
+                TeamMemberMatchResult::None => {}
+            }
+        }
+    }
 
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
@@ -744,12 +943,18 @@ fn decode_daemon_launch_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::domain::HealthState;
     use crate::coordination::domain::{Member, MemberRole};
+    use crate::coordination::runtime::{
+        CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
+    };
+    use crate::coordination::state::CoordinationState;
     use crate::coordination::stores::{MemberRuntimeRecord, TeamConfig};
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::path::Path;
+    use std::sync::Arc;
     use std::sync::Mutex;
     use std::thread;
     use tempfile::NamedTempFile;
@@ -798,6 +1003,18 @@ mod tests {
         let tmp = NamedTempFile::new().expect("temp log");
         let state = LogFileState::new(tmp.path().to_path_buf()).expect("create log sink");
         (state, tmp)
+    }
+
+    fn test_coordination_state(
+        teams_dir: &Path,
+        runtime: Arc<RecordingCoordinationRuntime>,
+    ) -> CoordinationState {
+        CoordinationState::with_components_and_runtime(
+            teams_dir.to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new(move || runtime.clone() as Arc<dyn CoordinationRuntime>),
+        )
     }
 
     fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
@@ -914,6 +1131,10 @@ mod tests {
                     name: member_name.to_string(),
                     role: MemberRole::Agent,
                     role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
                     instructions: None,
                     behavioral_contract: None,
                     capabilities: None,
@@ -958,6 +1179,16 @@ mod tests {
             },
         )
         .expect("save runtime record");
+    }
+
+    fn save_member_runtime_record(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        record: MemberRuntimeRecord,
+    ) {
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &record)
+            .expect("save runtime record");
     }
 
     #[test]
@@ -1082,6 +1313,10 @@ mod tests {
                     name: "developer1".to_string(),
                     role: MemberRole::Agent,
                     role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
                     instructions: None,
                     behavioral_contract: None,
                     capabilities: None,
@@ -1092,6 +1327,10 @@ mod tests {
                     name: "developer2".to_string(),
                     role: MemberRole::Agent,
                     role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
                     instructions: None,
                     behavioral_contract: None,
                     capabilities: None,
@@ -1234,6 +1473,7 @@ mod tests {
             &db,
             &provider,
             &log_file,
+            None,
             "p1".to_string(),
             LaunchMode::Fresh,
             Some(CliTool::Claude),
@@ -1277,6 +1517,7 @@ mod tests {
             &db,
             &provider,
             &log_file,
+            None,
             "p1".to_string(),
             LaunchMode::Fresh,
             Some(CliTool::Claude),
@@ -1346,6 +1587,7 @@ mod tests {
             &db,
             &provider,
             &log_file,
+            None,
             "missing-project".to_string(),
             LaunchMode::Resume,
             Some(CliTool::Codex),
@@ -1373,6 +1615,7 @@ mod tests {
             &db,
             &provider,
             &log_file,
+            None,
             "p1".to_string(),
             LaunchMode::Resume,
             Some(CliTool::Codex),
@@ -1383,5 +1626,211 @@ mod tests {
             err.contains("Failed to launch session: Project path does not exist"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_pane_exists("%9", false);
+        runtime.set_pid_running(4242, true);
+        let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: None,
+            wsl_distro: None,
+        };
+        let (log_file, _log_file) = setup_log_file();
+
+        save_team_member(
+            tmp.path(),
+            "architecture-final",
+            "developer2",
+            "/tmp/project",
+            CliTool::Codex,
+        );
+        save_member_runtime_record(
+            tmp.path(),
+            "architecture-final",
+            "developer2",
+            MemberRuntimeRecord {
+                schema_version: 1,
+                member_name: "developer2".to_string(),
+                pane_id: Some("%9".to_string()),
+                session_id: None,
+                daemon_pid: Some(4242),
+                health: HealthState::SessionDead,
+                delivery_lease: None,
+                attached_at: Some(chrono::Utc::now()),
+                last_seen_at: Some(chrono::Utc::now()),
+            },
+        );
+
+        let result = launch_cli_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            Some(&coordination_state),
+            "p1".to_string(),
+            LaunchMode::Resume,
+            Some(CliTool::Codex),
+        )
+        .expect("delegated resume should succeed");
+
+        assert_eq!(result.tmux_session.as_deref(), Some(TMUX_SESSION_NAME));
+        assert_eq!(result.tmux_window, "0");
+        assert_eq!(result.tmux_pane, "test-pane-1");
+
+        let runtime_record =
+            MemberRuntimeStore::load(tmp.path(), "architecture-final", "developer2")
+                .expect("load runtime");
+        assert_eq!(runtime_record.pane_id.as_deref(), Some("test-pane-1"));
+        assert_eq!(runtime_record.daemon_pid, Some(10000));
+
+        let config_json =
+            std::fs::read_to_string(tmp.path().join("architecture-final/config.json"))
+                .expect("read config");
+        assert!(config_json.contains("\"tmuxPaneId\": \"test-pane-1\""));
+
+        let calls = runtime.calls();
+        assert!(calls.contains(&RuntimeCall::CheckPaneExists {
+            pane_id: "%9".to_string(),
+        }));
+        assert!(calls.contains(&RuntimeCall::CreatePane {
+            project_id: "/tmp/project".to_string(),
+        }));
+        assert!(calls.contains(&RuntimeCall::TerminatePid { pid: 4242 }));
+        assert!(calls.contains(&RuntimeCall::SpawnDaemon {
+            pane_id: "test-pane-1".to_string(),
+            team_name: "architecture-final".to_string(),
+            member_name: "developer2".to_string(),
+        }));
+        assert!(calls.contains(&RuntimeCall::JoinMesh {
+            team_name: "architecture-final".to_string(),
+            member_name: "developer2".to_string(),
+            project_id: "/tmp/project".to_string(),
+        }));
+    }
+
+    #[test]
+    fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
+        let daemon = start_stub_daemon(serde_json::json!({
+            "result": {
+                "tmux_session": "taurhaus",
+                "tmux_window": "2",
+                "tmux_pane": "%7"
+            },
+            "error": null
+        }));
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: None,
+        };
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let (log_file, _log_file) = setup_log_file();
+
+        save_team_members(
+            tmp.path(),
+            "architecture-final",
+            vec![
+                Member {
+                    name: "developer1".to_string(),
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    capabilities: None,
+                    project_path: "/tmp/project".into(),
+                    cli_tool: CliTool::Codex,
+                },
+                Member {
+                    name: "developer2".to_string(),
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    capabilities: None,
+                    project_path: "/tmp/project".into(),
+                    cli_tool: CliTool::Codex,
+                },
+            ],
+        );
+
+        let result = launch_cli_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            Some(&coordination_state),
+            "p1".to_string(),
+            LaunchMode::Resume,
+            Some(CliTool::Codex),
+        )
+        .expect("ambiguous match should use raw launch");
+
+        assert_eq!(result.tmux_pane, "%7");
+        assert!(runtime.calls().is_empty());
+
+        let request = daemon
+            .last_request
+            .lock()
+            .expect("request slot")
+            .clone()
+            .expect("captured request");
+        assert_eq!(request.method, protocol::method::LAUNCH_SESSION);
+    }
+
+    #[test]
+    fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
+        let tmp = TempDir::new().expect("temp teams dir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
+        let daemon = start_stub_daemon(serde_json::json!({
+            "result": {
+                "tmux_session": "taurhaus",
+                "tmux_window": "3",
+                "tmux_pane": "%8"
+            },
+            "error": null
+        }));
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: None,
+        };
+        let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+        let (log_file, _log_file) = setup_log_file();
+
+        let result = launch_cli_session_impl(
+            &db,
+            &provider,
+            &log_file,
+            Some(&coordination_state),
+            "p1".to_string(),
+            LaunchMode::Resume,
+            Some(CliTool::Codex),
+        )
+        .expect("non-team resume should use raw launch");
+
+        assert_eq!(result.tmux_pane, "%8");
+        assert!(runtime.calls().is_empty());
     }
 }
