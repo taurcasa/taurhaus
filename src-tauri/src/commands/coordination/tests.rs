@@ -1768,7 +1768,7 @@ fn live_status_test_helper_invokes_live_status_impl() {
 }
 
 #[test]
-fn live_status_uses_fast_snapshot_without_runtime_reconcile_calls() {
+fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
@@ -1788,7 +1788,19 @@ fn live_status_uses_fast_snapshot_without_runtime_reconcile_calls() {
             .expect("live status should succeed");
 
     assert_eq!(status.team_name, "architecture-final");
-    assert_eq!(runtime.calls().len(), call_count_before_live_status);
+    let delta = &runtime.calls()[call_count_before_live_status..];
+    assert!(
+        !delta.is_empty(),
+        "live status should do pane-presence checks"
+    );
+    assert!(delta.iter().all(|call| {
+        matches!(
+            call,
+            RuntimeCall::CheckPaneExists { .. }
+                | RuntimeCall::CheckPaneDead { .. }
+                | RuntimeCall::CheckPaneShell { .. }
+        )
+    }));
 }
 
 #[test]

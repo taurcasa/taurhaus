@@ -439,7 +439,10 @@ fn coordination_get_live_team_status_impl(
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
     let status = state
-        .with_orchestrator(|orchestrator| orchestrator.get_team_status_fast(&team_name))
+        .with_orchestrator(|orchestrator| {
+            orchestrator.reconcile_team_presence_for_live_status(&team_name)?;
+            orchestrator.get_team_status_fast(&team_name)
+        })
         .map_err(map_coordination_error)?;
 
     let runtime_by_member = status
