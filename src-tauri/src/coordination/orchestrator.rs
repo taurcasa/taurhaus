@@ -550,9 +550,7 @@ impl CoordinationOrchestrator {
             let offline_detected = match runtime.pane_id.as_deref() {
                 None => true,
                 Some(pane_id) => {
-                    if !self.runtime.pane_exists(pane_id)?
-                        || self.runtime.pane_is_dead(pane_id)?
-                    {
+                    if !self.runtime.pane_exists(pane_id)? || self.runtime.pane_is_dead(pane_id)? {
                         true
                     } else {
                         self.runtime.pane_is_shell(pane_id)?
