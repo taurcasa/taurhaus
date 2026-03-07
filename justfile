@@ -142,6 +142,10 @@ test-frontend:
 test-visual:
     bunx vitest run --config vitest.visual.config.js
 
+# Regenerate README screenshots from the dedicated visual shot list.
+capture-readme-screenshots:
+    ./scripts/export-readme-screenshots.sh
+
 # Run frontend tests in watch mode
 test-watch:
     bun run test:watch
