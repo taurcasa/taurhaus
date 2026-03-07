@@ -217,4 +217,5 @@ Related frontend IPC surfaces:
 ## Related documents
 
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) — system overview and module structure
-- [Mesh view design](../mesh-view-design.md) — UI/behavior context for coordination-related IPC commands
+- [Mesh feature guide](../features/mesh.md) — user-facing coordination flows that map onto these IPC commands
+- [Coordination architecture](../coordination-architecture.md) — backend structure behind the coordination command set

@@ -251,7 +251,7 @@ See [IPC command reference](../architecture/ipc-reference.md) for full signature
 ## Related documents
 
 - [Coordination architecture](../coordination-architecture.md) — design decisions and backend structure
-- [Mesh view design](../mesh-view-design.md) — original design document
+- [Team templates guide](../team-templates.md) — role/preset composition and template lifecycle
 - [IPC command reference](../architecture/ipc-reference.md) — command signatures
 - [Command center](command-center.md) — CLI tool launch and terminal management
 - [Session management](session-management.md) — session detection that feeds roster status

@@ -20,7 +20,7 @@ Taurhaus gains the ability to create, monitor, and manage multi-agent teams that
 This document captures the shipped/active coordination subsystem architecture in taurhaus.
 
 - The practical orchestration direction for auto-idle and communication quality now lives in [`architecture/orchestration-practical-auto-idle-and-communication.md`](architecture/orchestration-practical-auto-idle-and-communication.md).
-- The v0.2.0 protocol exploration is archived in [`architecture/orchestration-protocol-design.md`](architecture/orchestration-protocol-design.md) and is not an active implementation target.
+- The v0.2.0 protocol exploration is archived in [`archive/architecture/orchestration-protocol-design.md`](archive/architecture/orchestration-protocol-design.md) and is not an active implementation target.
 - Taurhaus currently contributes runtime activity handoff by exporting per-member snapshots under `~/.claude/teams/{team}/state/activity/{member}.json` from `coordination/stall_detector.rs`.
 
 ## Design Decision Log
@@ -344,4 +344,4 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Integration proposal: `mesh/docs/taurhaus-integration-proposal.md`
 - Architecture diagram: `mesh/docs/taurhaus-integration-architecture-v2.jpg`
 - Practical orchestration direction: [`architecture/orchestration-practical-auto-idle-and-communication.md`](architecture/orchestration-practical-auto-idle-and-communication.md)
-- Archived protocol exploration: [`architecture/orchestration-protocol-design.md`](architecture/orchestration-protocol-design.md)
+- Archived protocol exploration: [`archive/architecture/orchestration-protocol-design.md`](archive/architecture/orchestration-protocol-design.md)

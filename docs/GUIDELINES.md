@@ -18,8 +18,9 @@ Standards for writing and maintaining taurhaus documentation.
 | **Features** | `docs/features/` | Per-feature documentation (what it does, how it works) | Project management, git integration, search |
 | **UI** | `docs/ui/` | Visual design system and layout documentation | Design tokens, layout structure |
 | **Operations** | `docs/operations/` | Build, test, deploy, release procedures | Build guide, testing strategy |
-| **Security** | `docs/security/` | Audit reports, risk register, security model | Audit reports, risk register |
-| **Mesh** | `docs/` (top-level) | Multi-CLI coordination docs for shipped functionality and ongoing design | coordination-architecture, mesh-view-design |
+| **Security** | `docs/security/` | Current security model and active risk tracking | risk-register |
+| **Mesh** | `docs/` (top-level) | Current multi-CLI coordination docs for shipped functionality | coordination-architecture, team-templates |
+| **Archive** | `docs/archive/` | Historical audits, superseded designs, migration notes, and planning artifacts | security audits, design studies, retro docs |
 
 ## Document Structure Template
 
@@ -70,7 +71,7 @@ Operations docs: prerequisites, step-by-step procedures
 
 - When you change code that a doc describes, update the doc in the same commit
 - Stale docs are worse than no docs — if you notice something outdated, fix it or flag it
-- Audit reports and investigation docs (e.g., `e2e-performance-bug.md`) are point-in-time records — they don't need updating, but should be clearly dated
+- Audit reports and investigation docs are point-in-time records — they don't need updating, but should be clearly dated and moved under `docs/archive/` when they are no longer part of the active docs surface
 
 ## Cross-referencing
 

@@ -59,6 +59,7 @@ Build, test, and release procedures.
 |----------|-------------|
 | [Build and release](operations/build-and-release.md) | Platform builds (Windows, macOS, Linux), release workflow |
 | [Testing guide](operations/testing-guide.md) | Test strategy, test lanes, E2E setup, regression policy |
+| [Visual testing guide](operations/visual-testing-guide.md) | Browser-mode screenshot lane and fixture-host workflow |
 
 ## Multi-CLI coordination (mesh)
 
@@ -67,10 +68,7 @@ Documentation for the multi-agent team orchestration feature.
 | Document | Description |
 |----------|-------------|
 | [Coordination architecture](coordination-architecture.md) | Backend design, domain model, design decisions |
-| [Phase 4 architecture](phase-4-architecture.md) | Resume and liveness reconciliation architecture summary |
-| [Feature matrix](feature-matrix.md) | Shipped/partial status of mesh coordination capabilities |
-| [Mesh view design](mesh-view-design.md) | UI design for team management tab |
-| [Mesh setup vision](mesh-setup-vision.md) | UX concept for team onboarding |
+| [Mesh feature guide](features/mesh.md) | User-facing setup, runtime, recovery, and team actions |
 | [Team templates guide](team-templates.md) | Role/preset templates, composition flow, history, diff, and revert |
 
 ## Security
@@ -79,9 +77,11 @@ Documentation for the multi-agent team orchestration feature.
 |----------|-------------|
 | [Security policy](../SECURITY.md) | Vulnerability reporting and security model |
 | [Risk register](security/risk-register.md) | Accepted baseline risks |
-| [Audit 2026-02-27](security/audit-2026-02-27.md) | Full security audit v0.3.2 |
-| [Audit 2026-03-03 (directed)](security/sec-auditor-audit-2026-03-03.md) | Directed audit — IPC, file paths, search |
-| [Audit 2026-03-03 (TaurSec)](security/team-lead-audit-2026-03-03.md) | Framework-driven TaurSec v1 audit |
+| [Archive guide](archive/README.md) | Historical audits, design studies, and planning artifacts |
+
+## Archive
+
+Historical audits, design explorations, migration notes, and superseded planning docs live under [docs/archive](archive/README.md).
 
 ## Documentation standards
 
