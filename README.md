@@ -1,79 +1,88 @@
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="140" alt="taurhaus icon" />
+</p>
+
 # taurhaus
 
-A desktop operations surface for developers running multiple AI tools, multiple projects, and multi-agent Mesh teams at the same time.
+A desktop app for developers who run Claude Code, Codex, Gemini CLI, and multi-agent Mesh teams across several projects at once.
 
-`taurhaus` gives you one place to see what Claude Code, Codex, Gemini CLI, and Mesh agents are doing right now, recover project context without terminal archaeology, and coordinate team workflows without giving up your editor or terminal.
+Instead of flipping between terminal tabs to check what's running, what changed, and what broke, taurhaus puts it all in one window — live sessions, project history, task boards, and team coordination.
 
 ![taurhaus hero overview](docs/screenshots/readme-hero-overview.png)
 
 ## Why taurhaus
 
-AI-assisted development breaks down when the work stops being linear. One project is in a Codex session, another has a Claude refactor in flight, Gemini owns a TODO-driven cleanup, and a Mesh team is halfway through a coordinated change. The terminal can run that workflow, but it does not help you supervise it.
+AI-assisted development gets messy fast. One project has a Codex session running, another has Claude mid-refactor, Gemini is cleaning up TODOs somewhere else, and a Mesh team is halfway through a coordinated change. The terminal can handle all of that, but it won't help you keep track of it.
 
-`taurhaus` is built for that exact operating mode:
+taurhaus is built for exactly that situation:
 
-- **Watch live work** across projects with session indicators, activity groups, hover previews, and direct session controls.
-- **Recover context quickly** through README previews, recent commits, task history, handoff summaries, and cross-project search.
-- **Coordinate Mesh teams** with setup, runtime visibility, hot-add/remove flows, and recovery paths after restart or degraded state.
+- **See what's running** — live session status for every project, grouped by activity, with hover previews and quick actions.
+- **Get back up to speed** — README previews, recent commits, task history, session handoffs, and full-text search across everything.
+- **Run Mesh teams** — set up multi-agent teams, watch them work, add or remove members on the fly, and recover when things go sideways.
 
 ## Core workflows
 
-### Watch live work
+### See what's running
 
-The sidebar is more than a project list. It groups repositories by activity, shows live session state for Claude, Codex, and Gemini, and lets you jump directly to tmux-backed sessions when work is already in motion.
+The sidebar groups your projects by how active they are and shows which AI tools have sessions running. Hover over a project to see session details; click a tool icon to jump straight into its tmux pane.
 
-The command-center layer also supports session launch, resume, stop, restart, and terminal focus behavior from inside the app, so taurhaus can supervise work and initiate it when needed.
+You can also launch, resume, stop, and restart sessions from inside the app — no need to switch to the terminal just to kick something off.
 
 ![Sidebar live supervision](docs/screenshots/readme-sidebar-live-supervision.png)
 
-### Recover context fast
+### Get back up to speed
 
-When you come back to a project, taurhaus gives you a compact project memory surface: README preview, recent commits, task board state, session handoffs, relationship cues, and full-text search across documents, sessions, and commits.
+When you return to a project, taurhaus shows you what matters: the README, recent commits, open tasks, session handoffs, related projects, and full-text search across all of them.
 
-That makes taurhaus useful even when you are not coordinating a team. It shortens the time between “what was happening here?” and “I can act again.”
+This is useful even without a team running. It just makes the gap between "what was I doing?" and "okay, I'm caught up" a lot shorter.
 
 | Task and history context | Cross-project search |
 |---|---|
 | ![Task board context](docs/screenshots/readme-task-board-context.png) | ![Search overlay](docs/screenshots/readme-search-overlay.png) |
 
-### Inspect code and change history
+### Browse code and history
 
-taurhaus keeps project inspection close to runtime context. You can move from an active session or handoff summary into syntax-highlighted file browsing, commit history, and diffs without switching tools just to reconstruct the recent state of a repository.
+You can go from a session handoff or commit list straight into syntax-highlighted file browsing and diffs — without leaving the app or switching to another tool just to check what changed.
 
 ![Git context inspection](docs/screenshots/readme-git-context-inspection.png)
 
 ## Mesh teams
 
-Mesh is a first-class taurhaus workflow, not a side feature. The Mesh tab turns a multi-agent terminal ritual into a visible team lifecycle with prerequisites, setup, runtime control, and recovery.
+Most multi-agent setups today are fire-and-forget. You give a subagent a prompt, it does its work, and when it's done, it's done. You can't talk to it while it's running. Each agent is an isolated job.
 
-What taurhaus covers in Mesh:
+Mesh works differently. It uses tmux sessions to keep full CLI tool instances — Claude Code, Codex, Gemini — alive as persistent team members that can send and receive messages while they work. A Claude lead can assign a task to a Codex agent, check on a Gemini reviewer, and coordinate across all of them in real time. The agents aren't disposable workers; they're a team with ongoing context.
 
-- role and preset-driven team composition
-- one-click initialize flow with progress reporting
-- runtime canvas with per-member state and detail actions
-- hot-add, remove, and re-onboard actions for running teams
-- resume flows for offline members and full team cold-restart recovery
-- disband and cleanup behavior for managed team resources
+Under the hood, Mesh builds on the same file structure that Claude Code already uses for its own task and team management (`~/.claude/tasks/`, `~/.claude/teams/`). That means Claude Code agents on a Mesh team don't need special adapters — they read and write to the same files they'd normally use. The team infrastructure is mostly invisible to each agent's native tooling, which is what makes cross-tool coordination possible without forcing every tool into a new protocol.
+
+Mesh itself is the communication layer — file-based messaging, tmux pane orchestration, role definitions. taurhaus is where that becomes practical to use day-to-day. The Mesh tab handles the setup, gives you a live view of the team, and takes care of recovery when things go wrong.
+
+What you can do:
+
+- Pick roles and tools for each team member, then launch with one click
+- See every member's status, what they're working on, and act on individual agents
+- Add or remove members while the team is running
+- Resume agents that went offline, or restart the whole team after a crash
+- Shut down and clean up when you're done
 
 ### Compose and launch
 
-The setup flow gives you a structured way to define a lead plus mixed-tool agents across projects, instead of manually assembling panes and hoping the coordination state stays coherent.
+The setup flow lets you define a lead plus agents across different tools and projects, instead of manually wiring up tmux panes and hoping everything stays in sync.
 
 ![Mesh setup composition](docs/screenshots/readme-mesh-setup-composition.png)
 
-### Monitor the team at runtime
+### Watch the team work
 
-Once running, taurhaus shows the roster as an operational surface: runtime status, focus targets, node detail actions, and team controls are all in one view.
+Once running, taurhaus shows each team member as a node on a canvas — their status, their tool, what they're focused on — with actions available on each one.
 
 ![Mesh runtime canvas](docs/screenshots/readme-mesh-runtime-canvas.png)
 
-### Recover after restart or degraded state
+### Recover when things break
 
-The Mesh workflow also covers the non-ideal path. Taurhaus can detect recovery situations and surface resume affordances instead of treating a restart or stale runtime state as manual cleanup work.
+Restarts happen. Agents crash. Taurhaus detects these situations and gives you clear options to resume individual members or restart the whole team, instead of leaving you to sort it out manually.
 
 ![Mesh recovery and resume](docs/screenshots/readme-mesh-recovery-resume.png)
 
-For deeper Mesh details, see:
+For more on Mesh:
 
 - [Mesh view](docs/features/mesh.md)
 - [Team templates](docs/team-templates.md)
@@ -81,28 +90,28 @@ For deeper Mesh details, see:
 
 ## Install and prerequisites
 
-For the full setup walkthrough and troubleshooting, use the [Getting Started guide](docs/getting-started.md).
+For the full setup walkthrough and troubleshooting, see the [Getting Started guide](docs/getting-started.md).
 
-### Supported user platforms
+### Supported platforms
 
-- **Windows**: primary release target, with CLI tools running inside WSL2
-- **macOS**: native app + native daemon path
+- **Windows** — primary release target, with CLI tools running inside WSL2
+- **macOS** — native app with a native daemon
 
 ### Required tools
 
 Before installing taurhaus, you need:
 
-1. **`tmux`** on the environment where your AI CLIs run
+1. **`tmux`** on the machine where your AI CLIs run
 2. **At least one supported AI CLI**
    - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
    - [Codex CLI](https://github.com/openai/codex)
    - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-3. **Mesh CLI** if you want team orchestration
+3. **Mesh CLI** if you want multi-agent team orchestration
    - taurhaus can install or update the bundled Mesh binary when supported
 
 ### Windows prerequisites
 
-On Windows, taurhaus expects the CLI environment to live in **WSL2**.
+On Windows, taurhaus expects the CLI tools to run inside **WSL2**.
 
 1. Install WSL2:
    ```powershell
@@ -122,7 +131,7 @@ On Windows, taurhaus expects the CLI environment to live in **WSL2**.
    wsl --shutdown
    ```
 
-Mirrored networking matters because the Windows app talks to the daemon running inside WSL over localhost.
+Mirrored networking is needed because the Windows app talks to a daemon running inside WSL over localhost.
 
 ### macOS prerequisites
 
@@ -143,7 +152,7 @@ On macOS:
 - **Windows**: download `taurhaus_x.x.x_x64-setup.exe` from [Releases](../../releases) and run the installer.
 - **macOS**: download the DMG from [Releases](../../releases), move taurhaus to Applications, and launch it.
 
-On first launch, taurhaus installs or starts its daemon automatically, creates the managed tmux session it needs, and then opens the first-run flow.
+On first launch, taurhaus sets up its background daemon, creates a managed tmux session, and walks you through project discovery.
 
 > macOS note: if Gatekeeper blocks the app on first launch, right-click it in Applications, choose **Open**, and confirm once.
 
@@ -161,17 +170,17 @@ The first-run wizard walks through:
 2. project discovery
 3. project selection
 4. registration progress
-5. transition into the main shell
+5. transition into the main app
 
 ### Quick start
 
 Once taurhaus is open:
 
-1. Select a project in the sidebar to load its overview.
+1. Select a project in the sidebar to see its overview.
 2. Launch or resume a CLI session from the project context menu.
-3. Use the Tasks tab, README preview, and recent commits to recover context.
+3. Use the Tasks tab, README preview, and recent commits to catch up.
 4. Press `Ctrl+K` / `Cmd+K` to search across projects.
-5. Open the Mesh tab when you want a coordinated multi-agent workflow.
+5. Open the Mesh tab to set up a multi-agent team.
 
 ## Development
 
@@ -203,7 +212,7 @@ just release          # create GitHub release from current version
 Contributor notes:
 
 - use `just check-quick` during implementation
-- treat `just check` as the serialized full gate for release or team-lead validation
+- treat `just check` as the full gate for releases
 - run Vitest from the project root, not `src-tauri/`
 
 Further reading:
@@ -217,17 +226,18 @@ Further reading:
 
 ## Architecture at a glance
 
-Taurhaus is a native desktop app with a split runtime model:
+Taurhaus is a native desktop app with two parts:
 
-- a Tauri application for UI, storage, git, and search
-- a lightweight companion daemon for process scanning, file watching, and tmux/session orchestration
-- platform-specific daemon placement: **WSL2 on Windows**, **native subprocess on macOS**
+- a **Tauri application** that handles the UI, storage, git, and search
+- a **lightweight daemon** that scans for running processes, watches files, and manages tmux sessions
 
-That architecture lets taurhaus stay close to the real local developer environment instead of wrapping work in a separate cloud control plane.
+On Windows, the daemon runs inside WSL2. On macOS, it runs as a native subprocess.
+
+This keeps taurhaus plugged into your actual local dev environment instead of wrapping everything in a cloud layer.
 
 ![System architecture](docs/images/system-architecture.jpg)
 
-For deeper technical detail, see:
+For more detail:
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [IPC reference](docs/architecture/ipc-reference.md)
@@ -235,8 +245,6 @@ For deeper technical detail, see:
 - [Data model](docs/architecture/data-model.md)
 
 ## Documentation
-
-Key product and implementation references:
 
 - [Getting Started](docs/getting-started.md)
 - [Project management](docs/features/project-management.md)
