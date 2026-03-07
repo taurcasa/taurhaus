@@ -382,13 +382,21 @@ fn codex_command_has_model_arg(command: &str) -> bool {
 
 fn normalize_codex_model(model: &str) -> String {
     let trimmed = model.trim();
-    if trimmed.eq_ignore_ascii_case("gpt-5.4") || trimmed.eq_ignore_ascii_case("gpt-5.4-high") {
-        return "gpt-5.4 high".to_string();
+    let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.eq_ignore_ascii_case("gpt-5.4")
+        || compact.eq_ignore_ascii_case("gpt-5.4 high")
+        || compact.eq_ignore_ascii_case("gpt-5.4 medium")
+        || compact.eq_ignore_ascii_case("gpt-5.4 low")
+        || trimmed.eq_ignore_ascii_case("gpt-5.4-high")
+        || trimmed.eq_ignore_ascii_case("gpt-5.4-medium")
+        || trimmed.eq_ignore_ascii_case("gpt-5.4-low")
+    {
+        return "gpt-5.4".to_string();
     }
     if trimmed.eq_ignore_ascii_case("gpt-5.3") {
         return "gpt-5.3-codex".to_string();
     }
-    trimmed.to_string()
+    compact
 }
 
 /// Build the command used for team-agent launch (fresh mode + optional model).
@@ -678,7 +686,7 @@ mod tests {
         let cmds = crate::models::CliCommandSettings::default();
         assert_eq!(
             build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4"),
-            "codex --yolo -m 'gpt-5.4 high'"
+            "codex --yolo -m 'gpt-5.4'"
         );
     }
 
@@ -687,7 +695,16 @@ mod tests {
         let cmds = crate::models::CliCommandSettings::default();
         assert_eq!(
             build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4-high"),
-            "codex --yolo -m 'gpt-5.4 high'"
+            "codex --yolo -m 'gpt-5.4'"
+        );
+    }
+
+    #[test]
+    fn build_team_launch_command_for_codex_strips_embedded_reasoning_suffix() {
+        let cmds = crate::models::CliCommandSettings::default();
+        assert_eq!(
+            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4 high"),
+            "codex --yolo -m 'gpt-5.4'"
         );
     }
 

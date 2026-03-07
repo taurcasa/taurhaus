@@ -133,18 +133,7 @@
                     }
                   }}
                 >
-                  {#if ind.groupedIcon}
-                    <span class="sidebar-session-team-grouped-icons" aria-hidden="true">
-                      <svg class="sidebar-session-team-grouped-glyph" viewBox={ind.groupedIcon.viewBox} fill="currentColor">
-                        {#each ind.groupedIcon.paths as p}
-                          <path d={p.d} transform={p.transform || ''}></path>
-                        {/each}
-                      </svg>
-                    </span>
-                    {#if ind.layout === 'stack'}
-                      <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
-                    {/if}
-                  {:else if ind.layout === 'stack'}
+                  {#if ind.layout === 'stack'}
                     <span class="sidebar-session-team-stack-logos" aria-hidden="true">
                       {#each ind.tools as tool, index (tool.tool)}
                         <span

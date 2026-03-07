@@ -49,65 +49,6 @@ export const TOOL_NAMES = {
   gemini: 'Gemini',
 }
 
-/**
- * Pre-composed grouped icon variants for team session indicators.
- * Each entry contains a wider viewBox with multiple path segments,
- * rendered as a single cohesive SVG instead of CSS-composed individuals.
- * Uses sidebarSmall paths arranged in a shared coordinate space.
- *
- * Layout: 16×16 per icon, 4-unit gap between icons.
- *   2-icon: viewBox 0 0 36 16
- *   3-icon: viewBox 0 0 56 16
- */
-export const TOOL_GROUPED_ICONS = {
-  'claude+codex': {
-    viewBox: '0 0 36 16',
-    paths: [
-      { d: TOOL_SIDEBAR_SMALL_ICONS.claude.path },
-      { d: TOOL_SIDEBAR_SMALL_ICONS.codex.path, transform: 'translate(20 0)' },
-    ],
-  },
-  'claude+gemini': {
-    viewBox: '0 0 36 16',
-    paths: [
-      { d: TOOL_SIDEBAR_SMALL_ICONS.claude.path },
-      { d: TOOL_SIDEBAR_SMALL_ICONS.gemini.path, transform: 'translate(20 0)' },
-    ],
-  },
-  'codex+gemini': {
-    viewBox: '0 0 36 16',
-    paths: [
-      { d: TOOL_SIDEBAR_SMALL_ICONS.codex.path },
-      { d: TOOL_SIDEBAR_SMALL_ICONS.gemini.path, transform: 'translate(20 0)' },
-    ],
-  },
-  'claude+codex+gemini': {
-    viewBox: '0 0 56 16',
-    paths: [
-      { d: TOOL_SIDEBAR_SMALL_ICONS.claude.path },
-      { d: TOOL_SIDEBAR_SMALL_ICONS.codex.path, transform: 'translate(20 0)' },
-      { d: TOOL_SIDEBAR_SMALL_ICONS.gemini.path, transform: 'translate(40 0)' },
-    ],
-  },
-}
-
-/**
- * Look up a pre-composed grouped icon for a set of tool keys.
- * Tools are sorted to a canonical order so lookup is order-independent.
- * Returns null if no grouped icon exists for the combination.
- */
-export function getGroupedIcon(tools) {
-  if (!Array.isArray(tools) || tools.length < 2) return null
-  const CANONICAL_ORDER = ['claude', 'codex', 'gemini']
-  const sorted = [...tools].sort((a, b) => {
-    const ai = CANONICAL_ORDER.indexOf(a)
-    const bi = CANONICAL_ORDER.indexOf(b)
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-  })
-  const key = sorted.join('+')
-  return TOOL_GROUPED_ICONS[key] || null
-}
-
 /** Get icon data for a tool key, with claude fallback. */
 export function getToolIcon(tool, variant = 'default') {
   if (variant === 'sidebarSmall') {

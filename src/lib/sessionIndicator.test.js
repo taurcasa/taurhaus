@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { groupedSessionIndicators, hasLiveSession, isActiveSession, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
-import { getToolIcon, getGroupedIcon, TOOL_GROUPED_ICONS, TOOL_SIDEBAR_SMALL_ICONS } from './toolLogos.js'
+import { getToolIcon } from './toolLogos.js'
 
 function session(overrides = {}) {
   return {
@@ -14,56 +14,6 @@ function session(overrides = {}) {
     ...overrides,
   }
 }
-
-describe('getGroupedIcon', () => {
-  it('returns grouped icon for claude+codex', () => {
-    const icon = getGroupedIcon(['claude', 'codex'])
-    expect(icon).toBeTruthy()
-    expect(icon.viewBox).toBe('0 0 36 16')
-    expect(icon.paths).toHaveLength(2)
-    expect(icon.paths[0].d).toBe(TOOL_SIDEBAR_SMALL_ICONS.claude.path)
-    expect(icon.paths[1].d).toBe(TOOL_SIDEBAR_SMALL_ICONS.codex.path)
-    expect(icon.paths[1].transform).toBe('translate(20 0)')
-  })
-
-  it('returns grouped icon for all three tools', () => {
-    const icon = getGroupedIcon(['claude', 'codex', 'gemini'])
-    expect(icon).toBeTruthy()
-    expect(icon.viewBox).toBe('0 0 56 16')
-    expect(icon.paths).toHaveLength(3)
-    expect(icon.paths[2].transform).toBe('translate(40 0)')
-  })
-
-  it('sorts tools to canonical order regardless of input order', () => {
-    const a = getGroupedIcon(['gemini', 'claude'])
-    const b = getGroupedIcon(['claude', 'gemini'])
-    expect(a).toEqual(b)
-    expect(a).toBe(TOOL_GROUPED_ICONS['claude+gemini'])
-  })
-
-  it('returns null for single tool', () => {
-    expect(getGroupedIcon(['claude'])).toBeNull()
-  })
-
-  it('returns null for empty or invalid input', () => {
-    expect(getGroupedIcon([])).toBeNull()
-    expect(getGroupedIcon(null)).toBeNull()
-    expect(getGroupedIcon(undefined)).toBeNull()
-  })
-
-  it('returns null for unknown tool combinations', () => {
-    expect(getGroupedIcon(['claude', 'unknown'])).toBeNull()
-  })
-
-  it('covers all four defined combinations', () => {
-    expect(Object.keys(TOOL_GROUPED_ICONS)).toEqual([
-      'claude+codex',
-      'claude+gemini',
-      'codex+gemini',
-      'claude+codex+gemini',
-    ])
-  })
-})
 
 describe('sessionIndicator', () => {
   it('detects live sessions', () => {
@@ -370,43 +320,6 @@ describe('sessionIndicator', () => {
     expect(indicators[0].isActive).toBe(false)
     expect(indicators[0].layout).toBe('stack')
     expect(indicators[0].ariaLabel).toContain('idle')
-  })
-
-  it('groupedSessionIndicators attaches groupedIcon for multi-tool teams', () => {
-    const indicators = groupedSessionIndicators([
-      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', cli_tool: 'claude', member_name: 'lead' }),
-      session({ state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-    ])
-
-    expect(indicators).toHaveLength(1)
-    expect(indicators[0].groupedIcon).toBeTruthy()
-    expect(indicators[0].groupedIcon.viewBox).toBe('0 0 36 16')
-    expect(indicators[0].groupedIcon.paths).toHaveLength(2)
-    expect(indicators[0].groupedIcon.paths[0].d).toBe(TOOL_SIDEBAR_SMALL_ICONS.claude.path)
-    expect(indicators[0].groupedIcon.paths[1].d).toBe(TOOL_SIDEBAR_SMALL_ICONS.codex.path)
-  })
-
-  it('groupedSessionIndicators attaches 3-tool groupedIcon for all tool types', () => {
-    const indicators = groupedSessionIndicators([
-      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', cli_tool: 'claude', member_name: 'lead' }),
-      session({ state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-      session({ state: 'idle', cli_tool: 'gemini', pid: 3, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3' }),
-    ])
-
-    expect(indicators).toHaveLength(1)
-    expect(indicators[0].groupedIcon).toBeTruthy()
-    expect(indicators[0].groupedIcon.viewBox).toBe('0 0 56 16')
-    expect(indicators[0].groupedIcon.paths).toHaveLength(3)
-  })
-
-  it('groupedSessionIndicators returns null groupedIcon for single-tool teams', () => {
-    const indicators = groupedSessionIndicators([
-      session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', cli_tool: 'codex', member_name: 'developer1' }),
-      session({ state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-    ])
-
-    expect(indicators).toHaveLength(1)
-    expect(indicators[0].groupedIcon).toBeNull()
   })
 
   it('toolIndicators stacks single-tool teams without duplicating the logo legend', () => {

@@ -103,14 +103,20 @@ pub mod session_scanner {
                     if model.is_empty() || base.contains("-m ") || base.contains("--model") {
                         return base;
                     }
-                    let model = if model.eq_ignore_ascii_case("gpt-5.4")
+                    let compact = model.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let model = if compact.eq_ignore_ascii_case("gpt-5.4")
+                        || compact.eq_ignore_ascii_case("gpt-5.4 high")
+                        || compact.eq_ignore_ascii_case("gpt-5.4 medium")
+                        || compact.eq_ignore_ascii_case("gpt-5.4 low")
                         || model.eq_ignore_ascii_case("gpt-5.4-high")
+                        || model.eq_ignore_ascii_case("gpt-5.4-medium")
+                        || model.eq_ignore_ascii_case("gpt-5.4-low")
                     {
-                        "gpt-5.4 high".to_string()
+                        "gpt-5.4".to_string()
                     } else if model.eq_ignore_ascii_case("gpt-5.3") {
                         "gpt-5.3-codex".to_string()
                     } else {
-                        model.to_string()
+                        compact
                     };
                     format!("{base} -m '{model}'")
                 }
