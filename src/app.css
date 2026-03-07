@@ -165,8 +165,12 @@
   --sidebar-team-icon-idle-light: #D97706;
   --sidebar-team-rail-active-dark: rgba(134, 239, 172, 0.18);
   --sidebar-team-rail-idle-dark: rgba(252, 211, 77, 0.22);
+  --sidebar-team-rail-active-edge-dark: rgba(134, 239, 172, 0.34);
+  --sidebar-team-rail-idle-edge-dark: rgba(252, 211, 77, 0.38);
   --sidebar-team-rail-active-light: rgba(22, 163, 74, 0.16);
   --sidebar-team-rail-idle-light: rgba(217, 119, 6, 0.18);
+  --sidebar-team-rail-active-edge-light: rgba(22, 163, 74, 0.24);
+  --sidebar-team-rail-idle-edge-light: rgba(217, 119, 6, 0.28);
   --sidebar-team-count-fill-dark: rgba(255, 255, 255, 0.05);
   --sidebar-team-count-shadow-line-dark: rgba(255, 255, 255, 0.04);
   --sidebar-team-count-active-border-dark: rgba(134, 239, 172, 0.38);
@@ -177,6 +181,8 @@
   --sidebar-team-count-idle-border-light: rgba(217, 119, 6, 0.24);
   --sidebar-team-stack-ring-dark: rgba(9, 14, 17, 0.96);
   --sidebar-team-stack-ring-light: rgba(255, 255, 255, 0.96);
+  --sidebar-team-logo-ring-dark: rgba(255, 255, 255, 0.045);
+  --sidebar-team-logo-ring-light: rgba(10, 31, 31, 0.08);
 }
 
 :root {
@@ -191,11 +197,14 @@
   --sidebar-team-icon-idle: var(--sidebar-team-icon-idle-light);
   --sidebar-team-rail-active: var(--sidebar-team-rail-active-light);
   --sidebar-team-rail-idle: var(--sidebar-team-rail-idle-light);
+  --sidebar-team-rail-active-edge: var(--sidebar-team-rail-active-edge-light);
+  --sidebar-team-rail-idle-edge: var(--sidebar-team-rail-idle-edge-light);
   --sidebar-team-count-fill: var(--sidebar-team-count-fill-light);
   --sidebar-team-count-shadow-line: var(--sidebar-team-count-shadow-line-light);
   --sidebar-team-count-active-border: var(--sidebar-team-count-active-border-light);
   --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-light);
   --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-light);
+  --sidebar-team-logo-ring: var(--sidebar-team-logo-ring-light);
 }
 
 html.dark {
@@ -210,11 +219,14 @@ html.dark {
   --sidebar-team-icon-idle: var(--sidebar-team-icon-idle-dark);
   --sidebar-team-rail-active: var(--sidebar-team-rail-active-dark);
   --sidebar-team-rail-idle: var(--sidebar-team-rail-idle-dark);
+  --sidebar-team-rail-active-edge: var(--sidebar-team-rail-active-edge-dark);
+  --sidebar-team-rail-idle-edge: var(--sidebar-team-rail-idle-edge-dark);
   --sidebar-team-count-fill: var(--sidebar-team-count-fill-dark);
   --sidebar-team-count-shadow-line: var(--sidebar-team-count-shadow-line-dark);
   --sidebar-team-count-active-border: var(--sidebar-team-count-active-border-dark);
   --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-dark);
   --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-dark);
+  --sidebar-team-logo-ring: var(--sidebar-team-logo-ring-dark);
 }
 
 html, body, #app {
@@ -315,18 +327,21 @@ body {
   position: absolute;
   left: 4px;
   right: 4px;
-  top: 3.5px;
-  height: 8px;
+  top: 3px;
+  height: 9px;
   border-radius: 999px;
   pointer-events: none;
+  box-shadow: inset 0 0 0 1px transparent;
 }
 
 .sidebar-session-team-rail[data-activity='active'] .sidebar-session-team-rail-track {
-  background: var(--sidebar-team-rail-active);
+  background: linear-gradient(90deg, var(--sidebar-team-rail-active) 0%, color-mix(in srgb, var(--sidebar-team-rail-active) 74%, transparent) 100%);
+  box-shadow: inset 0 0 0 1px var(--sidebar-team-rail-active-edge);
 }
 
 .sidebar-session-team-rail[data-activity='idle'] .sidebar-session-team-rail-track {
-  background: var(--sidebar-team-rail-idle);
+  background: linear-gradient(90deg, var(--sidebar-team-rail-idle) 0%, color-mix(in srgb, var(--sidebar-team-rail-idle) 74%, transparent) 100%);
+  box-shadow: inset 0 0 0 1px var(--sidebar-team-rail-idle-edge);
 }
 
 .sidebar-session-team-rail-logo {
@@ -337,6 +352,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 999px;
+  background: var(--sidebar-team-stack-ring);
+  box-shadow: 0 0 0 1px var(--sidebar-team-logo-ring);
 }
 
 .sidebar-session-team-rail-glyph,
@@ -367,6 +385,7 @@ body {
   align-items: center;
   justify-content: center;
   background: var(--sidebar-team-stack-ring);
+  box-shadow: 0 0 0 1px var(--sidebar-team-logo-ring);
 }
 
 .sidebar-session-team-stack-logo-first {

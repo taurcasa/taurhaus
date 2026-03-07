@@ -243,6 +243,7 @@ describe('Sidebar component branches', () => {
     })
 
     expect(screen.getByTestId('sidebar-team-indicator').className).toContain('sidebar-session-team-rail')
+    expect(document.querySelector('.sidebar-session-team-rail-track')).toBeInTheDocument()
     expect(document.querySelectorAll('.sidebar-session-team-rail-logo')).toHaveLength(2)
   })
 
@@ -323,6 +324,8 @@ describe('Sidebar component branches', () => {
     render(Sidebar, { props: { projects } })
 
     const indicator = await screen.findByTestId('sidebar-team-indicator')
+    expect(document.querySelectorAll('.sidebar-session-team-stack-logo')).toHaveLength(2)
+    expect(document.querySelector('.sidebar-session-team-count')).toHaveTextContent('4')
     await fireEvent.keyDown(indicator, { key: 'Enter' })
 
     expect(navigateToSession).toHaveBeenCalledWith('mesh', '7', '%21')
