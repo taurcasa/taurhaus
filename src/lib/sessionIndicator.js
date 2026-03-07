@@ -52,6 +52,40 @@ function compareGroupedMembers(left, right) {
   return toolName(left).localeCompare(toolName(right))
 }
 
+function sessionColorClass(session) {
+  const isActive = session?.state === 'active'
+  const isUnattributed = !isActive && session?.project_unattributed_active === true
+  return isActive
+    ? 'text-success-300'
+    : (isUnattributed ? 'text-info-300' : 'text-warning-300')
+}
+
+function teamToolVisual(session, variant = 'default') {
+  const tool = session?.cli_tool || 'claude'
+  return {
+    tool,
+    fullName: getToolName(tool),
+    icon: getToolIcon(tool, variant),
+    iconVariant: variant,
+    isActive: session?.state === 'active',
+    colorClass: sessionColorClass(session),
+  }
+}
+
+function stackedTeamTools(members, variant = 'default') {
+  const liveMembers = Array.isArray(members) ? members : []
+  const orderedTools = uniqueTools(liveMembers, variant)
+  return orderedTools.map(toolEntry => {
+    const matchingMembers = liveMembers.filter(member => (member?.cli_tool || 'claude') === toolEntry.tool)
+    const representative = matchingMembers.find(member => member?.state === 'active') || matchingMembers[0]
+    return {
+      ...toolEntry,
+      isActive: representative?.state === 'active',
+      colorClass: sessionColorClass(representative),
+    }
+  })
+}
+
 export function uniqueTools(sessions, variant = 'default') {
   if (!Array.isArray(sessions) || sessions.length === 0) return []
 
@@ -85,7 +119,7 @@ function buildTeamIndicator(group) {
   const count = members.length
   const activityLabel = isActive ? 'active' : 'idle'
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
-  const tools = uniqueTools(members, 'sidebarSmall').slice(0, 3)
+  const tools = stackedTeamTools(members, 'default').slice(0, 3)
 
   return {
     kind: 'team',
@@ -95,12 +129,7 @@ function buildTeamIndicator(group) {
     count,
     members,
     tools,
-    memberTools: members.map(member => ({
-      tool: member?.cli_tool || 'claude',
-      fullName: getToolName(member?.cli_tool || 'claude'),
-      icon: getToolIcon(member?.cli_tool || 'claude', 'sidebarSmall'),
-      iconVariant: 'sidebarSmall',
-    })),
+    memberTools: members.map(member => teamToolVisual(member, 'default')),
     isActive,
     interactive: false,
     tone: isActive ? 'active' : 'idle',
@@ -231,9 +260,7 @@ function singleSessionIndicator(session) {
     isActive,
     isUnattributed,
     interactive,
-    colorClass: isActive
-      ? 'text-success-300'
-      : (isUnattributed ? 'text-info-300' : 'text-warning-300'),
+    colorClass: sessionColorClass(session),
     ariaLabel: `${name}: ${statusLabel}`,
   }
 }

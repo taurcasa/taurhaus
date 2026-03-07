@@ -315,81 +315,24 @@ body {
 }
 
 .sidebar-session-team-rail {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 15px;
+  height: 14px;
   padding-inline: 0;
-}
-
-.sidebar-session-team-rail-track {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 3px;
-  height: 9px;
-  border-radius: 999px;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px transparent;
-}
-
-.sidebar-session-team-rail[data-activity='active'] .sidebar-session-team-rail-track {
-  background: linear-gradient(90deg, var(--sidebar-team-rail-active) 0%, color-mix(in srgb, var(--sidebar-team-rail-active) 74%, transparent) 100%);
-  box-shadow: inset 0 0 0 1px var(--sidebar-team-rail-active-edge);
-}
-
-.sidebar-session-team-rail[data-activity='idle'] .sidebar-session-team-rail-track {
-  background: linear-gradient(90deg, var(--sidebar-team-rail-idle) 0%, color-mix(in srgb, var(--sidebar-team-rail-idle) 74%, transparent) 100%);
-  box-shadow: inset 0 0 0 1px var(--sidebar-team-rail-idle-edge);
-}
-
-.sidebar-session-team-rail-logo {
-  position: relative;
-  z-index: 1;
-  width: 15px;
-  height: 15px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: var(--sidebar-team-stack-ring);
-  box-shadow: 0 0 0 1px var(--sidebar-team-logo-ring);
-}
-
-.sidebar-session-team-rail-glyph,
-.sidebar-session-team-stack-glyph {
-  width: 13px;
-  height: 13px;
 }
 
 .sidebar-session-team-stack {
   display: inline-flex;
   align-items: center;
-  height: 15px;
+  height: 14px;
 }
 
 .sidebar-session-team-stack-logos {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   margin-right: 4px;
-}
-
-.sidebar-session-team-stack-logo {
-  width: 15px;
-  height: 15px;
-  border-radius: 999px;
-  margin-left: -4px;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--sidebar-team-stack-ring);
-  box-shadow: 0 0 0 1px var(--sidebar-team-logo-ring);
-}
-
-.sidebar-session-team-stack-logo-first {
-  margin-left: 0;
 }
 
 .sidebar-session-team-count {

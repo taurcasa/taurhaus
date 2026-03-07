@@ -219,8 +219,8 @@ describe('Sidebar component branches', () => {
         tone: 'active',
         isActive: true,
         memberTools: [
-          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
-          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: true, colorClass: 'text-success-300' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: false, colorClass: 'text-warning-300' },
         ],
         ariaLabel: 'team-a: 2 team sessions active',
       },
@@ -243,8 +243,8 @@ describe('Sidebar component branches', () => {
     })
 
     expect(screen.getByTestId('sidebar-team-indicator').className).toContain('sidebar-session-team-rail')
-    expect(document.querySelector('.sidebar-session-team-rail-track')).toBeInTheDocument()
-    expect(document.querySelectorAll('.sidebar-session-team-rail-logo')).toHaveLength(2)
+    expect(document.querySelectorAll('.sidebar-session-team-rail .session-pill-active')).toHaveLength(1)
+    expect(document.querySelectorAll('.sidebar-session-team-rail .session-pill-idle')).toHaveLength(1)
   })
 
   it('navigates grouped rail indicators to the lead tmux pane even when the lead has a custom name', async () => {
@@ -257,8 +257,8 @@ describe('Sidebar component branches', () => {
         count: 2,
         tone: 'active',
         memberTools: [
-          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
-          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: true, colorClass: 'text-success-300' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: false, colorClass: 'text-warning-300' },
         ],
         members: [
           {
@@ -298,8 +298,8 @@ describe('Sidebar component branches', () => {
         count: 4,
         tone: 'idle',
         tools: [
-          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
-          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, isActive: false, colorClass: 'text-warning-300' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, isActive: false, colorClass: 'text-warning-300' },
         ],
         members: [
           {
@@ -324,7 +324,7 @@ describe('Sidebar component branches', () => {
     render(Sidebar, { props: { projects } })
 
     const indicator = await screen.findByTestId('sidebar-team-indicator')
-    expect(document.querySelectorAll('.sidebar-session-team-stack-logo')).toHaveLength(2)
+    expect(document.querySelectorAll('.sidebar-session-team-stack .session-pill-idle')).toHaveLength(2)
     expect(document.querySelector('.sidebar-session-team-count')).toHaveTextContent('4')
     await fireEvent.keyDown(indicator, { key: 'Enter' })
 
@@ -341,8 +341,8 @@ describe('Sidebar component branches', () => {
         count: 2,
         tone: 'active',
         memberTools: [
-          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
-          { tool: 'gemini', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: true, colorClass: 'text-success-300' },
+          { tool: 'gemini', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: false, colorClass: 'text-warning-300' },
         ],
         members: [
           {

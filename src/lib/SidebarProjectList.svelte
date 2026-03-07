@@ -131,12 +131,11 @@
                 >
                   {#if ind.layout === 'stack'}
                     <span class="sidebar-session-team-stack-logos" aria-hidden="true">
-                      {#each ind.tools as tool, index (tool.tool)}
+                      {#each ind.tools as tool (tool.tool)}
                         <span
-                          class="sidebar-session-team-stack-logo"
-                          class:sidebar-session-team-stack-logo-first={index === 0}
+                          class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {tool.colorClass} {tool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
                         >
-                          <svg class="sidebar-session-team-stack-glyph" viewBox={tool.icon.viewBox} fill="currentColor">
+                          <svg class="w-[12px] h-[12px]" viewBox={tool.icon.viewBox} fill="currentColor">
                             <path d={tool.icon.path}></path>
                           </svg>
                         </span>
@@ -144,10 +143,12 @@
                     </span>
                     <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
                   {:else}
-                    <span class="sidebar-session-team-rail-track" aria-hidden="true"></span>
                     {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
-                      <span class="sidebar-session-team-rail-logo" aria-hidden="true">
-                        <svg class="sidebar-session-team-rail-glyph" viewBox={memberTool.icon.viewBox} fill="currentColor">
+                      <span
+                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {memberTool.colorClass} {memberTool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                        aria-hidden="true"
+                      >
+                        <svg class="w-[12px] h-[12px]" viewBox={memberTool.icon.viewBox} fill="currentColor">
                           <path d={memberTool.icon.path}></path>
                         </svg>
                       </span>

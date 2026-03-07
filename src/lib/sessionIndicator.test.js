@@ -192,8 +192,9 @@ describe('sessionIndicator', () => {
     })
     expect(indicators[0].members.map(member => member.member_name)).toEqual(['lead', 'developer2'])
     expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex'])
-    expect(indicators[0].memberTools.map(tool => tool.iconVariant)).toEqual(['sidebarSmall', 'sidebarSmall'])
-    expect(indicators[0].memberTools[0].icon).toEqual(getToolIcon('claude', 'sidebarSmall'))
+    expect(indicators[0].memberTools.map(tool => tool.iconVariant)).toEqual(['default', 'default'])
+    expect(indicators[0].memberTools.map(tool => tool.colorClass)).toEqual(['text-success-300', 'text-warning-300'])
+    expect(indicators[0].memberTools[0].icon).toEqual(getToolIcon('claude', 'default'))
   })
 
   it('toolIndicators shows a connector rail for a 2-member team even when only two sessions are present', () => {
@@ -228,6 +229,11 @@ describe('sessionIndicator', () => {
       tone: 'active',
     })
     expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(indicators[0].memberTools.map(tool => tool.colorClass)).toEqual([
+      'text-success-300',
+      'text-warning-300',
+      'text-warning-300',
+    ])
   })
 
   it('toolIndicators leaves one-member team sessions as standalone logos', () => {
@@ -300,8 +306,13 @@ describe('sessionIndicator', () => {
       isActive: true,
     })
     expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
-    expect(indicators[0].tools.map(tool => tool.iconVariant)).toEqual(['sidebarSmall', 'sidebarSmall', 'sidebarSmall'])
-    expect(indicators[0].tools[1].icon).toEqual(getToolIcon('codex', 'sidebarSmall'))
+    expect(indicators[0].tools.map(tool => tool.iconVariant)).toEqual(['default', 'default', 'default'])
+    expect(indicators[0].tools.map(tool => tool.colorClass)).toEqual([
+      'text-success-300',
+      'text-success-300',
+      'text-warning-300',
+    ])
+    expect(indicators[0].tools[1].icon).toEqual(getToolIcon('codex', 'default'))
     expect(indicators[1]).toMatchObject({
       kind: 'session',
       fullName: 'Gemini',
