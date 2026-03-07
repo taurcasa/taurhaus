@@ -113,6 +113,31 @@ async function persistSessionActivity(tracker, startedAt, endedAt, activeDuratio
   )
 }
 
+function flushTrackedActivity(trackersToFlush) {
+  const endedAt = new Date().toISOString()
+  const flushes = []
+
+  for (const tracker of trackersToFlush) {
+    if (!tracker || tracker.totalTicks <= 0) continue
+
+    const startedAt = new Date(tracker.firstSeen).toISOString()
+    const activeDurationMs = tracker.activeTicks * POLL_INTERVAL_MS
+    const totalDurationMs = tracker.totalTicks * POLL_INTERVAL_MS
+
+    flushes.push(persistSessionActivity(
+      tracker,
+      startedAt,
+      endedAt,
+      activeDurationMs,
+      totalDurationMs,
+    ).catch((error) => {
+      console.warn('[sessionStore] failed to persist session activity stats:', error)
+    }))
+  }
+
+  return flushes
+}
+
 /** Perform a single poll and update the sessions map. */
 async function poll() {
   try {
@@ -189,22 +214,7 @@ function applySessions(result) {
   // Detect disappeared sessions and persist their stats
   for (const [pid, tracker] of trackers) {
     if (!currentPids.has(pid)) {
-      const endedAt = new Date().toISOString()
-      const startedAt = new Date(tracker.firstSeen).toISOString()
-      const activeDurationMs = tracker.activeTicks * POLL_INTERVAL_MS
-      const totalDurationMs = tracker.totalTicks * POLL_INTERVAL_MS
-
-      // Fire-and-forget — don't block updates
-      void persistSessionActivity(
-        tracker,
-        startedAt,
-        endedAt,
-        activeDurationMs,
-        totalDurationMs,
-      ).catch((error) => {
-        console.warn('[sessionStore] failed to persist session activity stats:', error)
-      })
-
+      void Promise.allSettled(flushTrackedActivity([tracker]))
       trackers.delete(pid)
     }
   }
@@ -239,8 +249,10 @@ export function stopPolling() {
     clearTimeout(timerId)
     timerId = null
   }
+  const flushes = flushTrackedActivity(trackers.values())
   trackers.clear()
   projectIdByPath.clear()
+  return Promise.allSettled(flushes)
 }
 
 /**

@@ -428,8 +428,53 @@ describe('sessionStore', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(store.getSessionStats(1300)).not.toBeNull()
 
-    store.stopPolling()
+    await store.stopPolling()
     expect(store.getSessionStats(1300)).toBeNull()
+  })
+
+  it('flushes accrued activity stats when stopPolling clears a live tracker', async () => {
+    const session = { pid: 1310, project_path: '/proj-stop', state: 'active', tty: '/dev/pts/12', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-stop-id', path: '/proj-stop' }])
+    ipc.listClaudeSessions.mockResolvedValue([session])
+
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(500)
+
+    await store.stopPolling()
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledTimes(1)
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-stop-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
+      1000,
+      1000,
+    )
+  })
+
+  it('does not double-persist activity stats when stopPolling is called twice', async () => {
+    const session = { pid: 1320, project_path: '/proj-double-stop', state: 'active', tty: '/dev/pts/13', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-double-stop-id', path: '/proj-double-stop' }])
+    ipc.listClaudeSessions.mockResolvedValue([session])
+
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(500)
+
+    await store.stopPolling()
+    await store.stopPolling()
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledTimes(1)
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-double-stop-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
+      1000,
+      1000,
+    )
   })
 
   it('applies daemon session updates without polling', () => {
