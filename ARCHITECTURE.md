@@ -108,7 +108,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (80)
+### IPC Commands (82)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 

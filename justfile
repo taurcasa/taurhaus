@@ -187,11 +187,11 @@ e2e-prepare-daemon:
 
 # Reset database (delete SQLite file)
 db-reset:
-    @echo "DB reset not yet configured — SQLite module pending"
+    @echo "No standalone db-reset workflow is wired. Delete the app data SQLite file manually if needed; schema migrations run automatically on app startup."
 
 # Run database migrations
 db-migrate:
-    @echo "DB migrations not yet configured — SQLite module pending"
+    @echo "Schema migrations are already embedded and run automatically on app startup. No separate db-migrate step is required."
 
 # Build for Linux
 build-linux: bundle-daemon bundle-mesh

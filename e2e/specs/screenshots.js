@@ -5,7 +5,7 @@
  * Screenshots saved to e2e/screenshots/.
  *
  * Run:
- *   E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --spec e2e/specs/screenshots.js
+ *   E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js --spec e2e/specs/screenshots.js
  */
 
 import { resolve } from 'node:path'

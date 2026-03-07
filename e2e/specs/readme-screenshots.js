@@ -5,7 +5,7 @@
  * Dark mode only. Saves to docs/ (not gitignored).
  *
  * Run:
- *   E2E_SKIP_BUILD=1 npx wdio run e2e/wdio.conf.js --spec e2e/specs/readme-screenshots.js
+ *   E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js --spec e2e/specs/readme-screenshots.js
  */
 
 import { resolve } from 'node:path'
