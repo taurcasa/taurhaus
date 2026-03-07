@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
+let meshTabMountCount = 0
+
 function createMockComponent(name, renderContent) {
   return function MockComponent(target, props = {}) {
     let currentProps = props || {}
@@ -31,6 +33,11 @@ function createMockComponent(name, renderContent) {
       },
     }
   }
+}
+
+function lastTextByTestId(testId) {
+  const matches = screen.getAllByTestId(testId)
+  return matches.at(-1)?.textContent ?? ''
 }
 
 vi.mock('./lib/ipc.js', () => ({
@@ -130,6 +137,21 @@ vi.mock('./lib/FirstRunWizard.svelte', () => ({
 
 vi.mock('./lib/components/MeshTab.svelte', () => ({
   default: createMockComponent('mesh-tab', (root, props) => {
+    if (!root.dataset.mountId) {
+      meshTabMountCount += 1
+      root.dataset.mountId = String(meshTabMountCount)
+    }
+
+    const mountId = document.createElement('div')
+    mountId.setAttribute('data-testid', 'mesh-mount-id')
+    mountId.textContent = root.dataset.mountId
+    root.appendChild(mountId)
+
+    const projectPath = document.createElement('div')
+    projectPath.setAttribute('data-testid', 'mesh-project-path')
+    projectPath.textContent = props.projectPath || ''
+    root.appendChild(projectPath)
+
     const button = document.createElement('button')
     button.type = 'button'
     button.textContent = 'Focus Pane'
@@ -142,18 +164,28 @@ vi.mock('./lib/components/MeshTab.svelte', () => ({
 const ipc = await import('./lib/ipc.js')
 const { loadProjectSelectionData } = await import('./lib/projectSelection.js')
 const { loadThemePreferences } = await import('./lib/shell/themePreferences.js')
+const { setProjectContext } = await import('./lib/context/ProjectContext.js')
 
 import Shell from './Shell.svelte'
 
 describe('Shell mesh focus integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    meshTabMountCount = 0
 
     ipc.listProjects.mockResolvedValue([
       {
         id: 'proj-1',
         name: 'taurhaus',
         path: '/projects/taurhaus',
+        activityState: 'active',
+        branch: 'main',
+        isDirty: false,
+      },
+      {
+        id: 'proj-2',
+        name: 'mesh',
+        path: '/projects/mesh',
         activityState: 'active',
         branch: 'main',
         isDirty: false,
@@ -209,5 +241,91 @@ describe('Shell mesh focus integration', () => {
       expect(ipc.listClaudeSessions).toHaveBeenCalled()
       expect(ipc.navigateToSession).toHaveBeenCalledWith('taurhaus', '2', '%2', true)
     })
+  })
+
+  it('keeps the mesh tab mounted while switching projects', async () => {
+    loadProjectSelectionData.mockImplementation(async (projectId) => ({
+      detail: {
+        ok: true,
+        section: 'Project details',
+        value: projectId === 'proj-2'
+          ? { id: 'proj-2', path: '/projects/mesh', name: 'mesh' }
+          : { id: 'proj-1', path: '/projects/taurhaus', name: 'taurhaus' },
+      },
+      commits: { ok: true, section: 'Recent commits', value: [] },
+      latest: { ok: true, section: 'Latest session', value: null },
+      sessionList: { ok: true, section: 'Session history', value: [] },
+      readme: { ok: true, section: 'README', value: null },
+      rels: { ok: true, section: 'Relationships', value: [] },
+    }))
+
+    render(Shell)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-mesh')).toBeInTheDocument()
+    })
+
+    const initialProjectContext = setProjectContext.mock.calls.at(-1)?.[0]
+    await waitFor(() => {
+      expect(initialProjectContext.selectedProject?.id).toBe('proj-1')
+    })
+
+    await fireEvent.click(screen.getByTestId('tab-mesh'))
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('mesh-focus-trigger').length).toBeGreaterThan(0)
+      expect(lastTextByTestId('mesh-project-path')).toBe('/projects/taurhaus')
+    })
+
+    const projectContext = setProjectContext.mock.calls.at(-1)?.[0]
+    await projectContext.selectProject({
+      id: 'proj-2',
+      name: 'mesh',
+      path: '/projects/mesh',
+      activityState: 'active',
+      branch: 'main',
+      isDirty: false,
+    })
+
+    await waitFor(() => {
+      expect(projectContext.selectedProject?.id).toBe('proj-2')
+      expect(screen.getByTestId('mock-overview')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('tab-mesh'))
+
+    await waitFor(() => {
+      expect(lastTextByTestId('mesh-project-path')).toBe('/projects/mesh')
+    })
+
+    await projectContext.selectProject({
+      id: 'proj-1',
+      name: 'taurhaus',
+      path: '/projects/taurhaus',
+      activityState: 'active',
+      branch: 'main',
+      isDirty: false,
+    })
+
+    await waitFor(() => {
+      expect(projectContext.selectedProject?.id).toBe('proj-1')
+    })
+
+    const mountCountBeforeSwitch = meshTabMountCount
+
+    await projectContext.selectProject({
+      id: 'proj-2',
+      name: 'mesh',
+      path: '/projects/mesh',
+      activityState: 'active',
+      branch: 'main',
+      isDirty: false,
+    })
+
+    await waitFor(() => {
+      expect(projectContext.selectedProject?.id).toBe('proj-2')
+    })
+
+    expect(meshTabMountCount).toBe(mountCountBeforeSwitch)
   })
 })

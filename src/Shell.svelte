@@ -1196,7 +1196,6 @@
           <p class="text-[13px] {t.textTertiary}">Select a project</p>
         </div>
       {:else}
-      {#key selectedProject.id}
       <div class="flex-1 flex flex-col min-w-0 overflow-hidden content-enter" data-testid="content-wrapper">
       <!-- ═══ OVERVIEW TAB ═══ -->
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:hidden={activeTab !== 'overview'}>
@@ -1282,7 +1281,6 @@
         {/if}
       </div>
       </div>
-      {/key}
       {/if}
     </main>
   </div>
