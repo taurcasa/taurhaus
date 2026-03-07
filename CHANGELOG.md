@@ -6,6 +6,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-03-07
+
+Security, code quality, and performance hardening release. Full security and quality audits drove targeted fixes across both taurhaus and mesh. Mesh tab navigation is now fully non-blocking on all platforms.
+
+### Security
+
+- **Mesh PID file validation** — `timer-cancel` now verifies process identity before kill, preventing forged PID files from terminating unrelated processes (mesh 0.2.4)
+- **Daemon singleton locking** — exclusive lock files (`create_new` + lifetime-held) replace the racy check-then-create PID file pattern, preventing duplicate daemon instances (mesh 0.2.4)
+- **Session activity stats preserved** — `stopPolling()` now flushes tracker data before clearing, preventing data loss during daemon bridge handoff
+
+### Refactored
+
+- **Shell.svelte decomposition** — extracted navigation helpers and event wiring into `src/lib/shell/navigation.svelte.js` and `src/lib/shell/events.svelte.js` (1302 → ~1200 LOC)
+- **command_center.rs split** — domain-based submodules (`session_listing`, `launching`, `navigation`, `activity_tracking`) with thin `#[tauri::command]` wrappers
+- **Doc/metadata drift fixed** — corrected IPC command count, removed stale db placeholder recipes, cleaned up duplicate lockfile
+
+### Performance
+
+- **Non-blocking mesh live status** — `coordination_get_live_team_status` converted from synchronous to async Tauri command with `spawn_blocking`, eliminating tab-switch blocking entirely
+- **Mesh runtime refresh coalescing** — deferred refresh and periodic polling share an in-flight gate, preventing duplicate ~2.5s backend calls from stacking
+- **Stale refresh cleanup** — in-flight promises are severed on tab deactivation, preventing request accumulation across rapid tab cycling
+- **Project switch debounce** — 25ms batch window coalesces rapid project switches so only the final IPC fan-out fires
+
+### Changed
+
+- Mesh binary bumped to 0.2.4 (PID file security hardening, daemon singleton locking)
+- `just check` output now tees to `.check-logs/` with 5-file auto-rotation
+
 ## [0.5.4] - 2026-03-07
 
 Daemon reliability and team lifecycle release. Automatic hot-swap eliminates manual runbooks for mesh upgrades, background self-heal no longer freezes the UI, and cold restart recovery lets you pick up running teams after an app restart.
