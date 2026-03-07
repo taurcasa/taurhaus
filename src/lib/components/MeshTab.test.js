@@ -50,6 +50,7 @@ import MeshTab from './MeshTab.svelte'
 import { clearMeshCache, getMeshCache, resetMeshCache, setMeshCache } from '../meshCache.svelte.js'
 
 const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
+const INITIAL_RUNTIME_REFRESH_DELAY_MS = 750
 
 function deferred() {
   let resolve
@@ -862,7 +863,7 @@ describe('MeshTab', () => {
       expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
       expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
 
-      await vi.advanceTimersByTimeAsync(119)
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS - 1)
       expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
 
       await vi.advanceTimersByTimeAsync(1)
@@ -963,7 +964,7 @@ describe('MeshTab', () => {
       })
 
       expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
-      await vi.advanceTimersByTimeAsync(120)
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
       expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
       liveRefresh.resolve(buildLiveTeamStatus({
@@ -989,6 +990,7 @@ describe('MeshTab', () => {
           },
         ],
       }))
+      await Promise.resolve()
 
       await waitFor(() => {
         expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
@@ -1048,7 +1050,8 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
     })
 
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS + 2000)
+    await Promise.resolve()
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
@@ -1111,13 +1114,15 @@ describe('MeshTab', () => {
 
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(0)
 
-    await vi.advanceTimersByTimeAsync(120)
+    await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(2000)
+    await Promise.resolve()
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(2000)
+    await Promise.resolve()
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     slowRefresh.resolve(buildLiveTeamStatus({
@@ -1154,6 +1159,7 @@ describe('MeshTab', () => {
     })
 
     await vi.advanceTimersByTimeAsync(2000)
+    await Promise.resolve()
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
 
     await waitFor(() => {
@@ -1215,15 +1221,17 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
     })
 
-    await vi.advanceTimersByTimeAsync(120)
+    await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(2000)
+    await Promise.resolve()
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalledWith('[meshTab] runtime status refresh failed:', expect.any(Error))
     })
 
     await vi.advanceTimersByTimeAsync(2000)
+    await Promise.resolve()
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(3)
 
     await waitFor(() => {
@@ -1234,7 +1242,7 @@ describe('MeshTab', () => {
     vi.useRealTimers()
   })
 
-  it('cancels the deferred runtime refresh when switching away from a mesh project', async () => {
+  it('cancels the deferred runtime refresh when switching away to another top-level tab', async () => {
     vi.useFakeTimers()
     setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
@@ -1257,19 +1265,19 @@ describe('MeshTab', () => {
         expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
       })
 
-      const projectItem = document.createElement('button')
-      projectItem.type = 'button'
-      projectItem.dataset.testid = 'project-item'
-      document.body.appendChild(projectItem)
+      const overviewTab = document.createElement('button')
+      overviewTab.type = 'button'
+      overviewTab.dataset.testid = 'tab-overview'
+      document.body.appendChild(overviewTab)
 
-      await fireEvent.pointerDown(projectItem)
+      await fireEvent.pointerDown(overviewTab)
       screen.getByTestId('mesh-tab').parentElement.classList.add('hidden')
       await view.rerender({
         dark: false,
         projectPath: '/projects/other-project',
       })
 
-      await vi.advanceTimersByTimeAsync(120)
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
 
       expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
 
@@ -1282,7 +1290,7 @@ describe('MeshTab', () => {
         expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
       })
 
-      projectItem.remove()
+      overviewTab.remove()
     } finally {
       vi.useRealTimers()
     }
@@ -1316,7 +1324,7 @@ describe('MeshTab', () => {
       })
 
       await fireEvent.pointerDown(unrelatedButton)
-      await vi.advanceTimersByTimeAsync(120)
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
       await vi.advanceTimersByTimeAsync(2000)
 
       const pollCountAfterUnrelatedPointer = coordinationGetLiveTeamStatus.mock.calls.length
@@ -1325,7 +1333,7 @@ describe('MeshTab', () => {
       coordinationGetLiveTeamStatus.mockClear()
 
       await fireEvent.pointerDown(projectItem)
-      await vi.advanceTimersByTimeAsync(120)
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
       await vi.advanceTimersByTimeAsync(4000)
 
       expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
