@@ -103,94 +103,86 @@
       </div>
     </header>
 
-    {#if scenario.layout === 'window'}
-      <div class="flex min-h-0 flex-1 gap-1.5 px-1.5 pb-1.5">
-        <aside class="w-[252px] shrink-0 overflow-hidden rounded-2xl bg-brand-950 border border-white/8">
-          <Sidebar
-            {dark}
-            projects={projects}
-            selectedProject={selectedProject}
-            daemonStatus="connected"
-            actions={shellActions}
-          />
-        </aside>
+    <div class="flex min-h-0 flex-1 gap-1.5 px-1.5 pb-1.5">
+      <aside class="w-[252px] shrink-0 overflow-hidden rounded-2xl bg-brand-950 border border-white/8">
+        <Sidebar
+          {dark}
+          projects={projects}
+          selectedProject={selectedProject}
+          daemonStatus="connected"
+          actions={shellActions}
+        />
+      </aside>
 
-        <main data-testid="readme-main-panel" class={`min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/8 ${t.mainBg}`}>
-          {#if scenario.mode === 'overview' || scenario.mode === 'search'}
-            <OverviewTab
-              {dark}
-              {codeTheme}
-              data={fixtureData.overviewData}
-              actions={overviewActions}
-            />
-          {/if}
-        </main>
-      </div>
-    {:else}
-      <div class="min-h-0 flex-1 px-1.5 pb-1.5">
-        <main data-testid="readme-main-panel" class={`h-full overflow-hidden rounded-2xl border border-white/8 ${t.mainBg}`}>
-          {#if scenario.mode === 'tasks'}
-            <TaskBoard
-              {dark}
-              {codeTheme}
-              projectId={selectedProject.id}
-              projectPath={selectedProject.path}
-              isActive={true}
-            />
-          {:else if scenario.mode === 'mesh-setup'}
-            <MeshSetupView
-              mode="setup"
-              {dark}
-              projectPath={selectedProject.path}
-              teamConfig={fixtureData.mesh.setupTeam}
-              selectedNode={fixtureData.mesh.selectedSetupNode}
-              selectedNodeId={fixtureData.mesh.selectedSetupNode.id}
-              teamName={fixtureData.mesh.teamName}
-              canInitialize={true}
-              availableProjects={fixtureData.availableProjects}
-              slideOver="customizer"
-              slideOverContext={null}
-            />
-          {:else if scenario.mode === 'mesh-runtime'}
-            <MeshRuntimeView
-              {dark}
-              teamName={fixtureData.mesh.teamName}
-              teamConfig={fixtureData.mesh.runtimeTeam}
-              selectedNode={fixtureData.mesh.selectedRuntimeNode}
-              selectedNodeId={fixtureData.mesh.selectedRuntimeNode.id}
-              teamRuntimeState="active"
-              availableProjects={fixtureData.availableProjects}
-              roleTemplates={[]}
-              addAgentOpen={false}
-              addAgentDraft={addAgentDraft}
-              canSubmitAddAgent={true}
-            />
-          {:else if scenario.mode === 'mesh-recovery'}
-            <MeshRuntimeView
-              {dark}
-              teamName={fixtureData.mesh.teamName}
-              teamConfig={fixtureData.mesh.runtimeTeam}
-              selectedNode={null}
-              selectedNodeId={null}
-              teamRuntimeState="cold_resume"
-              isResumingTeam={false}
-              resumeProgress={runtimeResumeProgress}
-              availableProjects={fixtureData.availableProjects}
-              roleTemplates={[]}
-              addAgentOpen={false}
-              addAgentDraft={addAgentDraft}
-              canSubmitAddAgent={true}
-            />
-          {:else if scenario.mode === 'git'}
-            <GitTab
-              {dark}
-              projectPath={selectedProject.path}
-              projectId={selectedProject.id}
-            />
-          {/if}
-        </main>
-      </div>
-    {/if}
+      <main data-testid="readme-main-panel" class={`min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/8 ${t.mainBg}`}>
+        {#if scenario.mode === 'overview' || scenario.mode === 'search'}
+          <OverviewTab
+            {dark}
+            {codeTheme}
+            data={fixtureData.overviewData}
+            actions={overviewActions}
+          />
+        {:else if scenario.mode === 'tasks'}
+          <TaskBoard
+            {dark}
+            {codeTheme}
+            projectId={selectedProject.id}
+            projectPath={selectedProject.path}
+            isActive={true}
+          />
+        {:else if scenario.mode === 'mesh-setup'}
+          <MeshSetupView
+            mode="setup"
+            {dark}
+            projectPath={selectedProject.path}
+            teamConfig={fixtureData.mesh.setupTeam}
+            selectedNode={fixtureData.mesh.selectedSetupNode}
+            selectedNodeId={fixtureData.mesh.selectedSetupNode.id}
+            teamName={fixtureData.mesh.teamName}
+            canInitialize={true}
+            availableProjects={fixtureData.availableProjects}
+            slideOver="customizer"
+            slideOverContext={null}
+          />
+        {:else if scenario.mode === 'mesh-runtime'}
+          <MeshRuntimeView
+            {dark}
+            teamName={fixtureData.mesh.teamName}
+            teamConfig={fixtureData.mesh.runtimeTeam}
+            selectedNode={fixtureData.mesh.selectedRuntimeNode}
+            selectedNodeId={fixtureData.mesh.selectedRuntimeNode.id}
+            teamRuntimeState="active"
+            availableProjects={fixtureData.availableProjects}
+            roleTemplates={[]}
+            addAgentOpen={false}
+            addAgentDraft={addAgentDraft}
+            canSubmitAddAgent={true}
+          />
+        {:else if scenario.mode === 'mesh-recovery'}
+          <MeshRuntimeView
+            {dark}
+            teamName={fixtureData.mesh.teamName}
+            teamConfig={fixtureData.mesh.runtimeTeam}
+            selectedNode={null}
+            selectedNodeId={null}
+            teamRuntimeState="cold_resume"
+            isResumingTeam={false}
+            resumeProgress={runtimeResumeProgress}
+            availableProjects={fixtureData.availableProjects}
+            roleTemplates={[]}
+            addAgentOpen={false}
+            addAgentDraft={addAgentDraft}
+            canSubmitAddAgent={true}
+          />
+        {:else if scenario.mode === 'git'}
+          <GitTab
+            {dark}
+            projectPath={selectedProject.path}
+            projectId={selectedProject.id}
+          />
+        {/if}
+      </main>
+    </div>
 
     {#if scenario.mode === 'search'}
       <SearchOverlay
