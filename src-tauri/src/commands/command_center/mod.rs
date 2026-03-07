@@ -1,0 +1,349 @@
+mod activity_tracking;
+mod launching;
+mod navigation;
+mod session_listing;
+
+use std::path::Path;
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::State;
+
+use crate::commands::lifecycle::IpcCommandSpan;
+use crate::commands::projects::DbState;
+use crate::coordination::requests::{ResumeContextMode, ResumeMemberRequest};
+use crate::coordination::state::CoordinationState;
+use crate::coordination::stores::TeamConfigStore;
+use crate::daemon::protocol::{self, LaunchMode};
+use crate::errors::SanitizeErr;
+use crate::platform::apply_background_command_settings;
+use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::control::TMUX_SESSION_NAME;
+use crate::session_scanner::ClaudeSession;
+use crate::ProviderState;
+
+#[cfg(test)]
+use self::activity_tracking::promote_activity_from_sessions_impl;
+use self::activity_tracking::{
+    get_project_activity_impl, promote_activity_from_sessions, record_session_activity_impl,
+};
+#[cfg(test)]
+use self::launching::decode_daemon_launch_result;
+use self::launching::launch_cli_session_impl;
+use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
+#[cfg(test)]
+use self::session_listing::decode_daemon_session_list;
+use self::session_listing::list_cli_sessions_impl;
+
+static SESSION_ACTIVITY_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub fn list_cli_sessions(
+    app: tauri::AppHandle,
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+) -> Result<Vec<ClaudeSession>, String> {
+    let span = IpcCommandSpan::start("list_cli_sessions");
+    let result = list_cli_sessions_impl(&app, db.inner(), provider.inner());
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub fn launch_cli_session(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    log_file: State<'_, crate::commands::logging::LogFileState>,
+    coordination_state: State<'_, CoordinationState>,
+    project_id: String,
+    mode: LaunchMode,
+    cli_tool: Option<CliTool>,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let span = IpcCommandSpan::start("launch_cli_session");
+    let result = launch_cli_session_impl(
+        db.inner(),
+        provider.inner(),
+        log_file.inner(),
+        Some(coordination_state.inner()),
+        project_id,
+        mode,
+        cli_tool,
+    );
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub fn stop_cli_session(
+    provider: State<'_, ProviderState>,
+    tmux_pane: String,
+    cli_tool: Option<CliTool>,
+) -> Result<(), String> {
+    let span = IpcCommandSpan::start("stop_cli_session");
+    let result = stop_cli_session_impl(provider.inner(), tmux_pane, cli_tool);
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub fn navigate_to_session(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    log_file: State<'_, crate::commands::logging::LogFileState>,
+    tmux_session: String,
+    tmux_window: String,
+    tmux_pane: String,
+    open_terminal: Option<bool>,
+) -> Result<(), String> {
+    let span = IpcCommandSpan::start("navigate_to_session");
+    let result = navigate_to_session_impl(
+        db.inner(),
+        provider.inner(),
+        log_file.inner(),
+        tmux_session,
+        tmux_window,
+        tmux_pane,
+        open_terminal,
+    );
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub fn record_session_activity(
+    db: State<'_, DbState>,
+    project_id: String,
+    cli_tool: CliTool,
+    started_at: String,
+    ended_at: String,
+    active_duration_ms: i64,
+    total_duration_ms: i64,
+) -> Result<(), String> {
+    let span = IpcCommandSpan::start("record_session_activity");
+    let result = record_session_activity_impl(
+        db.inner(),
+        project_id,
+        cli_tool,
+        started_at,
+        ended_at,
+        active_duration_ms,
+        total_duration_ms,
+    );
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub fn get_project_activity(
+    db: State<'_, DbState>,
+    project_id: String,
+) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
+    let span = IpcCommandSpan::start("get_project_activity");
+    let result = get_project_activity_impl(db.inner(), &project_id);
+    span.finish_result(&result);
+    result
+}
+
+fn normalize_project_path_key(path: &str) -> String {
+    let normalized = path
+        .trim_end_matches('/')
+        .trim_end_matches('\\')
+        .to_string();
+    if cfg!(windows) {
+        normalized.to_ascii_lowercase()
+    } else {
+        normalized
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TeamMemberMatch {
+    team_name: String,
+    member_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TeamMemberMatchResult {
+    None,
+    Unique(TeamMemberMatch),
+    Ambiguous,
+}
+
+fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let project = crate::db::queries::get_project(&conn, project_id)
+        .sanitize_err()?
+        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+    Ok(project.path)
+}
+
+fn find_unique_team_member_match(
+    teams_dir: &Path,
+    project_path: &str,
+    cli_tool: CliTool,
+) -> TeamMemberMatchResult {
+    let team_names = match TeamConfigStore::list(teams_dir) {
+        Ok(team_names) => team_names,
+        Err(error) => {
+            tracing::warn!(
+                teams_dir = %teams_dir.display(),
+                error = %error,
+                "Failed to list team configs while resolving generic resume delegation"
+            );
+            return TeamMemberMatchResult::None;
+        }
+    };
+
+    let project_key = crate::provider::path::normalize_project_path(project_path);
+    let mut matches = Vec::new();
+
+    for team_name in team_names {
+        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(
+                    team_name = %team_name,
+                    error = %error,
+                    "Failed to load team config while resolving generic resume delegation"
+                );
+                continue;
+            }
+        };
+
+        for member in config.members {
+            if member.cli_tool != cli_tool {
+                continue;
+            }
+
+            if crate::provider::path::normalize_project_path(
+                &member.project_path.display().to_string(),
+            ) != project_key
+            {
+                continue;
+            }
+
+            matches.push(TeamMemberMatch {
+                team_name: team_name.clone(),
+                member_name: member.name,
+            });
+
+            if matches.len() > 1 {
+                return TeamMemberMatchResult::Ambiguous;
+            }
+        }
+    }
+
+    matches
+        .into_iter()
+        .next()
+        .map(TeamMemberMatchResult::Unique)
+        .unwrap_or(TeamMemberMatchResult::None)
+}
+
+fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
+    let mut tmux_session = TMUX_SESSION_NAME.to_string();
+    let mut tmux_window = "0".to_string();
+
+    let mut cmd = Command::new("tmux");
+    apply_background_command_settings(&mut cmd);
+
+    if let Ok(output) = cmd
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            pane_id,
+            "#{session_name}\t#{window_index}",
+        ])
+        .output()
+    {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let mut parts = raw.trim().splitn(2, '\t');
+            if let Some(session_name) = parts.next().filter(|value| !value.is_empty()) {
+                tmux_session = session_name.to_string();
+            }
+            if let Some(window_index) = parts.next().filter(|value| !value.is_empty()) {
+                tmux_window = window_index.to_string();
+            }
+        }
+    }
+
+    protocol::LaunchSessionResult {
+        tmux_session: Some(tmux_session),
+        tmux_window,
+        tmux_pane: pane_id.to_string(),
+    }
+}
+
+fn delegate_launch_to_coordination_resume(
+    db: &DbState,
+    coordination_state: &CoordinationState,
+    target: &TeamMemberMatch,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
+    let request = ResumeMemberRequest {
+        team_name: target.team_name.clone(),
+        member_name: target.member_name.clone(),
+        context_mode: ResumeContextMode::Continue,
+    };
+
+    let report = coordination_state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.resume_member_with_cli_commands_and_layout(
+                &request,
+                &terminal_settings.cli_commands,
+                &terminal_settings.tmux_layout,
+            )
+        })
+        .map_err(|error| error.to_string())?;
+
+    if !report.resumed {
+        return Err(format!(
+            "Failed to resume team member '{}': {}",
+            target.member_name, report.message
+        ));
+    }
+
+    let pane_id = report.pane_id.ok_or_else(|| {
+        format!(
+            "Coordination resume did not return a pane id for '{}'",
+            target.member_name
+        )
+    })?;
+
+    Ok(tmux_launch_result_for_pane(&pane_id))
+}
+
+fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
+    if SESSION_ACTIVITY_RECONCILE_QUEUED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    #[cfg(test)]
+    {
+        crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        SESSION_ACTIVITY_RECONCILE_QUEUED.store(false, Ordering::Release);
+    }
+
+    #[cfg(not(test))]
+    {
+        std::thread::spawn(move || {
+            struct ResetQueuedFlag;
+            impl Drop for ResetQueuedFlag {
+                fn drop(&mut self) {
+                    SESSION_ACTIVITY_RECONCILE_QUEUED.store(false, Ordering::Release);
+                }
+            }
+
+            let _reset_queued_flag = ResetQueuedFlag;
+            crate::startup::watchers::reconcile_activity_watches(&app, reason);
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,222 @@
+use crate::commands::logging::LogFileState;
+use crate::commands::terminal_settings::load_terminal_settings;
+use serde_json::{Map, Value};
+
+use super::*;
+
+pub(super) fn launch_cli_session_impl(
+    db: &DbState,
+    provider: &ProviderState,
+    log_file: &LogFileState,
+    coordination_state: Option<&CoordinationState>,
+    project_id: String,
+    mode: LaunchMode,
+    cli_tool: Option<CliTool>,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let tool = cli_tool.unwrap_or(CliTool::Claude);
+
+    let mut launch_fields = Map::new();
+    launch_fields.insert("project_id".to_string(), Value::String(project_id.clone()));
+    launch_fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
+    launch_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+    log_file.emit(
+        "info",
+        "command_center",
+        "command_center.launch.start",
+        Some("Launching CLI session".to_string()),
+        launch_fields,
+    );
+
+    let project_path = resolve_project_path(db, &project_id)?;
+
+    let linux_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path.clone());
+
+    let mut path_fields = Map::new();
+    path_fields.insert("db_path".to_string(), Value::String(project_path.clone()));
+    path_fields.insert("linux_path".to_string(), Value::String(linux_path.clone()));
+    log_file.emit(
+        "debug",
+        "command_center",
+        "command_center.launch.path_resolved",
+        Some("Resolved project path for launch".to_string()),
+        path_fields,
+    );
+
+    if matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
+        if let Some(coordination_state) = coordination_state {
+            match find_unique_team_member_match(coordination_state.teams_dir(), &linux_path, tool) {
+                TeamMemberMatchResult::Unique(target) => {
+                    let mut delegated_fields = Map::new();
+                    delegated_fields.insert(
+                        "team_name".to_string(),
+                        Value::String(target.team_name.clone()),
+                    );
+                    delegated_fields.insert(
+                        "member_name".to_string(),
+                        Value::String(target.member_name.clone()),
+                    );
+                    log_file.emit(
+                        "info",
+                        "command_center",
+                        "command_center.launch.coordination_delegate",
+                        Some("Delegating team-member resume to coordination pipeline".to_string()),
+                        delegated_fields,
+                    );
+                    return delegate_launch_to_coordination_resume(db, coordination_state, &target);
+                }
+                TeamMemberMatchResult::Ambiguous => {
+                    let mut ambiguous_fields = Map::new();
+                    ambiguous_fields.insert(
+                        "project_path".to_string(),
+                        Value::String(linux_path.clone()),
+                    );
+                    ambiguous_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+                    log_file.emit(
+                        "warn",
+                        "command_center",
+                        "command_center.launch.team_match_ambiguous",
+                        Some(
+                            "Multiple team members matched generic resume; using raw launch"
+                                .to_string(),
+                        ),
+                        ambiguous_fields,
+                    );
+                }
+                TeamMemberMatchResult::None => {}
+            }
+        }
+    }
+
+    if let Some(ref daemon) = provider.daemon {
+        if daemon.is_connected() {
+            let id = "launch-session";
+            let ts = load_terminal_settings(db);
+            let tool_cmd = crate::session_scanner::control::resolve_configured_tool_command(
+                &ts.cli_commands,
+                tool,
+                mode,
+            );
+            let request = protocol::DaemonRequest::new(
+                id,
+                protocol::method::LAUNCH_SESSION,
+                protocol::LaunchSessionParams {
+                    project_path: linux_path.clone(),
+                    mode,
+                    cli_tool: tool,
+                    tmux_layout: ts.tmux_layout.clone(),
+                    command_override: Some(tool_cmd),
+                },
+            );
+            match daemon.send_status_request(&request) {
+                Ok(response) if response.is_ok() => {
+                    let result = decode_daemon_launch_result(response.result)?;
+
+                    let mut success_fields = Map::new();
+                    success_fields.insert(
+                        "tmux_window".to_string(),
+                        Value::String(result.tmux_window.clone()),
+                    );
+                    success_fields.insert(
+                        "tmux_pane".to_string(),
+                        Value::String(result.tmux_pane.clone()),
+                    );
+                    log_file.emit(
+                        "info",
+                        "command_center",
+                        "command_center.launch.daemon_success",
+                        Some("Launch succeeded via daemon".to_string()),
+                        success_fields,
+                    );
+
+                    let tmux_session = result.tmux_session.as_deref().unwrap_or(TMUX_SESSION_NAME);
+                    let ts = load_terminal_settings(db);
+                    let _ = crate::terminal::handle_terminal(
+                        crate::terminal::TerminalIntent::EnsureOpen {
+                            distro: provider.wsl_distro.clone(),
+                            tmux_session: tmux_session.to_string(),
+                            emulator: ts.emulator,
+                            custom_command: ts.custom_command,
+                        },
+                    );
+                    return Ok(result);
+                }
+                Ok(response) => {
+                    let msg = response
+                        .error
+                        .map(|e| e.message)
+                        .unwrap_or_else(|| "Unknown error".to_string());
+                    let mut fail_fields = Map::new();
+                    fail_fields.insert("error".to_string(), Value::String(msg.clone()));
+                    log_file.emit(
+                        "warn",
+                        "command_center",
+                        "command_center.launch.daemon_failed",
+                        Some("Launch failed via daemon".to_string()),
+                        fail_fields,
+                    );
+                    return Err(format!("Failed to launch session: {msg}"));
+                }
+                Err(e) => {
+                    let mut unreachable_fields = Map::new();
+                    unreachable_fields.insert("error".to_string(), Value::String(e.to_string()));
+                    log_file.emit(
+                        "warn",
+                        "command_center",
+                        "command_center.launch.daemon_unreachable",
+                        Some("Daemon unreachable during launch".to_string()),
+                        unreachable_fields,
+                    );
+                    tracing::warn!(error = %e, "Daemon unreachable for launch");
+                }
+            }
+        }
+    }
+
+    log_file.emit(
+        "info",
+        "command_center",
+        "command_center.launch.local_fallback",
+        Some("Falling back to local tmux launch".to_string()),
+        Map::new(),
+    );
+    let ts = load_terminal_settings(db);
+    let tool_cmd = crate::session_scanner::control::resolve_configured_tool_command(
+        &ts.cli_commands,
+        tool,
+        mode,
+    );
+    let (session, window, pane) = crate::session_scanner::control::launch_in_tmux_with_layout(
+        &linux_path,
+        mode,
+        tool,
+        &ts.tmux_layout,
+        Some(&tool_cmd),
+    )
+    .map_err(|e| format!("Failed to launch session: {e}"))?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = crate::terminal::handle_terminal(crate::terminal::TerminalIntent::EnsureOpen {
+            distro: None,
+            tmux_session: session.clone(),
+            emulator: ts.emulator,
+            custom_command: ts.custom_command,
+        });
+    }
+
+    Ok(protocol::LaunchSessionResult {
+        tmux_session: Some(session),
+        tmux_window: window,
+        tmux_pane: pane,
+    })
+}
+
+pub(super) fn decode_daemon_launch_result(
+    payload: Option<serde_json::Value>,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let value = payload.ok_or_else(|| "Invalid launch result from daemon".to_string())?;
+    serde_json::from_value(value).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to deserialize launch result from daemon");
+        format!("Invalid launch result from daemon: {e}")
+    })
+}
