@@ -96,10 +96,7 @@ pub(crate) fn enrich_sessions_with_team_membership(
             normalize_project_path(&session.project_path),
             session.cli_tool,
         );
-        sessions_by_key
-            .entry(key)
-            .or_insert_with(Vec::new)
-            .push(index);
+        sessions_by_key.entry(key).or_default().push(index);
     }
 
     for (key, session_indices) in sessions_by_key {
@@ -253,7 +250,7 @@ fn load_session_memberships(
         }
     };
 
-    let mut memberships = HashMap::new();
+    let mut memberships: HashMap<_, Vec<SessionMembershipMetadata>> = HashMap::new();
 
     for team_name in team_names {
         let config = match TeamConfigStore::load(teams_dir, &team_name) {
@@ -287,7 +284,7 @@ fn load_session_memberships(
 
             memberships
                 .entry(key)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(SessionMembershipMetadata {
                     group_id: config.name.clone(),
                     group_label: config.name.clone(),
