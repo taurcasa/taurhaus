@@ -349,6 +349,10 @@ pub(super) fn member_from_agent_setup(
         name: setup.name.clone(),
         role,
         role_id: setup.role_id.clone(),
+        role_name: setup.role_name.clone(),
+        focus_area: setup.focus_area.clone(),
+        context_summary: setup.context_summary.clone(),
+        behavior_summary: setup.behavior_summary.clone(),
         instructions: setup
             .instructions
             .clone()

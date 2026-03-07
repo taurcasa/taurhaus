@@ -192,6 +192,14 @@ pub struct AgentDefinition {
     #[serde(default)]
     pub role_id: Option<String>,
     #[serde(default)]
+    pub role_name: Option<String>,
+    #[serde(default)]
+    pub focus_area: Option<String>,
+    #[serde(default)]
+    pub context_summary: Option<String>,
+    #[serde(default)]
+    pub behavior_summary: Option<String>,
+    #[serde(default)]
     pub instructions: Option<String>,
     #[serde(default)]
     pub behavioral_contract: Option<BehavioralContract>,
@@ -322,6 +330,10 @@ mod tests {
                 name: "agent-1".to_string(),
                 role: MemberRole::Agent,
                 role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: Some("Focus on implementation".to_string()),
                 behavioral_contract: None,
                 capabilities: None,
@@ -367,6 +379,10 @@ mod tests {
                 project_id: "proj-core".to_string(),
                 description: Some("Lead".to_string()),
                 role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,
@@ -378,6 +394,10 @@ mod tests {
                 project_id: "proj-web".to_string(),
                 description: None,
                 role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,
@@ -401,6 +421,10 @@ mod tests {
                 project_id: "proj-api".to_string(),
                 description: Some("Own API work".to_string()),
                 role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,

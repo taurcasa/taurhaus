@@ -53,6 +53,14 @@ struct MeshCompatibleMemberWire {
     role: MemberRole,
     #[serde(rename = "roleId", skip_serializing_if = "Option::is_none")]
     role_id: Option<String>,
+    #[serde(rename = "roleName", skip_serializing_if = "Option::is_none")]
+    role_name: Option<String>,
+    #[serde(rename = "focusArea", skip_serializing_if = "Option::is_none")]
+    focus_area: Option<String>,
+    #[serde(rename = "contextSummary", skip_serializing_if = "Option::is_none")]
+    context_summary: Option<String>,
+    #[serde(rename = "behaviorSummary", skip_serializing_if = "Option::is_none")]
+    behavior_summary: Option<String>,
     instructions: Option<String>,
     #[serde(rename = "behavioralContract", skip_serializing_if = "Option::is_none")]
     behavioral_contract: Option<BehavioralContract>,
@@ -120,6 +128,14 @@ struct MeshMemberWire {
     instructions: Option<String>,
     #[serde(default, alias = "roleId")]
     role_id: Option<String>,
+    #[serde(default, alias = "roleName")]
+    role_name: Option<String>,
+    #[serde(default, alias = "focusArea")]
+    focus_area: Option<String>,
+    #[serde(default, alias = "contextSummary")]
+    context_summary: Option<String>,
+    #[serde(default, alias = "behaviorSummary")]
+    behavior_summary: Option<String>,
     #[serde(default, alias = "behavioralContract")]
     behavioral_contract: Option<BehavioralContract>,
     #[serde(default)]
@@ -329,6 +345,10 @@ fn mesh_compatible_wire(
                 name: member.name.clone(),
                 role: member.role,
                 role_id: member.role_id.clone(),
+                role_name: member.role_name.clone(),
+                focus_area: member.focus_area.clone(),
+                context_summary: member.context_summary.clone(),
+                behavior_summary: member.behavior_summary.clone(),
                 instructions: member.instructions.clone(),
                 behavioral_contract: member.behavioral_contract.clone(),
                 capabilities: member.capabilities.clone(),
@@ -476,6 +496,10 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         name: member.name,
         role,
         role_id: member.role_id,
+        role_name: member.role_name,
+        focus_area: member.focus_area,
+        context_summary: member.context_summary,
+        behavior_summary: member.behavior_summary,
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
         capabilities: member.capabilities,
@@ -537,6 +561,10 @@ mod tests {
                 name: "team-lead".to_string(),
                 role: MemberRole::Lead,
                 role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: Some("Own orchestration".to_string()),
                 behavioral_contract: None,
                 capabilities: None,
@@ -556,6 +584,10 @@ mod tests {
                 name: "codex-dev".to_string(),
                 role: MemberRole::Agent,
                 role_id: Some("codex-developer".to_string()),
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: Some("Implement safely".to_string()),
                 behavioral_contract: Some(BehavioralContract {
                     communication: vec!["share updates".to_string()],
@@ -1021,6 +1053,10 @@ mod tests {
                 name: "member-a".to_string(),
                 role: MemberRole::Agent,
                 role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,

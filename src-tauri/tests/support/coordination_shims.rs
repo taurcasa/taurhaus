@@ -89,6 +89,46 @@ pub mod session_scanner {
             }
         }
 
+        fn codex_command_has_model_arg(command: &str) -> bool {
+            let mut tokens = command.split_whitespace();
+            while let Some(token) = tokens.next() {
+                if token == "-m" {
+                    return true;
+                }
+                if token.starts_with("--model") {
+                    return true;
+                }
+                if token == "--model" {
+                    let _ = tokens.next();
+                    return true;
+                }
+            }
+            false
+        }
+
+        fn normalize_codex_model(model: &str) -> String {
+            let trimmed = model.trim();
+            let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+            if compact.eq_ignore_ascii_case("gpt-5.4")
+                || compact.eq_ignore_ascii_case("gpt-5.4 high")
+                || compact.eq_ignore_ascii_case("gpt-5.4 medium")
+                || compact.eq_ignore_ascii_case("gpt-5.4 low")
+                || trimmed.eq_ignore_ascii_case("gpt-5.4-high")
+                || trimmed.eq_ignore_ascii_case("gpt-5.4-medium")
+                || trimmed.eq_ignore_ascii_case("gpt-5.4-low")
+            {
+                return "gpt-5.4".to_string();
+            }
+            if trimmed.eq_ignore_ascii_case("gpt-5.3") {
+                return "gpt-5.3-codex".to_string();
+            }
+            compact
+        }
+
+        fn shell_escape(s: &str) -> String {
+            format!("'{}'", s.replace('\'', "'\\''"))
+        }
+
         pub fn build_team_launch_command(
             cmds: &CliCommandSettings,
             tool: CliTool,
@@ -100,25 +140,11 @@ pub mod session_scanner {
                 CliTool::Codex => {
                     let base = cmds.codex.fresh.clone();
                     let model = model.trim();
-                    if model.is_empty() || base.contains("-m ") || base.contains("--model") {
+                    if model.is_empty() || codex_command_has_model_arg(&base) {
                         return base;
                     }
-                    let compact = model.split_whitespace().collect::<Vec<_>>().join(" ");
-                    let model = if compact.eq_ignore_ascii_case("gpt-5.4")
-                        || compact.eq_ignore_ascii_case("gpt-5.4 high")
-                        || compact.eq_ignore_ascii_case("gpt-5.4 medium")
-                        || compact.eq_ignore_ascii_case("gpt-5.4 low")
-                        || model.eq_ignore_ascii_case("gpt-5.4-high")
-                        || model.eq_ignore_ascii_case("gpt-5.4-medium")
-                        || model.eq_ignore_ascii_case("gpt-5.4-low")
-                    {
-                        "gpt-5.4".to_string()
-                    } else if model.eq_ignore_ascii_case("gpt-5.3") {
-                        "gpt-5.3-codex".to_string()
-                    } else {
-                        compact
-                    };
-                    format!("{base} -m '{model}'")
+                    let normalized_model = normalize_codex_model(model);
+                    format!("{base} -m {}", shell_escape(&normalized_model))
                 }
             }
         }
