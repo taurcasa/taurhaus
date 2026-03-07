@@ -312,6 +312,10 @@ describe('Mesh flow smoke', () => {
       )
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-runtime-more-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
+    })
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()

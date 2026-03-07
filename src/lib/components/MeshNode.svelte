@@ -73,6 +73,7 @@
   type="button"
   class="mesh-node"
   class:is-lead={isLead}
+  class:is-offline={safeStatus === 'offline'}
   class:is-selected={selected}
   class:is-light={!dark}
   data-testid={`mesh-node-${normalizedRole}`}
@@ -170,6 +171,11 @@
     box-shadow: var(--mesh-node-selected-ring), var(--mesh-node-shadow-hover);
   }
 
+  .mesh-node.is-offline {
+    opacity: 0.82;
+    filter: saturate(0.88);
+  }
+
   .mesh-node.is-lead.is-selected {
     border-color: var(--mesh-node-lead-selected-border-dark);
   }
@@ -197,6 +203,10 @@
   .mesh-node.is-light.is-selected {
     border-color: var(--mesh-node-selected-border-light);
     box-shadow: var(--mesh-node-selected-ring), var(--mesh-node-shadow-light-hover);
+  }
+
+  .mesh-node.is-light.is-offline {
+    opacity: 0.84;
   }
 
   .mesh-node.is-light.is-lead.is-selected {

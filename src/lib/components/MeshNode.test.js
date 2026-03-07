@@ -52,6 +52,18 @@ describe('MeshNode', () => {
     await rerender({ status: 'offline' })
     statusDot = document.querySelector('.mesh-node-status')
     expect(statusDot.getAttribute('style')).toContain('var(--mesh-node-status-offline)')
+    expect(statusDot.getAttribute('style')).not.toContain('var(--color-warning-500)')
+  })
+
+  it('marks stopped nodes with neutral offline styling', () => {
+    render(MeshNode, {
+      props: {
+        status: 'offline',
+      },
+    })
+
+    const node = document.querySelector('[data-testid="mesh-node-agent"]')
+    expect(node.classList.contains('is-offline')).toBe(true)
   })
 
   it('renders MeshNode styles with tokenized color variables', () => {

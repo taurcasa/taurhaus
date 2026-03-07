@@ -256,6 +256,10 @@ describe('Mesh vertical slice smoke', () => {
     })
     expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
 
+    await fireEvent.click(screen.getByTestId('mesh-runtime-more-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
+    })
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()

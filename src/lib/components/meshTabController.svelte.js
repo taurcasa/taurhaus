@@ -101,6 +101,7 @@ export function createMeshTabController({
   let runtimeMessageTimer = null
   let errorMessageTimer = null
   let runtimePollTimer = null
+  let teamResumeProgressTimer = null
 
   const selectedNode = $derived.by(() => {
     const config = teamConfig
@@ -138,13 +139,10 @@ export function createMeshTabController({
     captureRoleDialog && typeof captureRoleDialog === 'object' ? captureRoleDialog : null
   )
 
-  const runtimeBanner = $derived.by(() => {
-    if (teamRuntimeState === 'coldResume') return 'cold_resume'
-    if (teamRuntimeState === 'degraded') return 'degraded'
-    return null
-  })
-
   const isResumingTeam = $derived.by(() => Boolean(teamResumeProgress?.inFlight))
+  const canResumeTeam = $derived.by(
+    () => teamRuntimeState === 'coldResume' || teamRuntimeState === 'degraded'
+  )
 
   const canSaveCapturedRole = $derived.by(() => {
     const draft = captureRoleDraft
@@ -842,7 +840,7 @@ export function createMeshTabController({
   }
 
   async function resumeTeam(contextMode = 'continue') {
-    if (!teamName || !runtimeBanner || isResumingTeam) return
+    if (!teamName || !canResumeTeam || isResumingTeam) return
 
     const targetNames = buildResumeTargetNames(teamConfig)
     teamResumeProgress = {
@@ -911,6 +909,28 @@ export function createMeshTabController({
       selectedNodeId = null
       captureRoleDialog = null
     }
+  })
+
+  $effect(() => {
+    if (teamResumeProgress?.inFlight) {
+      if (teamResumeProgressTimer) {
+        clearTimeout(teamResumeProgressTimer)
+        teamResumeProgressTimer = null
+      }
+      return
+    }
+
+    return autoDismissNotice({
+      value: teamResumeProgress ? 'completed' : '',
+      timeoutMs: 5000,
+      getTimer: () => teamResumeProgressTimer,
+      setTimer: (timer) => {
+        teamResumeProgressTimer = timer
+      },
+      clearValue: () => {
+        teamResumeProgress = null
+      },
+    })
   })
 
   $effect(() => {
@@ -1014,9 +1034,6 @@ export function createMeshTabController({
     },
     get teamRuntimeState() {
       return teamRuntimeState
-    },
-    get runtimeBanner() {
-      return runtimeBanner
     },
     get isResumingTeam() {
       return isResumingTeam

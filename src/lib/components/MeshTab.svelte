@@ -101,7 +101,7 @@
       teamConfig={controller.teamConfig}
       selectedNode={controller.selectedNode}
       selectedNodeId={controller.selectedNodeId}
-      runtimeBanner={controller.runtimeBanner}
+      teamRuntimeState={controller.teamRuntimeState}
       isResumingTeam={controller.isResumingTeam}
       resumeProgress={controller.teamResumeProgress}
       {availableProjects}

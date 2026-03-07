@@ -273,7 +273,7 @@ describe('MeshTab', () => {
   })
 
   async function renderRuntime(overrides = {}) {
-    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot(overrides))
 
     render(MeshTab, {
       props: {
@@ -288,7 +288,7 @@ describe('MeshTab', () => {
     })
   }
 
-  it('renders cold-resume banner when snapshot teamRuntimeState is coldResume', async () => {
+  it('shows a lifecycle header for cold-resume teams', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
       buildRuntimeSnapshot({
         teamRuntimeState: 'coldResume',
@@ -333,15 +333,96 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-banner')).toHaveTextContent('Team is offline after restart')
-      expect(screen.getByTestId('mesh-runtime-banner-cta')).toHaveTextContent('Resume Team')
+      expect(screen.queryByTestId('mesh-runtime-banner')).not.toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent('2 members • 0 active • 2 stopped')
+      expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('Team ready to resume')
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Team')
     })
   })
 
-  it('hides the runtime banner when snapshot teamRuntimeState is active', async () => {
+  it('shows Add Agent as the primary action for active teams', async () => {
     await renderRuntime({ teamRuntimeState: 'active' })
 
     expect(screen.queryByTestId('mesh-runtime-banner')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent('2 members • 1 active • 1 idle')
+    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Add Agent')
+    expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
+  })
+
+  it('shows Resume Offline count for degraded teams', async () => {
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce(
+      buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'claude-orchestrator',
+            roleName: 'Claude Orchestrator',
+            focusArea: 'Team sequencing and escalation',
+            contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+            behaviorSummary: 'Coordinates specialists and escalates blockers.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%2',
+          },
+        ],
+      })
+    )
+
+    await renderRuntime({
+      teamRuntimeState: 'degraded',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          roleId: 'claude-orchestrator',
+          roleName: 'Claude Orchestrator',
+          focusArea: 'Team sequencing and escalation',
+          contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+          behaviorSummary: 'Coordinates specialists and escalates blockers.',
+          projectId: '/projects/taurhaus',
+          sessionStatus: 'active',
+          paneId: '%1',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          roleId: 'codex-architect',
+          roleName: 'Codex Architect',
+          focusArea: 'Architecture decisions and structural review',
+          contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+          behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+          projectId: '/projects/taurhaus',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    })
+
+    expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent('2 members • 1 active • 1 stopped')
+    expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('1 member stopped')
+    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Offline (1)')
+    expect(screen.getByTestId('mesh-runtime-add-agent')).toHaveTextContent('Add Agent')
   })
 
   it('resume team CTA calls coordinationResumeTeam', async () => {
@@ -391,10 +472,10 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-banner-cta')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-banner-cta'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
 
     expect(coordinationResumeTeam).toHaveBeenCalledWith('architecture-final', 'continue')
 
@@ -535,10 +616,10 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-banner-cta')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-banner-cta'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toBeInTheDocument()
@@ -595,7 +676,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-banner-cta')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
     })
 
     await fireEvent.click(screen.getByTestId('mesh-node-agent'))
@@ -603,11 +684,17 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-banner-cta'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-more-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-banner-cta')).toBeDisabled()
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeDisabled()
       expect(screen.getByTestId('mesh-runtime-add-agent')).toBeDisabled()
+      expect(screen.getByTestId('mesh-runtime-more-toggle')).toBeDisabled()
       expect(screen.getByTestId('mesh-runtime-disband')).toBeDisabled()
       expect(screen.getByTestId('mesh-node-detail-resume')).toBeDisabled()
     })
@@ -623,6 +710,138 @@ describe('MeshTab', () => {
       teamDaemonWarning: null,
     })
   })
+
+  it('auto-collapses the resume progress tray after completion', async () => {
+    coordinationGetProjectMeshSnapshot
+      .mockResolvedValueOnce(
+        buildRuntimeSnapshot({
+          teamRuntimeState: 'coldResume',
+          members: [
+            {
+              name: 'team-lead',
+              role: 'lead',
+              cliTool: 'claude',
+              model: 'opus',
+              roleId: 'claude-orchestrator',
+              roleName: 'Claude Orchestrator',
+              focusArea: 'Team sequencing and escalation',
+              contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+              behaviorSummary: 'Coordinates specialists and escalates blockers.',
+              projectId: '/projects/taurhaus',
+              sessionStatus: 'offline',
+              paneId: '%1',
+            },
+            {
+              name: 'frontend-dev',
+              role: 'member',
+              cliTool: 'codex',
+              model: 'gpt-5.4 high',
+              roleId: 'codex-architect',
+              roleName: 'Codex Architect',
+              focusArea: 'Architecture decisions and structural review',
+              contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+              behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+              projectId: '/projects/taurhaus',
+              sessionStatus: 'offline',
+              paneId: '%2',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        buildRuntimeSnapshot({
+          teamRuntimeState: 'active',
+          members: [
+            {
+              name: 'team-lead',
+              role: 'lead',
+              cliTool: 'claude',
+              model: 'opus',
+              roleId: 'claude-orchestrator',
+              roleName: 'Claude Orchestrator',
+              focusArea: 'Team sequencing and escalation',
+              contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+              behaviorSummary: 'Coordinates specialists and escalates blockers.',
+              projectId: '/projects/taurhaus',
+              sessionStatus: 'active',
+              paneId: '%11',
+            },
+            {
+              name: 'frontend-dev',
+              role: 'member',
+              cliTool: 'codex',
+              model: 'gpt-5.4 high',
+              roleId: 'codex-architect',
+              roleName: 'Codex Architect',
+              focusArea: 'Architecture decisions and structural review',
+              contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+              behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+              projectId: '/projects/taurhaus',
+              sessionStatus: 'active',
+              paneId: '%12',
+            },
+          ],
+        })
+      )
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce(
+      buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'claude-orchestrator',
+            roleName: 'Claude Orchestrator',
+            focusArea: 'Team sequencing and escalation',
+            contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+            behaviorSummary: 'Coordinates specialists and escalates blockers.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'active',
+            paneId: '%11',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'active',
+            paneId: '%12',
+          },
+        ],
+      })
+    )
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-resume-progress')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('Completed')
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 5200))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('mesh-runtime-resume-progress')).not.toBeInTheDocument()
+    })
+  }, 8000)
 
   it('renders from cached snapshot immediately on revisit without snapshot IPC', () => {
     setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
@@ -1117,7 +1336,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
@@ -1126,6 +1345,10 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-runtime-more-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
+    })
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
@@ -1209,7 +1432,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
@@ -1252,7 +1475,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
@@ -1521,6 +1744,10 @@ describe('MeshTab', () => {
     coordinationDisbandTeam.mockRejectedValueOnce(new Error('cannot disband'))
     await renderRuntime()
 
+    await fireEvent.click(screen.getByTestId('mesh-runtime-more-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
+    })
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
@@ -1721,7 +1948,7 @@ describe('MeshTab', () => {
       availableProjects: [{ id: 'proj-core', name: 'Core' }],
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
