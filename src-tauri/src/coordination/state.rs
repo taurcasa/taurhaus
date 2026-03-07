@@ -10,6 +10,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
+use crate::coordination::stores::TeamConfigStore;
 use crate::session_scanner::cli_tool::CliTool;
 
 type BackendFactory =
@@ -123,27 +124,26 @@ impl CoordinationState {
     pub fn run_background_self_heal_pass(
         &self,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
-        self.with_orchestrator(|orchestrator| {
-            let team_names = orchestrator.list_teams()?;
-            let mut summary = BackgroundSelfHealPassResult::default();
+        let team_names = TeamConfigStore::list(&self.teams_dir)?;
+        let mut summary = BackgroundSelfHealPassResult::default();
+        let mut orchestrator = self.build_background_orchestrator()?;
 
-            for team_name in team_names {
-                summary.teams_scanned += 1;
-                match orchestrator.trigger_team_self_heal(&team_name) {
-                    Ok(result) => apply_self_heal_result(&mut summary, &result),
-                    Err(err) => {
-                        summary.team_errors += 1;
-                        tracing::warn!(
-                            team = %team_name,
-                            error = %err,
-                            "background coordination self-heal failed"
-                        );
-                    }
+        for team_name in team_names {
+            summary.teams_scanned += 1;
+            match orchestrator.trigger_team_self_heal(&team_name) {
+                Ok(result) => apply_self_heal_result(&mut summary, &result),
+                Err(err) => {
+                    summary.team_errors += 1;
+                    tracing::warn!(
+                        team = %team_name,
+                        error = %err,
+                        "background coordination self-heal failed"
+                    );
                 }
             }
+        }
 
-            Ok(summary)
-        })
+        Ok(summary)
     }
 
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
@@ -160,6 +160,17 @@ impl CoordinationState {
             );
         }
         Ok(orchestrator)
+    }
+
+    fn build_background_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
+        let kind = self.backend_selector.select(CliTool::Codex);
+        let backend = (self.backend_factory)(kind)?;
+        let runtime = (self.runtime_factory)();
+        Ok(CoordinationOrchestrator::new_with_runtime(
+            self.teams_dir.clone(),
+            backend,
+            runtime,
+        ))
     }
 }
 
@@ -685,6 +696,8 @@ mod tests {
             })
             .expect("seed team");
 
+        state.orchestrator.lock().expect("state mutex").take();
+
         let summary = state
             .run_background_self_heal_pass()
             .expect("background pass succeeds");
@@ -701,6 +714,10 @@ mod tests {
                     if team_name == "idle-team"
             )),
             "inactive team should only perform the cheap team-daemon identity probe"
+        );
+        assert!(
+            state.orchestrator.lock().expect("state mutex").is_none(),
+            "background self-heal should not repopulate the shared orchestrator"
         );
     }
 
