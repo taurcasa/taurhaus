@@ -218,12 +218,6 @@ describe('Sidebar component branches', () => {
         count: 2,
         tone: 'active',
         isActive: true,
-        groupedAsset: {
-          key: 'claude-codex',
-          maskUrl: '/mock/claude-codex.png',
-          railWidthPx: 27,
-          stackWidthPx: 24,
-        },
         memberTools: [
           { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
           { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
@@ -249,7 +243,7 @@ describe('Sidebar component branches', () => {
     })
 
     expect(screen.getByTestId('sidebar-team-indicator').className).toContain('sidebar-session-team-rail')
-    expect(screen.getByTestId('sidebar-team-indicator-art')).toBeInTheDocument()
+    expect(document.querySelectorAll('.sidebar-session-team-rail-logo')).toHaveLength(2)
   })
 
   it('navigates grouped rail indicators to the lead tmux pane even when the lead has a custom name', async () => {
@@ -261,12 +255,6 @@ describe('Sidebar component branches', () => {
         groupId: 'team-a',
         count: 2,
         tone: 'active',
-        groupedAsset: {
-          key: 'claude-codex',
-          maskUrl: '/mock/claude-codex.png',
-          railWidthPx: 27,
-          stackWidthPx: 24,
-        },
         memberTools: [
           { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
           { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
@@ -308,12 +296,6 @@ describe('Sidebar component branches', () => {
         groupId: 'team-b',
         count: 4,
         tone: 'idle',
-        groupedAsset: {
-          key: 'claude-codex',
-          maskUrl: '/mock/claude-codex.png',
-          railWidthPx: 27,
-          stackWidthPx: 24,
-        },
         tools: [
           { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
           { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
@@ -355,12 +337,6 @@ describe('Sidebar component branches', () => {
         groupId: 'team-c',
         count: 2,
         tone: 'active',
-        groupedAsset: {
-          key: 'codex-gemini',
-          maskUrl: '/mock/codex-gemini.png',
-          railWidthPx: 27,
-          stackWidthPx: 24,
-        },
         memberTools: [
           { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
           { tool: 'gemini', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },

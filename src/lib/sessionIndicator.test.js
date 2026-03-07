@@ -194,11 +194,6 @@ describe('sessionIndicator', () => {
     expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex'])
     expect(indicators[0].memberTools.map(tool => tool.iconVariant)).toEqual(['sidebarSmall', 'sidebarSmall'])
     expect(indicators[0].memberTools[0].icon).toEqual(getToolIcon('claude', 'sidebarSmall'))
-    expect(indicators[0].groupedAsset).toMatchObject({
-      key: 'claude-codex',
-      railWidthPx: 27,
-      stackWidthPx: 24,
-    })
   })
 
   it('toolIndicators shows a connector rail for a 2-member team even when only two sessions are present', () => {
@@ -215,7 +210,6 @@ describe('sessionIndicator', () => {
       count: 2,
       tone: 'active',
     })
-    expect(indicators[0].groupedAsset?.key).toBe('claude-codex')
   })
 
   it('toolIndicators shows a connector rail for a 3-member team below the stack threshold', () => {
@@ -234,7 +228,6 @@ describe('sessionIndicator', () => {
       tone: 'active',
     })
     expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
-    expect(indicators[0].groupedAsset?.key).toBe('claude-codex-gemini')
   })
 
   it('toolIndicators leaves one-member team sessions as standalone logos', () => {
@@ -309,11 +302,6 @@ describe('sessionIndicator', () => {
     expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
     expect(indicators[0].tools.map(tool => tool.iconVariant)).toEqual(['sidebarSmall', 'sidebarSmall', 'sidebarSmall'])
     expect(indicators[0].tools[1].icon).toEqual(getToolIcon('codex', 'sidebarSmall'))
-    expect(indicators[0].groupedAsset).toMatchObject({
-      key: 'claude-codex-gemini',
-      railWidthPx: 39,
-      stackWidthPx: 34,
-    })
     expect(indicators[1]).toMatchObject({
       kind: 'session',
       fullName: 'Gemini',
@@ -352,6 +340,5 @@ describe('sessionIndicator', () => {
       tone: 'idle',
     })
     expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['codex'])
-    expect(indicators[0].groupedAsset).toBeNull()
   })
 })

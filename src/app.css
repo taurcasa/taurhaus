@@ -311,8 +311,7 @@ body {
   padding-inline: 0;
 }
 
-.sidebar-session-team-rail::before {
-  content: '';
+.sidebar-session-team-rail-track {
   position: absolute;
   left: 4px;
   right: 4px;
@@ -322,11 +321,11 @@ body {
   pointer-events: none;
 }
 
-.sidebar-session-team-rail[data-activity='active']::before {
+.sidebar-session-team-rail[data-activity='active'] .sidebar-session-team-rail-track {
   background: var(--sidebar-team-rail-active);
 }
 
-.sidebar-session-team-rail[data-activity='idle']::before {
+.sidebar-session-team-rail[data-activity='idle'] .sidebar-session-team-rail-track {
   background: var(--sidebar-team-rail-idle);
 }
 
@@ -338,29 +337,6 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.sidebar-session-team-art {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--sidebar-team-art-width, 27px);
-  height: 15px;
-  background-color: currentColor;
-  -webkit-mask-image: var(--sidebar-team-mask-image);
-  mask-image: var(--sidebar-team-mask-image);
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-
-.sidebar-session-team-art-stack {
-  margin-right: 4px;
 }
 
 .sidebar-session-team-rail-glyph,
