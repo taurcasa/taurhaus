@@ -17,9 +17,28 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  let rootElement = $state(null)
+  let isVisible = $state(true)
+  let backgroundWorkEnabled = $state(true)
+
+  function isNavigationAwayTarget(target) {
+    if (!(target instanceof Element)) return false
+    return Boolean(
+      target.closest(
+        '[data-testid="project-item"], [data-testid="tab-overview"], [data-testid="tab-tasks"], [data-testid="tab-git"], [data-testid="tab-files"]'
+      )
+    )
+  }
+
+  function readVisibility() {
+    const parent = rootElement?.parentElement
+    return Boolean(parent) && !parent.classList.contains('hidden')
+  }
 
   const controller = createMeshTabController({
     getProjectPath: () => projectPath,
+    getIsVisible: () => isVisible,
+    getBackgroundWorkEnabled: () => backgroundWorkEnabled,
     getAvailableProjects: () => availableProjects,
     onAddAgent: (report) => onAddAgentProp(report),
     onDisband: (result) => onDisbandProp(result),
@@ -52,9 +71,51 @@
     if (!context) return 'Confirm'
     return context.kind === 'disband' ? 'Disband Team' : 'Remove Member'
   }
+
+  $effect(() => {
+    if (!rootElement) return
+    const parent = rootElement.parentElement
+    if (!parent) return
+
+    const updateVisibility = () => {
+      isVisible = readVisibility()
+      if (isVisible) {
+        backgroundWorkEnabled = true
+      }
+    }
+
+    updateVisibility()
+
+    const observer = new MutationObserver(updateVisibility)
+    observer.observe(parent, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden'],
+    })
+
+    return () => {
+      observer.disconnect()
+    }
+  })
+
+  $effect(() => {
+    if (!rootElement) return
+
+    const handlePointerDown = (event) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (rootElement.contains(target)) return
+      if (!isNavigationAwayTarget(target)) return
+      backgroundWorkEnabled = false
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  })
 </script>
 
-<section class="flex-1 min-h-0 overflow-y-auto {t.mainBg}" data-testid="mesh-tab">
+<section bind:this={rootElement} class="flex-1 min-h-0 overflow-y-auto {t.mainBg}" data-testid="mesh-tab">
   {#if controller.errorMessage}
     <div class="relative overflow-hidden border-l-2 border-danger-400 pl-3 pr-2 py-1 text-xs text-danger-600/95 flex items-center justify-between gap-2" data-testid="mesh-error">
       <span class="min-w-0">{controller.errorMessage}</span>

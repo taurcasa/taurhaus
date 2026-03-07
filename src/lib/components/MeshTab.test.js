@@ -843,23 +843,35 @@ describe('MeshTab', () => {
     })
   }, 8000)
 
-  it('renders from cached snapshot immediately on revisit without snapshot IPC', () => {
+  it('renders from cached snapshot immediately on revisit without snapshot IPC', async () => {
+    vi.useFakeTimers()
     setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
     const liveRefresh = deferred()
     coordinationGetLiveTeamStatus.mockReturnValueOnce(liveRefresh.promise)
 
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
+    try {
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
 
-    expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
-    expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('architecture-final')
+      expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+      expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
 
-    liveRefresh.resolve(buildLiveTeamStatus())
+      await vi.advanceTimersByTimeAsync(119)
+      expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      liveRefresh.resolve(buildLiveTeamStatus())
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('cache miss triggers snapshot IPC and updates the cache', async () => {
@@ -888,52 +900,61 @@ describe('MeshTab', () => {
   })
 
   it('background live refresh patches member status after cached render', async () => {
+    vi.useFakeTimers()
     setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
     const liveRefresh = deferred()
     coordinationGetLiveTeamStatus.mockReturnValueOnce(liveRefresh.promise)
 
-    render(MeshTab, {
-      props: {
-        dark: true,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
-    })
-
-    liveRefresh.resolve(buildLiveTeamStatus({
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          sessionStatus: 'active',
-          paneId: '%1',
+    try {
+      render(MeshTab, {
+        props: {
+          dark: true,
+          projectPath: '/projects/taurhaus',
         },
-        {
-          name: 'frontend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.4 high',
-          projectId: 'proj-web',
-          description: 'Implements UI surface details for the mesh canvas.',
-          sessionStatus: 'active',
-          paneId: '%2',
-        },
-      ],
-    }))
+      })
 
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
-    })
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      })
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+      })
+
+      expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(120)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      liveRefresh.resolve(buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            projectId: 'proj-core',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            projectId: 'proj-web',
+            description: 'Implements UI surface details for the mesh canvas.',
+            sessionStatus: 'active',
+            paneId: '%2',
+          },
+        ],
+      }))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('polls runtime status and updates an agent node to offline when the member disconnects', async () => {
@@ -1048,6 +1069,9 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
     })
 
+    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(0)
+
+    await vi.advanceTimersByTimeAsync(120)
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(2000)
@@ -1151,6 +1175,9 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
     })
 
+    await vi.advanceTimersByTimeAsync(120)
+    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
     await vi.advanceTimersByTimeAsync(2000)
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalledWith('[meshTab] runtime status refresh failed:', expect.any(Error))
@@ -1165,6 +1192,108 @@ describe('MeshTab', () => {
 
     warnSpy.mockRestore()
     vi.useRealTimers()
+  })
+
+  it('cancels the deferred runtime refresh when switching away from a mesh project', async () => {
+    vi.useFakeTimers()
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
+      meshAvailable: true,
+      tmuxAvailable: true,
+      teamName: null,
+      teamStatus: null,
+      warnings: [],
+    }))
+
+    try {
+      const view = render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      })
+
+      const projectItem = document.createElement('button')
+      projectItem.type = 'button'
+      projectItem.dataset.testid = 'project-item'
+      document.body.appendChild(projectItem)
+
+      await fireEvent.pointerDown(projectItem)
+      screen.getByTestId('mesh-tab').parentElement.classList.add('hidden')
+      await view.rerender({
+        dark: false,
+        projectPath: '/projects/other-project',
+      })
+
+      await vi.advanceTimersByTimeAsync(120)
+
+      expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
+
+      expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+
+      screen.getByTestId('mesh-tab').parentElement.classList.remove('hidden')
+
+      await waitFor(() => {
+        expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledWith('/projects/other-project')
+        expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+      })
+
+      projectItem.remove()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('pauses mesh runtime polling as soon as project navigation starts outside the mesh tab', async () => {
+    vi.useFakeTimers()
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+
+    const projectItem = document.createElement('button')
+    projectItem.type = 'button'
+    projectItem.dataset.testid = 'project-item'
+    projectItem.textContent = 'Other project'
+    document.body.appendChild(projectItem)
+
+    const unrelatedButton = document.createElement('button')
+    unrelatedButton.type = 'button'
+    unrelatedButton.textContent = 'Outside'
+    document.body.appendChild(unrelatedButton)
+
+    try {
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      })
+
+      await fireEvent.pointerDown(unrelatedButton)
+      await vi.advanceTimersByTimeAsync(120)
+      await vi.advanceTimersByTimeAsync(2000)
+
+      const pollCountAfterUnrelatedPointer = coordinationGetLiveTeamStatus.mock.calls.length
+      expect(pollCountAfterUnrelatedPointer).toBeGreaterThan(0)
+
+      coordinationGetLiveTeamStatus.mockClear()
+
+      await fireEvent.pointerDown(projectItem)
+      await vi.advanceTimersByTimeAsync(120)
+      await vi.advanceTimersByTimeAsync(4000)
+
+      expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
+    } finally {
+      projectItem.remove()
+      unrelatedButton.remove()
+      vi.useRealTimers()
+    }
   })
 
   it('shows the role hover card in the runtime mesh tab after delayed hover', async () => {

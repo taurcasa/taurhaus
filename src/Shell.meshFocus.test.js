@@ -243,7 +243,7 @@ describe('Shell mesh focus integration', () => {
     })
   })
 
-  it('keeps the mesh tab mounted while switching projects', async () => {
+  it('remounts the mesh tab with the next project when switching projects', async () => {
     loadProjectSelectionData.mockImplementation(async (projectId) => ({
       detail: {
         ok: true,
@@ -326,6 +326,7 @@ describe('Shell mesh focus integration', () => {
       expect(projectContext.selectedProject?.id).toBe('proj-2')
     })
 
-    expect(meshTabMountCount).toBe(mountCountBeforeSwitch)
+    expect(meshTabMountCount).toBeGreaterThan(mountCountBeforeSwitch)
+    expect(lastTextByTestId('mesh-project-path')).toBe('/projects/mesh')
   })
 })

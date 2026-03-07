@@ -31,9 +31,12 @@ import { refreshRuntimeTeamConfigWorkflow } from './meshTabGateWorkflow.js'
 import { autoDismissNotice } from './meshTabNotifications.js'
 
 const RUNTIME_STATUS_POLL_MS = 2000
+const INITIAL_RUNTIME_REFRESH_DELAY_MS = 120
 
 export function createMeshTabController({
   getProjectPath,
+  getIsVisible = () => true,
+  getBackgroundWorkEnabled = () => true,
   getAvailableProjects,
   onAddAgent,
   onDisband,
@@ -101,7 +104,10 @@ export function createMeshTabController({
   let runtimeMessageTimer = null
   let errorMessageTimer = null
   let runtimePollTimer = null
+  let runtimeRefreshTimer = null
+  let runtimeRefreshMeta = null
   let teamResumeProgressTimer = null
+  let hydrationPerf = null
 
   const selectedNode = $derived.by(() => {
     const config = teamConfig
@@ -158,6 +164,48 @@ export function createMeshTabController({
     if (normalized === 'degraded') return 'degraded'
     if (normalized === 'coldresume' || normalized === 'cold_resume') return 'coldResume'
     return 'none'
+  }
+
+  function nowMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now()
+    }
+    return Date.now()
+  }
+
+  function logProjectSwitchPerf(stage, payload = {}) {
+    if (!globalThis.__TAURHAUS_MESH_SWITCH_PERF__) return
+    console.debug('[mesh.perf] project-switch', {
+      stage,
+      ...payload,
+    })
+  }
+
+  function beginHydrationPerf(projectPath, sequence) {
+    hydrationPerf = {
+      projectPath,
+      sequence,
+      startedAt: nowMs(),
+    }
+    logProjectSwitchPerf('mesh-hydrate-start', { projectPath, sequence })
+  }
+
+  function finishHydrationPerf(stage, sequence, extra = {}) {
+    if (!hydrationPerf) return
+    if (hydrationPerf.sequence !== sequence) return
+    logProjectSwitchPerf(stage, {
+      projectPath: hydrationPerf.projectPath,
+      sequence,
+      elapsedMs: Number((nowMs() - hydrationPerf.startedAt).toFixed(1)),
+      ...extra,
+    })
+    if (
+      stage === 'mesh-hydrate-empty' ||
+      stage === 'mesh-refresh-complete' ||
+      stage === 'mesh-refresh-cancelled'
+    ) {
+      hydrationPerf = null
+    }
   }
 
   function classifyTeamRuntimeStateFromMembers(teamName, members) {
@@ -360,10 +408,66 @@ export function createMeshTabController({
     if (sequence !== discoverySequence) return null
     setMeshCache(projectPath, snapshot)
     const normalized = applyProjectSnapshot(snapshot, projectPath, options)
+    finishHydrationPerf(
+      normalized.teamName && normalized.teamStatus ? 'mesh-hydrate-ready' : 'mesh-hydrate-empty',
+      sequence,
+      {
+        mode,
+        teamName: normalized.teamName,
+      }
+    )
     if (normalized.teamName && normalized.teamStatus) {
-      await refreshRuntimeTeamConfig(normalized.teamName, sequence, snapshot)
+      scheduleRuntimeTeamRefresh(normalized.teamName, sequence, snapshot)
     }
     return normalized
+  }
+
+  function clearRuntimeTeamRefresh() {
+    if (runtimeRefreshTimer) {
+      clearTimeout(runtimeRefreshTimer)
+      runtimeRefreshTimer = null
+      if (runtimeRefreshMeta) {
+        finishHydrationPerf('mesh-refresh-cancelled', runtimeRefreshMeta.sequence, {
+          teamName: runtimeRefreshMeta.teamName,
+        })
+      }
+      runtimeRefreshMeta = null
+    }
+  }
+
+  function scheduleRuntimeTeamRefresh(nextTeamName, sequence, snapshot = null) {
+    clearRuntimeTeamRefresh()
+    runtimeRefreshMeta = {
+      sequence,
+      teamName: nextTeamName,
+    }
+    logProjectSwitchPerf('mesh-refresh-scheduled', {
+      projectPath: getProjectPath(),
+      sequence,
+      teamName: nextTeamName,
+      delayMs: INITIAL_RUNTIME_REFRESH_DELAY_MS,
+    })
+    runtimeRefreshTimer = setTimeout(() => {
+      runtimeRefreshTimer = null
+      const meta = runtimeRefreshMeta
+      runtimeRefreshMeta = null
+      if (sequence !== discoverySequence) return
+      logProjectSwitchPerf('mesh-refresh-start', {
+        projectPath: getProjectPath(),
+        sequence,
+        teamName: nextTeamName,
+      })
+      void refreshRuntimeTeamConfig(nextTeamName, sequence, snapshot).catch((error) => {
+        if (sequence !== discoverySequence) return
+        console.warn('[meshTab] deferred runtime status refresh failed:', error)
+      }).finally(() => {
+        if (meta) {
+          finishHydrationPerf('mesh-refresh-complete', meta.sequence, {
+            teamName: meta.teamName,
+          })
+        }
+      })
+    }, INITIAL_RUNTIME_REFRESH_DELAY_MS)
   }
 
   async function refreshRuntimeTeamConfig(nextTeamName, sequence, snapshot = null) {
@@ -435,9 +539,10 @@ export function createMeshTabController({
     }
   }
 
-  function ensureHydrated() {
-    const projectPath = getProjectPath()
+  function ensureHydrated(projectPath, { isVisible = true, backgroundWorkEnabled = true } = {}) {
+    if (!projectPath || !isVisible || !backgroundWorkEnabled) return
     const sequence = ++discoverySequence
+    beginHydrationPerf(projectPath, sequence)
     teamName = inferTeamName(projectPath)
     teamConfig = null
     selectedNodeId = null
@@ -451,12 +556,22 @@ export function createMeshTabController({
     teamResumeProgress = null
     errorMessage = ''
     runtimeMessage = ''
+    clearRuntimeTeamRefresh()
 
     const cachedSnapshot = untrack(() => getMeshCache(projectPath))
     if (cachedSnapshot) {
       const normalized = applyProjectSnapshot(cachedSnapshot, projectPath)
+      finishHydrationPerf(
+        normalized.teamName && normalized.teamStatus ? 'mesh-hydrate-ready' : 'mesh-hydrate-empty',
+        sequence,
+        {
+          mode,
+          teamName: normalized.teamName,
+          source: 'cache',
+        }
+      )
       if (normalized.teamName && normalized.teamStatus) {
-        void refreshRuntimeTeamConfig(normalized.teamName, sequence, cachedSnapshot)
+        scheduleRuntimeTeamRefresh(normalized.teamName, sequence, cachedSnapshot)
       }
       return
     }
@@ -465,7 +580,10 @@ export function createMeshTabController({
   }
 
   function ensureGateReady() {
-    ensureHydrated()
+    ensureHydrated(getProjectPath(), {
+      isVisible: getIsVisible(),
+      backgroundWorkEnabled: getBackgroundWorkEnabled(),
+    })
   }
 
   function closeSlideOver() {
@@ -890,20 +1008,29 @@ export function createMeshTabController({
   }
 
   $effect(() => {
-    void getProjectPath()
-    mode = 'empty'
-    teamName = ''
-    teamConfig = null
-    slideOver = null
-    slideOverContext = null
-    captureRoleDialog = null
-    selectedNodeId = null
-    initProgress = null
-    errorMessage = ''
-    runtimeMessage = ''
-    confirmContext = null
-    availabilityMessage = ''
-    ensureHydrated()
+    const projectPath = getProjectPath()
+    const isVisible = getIsVisible()
+    const backgroundWorkEnabled = getBackgroundWorkEnabled()
+    if (!isVisible || !backgroundWorkEnabled) {
+      clearRuntimeTeamRefresh()
+      return
+    }
+    untrack(() => {
+      mode = 'empty'
+      teamName = ''
+      teamConfig = null
+      slideOver = null
+      slideOverContext = null
+      captureRoleDialog = null
+      selectedNodeId = null
+      initProgress = null
+      errorMessage = ''
+      runtimeMessage = ''
+      confirmContext = null
+      availabilityMessage = ''
+      clearRuntimeTeamRefresh()
+      ensureHydrated(projectPath, { isVisible, backgroundWorkEnabled })
+    })
   })
 
   $effect(() => {
@@ -968,10 +1095,19 @@ export function createMeshTabController({
   })
 
   $effect(() => {
-    if (mode !== 'runtime' || !teamName) return
+    if (mode !== 'runtime' || !teamName || !getIsVisible() || !getBackgroundWorkEnabled()) return
 
     let disposed = false
     let isPolling = false
+
+    const scheduleNextPoll = () => {
+      if (disposed) return
+      runtimePollTimer = setTimeout(() => {
+        void pollRuntimeStatus().finally(() => {
+          scheduleNextPoll()
+        })
+      }, RUNTIME_STATUS_POLL_MS)
+    }
 
     const pollRuntimeStatus = async () => {
       if (isPolling) return
@@ -987,14 +1123,13 @@ export function createMeshTabController({
       }
     }
 
-    runtimePollTimer = setInterval(() => {
-      void pollRuntimeStatus()
-    }, RUNTIME_STATUS_POLL_MS)
+    scheduleNextPoll()
 
     return () => {
       disposed = true
+      clearRuntimeTeamRefresh()
       if (runtimePollTimer) {
-        clearInterval(runtimePollTimer)
+        clearTimeout(runtimePollTimer)
         runtimePollTimer = null
       }
     }
