@@ -106,6 +106,9 @@ export function createMeshTabController({
   let runtimePollTimer = null
   let runtimeRefreshTimer = null
   let runtimeRefreshMeta = null
+  let runtimeStatusRequest = null
+  let runtimeStatusRequestMeta = null
+  let queuedRuntimeStatusRequest = null
   let teamResumeProgressTimer = null
   let hydrationPerf = null
   let pendingProjectSnapshot = null
@@ -460,6 +463,7 @@ export function createMeshTabController({
       }
       runtimeRefreshMeta = null
     }
+    queuedRuntimeStatusRequest = null
   }
 
   function scheduleRuntimeTeamRefresh(nextTeamName, sequence, snapshot = null) {
@@ -484,16 +488,18 @@ export function createMeshTabController({
         sequence,
         teamName: nextTeamName,
       })
-      void refreshRuntimeTeamConfig(nextTeamName, sequence, snapshot).catch((error) => {
-        if (sequence !== discoverySequence) return
-        console.warn('[meshTab] deferred runtime status refresh failed:', error)
-      }).finally(() => {
-        if (meta) {
-          finishHydrationPerf('mesh-refresh-complete', meta.sequence, {
-            teamName: meta.teamName,
-          })
-        }
-      })
+      void queueRuntimeTeamRefresh(nextTeamName, sequence, snapshot)
+        .catch((error) => {
+          if (sequence !== discoverySequence) return
+          console.warn('[meshTab] deferred runtime status refresh failed:', error)
+        })
+        .finally(() => {
+          if (meta) {
+            finishHydrationPerf('mesh-refresh-complete', meta.sequence, {
+              teamName: meta.teamName,
+            })
+          }
+        })
     }, INITIAL_RUNTIME_REFRESH_DELAY_MS)
   }
 
@@ -549,8 +555,46 @@ export function createMeshTabController({
             paneId: member.paneId,
           })),
         ].filter(Boolean),
-      }))
+        }))
     }
+  }
+
+  function queueRuntimeTeamRefresh(nextTeamName, sequence, snapshot = null) {
+    if (runtimeStatusRequest) {
+      if (
+        runtimeStatusRequestMeta?.sequence === sequence &&
+        runtimeStatusRequestMeta?.teamName === nextTeamName
+      ) {
+        return runtimeStatusRequest
+      }
+
+      queuedRuntimeStatusRequest = { nextTeamName, sequence, snapshot }
+      return runtimeStatusRequest
+    }
+
+    runtimeStatusRequestMeta = { teamName: nextTeamName, sequence }
+    const request = refreshRuntimeTeamConfig(nextTeamName, sequence, snapshot)
+    const wrappedRequest = request.finally(() => {
+      if (runtimeStatusRequest === wrappedRequest) {
+        runtimeStatusRequest = null
+        runtimeStatusRequestMeta = null
+      }
+
+      const queued = queuedRuntimeStatusRequest
+      queuedRuntimeStatusRequest = null
+      if (
+        queued &&
+        queued.sequence === discoverySequence &&
+        queued.nextTeamName &&
+        getIsVisible() &&
+        getBackgroundWorkEnabled()
+      ) {
+        void queueRuntimeTeamRefresh(queued.nextTeamName, queued.sequence, queued.snapshot)
+      }
+    })
+
+    runtimeStatusRequest = wrappedRequest
+    return wrappedRequest
   }
 
   async function hydrateProjectMesh(projectPath, sequence) {
@@ -1149,7 +1193,7 @@ export function createMeshTabController({
       if (isResumingTeam) return
       isPolling = true
       try {
-        await refreshRuntimeTeamConfig(teamName, discoverySequence)
+        await queueRuntimeTeamRefresh(teamName, discoverySequence)
       } catch (error) {
         if (disposed) return
         console.warn('[meshTab] runtime status refresh failed:', error)

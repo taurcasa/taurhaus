@@ -1063,7 +1063,6 @@ describe('MeshTab', () => {
     setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
     const slowRefresh = deferred()
     coordinationGetLiveTeamStatus
-      .mockResolvedValueOnce(buildLiveTeamStatus())
       .mockImplementationOnce(() => slowRefresh.promise)
       .mockResolvedValueOnce(buildLiveTeamStatus({
         members: [
@@ -1116,10 +1115,10 @@ describe('MeshTab', () => {
     expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(2000)
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
+    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(2000)
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
+    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
     slowRefresh.resolve(buildLiveTeamStatus({
       members: [
@@ -1155,7 +1154,7 @@ describe('MeshTab', () => {
     })
 
     await vi.advanceTimersByTimeAsync(2000)
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(3)
+    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
