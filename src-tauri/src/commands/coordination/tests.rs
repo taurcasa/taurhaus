@@ -1798,6 +1798,30 @@ fn live_status_test_helper_invokes_live_status_impl() {
 }
 
 #[test]
+fn live_status_uses_fast_snapshot_without_runtime_reconcile_calls() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize");
+
+    let call_count_before_live_status = runtime.calls().len();
+
+    let status =
+        coordination_get_live_team_status_for_tests(&state, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    assert_eq!(status.team_name, "architecture-final");
+    assert_eq!(runtime.calls().len(), call_count_before_live_status);
+}
+
+#[test]
 fn step_progress_event_round_trip() {
     let value = StepProgressEvent {
         team_name: "architecture-final".to_string(),

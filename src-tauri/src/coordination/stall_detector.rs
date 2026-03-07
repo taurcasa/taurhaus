@@ -22,7 +22,9 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
-use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
+use crate::coordination::runtime::{
+    apply_background_command_settings, CoordinationRuntime, SystemCoordinationRuntime,
+};
 use crate::coordination::stores::TeamConfigStore;
 use crate::session_scanner::{scan_sessions, ActivityConfidence, SessionState};
 
@@ -1871,6 +1873,7 @@ fn fetch_mesh_who_json(team_name: &str) -> Option<String> {
         run_command_with_timeout(&mut cmd, MESH_WHO_TIMEOUT)?
     } else {
         let mut cmd = Command::new(&invocation.program);
+        apply_background_command_settings(&mut cmd);
         cmd.args(&invocation.args);
         run_command_with_timeout(&mut cmd, MESH_WHO_TIMEOUT)?
     };

@@ -15,6 +15,7 @@ use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::TeamConfigStore;
 use crate::daemon::protocol::{self, LaunchMode};
 use crate::errors::SanitizeErr;
+use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
 use crate::session_scanner::{ClaudeSession, SessionState};
@@ -188,7 +189,10 @@ fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
     let mut tmux_session = TMUX_SESSION_NAME.to_string();
     let mut tmux_window = "0".to_string();
 
-    if let Ok(output) = Command::new("tmux")
+    let mut cmd = Command::new("tmux");
+    apply_background_command_settings(&mut cmd);
+
+    if let Ok(output) = cmd
         .args([
             "display-message",
             "-p",

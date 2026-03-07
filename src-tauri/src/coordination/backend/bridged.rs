@@ -14,6 +14,8 @@ use crate::coordination::requests::{
     DeliveryRequest, DeliveryResult, LaunchRequest, LaunchResult, OperatorNoticeDelivery,
     ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
 };
+#[cfg(feature = "mesh-bridged-backend")]
+use crate::coordination::runtime::apply_background_command_settings;
 use crate::session_scanner::cli_tool::CliTool;
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
@@ -126,9 +128,9 @@ fn run_system_command(invocation: &CommandInvocation) -> std::io::Result<std::pr
         let mut cmd = mesh_cli::wsl_command_for_coordination();
         cmd.args(&invocation.args).output()
     } else {
-        Command::new(&invocation.program)
-            .args(&invocation.args)
-            .output()
+        let mut cmd = Command::new(&invocation.program);
+        apply_background_command_settings(&mut cmd);
+        cmd.args(&invocation.args).output()
     }
 }
 

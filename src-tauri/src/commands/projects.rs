@@ -9,6 +9,8 @@ use crate::commands::lifecycle::IpcCommandSpan;
 use crate::db::{queries, settings_queries};
 use crate::errors::{sanitize_error, SanitizeErr};
 use crate::models::{ProjectDetail, ProjectSummary};
+#[cfg(target_os = "windows")]
+use crate::platform::apply_background_command_settings;
 use crate::services::project;
 use crate::{ProviderState, SearchState};
 
@@ -537,10 +539,9 @@ pub fn get_system_roots() -> Vec<DirectoryEntry> {
             // Discover WSL distributions via `wsl --list --quiet`.
             // The \\wsl$\ UNC root can't be listed with read_dir, but individual
             // distro paths like \\wsl$\Ubuntu\ work fine.
-            if let Ok(output) = std::process::Command::new("wsl")
-                .args(["--list", "--quiet"])
-                .output()
-            {
+            let mut wsl = std::process::Command::new("wsl");
+            apply_background_command_settings(&mut wsl);
+            if let Ok(output) = wsl.args(["--list", "--quiet"]).output() {
                 // wsl.exe outputs UTF-16LE; decode and parse distro names
                 let text = String::from_utf16_lossy(
                     &output

@@ -28,6 +28,16 @@ const TMUX_SPLIT_MAX_PANES: usize = 4;
 const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
+pub(crate) fn apply_background_command_settings(cmd: &mut Command) -> &mut Command {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 pub trait CoordinationRuntime: Send + Sync {
     fn create_aitx_pane(
         &self,
@@ -1178,9 +1188,9 @@ fn run_system_command(
         let mut cmd = mesh_cli::wsl_command_for_coordination();
         cmd.args(&invocation.args).output()
     } else {
-        Command::new(&invocation.program)
-            .args(&invocation.args)
-            .output()
+        let mut cmd = Command::new(&invocation.program);
+        apply_background_command_settings(&mut cmd);
+        cmd.args(&invocation.args).output()
     };
     output.map_err(CoordinationError::Io)
 }
@@ -1196,8 +1206,9 @@ fn spawn_system_command(
             .stderr(std::process::Stdio::null())
             .spawn()
     } else {
-        Command::new(&invocation.program)
-            .args(&invocation.args)
+        let mut cmd = Command::new(&invocation.program);
+        apply_background_command_settings(&mut cmd);
+        cmd.args(&invocation.args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -1216,6 +1227,7 @@ fn run_mesh(args: &[&str], cwd: Option<&str>) -> Result<String, CoordinationErro
         cmd.args(&invocation.args).output()
     } else {
         let mut cmd = Command::new(&invocation.program);
+        apply_background_command_settings(&mut cmd);
         cmd.args(&invocation.args);
         if let Some(project_id) = cwd {
             cmd.current_dir(project_id);

@@ -5,7 +5,14 @@ use std::process::Command;
 
 use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
+use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::{self, CliTool};
+
+fn tmux_command() -> Command {
+    let mut cmd = Command::new("tmux");
+    apply_background_command_settings(&mut cmd);
+    cmd
+}
 
 /// Launch a CLI tool session in tmux using the configured layout strategy.
 ///
@@ -81,7 +88,7 @@ pub fn launch_in_tmux_with_layout(
 
     // Default: create new tmux window
     let target = format!("{tmux_session}:");
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args([
             "new-window",
             "-n",
@@ -110,7 +117,7 @@ pub fn launch_in_tmux_with_layout(
 /// Find a window in the session that has fewer than `max_panes` panes.
 /// Returns the first pane ID in that window (as split target).
 fn find_window_with_space(tmux_session: &str, max_panes: usize) -> Option<String> {
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args([
             "list-windows",
             "-t",
@@ -145,7 +152,7 @@ fn find_window_with_space(tmux_session: &str, max_panes: usize) -> Option<String
 /// Find a window named after the project in the session.
 /// Returns the first pane ID in that window (as split target).
 fn find_project_window(tmux_session: &str, window_name: &str) -> Option<String> {
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args([
             "list-windows",
             "-t",
@@ -174,7 +181,7 @@ fn find_project_window(tmux_session: &str, window_name: &str) -> Option<String> 
 
 /// Split an existing pane horizontally and run a command in the new pane.
 fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args([
             "split-window",
             "-h",
@@ -253,9 +260,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
         }
 
         // Kill the pane (noop if already gone)
-        let result = Command::new("tmux")
-            .args(["kill-pane", "-t", &pane])
-            .output();
+        let result = tmux_command().args(["kill-pane", "-t", &pane]).output();
         crate::session_scanner::notify_tmux_changed();
         tracing::info!(pane = %pane, success = ?result.as_ref().map(|o| o.status.success()), "stop_session: kill-pane result");
     });
@@ -265,7 +270,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
 
 /// Get the current command running in a tmux pane.
 fn pane_current_command(pane: &str) -> Option<String> {
-    Command::new("tmux")
+    tmux_command()
         .args([
             "display-message",
             "-p",
@@ -292,7 +297,7 @@ pub fn navigate_to_pane(
 ) -> Result<(), String> {
     // Select the window
     let target = format!("{tmux_session}:{tmux_window}");
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(["select-window", "-t", &target])
         .output()
         .map_err(|e| format!("Failed to select tmux window: {e}"))?;
@@ -303,7 +308,7 @@ pub fn navigate_to_pane(
     }
 
     // Select the pane
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(["select-pane", "-t", tmux_pane])
         .output()
         .map_err(|e| format!("Failed to select tmux pane: {e}"))?;
@@ -453,14 +458,14 @@ pub const TMUX_SESSION_NAME: &str = "taurhaus";
 /// shell profile set them.
 fn ensure_taurhaus_session() -> Result<String, String> {
     // Check if session already exists
-    let check = Command::new("tmux")
+    let check = tmux_command()
         .args(["has-session", "-t", TMUX_SESSION_NAME])
         .output()
         .map_err(|e| format!("tmux not available: {e}"))?;
 
     if !check.status.success() {
         // Create the session (detached — no client needed)
-        let output = Command::new("tmux")
+        let output = tmux_command()
             .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
             .output()
             .map_err(|e| format!("Failed to create tmux session: {e}"))?;
@@ -497,7 +502,7 @@ fn propagate_env_to_tmux() {
     for var in PROPAGATE_VARS {
         if let Ok(val) = std::env::var(var) {
             if !val.is_empty() {
-                let _ = Command::new("tmux")
+                let _ = tmux_command()
                     .args(["set-environment", "-t", TMUX_SESSION_NAME, var, &val])
                     .output();
             }
@@ -519,7 +524,7 @@ fn shell_escape(s: &str) -> String {
 ///
 /// Used for control sequences like `C-c` (Ctrl+C) that aren't typed text.
 fn run_tmux_raw_key(pane: &str, key: &str) -> Result<(), String> {
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(["send-keys", "-t", pane, key])
         .output()
         .map_err(|e| format!("Failed to send key to tmux pane {pane}: {e}"))?;
@@ -539,7 +544,7 @@ fn run_tmux_raw_key(pane: &str, key: &str) -> Result<(), String> {
 /// receive Enter before the text is fully rendered in the prompt.
 fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
     // Send the text
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(["send-keys", "-t", pane, keys])
         .output()
         .map_err(|e| format!("Failed to send keys to tmux pane {pane}: {e}"))?;
@@ -553,7 +558,7 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     // Send Enter
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(["send-keys", "-t", pane, "Enter"])
         .output()
         .map_err(|e| format!("Failed to send Enter to tmux pane {pane}: {e}"))?;

@@ -6,6 +6,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::cli_tool::CliTool;
+use crate::platform::apply_background_command_settings;
 
 /// Information about a running CLI tool process.
 #[derive(Debug, Clone, PartialEq)]
@@ -123,7 +124,9 @@ fn run_ps() -> Option<String> {
 /// fails to spawn, exits with error, or exceeds `SUBPROCESS_TIMEOUT`.
 /// On timeout, the child process is killed.
 pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
-    let mut child = Command::new(cmd)
+    let mut command = Command::new(cmd);
+    apply_background_command_settings(&mut command);
+    let mut child = command
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
