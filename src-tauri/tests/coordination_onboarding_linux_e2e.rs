@@ -26,6 +26,7 @@ use coordination::stores::MemberRuntimeStore;
 
 const LOG_ENV: &str = "TAURHAUS_ONBOARDING_E2E_LOG";
 const COUNTER_ENV: &str = "TAURHAUS_ONBOARDING_E2E_COUNTER";
+const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
 struct EnvGuard {
     key: &'static str,
@@ -124,6 +125,7 @@ fn onboarding_flow_launches_lead_and_injects_commands_with_enter() {
 
     let tmp = TempDir::new().expect("tempdir");
     let fake_home = tmp.path().join("home");
+    let fake_claude_dir = fake_home.join(".claude");
     let fake_bin = tmp.path().join("bin");
     let fake_mesh_bin = fake_home.join(".local/bin");
     let teams_dir = tmp.path().join("teams");
@@ -135,6 +137,7 @@ fn onboarding_flow_launches_lead_and_injects_commands_with_enter() {
     let session_marker = tmp.path().join("tmux_session_created");
 
     fs::create_dir_all(&fake_bin).expect("create fake bin dir");
+    fs::create_dir_all(&fake_claude_dir).expect("create fake claude dir");
     fs::create_dir_all(&fake_mesh_bin).expect("create fake mesh bin dir");
     fs::create_dir_all(&teams_dir).expect("create teams dir");
     fs::create_dir_all(&project_core).expect("create lead project dir");
@@ -176,6 +179,33 @@ exit 0
         r#"#!/usr/bin/env bash
 set -euo pipefail
 echo "mesh:$*" >> "{log}"
+if [[ "${{1:-}}" == "daemon" ]]; then
+  claude_dir=""
+  team=""
+  name=""
+  while [[ "$#" -gt 0 ]]; do
+    case "${{1:-}}" in
+      --claude-dir)
+        claude_dir="${{2:-}}"
+        shift 2
+        ;;
+      --team)
+        team="${{2:-}}"
+        shift 2
+        ;;
+      --name)
+        name="${{2:-}}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  mkdir -p "$claude_dir/teams/$team/daemons"
+  sh -c 'sleep 30' >/dev/null 2>&1 &
+  printf '%s\n' "$!" > "$claude_dir/teams/$team/daemons/$name.pid"
+fi
 exit 0
 "#,
         log = log_path.display()
@@ -190,6 +220,10 @@ exit 0
     };
 
     let _home_guard = EnvGuard::set("HOME", fake_home.display().to_string());
+    let _claude_dir_guard = EnvGuard::set(
+        CLAUDE_DIR_OVERRIDE_ENV,
+        fake_claude_dir.display().to_string(),
+    );
     let _path_guard = EnvGuard::set("PATH", path_with_fakes);
     let _log_guard = EnvGuard::set(LOG_ENV, log_path.display().to_string());
     let _counter_guard = EnvGuard::set(COUNTER_ENV, counter_path.display().to_string());
@@ -218,6 +252,11 @@ exit 0
         .expect("lead runtime should exist");
     assert_eq!(lead_runtime.pane_id.as_deref(), Some("%1"));
     assert!(lead_runtime.daemon_pid.is_none());
+    let frontend_runtime =
+        MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "frontend-dev")
+            .expect("frontend runtime should exist");
+    let reviewer_runtime = MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "reviewer")
+        .expect("reviewer runtime should exist");
 
     let log = fs::read_to_string(&log_path).expect("read call log");
     assert!(log.contains("tmux:has-session -t taurhaus"));
@@ -250,4 +289,13 @@ exit 0
     assert!(log.contains("mesh:join --team linux-onboarding-e2e --name reviewer"));
     assert!(log.contains("mesh:daemon --pane %2 --team linux-onboarding-e2e --name frontend-dev"));
     assert!(log.contains("mesh:daemon --pane %3 --team linux-onboarding-e2e --name reviewer"));
+
+    for pid in [frontend_runtime.daemon_pid, reviewer_runtime.daemon_pid]
+        .into_iter()
+        .flatten()
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
 }
