@@ -1,3 +1,5 @@
+import '../../app.css'
+
 import { cleanup, render } from '@testing-library/svelte'
 import { commands, page } from 'vitest/browser'
 
