@@ -3,6 +3,11 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use chrono::Utc;
+
+use crate::coordination::activity_export::{
+    default_activity_export_teams_dir, export_activity_snapshots_for_sessions,
+};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::ClaudeSession;
 use crate::session_scanner::SessionState;
@@ -192,6 +197,19 @@ impl SessionActivityHub {
 
             loop {
                 let sessions = crate::session_scanner::scan_sessions();
+                let export_stats = export_activity_snapshots_for_sessions(
+                    &default_activity_export_teams_dir(),
+                    &sessions,
+                    Utc::now(),
+                );
+                if export_stats.write_failures > 0 {
+                    tracing::warn!(
+                        teams_exported = export_stats.teams_exported,
+                        members_written = export_stats.members_written,
+                        write_failures = export_stats.write_failures,
+                        "activity snapshot export completed with write failures"
+                    );
+                }
                 let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
 
                 let changed = !state.initialized || activity_changed(&state.sessions, &sessions);
@@ -237,6 +255,8 @@ mod tests {
             state,
             session_id: None,
             jsonl_path: None,
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: crate::session_scanner::ActivityConfidence::Low,
             activity_attribution: crate::session_scanner::ActivityAttribution::None,
             project_unattributed_active: false,

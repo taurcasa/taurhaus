@@ -700,6 +700,8 @@ mod tests {
             state: crate::session_scanner::SessionState::Active,
             session_id: Some(session_id.to_string()),
             jsonl_path: None,
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: crate::session_scanner::ActivityConfidence::High,
             activity_attribution: crate::session_scanner::ActivityAttribution::Attributed,
             project_unattributed_active: false,

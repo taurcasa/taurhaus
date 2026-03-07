@@ -97,6 +97,12 @@ pub struct ClaudeSession {
     pub session_id: Option<String>,
     /// Path to the active JSONL transcript file (if found).
     pub jsonl_path: Option<String>,
+    /// Whether proc-level IO/network detection reported recent active work.
+    #[serde(default)]
+    pub recent_io: bool,
+    /// Seconds since the latest session output file change, if known.
+    #[serde(default)]
+    pub last_output_age_secs: Option<u64>,
     /// Confidence score for this session's current activity classification.
     #[serde(default)]
     pub activity_confidence: ActivityConfidence,
@@ -421,10 +427,16 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
             // Codex: per-PID IO hysteresis always; project-level file mtime only
             //   when this is the sole Codex session for the project.
             let process_signal_started = Instant::now();
-            let process_active = match proc.cli_tool {
-                CliTool::Claude => proc_io::is_process_active_hysteresis(proc.pid),
-                CliTool::Gemini => proc_io::has_api_connections(proc.pid),
-                CliTool::Codex => proc_io::is_process_active_hysteresis(proc.pid),
+            let (process_active, recent_io) = match proc.cli_tool {
+                CliTool::Claude => {
+                    let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                    (recent_io, recent_io)
+                }
+                CliTool::Gemini => (proc_io::has_api_connections(proc.pid), false),
+                CliTool::Codex => {
+                    let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                    (recent_io, recent_io)
+                }
             };
             process_signal_ms += process_signal_started.elapsed();
 
@@ -483,6 +495,8 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                 state,
                 session_id,
                 jsonl_path,
+                recent_io,
+                last_output_age_secs: idle_result.last_output_age_secs,
                 activity_confidence,
                 activity_attribution,
                 project_unattributed_active,
@@ -601,6 +615,8 @@ where
                 state: idle_result.state,
                 session_id: idle_result.session_id,
                 jsonl_path: idle_result.jsonl_path,
+                recent_io: false,
+                last_output_age_secs: idle_result.last_output_age_secs,
                 activity_confidence: ActivityConfidence::Low,
                 activity_attribution: ActivityAttribution::None,
                 project_unattributed_active: false,
@@ -656,6 +672,8 @@ mod tests {
             jsonl_path: Some(
                 "/home/user/.claude/projects/-home-user-projects-foo/abc-123.jsonl".to_string(),
             ),
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,
@@ -692,6 +710,8 @@ mod tests {
             state: SessionState::Idle,
             session_id: None,
             jsonl_path: None,
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
             project_unattributed_active: false,
@@ -752,12 +772,14 @@ mod tests {
                     jsonl_path: Some(
                         "/home/user/.claude/projects/proj-a/sess-aaa.jsonl".to_string(),
                     ),
+                    last_output_age_secs: None,
                 }
             } else {
                 idle::IdleResult {
                     state: SessionState::Idle,
                     session_id: None,
                     jsonl_path: None,
+                    last_output_age_secs: None,
                 }
             }
         };
@@ -795,6 +817,7 @@ mod tests {
             state: SessionState::Active,
             session_id: None,
             jsonl_path: None,
+            last_output_age_secs: None,
         });
         assert!(sessions.is_empty());
     }
@@ -1040,6 +1063,7 @@ mod tests {
             state: SessionState::Idle,
             session_id: None,
             jsonl_path: None,
+            last_output_age_secs: None,
         };
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
@@ -1082,6 +1106,7 @@ mod tests {
             state: SessionState::Active,
             session_id: None,
             jsonl_path: None,
+            last_output_age_secs: None,
         };
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);

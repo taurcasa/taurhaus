@@ -67,11 +67,14 @@ pub(super) fn claude_detect_idle(project_path: &str, projects_dir: &Path) -> Idl
     let state = most_recent_mtime(main_mtime, subagent_mtime)
         .map(|t| classify_mtime(t, ACTIVE_THRESHOLD))
         .unwrap_or(SessionState::Idle);
+    let last_output_age_secs =
+        most_recent_mtime(main_mtime, subagent_mtime).map(age_secs_since_mtime);
 
     IdleResult {
         state,
         session_id,
         jsonl_path: Some(jsonl_path),
+        last_output_age_secs,
     }
 }
 

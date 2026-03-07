@@ -70,7 +70,8 @@ pub(super) fn gemini_detect_idle(project_path: &str, base_dir: &Path) -> IdleRes
 
     let file_path = session_file.to_string_lossy().to_string();
 
-    let state = file_mtime(&session_file)
+    let output_mtime = file_mtime(&session_file);
+    let state = output_mtime
         .map(|t| classify_mtime(t, ACTIVE_THRESHOLD))
         .unwrap_or(SessionState::Idle);
 
@@ -78,6 +79,7 @@ pub(super) fn gemini_detect_idle(project_path: &str, base_dir: &Path) -> IdleRes
         state,
         session_id,
         jsonl_path: Some(file_path),
+        last_output_age_secs: output_mtime.map(age_secs_since_mtime),
     }
 }
 

@@ -258,6 +258,8 @@ mod tests {
             state: SessionState::Active,
             session_id: Some(session_id.to_string()),
             jsonl_path: None,
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,

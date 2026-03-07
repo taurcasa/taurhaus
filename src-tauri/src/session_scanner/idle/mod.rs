@@ -50,6 +50,8 @@ pub struct IdleResult {
     pub session_id: Option<String>,
     /// Full path to the active session file.
     pub jsonl_path: Option<String>,
+    /// Seconds since the latest observed session output file changed.
+    pub last_output_age_secs: Option<u64>,
 }
 
 impl IdleResult {
@@ -59,6 +61,7 @@ impl IdleResult {
             state: SessionState::Idle,
             session_id: None,
             jsonl_path: None,
+            last_output_age_secs: None,
         }
     }
 }
@@ -140,6 +143,13 @@ pub(super) fn classify_mtime(mtime: SystemTime, threshold: Duration) -> SessionS
 /// Get a file's modification time.
 pub(super) fn file_mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).ok()?.modified().ok()
+}
+
+pub(super) fn age_secs_since_mtime(mtime: SystemTime) -> u64 {
+    SystemTime::now()
+        .duration_since(mtime)
+        .unwrap_or(Duration::ZERO)
+        .as_secs()
 }
 
 /// Get the most recent mtime of any file in a directory (non-recursive).

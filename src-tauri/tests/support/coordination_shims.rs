@@ -19,39 +19,13 @@ pub mod provider {
 }
 
 pub mod session_scanner {
-    pub use taurhaus_lib::session_scanner::{scan_sessions, ActivityConfidence, SessionState};
+    pub use taurhaus_lib::session_scanner::{
+        scan_sessions, ActivityAttribution, ActivityConfidence, ClaudeSession, SessionGroupKind,
+        SessionState,
+    };
 
     pub mod cli_tool {
-        use serde::{Deserialize, Serialize};
-
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        #[serde(rename_all = "lowercase")]
-        pub enum CliTool {
-            Claude,
-            Codex,
-            Gemini,
-        }
-
-        impl std::fmt::Display for CliTool {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self {
-                    CliTool::Claude => write!(f, "claude"),
-                    CliTool::Codex => write!(f, "codex"),
-                    CliTool::Gemini => write!(f, "gemini"),
-                }
-            }
-        }
-
-        impl CliTool {
-            pub fn from_alias(raw: &str) -> Result<Self, String> {
-                match raw.trim().to_ascii_lowercase().as_str() {
-                    "claude" | "claude_native" => Ok(Self::Claude),
-                    "codex" | "mesh" | "mesh_bridged" => Ok(Self::Codex),
-                    "gemini" => Ok(Self::Gemini),
-                    _ => Err(format!("unsupported cli tool '{}'", raw.trim())),
-                }
-            }
-        }
+        pub use taurhaus_lib::session_scanner::cli_tool::CliTool;
     }
 
     pub mod control {

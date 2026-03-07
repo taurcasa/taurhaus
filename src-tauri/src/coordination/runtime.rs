@@ -53,6 +53,23 @@ pub trait CoordinationRuntime: Send + Sync {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError>;
+    fn spawn_team_daemon(
+        &self,
+        _team_name: &str,
+        _operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        Err(CoordinationError::Backend(
+            "team daemon start not implemented".to_string(),
+        ))
+    }
+    fn find_existing_mesh_daemon_pids(
+        &self,
+        _pane_id: &str,
+        _team_name: &str,
+        _member_name: &str,
+    ) -> Result<Vec<u32>, CoordinationError> {
+        Ok(Vec::new())
+    }
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -65,6 +82,16 @@ pub trait CoordinationRuntime: Send + Sync {
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError>;
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError>;
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError>;
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        _team_name: &str,
+        _member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        Ok(())
+    }
+    fn stop_team_daemon(&self, _team_name: &str) -> Result<(), CoordinationError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -277,6 +304,37 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         spawn_command_and_resolve_daemon_pid(&invocation, daemon_pid_path.as_deref())
     }
 
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        let daemon_pid_path = resolve_team_daemon_pid_path(team_name);
+        if let Some(pid_path) = daemon_pid_path.as_deref() {
+            if let Some(pid) = read_pid_file(pid_path) {
+                if is_process_running_by_pid_system(pid)? {
+                    return Ok(pid);
+                }
+            }
+        }
+
+        let mut args = vec![
+            "team-daemon".to_string(),
+            "start".to_string(),
+            "--team".to_string(),
+            team_name.to_string(),
+            "--name".to_string(),
+            operator_name.to_string(),
+        ];
+        if let Some(claude_dir) = resolve_mesh_cli_claude_dir_arg() {
+            args.push("--claude-dir".to_string());
+            args.push(claude_dir);
+        }
+        let mesh_path = mesh_cli::mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
+        let invocation = mesh_cli::command_invocation(&mesh_path, &args);
+        spawn_command_and_resolve_daemon_pid(&invocation, daemon_pid_path.as_deref())
+    }
+
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -293,6 +351,15 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "#{pane_current_path}".to_string(),
         ])?;
         Ok(normalize_path_for_compare(&pane_path) == normalize_path_for_compare(project_id))
+    }
+
+    fn find_existing_mesh_daemon_pids(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Vec<u32>, CoordinationError> {
+        find_existing_mesh_daemon_pids_system(pane_id, team_name, member_name)
     }
 
     fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
@@ -403,6 +470,26 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
         is_process_running_by_pid_system(pid)
     }
+
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        delete_pid_file_if_present(resolve_mesh_daemon_pid_path(team_name, member_name).as_deref())
+    }
+
+    fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+        let pid_path = resolve_team_daemon_pid_path(team_name);
+        if let Some(pid_path) = pid_path.as_deref() {
+            if let Some(pid) = read_pid_file(pid_path) {
+                if is_process_running_by_pid_system(pid)? {
+                    self.terminate_process_by_pid(pid)?;
+                }
+            }
+        }
+        delete_pid_file_if_present(pid_path.as_deref())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -452,6 +539,15 @@ pub enum RuntimeCall {
         team_name: String,
         member_name: String,
     },
+    SpawnTeamDaemon {
+        team_name: String,
+        operator_name: String,
+    },
+    FindDaemon {
+        pane_id: String,
+        team_name: String,
+        member_name: String,
+    },
     CheckPaneOwnership {
         pane_id: String,
         project_id: String,
@@ -477,6 +573,13 @@ pub enum RuntimeCall {
     CheckPid {
         pid: u32,
     },
+    ClearDaemonPidFile {
+        team_name: String,
+        member_name: String,
+    },
+    StopTeamDaemon {
+        team_name: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -488,6 +591,7 @@ pub struct RecordingCoordinationRuntime {
     pane_command: Mutex<HashMap<String, Option<String>>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
     pid_running: Mutex<HashMap<u32, bool>>,
+    daemon_matches: Mutex<HashMap<(String, String, String), Vec<u32>>>,
     pane_counter: AtomicUsize,
     pid_counter: AtomicU32,
 }
@@ -539,6 +643,25 @@ impl RecordingCoordinationRuntime {
     pub fn set_pid_running(&self, pid: u32, running: bool) {
         if let Ok(mut map) = self.pid_running.lock() {
             map.insert(pid, running);
+        }
+    }
+
+    pub fn set_matching_daemon_pids(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+        pids: &[u32],
+    ) {
+        if let Ok(mut map) = self.daemon_matches.lock() {
+            map.insert(
+                (
+                    pane_id.to_string(),
+                    team_name.to_string(),
+                    member_name.to_string(),
+                ),
+                pids.to_vec(),
+            );
         }
     }
 }
@@ -612,6 +735,43 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         });
         let pid = self.pid_counter.fetch_add(1, Ordering::SeqCst) + 10000;
         Ok(pid)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.push_call(RuntimeCall::SpawnTeamDaemon {
+            team_name: team_name.to_string(),
+            operator_name: operator_name.to_string(),
+        });
+        let pid = self.pid_counter.fetch_add(1, Ordering::SeqCst) + 10000;
+        Ok(pid)
+    }
+
+    fn find_existing_mesh_daemon_pids(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Vec<u32>, CoordinationError> {
+        self.push_call(RuntimeCall::FindDaemon {
+            pane_id: pane_id.to_string(),
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+        });
+        let key = (
+            pane_id.to_string(),
+            team_name.to_string(),
+            member_name.to_string(),
+        );
+        Ok(self
+            .daemon_matches
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&key).cloned())
+            .unwrap_or_default())
     }
 
     fn pane_belongs_to_project(
@@ -707,6 +867,25 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             .unwrap_or(false);
         Ok(running)
     }
+
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        self.push_call(RuntimeCall::ClearDaemonPidFile {
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+        });
+        Ok(())
+    }
+
+    fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+        self.push_call(RuntimeCall::StopTeamDaemon {
+            team_name: team_name.to_string(),
+        });
+        Ok(())
+    }
 }
 
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
@@ -775,6 +954,54 @@ fn read_pid_file(pid_path: &Path) -> Option<u32> {
         .and_then(|raw| raw.trim().parse::<u32>().ok())
 }
 
+fn delete_pid_file_if_present(pid_path: Option<&Path>) -> Result<(), CoordinationError> {
+    let Some(pid_path) = pid_path else {
+        return Ok(());
+    };
+    match fs::remove_file(pid_path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(CoordinationError::Io(err)),
+    }
+}
+
+fn find_existing_mesh_daemon_pids_system(
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
+) -> Result<Vec<u32>, CoordinationError> {
+    let mut matches = Vec::new();
+
+    if let Some(pid_path) = resolve_mesh_daemon_pid_path(team_name, member_name) {
+        if let Some(pid) = read_pid_file(&pid_path) {
+            if is_process_running_by_pid_system(pid)?
+                && process_matches_mesh_daemon(pid, pane_id, team_name, member_name)?
+            {
+                matches.push(pid);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        for entry in fs::read_dir("/proc").map_err(CoordinationError::Io)? {
+            let entry = entry.map_err(CoordinationError::Io)?;
+            let raw_name = entry.file_name();
+            let Ok(pid) = raw_name.to_string_lossy().parse::<u32>() else {
+                continue;
+            };
+            if matches.contains(&pid) {
+                continue;
+            }
+            if process_matches_mesh_daemon(pid, pane_id, team_name, member_name)? {
+                matches.push(pid);
+            }
+        }
+    }
+
+    Ok(matches)
+}
+
 fn resolve_mesh_daemon_pid_path(team_name: &str, member_name: &str) -> Option<PathBuf> {
     resolve_host_claude_dir().map(|claude_dir| {
         claude_dir
@@ -782,6 +1009,16 @@ fn resolve_mesh_daemon_pid_path(team_name: &str, member_name: &str) -> Option<Pa
             .join(team_name)
             .join("daemons")
             .join(format!("{member_name}.pid"))
+    })
+}
+
+fn resolve_team_daemon_pid_path(team_name: &str) -> Option<PathBuf> {
+    resolve_host_claude_dir().map(|claude_dir| {
+        claude_dir
+            .join("teams")
+            .join(team_name)
+            .join("daemons")
+            .join("team.pid")
     })
 }
 
@@ -811,6 +1048,74 @@ fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
     {
         resolve_host_claude_dir().map(|path| path.to_string_lossy().to_string())
     }
+}
+
+fn process_matches_mesh_daemon(
+    pid: u32,
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
+) -> Result<bool, CoordinationError> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (pid, pane_id, team_name, member_name);
+        Ok(true)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if !is_process_running_by_pid_system(pid)? {
+            return Ok(false);
+        }
+        let cmdline_path = PathBuf::from("/proc").join(pid.to_string()).join("cmdline");
+        let raw = match fs::read(cmdline_path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(err) => return Err(CoordinationError::Io(err)),
+        };
+        if raw.is_empty() {
+            return Ok(false);
+        }
+        let args = raw
+            .split(|byte| *byte == 0)
+            .filter(|part| !part.is_empty())
+            .map(|part| String::from_utf8_lossy(part).to_string())
+            .collect::<Vec<_>>();
+        Ok(command_matches_mesh_daemon(
+            &args,
+            pane_id,
+            team_name,
+            member_name,
+        ))
+    }
+}
+
+fn command_matches_mesh_daemon(
+    args: &[String],
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
+) -> bool {
+    let Some(program) = args.first() else {
+        return false;
+    };
+    let binary = program
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+    if binary != "mesh" && binary != "mesh.exe" {
+        return false;
+    }
+    args.iter().any(|arg| arg == "daemon")
+        && command_has_flag_value(args, "--pane", pane_id)
+        && command_has_flag_value(args, "--team", team_name)
+        && command_has_flag_value(args, "--name", member_name)
+}
+
+fn command_has_flag_value(args: &[String], flag: &str, expected: &str) -> bool {
+    args.windows(2)
+        .any(|pair| pair[0] == flag && pair[1] == expected)
 }
 
 fn is_process_running_by_pid_system(pid: u32) -> Result<bool, CoordinationError> {

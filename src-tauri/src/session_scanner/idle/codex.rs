@@ -114,7 +114,8 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
 
     let file_path = path.to_string_lossy().to_string();
 
-    let state = file_mtime(path)
+    let output_mtime = file_mtime(path);
+    let state = output_mtime
         .map(|t| classify_mtime(t, CODEX_ACTIVE_THRESHOLD))
         .unwrap_or(SessionState::Idle);
 
@@ -122,6 +123,7 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
         state,
         session_id,
         jsonl_path: Some(file_path),
+        last_output_age_secs: output_mtime.map(age_secs_since_mtime),
     }
 }
 

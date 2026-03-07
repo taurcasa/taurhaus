@@ -724,7 +724,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                 distro.as_deref(),
                                 crate::daemon::launcher::is_native_daemon(),
                             );
-                            crate::commands::command_center::enrich_sessions_with_team_membership(
+                            crate::coordination::activity_export::enrich_sessions_with_team_membership(
                                 app.state::<crate::coordination::state::CoordinationState>()
                                     .teams_dir(),
                                 &mut sessions,
@@ -802,6 +802,8 @@ mod tests {
             state: SessionState::Active,
             session_id: Some("sid".to_string()),
             jsonl_path: Some("/home/dev/.codex/sessions/x.jsonl".to_string()),
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,

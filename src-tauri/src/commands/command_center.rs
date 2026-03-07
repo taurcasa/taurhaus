@@ -9,14 +9,15 @@ use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::logging::LogFileState;
 use crate::commands::projects::DbState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::coordination::activity_export::enrich_sessions_with_team_membership;
 use crate::coordination::requests::{ResumeContextMode, ResumeMemberRequest};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::TeamConfigStore;
 use crate::daemon::protocol::{self, LaunchMode};
 use crate::errors::SanitizeErr;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{resolve_configured_tool_command, TMUX_SESSION_NAME};
-use crate::session_scanner::{ClaudeSession, SessionGroupKind, SessionState};
+use crate::session_scanner::{ClaudeSession, SessionState};
 use crate::ProviderState;
 use serde_json::{Map, Value};
 
@@ -99,14 +100,6 @@ fn normalize_project_path_key(path: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone)]
-struct SessionMembershipMetadata {
-    group_id: String,
-    group_label: String,
-    member_name: String,
-    pane_id: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TeamMemberMatch {
     team_name: String,
@@ -118,149 +111,6 @@ enum TeamMemberMatchResult {
     None,
     Unique(TeamMemberMatch),
     Ambiguous,
-}
-
-pub(crate) fn enrich_sessions_with_team_membership(
-    teams_dir: &Path,
-    sessions: &mut [ClaudeSession],
-) {
-    if sessions.is_empty() {
-        return;
-    }
-
-    let memberships = load_session_memberships(teams_dir);
-
-    let mut sessions_by_key = HashMap::new();
-
-    for (index, session) in sessions.iter_mut().enumerate() {
-        session.group_kind = SessionGroupKind::Standalone;
-        session.group_id = None;
-        session.group_label = None;
-        session.member_name = None;
-
-        let key = (
-            crate::provider::path::normalize_project_path(&session.project_path),
-            session.cli_tool,
-        );
-        sessions_by_key
-            .entry(key)
-            .or_insert_with(Vec::new)
-            .push(index);
-    }
-
-    for (key, session_indices) in sessions_by_key {
-        let Some(candidates) = memberships.get(&key) else {
-            continue;
-        };
-        assign_session_memberships(sessions, &session_indices, candidates);
-    }
-}
-
-fn load_session_memberships(
-    teams_dir: &Path,
-) -> HashMap<(String, CliTool), Vec<SessionMembershipMetadata>> {
-    let team_names = match TeamConfigStore::list(teams_dir) {
-        Ok(team_names) => team_names,
-        Err(error) => {
-            tracing::warn!(
-                teams_dir = %teams_dir.display(),
-                error = %error,
-                "Failed to list team configs while enriching session metadata"
-            );
-            return HashMap::new();
-        }
-    };
-
-    let mut memberships = HashMap::new();
-
-    for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
-            Err(error) => {
-                tracing::warn!(
-                    team_name = %team_name,
-                    error = %error,
-                    "Failed to load team config while enriching session metadata"
-                );
-                continue;
-            }
-        };
-        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
-            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
-            Err(error) => {
-                tracing::warn!(
-                    team_name = %team_name,
-                    error = %error,
-                    "Failed to load runtime records while enriching session metadata"
-                );
-                HashMap::new()
-            }
-        };
-
-        for member in config.members {
-            let key = (
-                crate::provider::path::normalize_project_path(
-                    &member.project_path.display().to_string(),
-                ),
-                member.cli_tool,
-            );
-
-            memberships
-                .entry(key)
-                .or_insert_with(Vec::new)
-                .push(SessionMembershipMetadata {
-                    group_id: config.name.clone(),
-                    group_label: config.name.clone(),
-                    member_name: member.name.clone(),
-                    pane_id: runtime_by_member
-                        .get(&member.name)
-                        .and_then(|runtime| runtime.pane_id.clone()),
-                });
-        }
-    }
-
-    memberships
-}
-
-fn assign_session_memberships(
-    sessions: &mut [ClaudeSession],
-    session_indices: &[usize],
-    candidates: &[SessionMembershipMetadata],
-) {
-    if session_indices.is_empty() || candidates.is_empty() {
-        return;
-    }
-
-    let mut unused_candidates = candidates.to_vec();
-    let mut assigned = HashMap::new();
-
-    for &index in session_indices {
-        let Some(tmux_pane) = sessions[index].tmux_pane.as_deref() else {
-            continue;
-        };
-        let Some(candidate_index) = unused_candidates
-            .iter()
-            .position(|candidate| candidate.pane_id.as_deref() == Some(tmux_pane))
-        else {
-            continue;
-        };
-        assigned.insert(index, unused_candidates.remove(candidate_index));
-    }
-
-    let mut fallback_candidates = unused_candidates.into_iter();
-    for &index in session_indices {
-        let metadata = assigned
-            .remove(&index)
-            .or_else(|| fallback_candidates.next());
-        let Some(metadata) = metadata else {
-            continue;
-        };
-
-        sessions[index].group_kind = SessionGroupKind::MeshTeam;
-        sessions[index].group_id = Some(metadata.group_id);
-        sessions[index].group_label = Some(metadata.group_label);
-        sessions[index].member_name = Some(metadata.member_name);
-    }
 }
 
 fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
@@ -950,7 +800,8 @@ mod tests {
         CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
     };
     use crate::coordination::state::CoordinationState;
-    use crate::coordination::stores::{MemberRuntimeRecord, TeamConfig};
+    use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfig};
+    use crate::session_scanner::SessionGroupKind;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::path::Path;
@@ -1102,6 +953,8 @@ mod tests {
             state: SessionState::Active,
             session_id: Some("sid".to_string()),
             jsonl_path: Some("/tmp/sid.jsonl".to_string()),
+            recent_io: false,
+            last_output_age_secs: None,
             activity_confidence: crate::session_scanner::ActivityConfidence::High,
             activity_attribution: crate::session_scanner::ActivityAttribution::Attributed,
             project_unattributed_active: false,
