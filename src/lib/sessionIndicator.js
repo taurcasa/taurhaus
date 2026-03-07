@@ -1,5 +1,6 @@
 /** Session indicator semantics for sidebar rows and HoverCard display. */
 
+import { getGroupedTeamAsset } from './groupedTeamAssets.js'
 import { getToolIcon, getToolName } from './toolLogos.js'
 
 const STACKING_THRESHOLD = 4
@@ -86,6 +87,7 @@ function buildTeamIndicator(group) {
   const activityLabel = isActive ? 'active' : 'idle'
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
   const tools = uniqueTools(members, 'sidebarSmall').slice(0, 3)
+  const groupedAsset = getGroupedTeamAsset(tools.map(tool => tool.tool))
 
   return {
     kind: 'team',
@@ -95,6 +97,7 @@ function buildTeamIndicator(group) {
     count,
     members,
     tools,
+    groupedAsset,
     memberTools: members.map(member => ({
       tool: member?.cli_tool || 'claude',
       fullName: getToolName(member?.cli_tool || 'claude'),

@@ -51,3 +51,4 @@ src-tauri/resources/*
 # Development screenshots (Playwright captures, visual reviews)
 *.png
 !docs/*.png
+!src/lib/assets/grouped-icons/*.png

@@ -130,27 +130,45 @@
                   }}
                 >
                   {#if ind.layout === 'stack'}
-                    <span class="sidebar-session-team-stack-logos" aria-hidden="true">
-                      {#each ind.tools as tool, index (tool.tool)}
-                        <span
-                          class="sidebar-session-team-stack-logo"
-                          class:sidebar-session-team-stack-logo-first={index === 0}
-                        >
-                          <svg class="sidebar-session-team-stack-glyph" viewBox={tool.icon.viewBox} fill="currentColor">
-                            <path d={tool.icon.path}></path>
+                    {#if ind.groupedAsset}
+                      <span
+                        class="sidebar-session-team-art sidebar-session-team-art-stack"
+                        style={`--sidebar-team-mask-image: url("${ind.groupedAsset.maskUrl}"); --sidebar-team-art-width: ${ind.groupedAsset.stackWidthPx}px;`}
+                        data-testid="sidebar-team-indicator-art"
+                        aria-hidden="true"
+                      ></span>
+                    {:else}
+                      <span class="sidebar-session-team-stack-logos" aria-hidden="true">
+                        {#each ind.tools as tool, index (tool.tool)}
+                          <span
+                            class="sidebar-session-team-stack-logo"
+                            class:sidebar-session-team-stack-logo-first={index === 0}
+                          >
+                            <svg class="sidebar-session-team-stack-glyph" viewBox={tool.icon.viewBox} fill="currentColor">
+                              <path d={tool.icon.path}></path>
+                            </svg>
+                          </span>
+                        {/each}
+                      </span>
+                    {/if}
+                    <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
+                  {:else}
+                    {#if ind.groupedAsset}
+                      <span
+                        class="sidebar-session-team-art sidebar-session-team-art-rail"
+                        style={`--sidebar-team-mask-image: url("${ind.groupedAsset.maskUrl}"); --sidebar-team-art-width: ${ind.groupedAsset.railWidthPx}px;`}
+                        data-testid="sidebar-team-indicator-art"
+                        aria-hidden="true"
+                      ></span>
+                    {:else}
+                      {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
+                        <span class="sidebar-session-team-rail-logo" aria-hidden="true">
+                          <svg class="sidebar-session-team-rail-glyph" viewBox={memberTool.icon.viewBox} fill="currentColor">
+                            <path d={memberTool.icon.path}></path>
                           </svg>
                         </span>
                       {/each}
-                    </span>
-                    <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
-                  {:else}
-                    {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
-                      <span class="sidebar-session-team-rail-logo" aria-hidden="true">
-                        <svg class="sidebar-session-team-rail-glyph" viewBox={memberTool.icon.viewBox} fill="currentColor">
-                          <path d={memberTool.icon.path}></path>
-                        </svg>
-                      </span>
-                    {/each}
+                    {/if}
                   {/if}
                 </span>
               {:else if ind.interactive}

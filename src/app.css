@@ -340,6 +340,29 @@ body {
   justify-content: center;
 }
 
+.sidebar-session-team-art {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sidebar-team-art-width, 27px);
+  height: 15px;
+  background-color: currentColor;
+  -webkit-mask-image: var(--sidebar-team-mask-image);
+  mask-image: var(--sidebar-team-mask-image);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.sidebar-session-team-art-stack {
+  margin-right: 4px;
+}
+
 .sidebar-session-team-rail-glyph,
 .sidebar-session-team-stack-glyph {
   width: 13px;
