@@ -27,6 +27,8 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 - **Rust test placement**: Command-layer modules use an external sibling `tests.rs`; lower-level modules keep inline `#[cfg(test)] mod tests`.
 - **Bun-only JS workflows**: Use `bun install`, `bun run`, and `bunx`. Do not use `npm` or `npx` in this repo.
 - **No over-engineering**: Don't abstract until there's actual duplication. Three similar lines beat a premature abstraction.
+- **Shared repo workflow**: This repo is routinely dirty because multiple agents and the team lead work in parallel. Ignore unrelated modified or untracked files in `git status`; only reason about files you are touching.
+- **When to escalate repo changes**: Never stop just because unrelated files changed. Escalate only if the same files you need to edit changed unexpectedly during your task, or if external changes block verification.
 
 ## Team Messaging Conventions
 

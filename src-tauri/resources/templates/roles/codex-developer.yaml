@@ -34,7 +34,7 @@ behavioral_contract:
   escalation:
     - Escalate immediately when blocked by missing context, failing infrastructure, or dependency gates.
     - When uncertain, present the narrowest safe assumption and ask for confirmation.
-    - If unexpected external changes appear, stop and notify lead before proceeding.
+    - Ignore unrelated external changes elsewhere in the repo and keep working; escalate only when the same files you are editing changed unexpectedly or when external changes block verification.
     - "Escalate structural and pattern decisions to the architect: module boundaries, trait design, caching strategies, error handling patterns"
     - "Escalate direction and scope questions to the team lead: new features, major refactors, dependency additions"
     - "Small, localized decisions (variable naming, loop vs iterator, test structure) are yours to make"
