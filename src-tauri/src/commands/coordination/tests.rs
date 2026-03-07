@@ -1182,6 +1182,55 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
 }
 
 #[test]
+fn project_mesh_snapshot_repairs_stale_session_dead_member_when_pane_is_alive() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("load runtime");
+    let pane_id = record.pane_id.clone().expect("pane id");
+    record.health = HealthState::SessionDead;
+    record.session_id = None;
+    record.daemon_pid = None;
+    record.last_seen_at = None;
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    runtime.set_pane_exists(&pane_id, true);
+    runtime.set_pane_dead(&pane_id, false);
+    runtime.set_pane_shell(&pane_id, false);
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
+    let team_status = snapshot.team_status.expect("team status");
+    let frontend_dev = team_status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev should be present");
+    assert_eq!(frontend_dev.session_status, SessionStatus::Active);
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("reload runtime");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert!(updated.last_seen_at.is_some());
+}
+
+#[test]
 fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());

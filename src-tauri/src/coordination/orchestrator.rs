@@ -523,49 +523,66 @@ impl CoordinationOrchestrator {
                 }
             };
 
-            // Write only when the persisted health is stale.
-            if !offline_detected || runtime.health == HealthState::SessionDead {
-                continue;
-            }
+            if offline_detected {
+                // Write only when the persisted health is stale.
+                if runtime.health == HealthState::SessionDead {
+                    continue;
+                }
 
-            runtime.health = HealthState::SessionDead;
-            runtime.session_id = None;
+                runtime.health = HealthState::SessionDead;
+                runtime.session_id = None;
 
-            if member.cli_tool != CliTool::Claude {
-                if let Some(pid) = runtime.daemon_pid {
-                    match self.runtime.is_process_running_by_pid(pid) {
-                        Ok(true) => {
-                            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                if member.cli_tool != CliTool::Claude {
+                    if let Some(pid) = runtime.daemon_pid {
+                        match self.runtime.is_process_running_by_pid(pid) {
+                            Ok(true) => {
+                                if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                                    tracing::warn!(
+                                        team = %team_name,
+                                        member = %member_name,
+                                        pid = pid,
+                                        error = %err,
+                                        "failed to terminate stale daemon during liveness reconciliation"
+                                    );
+                                }
+                            }
+                            Ok(false) => {}
+                            Err(err) => {
                                 tracing::warn!(
                                     team = %team_name,
                                     member = %member_name,
                                     pid = pid,
                                     error = %err,
-                                    "failed to terminate stale daemon during liveness reconciliation"
+                                    "failed to check daemon pid during liveness reconciliation"
                                 );
                             }
                         }
-                        Ok(false) => {}
-                        Err(err) => {
-                            tracing::warn!(
-                                team = %team_name,
-                                member = %member_name,
-                                pid = pid,
-                                error = %err,
-                                "failed to check daemon pid during liveness reconciliation"
-                            );
-                        }
+                        runtime.daemon_pid = None;
                     }
-                    runtime.daemon_pid = None;
                 }
+
+                MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+                tracing::info!(
+                    team = %team_name,
+                    member = %member_name,
+                    reason,
+                    "reconciled member liveness drift to offline"
+                );
+                continue;
             }
 
+            if runtime.health != HealthState::SessionDead {
+                continue;
+            }
+
+            runtime.health = HealthState::Healthy;
+            runtime.last_seen_at = Some(Utc::now());
             MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
             tracing::info!(
                 team = %team_name,
                 member = %member_name,
                 reason,
-                "reconciled member liveness drift to offline"
+                "reconciled member liveness drift to healthy"
             );
         }
 

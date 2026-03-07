@@ -1754,6 +1754,55 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
 }
 
 #[test]
+fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::SessionDead;
+    record.session_id = None;
+    record.daemon_pid = None;
+    record.pane_id = Some("%9".to_string());
+    record.attached_at = None;
+    record.last_seen_at = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert!(
+        updated.last_seen_at.is_some(),
+        "healthy repair should stamp last_seen_at"
+    );
+    assert_eq!(updated.pane_id.as_deref(), Some("%9"));
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, None);
+    assert!(
+        !runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
+        )),
+        "healthy repair should not run daemon cleanup"
+    );
+}
+
+#[test]
 fn liveness_reconcile_terminates_running_non_claude_daemon() {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
