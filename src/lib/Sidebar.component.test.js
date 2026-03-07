@@ -246,7 +246,7 @@ describe('Sidebar component branches', () => {
     expect(screen.getByTestId('sidebar-team-indicator').querySelectorAll('.sidebar-session-team-rail-logo')).toHaveLength(2)
   })
 
-  it('navigates grouped rail indicators to the lead tmux pane', async () => {
+  it('navigates grouped rail indicators to the lead tmux pane even when the lead has a custom name', async () => {
     const projects = [makeProjects(1)[0]]
     toolIndicators.mockImplementation(() => ([
       {
@@ -261,13 +261,15 @@ describe('Sidebar component branches', () => {
         ],
         members: [
           {
-            member_name: 'team-lead',
+            member_name: 'orchestrator',
+            role: 'lead',
             tmux_session: 'mesh',
             tmux_window: '4',
             tmux_pane: '%12',
           },
           {
             member_name: 'developer2',
+            role: 'member',
             tmux_session: 'mesh',
             tmux_window: '4',
             tmux_pane: '%13',
@@ -300,13 +302,15 @@ describe('Sidebar component branches', () => {
         ],
         members: [
           {
-            member_name: 'lead-architecture',
+            member_name: 'architect',
+            role: 'lead',
             tmux_session: 'mesh',
             tmux_window: '7',
             tmux_pane: '%21',
           },
           {
             member_name: 'developer2',
+            role: 'member',
             tmux_session: 'mesh',
             tmux_window: '7',
             tmux_pane: '%22',
@@ -340,12 +344,14 @@ describe('Sidebar component branches', () => {
         members: [
           {
             member_name: 'developer2',
+            role: 'member',
             tmux_session: 'mesh',
             tmux_window: '9',
             tmux_pane: '%31',
           },
           {
             member_name: 'developer3',
+            role: 'member',
             tmux_session: 'mesh',
             tmux_window: '9',
             tmux_pane: '%32',

@@ -26,12 +26,8 @@
     return Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
   }
 
-  function isLeadMemberName(memberName) {
-    const normalized = String(memberName ?? '').trim().toLowerCase()
-    return normalized === 'lead'
-      || normalized === 'team-lead'
-      || normalized.startsWith('lead-')
-      || normalized.startsWith('team-lead-')
+  function isLeadMember(member) {
+    return String(member?.role ?? '').trim().toLowerCase() === 'lead'
   }
 
   function groupedSessionTarget(indicator) {
@@ -39,7 +35,7 @@
       return null
     }
 
-    return indicator.members.find(member => isLeadMemberName(member?.member_name) && hasTmuxTarget(member))
+    return indicator.members.find(member => isLeadMember(member) && hasTmuxTarget(member))
       || indicator.members.find(hasTmuxTarget)
       || null
   }

@@ -757,13 +757,18 @@ export function createMeshTabController({
     if (mode !== 'runtime' || !teamName) return
 
     let disposed = false
+    let isPolling = false
 
     const pollRuntimeStatus = async () => {
+      if (isPolling) return
+      isPolling = true
       try {
         await refreshRuntimeTeamConfig(teamName, discoverySequence)
       } catch (error) {
         if (disposed) return
         console.warn('[meshTab] runtime status refresh failed:', error)
+      } finally {
+        isPolling = false
       }
     }
 
