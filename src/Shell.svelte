@@ -16,6 +16,18 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createAsyncGuard } from './lib/asyncGuard.js'
+  import {
+    applyNavEntryState,
+    buildProjectSelectionState,
+    classifyMarkdownNavigateAction,
+    createProjectPosition,
+    normalizeMarkdownTarget,
+    switchTabState,
+  } from './lib/shell/navigation.svelte.js'
+  import {
+    setupSessionPollingLifecycle,
+    setupShellEventListeners,
+  } from './lib/shell/events.svelte.js'
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
@@ -160,13 +172,13 @@
 
   function saveProjectPosition() {
     if (!selectedProject) return
-    projectPositions.set(selectedProject.id, {
-      tab: activeTab,
-      visitedTabs: new Set(visitedTabs),
-      file: filesPosition?.selectedFile ?? null,
-      gitPosition: gitPosition ? { ...gitPosition } : null,
-      taskPosition: taskPosition ? { ...taskPosition } : null,
-    })
+    projectPositions.set(selectedProject.id, createProjectPosition({
+      activeTab,
+      visitedTabs,
+      filesPosition,
+      gitPosition,
+      taskPosition,
+    }))
   }
 
   function navigateToCommit(hash) {
@@ -366,145 +378,73 @@
   // - Tauri runtime: event-driven via daemon bridge (`sessions-updated`)
   // - Fallback polling stays on until bridge events are observed
   $effect(() => {
-    if (isTauri() && sessionBridgeLive) {
-      return
-    }
-
-    startSessionPolling()
-
-    // Pause polling when document is hidden
-    function onVisibilityChange() {
-      if (document.hidden) {
-        stopSessionPolling()
-      } else {
-        startSessionPolling()
-      }
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-
-    return () => {
-      stopSessionPolling()
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
+    return setupSessionPollingLifecycle({
+      isTauri: isTauri(),
+      sessionBridgeLive,
+      startPolling: startSessionPolling,
+      stopPolling: stopSessionPolling,
+      doc: document,
+    })
   })
 
   // Tauri real-time event listeners (ADR-022)
   $effect(() => {
-    if (!isTauri()) return
-    let destroyed = false
-    let cleanups = []
-
-    function runListenerHandler(eventName, handler, event) {
-      try {
-        const maybePromise = handler(event)
-        if (maybePromise && typeof maybePromise.then === 'function') {
-          maybePromise.catch((error) => {
-            console.error(`[events] listener '${eventName}' handler failed:`, error)
-          })
-        }
-      } catch (error) {
-        console.error(`[events] listener '${eventName}' handler failed:`, error)
-      }
-    }
-
-    function registerListener(listen, eventName, handler) {
-      listen(eventName, (event) => runListenerHandler(eventName, handler, event))
-        .then((unlisten) => {
-          if (destroyed) {
-            unlisten()
-            return
-          }
-          cleanups.push(unlisten)
-        })
-        .catch((error) => {
-          console.error(`[events] failed to register listener '${eventName}':`, error)
-        })
-    }
-
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      if (destroyed) return
-      // Git status changed — refresh sidebar project status
-      registerListener(listen, 'project-git-changed', (event) => {
-        const { project_id } = event.payload
-        const isDirty = event.payload?.isDirty ?? event.payload?.is_dirty
+    return setupShellEventListeners({
+      enabled: isTauri(),
+      loadEventApi: () => import('@tauri-apps/api/event'),
+      onProjectGitChanged: (payload) => {
+        const { project_id } = payload
+        const isDirty = payload?.isDirty ?? payload?.is_dirty
         const idx = projects.findIndex(p => p.id === project_id)
-        if (idx !== -1 && event.payload.branch !== undefined) {
-          projects[idx] = { ...projects[idx], branch: event.payload.branch, isDirty }
+        if (idx !== -1 && payload.branch !== undefined) {
+          projects[idx] = { ...projects[idx], branch: payload.branch, isDirty }
         }
         if (selectedProject?.id === project_id) {
-          selectedProject = { ...selectedProject, branch: event.payload.branch ?? selectedProject.branch, isDirty: isDirty ?? selectedProject.isDirty }
+          selectedProject = { ...selectedProject, branch: payload.branch ?? selectedProject.branch, isDirty: isDirty ?? selectedProject.isDirty }
         }
-      })
-
-      // Session imported — refresh session display
-      registerListener(listen, 'session-imported', (event) => {
-        const { project_id } = event.payload
+      },
+      onSessionImported: ({ project_id }) => {
         if (selectedProject?.id === project_id) {
           loadSessions(project_id)
         }
-      })
-
-      // Startup reseed complete — reload project list to pick up cached git status
-      registerListener(listen, 'projects-reseed-complete', () => {
+      },
+      onProjectsReseedComplete: () => {
         loadProjects()
-      })
-
-      // File changes — central handler for all file-change responses.
-      // Invalidates caches, refreshes Overview README, and signals
-      // FilesTab to refresh via the fileChangePaths reactive prop.
-      registerListener(listen, 'project-files-changed', (event) => {
-        const { project_id, paths } = event.payload
-        // Invalidate asset cache for changed images
+      },
+      onProjectFilesChanged: ({ project_id, paths }) => {
         if (paths?.length) {
           for (const p of paths) {
             if (/\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$/i.test(p)) {
               assetCache.invalidateProject(project_id)
-              break // one invalidation is enough per event batch
+              break
             }
           }
         }
         if (project_id !== selectedProject?.id) return
-        // Refresh README in Overview tab
         if (anyPathMatches(paths, /readme\.md$/i)) {
           loadReadmeForOverview(project_id)
         }
-        // Signal FilesTab to refresh (it reads this reactively)
         fileChangePaths = paths
-      })
-
-      // Daemon status changes (bootstrap chain + health check)
-      registerListener(listen, 'daemon-status', (event) => {
-        const { status } = event.payload
+      },
+      onDaemonStatus: ({ status }) => {
         daemonStatus = status
         if (status !== 'connected') {
           sessionBridgeLive = false
         }
         clearTimeout(daemonStatusDismissTimer)
-        // Auto-dismiss "connected" after 3 seconds
         if (status === 'connected') {
           daemonStatusDismissTimer = setTimeout(() => { daemonStatus = null }, 3000)
         }
-      })
-
-      // Session activity updates from daemon bridge (event-driven above daemon).
-      registerListener(listen, 'sessions-updated', (event) => {
+      },
+      onSessionsUpdated: (payload) => {
         sessionBridgeLive = true
-        applyDaemonSessionUpdate(event.payload)
-      })
-
-      // Prime the session store once on startup so indicators do not stay empty
-      // until the first pushed delta arrives.
-      if (!destroyed) {
+        applyDaemonSessionUpdate(payload)
+      },
+      onHydrateSessions: () => {
         hydrateSessionsFromBackend()
-      }
-    }).catch((error) => {
-      console.error('[events] failed to initialize Tauri listeners:', error)
+      },
+      logger: console,
     })
-
-    return () => {
-      destroyed = true
-      cleanups.forEach(u => u())
-    }
   })
 
   async function loadProjects() {
@@ -564,7 +504,6 @@
     saveProjectPosition()
 
     const savedPosition = projectPositions.get(projectId)
-    const restoredTab = savedPosition?.tab || 'overview'
     const generation = selectLoadGuard.next()
 
     projectLoadIssues = []
@@ -587,31 +526,35 @@
       console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
     }
 
-    // Commit everything in one synchronous block to avoid waterfall rendering.
-    selectedProject = detail.value ? { ...project, ...detail.value } : project
-    detailLoading = false
-    showAllCommits = false
-    activeTab = restoredTab
-    visitedTabs = savedPosition?.visitedTabs || new Set([restoredTab])
+    const nextState = buildProjectSelectionState({
+      project,
+      detail: detail.value,
+      commits: commits.value,
+      latest: latest.value,
+      sessionList: sessionList.value,
+      readme: readme.value,
+      relationships: rels.value,
+      savedPosition,
+    })
+
+    selectedProject = nextState.selectedProject
+    detailLoading = nextState.detailLoading
+    showAllCommits = nextState.showAllCommits
+    activeTab = nextState.activeTab
+    visitedTabs = nextState.visitedTabs
     resetNav()
-    pushNav({ tab: restoredTab, file: savedPosition?.file })
-    if (savedPosition?.gitPosition?.selectedHash) {
-      gitNavTarget = { type: 'commit', hash: savedPosition.gitPosition.selectedHash }
-    } else if (savedPosition?.gitPosition?.rangeFilter) {
-      gitNavTarget = { type: 'range', ...savedPosition.gitPosition.rangeFilter }
-    } else {
-      gitNavTarget = null
-    }
-    taskNavTarget = savedPosition?.taskPosition ?? null
-    recentCommits = commits.value || []
-    commitsLoading = false
-    latestSession = latest.value
-    sessionHistory = sessionList.value || []
-    sessionLoading = false
-    readmeContent = readme.value
-    relationships = rels.value || []
-    relationshipsLoading = false
-    filesNavTarget = savedPosition?.file ? { file: savedPosition.file } : null
+    pushNav(nextState.navEntry)
+    gitNavTarget = nextState.gitNavTarget
+    taskNavTarget = nextState.taskNavTarget
+    recentCommits = nextState.recentCommits
+    commitsLoading = nextState.commitsLoading
+    latestSession = nextState.latestSession
+    sessionHistory = nextState.sessionHistory
+    sessionLoading = nextState.sessionLoading
+    readmeContent = nextState.readmeContent
+    relationships = nextState.relationships
+    relationshipsLoading = nextState.relationshipsLoading
+    filesNavTarget = nextState.filesNavTarget
   }
 
   async function loadSessions(projectId) {
@@ -761,21 +704,20 @@
   }
 
   function switchTab(tab, navEntry) {
-    visitedTabs = new Set([...visitedTabs, tab])
-    activeTab = tab
+    const nextState = switchTabState(visitedTabs, tab)
+    visitedTabs = nextState.visitedTabs
+    activeTab = nextState.activeTab
     pushNav(navEntry || { tab })
   }
 
   /** Restore a navigation history entry (back/forward). */
   function applyNavEntry(entry) {
     navWithSuppressed(() => {
-      visitedTabs = new Set([...visitedTabs, entry.tab])
-      activeTab = entry.tab
-      if (entry.tab === 'files' && entry.file) {
-        filesNavTarget = { file: entry.file, lineNumber: entry.lineNumber }
-      }
-      if (entry.tab === 'git' && entry.commit) gitNavTarget = { type: 'commit', hash: entry.commit }
-      if (entry.tab === 'git' && entry.rangeFilter) gitNavTarget = { type: 'range', ...entry.rangeFilter }
+      const nextState = applyNavEntryState(visitedTabs, entry)
+      visitedTabs = nextState.visitedTabs
+      activeTab = nextState.activeTab
+      filesNavTarget = nextState.filesNavTarget
+      gitNavTarget = nextState.gitNavTarget
     })
   }
 
@@ -846,65 +788,11 @@
     }
   })
 
-  function normalizeMarkdownTarget(relativePath, contextFile) {
-    let resolved = relativePath.replace(/#.*$/, '')
-    if (!resolved) return null
-    resolved = resolved.replace(/^\.\//, '')
-
-    const prefixParts = []
-    if (contextFile && !resolved.startsWith('/')) {
-      const dir = contextFile.includes('/') ? contextFile.replace(/\/[^/]+$/, '') : ''
-      if (dir) prefixParts.push(...dir.split('/'))
-    }
-
-    const normalized = []
-    const platformSegments = []
-    let escapedAboveRoot = false
-
-    for (const part of [...prefixParts, ...resolved.split('/')]) {
-      if (!part || part === '.') continue
-      if (part === '..') {
-        if (escapedAboveRoot) {
-          if (platformSegments.length > 0) platformSegments.pop()
-        } else if (normalized.length > 0) {
-          normalized.pop()
-        } else {
-          escapedAboveRoot = true
-        }
-        continue
-      }
-      if (escapedAboveRoot) {
-        platformSegments.push(part)
-      } else {
-        normalized.push(part)
-      }
-    }
-
-    return {
-      resolvedPath: normalized.join('/'),
-      escapedAboveRoot,
-      platformSegments,
-    }
-  }
-
-  function buildPlatformRouteUrl(remoteUrl, routeSegments) {
-    if (!remoteUrl) return null
-    const base = remoteUrl.replace(/\/+$/, '')
-    const route = routeSegments.filter(Boolean).join('/')
-    return route ? `${base}/${route}` : base
-  }
-
   async function handleMarkdownNavigate(relativePath) {
     if (!selectedProject) return
 
-    // Ignore in-document anchors.
     if (!relativePath || relativePath.startsWith('#')) return
 
-    const fragmentMatch = relativePath.match(/#(.+)$/)
-    const anchor = fragmentMatch ? fragmentMatch[1] : null
-
-    // In Overview, resolve links against README path.
-    // In Files, resolve against the selected file.
     const contextFile = activeTab === 'overview'
       ? readmeContent?.path
       : (filesPosition?.selectedFile || readmeContent?.path)
@@ -912,9 +800,7 @@
     const normalized = normalizeMarkdownTarget(relativePath, contextFile)
     if (!normalized) return
 
-    const { resolvedPath, escapedAboveRoot, platformSegments } = normalized
-
-    if (escapedAboveRoot) {
+    if (normalized.escapedAboveRoot) {
       let remoteUrl = null
       try {
         remoteUrl = await getRemoteUrl(selectedProject.id)
@@ -928,38 +814,50 @@
         return
       }
 
-      const externalUrl = buildPlatformRouteUrl(remoteUrl, platformSegments)
-      if (!externalUrl) return
-      console.log(`[markdown] navigate platform route: "${relativePath}" → "${externalUrl}"`)
-      openExternalUrl(externalUrl).catch((err) => {
-        console.error(`[markdown] failed to open platform route URL: ${externalUrl}`, err)
+      const action = classifyMarkdownNavigateAction({
+        relativePath,
+        contextFile,
+        remoteUrl,
+        pathType: 'not_found',
+      })
+      if (!action?.url) return
+      console.log(`[markdown] navigate platform route: "${relativePath}" → "${action.url}"`)
+      openExternalUrl(action.url).catch((err) => {
+        console.error(`[markdown] failed to open platform route URL: ${action.url}`, err)
       })
       return
     }
 
     let pathType = 'not_found'
     try {
-      pathType = await checkPathType(selectedProject.id, resolvedPath)
+      pathType = await checkPathType(selectedProject.id, normalized.resolvedPath)
     } catch (err) {
-      console.warn(`[markdown] failed to classify path: "${resolvedPath}"`, err)
+      console.warn(`[markdown] failed to classify path: "${normalized.resolvedPath}"`, err)
       return
     }
 
-    if (pathType === 'directory') {
-      console.log(`[markdown] navigate directory: "${relativePath}" → "${resolvedPath}"`)
-      filesNavTarget = { directory: resolvedPath }
+    const action = classifyMarkdownNavigateAction({
+      relativePath,
+      contextFile,
+      remoteUrl: null,
+      pathType,
+    })
+
+    if (action?.type === 'directory') {
+      console.log(`[markdown] navigate directory: "${relativePath}" → "${action.directory}"`)
+      filesNavTarget = { directory: action.directory }
       switchTab('files', { tab: 'files' })
       return
     }
 
-    if (pathType === 'file') {
-      console.log(`[markdown] navigate: "${relativePath}" → "${resolvedPath}"${anchor ? ` #${anchor}` : ''}`)
-      filesNavTarget = { file: resolvedPath, anchor }
-      switchTab('files', { tab: 'files', file: resolvedPath })
+    if (action?.type === 'file') {
+      console.log(`[markdown] navigate: "${relativePath}" → "${action.file}"${action.anchor ? ` #${action.anchor}` : ''}`)
+      filesNavTarget = { file: action.file, anchor: action.anchor }
+      switchTab('files', { tab: 'files', file: action.file })
       return
     }
 
-    console.warn(`[markdown] unresolved markdown path (not_found): "${relativePath}" → "${resolvedPath}"`)
+    console.warn(`[markdown] unresolved markdown path (not_found): "${relativePath}" → "${normalized.resolvedPath}"`)
   }
 
   async function handleSearchNavigate(action) {

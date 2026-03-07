@@ -557,6 +557,7 @@ describe('selectProject flow', () => {
   })
 
   it('calls all IPC functions in parallel', async () => {
+    vi.useFakeTimers()
     function createDeferred() {
       /** @type {(value: any) => void} */
       let resolve
@@ -582,6 +583,8 @@ describe('selectProject flow', () => {
 
     const loadPromise = loadProjectSelectionData('p1', ipc)
 
+    expect(ipc.getProject).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(26)
     expect(ipc.getProject).toHaveBeenCalledWith('p1')
     expect(ipc.getRecentCommits).toHaveBeenCalledWith('p1', 10)
     expect(ipc.getLatestSession).toHaveBeenCalledWith('p1')
