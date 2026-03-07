@@ -27,8 +27,22 @@ ensure-tauri-resources:
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
-check: fmt lint typecheck test
-    @echo "Full quality gate passed."
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    log_dir=".check-logs"
+    mkdir -p "$log_dir"
+    log_path="$log_dir/check-$(date +%F-%H%M%S).log"
+    : > "$log_path"
+    exec > >(tee -a "$log_path") 2>&1
+    trap 'status=$?; if [ "$status" -ne 0 ]; then echo "just check failed with exit code $status"; fi' EXIT
+    echo "Logging full check output to $log_path"
+    ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
+    just fmt
+    just lint
+    just typecheck
+    just test
+    echo "Full quality gate passed."
 
 # Backward-compatible alias for the full quality gate.
 # Prefer: `just check`.
