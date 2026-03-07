@@ -256,6 +256,7 @@
   <div
     class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm"
     data-testid="search-overlay"
+    data-shell-overlay
   >
     <button
       type="button"

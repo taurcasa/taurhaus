@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+import '../app.css'
 
 function createDeferred() {
   let resolve
@@ -18,6 +21,8 @@ vi.mock('./ipc.js', () => ({
 
 const { search } = await import('./ipc.js')
 import SearchOverlay from './SearchOverlay.svelte'
+
+const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
 
 describe('SearchOverlay', () => {
   beforeEach(() => {
@@ -94,6 +99,33 @@ describe('SearchOverlay', () => {
 
     rerender({ open: false })
     expect(screen.queryByTestId('search-overlay')).not.toBeInTheDocument()
+  })
+
+  it('keeps the search overlay out of the shell frame flow', () => {
+    const shellFrame = document.createElement('div')
+    shellFrame.className = 'shell-frame'
+    document.body.appendChild(shellFrame)
+
+    const mainContent = document.createElement('div')
+    mainContent.setAttribute('data-testid', 'shell-main-content')
+    shellFrame.appendChild(mainContent)
+
+    render(SearchOverlay, {
+      target: shellFrame,
+      props: { open: true },
+    })
+
+    // Regression: commit 188211f reintroduced `.shell-frame > * { position: relative }`,
+    // which overrode Tailwind's `.fixed` on direct-child overlays and pushed both
+    // SearchOverlay and AddProjectModal into normal document flow.
+    const overlay = screen.getByTestId('search-overlay')
+    expect(overlay).toHaveAttribute('data-shell-overlay')
+    expect(appCss).toContain('.shell-frame > :not([data-shell-overlay])')
+    expect(appCss).not.toContain('.shell-frame > * {\n  position: relative;')
+    expect(shellFrame.firstElementChild).toBe(mainContent)
+    expect(shellFrame.lastElementChild).toBe(overlay)
+
+    shellFrame.remove()
   })
 
   it('shows no-results state when search resolves empty', async () => {

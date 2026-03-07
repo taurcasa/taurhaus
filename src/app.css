@@ -258,7 +258,7 @@ body {
   mix-blend-mode: soft-light;
 }
 
-.shell-frame > * {
+.shell-frame > :not([data-shell-overlay]) {
   position: relative;
   z-index: 1;
 }

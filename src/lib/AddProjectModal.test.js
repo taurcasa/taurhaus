@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+import '../app.css'
 
 vi.mock('./ipc.js', () => ({
   scanDirectory: vi.fn(),
@@ -50,6 +53,8 @@ const {
   validateProjectPath,
 } = await import('./ipc.js')
 import AddProjectModal from './AddProjectModal.svelte'
+
+const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
 
 describe('AddProjectModal', () => {
   beforeEach(() => {
@@ -334,6 +339,39 @@ describe('AddProjectModal', () => {
 
     await fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps the manage projects overlay out of the shell frame flow', async () => {
+    const shellFrame = document.createElement('div')
+    shellFrame.className = 'shell-frame'
+    document.body.appendChild(shellFrame)
+
+    const mainContent = document.createElement('div')
+    mainContent.setAttribute('data-testid', 'shell-main-content')
+    shellFrame.appendChild(mainContent)
+
+    render(AddProjectModal, {
+      target: shellFrame,
+      props: {
+        dark: false,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('manage-projects-modal')).toBeInTheDocument()
+    })
+
+    // Regression: commit 188211f reintroduced `.shell-frame > * { position: relative }`,
+    // which overrode Tailwind's `.fixed` on direct-child overlays and pushed the app
+    // content upward instead of floating Manage Projects above it.
+    const backdrop = screen.getByTestId('manage-projects-backdrop')
+    expect(backdrop).toHaveAttribute('data-shell-overlay')
+    expect(appCss).toContain('.shell-frame > :not([data-shell-overlay])')
+    expect(appCss).not.toContain('.shell-frame > * {\n  position: relative;')
+    expect(shellFrame.firstElementChild).toBe(mainContent)
+    expect(shellFrame.lastElementChild).toBe(backdrop)
+
+    shellFrame.remove()
   })
 
   it('traps Tab focus inside modal and restores trigger focus on close', async () => {
