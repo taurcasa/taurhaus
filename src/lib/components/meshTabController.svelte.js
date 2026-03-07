@@ -108,6 +108,7 @@ export function createMeshTabController({
   let runtimeRefreshMeta = null
   let teamResumeProgressTimer = null
   let hydrationPerf = null
+  let pendingProjectSnapshot = null
 
   const selectedNode = $derived.by(() => {
     const config = teamConfig
@@ -402,9 +403,35 @@ export function createMeshTabController({
     return normalized
   }
 
+  function getProjectSnapshot(projectPath) {
+    const normalizedProjectPath = String(projectPath ?? '').trim()
+    if (!normalizedProjectPath) {
+      return Promise.resolve(null)
+    }
+    if (pendingProjectSnapshot?.projectPath === normalizedProjectPath) {
+      return pendingProjectSnapshot.promise
+    }
+
+    const promise = coordinationGetProjectMeshSnapshot(normalizedProjectPath).finally(() => {
+      if (
+        pendingProjectSnapshot?.projectPath === normalizedProjectPath &&
+        pendingProjectSnapshot?.promise === promise
+      ) {
+        pendingProjectSnapshot = null
+      }
+    })
+
+    pendingProjectSnapshot = {
+      projectPath: normalizedProjectPath,
+      promise,
+    }
+    return promise
+  }
+
   async function refreshProjectMeshSnapshot(sequence, options = {}) {
     const projectPath = getProjectPath()
-    const snapshot = await coordinationGetProjectMeshSnapshot(projectPath)
+    const snapshot = await getProjectSnapshot(projectPath)
+    if (!snapshot) return null
     if (sequence !== discoverySequence) return null
     setMeshCache(projectPath, snapshot)
     const normalized = applyProjectSnapshot(snapshot, projectPath, options)
@@ -586,12 +613,19 @@ export function createMeshTabController({
     })
   }
 
+  function invalidateDiscovery() {
+    discoverySequence += 1
+    clearRuntimeTeamRefresh()
+    hydrationPerf = null
+  }
+
   function closeSlideOver() {
     slideOver = null
     slideOverContext = null
   }
 
   async function handlePresetSelect(preset) {
+    invalidateDiscovery()
     const sequence = ++presetSelectionSequence
     const presetId = preset?.presetId ?? preset?.preset_id ?? ''
     let resolvedPreset = preset
@@ -621,6 +655,7 @@ export function createMeshTabController({
   }
 
   function handleStartCustom() {
+    invalidateDiscovery()
     const projectPath = getProjectPath()
     teamConfig = {
       lead: createLead({ id: 'lead', name: 'team-lead', tool: 'claude', status: 'offline' }, projectPath),

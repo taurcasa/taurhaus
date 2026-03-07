@@ -894,9 +894,50 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
+    await waitFor(() => {
+      expect(getMeshCache('/projects/taurhaus')).toEqual(snapshot)
+    })
     expect(screen.getByTestId('mesh-empty-state')).toBeInTheDocument()
     expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledWith('/projects/taurhaus')
-    expect(getMeshCache('/projects/taurhaus')).toEqual(snapshot)
+  })
+
+  it('dedupes project snapshot IPC while activation visibility churn happens during a pending load', async () => {
+    const snapshotLoad = deferred()
+    coordinationGetProjectMeshSnapshot.mockReturnValueOnce(snapshotLoad.promise)
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    const meshTab = screen.getByTestId('mesh-tab')
+    const host = meshTab.parentElement
+    expect(host).toBeTruthy()
+
+    host.classList.add('hidden')
+    await Promise.resolve()
+    host.classList.remove('hidden')
+    await Promise.resolve()
+    host.classList.add('hidden')
+    await Promise.resolve()
+    host.classList.remove('hidden')
+    await Promise.resolve()
+
+    expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledTimes(1)
+
+    snapshotLoad.resolve(buildProjectMeshSnapshot({
+      meshAvailable: true,
+      tmuxAvailable: true,
+      teamName: null,
+      teamStatus: null,
+      warnings: [],
+    }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
   })
 
   it('background live refresh patches member status after cached render', async () => {
@@ -1375,11 +1416,13 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-availability-inline')).toHaveTextContent(
+        'Mesh CLI is unavailable'
+      )
     })
 
+    expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-mode-gate')).not.toBeInTheDocument()
-    expect(screen.getByTestId('mesh-availability-inline')).toHaveTextContent('Mesh CLI is unavailable')
     expect(coordinationPreflightCheck).not.toHaveBeenCalled()
   })
 

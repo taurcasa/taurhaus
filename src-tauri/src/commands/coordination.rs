@@ -668,7 +668,12 @@ fn coordination_get_project_mesh_snapshot_impl(
     project_path: String,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     let availability = availability_check();
-    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+    coordination_get_project_mesh_snapshot_with_availability(
+        state,
+        project_path,
+        availability,
+        project_mesh_snapshot_runtime_probes_enabled(),
+    )
 }
 
 fn coordination_preflight_check_impl(
@@ -707,13 +712,19 @@ fn coordination_get_project_mesh_snapshot_with_lookup<L: BinaryLookup + ?Sized>(
     lookup: &L,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     let availability = availability_check_with_lookup(lookup);
-    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+    coordination_get_project_mesh_snapshot_with_availability(
+        state,
+        project_path,
+        availability,
+        true,
+    )
 }
 
 fn coordination_get_project_mesh_snapshot_with_availability(
     state: &CoordinationState,
     project_path: String,
     availability: BackendAvailabilityReport,
+    runtime_probes_enabled: bool,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     validate_non_empty("project_path", &project_path)?;
     let project_path = crate::provider::path::normalize_project_path(project_path.trim());
@@ -724,7 +735,7 @@ fn coordination_get_project_mesh_snapshot_with_availability(
         Some(
             state
                 .with_orchestrator(|orchestrator| {
-                    if availability.tmux_available {
+                    if availability.tmux_available && runtime_probes_enabled {
                         orchestrator.reconcile_team_liveness(team_name)?;
                     }
                     orchestrator.get_team_status_fast(team_name)
@@ -745,6 +756,26 @@ fn coordination_get_project_mesh_snapshot_with_availability(
         team_status,
         warnings: discovery.warnings,
     })
+}
+
+fn project_mesh_snapshot_runtime_probes_enabled() -> bool {
+    !cfg!(target_os = "windows")
+}
+
+#[cfg(test)]
+fn coordination_get_project_mesh_snapshot_with_probe_mode<L: BinaryLookup + ?Sized>(
+    state: &CoordinationState,
+    project_path: String,
+    lookup: &L,
+    runtime_probes_enabled: bool,
+) -> Result<ProjectMeshSnapshotResponse, String> {
+    let availability = availability_check_with_lookup(lookup);
+    coordination_get_project_mesh_snapshot_with_availability(
+        state,
+        project_path,
+        availability,
+        runtime_probes_enabled,
+    )
 }
 
 fn validate_and_collect_preflight_agents(
