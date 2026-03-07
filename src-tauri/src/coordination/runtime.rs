@@ -4,6 +4,8 @@
 //! single interface so tests can run against a deterministic runtime double.
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -20,8 +22,11 @@ const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
 const TMUX_POST_ENTER_DELAY: Duration = Duration::from_secs(1);
 const SESSION_DETECT_ATTEMPTS: usize = 6;
 const SESSION_DETECT_INTERVAL: Duration = Duration::from_millis(200);
+const DAEMON_START_ATTEMPTS: usize = 30;
+const DAEMON_START_INTERVAL: Duration = Duration::from_millis(100);
 const TMUX_SPLIT_MAX_PANES: usize = 4;
 const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
+const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
 pub trait CoordinationRuntime: Send + Sync {
     fn create_aitx_pane(
@@ -246,17 +251,30 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError> {
-        let invocation = mesh_command_invocation(&[
-            "daemon",
-            "--pane",
-            pane_id,
-            "--team",
-            team_name,
-            "--name",
-            member_name,
-        ]);
-        let child = spawn_system_command(&invocation)?;
-        Ok(child.id())
+        let mut args = vec![
+            "daemon".to_string(),
+            "--pane".to_string(),
+            pane_id.to_string(),
+            "--team".to_string(),
+            team_name.to_string(),
+            "--name".to_string(),
+            member_name.to_string(),
+        ];
+        if let Some(claude_dir) = resolve_mesh_cli_claude_dir_arg() {
+            args.push("--claude-dir".to_string());
+            args.push(claude_dir);
+        }
+        let mesh_path = mesh_cli::mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
+        let invocation = mesh_cli::command_invocation(&mesh_path, &args);
+        let daemon_pid_path = resolve_mesh_daemon_pid_path(team_name, member_name);
+        if daemon_pid_path.is_none() {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                "unable to resolve mesh daemon pid path; falling back to launcher pid"
+            );
+        }
+        spawn_command_and_resolve_daemon_pid(&invocation, daemon_pid_path.as_deref())
     }
 
     fn pane_belongs_to_project(
@@ -383,52 +401,7 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     }
 
     fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
-        #[cfg(target_os = "windows")]
-        let pid_arg = pid.to_string();
-        #[cfg(not(target_os = "windows"))]
-        if pid == 0 || pid > i32::MAX as u32 {
-            return Ok(false);
-        }
-        #[cfg(not(target_os = "windows"))]
-        let pid_arg = pid.to_string();
-
-        #[cfg(target_os = "windows")]
-        let invocation = CommandInvocation {
-            program: "tasklist".to_string(),
-            args: vec!["/FI".to_string(), format!("PID eq {pid_arg}")],
-        };
-        #[cfg(not(target_os = "windows"))]
-        let invocation = CommandInvocation {
-            program: "kill".to_string(),
-            args: vec!["-0".to_string(), pid_arg.clone()],
-        };
-
-        let output = run_system_command(&invocation)?;
-        #[cfg(target_os = "windows")]
-        {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                return Err(CoordinationError::Backend(format!(
-                    "pid check failed ({} {}): {}",
-                    invocation.program,
-                    invocation.args.join(" "),
-                    stderr
-                )));
-            }
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            Ok(stdout.contains(&pid_arg))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            if output.status.success() {
-                return Ok(true);
-            }
-            let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
-            if stderr.contains("operation not permitted") {
-                return Ok(true);
-            }
-            Ok(false)
-        }
+        is_process_running_by_pid_system(pid)
     }
 }
 
@@ -738,6 +711,155 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
 
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
     mesh_cli::mesh_command_invocation(args)
+}
+
+fn spawn_command_and_resolve_daemon_pid(
+    invocation: &CommandInvocation,
+    daemon_pid_path: Option<&Path>,
+) -> Result<u32, CoordinationError> {
+    let mut child = spawn_system_command(invocation)?;
+    let Some(daemon_pid_path) = daemon_pid_path else {
+        return Ok(child.id());
+    };
+
+    match wait_for_daemon_pid_file(daemon_pid_path) {
+        Ok(pid) => Ok(pid),
+        Err(err) => {
+            let launcher_status = child
+                .try_wait()
+                .map_err(CoordinationError::Io)?
+                .map(|status| format!("launcher exited with status {status}"))
+                .unwrap_or_else(|| format!("launcher pid {} still alive", child.id()));
+            Err(CoordinationError::Backend(format!(
+                "daemon startup verification failed for {} {}: {err}; {launcher_status}",
+                invocation.program,
+                invocation.args.join(" ")
+            )))
+        }
+    }
+}
+
+fn wait_for_daemon_pid_file(daemon_pid_path: &Path) -> Result<u32, CoordinationError> {
+    wait_for_daemon_pid_file_with_retries(
+        daemon_pid_path,
+        DAEMON_START_ATTEMPTS,
+        DAEMON_START_INTERVAL,
+    )
+}
+
+fn wait_for_daemon_pid_file_with_retries(
+    daemon_pid_path: &Path,
+    attempts: usize,
+    interval: Duration,
+) -> Result<u32, CoordinationError> {
+    for attempt in 0..attempts {
+        if let Some(pid) = read_pid_file(daemon_pid_path) {
+            if is_process_running_by_pid_system(pid)? {
+                return Ok(pid);
+            }
+        }
+        if attempt + 1 < attempts {
+            thread::sleep(interval);
+        }
+    }
+
+    Err(CoordinationError::Backend(format!(
+        "timed out waiting for live daemon pid at {}",
+        daemon_pid_path.display()
+    )))
+}
+
+fn read_pid_file(pid_path: &Path) -> Option<u32> {
+    fs::read_to_string(pid_path)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u32>().ok())
+}
+
+fn resolve_mesh_daemon_pid_path(team_name: &str, member_name: &str) -> Option<PathBuf> {
+    resolve_host_claude_dir().map(|claude_dir| {
+        claude_dir
+            .join("teams")
+            .join(team_name)
+            .join("daemons")
+            .join(format!("{member_name}.pid"))
+    })
+}
+
+fn resolve_host_claude_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        mesh_cli::resolve_windows_mesh_teams_dir()
+            .and_then(|teams_dir| teams_dir.parent().map(Path::to_path_buf))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
+        }
+        dirs::home_dir().map(|home| home.join(".claude"))
+    }
+}
+
+fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        mesh_cli::resolve_wsl_home_for_coordination().map(|home| format!("{home}/.claude"))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        resolve_host_claude_dir().map(|path| path.to_string_lossy().to_string())
+    }
+}
+
+fn is_process_running_by_pid_system(pid: u32) -> Result<bool, CoordinationError> {
+    #[cfg(target_os = "windows")]
+    let pid_arg = pid.to_string();
+    #[cfg(not(target_os = "windows"))]
+    if pid == 0 || pid > i32::MAX as u32 {
+        return Ok(false);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let pid_arg = pid.to_string();
+
+    #[cfg(target_os = "windows")]
+    let invocation = CommandInvocation {
+        program: "tasklist".to_string(),
+        args: vec!["/FI".to_string(), format!("PID eq {pid_arg}")],
+    };
+    #[cfg(not(target_os = "windows"))]
+    let invocation = CommandInvocation {
+        program: "kill".to_string(),
+        args: vec!["-0".to_string(), pid_arg.clone()],
+    };
+
+    let output = run_system_command(&invocation)?;
+    #[cfg(target_os = "windows")]
+    {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(CoordinationError::Backend(format!(
+                "pid check failed ({} {}): {}",
+                invocation.program,
+                invocation.args.join(" "),
+                stderr
+            )));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.contains(&pid_arg))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if output.status.success() {
+            return Ok(true);
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+        if stderr.contains("operation not permitted") {
+            return Ok(true);
+        }
+        Ok(false)
+    }
 }
 
 fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
@@ -1188,6 +1310,58 @@ mod tests {
                 RuntimeCall::CheckPid { pid: 10000 },
             ]
         );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn wait_for_daemon_pid_file_with_retries_rejects_stale_pid() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let pid_path = dir.path().join("agent.pid");
+        std::fs::write(&pid_path, "0\n").expect("write pid");
+
+        let err = wait_for_daemon_pid_file_with_retries(&pid_path, 1, Duration::ZERO)
+            .expect_err("stale pid should be rejected");
+
+        assert!(err
+            .to_string()
+            .contains("timed out waiting for live daemon pid"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn spawn_command_and_resolve_daemon_pid_returns_pid_file_process() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let script_path = dir.path().join("spawn-daemon.sh");
+        let pid_path = dir.path().join("agent.pid");
+
+        std::fs::write(
+            &script_path,
+            "#!/bin/sh\nsleep 5 &\nprintf '%s\\n' \"$!\" > \"$1\"\n",
+        )
+        .expect("write script");
+
+        let invocation = CommandInvocation {
+            program: "sh".to_string(),
+            args: vec![
+                script_path.to_string_lossy().to_string(),
+                pid_path.to_string_lossy().to_string(),
+            ],
+        };
+
+        let pid = spawn_command_and_resolve_daemon_pid(&invocation, Some(&pid_path))
+            .expect("resolve daemon pid");
+        let recorded_pid = std::fs::read_to_string(&pid_path)
+            .expect("read pid")
+            .trim()
+            .parse::<u32>()
+            .expect("parse pid");
+
+        assert_eq!(pid, recorded_pid);
+        assert!(is_process_running_by_pid_system(pid).expect("pid should be running"));
+
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
     }
 
     #[test]

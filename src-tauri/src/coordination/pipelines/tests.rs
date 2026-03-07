@@ -1,4 +1,5 @@
 use super::*;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -718,6 +719,70 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
     assert_eq!(updated.health, HealthState::Healthy);
     assert_eq!(updated.daemon_pid, Some(10000));
     assert!(updated.attached_at.is_some());
+}
+
+#[test]
+fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add member");
+
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+    member_runtime.pane_id = Some("%77".to_string());
+    member_runtime.daemon_pid = Some(55);
+    member_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
+        .expect("save runtime");
+
+    runtime.set_pane_exists("%77", true);
+    runtime.set_pane_dead("%77", false);
+    runtime.set_pane_ownership("%77", false);
+
+    let report = orchestrator
+        .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+        .expect("resume report");
+    assert!(report.resumed);
+    assert!(!report.reused_pane);
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder")
+        .expect("updated runtime");
+    assert_eq!(updated.pane_id.as_deref(), Some("test-pane-1"));
+    assert_eq!(updated.daemon_pid, Some(10000));
+
+    let raw_config = fs::read_to_string(tmp.path().join("architecture-final").join("config.json"))
+        .expect("read config");
+    let config: serde_json::Value = serde_json::from_str(&raw_config).expect("parse config");
+    let builder = config["members"]
+        .as_array()
+        .expect("members array")
+        .iter()
+        .find(|member| member["name"].as_str() == Some("builder"))
+        .expect("builder entry");
+    assert_eq!(builder["tmuxPaneId"].as_str(), Some("test-pane-1"));
 }
 
 #[test]
