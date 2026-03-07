@@ -13,6 +13,7 @@ vi.mock('../ipc.js', () => ({
   coordinationListTeams: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
   coordinationRemoveMember: vi.fn(),
+  coordinationResumeTeam: vi.fn(),
   coordinationResumeMember: vi.fn(),
   getRoleTemplate: vi.fn(),
   getTeamPreset: vi.fn(),
@@ -33,6 +34,7 @@ const {
   coordinationListTeams,
   coordinationPreflightCheck,
   coordinationRemoveMember,
+  coordinationResumeTeam,
   coordinationResumeMember,
   getRoleTemplate,
   getTeamPreset,
@@ -82,6 +84,7 @@ describe('Mesh flow smoke', () => {
       meshAvailable: overrides.meshAvailable ?? true,
       tmuxAvailable: overrides.tmuxAvailable ?? true,
       teamName: overrides.teamName ?? null,
+      teamRuntimeState: overrides.teamRuntimeState ?? 'none',
       teamStatus: overrides.teamStatus ?? null,
       warnings: overrides.warnings ?? [],
     }
@@ -185,6 +188,17 @@ describe('Mesh flow smoke', () => {
       message: 'member removed',
       steps: [],
       warnings: [],
+    })
+
+    coordinationResumeTeam.mockResolvedValue({
+      teamName: 'taurhaus-team',
+      resumed: true,
+      totalMembers: 2,
+      resumedMembers: ['team-lead', 'frontend-dev'],
+      failedMembers: [],
+      warnings: [],
+      startedTeamDaemon: false,
+      teamDaemonWarning: null,
     })
 
     coordinationResumeMember.mockResolvedValue({

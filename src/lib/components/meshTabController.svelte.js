@@ -5,6 +5,7 @@ import {
   coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
   coordinationRemoveMember,
+  coordinationResumeTeam,
   coordinationResumeMember,
   getTeamPreset,
   listRoleTemplates,
@@ -92,6 +93,8 @@ export function createMeshTabController({
   let roleTemplates = $state([])
   let loadingRoles = $state(false)
   let captureRoleDialog = $state(null)
+  let teamRuntimeState = $state('none')
+  let teamResumeProgress = $state(null)
 
   let discoverySequence = 0
   let presetSelectionSequence = 0
@@ -135,17 +138,143 @@ export function createMeshTabController({
     captureRoleDialog && typeof captureRoleDialog === 'object' ? captureRoleDialog : null
   )
 
+  const runtimeBanner = $derived.by(() => {
+    if (teamRuntimeState === 'coldResume') return 'cold_resume'
+    if (teamRuntimeState === 'degraded') return 'degraded'
+    return null
+  })
+
+  const isResumingTeam = $derived.by(() => Boolean(teamResumeProgress?.inFlight))
+
   const canSaveCapturedRole = $derived.by(() => {
     const draft = captureRoleDraft
     if (!draft || draft.submitting) return false
     return String(draft.name || '').trim().length > 0 && String(draft.roleId || '').trim().length > 0
   })
 
+  function normalizeTeamRuntimeState(value) {
+    const normalized = String(value ?? '')
+      .trim()
+      .toLowerCase()
+    if (normalized === 'active') return 'active'
+    if (normalized === 'degraded') return 'degraded'
+    if (normalized === 'coldresume' || normalized === 'cold_resume') return 'coldResume'
+    return 'none'
+  }
+
+  function classifyTeamRuntimeStateFromMembers(teamName, members) {
+    if (!teamName) return 'none'
+    const roster = Array.isArray(members) ? members : []
+    if (roster.length === 0) return 'active'
+    const liveMembers = roster.filter((member) => {
+      const status = String(member?.sessionStatus ?? member?.status ?? '').trim().toLowerCase()
+      return status !== 'offline'
+    }).length
+    if (liveMembers === 0) return 'coldResume'
+    if (liveMembers === roster.length) return 'active'
+    return 'degraded'
+  }
+
+  function buildResumeTargetNames(config) {
+    const members = [config?.lead, ...(config?.agents ?? [])].filter(Boolean)
+    const offlineMembers = members
+      .filter((member) => String(member?.status ?? '').trim().toLowerCase() === 'offline')
+      .map((member) => String(member?.name ?? '').trim())
+      .filter(Boolean)
+    if (offlineMembers.length > 0) return offlineMembers
+    return members.map((member) => String(member?.name ?? '').trim()).filter(Boolean)
+  }
+
+  function normalizeResumeTeamReport(report) {
+    if (!report || typeof report !== 'object') return null
+    return {
+      teamName: report?.teamName ?? report?.team_name ?? '',
+      resumed: Boolean(report?.resumed),
+      totalMembers: Number(report?.totalMembers ?? report?.total_members ?? 0),
+      resumedMembers: Array.isArray(report?.resumedMembers)
+        ? report.resumedMembers
+        : Array.isArray(report?.resumed_members)
+          ? report.resumed_members
+          : [],
+      failedMembers: Array.isArray(report?.failedMembers)
+        ? report.failedMembers
+        : Array.isArray(report?.failed_members)
+          ? report.failed_members
+          : [],
+      warnings: Array.isArray(report?.warnings) ? report.warnings : [],
+      startedTeamDaemon: Boolean(report?.startedTeamDaemon ?? report?.started_team_daemon),
+      teamDaemonWarning: report?.teamDaemonWarning ?? report?.team_daemon_warning ?? null,
+    }
+  }
+
+  function buildResumeProgressItems(targetNames, report = null, fallbackError = '') {
+    const normalizedReport = normalizeResumeTeamReport(report)
+    const names = Array.isArray(targetNames) ? [...targetNames] : []
+    const resumedMembers = new Set(normalizedReport?.resumedMembers ?? [])
+    const failedEntries = normalizedReport?.failedMembers ?? []
+    const failedMap = new Map(
+      failedEntries
+        .map((entry) => ({
+          memberName: entry?.memberName ?? entry?.member_name ?? '',
+          message: entry?.message ?? 'Failed',
+        }))
+        .filter((entry) => entry.memberName)
+        .map((entry) => [entry.memberName, entry])
+    )
+
+    for (const memberName of resumedMembers) {
+      if (!names.includes(memberName)) names.push(memberName)
+    }
+    for (const memberName of failedMap.keys()) {
+      if (!names.includes(memberName)) names.push(memberName)
+    }
+
+    return names.map((memberName) => {
+      if (!normalizedReport && !fallbackError) {
+        return { memberName, status: 'pending', message: 'Waiting to resume' }
+      }
+      if (resumedMembers.has(memberName)) {
+        return { memberName, status: 'succeeded', message: 'Resumed' }
+      }
+      if (failedMap.has(memberName)) {
+        return {
+          memberName,
+          status: 'failed',
+          message: failedMap.get(memberName)?.message ?? 'Failed',
+        }
+      }
+      if (fallbackError) {
+        return { memberName, status: 'failed', message: fallbackError }
+      }
+      return { memberName, status: 'pending', message: 'Pending' }
+    })
+  }
+
+  function buildResumeTeamMessage(report) {
+    const normalizedReport = normalizeResumeTeamReport(report)
+    if (!normalizedReport) return 'Team resume finished.'
+    const resumedSummary = normalizedReport.resumedMembers.length
+      ? `Resumed: ${normalizedReport.resumedMembers.join(', ')}.`
+      : 'No members were resumed.'
+    const failedSummary = normalizedReport.failedMembers.length
+      ? `Failed: ${normalizedReport.failedMembers
+          .map((entry) => `${entry?.memberName ?? entry?.member_name ?? 'unknown'}${entry?.message ? ` (${entry.message})` : ''}`)
+          .join(', ')}.`
+      : ''
+    if (normalizedReport.failedMembers.length > 0) {
+      return `Resume completed with failures. ${resumedSummary} ${failedSummary}`.trim()
+    }
+    return `Resume complete. ${resumedSummary}`.trim()
+  }
+
   function normalizeProjectMeshSnapshot(snapshot) {
     return {
       meshAvailable: snapshot?.meshAvailable ?? snapshot?.mesh_available ?? true,
       tmuxAvailable: snapshot?.tmuxAvailable ?? snapshot?.tmux_available ?? true,
       teamName: snapshot?.teamName ?? snapshot?.team_name ?? null,
+      teamRuntimeState: normalizeTeamRuntimeState(
+        snapshot?.teamRuntimeState ?? snapshot?.team_runtime_state ?? 'none'
+      ),
       teamStatus: snapshot?.teamStatus ?? snapshot?.team_status ?? null,
       warnings: Array.isArray(snapshot?.warnings) ? snapshot.warnings : [],
     }
@@ -186,6 +315,7 @@ export function createMeshTabController({
       meshAvailable: normalized.meshAvailable,
       tmuxAvailable: normalized.tmuxAvailable,
       teamName: normalized.teamName,
+      teamRuntimeState: classifyTeamRuntimeStateFromMembers(normalized.teamName, members),
       warnings: normalized.warnings,
       teamStatus: normalized.teamName
         ? {
@@ -196,11 +326,14 @@ export function createMeshTabController({
     }
   }
 
-  function applyProjectSnapshot(snapshot, projectPath) {
+  function applyProjectSnapshot(snapshot, projectPath, { preserveNotices = false } = {}) {
     const normalized = normalizeProjectMeshSnapshot(snapshot)
     availabilityMessage = buildAvailabilityMessage(normalized)
-    errorMessage = ''
-    runtimeMessage = ''
+    teamRuntimeState = normalized.teamRuntimeState
+    if (!preserveNotices) {
+      errorMessage = ''
+      runtimeMessage = ''
+    }
 
     if (normalized.teamName && normalized.teamStatus) {
       teamName = normalized.teamName
@@ -218,7 +351,20 @@ export function createMeshTabController({
 
     teamName = inferTeamName(projectPath)
     teamConfig = null
+    teamRuntimeState = 'none'
     mode = 'empty'
+    return normalized
+  }
+
+  async function refreshProjectMeshSnapshot(sequence, options = {}) {
+    const projectPath = getProjectPath()
+    const snapshot = await coordinationGetProjectMeshSnapshot(projectPath)
+    if (sequence !== discoverySequence) return null
+    setMeshCache(projectPath, snapshot)
+    const normalized = applyProjectSnapshot(snapshot, projectPath, options)
+    if (normalized.teamName && normalized.teamStatus) {
+      await refreshRuntimeTeamConfig(normalized.teamName, sequence, snapshot)
+    }
     return normalized
   }
 
@@ -280,13 +426,7 @@ export function createMeshTabController({
 
   async function hydrateProjectMesh(projectPath, sequence) {
     try {
-      const snapshot = await coordinationGetProjectMeshSnapshot(projectPath)
-      if (sequence !== discoverySequence) return
-      setMeshCache(projectPath, snapshot)
-      const normalized = applyProjectSnapshot(snapshot, projectPath)
-      if (normalized.teamName && normalized.teamStatus) {
-        void refreshRuntimeTeamConfig(normalized.teamName, sequence, snapshot)
-      }
+      await refreshProjectMeshSnapshot(sequence)
     } catch (error) {
       if (sequence !== discoverySequence) return
       availabilityMessage = ''
@@ -309,6 +449,8 @@ export function createMeshTabController({
     captureRoleDialog = null
     confirmContext = null
     availabilityMessage = ''
+    teamRuntimeState = 'none'
+    teamResumeProgress = null
     errorMessage = ''
     runtimeMessage = ''
 
@@ -423,6 +565,7 @@ export function createMeshTabController({
   }
 
   function openAddAgentPanel() {
+    if (isResumingTeam) return
     const projectPath = getProjectPath()
     const projectOptions = (getAvailableProjects() ?? [])
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
@@ -491,6 +634,7 @@ export function createMeshTabController({
   }
 
   async function submitAddAgent() {
+    if (isResumingTeam) return
     const draft = addAgentDraft
     if (!draft || !canSubmitAddAgent) return
     slideOverContext = { ...draft, submitting: true, error: '' }
@@ -520,6 +664,7 @@ export function createMeshTabController({
   }
 
   function openCaptureRoleDialog() {
+    if (isResumingTeam) return
     if (!selectedNode || mode !== 'runtime') return
     const roleName = String(selectedNode.name || '').trim() || 'captured-role'
     const normalizedContract = normalizeBehavioralContract(selectedNode.behavioralContract)
@@ -583,6 +728,7 @@ export function createMeshTabController({
   }
 
   async function handleConfirmAction() {
+    if (isResumingTeam) return
     if (!confirmContext) return
     const action = confirmContext
     confirmContext = null
@@ -618,6 +764,7 @@ export function createMeshTabController({
   }
 
   async function resumeSelected(contextMode = 'continue') {
+    if (isResumingTeam) return
     if (!selectedNode || selectedNode.role !== 'agent') return
     try {
       const report = await coordinationResumeMember(teamName, selectedNode.name, contextMode === 'fresh' ? 'fresh' : 'continue')
@@ -690,7 +837,48 @@ export function createMeshTabController({
   }
 
   function requestDisband() {
+    if (isResumingTeam) return
     if (teamName) confirmContext = { kind: 'disband' }
+  }
+
+  async function resumeTeam(contextMode = 'continue') {
+    if (!teamName || !runtimeBanner || isResumingTeam) return
+
+    const targetNames = buildResumeTargetNames(teamConfig)
+    teamResumeProgress = {
+      inFlight: true,
+      items: buildResumeProgressItems(targetNames),
+    }
+    errorMessage = ''
+    runtimeMessage = ''
+
+    try {
+      const report = await coordinationResumeTeam(
+        teamName,
+        contextMode === 'fresh' ? 'fresh' : 'continue'
+      )
+      teamResumeProgress = {
+        inFlight: false,
+        items: buildResumeProgressItems(targetNames, report),
+      }
+
+      const normalizedReport = normalizeResumeTeamReport(report)
+      if (!normalizedReport?.resumed && normalizedReport?.failedMembers?.length) {
+        runtimeMessage = buildResumeTeamMessage(normalizedReport)
+      } else {
+        runtimeMessage = buildResumeTeamMessage(normalizedReport)
+      }
+
+      const sequence = ++discoverySequence
+      await refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
+    } catch (error) {
+      const message = error?.message || 'Failed to resume team.'
+      teamResumeProgress = {
+        inFlight: false,
+        items: buildResumeProgressItems(targetNames, null, message),
+      }
+      errorMessage = message
+    }
   }
 
   function cancelConfirm() {
@@ -761,6 +949,7 @@ export function createMeshTabController({
 
     const pollRuntimeStatus = async () => {
       if (isPolling) return
+      if (isResumingTeam) return
       isPolling = true
       try {
         await refreshRuntimeTeamConfig(teamName, discoverySequence)
@@ -823,6 +1012,18 @@ export function createMeshTabController({
     get roleTemplates() {
       return roleTemplates
     },
+    get teamRuntimeState() {
+      return teamRuntimeState
+    },
+    get runtimeBanner() {
+      return runtimeBanner
+    },
+    get isResumingTeam() {
+      return isResumingTeam
+    },
+    get teamResumeProgress() {
+      return teamResumeProgress
+    },
     get loadingRoles() {
       return loadingRoles
     },
@@ -863,6 +1064,7 @@ export function createMeshTabController({
     toggleCaptureRoleFlag,
     submitCaptureRole,
     handleConfirmAction,
+    resumeTeam,
     resumeSelected,
     stopSelected,
     focusSelectedPane,

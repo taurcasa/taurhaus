@@ -1824,6 +1824,28 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    it('coordinationResumeTeam calls invoke with request and returns deterministic mock shape', async () => {
+      const mockModeResult = await ipc.coordinationResumeTeam('arch', 'continue')
+      expect(mockModeResult).toEqual({
+        teamName: 'arch',
+        resumed: true,
+        totalMembers: 2,
+        resumedMembers: ['team-lead', 'frontend-dev'],
+        failedMembers: [],
+        warnings: [],
+        startedTeamDaemon: false,
+        teamDaemonWarning: null,
+      })
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ ok: true })
+      await ipc.coordinationResumeTeam('arch', 'fresh')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_resume_team', {
+        request: { teamName: 'arch', contextMode: 'fresh' },
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('coordinationGetFeatureAvailability calls invoke and returns deterministic mock shape', async () => {
       const mockModeResult = await ipc.coordinationGetFeatureAvailability()
       expect(mockModeResult).toEqual({
@@ -1881,6 +1903,7 @@ describe('ipc module', () => {
         meshAvailable: true,
         tmuxAvailable: true,
         teamName: 'mock-team',
+        teamRuntimeState: 'active',
         teamStatus: {
           leadName: 'team-lead',
           members: [

@@ -13,6 +13,9 @@
     teamConfig = null,
     selectedNode = null,
     selectedNodeId = null,
+    runtimeBanner = null,
+    isResumingTeam = false,
+    resumeProgress = null,
     availableProjects = [],
     addAgentOpen = false,
     addAgentDraft = null,
@@ -24,6 +27,7 @@
     onNodeClick = () => {},
     onOpenAddAgent = () => {},
     onRequestDisband = () => {},
+    onResumeTeam = () => {},
     onCloseNode = () => {},
     onResumeSelected = () => {},
     onStopSelected = () => {},
@@ -92,10 +96,79 @@
 
 <div class="px-4 pt-2 pb-4 space-y-3">
   <div class="space-y-3 animate-[meshfade_180ms_ease-out]" data-testid="mesh-mode-runtime">
+    {#if runtimeBanner}
+      <section
+        class="rounded-xl border px-4 py-3 shadow-sm {dark ? 'border-warning-500/30 bg-warning-500/8 text-warning-100' : 'border-warning-300/80 bg-warning-50 text-warning-900'}"
+        data-testid="mesh-runtime-banner"
+      >
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="space-y-1">
+            <h3 class="text-sm font-semibold">
+              {runtimeBanner === 'cold_resume' ? 'Team is offline after restart' : 'Some team members are offline'}
+            </h3>
+            <p class="text-xs opacity-90">
+              {runtimeBanner === 'cold_resume'
+                ? 'Config still exists on disk, but no live panes were found.'
+                : 'At least one persisted team member is offline and can be resumed from here.'}
+            </p>
+          </div>
+
+          <button
+            class="inline-flex items-center justify-center rounded-md bg-brand-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            type="button"
+            onclick={() => onResumeTeam('continue')}
+            disabled={isResumingTeam}
+            data-testid="mesh-runtime-banner-cta"
+          >
+            {#if isResumingTeam}
+              Resuming...
+            {:else if runtimeBanner === 'cold_resume'}
+              Resume Team
+            {:else}
+              Resume Offline Members
+            {/if}
+          </button>
+        </div>
+      </section>
+    {/if}
+
+    {#if resumeProgress?.items?.length}
+      <section
+        class="rounded-xl border px-4 py-3 {dark ? 'border-white/10 bg-white/[0.03]' : 'border-brand-200/70 bg-white/80'}"
+        data-testid="mesh-runtime-resume-progress"
+      >
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold {dark ? 'text-zinc-100' : 'text-zinc-900'}">
+            {isResumingTeam ? 'Resuming team members' : 'Latest resume result'}
+          </h3>
+          <span class="text-[11px] uppercase tracking-wide {dark ? 'text-zinc-400' : 'text-zinc-500'}">
+            {isResumingTeam ? 'In progress' : 'Completed'}
+          </span>
+        </div>
+
+        <ul class="space-y-1.5">
+          {#each resumeProgress.items as item}
+            <li class="flex items-start justify-between gap-3 text-xs" data-testid={`mesh-runtime-resume-item-${item.memberName}`}>
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold {item.status === 'succeeded' ? (dark ? 'bg-success-500/20 text-success-300' : 'bg-success-100 text-success-700') : item.status === 'failed' ? (dark ? 'bg-danger-500/20 text-danger-300' : 'bg-danger-100 text-danger-700') : (dark ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-600')}">
+                  {item.status === 'succeeded' ? '✓' : item.status === 'failed' ? '×' : '…'}
+                </span>
+                <span class="truncate {dark ? 'text-zinc-100' : 'text-zinc-900'}">{item.memberName}</span>
+              </div>
+              <span class="shrink-0 text-right {item.status === 'failed' ? (dark ? 'text-danger-300' : 'text-danger-700') : dark ? 'text-zinc-400' : 'text-zinc-500'}">
+                {item.message}
+              </span>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
     <MeshRuntimeBar
       {teamName}
       agents={teamConfig?.agents ?? []}
       {dark}
+      actionsDisabled={isResumingTeam}
       onAddAgent={onOpenAddAgent}
       onDisband={onRequestDisband}
     />
@@ -122,9 +195,12 @@
             anchor={nodeDetailAnchor}
             actions={{
               onResume: onResumeSelected,
+              resumeDisabled: isResumingTeam,
               onStop: onStopSelected,
+              stopDisabled: isResumingTeam,
               onFocusPane: canFocusSelectedPane ? onFocusSelectedPane : null,
               onCapture: onCaptureRole,
+              captureDisabled: isResumingTeam,
               onClose: onCloseNode,
             }}
           />

@@ -101,6 +101,9 @@
       teamConfig={controller.teamConfig}
       selectedNode={controller.selectedNode}
       selectedNodeId={controller.selectedNodeId}
+      runtimeBanner={controller.runtimeBanner}
+      isResumingTeam={controller.isResumingTeam}
+      resumeProgress={controller.teamResumeProgress}
       {availableProjects}
       addAgentOpen={controller.slideOver === 'addAgent'}
       addAgentDraft={controller.addAgentDraft}
@@ -112,6 +115,7 @@
       onNodeClick={controller.toggleNode}
       onOpenAddAgent={controller.openAddAgentPanel}
       onRequestDisband={controller.requestDisband}
+      onResumeTeam={controller.resumeTeam}
       onCloseNode={controller.clearSelectedNode}
       onResumeSelected={controller.resumeSelected}
       onStopSelected={controller.stopSelected}

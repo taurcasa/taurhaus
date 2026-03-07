@@ -77,6 +77,19 @@ export function coordinationResumeMember(teamName, memberName, contextMode = 'co
   }))
 }
 
+export function coordinationResumeTeam(teamName, contextMode = 'continue') {
+  return invokeOrMock('coordination_resume_team', { request: { teamName, contextMode } }, () => ({
+    teamName,
+    resumed: true,
+    totalMembers: 2,
+    resumedMembers: ['team-lead', 'frontend-dev'],
+    failedMembers: [],
+    warnings: [],
+    startedTeamDaemon: false,
+    teamDaemonWarning: null,
+  }))
+}
+
 export function coordinationReonboard(teamName, memberName) {
   return invokeOrMock(
     'coordination_reonboard',

@@ -84,6 +84,7 @@ export function buildMockProjectMeshSnapshot(projectPath) {
     meshAvailable: true,
     tmuxAvailable: true,
     teamName: 'mock-team',
+    teamRuntimeState: 'active',
     teamStatus: {
       leadName: 'team-lead',
       members: [
@@ -106,5 +107,18 @@ export function buildMockProjectMeshSnapshot(projectPath) {
       ],
     },
     warnings: [],
+  }
+}
+
+export function buildMockResumeTeamReport(teamName) {
+  return {
+    teamName,
+    resumed: true,
+    totalMembers: 2,
+    resumedMembers: ['team-lead', 'frontend-dev'],
+    failedMembers: [],
+    warnings: [],
+    startedTeamDaemon: false,
+    teamDaemonWarning: null,
   }
 }

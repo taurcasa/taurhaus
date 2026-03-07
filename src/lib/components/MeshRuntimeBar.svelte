@@ -3,6 +3,7 @@
     teamName = '',
     agents = [],
     dark = false,
+    actionsDisabled = false,
     onAddAgent = () => {},
     onDisband = () => {},
   } = $props()
@@ -79,10 +80,11 @@
 
   <div class="flex items-center gap-2">
     <button
-      class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors {dangerTone}"
+      class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed {dangerTone}"
       type="button"
       onclick={onDisband}
       aria-label="Disband team"
+      disabled={actionsDisabled}
       data-testid="mesh-runtime-disband"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="m10 11 4 4"/><path d="m14 11-4 4"/></svg>
@@ -90,9 +92,10 @@
     </button>
 
     <button
-      class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+      class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
       type="button"
       onclick={onAddAgent}
+      disabled={actionsDisabled}
       data-testid="mesh-runtime-add-agent"
     >
       + Add Agent

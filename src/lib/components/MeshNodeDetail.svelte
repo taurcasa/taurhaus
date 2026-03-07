@@ -346,24 +346,27 @@
         {/if}
       {:else}
         <button
-          class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors {primaryActionTone}"
+          class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors disabled:opacity-45 disabled:cursor-not-allowed {primaryActionTone}"
           onclick={() => invoke(actions?.onResume)}
+          disabled={Boolean(actions?.resumeDisabled) || typeof actions?.onResume !== 'function'}
           data-testid="mesh-node-detail-resume"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
           Resume
         </button>
         <button
-          class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors {dangerActionTone}"
+          class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors disabled:opacity-45 disabled:cursor-not-allowed {dangerActionTone}"
           onclick={() => invoke(actions?.onStop)}
+          disabled={Boolean(actions?.stopDisabled) || typeof actions?.onStop !== 'function'}
           data-testid="mesh-node-detail-stop"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
           Stop
         </button>
         <button
-          class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors {secondaryActionTone}"
+          class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors disabled:opacity-45 disabled:cursor-not-allowed {secondaryActionTone}"
           onclick={() => invoke(actions?.onCapture)}
+          disabled={Boolean(actions?.captureDisabled) || typeof actions?.onCapture !== 'function'}
           data-testid="mesh-node-detail-capture"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4z"/><circle cx="12" cy="13" r="3"/></svg>
