@@ -106,7 +106,9 @@ describe('MeshNodeDetail', () => {
 
   it('animates in using mesh-detail-enter keyframe class', () => {
     renderDetail()
-    expect(screen.getByTestId('mesh-node-detail').className).toContain('mesh-detail-enter')
+    const detail = screen.getByTestId('mesh-node-detail')
+    expect(detail.getAttribute('style') || '').toContain('animation: mesh-detail-enter 80ms')
+    expect(detail).toHaveAttribute('data-enter-duration-ms', '80')
   })
 
   it('defaults to bottom placement when no anchor is provided', () => {

@@ -47,6 +47,7 @@
 
   const t = $derived(themeTokens(dark))
   let nodeDetailAnchor = $state(null)
+  let detailOpenPerf = $state(null)
   const detailNode = $derived.by(() => {
     if (!selectedNode || typeof selectedNode !== 'object') return null
     return {
@@ -84,13 +85,68 @@
       .filter((project) => project.id)
   )
 
+  function nowMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now()
+    }
+    return Date.now()
+  }
+
+  function logDetailPerf(stage, perf) {
+    if (!perf?.startedAt) return
+    if (!globalThis.__TAURHAUS_MESH_DETAIL_PERF__) return
+    const elapsedMs = Number((nowMs() - perf.startedAt).toFixed(1))
+    console.debug('[mesh.perf] runtime-node-detail', {
+      stage,
+      elapsedMs,
+      nodeId: perf.nodeId,
+    })
+  }
+
+  function handleRuntimeNodeClick(nodeId) {
+    const nextNodeId = nodeId === null || nodeId === undefined ? null : String(nodeId)
+    if (nextNodeId && String(selectedNodeId) !== nextNodeId) {
+      detailOpenPerf = {
+        nodeId: nextNodeId,
+        startedAt: nowMs(),
+        renderedLogged: false,
+        visibleLogged: false,
+      }
+    } else {
+      detailOpenPerf = null
+    }
+    onNodeClick(nodeId)
+  }
+
   function handleDetailAnchorChange(anchor) {
     nodeDetailAnchor = anchor
+  }
+
+  function handleDetailVisible() {
+    const perf = detailOpenPerf
+    if (!perf?.startedAt || perf.visibleLogged) return
+    logDetailPerf('visible', perf)
+    detailOpenPerf = {
+      ...perf,
+      visibleLogged: true,
+    }
   }
 
   $effect(() => {
     if (selectedNode) return
     nodeDetailAnchor = null
+    detailOpenPerf = null
+  })
+
+  $effect(() => {
+    const perf = detailOpenPerf
+    if (!perf?.startedAt || perf.renderedLogged) return
+    if (!detailNode || !nodeDetailAnchor) return
+    logDetailPerf('rendered', perf)
+    detailOpenPerf = {
+      ...perf,
+      renderedLogged: true,
+    }
   })
 </script>
 
@@ -147,7 +203,7 @@
         mode="runtime"
         {dark}
         {selectedNodeId}
-        onNodeClick={onNodeClick}
+        onNodeClick={handleRuntimeNodeClick}
         onAddClick={() => {}}
         onDetailAnchorChange={handleDetailAnchorChange}
         onDismissDetail={onCloseNode}
@@ -160,6 +216,7 @@
             mode="runtime"
             {dark}
             anchor={nodeDetailAnchor}
+            onVisible={handleDetailVisible}
             actions={{
               onResume: onResumeSelected,
               resumeDisabled: isResumingTeam,

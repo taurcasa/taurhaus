@@ -1803,6 +1803,40 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('frontend-dev')
   })
 
+  it('keeps runtime node detail fully-visible latency under 120ms after click', async () => {
+    await renderRuntime()
+
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    globalThis.__TAURHAUS_MESH_DETAIL_PERF__ = true
+
+    try {
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+
+      expect(screen.getByTestId('mesh-node-detail')).toBeInTheDocument()
+
+      let renderedLog
+      await waitFor(() => {
+        renderedLog = debugSpy.mock.calls
+          .map(([, payload]) => payload)
+          .find((payload) => payload?.stage === 'rendered')
+
+        expect(renderedLog?.elapsedMs).toBeLessThanOrEqual(32)
+      }, { timeout: 1000 })
+
+      let visibleLog
+      await waitFor(() => {
+        visibleLog = debugSpy.mock.calls
+          .map(([, payload]) => payload)
+          .find((payload) => payload?.stage === 'visible')
+
+        expect(visibleLog?.elapsedMs).toBeLessThanOrEqual(120)
+      }, { timeout: 1000 })
+    } finally {
+      delete globalThis.__TAURHAUS_MESH_DETAIL_PERF__
+      debugSpy.mockRestore()
+    }
+  })
+
   it('keeps runtime actions visible for offline agents and disables focus when pane is missing', async () => {
     coordinationGetLiveTeamStatus.mockResolvedValueOnce({
       teamName: 'architecture-final',

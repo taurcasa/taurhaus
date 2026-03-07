@@ -8,7 +8,13 @@
     dark = false,
     actions = {},
     anchor = null,
+    onVisible = () => {},
   } = $props()
+
+  const DETAIL_ENTER_DURATION_MS = 80
+  const DETAIL_ENTER_EASING = 'cubic-bezier(0.22,1,0.36,1)'
+  let visibleTimer = null
+  let visibleNotified = false
 
   const name = $derived.by(() => String(node?.name ?? '').trim() || 'unnamed-agent')
   const role = $derived.by(() => String(node?.role ?? 'agent'))
@@ -142,6 +148,7 @@
     }
   })
   const anchoredStyle = $derived.by(() => {
+    const animationStyle = `animation: mesh-detail-enter ${DETAIL_ENTER_DURATION_MS}ms ${DETAIL_ENTER_EASING}`
     if (!normalizedAnchor) {
       return [
         'left: 50%',
@@ -149,6 +156,7 @@
         'transform: translateX(-50%)',
         'margin-top: 12px',
         'width: min(21rem, calc(100% - 16px))',
+        animationStyle,
       ].join('; ')
     }
 
@@ -157,6 +165,7 @@
       `top: ${normalizedAnchor.top}px`,
       `width: ${normalizedAnchor.cardWidth}px`,
       'max-width: calc(100% - 16px)',
+      animationStyle,
     ].join('; ')
   })
   const placement = $derived.by(() => normalizedAnchor?.placement ?? 'bottom')
@@ -164,13 +173,46 @@
   function invoke(handler) {
     if (typeof handler === 'function') handler()
   }
+
+  function notifyVisible() {
+    if (visibleNotified) return
+    visibleNotified = true
+    if (typeof onVisible === 'function') onVisible()
+  }
+
+  function handleAnimationEnd(event) {
+    if (event?.animationName !== 'mesh-detail-enter') return
+    notifyVisible()
+  }
+
+  $effect(() => {
+    visibleNotified = false
+    if (visibleTimer) {
+      clearTimeout(visibleTimer)
+      visibleTimer = null
+    }
+
+    visibleTimer = setTimeout(() => {
+      visibleTimer = null
+      notifyVisible()
+    }, DETAIL_ENTER_DURATION_MS)
+
+    return () => {
+      if (visibleTimer) {
+        clearTimeout(visibleTimer)
+        visibleTimer = null
+      }
+    }
+  })
 </script>
 
 <aside
-  class="absolute z-20 rounded-2xl border p-3.5 backdrop-blur-sm pointer-events-auto mesh-node-detail animate-[mesh-detail-enter_190ms_cubic-bezier(0.22,1,0.36,1)] {surfaceClass}"
+  class="absolute z-20 rounded-2xl border p-3.5 backdrop-blur-sm pointer-events-auto mesh-node-detail {surfaceClass}"
   style={anchoredStyle}
   data-testid="mesh-node-detail"
   data-placement={placement}
+  data-enter-duration-ms={DETAIL_ENTER_DURATION_MS}
+  onanimationend={handleAnimationEnd}
 >
   <header class="flex items-start gap-2">
     <div class="min-w-0 flex-1 space-y-1.5">
