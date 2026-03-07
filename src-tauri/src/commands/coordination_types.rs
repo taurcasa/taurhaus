@@ -98,6 +98,14 @@ pub struct ResumeMemberRequest {
     pub context_mode: ResumeContextMode,
 }
 
+/// IPC request for resuming all persisted members in a team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeTeamRequest {
+    pub team_name: String,
+    pub context_mode: ResumeContextMode,
+}
+
 /// IPC response for hot-add operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +134,29 @@ pub struct ResumeAgentReport {
     pub warnings: Vec<String>,
     pub pane_id: Option<String>,
     pub reused_pane: bool,
+}
+
+/// One failed member entry inside a team resume response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeTeamMemberFailure {
+    pub member_name: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+/// IPC response for team resume aggregation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeTeamReport {
+    pub team_name: String,
+    pub resumed: bool,
+    pub total_members: usize,
+    pub resumed_members: Vec<String>,
+    pub failed_members: Vec<ResumeTeamMemberFailure>,
+    pub warnings: Vec<String>,
+    pub started_team_daemon: bool,
+    pub team_daemon_warning: Option<String>,
 }
 
 /// IPC response for runtime member removal with teardown diagnostics.
@@ -206,12 +237,23 @@ pub struct FastTeamSnapshot {
     pub members: Vec<FastAgentSnapshot>,
 }
 
+/// Cold-start classification for a discovered team's reconciled runtime state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TeamRuntimeState {
+    None,
+    Active,
+    Degraded,
+    ColdResume,
+}
+
 /// One-shot mesh snapshot used to avoid frontend waterfall loading.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectMeshSnapshotResponse {
     pub mesh_available: bool,
     pub tmux_available: bool,
+    pub team_runtime_state: TeamRuntimeState,
     pub team_name: Option<String>,
     pub team_status: Option<FastTeamSnapshot>,
     pub warnings: Vec<String>,

@@ -130,6 +130,21 @@ pub fn coordination_resume_member(
 }
 
 #[tauri::command]
+pub fn coordination_resume_team(
+    db: State<'_, DbState>,
+    state: State<'_, CoordinationState>,
+    request: ResumeTeamRequest,
+) -> IpcResult<ResumeTeamReport> {
+    let span = IpcCommandSpan::start("coordination_resume_team");
+    let result = {
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        coordination_resume_team_internal(state.inner(), request, &cli_commands, &tmux_layout).ipc()
+    };
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
 pub fn coordination_reonboard(
     state: State<'_, CoordinationState>,
     request: ReonboardRequest,
@@ -325,6 +340,26 @@ fn coordination_resume_member_internal(
         .map_err(map_coordination_error)?;
     emit_progress_events(resume_member_progress_events(&report), emit);
     Ok(report)
+}
+
+fn coordination_resume_team_internal(
+    state: &CoordinationState,
+    request: ResumeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+) -> Result<ResumeTeamReport, String> {
+    validate_non_empty("team_name", &request.team_name)?;
+    let contract_request = map_resume_team_request_to_contract(&request);
+    state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.resume_team_with_cli_commands_and_layout(
+                &contract_request,
+                cli_commands,
+                tmux_layout,
+            )
+        })
+        .map(map_resume_team_report_from_contract)
+        .map_err(map_coordination_error)
 }
 
 fn emit_progress_events(
@@ -691,17 +726,24 @@ fn coordination_get_project_mesh_snapshot_with_availability(
     let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
         Some(
             state
-                .with_orchestrator(|orchestrator| orchestrator.get_team_status_fast(team_name))
+                .with_orchestrator(|orchestrator| {
+                    if availability.tmux_available {
+                        orchestrator.reconcile_team_liveness(team_name)?;
+                    }
+                    orchestrator.get_team_status_fast(team_name)
+                })
                 .map(map_fast_team_snapshot)
                 .map_err(map_coordination_error)?,
         )
     } else {
         None
     };
+    let team_runtime_state = classify_team_runtime_state(team_status.as_ref());
 
     Ok(ProjectMeshSnapshotResponse {
         mesh_available: availability.mesh_available,
         tmux_available: availability.tmux_available,
+        team_runtime_state,
         team_name: discovery.team_name,
         team_status,
         warnings: discovery.warnings,
@@ -854,6 +896,15 @@ fn map_resume_member_request_to_contract(
     }
 }
 
+fn map_resume_team_request_to_contract(
+    request: &ResumeTeamRequest,
+) -> contracts::ResumeTeamRequest {
+    contracts::ResumeTeamRequest {
+        team_name: request.team_name.clone(),
+        context_mode: map_resume_context_mode_to_contract(request.context_mode),
+    }
+}
+
 fn map_initialize_report_from_contract(report: contracts::InitializeReport) -> InitializeReport {
     InitializeReport {
         team_name: report.team_name,
@@ -907,6 +958,27 @@ fn map_resume_agent_report_from_contract(
     }
 }
 
+fn map_resume_team_report_from_contract(report: contracts::ResumeTeamReport) -> ResumeTeamReport {
+    ResumeTeamReport {
+        team_name: report.team_name,
+        resumed: report.resumed,
+        total_members: report.total_members,
+        resumed_members: report.resumed_members,
+        failed_members: report
+            .failed_members
+            .into_iter()
+            .map(|failure| ResumeTeamMemberFailure {
+                member_name: failure.member_name,
+                message: failure.message,
+                retryable: failure.retryable,
+            })
+            .collect(),
+        warnings: report.warnings,
+        started_team_daemon: report.started_team_daemon,
+        team_daemon_warning: report.team_daemon_warning,
+    }
+}
+
 #[cfg(not(test))]
 fn resolve_project_reference(db: &DbState, project_ref: &str) -> Result<String, String> {
     validate_non_empty("project_id", project_ref)?;
@@ -946,6 +1018,27 @@ fn session_status_from_health(health: HealthState) -> SessionStatus {
         | HealthState::Rebriefed
         | HealthState::Suppressed => SessionStatus::Idle,
         HealthState::SessionDead => SessionStatus::Offline,
+    }
+}
+
+fn classify_team_runtime_state(team_status: Option<&FastTeamSnapshot>) -> TeamRuntimeState {
+    let Some(team_status) = team_status else {
+        return TeamRuntimeState::None;
+    };
+
+    let live_members = team_status
+        .members
+        .iter()
+        .filter(|member| member.session_status != SessionStatus::Offline)
+        .count();
+    let total_members = team_status.members.len();
+
+    if live_members == 0 {
+        TeamRuntimeState::ColdResume
+    } else if live_members == total_members {
+        TeamRuntimeState::Active
+    } else {
+        TeamRuntimeState::Degraded
     }
 }
 

@@ -15,8 +15,8 @@ use crate::coordination::backend::{BackendKind, CoordinationBackend};
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
-    DeliveryMethod, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, TeardownMode,
-    TeardownRequest,
+    DeliveryMethod, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, ResumeMemberRequest,
+    ResumeTeamMemberFailure, ResumeTeamReport, TeardownMode, TeardownRequest,
 };
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
@@ -380,6 +380,65 @@ impl CoordinationOrchestrator {
             removed: true,
             steps,
             warnings,
+        })
+    }
+
+    /// Resume all persisted members in a team by reusing the per-member resume flow.
+    pub fn resume_team_with_cli_commands_and_layout(
+        &mut self,
+        request: &crate::coordination::requests::ResumeTeamRequest,
+        cli_commands: &crate::models::CliCommandSettings,
+        tmux_layout: &str,
+    ) -> Result<ResumeTeamReport, CoordinationError> {
+        validate_team_name(&request.team_name)?;
+        let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+        self.reconcile_team_liveness(&request.team_name)?;
+
+        let ordered_members = ordered_members_for_team_resume(&config.members);
+        let total_members = ordered_members.len();
+        let mut resumed_members = Vec::new();
+        let mut failed_members = Vec::new();
+        let mut warnings = Vec::new();
+
+        for member in ordered_members {
+            let member_request = ResumeMemberRequest {
+                team_name: request.team_name.clone(),
+                member_name: member.name.clone(),
+                context_mode: request.context_mode,
+            };
+            let report = self.resume_member_with_cli_commands_and_layout(
+                &member_request,
+                cli_commands,
+                tmux_layout,
+            )?;
+
+            warnings.extend(
+                report
+                    .warnings
+                    .into_iter()
+                    .map(|warning| format!("{}: {warning}", report.member_name)),
+            );
+
+            if report.resumed {
+                resumed_members.push(report.member_name);
+            } else {
+                failed_members.push(ResumeTeamMemberFailure {
+                    member_name: report.member_name,
+                    message: report.message,
+                    retryable: report.retryable,
+                });
+            }
+        }
+
+        Ok(ResumeTeamReport {
+            team_name: request.team_name.clone(),
+            resumed: !resumed_members.is_empty(),
+            total_members,
+            resumed_members,
+            failed_members,
+            warnings,
+            started_team_daemon: false,
+            team_daemon_warning: None,
         })
     }
 
@@ -972,6 +1031,30 @@ fn discovered_team_to_status(team: DiscoveredTeam) -> DiscoveredTeamStatus {
         team_name: team.team_name,
         lead_project_path: team.lead_project_path,
     }
+}
+
+fn ordered_members_for_team_resume(members: &[Member]) -> Vec<Member> {
+    let Some(lead) = members
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+    else {
+        return members.to_vec();
+    };
+
+    let mut ordered = vec![lead.clone()];
+    ordered.extend(
+        members
+            .iter()
+            .filter(|member| member.name != lead.name && member.project_path == lead.project_path)
+            .cloned(),
+    );
+    ordered.extend(
+        members
+            .iter()
+            .filter(|member| member.name != lead.name && member.project_path != lead.project_path)
+            .cloned(),
+    );
+    ordered
 }
 
 #[cfg(test)]

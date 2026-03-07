@@ -39,6 +39,18 @@ fn test_state(teams_dir: PathBuf) -> CoordinationState {
     )
 }
 
+fn test_state_with_runtime(
+    teams_dir: PathBuf,
+    runtime: Arc<RecordingCoordinationRuntime>,
+) -> CoordinationState {
+    CoordinationState::with_components_and_runtime(
+        teams_dir,
+        BackendSelector::m0(),
+        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(move || runtime.clone()),
+    )
+}
+
 fn sample_preflight_request() -> InitializeTeamRequest {
     InitializeTeamRequest {
         team_name: "architecture-final".to_string(),
@@ -641,6 +653,74 @@ fn resume_member_ipc_returns_report_shape() {
 }
 
 #[test]
+fn resume_team_validates_empty_team_name() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+
+    let err = coordination_resume_team_internal(
+        &state,
+        ResumeTeamRequest {
+            team_name: "".to_string(),
+            context_mode: ResumeContextMode::Continue,
+        },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+    )
+    .expect_err("empty team_name should fail");
+    assert!(err.contains("team_name"));
+}
+
+#[test]
+fn resume_team_ipc_returns_report_shape() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize");
+
+    for member_name in ["team-lead", "frontend-dev", "reviewer"] {
+        let mut runtime = crate::coordination::stores::MemberRuntimeStore::load(
+            tmp.path(),
+            "architecture-final",
+            member_name,
+        )
+        .expect("member runtime");
+        runtime.health = crate::coordination::domain::HealthState::SessionDead;
+        runtime.pane_id = None;
+        runtime.daemon_pid = None;
+        crate::coordination::stores::MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            member_name,
+            &runtime,
+        )
+        .expect("save runtime");
+    }
+
+    let report = coordination_resume_team_internal(
+        &state,
+        ResumeTeamRequest {
+            team_name: "architecture-final".to_string(),
+            context_mode: ResumeContextMode::Continue,
+        },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+    )
+    .expect("resume should return a report");
+
+    assert_eq!(report.team_name, "architecture-final");
+    assert!(report.resumed);
+    assert_eq!(report.total_members, 3);
+    assert_eq!(report.resumed_members.len(), 3);
+    assert!(report.failed_members.is_empty());
+}
+
+#[test]
 fn create_team_happy_path_persists_team() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -1000,9 +1080,105 @@ fn project_mesh_snapshot_returns_null_team_when_project_has_no_match() {
 
     assert!(snapshot.mesh_available);
     assert!(snapshot.tmux_available);
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::None);
     assert_eq!(snapshot.team_name, None);
     assert_eq!(snapshot.team_status, None);
     assert!(snapshot.warnings.is_empty());
+}
+
+#[test]
+fn project_mesh_snapshot_classifies_active_when_all_members_are_live() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
+}
+
+#[test]
+fn project_mesh_snapshot_classifies_degraded_when_live_and_offline_members_mix() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let offline_pane = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("load runtime")
+        .pane_id
+        .expect("pane id");
+    runtime.set_pane_exists(&offline_pane, false);
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Degraded);
+    let team_status = snapshot.team_status.expect("team status");
+    let frontend_dev = team_status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev");
+    assert_eq!(frontend_dev.session_status, SessionStatus::Offline);
+}
+
+#[test]
+fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    for member_name in ["team-lead", "frontend-dev", "reviewer"] {
+        let pane_id = MemberRuntimeStore::load(tmp.path(), "architecture-final", member_name)
+            .expect("load runtime")
+            .pane_id
+            .expect("pane id");
+        runtime.set_pane_exists(&pane_id, false);
+    }
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::ColdResume);
+    let team_status = snapshot.team_status.expect("team status");
+    assert!(team_status
+        .members
+        .iter()
+        .all(|member| member.session_status == SessionStatus::Offline));
 }
 
 #[test]
@@ -1032,6 +1208,7 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
         coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
             .expect("snapshot should succeed");
 
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
     assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
     assert!(snapshot.warnings.is_empty());
 
@@ -1114,6 +1291,7 @@ fn project_mesh_snapshot_reports_mesh_unavailable_when_binary_is_missing() {
 
     assert!(!snapshot.mesh_available);
     assert!(snapshot.tmux_available);
+    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::None);
     assert_eq!(snapshot.team_name, None);
 }
 
@@ -1334,6 +1512,37 @@ fn resume_member_request_and_report_round_trip() {
 }
 
 #[test]
+fn resume_team_request_and_report_round_trip() {
+    let request = ResumeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        context_mode: ResumeContextMode::Fresh,
+    };
+    let req_json = serde_json::to_string(&request).expect("serialize resume-team request");
+    let req_decoded: ResumeTeamRequest =
+        serde_json::from_str(&req_json).expect("deserialize resume-team request");
+    assert_eq!(req_decoded, request);
+
+    let report = ResumeTeamReport {
+        team_name: "architecture-final".to_string(),
+        resumed: true,
+        total_members: 3,
+        resumed_members: vec!["team-lead".to_string(), "reviewer".to_string()],
+        failed_members: vec![ResumeTeamMemberFailure {
+            member_name: "builder".to_string(),
+            message: "mesh join failed".to_string(),
+            retryable: true,
+        }],
+        warnings: vec!["builder: created a replacement pane".to_string()],
+        started_team_daemon: false,
+        team_daemon_warning: Some("team daemon start not implemented".to_string()),
+    };
+    let report_json = serde_json::to_string(&report).expect("serialize resume-team report");
+    let report_decoded: ResumeTeamReport =
+        serde_json::from_str(&report_json).expect("deserialize resume-team report");
+    assert_eq!(report_decoded, report);
+}
+
+#[test]
 fn remove_agent_report_round_trip() {
     let value = RemoveAgentReport {
         team_name: "architecture-final".to_string(),
@@ -1414,6 +1623,7 @@ fn project_mesh_snapshot_round_trip() {
     let value = ProjectMeshSnapshotResponse {
         mesh_available: true,
         tmux_available: true,
+        team_runtime_state: TeamRuntimeState::Active,
         team_name: Some("architecture-final".to_string()),
         team_status: Some(FastTeamSnapshot {
             lead_name: "team-lead".to_string(),

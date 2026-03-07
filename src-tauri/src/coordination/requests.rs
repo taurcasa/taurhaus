@@ -263,6 +263,13 @@ pub struct ResumeMemberRequest {
     pub context_mode: ResumeContextMode,
 }
 
+/// Request contract for resuming all members in a team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeTeamRequest {
+    pub team_name: String,
+    pub context_mode: ResumeContextMode,
+}
+
 /// Result contract for resuming an agent in a running team.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeAgentReport {
@@ -277,6 +284,27 @@ pub struct ResumeAgentReport {
     pub warnings: Vec<String>,
     pub pane_id: Option<String>,
     pub reused_pane: bool,
+}
+
+/// Failure entry for one member during team resume.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeTeamMemberFailure {
+    pub member_name: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+/// Aggregated result contract for resuming a persisted team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeTeamReport {
+    pub team_name: String,
+    pub resumed: bool,
+    pub total_members: usize,
+    pub resumed_members: Vec<String>,
+    pub failed_members: Vec<ResumeTeamMemberFailure>,
+    pub warnings: Vec<String>,
+    pub started_team_daemon: bool,
+    pub team_daemon_warning: Option<String>,
 }
 
 pub type AgentSetupConfig = AgentDefinition;
@@ -434,6 +462,39 @@ mod tests {
         let json = serde_json::to_string(&req).expect("serialize add-agent request");
         let decoded: AddAgent = serde_json::from_str(&json).expect("deserialize add-agent request");
         assert_eq!(decoded, req);
+    }
+
+    #[test]
+    fn resume_team_request_and_report_round_trip() {
+        let req = ResumeTeamRequest {
+            team_name: "architecture-final".to_string(),
+            context_mode: ResumeContextMode::Fresh,
+        };
+
+        let req_json = serde_json::to_string(&req).expect("serialize resume-team request");
+        let req_decoded: ResumeTeamRequest =
+            serde_json::from_str(&req_json).expect("deserialize resume-team request");
+        assert_eq!(req_decoded, req);
+
+        let report = ResumeTeamReport {
+            team_name: "architecture-final".to_string(),
+            resumed: true,
+            total_members: 3,
+            resumed_members: vec!["team-lead".to_string(), "reviewer".to_string()],
+            failed_members: vec![ResumeTeamMemberFailure {
+                member_name: "builder".to_string(),
+                message: "mesh join failed".to_string(),
+                retryable: true,
+            }],
+            warnings: vec!["builder: created a replacement pane".to_string()],
+            started_team_daemon: false,
+            team_daemon_warning: Some("team daemon start not implemented".to_string()),
+        };
+
+        let report_json = serde_json::to_string(&report).expect("serialize resume-team report");
+        let report_decoded: ResumeTeamReport =
+            serde_json::from_str(&report_json).expect("deserialize resume-team report");
+        assert_eq!(report_decoded, report);
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -8,12 +9,13 @@ use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::MemberRole;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
-    OperatorNoticeDelivery, StepStatus,
+    OperatorNoticeDelivery, ResumeContextMode, ResumeTeamRequest, StepStatus,
 };
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+use crate::models::CliCommandSettings;
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {
@@ -391,6 +393,110 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
 }
 
 #[derive(Debug)]
+struct SelectiveJoinFailureRuntime {
+    inner: RecordingCoordinationRuntime,
+    fail_members: HashSet<String>,
+}
+
+impl SelectiveJoinFailureRuntime {
+    fn new(fail_members: &[&str]) -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+            fail_members: fail_members
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+        }
+    }
+}
+
+impl CoordinationRuntime for SelectiveJoinFailureRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        if self.fail_members.contains(member_name) {
+            return Err(CoordinationError::Backend(format!(
+                "programmed join_mesh failure for '{member_name}'"
+            )));
+        }
+        self.inner.join_mesh(team_name, member_name, project_id)
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        self.inner.pane_current_command(pane_id)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
+}
+
+#[derive(Debug)]
 struct ClaudeLaunchRosterRuntime {
     inner: RecordingCoordinationRuntime,
     teams_dir: PathBuf,
@@ -607,6 +713,70 @@ fn create_running_team(orchestrator: &mut CoordinationOrchestrator, team_name: &
         .expect("add existing member");
 }
 
+fn member_with_project(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
+    Member {
+        name: name.to_string(),
+        role,
+        role_id: None,
+        role_name: None,
+        focus_area: None,
+        context_summary: None,
+        behavior_summary: None,
+        instructions: Some("resume me".to_string()),
+        behavioral_contract: None,
+        capabilities: None,
+        project_path: PathBuf::from(project_path),
+        cli_tool: tool,
+    }
+}
+
+fn mark_member_offline(tmp: &TempDir, team_name: &str, member_name: &str) {
+    let mut runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    runtime.health = HealthState::SessionDead;
+    runtime.pane_id = None;
+    runtime.daemon_pid = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime).expect("runtime saved");
+}
+
+fn create_resumable_team(
+    orchestrator: &mut CoordinationOrchestrator,
+    tmp: &TempDir,
+    team_name: &str,
+    lead_tool: CliTool,
+) {
+    orchestrator
+        .create_team(team_name, Some("resumable".to_string()))
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, lead_tool, "/tmp/lead"),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("builder", MemberRole::Agent, CliTool::Codex, "/tmp/lead"),
+        )
+        .expect("add builder");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project(
+                "reviewer",
+                MemberRole::Agent,
+                CliTool::Gemini,
+                "/tmp/reviewer",
+            ),
+        )
+        .expect("add reviewer");
+
+    for member_name in ["team-lead", "builder", "reviewer"] {
+        mark_member_offline(tmp, team_name, member_name);
+    }
+}
+
 fn assert_conflict(err: CoordinationError) {
     match err {
         CoordinationError::Conflict(_) => {}
@@ -619,6 +789,184 @@ fn assert_not_found(err: CoordinationError) {
         CoordinationError::NotFound(_) => {}
         other => panic!("expected not_found, got {other:?}"),
     }
+}
+
+#[test]
+fn resume_team_lead_first_then_same_project_then_cross_project() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    create_resumable_team(
+        &mut orchestrator,
+        &tmp,
+        "architecture-final",
+        CliTool::Claude,
+    );
+
+    let report = orchestrator
+        .resume_team_with_cli_commands_and_layout(
+            &ResumeTeamRequest {
+                team_name: "architecture-final".to_string(),
+                context_mode: ResumeContextMode::Continue,
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("resume team");
+
+    assert!(report.resumed);
+    assert_eq!(
+        report.resumed_members,
+        vec![
+            "team-lead".to_string(),
+            "builder".to_string(),
+            "reviewer".to_string()
+        ]
+    );
+
+    let calls = runtime.calls();
+    let send_keys: Vec<String> = calls
+        .iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        send_keys
+            .first()
+            .expect("lead launch should be first")
+            .contains("team-lead"),
+        "first launch should belong to the lead"
+    );
+
+    let join_order: Vec<String> = calls
+        .iter()
+        .filter_map(|call| match call {
+            RuntimeCall::JoinMesh { member_name, .. } => Some(member_name.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        join_order,
+        vec!["builder".to_string(), "reviewer".to_string()]
+    );
+}
+
+#[test]
+fn resume_team_reports_partial_success_when_middle_member_fails() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(SelectiveJoinFailureRuntime::new(&["builder"]));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    create_resumable_team(
+        &mut orchestrator,
+        &tmp,
+        "architecture-final",
+        CliTool::Claude,
+    );
+
+    let report = orchestrator
+        .resume_team_with_cli_commands_and_layout(
+            &ResumeTeamRequest {
+                team_name: "architecture-final".to_string(),
+                context_mode: ResumeContextMode::Continue,
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("resume team");
+
+    assert!(report.resumed);
+    assert_eq!(report.total_members, 3);
+    assert_eq!(
+        report.resumed_members,
+        vec!["team-lead".to_string(), "reviewer".to_string()]
+    );
+    assert_eq!(report.failed_members.len(), 1);
+    assert_eq!(report.failed_members[0].member_name, "builder");
+}
+
+#[test]
+fn resume_team_does_not_roll_back_earlier_successes_when_later_member_fails() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(SelectiveJoinFailureRuntime::new(&["reviewer"]));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    create_resumable_team(
+        &mut orchestrator,
+        &tmp,
+        "architecture-final",
+        CliTool::Claude,
+    );
+
+    let report = orchestrator
+        .resume_team_with_cli_commands_and_layout(
+            &ResumeTeamRequest {
+                team_name: "architecture-final".to_string(),
+                context_mode: ResumeContextMode::Continue,
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("resume team");
+
+    assert!(report.resumed);
+    assert_eq!(
+        report.resumed_members,
+        vec!["team-lead".to_string(), "builder".to_string()]
+    );
+    assert_eq!(report.failed_members.len(), 1);
+    assert_eq!(report.failed_members[0].member_name, "reviewer");
+}
+
+#[test]
+fn resume_team_reports_full_failure_when_all_members_fail() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(SelectiveJoinFailureRuntime::new(&[
+        "team-lead",
+        "builder",
+        "reviewer",
+    ]));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    create_resumable_team(
+        &mut orchestrator,
+        &tmp,
+        "architecture-final",
+        CliTool::Codex,
+    );
+
+    let report = orchestrator
+        .resume_team_with_cli_commands_and_layout(
+            &ResumeTeamRequest {
+                team_name: "architecture-final".to_string(),
+                context_mode: ResumeContextMode::Continue,
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("resume team");
+
+    assert!(!report.resumed);
+    assert!(report.resumed_members.is_empty());
+    assert_eq!(report.failed_members.len(), 3);
+    assert_eq!(
+        report
+            .failed_members
+            .iter()
+            .map(|failure| failure.member_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["team-lead", "builder", "reviewer"]
+    );
 }
 
 #[test]
