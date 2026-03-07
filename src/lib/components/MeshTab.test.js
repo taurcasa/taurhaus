@@ -1794,6 +1794,15 @@ describe('MeshTab', () => {
     expect(onFocusPane).toHaveBeenCalledWith('%2')
   })
 
+  it('opens the runtime detail immediately after clicking a node', async () => {
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+
+    expect(screen.getByTestId('mesh-node-detail')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('frontend-dev')
+  })
+
   it('keeps runtime actions visible for offline agents and disables focus when pane is missing', async () => {
     coordinationGetLiveTeamStatus.mockResolvedValueOnce({
       teamName: 'architecture-final',
@@ -1913,6 +1922,22 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-error')).toHaveTextContent('resume blocked')
+    })
+  })
+
+  it('auto-closes the runtime detail after a successful resume action', async () => {
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-resume'))
+
+    await waitFor(() => {
+      expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev', 'continue')
+      expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
     })
   })
 

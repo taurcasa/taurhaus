@@ -1,5 +1,4 @@
 <script>
-  import { tick } from 'svelte'
   import MeshConnection from './MeshConnection.svelte'
   import { computeMeshLayout } from './meshLayout.js'
   import MeshNode from './MeshNode.svelte'
@@ -392,16 +391,7 @@
       emitDetailAnchor(null)
       return
     }
-
-    let active = true
-    void tick().then(() => {
-      if (!active) return
-      refreshDetailAnchor()
-    })
-
-    return () => {
-      active = false
-    }
+    refreshDetailAnchor()
   })
 
   $effect(() => {

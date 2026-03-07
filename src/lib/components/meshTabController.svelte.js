@@ -763,18 +763,24 @@ export function createMeshTabController({
 
   async function resumeSelected(contextMode = 'continue') {
     if (isResumingTeam) return
-    if (!selectedNode || selectedNode.role !== 'agent') return
+    const currentNode = selectedNode
+    if (!currentNode || currentNode.role !== 'agent') return
     try {
-      const report = await coordinationResumeMember(teamName, selectedNode.name, contextMode === 'fresh' ? 'fresh' : 'continue')
+      const report = await coordinationResumeMember(
+        teamName,
+        currentNode.name,
+        contextMode === 'fresh' ? 'fresh' : 'continue'
+      )
       if (!report?.resumed) {
-        errorMessage = report?.message || `Failed to resume member '${selectedNode.name}'.`
+        errorMessage = report?.message || `Failed to resume member '${currentNode.name}'.`
         return
       }
-      runtimeMessage = `Resumed '${selectedNode.name}'.`
+      runtimeMessage = `Resumed '${currentNode.name}'.`
+      selectedNodeId = null
       const sequence = ++discoverySequence
       await refreshRuntimeTeamConfig(teamName, sequence)
     } catch (error) {
-      errorMessage = error?.message || `Failed to resume member '${selectedNode.name}'.`
+      errorMessage = error?.message || `Failed to resume member '${currentNode.name}'.`
     }
   }
 
