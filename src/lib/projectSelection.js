@@ -1,6 +1,8 @@
 import { formatUserFacingError } from './format.js'
 
 const PROJECT_SECTION_TIMEOUT_MS = 5000
+const PROJECT_SELECTION_DEBOUNCE_MS = 25
+let scheduledSelectionBatch = null
 
 function withTimeout(promise, timeoutMs, section) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -69,11 +71,7 @@ export function createProjectSelectionRequests(projectId, ipc) {
   }
 }
 
-/**
- * Load all project sections and return a resolved object.
- * Keep this helper for call sites/tests that still need an all-at-once payload.
- */
-export async function loadProjectSelectionData(projectId, ipc) {
+async function resolveProjectSelectionData(projectId, ipc) {
   const requests = createProjectSelectionRequests(projectId, ipc)
   const [detail, commits, latest, sessionList, readme, rels] = await Promise.all([
     requests.detail,
@@ -85,4 +83,37 @@ export async function loadProjectSelectionData(projectId, ipc) {
   ])
 
   return { detail, commits, latest, sessionList, readme, rels }
+}
+
+/**
+ * Load all project sections and return a resolved object.
+ * Keep this helper for call sites/tests that still need an all-at-once payload.
+ */
+export function loadProjectSelectionData(projectId, ipc) {
+  if (scheduledSelectionBatch?.timerId) {
+    clearTimeout(scheduledSelectionBatch.timerId)
+  }
+
+  return new Promise((resolve, reject) => {
+    const waiters = scheduledSelectionBatch?.waiters ?? []
+    waiters.push({ resolve, reject })
+
+    scheduledSelectionBatch = {
+      projectId,
+      ipc,
+      waiters,
+      timerId: setTimeout(async () => {
+        const batch = scheduledSelectionBatch
+        scheduledSelectionBatch = null
+        if (!batch) return
+
+        try {
+          const result = await resolveProjectSelectionData(batch.projectId, batch.ipc)
+          batch.waiters.forEach((waiter) => waiter.resolve(result))
+        } catch (error) {
+          batch.waiters.forEach((waiter) => waiter.reject(error))
+        }
+      }, PROJECT_SELECTION_DEBOUNCE_MS),
+    }
+  })
 }
