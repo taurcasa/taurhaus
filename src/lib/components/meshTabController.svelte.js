@@ -455,7 +455,7 @@ export function createMeshTabController({
     return normalized
   }
 
-  function clearRuntimeTeamRefresh() {
+  function clearRuntimeTeamRefresh({ dropInFlight = false } = {}) {
     if (runtimeRefreshTimer) {
       clearTimeout(runtimeRefreshTimer)
       runtimeRefreshTimer = null
@@ -467,6 +467,10 @@ export function createMeshTabController({
       runtimeRefreshMeta = null
     }
     queuedRuntimeStatusRequest = null
+    if (dropInFlight) {
+      runtimeStatusRequest = null
+      runtimeStatusRequestMeta = null
+    }
   }
 
   function scheduleRuntimeTeamRefresh(nextTeamName, sequence, snapshot = null) {
@@ -630,7 +634,7 @@ export function createMeshTabController({
     teamResumeProgress = null
     errorMessage = ''
     runtimeMessage = ''
-    clearRuntimeTeamRefresh()
+    clearRuntimeTeamRefresh({ dropInFlight: true })
 
     const cachedSnapshot = untrack(() => getMeshCache(projectPath))
     if (cachedSnapshot) {
@@ -662,7 +666,7 @@ export function createMeshTabController({
 
   function invalidateDiscovery() {
     discoverySequence += 1
-    clearRuntimeTeamRefresh()
+    clearRuntimeTeamRefresh({ dropInFlight: true })
     hydrationPerf = null
   }
 
@@ -1094,7 +1098,7 @@ export function createMeshTabController({
     const isVisible = getIsVisible()
     const backgroundWorkEnabled = getBackgroundWorkEnabled()
     if (!isVisible || !backgroundWorkEnabled) {
-      clearRuntimeTeamRefresh()
+      invalidateDiscovery()
       return
     }
     untrack(() => {
@@ -1110,7 +1114,7 @@ export function createMeshTabController({
       runtimeMessage = ''
       confirmContext = null
       availabilityMessage = ''
-      clearRuntimeTeamRefresh()
+      clearRuntimeTeamRefresh({ dropInFlight: true })
       ensureHydrated(projectPath, { isVisible, backgroundWorkEnabled })
     })
   })

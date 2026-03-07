@@ -1344,6 +1344,110 @@ describe('MeshTab', () => {
     }
   })
 
+  it('starts a fresh runtime refresh when the mesh view reactivates on another project while an older refresh is still pending', async () => {
+    vi.useFakeTimers()
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    setMeshCache('/projects/other-project', buildRuntimeSnapshot({
+      teamName: 'other-team',
+      leadName: 'other-lead',
+    }))
+
+    const firstRefresh = deferred()
+    const secondRefresh = deferred()
+    coordinationGetLiveTeamStatus
+      .mockImplementationOnce(() => firstRefresh.promise)
+      .mockImplementationOnce(() => secondRefresh.promise)
+
+    try {
+      const view = render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      })
+
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+      })
+
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      await view.rerender({
+        dark: false,
+        projectPath: '/projects/other-project',
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('other-team')
+      })
+
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS + 2000)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
+
+      secondRefresh.resolve(buildLiveTeamStatus({
+        teamName: 'other-team',
+        leadName: 'other-lead',
+        members: [
+          {
+            name: 'other-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            projectId: 'proj-core',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            projectId: 'proj-web',
+            description: 'Implements UI surface details for the mesh canvas.',
+            sessionStatus: 'active',
+            paneId: '%2',
+          },
+        ],
+      }))
+      await Promise.resolve()
+
+      firstRefresh.resolve(buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            projectId: 'proj-core',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            projectId: 'proj-web',
+            description: 'Implements UI surface details for the mesh canvas.',
+            sessionStatus: 'offline',
+            paneId: null,
+          },
+        ],
+      }))
+      await Promise.resolve()
+
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('other-team')
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('shows the role hover card in the runtime mesh tab after delayed hover', async () => {
     vi.useFakeTimers()
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
