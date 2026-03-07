@@ -1182,7 +1182,7 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
 }
 
 #[test]
-fn project_mesh_snapshot_repairs_stale_session_dead_member_when_pane_is_alive() {
+fn project_mesh_snapshot_uses_fast_snapshot_without_runtime_reconcile_calls() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
@@ -1204,58 +1204,6 @@ fn project_mesh_snapshot_repairs_stale_session_dead_member_when_pane_is_alive() 
     record.session_id = None;
     record.daemon_pid = None;
     record.last_seen_at = None;
-    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
-        .expect("save runtime");
-
-    runtime.set_pane_exists(&pane_id, true);
-    runtime.set_pane_dead(&pane_id, false);
-    runtime.set_pane_shell(&pane_id, false);
-
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
-
-    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
-    let team_status = snapshot.team_status.expect("team status");
-    let frontend_dev = team_status
-        .members
-        .iter()
-        .find(|member| member.name == "frontend-dev")
-        .expect("frontend-dev should be present");
-    assert_eq!(frontend_dev.session_status, SessionStatus::Active);
-
-    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
-        .expect("reload runtime");
-    assert_eq!(updated.health, HealthState::Healthy);
-    assert!(updated.last_seen_at.is_some());
-    assert!(updated.daemon_pid.is_some());
-    assert!(runtime
-        .calls()
-        .iter()
-        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { pane_id: spawned_pane, team_name, member_name } if spawned_pane == &pane_id && team_name == "architecture-final" && member_name == "frontend-dev")));
-}
-
-#[test]
-fn project_mesh_snapshot_adopts_existing_daemon_when_runtime_pid_is_missing() {
-    let tmp = TempDir::new().expect("tempdir");
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
-    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
-
-    coordination_initialize_team_internal(
-        &state,
-        sample_preflight_request(),
-        &crate::models::CliCommandSettings::default(),
-        DEFAULT_TMUX_LAYOUT,
-        None,
-    )
-    .expect("initialize should succeed");
-
-    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
-        .expect("load runtime");
-    let pane_id = record.pane_id.clone().expect("pane id");
-    record.health = HealthState::Healthy;
-    record.daemon_pid = None;
     MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
         .expect("save runtime");
 
@@ -1269,73 +1217,6 @@ fn project_mesh_snapshot_adopts_existing_daemon_when_runtime_pid_is_missing() {
         coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
             .expect("snapshot should succeed");
 
-    assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
-    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
-        .expect("reload runtime");
-    assert_eq!(updated.daemon_pid, Some(5555));
-    assert!(runtime.calls().iter().any(|call| matches!(
-        call,
-        RuntimeCall::FindDaemon {
-            pane_id: discovered_pane,
-            team_name,
-            member_name
-        } if discovered_pane == &pane_id && team_name == "architecture-final" && member_name == "frontend-dev"
-    )));
-    let new_calls = runtime.calls();
-    let snapshot_calls = &new_calls[call_count_before..];
-    assert!(
-        !snapshot_calls
-            .iter()
-            .any(|call| matches!(
-                call,
-                RuntimeCall::SpawnDaemon {
-                    member_name,
-                    ..
-                } if member_name == "frontend-dev"
-            )),
-        "snapshot repair should adopt the running daemon instead of spawning another for frontend-dev"
-    );
-}
-
-#[test]
-fn project_mesh_snapshot_can_skip_runtime_liveness_probes_and_use_fast_snapshot() {
-    let tmp = TempDir::new().expect("tempdir");
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
-    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
-
-    coordination_initialize_team_internal(
-        &state,
-        sample_preflight_request(),
-        &crate::models::CliCommandSettings::default(),
-        DEFAULT_TMUX_LAYOUT,
-        None,
-    )
-    .expect("initialize should succeed");
-
-    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
-        .expect("load runtime");
-    let pane_id = record.pane_id.clone().expect("pane id");
-    record.health = HealthState::SessionDead;
-    record.session_id = None;
-    record.daemon_pid = None;
-    record.last_seen_at = None;
-    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
-        .expect("save runtime");
-
-    runtime.set_pane_exists(&pane_id, true);
-    runtime.set_pane_dead(&pane_id, false);
-    runtime.set_pane_shell(&pane_id, false);
-    let call_count_before = runtime.calls().len();
-
-    let snapshot = coordination_get_project_mesh_snapshot_with_probe_mode(
-        &state,
-        "proj-web".to_string(),
-        &lookup,
-        false,
-    )
-    .expect("snapshot should succeed");
-
     let frontend_dev = snapshot
         .team_status
         .expect("team status")
@@ -1344,6 +1225,10 @@ fn project_mesh_snapshot_can_skip_runtime_liveness_probes_and_use_fast_snapshot(
         .find(|member| member.name == "frontend-dev")
         .expect("frontend-dev");
     assert_eq!(frontend_dev.session_status, SessionStatus::Offline);
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("reload runtime");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.daemon_pid, None);
     let calls = runtime.calls();
     let snapshot_calls = &calls[call_count_before..];
     assert!(
@@ -1355,7 +1240,7 @@ fn project_mesh_snapshot_can_skip_runtime_liveness_probes_and_use_fast_snapshot(
                 | RuntimeCall::FindDaemon { .. }
                 | RuntimeCall::SpawnDaemon { .. }
         )),
-        "fast snapshot path should not execute runtime liveness probes"
+        "snapshot path should not execute runtime liveness probes"
     );
 }
 
