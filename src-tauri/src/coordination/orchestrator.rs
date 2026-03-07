@@ -195,6 +195,8 @@ impl CoordinationOrchestrator {
             );
         }
 
+        self.stop_team_daemon_best_effort(name);
+
         TeamConfigStore::delete(&self.teams_dir, name)?;
 
         self.audit_log
@@ -430,6 +432,31 @@ impl CoordinationOrchestrator {
             }
         }
 
+        let operator_name = removal_actor_identity();
+        let (started_team_daemon, team_daemon_warning) = match self
+            .runtime
+            .spawn_team_daemon(&request.team_name, &operator_name)
+        {
+            Ok(pid) => {
+                tracing::info!(
+                    team = %request.team_name,
+                    operator = %operator_name,
+                    pid = pid,
+                    "team daemon ensured running after team resume"
+                );
+                (true, None)
+            }
+            Err(err) => {
+                tracing::warn!(
+                    team = %request.team_name,
+                    operator = %operator_name,
+                    error = %err,
+                    "failed to ensure team daemon is running after team resume"
+                );
+                (false, Some(err.to_string()))
+            }
+        };
+
         Ok(ResumeTeamReport {
             team_name: request.team_name.clone(),
             resumed: !resumed_members.is_empty(),
@@ -437,8 +464,8 @@ impl CoordinationOrchestrator {
             resumed_members,
             failed_members,
             warnings,
-            started_team_daemon: false,
-            team_daemon_warning: None,
+            started_team_daemon,
+            team_daemon_warning,
         })
     }
 
@@ -571,7 +598,128 @@ impl CoordinationOrchestrator {
                 continue;
             }
 
-            if runtime.health != HealthState::SessionDead {
+            let mut runtime_changed = false;
+            if member.cli_tool != CliTool::Claude {
+                let pane_id = runtime.pane_id.as_deref();
+                let discovered_daemon_pids = if let Some(pane_id) = pane_id {
+                    match self.runtime.find_existing_mesh_daemon_pids(
+                        pane_id,
+                        team_name,
+                        &member_name,
+                    ) {
+                        Ok(pids) => pids,
+                        Err(err) => {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pane_id = %pane_id,
+                                error = %err,
+                                "failed to discover existing mesh daemons during liveness reconciliation"
+                            );
+                            Vec::new()
+                        }
+                    }
+                } else {
+                    Vec::new()
+                };
+
+                let mut retained_daemon_pid = None;
+                let daemon_needs_restart = match runtime.daemon_pid {
+                    Some(pid) => match self.runtime.is_process_running_by_pid(pid) {
+                        Ok(true) => {
+                            retained_daemon_pid = Some(pid);
+                            false
+                        }
+                        Ok(false) => {
+                            runtime.daemon_pid = None;
+                            runtime_changed = true;
+                            false
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = pid,
+                                error = %err,
+                                "failed to verify daemon pid during liveness reconciliation"
+                            );
+                            false
+                        }
+                    },
+                    None => false,
+                };
+
+                if retained_daemon_pid.is_none() && !discovered_daemon_pids.is_empty() {
+                    retained_daemon_pid = discovered_daemon_pids.first().copied();
+                    runtime.daemon_pid = retained_daemon_pid;
+                    runtime_changed = true;
+                    if let Some(pid) = retained_daemon_pid {
+                        tracing::info!(
+                            team = %team_name,
+                            member = %member_name,
+                            pane_id = %runtime.pane_id.as_deref().unwrap_or_default(),
+                            pid = pid,
+                            "adopted existing mesh daemon during liveness reconciliation"
+                        );
+                    }
+                }
+
+                if let Some(retained_pid) = retained_daemon_pid {
+                    for duplicate_pid in discovered_daemon_pids
+                        .into_iter()
+                        .filter(|pid| *pid != retained_pid)
+                    {
+                        if let Err(err) = self.runtime.terminate_process_by_pid(duplicate_pid) {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = duplicate_pid,
+                                retained_pid = retained_pid,
+                                error = %err,
+                                "failed to terminate duplicate mesh daemon during liveness reconciliation"
+                            );
+                        } else {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = duplicate_pid,
+                                retained_pid = retained_pid,
+                                "terminated duplicate mesh daemon during liveness reconciliation"
+                            );
+                        }
+                    }
+                } else if daemon_needs_restart || runtime.daemon_pid.is_none() {
+                    if let Some(pane_id) = pane_id {
+                        match self
+                            .runtime
+                            .spawn_mesh_daemon(pane_id, team_name, &member_name)
+                        {
+                            Ok(pid) => {
+                                runtime.daemon_pid = Some(pid);
+                                runtime_changed = true;
+                                tracing::info!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pane_id = %pane_id,
+                                    pid = pid,
+                                    "restarted mesh daemon during liveness reconciliation"
+                                );
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pane_id = %pane_id,
+                                    error = %err,
+                                    "failed to restart mesh daemon during liveness reconciliation"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            if runtime.health != HealthState::SessionDead && !runtime_changed {
                 continue;
             }
 
@@ -664,33 +812,104 @@ impl CoordinationOrchestrator {
         runtime: Option<&MemberRuntimeRecord>,
     ) -> TeardownDiagnostics {
         let mut diagnostics = TeardownDiagnostics::default();
+        let pane_id = runtime.and_then(|record| record.pane_id.as_deref());
 
+        let mut daemon_pids = Vec::new();
         if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
-            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                tracing::warn!(
-                    team = %team_name,
-                    member = %member_name,
-                    pid = pid,
-                    error = %err,
-                    "failed to terminate daemon during teardown"
-                );
-                diagnostics.steps.push(step_failed(
-                    "terminate_daemon",
-                    format!("failed to terminate daemon pid {pid}: {err}"),
-                ));
-                diagnostics
-                    .warnings
-                    .push(format!("failed to terminate daemon pid {pid}: {err}"));
-            } else {
-                diagnostics.steps.push(step_succeeded(
-                    "terminate_daemon",
-                    format!("daemon pid {pid} terminated"),
-                ));
+            daemon_pids.push(pid);
+        }
+        if let Some(pane_id) = pane_id {
+            match self
+                .runtime
+                .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+            {
+                Ok(found_pids) => daemon_pids.extend(found_pids),
+                Err(err) => {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pane_id = %pane_id,
+                        error = %err,
+                        "failed to discover mesh daemons during teardown"
+                    );
+                    diagnostics.steps.push(step_failed(
+                        "discover_daemon",
+                        format!("failed to discover daemon state for pane {pane_id}: {err}"),
+                    ));
+                    diagnostics.warnings.push(format!(
+                        "failed to discover daemon state for pane {pane_id}: {err}"
+                    ));
+                }
             }
-        } else {
+        }
+        daemon_pids.sort_unstable();
+        daemon_pids.dedup();
+
+        if daemon_pids.is_empty() {
             diagnostics
                 .steps
                 .push(step_succeeded("terminate_daemon", "no daemon pid recorded"));
+        } else {
+            let mut terminated = Vec::new();
+            for pid in daemon_pids {
+                if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        error = %err,
+                        "failed to terminate daemon during teardown"
+                    );
+                    diagnostics.steps.push(step_failed(
+                        "terminate_daemon",
+                        format!("failed to terminate daemon pid {pid}: {err}"),
+                    ));
+                    diagnostics
+                        .warnings
+                        .push(format!("failed to terminate daemon pid {pid}: {err}"));
+                } else {
+                    terminated.push(pid);
+                }
+            }
+
+            if !terminated.is_empty() {
+                diagnostics.steps.push(step_succeeded(
+                    "terminate_daemon",
+                    format!(
+                        "terminated daemon pid{} {}",
+                        if terminated.len() == 1 { "" } else { "s" },
+                        terminated
+                            .iter()
+                            .map(u32::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+            }
+        }
+
+        if let Err(err) = self
+            .runtime
+            .clear_mesh_daemon_pid_file(team_name, member_name)
+        {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                error = %err,
+                "failed to clear daemon pid file during teardown"
+            );
+            diagnostics.steps.push(step_failed(
+                "clear_daemon_pid_file",
+                format!("failed to clear daemon pid file: {err}"),
+            ));
+            diagnostics
+                .warnings
+                .push(format!("failed to clear daemon pid file: {err}"));
+        } else {
+            diagnostics.steps.push(step_succeeded(
+                "clear_daemon_pid_file",
+                "daemon pid file cleared",
+            ));
         }
 
         if let Err(err) = self.backend.teardown(TeardownRequest {
@@ -717,7 +936,7 @@ impl CoordinationOrchestrator {
                 .push(step_succeeded("leave_mesh", "mesh presence removed"));
         }
 
-        if let Some(pane_id) = runtime.and_then(|record| record.pane_id.as_deref()) {
+        if let Some(pane_id) = pane_id {
             match member_project_path {
                 Some(project_path) => {
                     let project_path = project_path.display().to_string();
@@ -818,6 +1037,34 @@ impl CoordinationOrchestrator {
         }
 
         diagnostics
+    }
+
+    pub(crate) fn ensure_team_daemon_running_best_effort(&self, team_name: &str) {
+        let operator_name = removal_actor_identity();
+        match self.runtime.spawn_team_daemon(team_name, &operator_name) {
+            Ok(pid) => tracing::info!(
+                team = %team_name,
+                operator = %operator_name,
+                pid = pid,
+                "team daemon ensured running"
+            ),
+            Err(err) => tracing::warn!(
+                team = %team_name,
+                operator = %operator_name,
+                error = %err,
+                "failed to ensure team daemon is running"
+            ),
+        }
+    }
+
+    pub(crate) fn stop_team_daemon_best_effort(&self, team_name: &str) {
+        if let Err(err) = self.runtime.stop_team_daemon(team_name) {
+            tracing::warn!(
+                team = %team_name,
+                error = %err,
+                "failed to stop team daemon during teardown"
+            );
+        }
     }
 
     /// Drain buffered audit events and clear the in-memory log.

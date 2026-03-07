@@ -167,6 +167,8 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
+        self.ensure_team_daemon_running_best_effort(&request.team_name);
+
         Ok(AddAgentReport {
             team_name: request.team_name.clone(),
             member_name: request.agent.name.clone(),
@@ -460,6 +462,8 @@ impl CoordinationOrchestrator {
             &mut succeeded_steps,
             &mut steps,
         );
+
+        self.ensure_team_daemon_running_best_effort(&request.team_name);
 
         Ok(ResumeAgentReport {
             team_name: request.team_name.clone(),

@@ -190,6 +190,8 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
+        self.ensure_team_daemon_running_best_effort(&request.team_name);
+
         Ok(InitializeReport {
             team_name: request.team_name.clone(),
             succeeded_steps,

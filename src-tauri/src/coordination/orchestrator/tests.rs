@@ -150,6 +150,14 @@ impl CoordinationRuntime for MeshPreAddRuntime {
             .spawn_mesh_daemon(pane_id, team_name, member_name)
     }
 
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
+    }
+
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -248,6 +256,14 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
     ) -> Result<u32, CoordinationError> {
         self.inner
             .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
     }
 
     fn pane_belongs_to_project(
@@ -355,6 +371,14 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
             .spawn_mesh_daemon(pane_id, team_name, member_name)
     }
 
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
+    }
+
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -457,6 +481,14 @@ impl CoordinationRuntime for SelectiveJoinFailureRuntime {
     ) -> Result<u32, CoordinationError> {
         self.inner
             .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
     }
 
     fn pane_belongs_to_project(
@@ -570,6 +602,14 @@ impl CoordinationRuntime for ClaudeLaunchRosterRuntime {
     ) -> Result<u32, CoordinationError> {
         self.inner
             .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
     }
 
     fn pane_belongs_to_project(
@@ -1060,6 +1100,45 @@ fn disband_team_removes_directory() {
 }
 
 #[test]
+fn disband_team_stops_team_daemon_best_effort() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
+
+    orchestrator
+        .disband_team(team_name, Some("cleanup".to_string()))
+        .expect("disband should succeed");
+
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::StopTeamDaemon { team_name: recorded_team } if recorded_team == team_name
+    )));
+}
+
+#[test]
 fn disband_nonexistent_team_returns_already_disbanded() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);
@@ -1346,6 +1425,79 @@ fn remove_member_tears_down_runtime_resources() {
         }
         other => panic!("expected operator notice, got {other:?}"),
     }
+}
+
+#[test]
+fn remove_member_discovers_and_terminates_daemon_when_runtime_pid_is_missing() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let fake = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), fake, runtime.clone());
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut runtime_record =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
+    runtime_record.pane_id = Some("%9".to_string());
+    runtime_record.daemon_pid = None;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime_record)
+        .expect("runtime saved");
+    runtime.set_matching_daemon_pids("%9", team_name, member_name, &[5555]);
+
+    let report = orchestrator
+        .remove_member(team_name, member_name, Some("cleanup".to_string()))
+        .expect("remove should succeed");
+
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "clear_daemon_pid_file" && step.success));
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::FindDaemon {
+            pane_id,
+            team_name: recorded_team,
+            member_name: recorded_member
+        } if pane_id == "%9" && recorded_team == team_name && recorded_member == member_name
+    )));
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 5555)));
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::ClearDaemonPidFile {
+            team_name: recorded_team,
+            member_name: recorded_member
+        } if recorded_team == team_name && recorded_member == member_name
+    )));
 }
 
 #[test]
@@ -1744,12 +1896,19 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
         updated, record,
         "active CLI pane should not be marked offline"
     );
+    let calls = runtime.calls();
     assert!(
-        !runtime.calls().iter().any(|call| matches!(
+        calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 4242)),
+        "healthy member should verify daemon liveness"
+    );
+    assert!(
+        !calls.iter().any(|call| matches!(
             call,
-            RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
+            RuntimeCall::TerminatePid { .. } | RuntimeCall::SpawnDaemon { .. }
         )),
-        "healthy member should not trigger daemon pid checks"
+        "healthy member should not trigger daemon restart/cleanup"
     );
 }
 
@@ -1792,13 +1951,207 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
     );
     assert_eq!(updated.pane_id.as_deref(), Some("%9"));
     assert_eq!(updated.session_id, None);
-    assert_eq!(updated.daemon_pid, None);
+    assert_eq!(updated.daemon_pid, Some(10000));
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { pane_id, team_name, member_name } if pane_id == "%9" && team_name == "architecture-final" && member_name == "codex-reviewer")));
     assert!(
-        !runtime.calls().iter().any(|call| matches!(
+        !calls.iter().any(|call| matches!(
             call,
             RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
         )),
-        "healthy repair should not run daemon cleanup"
+        "session-dead repair should start a daemon without daemon cleanup"
+    );
+}
+
+#[test]
+fn liveness_reconcile_restarts_stale_non_running_daemon_for_live_pane() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pid_running(4242, false);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.session_id, Some("session-123".to_string()));
+    assert_eq!(updated.daemon_pid, Some(10000));
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 4242)));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { pane_id, team_name, member_name } if pane_id == "%9" && team_name == "architecture-final" && member_name == "codex-reviewer")));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 4242)),
+        "dead daemon pid should be replaced, not terminated"
+    );
+}
+
+#[test]
+fn liveness_reconcile_adopts_existing_daemon_when_runtime_pid_is_missing() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = None;
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_matching_daemon_pids("%9", team_name, member_name, &[5555]);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.session_id, Some("session-123".to_string()));
+    assert_eq!(updated.daemon_pid, Some(5555));
+    let calls = runtime.calls();
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::FindDaemon {
+            pane_id,
+            team_name,
+            member_name
+        } if pane_id == "%9" && team_name == "architecture-final" && member_name == "codex-reviewer"
+    )));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })),
+        "existing daemon should be adopted without respawn"
+    );
+}
+
+#[test]
+fn liveness_reconcile_adopts_existing_daemon_when_runtime_pid_is_stale() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = Some(4242);
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pid_running(4242, false);
+    runtime.set_matching_daemon_pids("%9", team_name, member_name, &[5555]);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.daemon_pid, Some(5555));
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 4242)));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })),
+        "stale runtime pid should adopt the live daemon instead of spawning a duplicate"
+    );
+}
+
+#[test]
+fn liveness_reconcile_terminates_duplicate_daemons_after_adopting_one() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("session-123".to_string());
+    record.daemon_pid = None;
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_matching_daemon_pids("%9", team_name, member_name, &[5555, 6666]);
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.daemon_pid, Some(5555));
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 6666)));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })),
+        "duplicate discovery should clean up extras instead of respawning"
     );
 }
 
@@ -2017,12 +2370,18 @@ fn liveness_reconcile_updates_only_drifted_members() {
         healthy_updated, healthy,
         "member without drift should not be rewritten"
     );
+    let calls = runtime.calls();
     assert!(
-        !runtime.calls().iter().any(|call| matches!(
-            call,
-            RuntimeCall::CheckPid { pid } if *pid == 9999
-        )),
-        "healthy member should not trigger daemon checks"
+        calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::CheckPid { pid } if *pid == 9999)),
+        "healthy member should verify daemon liveness"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 9999)),
+        "healthy member should not trigger daemon cleanup"
     );
 }
 
@@ -2454,6 +2813,22 @@ fn initialize_team_full_success_path() {
         lead_runtime.daemon_pid.is_none(),
         "claude lead should not start mesh daemon when launched natively"
     );
+}
+
+#[test]
+fn initialize_team_ensures_team_daemon_running() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let request = initialize_request("architecture-final-init");
+
+    orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final-init"
+    )));
 }
 
 #[test]
