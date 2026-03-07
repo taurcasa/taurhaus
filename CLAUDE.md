@@ -200,7 +200,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
-- **IPC**: Fine-grained commands (currently 80 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
+- **IPC**: Fine-grained commands (currently 89 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
 - **File rendering**: Classification → IPC → cache → render. See [`docs/file-rendering-pipeline.md`](docs/file-rendering-pipeline.md).

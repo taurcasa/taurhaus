@@ -4,18 +4,20 @@ A condensed overview for contributors. For detailed references, see the [docs/ i
 
 ## System Overview
 
-taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, and search. A lightweight companion daemon handles process scanning, file watching, and tmux session management, communicating with the app over TCP (JSON-line protocol on localhost:17233).
+taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles WSL-side process scanning, tmux session management, and WSL file watching when the app is bridging into Linux workspaces, communicating with the app over TCP (JSON-line protocol on localhost:17233).
 
-The daemon runs on both platforms — the only difference is where:
+The daemon can run on all supported platforms, but it is only responsible for watch/process work that the app cannot do directly:
 
 - **Windows**: The daemon runs inside WSL2 (launched via `wsl.exe`), where it has access to `/proc` for process inspection and the Linux filesystem where AI tools run.
-- **macOS**: The daemon runs natively as a subprocess (launched from `~/.local/bin/taurhaus-daemon`), using `libproc` and `lsof` for process inspection instead of `/proc`.
+- **macOS / Linux**: The daemon runs natively as a subprocess (launched from `~/.local/bin/taurhaus-daemon`) for session scanning / terminal control, while the app keeps ownership of native project file watchers.
 
 ![System Architecture](docs/images/system-architecture.jpg)
 
+_Note: this infographic is stale and needs regeneration. The current codebase uses 89 IPC commands, and native/local file watching is app-owned rather than daemon-owned on all platforms._
+
 ## Platform Abstraction
 
-The `platform/` module provides compile-time dispatch (`#[cfg(target_os)]`) between Linux and macOS implementations. Both platforms implement the same function signatures — the compiler enforces the API contract. The daemon binary is compiled per-platform with the correct implementation.
+The `platform/` module provides compile-time dispatch (`#[cfg(target_os)]`) across Linux, macOS, and Windows implementations. Linux and macOS implement the real process-inspection surface; Windows provides explicit stubs for scanner-only APIs while still sharing command-spawn helpers such as hidden-window process launching. The compiler enforces the API contract per target.
 
 | Function | Linux (daemon in WSL2) | macOS (native daemon) |
 |----------|--------------------|--------------------|
@@ -25,7 +27,7 @@ The `platform/` module provides compile-time dispatch (`#[cfg(target_os)]`) betw
 | `collect_socket_inodes(pid)` | `/proc/PID/fd` → socket inode extraction | `lsof -p PID -i TCP` |
 | `has_established_443(pid)` | `/proc/PID/net/tcp` socket state parsing | `lsof` ESTABLISHED filter |
 
-The session scanner (`session_scanner/`) and activity detector (`proc_io.rs`) are fully platform-agnostic — they call into the platform module and don't know which OS they're running on.
+The session scanner (`session_scanner/`) and activity detector are platform-agnostic at the call site — they rely on the `platform/` module for the OS-specific work while keeping the higher-level detection logic shared.
 
 ## Frontend (Svelte 5 + Tailwind v4)
 
@@ -57,7 +59,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`, `$props`) — no legacy stores
 - **Derived theme tokens** — all color switching via `$derived` variables, never inline ternaries
 - **`$bindable` position memory** — each tab exposes view state, Shell saves/restores per project
-- **IPC layer** (`src/lib/ipc.js`) — Tauri `invoke()` wrappers with dev-mode mock fallbacks
+- **IPC layer** — `src/lib/ipc.js` is a thin compatibility re-export; the real Tauri `invoke()` wrappers and mock fallbacks live under `src/lib/ipc/`
 - **Visual testing lane** — Browser Mode screenshots live under `src/test/visual/`; a plain Vite fixture host lives at `visual-host.html`
 
 ## Backend (Rust)
@@ -75,10 +77,12 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `session/` | Session import, parsing, archival |
 | `session_scanner/` | CLI tool detection (process scanning, idle detection) |
 | `task_scanner/` | Task aggregation from Claude Code, Codex, Gemini (`claude_index.rs` maps source_key -> project for robust scans) |
-| `daemon/` | TCP client + server, daemon lifecycle |
+| `daemon/` | TCP protocol/server/event-listener/launcher code for the companion daemon |
+| `daemon_api.rs` | App-facing daemon request wrapper used by commands and startup flows |
 | `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
-| `provider/` | Provider routing — LocalProvider (direct) vs DaemonProvider (TCP) |
+| `provider/` | Concrete provider implementations and path translation utilities |
+| `project_provider.rs` | Shared `ProjectProvider` trait and provider selection boundary |
 | `services/` | Cross-cutting services: relationships, scanner, project utilities, session import |
 | `models/` | Shared data structures (Project, Session, ActivityState, etc.) |
 | `config/` | Application configuration |
@@ -87,6 +91,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `sentinels.rs` | Shared sentinel/fallback utilities used by startup and command flows |
 | `event_processor.rs` | File/git event batching (300ms quiet window, 2s ceiling) |
 | `daemon_lifecycle.rs` | Daemon auto-launch, reconnection, shutdown |
+| `watch_targets.rs` | Activity-based planning for local and daemon watch reconciliation |
 
 The crate enforces `#![deny(unsafe_code)]` — the single exception (libgit2 init) uses a scoped `#[allow]`.
 
@@ -108,7 +113,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (82)
+### IPC Commands (89)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
@@ -124,7 +129,7 @@ Grouped by command module:
 - **Daemon** (5): platform/status/start/install checks
 - **Mesh install** (2): check/install mesh binary
 - **Settings** (2): get/update
-- **Coordination** (13): team lifecycle + member lifecycle + live/preflight
+- **Coordination** (15): team lifecycle + member lifecycle + live status + snapshot + preflight/availability
 - **Templates** (14): role/preset CRUD, composition, storage status, history/diff/revert/flush
 - **Logging** (1): frontend `console.*` is bridged to `frontend_log` IPC with structured payloads. Backend emits structured events into a JSONL sink at `taurhaus.log.jsonl`.
 
@@ -247,23 +252,27 @@ JSON-line protocol over TCP (localhost:17233). Same protocol on both platforms �
 
 ![Startup Sequence](docs/images/startup-sequence.jpg)
 
+_Note: this infographic predates the current activity-based watch reconciliation and should be regenerated._
+
 The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`):
 
 1. **Database** — open/create SQLite, run migrations
 2. **Daemon** — connect to existing daemon or auto-launch (platform-specific)
-3. **File watcher** — register watchers for all projects (.gitignore-filtered)
+3. **Watch bootstrap** — create the local watcher/event processor, reconcile activity-based local watches, and reconcile WSL daemon watches when applicable
 4. **Activity reseed** — update `last_activity_at` from latest git commit per project
 5. **Session import** — import any unimported session handoff files
 6. **Search index** — build tantivy index from filesystem if empty
 7. **Task scan** — seed task database from live CLI tool sources
 
-Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
+Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. The watch bootstrap also ensures the dedicated Claude task-directory watch. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
 
 Claude task-directory watching follows the same override rules: default `~/.claude/tasks`, or `<TAURHAUS_CLAUDE_DIR>/tasks` when `TAURHAUS_CLAUDE_DIR` is set.
 
 ## Data Flow
 
 ![Data Flow](docs/images/data-flow.jpg)
+
+_Note: this infographic predates the current local-vs-daemon watcher split and should be regenerated._
 
 ```
 User clicks project
@@ -272,8 +281,8 @@ User clicks project
   → Frontend renders immediately
 
 File changes detected
-  → Daemon's file watcher detects change
-  → Sends file_changed / git_changed event over TCP to app
+  → Native/local projects: app-owned `notify` watcher detects change
+  → WSL projects: daemon watch bridge emits `file_changed` / `git_changed`
   → App updates tantivy index + refreshes affected views
 
 CLI session state changes
