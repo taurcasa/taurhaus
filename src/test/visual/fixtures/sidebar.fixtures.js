@@ -379,7 +379,7 @@ export const team_rail_two_dark = createScenario({
     },
   },
   expected: {
-    labels: ['Team Rail Pair', 'Claude: running', 'Codex: idle', 'Connected'],
+    labels: ['Team Rail Pair', 'team-rail-pair: 2 team sessions active', 'Connected'],
     selectedProjectName: 'Team Rail Pair',
   },
 })
@@ -439,7 +439,7 @@ export const team_rail_three_light = createScenario({
     },
   },
   expected: {
-    labels: ['Team Rail Trio', 'Claude: idle', 'Codex: idle', 'Gemini: idle', 'Connected'],
+    labels: ['Team Rail Trio', 'team-rail-trio: 3 team sessions idle', 'Connected'],
     selectedProjectName: 'Team Rail Trio',
   },
 })
@@ -487,7 +487,7 @@ export const team_rail_two_light = createScenario({
     },
   },
   expected: {
-    labels: ['Team Rail Pair', 'Claude: running', 'Codex: idle', 'Connected'],
+    labels: ['Team Rail Pair', 'team-rail-pair: 2 team sessions active', 'Connected'],
     selectedProjectName: 'Team Rail Pair',
   },
   compareAgainst: 'team_rail_two_dark',
@@ -706,7 +706,7 @@ export const team_plus_standalone_dark = createScenario({
     },
   },
   expected: {
-    labels: ['Team Plus Standalone', 'Claude: running', 'Codex: idle', 'Gemini: running', 'Connected'],
+    labels: ['Team Plus Standalone', 'team-plus-standalone: 2 team sessions active', 'Gemini: running', 'Connected'],
     selectedProjectName: 'Team Plus Standalone',
   },
 })

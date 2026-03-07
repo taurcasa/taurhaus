@@ -21,6 +21,36 @@
     onRetry = () => {},
     onOpenManageProjects = () => {},
   } = $props()
+
+  function hasTmuxTarget(session) {
+    return Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
+  }
+
+  function isLeadMemberName(memberName) {
+    const normalized = String(memberName ?? '').trim().toLowerCase()
+    return normalized === 'lead'
+      || normalized === 'team-lead'
+      || normalized.startsWith('lead-')
+      || normalized.startsWith('team-lead-')
+  }
+
+  function groupedSessionTarget(indicator) {
+    if (!Array.isArray(indicator?.members) || indicator.members.length === 0) {
+      return null
+    }
+
+    return indicator.members.find(member => isLeadMemberName(member?.member_name) && hasTmuxTarget(member))
+      || indicator.members.find(hasTmuxTarget)
+      || null
+  }
+
+  function handleGroupedSessionJump(event, indicator) {
+    event.stopPropagation()
+    const target = groupedSessionTarget(indicator)
+    if (target) {
+      onSessionJump(event, target)
+    }
+  }
 </script>
 
 {#if sidebarLoading}
@@ -93,8 +123,28 @@
                   data-activity={ind.tone}
                   aria-label={ind.ariaLabel}
                   data-testid="sidebar-team-indicator"
+                  role="button"
+                  tabindex="0"
+                  onclick={(event) => handleGroupedSessionJump(event, ind)}
+                  onkeydown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      handleGroupedSessionJump(event, ind)
+                    }
+                  }}
                 >
-                  {#if ind.layout === 'stack'}
+                  {#if ind.groupedIcon}
+                    <span class="sidebar-session-team-grouped-icons" aria-hidden="true">
+                      <svg class="sidebar-session-team-grouped-glyph" viewBox={ind.groupedIcon.viewBox} fill="currentColor">
+                        {#each ind.groupedIcon.paths as p}
+                          <path d={p.d} transform={p.transform || ''}></path>
+                        {/each}
+                      </svg>
+                    </span>
+                    {#if ind.layout === 'stack'}
+                      <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
+                    {/if}
+                  {:else if ind.layout === 'stack'}
                     <span class="sidebar-session-team-stack-logos" aria-hidden="true">
                       {#each ind.tools as tool, index (tool.tool)}
                         <span

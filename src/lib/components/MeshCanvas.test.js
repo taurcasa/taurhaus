@@ -498,6 +498,44 @@ describe('MeshCanvas', () => {
     vi.useRealTimers()
   })
 
+  it('shows the runtime hover card placeholder even when role fields are empty', async () => {
+    vi.useFakeTimers()
+
+    render(MeshCanvas, {
+      props: {
+        lead,
+        agents: [
+          {
+            ...makeAgents(1)[0],
+            id: 'agent-1',
+            name: 'developer1',
+            roleName: '',
+            focusArea: '',
+            contextSummary: null,
+            behaviorSummary: null,
+            tool: 'codex',
+            model: 'gpt-5.4 high',
+          },
+        ],
+        mode: 'runtime',
+      },
+    })
+
+    const node = screen.getByTestId('mesh-node-agent')
+    await fireEvent.mouseEnter(node)
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-role-card-name')).toHaveTextContent('developer1')
+    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('mesh-node-role-card-placeholder-title')).toHaveTextContent('No role defined')
+    expect(screen.getByTestId('mesh-node-role-card-placeholder-message')).toHaveTextContent(
+      'Assign a role template to see focus area and behavioral boundaries here.'
+    )
+
+    vi.useRealTimers()
+  })
+
   it('suppresses the hover card while the click detail panel is open', async () => {
     vi.useFakeTimers()
 

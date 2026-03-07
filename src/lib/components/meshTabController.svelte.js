@@ -29,6 +29,8 @@ import {
 import { refreshRuntimeTeamConfigWorkflow } from './meshTabGateWorkflow.js'
 import { autoDismissNotice } from './meshTabNotifications.js'
 
+const RUNTIME_STATUS_POLL_MS = 2000
+
 export function createMeshTabController({
   getProjectPath,
   getAvailableProjects,
@@ -95,6 +97,7 @@ export function createMeshTabController({
   let presetSelectionSequence = 0
   let runtimeMessageTimer = null
   let errorMessageTimer = null
+  let runtimePollTimer = null
 
   const selectedNode = $derived.by(() => {
     const config = teamConfig
@@ -169,6 +172,11 @@ export function createMeshTabController({
           model: member?.model ?? '',
           projectId: member?.projectId ?? member?.project_id ?? '',
           description: member?.description ?? null,
+          roleId: member?.roleId ?? member?.role_id ?? null,
+          roleName: member?.roleName ?? member?.role_name ?? null,
+          focusArea: member?.focusArea ?? member?.focus_area ?? null,
+          contextSummary: member?.contextSummary ?? member?.context_summary ?? null,
+          behaviorSummary: member?.behaviorSummary ?? member?.behavior_summary ?? null,
           sessionStatus: member?.sessionStatus ?? member?.session_status ?? 'offline',
           paneId: member?.paneId ?? member?.pane_id ?? null,
         }))
@@ -241,6 +249,11 @@ export function createMeshTabController({
                 model: nextConfig.lead.model,
                 projectId: nextConfig.lead.projectId,
                 description: nextConfig.lead.description,
+                roleId: nextConfig.lead.roleId,
+                roleName: nextConfig.lead.roleName,
+                focusArea: nextConfig.lead.focusArea,
+                contextSummary: nextConfig.lead.contextSummary,
+                behaviorSummary: nextConfig.lead.behaviorSummary,
                 sessionStatus: nextConfig.lead.status,
                 paneId: nextConfig.lead.paneId,
               }
@@ -252,6 +265,11 @@ export function createMeshTabController({
             model: member.model,
             projectId: member.projectId,
             description: member.description,
+            roleId: member.roleId,
+            roleName: member.roleName,
+            focusArea: member.focusArea,
+            contextSummary: member.contextSummary,
+            behaviorSummary: member.behaviorSummary,
             sessionStatus: member.status,
             paneId: member.paneId,
           })),
@@ -733,6 +751,33 @@ export function createMeshTabController({
         errorMessage = ''
       },
     })
+  })
+
+  $effect(() => {
+    if (mode !== 'runtime' || !teamName) return
+
+    let disposed = false
+
+    const pollRuntimeStatus = async () => {
+      try {
+        await refreshRuntimeTeamConfig(teamName, discoverySequence)
+      } catch (error) {
+        if (disposed) return
+        console.warn('[meshTab] runtime status refresh failed:', error)
+      }
+    }
+
+    runtimePollTimer = setInterval(() => {
+      void pollRuntimeStatus()
+    }, RUNTIME_STATUS_POLL_MS)
+
+    return () => {
+      disposed = true
+      if (runtimePollTimer) {
+        clearInterval(runtimePollTimer)
+        runtimePollTimer = null
+      }
+    }
   })
 
   return {

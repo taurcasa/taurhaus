@@ -246,6 +246,123 @@ describe('Sidebar component branches', () => {
     expect(screen.getByTestId('sidebar-team-indicator').querySelectorAll('.sidebar-session-team-rail-logo')).toHaveLength(2)
   })
 
+  it('navigates grouped rail indicators to the lead tmux pane', async () => {
+    const projects = [makeProjects(1)[0]]
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'team',
+        layout: 'rail',
+        groupId: 'team-a',
+        count: 2,
+        tone: 'active',
+        memberTools: [
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+        ],
+        members: [
+          {
+            member_name: 'team-lead',
+            tmux_session: 'mesh',
+            tmux_window: '4',
+            tmux_pane: '%12',
+          },
+          {
+            member_name: 'developer2',
+            tmux_session: 'mesh',
+            tmux_window: '4',
+            tmux_pane: '%13',
+          },
+        ],
+        ariaLabel: 'team-a: 2 team sessions active',
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    const indicator = await screen.findByTestId('sidebar-team-indicator')
+    await fireEvent.click(indicator)
+
+    expect(navigateToSession).toHaveBeenCalledWith('mesh', '4', '%12')
+  })
+
+  it('navigates grouped stack indicators to the lead tmux pane on keyboard activation', async () => {
+    const projects = [makeProjects(1)[0]]
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'team',
+        layout: 'stack',
+        groupId: 'team-b',
+        count: 4,
+        tone: 'idle',
+        tools: [
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' } },
+        ],
+        members: [
+          {
+            member_name: 'lead-architecture',
+            tmux_session: 'mesh',
+            tmux_window: '7',
+            tmux_pane: '%21',
+          },
+          {
+            member_name: 'developer2',
+            tmux_session: 'mesh',
+            tmux_window: '7',
+            tmux_pane: '%22',
+          },
+        ],
+        ariaLabel: 'team-b: 4 team sessions idle',
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    const indicator = await screen.findByTestId('sidebar-team-indicator')
+    await fireEvent.keyDown(indicator, { key: 'Enter' })
+
+    expect(navigateToSession).toHaveBeenCalledWith('mesh', '7', '%21')
+  })
+
+  it('falls back to the first grouped member pane when no lead member is present', async () => {
+    const projects = [makeProjects(1)[0]]
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'team',
+        layout: 'rail',
+        groupId: 'team-c',
+        count: 2,
+        tone: 'active',
+        memberTools: [
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+          { tool: 'gemini', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'sidebarSmall' },
+        ],
+        members: [
+          {
+            member_name: 'developer2',
+            tmux_session: 'mesh',
+            tmux_window: '9',
+            tmux_pane: '%31',
+          },
+          {
+            member_name: 'developer3',
+            tmux_session: 'mesh',
+            tmux_window: '9',
+            tmux_pane: '%32',
+          },
+        ],
+        ariaLabel: 'team-c: 2 team sessions active',
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    const indicator = await screen.findByTestId('sidebar-team-indicator')
+    await fireEvent.click(indicator)
+
+    expect(navigateToSession).toHaveBeenCalledWith('mesh', '9', '%31')
+  })
+
   it('context menu supports copy path and two-click remove confirmation', async () => {
     const onProjectRemoved = vi.fn()
     const projects = [makeProjects(1)[0]]

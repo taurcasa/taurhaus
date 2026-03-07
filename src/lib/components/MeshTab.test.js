@@ -69,6 +69,11 @@ function buildLiveTeamStatus(overrides = {}) {
         role: 'lead',
         cliTool: 'claude',
         model: 'opus',
+        roleId: 'claude-orchestrator',
+        roleName: 'Claude Orchestrator',
+        focusArea: 'Team sequencing and escalation',
+        contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+        behaviorSummary: 'Coordinates specialists and escalates blockers.',
         projectId: 'proj-core',
         sessionStatus: 'active',
         paneId: '%1',
@@ -78,6 +83,11 @@ function buildLiveTeamStatus(overrides = {}) {
         role: 'member',
         cliTool: 'codex',
         model: 'gpt-5.4 high',
+        roleId: 'codex-architect',
+        roleName: 'Codex Architect',
+        focusArea: 'Architecture decisions and structural review',
+        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
         projectId: 'proj-web',
         description: 'Implements UI surface details for the mesh canvas.',
         sessionStatus: 'idle',
@@ -354,6 +364,94 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
     })
+  })
+
+  it('polls runtime status and updates an agent node to offline when the member disconnects', async () => {
+    vi.useFakeTimers()
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    coordinationGetLiveTeamStatus
+      .mockResolvedValueOnce(buildLiveTeamStatus())
+      .mockResolvedValueOnce(buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            projectId: 'proj-core',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            projectId: 'proj-web',
+            description: 'Implements UI surface details for the mesh canvas.',
+            sessionStatus: 'offline',
+            paneId: null,
+          },
+        ],
+      }))
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+    })
+
+    await vi.advanceTimersByTimeAsync(2000)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
+    vi.useRealTimers()
+  })
+
+  it('shows the role hover card in the runtime mesh tab after delayed hover', async () => {
+    vi.useFakeTimers()
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    const node = screen.getByTestId('mesh-node-agent')
+    await fireEvent.mouseEnter(node)
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
+      'Architecture decisions and structural review'
+    )
+
+    vi.useRealTimers()
   })
 
   it('shows availability inline and skips preflight gating on mount', async () => {

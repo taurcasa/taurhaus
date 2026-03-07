@@ -1,9 +1,8 @@
 /** Session indicator semantics for sidebar rows and HoverCard display. */
 
-import { getToolIcon, getToolName } from './toolLogos.js'
+import { getToolIcon, getToolName, getGroupedIcon } from './toolLogos.js'
 
 const STACKING_THRESHOLD = 4
-const GROUPING_THRESHOLD = 4
 const TEAM_GROUP_MIN_MEMBERS = 2
 const TOOL_ORDER = ['claude', 'codex', 'gemini']
 
@@ -87,10 +86,12 @@ function buildTeamIndicator(group) {
   const activityLabel = isActive ? 'active' : 'idle'
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
   const tools = uniqueTools(members, 'sidebarSmall').slice(0, 3)
+  const groupedIcon = getGroupedIcon(tools.map(t => t.tool))
 
   return {
     kind: 'team',
     layout,
+    groupedIcon,
     groupId: group.groupId,
     groupLabel: group.groupLabel,
     count,
@@ -189,10 +190,6 @@ export function toolIndicators(sessions) {
   if (!sessions || sessions.length === 0) return []
 
   const liveSessions = sessions.filter(s => hasLiveSession(s))
-  if (liveSessions.length < GROUPING_THRESHOLD) {
-    return liveSessions.map(singleSessionIndicator)
-  }
-
   const teamIndicators = groupedSessionIndicators(liveSessions)
   if (teamIndicators.length === 0) {
     return liveSessions.map(singleSessionIndicator)

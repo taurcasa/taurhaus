@@ -18,6 +18,13 @@
     return value || 'Unknown'
   })
   const model = $derived.by(() => String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim())
+  const hasRoleContent = $derived(
+    roleName.length > 0 || focusArea.length > 0 || contextSummary.length > 0 || behaviorSummary.length > 0
+  )
+  const placeholderTitle = $derived('No role defined')
+  const placeholderMessage = $derived(
+    'Assign a role template to see focus area and behavioral boundaries here.'
+  )
   const cardTone = $derived(
     dark
       ? 'border-white/12 bg-zinc-950/96 text-zinc-100 shadow-[0_16px_34px_rgba(0,0,0,0.48)]'
@@ -54,19 +61,29 @@
       {/if}
     </div>
 
-    {#if focusArea}
-      <div class="space-y-0.5">
-        <p class="text-[10px] font-semibold uppercase tracking-wide {labelTone}">Focus</p>
-        <p class="text-[12px] leading-snug {secondaryTone}" data-testid="mesh-node-role-card-focus">{focusArea}</p>
+    {#if hasRoleContent}
+      {#if focusArea}
+        <div class="space-y-0.5">
+          <p class="text-[10px] font-semibold uppercase tracking-wide {labelTone}">Focus</p>
+          <p class="text-[12px] leading-snug {secondaryTone}" data-testid="mesh-node-role-card-focus">{focusArea}</p>
+        </div>
+      {/if}
+
+      {#if contextSummary}
+        <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-context">{contextSummary}</p>
+      {/if}
+
+      {#if behaviorSummary}
+        <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-behavior">{behaviorSummary}</p>
+      {/if}
+    {:else}
+      <div
+        class="space-y-1 rounded-xl border px-3 py-2.5 {dark ? 'border-white/10 bg-white/[0.04]' : 'border-brand-200/80 bg-brand-50/60'}"
+        data-testid="mesh-node-role-card-placeholder"
+      >
+        <p class="text-[12px] font-medium {secondaryTone}" data-testid="mesh-node-role-card-placeholder-title">{placeholderTitle}</p>
+        <p class="text-[11px] leading-relaxed {labelTone}" data-testid="mesh-node-role-card-placeholder-message">{placeholderMessage}</p>
       </div>
-    {/if}
-
-    {#if contextSummary}
-      <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-context">{contextSummary}</p>
-    {/if}
-
-    {#if behaviorSummary}
-      <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-behavior">{behaviorSummary}</p>
     {/if}
 
     <p

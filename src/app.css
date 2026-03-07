@@ -346,6 +346,16 @@ body {
   height: 13px;
 }
 
+.sidebar-session-team-grouped-icons {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sidebar-session-team-grouped-glyph {
+  height: 13px;
+  width: auto;
+}
+
 .sidebar-session-team-stack {
   display: inline-flex;
   align-items: center;

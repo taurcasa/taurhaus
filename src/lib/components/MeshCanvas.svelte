@@ -146,15 +146,6 @@
     }
   }
 
-  function hasRoleSummary(node) {
-    return Boolean(
-      String(node?.roleName ?? node?.role_name ?? '').trim()
-      || String(node?.focusArea ?? node?.focus_area ?? '').trim()
-      || String(node?.contextSummary ?? node?.context_summary ?? '').trim()
-      || String(node?.behaviorSummary ?? node?.behavior_summary ?? '').trim()
-    )
-  }
-
   function hoverSuppressed() {
     if (normalizedMode !== 'runtime') return true
     if (selectedNodeId) return true
@@ -177,13 +168,13 @@
   function scheduleHoverCard(nodeId) {
     if (!nodeId || hoverSuppressed()) return
     const node = findLayoutNode(nodeId)
-    if (!node || !hasRoleSummary(node)) return
+    if (!node) return
 
     clearHoverTimer()
     hoverTimer = setTimeout(() => {
       if (hoverSuppressed()) return
       const activeNode = findLayoutNode(nodeId)
-      if (!activeNode || !hasRoleSummary(activeNode)) return
+      if (!activeNode) return
       hoverNodeId = String(nodeId)
       hoverAnchor = calculateHoverAnchor(nodeId)
       hoverTimer = null
