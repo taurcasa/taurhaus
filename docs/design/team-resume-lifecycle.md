@@ -8,6 +8,13 @@ Task: #488
 
 The cold-restart resume flow should be a team-level orchestrator that wraps the existing per-member resume pipeline. It must not duplicate pane resolution, CLI launch, mesh join, daemon restart, or runtime persistence logic that already exists in `coordination_resume_member`.
 
+Implementation note for the shipped taurhaus flow:
+
+- the core orchestration recommendation in this doc was implemented
+- the runtime recovery affordance ships in `MeshRuntimeBar` / `MeshRuntimeView`, not as a separate full-width alert banner
+- snapshot classification ships as a fast persisted-state read (`teamRuntimeState`) rather than snapshot-time tmux reconciliation
+- liveness repair now happens through explicit resume flows plus bounded background self-heal
+
 Recommended shape:
 
 1. Add a team-level IPC command and orchestrator method that loops over persisted team members.
@@ -61,17 +68,14 @@ Current gap:
 
 Use the Mesh tab as the primary entry point.
 
-When a project has a discovered team and that team is classified as cold/offline, show:
+When a project has a discovered team and that team is classified as cold/offline, show the runtime canvas as usual so membership remains visible, and surface recovery through the runtime header:
 
-- runtime canvas as usual, so membership remains visible
-- a persistent banner above the canvas:
-  - title: `Team is offline after restart`
-  - body: `Config still exists on disk, but no live panes were found.`
-  - primary CTA: `Resume Team`
-  - secondary CTA: `Resume Selected Member`
-  - optional tertiary CTA: `Disband Team`
+- `MeshRuntimeBar` summary copy becomes `Team ready to resume`
+- primary CTA becomes `Resume Team`
+- degraded teams use `Resume Offline (n)`
+- per-member retries remain available from node detail
 
-This keeps the user in the existing per-project mesh mental model.
+This keeps the user in the existing per-project mesh mental model without introducing a second page shell.
 
 ### Secondary Entry Point
 
@@ -106,20 +110,18 @@ Introduce an explicit team runtime classification returned with the project mesh
 
 ### How To Compute It
 
-Recommended backend behavior:
+Shipped backend behavior:
 
 1. `coordination_get_project_mesh_snapshot` discovers the team by project path.
-2. If a team exists and `tmux` is available, run `reconcile_team_liveness(team_name)` before building the returned snapshot.
-3. Build snapshot members from the reconciled runtime/config state.
-4. Derive `teamRuntimeState` from member statuses.
+2. It reads persisted config/runtime via the fast snapshot path.
+3. It derives `teamRuntimeState` from persisted member statuses.
+4. Separate explicit/background repair paths update stale runtime state outside the UI-critical snapshot IPC.
 
-This avoids the current gap where the first render can show stale pane bindings until the 2s live poll fixes them.
+### Why The Implementation Avoids Snapshot-Time Reconciliation
 
-### Why Snapshot-Time Reconciliation Is Acceptable
-
-- the app already treats live status as the authority for pane drift
-- cold-restart detection depends on missing panes, which is exactly what liveness reconciliation already knows how to classify
-- this is still lightweight compared to launching sessions or spawning daemons
+- first render and polling snapshots stay cheap and deterministic
+- Windows WSL/tmux/process probes are kept off the UI-critical snapshot path
+- the app still has bounded repair through explicit resume and background self-heal, so stale runtime can converge without freezing the foreground
 
 ## Proposed Backend API
 

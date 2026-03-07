@@ -6,6 +6,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-03-07
+
+Daemon reliability and team lifecycle release. Automatic hot-swap eliminates manual runbooks for mesh upgrades, background self-heal no longer freezes the UI, and cold restart recovery lets you pick up running teams after an app restart.
+
+### Added
+
+**Team Resume & Cold Restart Recovery**
+- Resume Team banner appears when the app detects a previously running team — one click to reconnect to existing agent panes
+- Snapshot classification (active panes / stale daemons / cold start) drives the recovery flow
+- IPC commands for team resume with progress reporting
+- Lifecycle header replaces the old runtime warning banner with richer state context
+
+**Daemon Hot-Swap**
+- Automatic version drift detection — background self-heal compares running daemon binary against bundled version
+- Atomic binary install: temp-stage + `mv -f` prevents "text file busy" and partial-copy corruption
+- Full daemon cycling after upgrade: team-daemon self-restart + member daemon restart
+- Works on both Linux and macOS (no `/proc` dependency — uses `ps`/`kill` universally)
+
+**Mesh Canvas Polish**
+- Cross-project member distinction — agents working on other projects get a visual treatment
+- Runtime role hover card with context-steering metadata
+- Sidebar session grouping with team connector rail and stacked tool logos
+
+**Role System Overhaul**
+- Context-steering model replaces capability-centric role definitions
+- Role summary fields propagated through the full coordination pipeline
+- Frontend role editor and catalog updated to show context-steering metadata
+
+### Fixed
+
+- **30-second UI freeze** — background self-heal held the shared IPC mutex, causing brief grey-out. Now uses an isolated orchestrator instance.
+- **Windows process spawning storm** — Mesh view triggered rapid `mesh` process launches on every poll. Added in-flight guard + console window suppression.
+- **Windows switch-away stall** (~5.1s → ~1.3s) — eliminated blocking runtime probes when switching away from Mesh tab.
+- **Liveness reconciliation** — stale `SessionDead` records repaired during reconcile pass; dead member daemons restarted for active panes.
+- **Daemon pidfile race** — resume daemon start now verifies pidfile before persisting `daemon_pid`, preventing ghost PID entries.
+- **Mesh discovery on Windows** — path normalization for snapshot discovery, skipped liveness probes on Windows snapshot path.
+- **Agent detail popup** — opens immediately instead of waiting for data, auto-closes after actions.
+- **Mesh view remount** — eliminated unnecessary component remount on project switch.
+- **Stale team folder warnings** — silenced noisy discovery warnings for team folders without configs.
+- **serde_yml deprecation** — replaced unmaintained `serde_yml` with `serde_norway`.
+
+### Changed
+
+- Mesh binary bumped to 0.2.3 (canonical HOME resolution for sandboxed agents, cross-platform daemon process identity, `ps`-based process checks on macOS)
+- Unified project mesh snapshot path across all platforms — single code path replaces platform-gated runtime probes
+- Sidebar team indicators refined: standalone icon style, CSS grouping, connector rail
+
+### Performance
+
+- Instant Mesh tab render via cache-first snapshot with background refresh
+- Instant project switch away from Mesh view (no blocking teardown)
+- Agent detail popup latency halved (212ms → 102ms)
+
 ## [0.5.3] - 2026-03-06
 
 Bug fix release targeting team creation and agent communication reliability.

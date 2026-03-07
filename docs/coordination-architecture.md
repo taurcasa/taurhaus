@@ -223,37 +223,64 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Rationale**: Removal is an operational workflow, not a simple config mutation. Structured reporting and ownership checks prevent silent failures and reduce accidental pane/process termination risk.
 
-### D16: Resume lifecycle is a first-class member operation
+### D16: Resume lifecycle is a first-class member and team operation
 
 **Status**: Implemented
 
-**Decision**: Offline members are resumed through a dedicated pipeline and IPC surface, not by remove/re-add.
+**Decision**: Offline recovery is handled through dedicated resume pipelines and IPC surfaces, not by remove/re-add.
 
-- IPC: `coordination_resume_member`
-- Types: `ResumeContextMode`, `ResumeMemberRequest`, `ResumeAgentReport`
-- Runtime behavior: resolve/reuse pane when possible, launch mode-aware CLI commands, restore mesh daemon path for non-Claude members, persist runtime attachment
-- UI contract: offline rows expose resume actions (`Continue` and `Fresh`)
+- IPC:
+  - `coordination_resume_member`
+  - `coordination_resume_team`
+- Types:
+  - `ResumeContextMode`
+  - `ResumeMemberRequest` / `ResumeAgentReport`
+  - `ResumeTeamRequest` / `ResumeTeamReport`
+- Runtime behavior:
+  - member resume resolves/reuses a pane when possible, launches mode-aware CLI commands, restores mesh membership + per-agent daemon state for non-Claude members, and persists runtime attachment
+  - team resume loads the persisted roster, resumes the lead first, then resumes the remaining members sequentially through the existing member-resume pipeline
+  - partial success is preserved; already resumed members stay up while failed members remain retryable
+- Snapshot/UI contract:
+  - project mesh snapshot returns `teamRuntimeState` with `none | active | degraded | cold_resume`
+  - runtime header/UI maps that into `none | active | degraded | coldResume`
+  - cold restart recovery is surfaced in the runtime header (`MeshRuntimeBar`) with `Resume Team`
+  - degraded teams surface `Resume Offline (n)` plus per-member retry from node detail
+  - in-flight team resume shows per-member progress rows and disables conflicting runtime actions until completion
 
-**Rationale**: Resume preserves team identity and historical context while minimizing operator friction and avoiding destructive config churn.
+**Rationale**: Resume preserves team identity and historical context while minimizing operator friction and avoiding destructive config churn. Team-level resume gives cold-restart recovery a single explicit action without inventing a second launch pipeline.
 
-### D17: Liveness reconciliation is write-on-drift at live-status read time
+### D17: Snapshot reads stay fast; liveness repair is explicit or background
 
 **Status**: Implemented
 
-**Decision**: Team liveness is reconciled inside orchestrator before returning live team status.
+**Decision**: UI snapshot reads are disk-first and avoid runtime probing. Liveness repair runs only in explicit recovery flows and the background self-heal loop.
 
-- Drift conditions:
+- Fast-path reads:
+  - `coordination_get_project_mesh_snapshot`
+  - `coordination_get_live_team_status`
+  - both read persisted config/runtime via `get_team_status_fast(...)`
+  - no tmux probing, process scans, or WSL interop on the snapshot IPC path
+- Repair paths:
+  - `coordination_resume_member`
+  - `coordination_resume_team`
+  - background `run_background_self_heal_pass()`
+- Repair conditions:
   - missing `pane_id`
   - `pane_exists == false`
   - `pane_is_dead == true`
   - pane command resolves to shell (`pane_is_shell == true`)
-- Drift mutation:
-  - `health -> SessionDead`
-  - `session_id -> None`
-  - non-Claude `daemon_pid` checked/terminated/cleared
-- Persistence policy: write only when stored health is stale (write-on-drift)
+  - daemon pid missing/dead/drifted from current mesh binary
+  - team-daemon pid drifted from current mesh binary
+- Repair mutation:
+  - `health -> SessionDead` when panes are gone/dead/shell
+  - `session_id -> None` when drift is confirmed
+  - non-Claude member daemons are adopted/restarted/terminated as needed
+  - team daemon is best-effort stopped/restarted when binary drift is detected
+- Concurrency rule:
+  - background self-heal runs on a dedicated orchestrator instance, not the app-owned cached orchestrator
+  - foreground snapshot IPC therefore does not contend with background liveness repair on the shared coordination mutex
 
-**Rationale**: This closes the gap between cached runtime metadata and real pane/process state without requiring a constantly running reconciliation loop.
+**Rationale**: This keeps first-render and polling snapshots cheap and predictable while still giving taurhaus a bounded repair path for stale panes/daemons and cold-restart recovery.
 
 ### D18: Implementation tasks require a Rust quality gate before completion
 

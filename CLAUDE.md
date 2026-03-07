@@ -208,6 +208,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
 - **Team templates**: Git-backed role/preset storage + composition flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`) while preserving the existing initialize payload contract.
+- **Windows Mesh behavior**: Background `wsl`/mesh/tmux launches intentionally suppress console windows, and Mesh runtime/project matching relies on normalized Windows, WSL UNC, and Linux path forms rather than raw string equality.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
 Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/`](docs/architecture/) references.
@@ -243,6 +244,10 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
+| `docs/design/role-context-steering-review.md` | Review notes for the role-system shift from capability labels to context steering |
+| `docs/design/agent-role-visibility.md` | Mesh runtime role-visibility guidance built around focus area, context summary, and behavior boundaries |
+| `docs/design/sidebar-session-grouping.md` | Sidebar grouping thresholds and behavior for team-linked live sessions |
+| `docs/design/sidebar-team-session-visuals.md` | Sidebar connector-rail and stacked-logo treatment for grouped team indicators |
 | `docs/testing-guide.md` | Visual testing lane boundaries, usage, and screenshot conventions. |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
