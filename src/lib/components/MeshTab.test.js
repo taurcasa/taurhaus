@@ -50,7 +50,7 @@ import MeshTab from './MeshTab.svelte'
 import { clearMeshCache, getMeshCache, resetMeshCache, setMeshCache } from '../meshCache.svelte.js'
 
 const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
-const INITIAL_RUNTIME_REFRESH_DELAY_MS = 750
+const INITIAL_RUNTIME_REFRESH_DELAY_MS = 120
 
 function deferred() {
   let resolve
@@ -1242,9 +1242,11 @@ describe('MeshTab', () => {
     vi.useRealTimers()
   })
 
-  it('cancels the deferred runtime refresh when switching away to another top-level tab', async () => {
+  it('abandons an in-flight runtime refresh when switching away to another top-level tab', async () => {
     vi.useFakeTimers()
     setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    const liveRefresh = deferred()
+    coordinationGetLiveTeamStatus.mockReturnValueOnce(liveRefresh.promise)
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
       meshAvailable: true,
       tmuxAvailable: true,
@@ -1265,6 +1267,9 @@ describe('MeshTab', () => {
         expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
       })
 
+      await vi.advanceTimersByTimeAsync(300)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
       const overviewTab = document.createElement('button')
       overviewTab.type = 'button'
       overviewTab.dataset.testid = 'tab-overview'
@@ -1277,10 +1282,6 @@ describe('MeshTab', () => {
         projectPath: '/projects/other-project',
       })
 
-      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
-
-      expect(coordinationGetLiveTeamStatus).not.toHaveBeenCalled()
-
       expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
 
       screen.getByTestId('mesh-tab').parentElement.classList.remove('hidden')
@@ -1289,6 +1290,34 @@ describe('MeshTab', () => {
         expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledWith('/projects/other-project')
         expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
       })
+
+      liveRefresh.resolve(buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            projectId: 'proj-core',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            projectId: 'proj-web',
+            description: 'Implements UI surface details for the mesh canvas.',
+            sessionStatus: 'offline',
+            paneId: null,
+          },
+        ],
+      }))
+      await Promise.resolve()
+
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+      expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledTimes(1)
 
       overviewTab.remove()
     } finally {

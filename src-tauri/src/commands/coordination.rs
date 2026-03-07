@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub use crate::commands::coordination_types::*;
 use crate::commands::lifecycle::IpcCommandSpan;
@@ -24,7 +24,7 @@ use crate::coordination::requests::{
 };
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::TeamConfigStore;
-use crate::errors::{CommandResultExt, IpcResult};
+use crate::errors::{CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -156,12 +156,21 @@ pub fn coordination_reonboard(
 }
 
 #[tauri::command]
-pub fn coordination_get_live_team_status(
-    state: State<'_, CoordinationState>,
+pub async fn coordination_get_live_team_status(
+    app: AppHandle,
     team_name: String,
 ) -> IpcResult<LiveTeamStatus> {
     let span = IpcCommandSpan::start("coordination_get_live_team_status");
-    let result = coordination_get_live_team_status_impl(state.inner(), team_name).ipc();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CoordinationState>();
+        coordination_get_live_team_status_impl(state.inner(), team_name).ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join live team status task: {err}"
+        )))
+    });
     span.finish_result(&result);
     result
 }

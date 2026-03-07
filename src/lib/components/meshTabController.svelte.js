@@ -31,10 +31,7 @@ import { refreshRuntimeTeamConfigWorkflow } from './meshTabGateWorkflow.js'
 import { autoDismissNotice } from './meshTabNotifications.js'
 
 const RUNTIME_STATUS_POLL_MS = 2000
-// Windows WebView2 can feel input-starved while a long Tauri invoke is active.
-// Keep the first live refresh off the immediate tab-switch path so users can
-// bounce away from Mesh without waiting on a background status call.
-const INITIAL_RUNTIME_REFRESH_DELAY_MS = 750
+const INITIAL_RUNTIME_REFRESH_DELAY_MS = 120
 
 export function createMeshTabController({
   getProjectPath,
