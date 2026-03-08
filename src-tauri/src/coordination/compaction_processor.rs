@@ -23,7 +23,6 @@ use crate::session_scanner::cli_tool::CliTool;
 
 const SKIP_REASON_ALREADY_HANDLED: &str = "already_handled";
 const SKIP_REASON_MEMBER_NOT_ATTACHED: &str = "member_not_attached";
-const SKIP_REASON_PANE_NOT_LIVE_CODEX: &str = "pane_not_live_codex";
 
 const FAIL_REASON_RECORD_STALE_DELIVERY_FAILED: &str = "record_stale_delivery_failed";
 const FAIL_REASON_RECORD_SKIPPED_DELIVERY_FAILED: &str = "record_skipped_delivery_failed";
@@ -455,44 +454,18 @@ fn delivery_skip_reason(
         return Some(SKIP_REASON_MEMBER_NOT_ATTACHED);
     }
 
-    if !pane_is_live_codex(runtime, pane_id) {
-        return Some(SKIP_REASON_PANE_NOT_LIVE_CODEX);
-    }
-
-    None
-}
-
-fn pane_is_live_codex(runtime: &dyn CoordinationRuntime, pane_id: &str) -> bool {
     if runtime
         .pane_exists(pane_id)
         .ok()
         .filter(|exists| *exists)
         .is_none()
     {
-        return false;
+        return Some(SKIP_REASON_MEMBER_NOT_ATTACHED);
     }
     if runtime.pane_is_dead(pane_id).unwrap_or(true) {
-        return false;
+        return Some(SKIP_REASON_MEMBER_NOT_ATTACHED);
     }
-
-    runtime
-        .pane_current_command(pane_id)
-        .ok()
-        .flatten()
-        .as_deref()
-        .is_some_and(foreground_command_matches_codex)
-}
-
-fn foreground_command_matches_codex(command: &str) -> bool {
-    let normalized = command.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return false;
-    }
-
-    let first = normalized.split_whitespace().next().unwrap_or_default();
-    let first = first.rsplit('/').next().unwrap_or(first);
-
-    first == "codex" || first.ends_with("codex")
+    None
 }
 
 fn record_delivery_at(
@@ -722,8 +695,6 @@ mod tests {
         let runtime = RecordingCoordinationRuntime::default();
         runtime.set_pane_exists("%7", true);
         runtime.set_pane_dead("%7", false);
-        runtime.set_pane_current_command("%7", Some("codex"));
-
         let outcome = CompactionSignalProcessor::process_signal_at(
             &signal,
             &teams_dir,
@@ -799,8 +770,6 @@ mod tests {
         let runtime = RecordingCoordinationRuntime::default();
         runtime.set_pane_exists("%7", true);
         runtime.set_pane_dead("%7", false);
-        runtime.set_pane_current_command("%7", Some("codex"));
-
         let outcome = CompactionSignalProcessor::process_signal_at(
             &signal,
             &teams_dir,
@@ -866,8 +835,6 @@ mod tests {
         let runtime = RecordingCoordinationRuntime::default();
         runtime.set_pane_exists("%7", true);
         runtime.set_pane_dead("%7", false);
-        runtime.set_pane_current_command("%7", Some("codex"));
-
         let outcome = CompactionSignalProcessor::process_signal_at(
             &signal,
             &teams_dir,
@@ -925,6 +892,44 @@ mod tests {
         assert_eq!(
             outcome,
             CompactionSignalProcessOutcome::Skipped {
+                team_name: "taurhaus-team".to_string(),
+                member_name: "developer2".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn process_signal_injects_when_pane_is_alive_but_foreground_command_is_not_codex() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let member = sample_member("developer2", project_path);
+        save_team_fixture(
+            &teams_dir,
+            "taurhaus-team",
+            &member,
+            Some("session-1"),
+            Some("%7"),
+        );
+        let jsonl_path = tmp.path().join("session.jsonl");
+        std::fs::write(&jsonl_path, "{\"line\":1}\n").expect("jsonl");
+        let signal = sample_signal(project_path, &jsonl_path, "session-1", "%7");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%7", true);
+        runtime.set_pane_dead("%7", false);
+        runtime.set_pane_current_command("%7", Some("cargo test"));
+
+        let outcome = CompactionSignalProcessor::process_signal_at(
+            &signal,
+            &teams_dir,
+            &runtime,
+            timestamp("2026-03-08T13:46:42Z"),
+        );
+
+        assert_eq!(
+            outcome,
+            CompactionSignalProcessOutcome::Injected {
                 team_name: "taurhaus-team".to_string(),
                 member_name: "developer2".to_string(),
             }
