@@ -38,6 +38,13 @@ Thumbs.db
 # Logs
 *.log
 logs/
+.check-logs/
+
+# Python bytecode
+__pycache__/
+
+# Tauri generated schemas
+src-tauri/gen/schemas/
 
 # Build artifacts (macOS/Windows binaries, DMGs, installers)
 builds/
