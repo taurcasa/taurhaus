@@ -861,7 +861,7 @@ mod tests {
 
         state
             .with_orchestrator(|orch| {
-                orch.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                orch.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                     team_name: "architecture-final".to_string(),
                     member_name: "existing-dev".to_string(),
                     message: "post-upgrade ping".to_string(),

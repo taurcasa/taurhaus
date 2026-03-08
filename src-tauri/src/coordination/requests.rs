@@ -123,7 +123,13 @@ pub struct OperatorNoticeDelivery {
 pub enum DeliveryRequest {
     Bootstrap(BootstrapDelivery),
     RecoveryNudge(RecoveryNudgeDelivery),
-    OperatorNotice(OperatorNoticeDelivery),
+    OperatorNotice(Box<OperatorNoticeDelivery>),
+}
+
+impl DeliveryRequest {
+    pub fn operator_notice(payload: OperatorNoticeDelivery) -> Self {
+        Self::OperatorNotice(Box::new(payload))
+    }
 }
 
 /// Mechanism used by backend to deliver a message.
@@ -441,13 +447,13 @@ mod tests {
 
     #[test]
     fn delivery_request_round_trip() {
-        let req = DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        let req = DeliveryRequest::OperatorNotice(Box::new(OperatorNoticeDelivery {
             member_name: "agent-1".to_string(),
             team_name: "architecture-final".to_string(),
             message: "Check your inbox".to_string(),
             sender_name: Some("team-lead".to_string()),
             operational_context: None,
-        });
+        }));
 
         let encoded = serde_json::to_value(&req).expect("request should serialize");
         let decoded: DeliveryRequest =

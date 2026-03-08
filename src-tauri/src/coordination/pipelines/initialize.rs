@@ -431,7 +431,7 @@ impl CoordinationOrchestrator {
                     agent.capabilities.as_deref(),
                 )
             };
-            self.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: agent.name.clone(),
                 team_name: request.team_name.clone(),
                 message: onboarding,

@@ -452,7 +452,7 @@ impl CoordinationBackend for MeshBridgedBackend {
 
     fn deliver(&self, req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
         match req {
-            DeliveryRequest::OperatorNotice(payload) => self.send_operator_notice(payload),
+            DeliveryRequest::OperatorNotice(payload) => self.send_operator_notice(*payload),
             other => Err(CoordinationError::Validation(format!(
                 "MeshBridged backend in C1 only supports operator_notice delivery, got: {other:?}"
             ))),
@@ -725,7 +725,7 @@ mod tests {
         let backend = MeshBridgedBackend::with_runner(runner.clone());
 
         let result = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
@@ -773,7 +773,7 @@ mod tests {
         let backend = MeshBridgedBackend::with_runner(runner.clone());
 
         let result = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
@@ -834,7 +834,7 @@ mod tests {
         let backend = MeshBridgedBackend::with_runner(runner.clone());
 
         let result = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
@@ -889,7 +889,7 @@ mod tests {
             assert!(launch.is_ok());
 
             let delivered =
-                backend.deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+                backend.deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                     member_name: "fake-agent".to_string(),
                     team_name: "architecture-final".to_string(),
                     message: "hello".to_string(),

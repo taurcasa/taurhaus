@@ -180,7 +180,7 @@ impl CoordinationOrchestrator {
                 member.capabilities.as_deref(),
             )
         };
-        self.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: member.name.clone(),
             team_name: request.team_name.clone(),
             message: onboarding,
@@ -330,7 +330,7 @@ impl CoordinationOrchestrator {
             )
         };
         self.backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: request.agent.name.clone(),
                 team_name: request.team_name.clone(),
                 message: onboarding,

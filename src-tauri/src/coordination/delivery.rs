@@ -279,13 +279,13 @@ mod tests {
             team_name: "team-b".to_string(),
             reason: "nudge".to_string(),
         });
-        let notice = DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        let notice = DeliveryRequest::OperatorNotice(Box::new(OperatorNoticeDelivery {
             member_name: "member-c".to_string(),
             team_name: "team-c".to_string(),
             message: "notice".to_string(),
             sender_name: None,
             operational_context: None,
-        });
+        }));
 
         assert_eq!(
             DeliveryRenderer::render(&bootstrap),

@@ -58,6 +58,7 @@ fn test_state_with_runtime(
     )
 }
 
+#[allow(clippy::useless_conversion)]
 fn test_db_state() -> (DbState, NamedTempFile) {
     let tmp = NamedTempFile::new().expect("temp db");
     let conn = taurhaus_lib::db::init_db(tmp.path()).expect("init db");

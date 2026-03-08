@@ -194,7 +194,7 @@ mod tests {
             .expect("launch");
 
         let _ = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
@@ -229,7 +229,7 @@ mod tests {
             "simulated delivery failure".to_string(),
         ));
         let err = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
@@ -246,7 +246,7 @@ mod tests {
 
         backend.clear_deliver_error();
         let result = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
@@ -265,7 +265,7 @@ mod tests {
         )));
 
         let err = backend
-            .deliver(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),

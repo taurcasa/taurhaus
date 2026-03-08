@@ -498,7 +498,7 @@ fn coordination_reonboard_impl(
                 member.capabilities.as_deref(),
             );
 
-            orchestrator.deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+            orchestrator.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: request.member_name.clone(),
                 team_name: request.team_name.clone(),
                 message,
@@ -542,9 +542,7 @@ fn maybe_ensure_claude_compact_hook_for_team<T>(
     team_name: &str,
     result: IpcResult<T>,
 ) -> IpcResult<T> {
-    if result.is_err() {
-        return result;
-    }
+    result.as_ref().map_err(Clone::clone)?;
 
     let state = app.state::<CoordinationState>();
     let teams_dir = state.teams_dir();

@@ -346,7 +346,7 @@ impl CoordinationOrchestrator {
                     cleanup_is_partial,
                     warnings.len(),
                 );
-                match self.backend.deliver(DeliveryRequest::OperatorNotice(
+                match self.backend.deliver(DeliveryRequest::operator_notice(
                     OperatorNoticeDelivery {
                         member_name: lead_name.clone(),
                         team_name: team_name.to_string(),

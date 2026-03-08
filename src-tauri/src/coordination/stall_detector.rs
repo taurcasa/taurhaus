@@ -1245,7 +1245,7 @@ impl StallDetectorService {
                     let message = format!(
                         "Are you still working on Task #N? Reply with status (working, blocked, done) within {response_minutes} min."
                     );
-                    orchestrator.deliver_message(DeliveryRequest::OperatorNotice(
+                    orchestrator.deliver_message(DeliveryRequest::operator_notice(
                         OperatorNoticeDelivery {
                             member_name: decision.transition.member_name.clone(),
                             team_name: decision.transition.team_name.clone(),
@@ -1262,7 +1262,7 @@ impl StallDetectorService {
                         Ok(lead_name) => {
                             let message =
                                 render_stage_b_evidence_message(decision, &decision.transition);
-                            orchestrator.deliver_message(DeliveryRequest::OperatorNotice(
+                            orchestrator.deliver_message(DeliveryRequest::operator_notice(
                                 OperatorNoticeDelivery {
                                     member_name: lead_name,
                                     team_name: decision.transition.team_name.clone(),

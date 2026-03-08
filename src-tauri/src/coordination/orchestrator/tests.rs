@@ -2664,7 +2664,7 @@ fn deliver_operator_notice_succeeds() {
         .expect("add should succeed");
 
     let result = orchestrator
-        .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -2701,7 +2701,7 @@ fn deliver_to_nonexistent_member_fails() {
         .expect("create should succeed");
 
     let err = orchestrator
-        .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: "missing-member".to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -2731,7 +2731,7 @@ fn deliver_updates_runtime_last_seen() {
     assert!(before.last_seen_at.is_none());
 
     orchestrator
-        .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -2765,7 +2765,7 @@ fn deliver_backend_failure_emits_failed_event() {
         .expect("add should succeed");
 
     let err = orchestrator
-        .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -2907,7 +2907,7 @@ fn all_mutations_emit_events() {
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
     orchestrator
-        .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "check status".to_string(),
@@ -2983,7 +2983,7 @@ fn deliver_to_nonexistent_team_fails_without_delivery_audit_events() {
     let mut orchestrator = new_orchestrator(&tmp);
 
     let err = orchestrator
-        .deliver_message(DeliveryRequest::OperatorNotice(OperatorNoticeDelivery {
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: "codex-reviewer".to_string(),
             team_name: "missing-team".to_string(),
             message: "status?".to_string(),

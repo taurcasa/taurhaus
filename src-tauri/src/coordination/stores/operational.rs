@@ -12,7 +12,7 @@ use crate::coordination::mesh_cli;
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const OPERATIONAL_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalTaskSnapshot {
     pub id: String,
@@ -20,7 +20,7 @@ pub struct OperationalTaskSnapshot {
     pub status: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalAssignmentFooterSnapshot {
     #[serde(default)]
@@ -35,7 +35,7 @@ pub struct OperationalAssignmentFooterSnapshot {
     pub response_expectation: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalOwnershipSnapshot {
     pub override_allowed: bool,

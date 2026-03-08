@@ -26,6 +26,8 @@ pub struct PendingCodexCompactionReinjection {
     pub member_name: String,
     pub pane_id: String,
     pub session_id: String,
+    pub jsonl_path: PathBuf,
+    pub observed_jsonl_len: u64,
     pub compaction_timestamp: DateTime<Utc>,
     pub card: OperationalReinjectionCard,
     pub rendered_text: String,
@@ -93,17 +95,30 @@ pub fn process_codex_compaction_events_at(sessions: &[ClaudeSession], teams_dir:
             continue;
         }
 
+        let observed_jsonl_len = match std::fs::metadata(&path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "failed to stat Codex JSONL while processing compaction events"
+                );
+                continue;
+            }
+        };
+
         let Some(read_start) = track_read_start(&path) else {
             continue;
         };
 
-        let appended_lines = match read_appended_lines(&path, read_start) {
-            Ok(lines) => lines,
+        let (appended_lines, committed_offset) = match read_appended_lines(&path, read_start) {
+            Ok(result) => result,
             Err(error) => {
                 tracing::warn!(path = %path.display(), error = %error, "failed to read appended Codex JSONL lines");
                 continue;
             }
         };
+        set_tracked_offset(&path, committed_offset);
 
         let events = detect_compaction_events(&appended_lines, session_id);
         if events.is_empty() {
@@ -147,6 +162,8 @@ pub fn process_codex_compaction_events_at(sessions: &[ClaudeSession], teams_dir:
                 member_name: resolved.member_name.clone(),
                 pane_id: resolved.pane_id.clone(),
                 session_id: event.session_id,
+                jsonl_path: path.clone(),
+                observed_jsonl_len,
                 compaction_timestamp: event.timestamp,
                 card,
                 rendered_text,
@@ -178,11 +195,7 @@ fn track_read_start(path: &Path) -> Option<u64> {
             None
         }
         Some(offset) if *offset == file_len => None,
-        Some(offset) => {
-            let start = *offset;
-            *offset = file_len;
-            Some(start)
-        }
+        Some(offset) => Some(*offset),
         None => {
             guard.offsets.insert(path.to_path_buf(), file_len);
             None
@@ -190,18 +203,31 @@ fn track_read_start(path: &Path) -> Option<u64> {
     }
 }
 
-fn read_appended_lines(path: &Path, start: u64) -> std::io::Result<Vec<String>> {
+fn set_tracked_offset(path: &Path, offset: u64) {
+    let mut guard = watcher_state()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    guard.offsets.insert(path.to_path_buf(), offset);
+}
+
+fn read_appended_lines(path: &Path, start: u64) -> std::io::Result<(Vec<String>, u64)> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     reader.seek(SeekFrom::Start(start))?;
 
     let mut lines = Vec::new();
     let mut line = String::new();
+    let mut committed_offset = start;
     loop {
         line.clear();
-        if reader.read_line(&mut line)? == 0 {
+        let bytes_read = reader.read_line(&mut line)?;
+        if bytes_read == 0 {
             break;
         }
+        if !line.ends_with('\n') {
+            break;
+        }
+        committed_offset += bytes_read as u64;
         while matches!(line.chars().last(), Some('\n' | '\r')) {
             line.pop();
         }
@@ -209,7 +235,7 @@ fn read_appended_lines(path: &Path, start: u64) -> std::io::Result<Vec<String>> 
             lines.push(line.clone());
         }
     }
-    Ok(lines)
+    Ok((lines, committed_offset))
 }
 
 fn detect_compaction_events(lines: &[String], session_id: &str) -> Vec<CodexCompactionEvent> {
@@ -464,6 +490,7 @@ fn deliver_pending_codex_compaction_reinjection_at(
 
     if !member_is_still_attached(teams_dir, pending)?
         || !session_still_matches_pending(sessions, pending)
+        || !jsonl_prompt_boundary_is_unchanged(pending)
         || !pane_is_live_codex(runtime, &pending.pane_id)?
     {
         return record_delivery_at(
@@ -530,7 +557,24 @@ fn session_still_matches_pending(
         session.cli_tool == CliTool::Codex
             && session.tmux_pane.as_deref() == Some(pending.pane_id.as_str())
             && session.session_id.as_deref() == Some(pending.session_id.as_str())
+            && session.jsonl_path.as_deref() == Some(pending.jsonl_path.to_string_lossy().as_ref())
     })
+}
+
+fn jsonl_prompt_boundary_is_unchanged(pending: &PendingCodexCompactionReinjection) -> bool {
+    match std::fs::metadata(&pending.jsonl_path) {
+        Ok(metadata) => metadata.len() == pending.observed_jsonl_len,
+        Err(error) => {
+            tracing::warn!(
+                path = %pending.jsonl_path.display(),
+                team_name = pending.team_name,
+                member_name = pending.member_name,
+                error = %error,
+                "failed to stat Codex JSONL while validating prompt boundary"
+            );
+            false
+        }
+    }
 }
 
 fn pane_is_live_codex(
@@ -567,6 +611,17 @@ fn record_delivery_at(
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
+    if !should_persist_delivery_state(teams_dir, team_name, member_name)? {
+        tracing::debug!(
+            team_name = team_name,
+            member_name = member_name,
+            session_id = session_id,
+            result = ?result,
+            "skipping compaction bookkeeping because team/member no longer exists"
+        );
+        return Ok(());
+    }
+
     MemberCompactionStore::save(
         teams_dir,
         team_name,
@@ -588,6 +643,23 @@ fn record_delivery_at(
         result,
     );
     Ok(())
+}
+
+fn should_persist_delivery_state(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Result<bool, crate::coordination::errors::CoordinationError> {
+    let config = match TeamConfigStore::load(teams_dir, team_name) {
+        Ok(config) => config,
+        Err(crate::coordination::errors::CoordinationError::NotFound(_)) => return Ok(false),
+        Err(error) => return Err(error),
+    };
+
+    Ok(config
+        .members
+        .iter()
+        .any(|member| member.name == member_name && member.cli_tool == CliTool::Codex))
 }
 
 fn enqueue_pending(event: PendingCodexCompactionReinjection) {
@@ -736,6 +808,18 @@ mod tests {
             writeln!(file, "{line}").expect("append jsonl line");
         }
         file.flush().expect("flush appended jsonl");
+    }
+
+    fn append_raw(path: &Path, chunk: &str) {
+        use std::io::Write;
+
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .expect("open jsonl for raw append");
+        file.write_all(chunk.as_bytes())
+            .expect("append raw jsonl chunk");
+        file.flush().expect("flush raw jsonl chunk");
     }
 
     fn sample_session(
@@ -908,7 +992,7 @@ mod tests {
         );
 
         let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        process_codex_compaction_events_at(&[session.clone()], &teams_dir);
+        process_codex_compaction_events_at(std::slice::from_ref(&session), &teams_dir);
 
         append_jsonl(
             &jsonl_path,
@@ -933,6 +1017,52 @@ mod tests {
         assert!(pending[0]
             .rendered_text
             .contains("[taurhaus] post_compaction_context"));
+    }
+
+    #[test]
+    fn partial_trailing_line_is_re_read_on_next_poll() {
+        let _guard = TEST_LOCK.lock().expect("lock");
+        reset_test_state();
+
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let member = sample_member("developer2", project_path);
+        save_team_fixture(
+            &teams_dir,
+            "taurhaus-team",
+            &member,
+            Some("session-1"),
+            Some("%7"),
+        );
+
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:00.000Z","type":"session_meta","payload":{"cwd":"/home/mstie/projects/taurhaus"}}"#,
+            ],
+        );
+
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
+        process_codex_compaction_events_at(std::slice::from_ref(&session), &teams_dir);
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+        );
+        process_codex_compaction_events_at(std::slice::from_ref(&session), &teams_dir);
+        assert!(drain_pending_codex_compaction_reinjections().is_empty());
+
+        append_raw(&jsonl_path, "\n");
+        process_codex_compaction_events_at(&[session], &teams_dir);
+
+        let pending = drain_pending_codex_compaction_reinjections();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            pending[0].compaction_timestamp,
+            timestamp("2026-03-08T13:46:41.037Z")
+        );
     }
 
     #[test]
@@ -976,7 +1106,7 @@ mod tests {
         );
 
         let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        process_codex_compaction_events_at(&[session.clone()], &teams_dir);
+        process_codex_compaction_events_at(std::slice::from_ref(&session), &teams_dir);
         append_jsonl(
             &jsonl_path,
             &[
@@ -1029,7 +1159,7 @@ mod tests {
         );
 
         let session = sample_session(project_path, &jsonl_path, "session-2", "%7");
-        process_codex_compaction_events_at(&[session.clone()], &teams_dir);
+        process_codex_compaction_events_at(std::slice::from_ref(&session), &teams_dir);
         append_jsonl(
             &jsonl_path,
             &[
@@ -1083,7 +1213,7 @@ mod tests {
         );
 
         let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        process_codex_compaction_events_at(&[session.clone()], &teams_dir);
+        process_codex_compaction_events_at(std::slice::from_ref(&session), &teams_dir);
         append_jsonl(
             &jsonl_path,
             &[
@@ -1117,12 +1247,24 @@ mod tests {
             Some("session-1"),
             Some("%7"),
         );
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
+            .expect("jsonl metadata")
+            .len();
 
         let pending = PendingCodexCompactionReinjection {
             team_name: team_name.to_string(),
             member_name: member.name.clone(),
             pane_id: "%7".to_string(),
             session_id: "session-1".to_string(),
+            jsonl_path: jsonl_path.clone(),
+            observed_jsonl_len,
             compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
             card: CompactionReinjectionService::compose(
                 &member,
@@ -1137,12 +1279,7 @@ mod tests {
         runtime.set_pane_dead("%7", false);
         runtime.set_pane_current_command("%7", Some("codex --resume"));
 
-        let session = sample_session(
-            project_path,
-            &tmp.path().join("session.jsonl"),
-            "session-1",
-            "%7",
-        );
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
         deliver_pending_codex_compaction_reinjections_at(
             &[session],
             &teams_dir,
@@ -1183,12 +1320,24 @@ mod tests {
             Some("session-1"),
             Some("%7"),
         );
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
+            .expect("jsonl metadata")
+            .len();
 
         enqueue_pending(PendingCodexCompactionReinjection {
             team_name: team_name.to_string(),
             member_name: member.name.clone(),
             pane_id: "%7".to_string(),
             session_id: "session-1".to_string(),
+            jsonl_path: jsonl_path.clone(),
+            observed_jsonl_len,
             compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
             card: CompactionReinjectionService::compose(
                 &member,
@@ -1198,12 +1347,7 @@ mod tests {
         });
 
         let runtime = RecordingCoordinationRuntime::default();
-        let session = sample_session(
-            project_path,
-            &tmp.path().join("session.jsonl"),
-            "session-1",
-            "%7",
-        );
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
         deliver_pending_codex_compaction_reinjections_at(
             &[session],
             &teams_dir,
@@ -1239,12 +1383,24 @@ mod tests {
             Some("session-1"),
             Some("%7"),
         );
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
+            .expect("jsonl metadata")
+            .len();
 
         enqueue_pending(PendingCodexCompactionReinjection {
             team_name: team_name.to_string(),
             member_name: member.name.clone(),
             pane_id: "%7".to_string(),
             session_id: "session-1".to_string(),
+            jsonl_path: jsonl_path.clone(),
+            observed_jsonl_len,
             compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
             card: CompactionReinjectionService::compose(
                 &member,
@@ -1258,12 +1414,7 @@ mod tests {
         runtime.set_pane_dead("%7", true);
         runtime.set_pane_current_command("%7", Some("codex"));
 
-        let session = sample_session(
-            project_path,
-            &tmp.path().join("session.jsonl"),
-            "session-1",
-            "%7",
-        );
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
         deliver_pending_codex_compaction_reinjections_at(
             &[session],
             &teams_dir,
@@ -1302,12 +1453,24 @@ mod tests {
             Some("session-2"),
             Some("%7"),
         );
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
+            .expect("jsonl metadata")
+            .len();
 
         enqueue_pending(PendingCodexCompactionReinjection {
             team_name: team_name.to_string(),
             member_name: member.name.clone(),
             pane_id: "%7".to_string(),
             session_id: "session-1".to_string(),
+            jsonl_path: jsonl_path.clone(),
+            observed_jsonl_len,
             compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
             card: CompactionReinjectionService::compose(
                 &member,
@@ -1321,12 +1484,7 @@ mod tests {
         runtime.set_pane_dead("%7", false);
         runtime.set_pane_current_command("%7", Some("codex --resume"));
 
-        let session = sample_session(
-            project_path,
-            &tmp.path().join("session.jsonl"),
-            "session-2",
-            "%7",
-        );
+        let session = sample_session(project_path, &jsonl_path, "session-2", "%7");
         deliver_pending_codex_compaction_reinjections_at(
             &[session],
             &teams_dir,
@@ -1346,6 +1504,147 @@ mod tests {
             stored.last_delivery_result,
             CompactionDeliveryResult::Skipped
         );
+    }
+
+    #[test]
+    fn pending_reinjection_skips_when_jsonl_grew_after_compaction() {
+        let _guard = TEST_LOCK.lock().expect("lock");
+        reset_test_state();
+
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let team_name = "taurhaus-team";
+        let member = sample_member("developer2", project_path);
+        save_team_fixture(
+            &teams_dir,
+            team_name,
+            &member,
+            Some("session-1"),
+            Some("%7"),
+        );
+
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
+            .expect("jsonl metadata")
+            .len();
+
+        enqueue_pending(PendingCodexCompactionReinjection {
+            team_name: team_name.to_string(),
+            member_name: member.name.clone(),
+            pane_id: "%7".to_string(),
+            session_id: "session-1".to_string(),
+            jsonl_path: jsonl_path.clone(),
+            observed_jsonl_len,
+            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
+            card: CompactionReinjectionService::compose(
+                &member,
+                &sample_snapshot(team_name, &member.name, project_path),
+            ),
+            rendered_text: "ignored".to_string(),
+        });
+
+        // Regression: a new turn started after compaction, so delayed reinjection must skip.
+        append_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:42.500Z","type":"user_message","payload":{"text":"continue"}}"#,
+            ],
+        );
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%7", true);
+        runtime.set_pane_dead("%7", false);
+        runtime.set_pane_current_command("%7", Some("codex --resume"));
+
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
+        deliver_pending_codex_compaction_reinjections_at(
+            &[session],
+            &teams_dir,
+            &runtime,
+            timestamp("2026-03-08T13:46:43.000Z"),
+        );
+
+        assert!(!runtime
+            .calls()
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::SendKeys { .. })));
+
+        let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
+            .expect("load state")
+            .expect("saved state");
+        assert_eq!(
+            stored.last_delivery_result,
+            CompactionDeliveryResult::Skipped
+        );
+    }
+
+    #[test]
+    fn pending_reinjection_after_team_disband_does_not_recreate_compaction_state() {
+        let _guard = TEST_LOCK.lock().expect("lock");
+        reset_test_state();
+
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let team_name = "taurhaus-team";
+        let member = sample_member("developer2", project_path);
+        save_team_fixture(
+            &teams_dir,
+            team_name,
+            &member,
+            Some("session-1"),
+            Some("%7"),
+        );
+
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
+            .expect("jsonl metadata")
+            .len();
+
+        enqueue_pending(PendingCodexCompactionReinjection {
+            team_name: team_name.to_string(),
+            member_name: member.name.clone(),
+            pane_id: "%7".to_string(),
+            session_id: "session-1".to_string(),
+            jsonl_path: jsonl_path.clone(),
+            observed_jsonl_len,
+            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
+            card: CompactionReinjectionService::compose(
+                &member,
+                &sample_snapshot(team_name, &member.name, project_path),
+            ),
+            rendered_text: "ignored".to_string(),
+        });
+
+        TeamConfigStore::delete(&teams_dir, team_name).expect("delete team");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
+        deliver_pending_codex_compaction_reinjections_at(
+            &[session],
+            &teams_dir,
+            &runtime,
+            timestamp("2026-03-08T13:46:43.000Z"),
+        );
+
+        assert!(!teams_dir
+            .join(team_name)
+            .join("state")
+            .join("compaction")
+            .exists());
     }
 
     #[test]

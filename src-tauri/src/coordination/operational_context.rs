@@ -99,7 +99,7 @@ pub fn sync_project_task_snapshots(
         for member in config
             .members
             .iter()
-            .filter(|member| member.project_path == std::path::PathBuf::from(project_path))
+            .filter(|member| member.project_path == Path::new(project_path))
         {
             sync_member_snapshot(teams_dir, conn, &team_name, &member.name)?;
         }
@@ -222,37 +222,6 @@ fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
         "pending" => 2,
         "completed" => 1,
         _ => 0,
-    }
-}
-
-impl Default for OperationalTaskSnapshot {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            subject: String::new(),
-            status: String::new(),
-        }
-    }
-}
-
-impl Default for OperationalAssignmentFooterSnapshot {
-    fn default() -> Self {
-        Self {
-            execution_mode: String::new(),
-            file_ownership_boundary: Vec::new(),
-            adjacent_fix_policy: String::new(),
-            validation_expectation: String::new(),
-            response_expectation: String::new(),
-        }
-    }
-}
-
-impl Default for OperationalOwnershipSnapshot {
-    fn default() -> Self {
-        Self {
-            override_allowed: false,
-            active_override_reason: None,
-        }
     }
 }
 
