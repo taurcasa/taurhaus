@@ -65,6 +65,7 @@ export function normalizeRoleTemplateInput(roleData) {
       mode: BEHAVIORAL_CONTRACT_MODES.TEMPLATE_INPUT,
     }),
     capabilities,
+    provenance: source.provenance ?? null,
     constraints: {
       minInstances: roleKind === 'lead' ? 1 : minInstances,
       maxInstances: roleKind === 'lead' ? 1 : Math.max(maxInstances, minInstances),

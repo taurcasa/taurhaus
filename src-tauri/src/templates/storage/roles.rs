@@ -3,6 +3,12 @@ use crate::templates::adapters::{
     import_role as import_external_role, RoleExportFormat, RoleImportError,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedRoleImport {
+    pub template: RoleTemplate,
+    pub import_format: Option<RoleExportFormat>,
+}
+
 impl TemplateStore {
     pub fn list_roles(&self) -> Result<Vec<RoleTemplateRecord>, TemplateStoreError> {
         self.ensure_directories()?;
@@ -189,10 +195,10 @@ impl TemplateStore {
         )
     }
 
-    pub fn import_role(
+    pub fn prepare_role_import(
         &self,
         external_path: &Path,
-    ) -> Result<TemplateMutationResult, TemplateStoreError> {
+    ) -> Result<PreparedRoleImport, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
         let import_format = infer_role_import_format(external_path, &raw)?;
         let template = match import_format {
@@ -212,6 +218,17 @@ impl TemplateStore {
             .validate()
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
 
+        Ok(PreparedRoleImport {
+            template,
+            import_format,
+        })
+    }
+
+    pub fn save_prepared_role_import(
+        &self,
+        prepared: &PreparedRoleImport,
+    ) -> Result<TemplateMutationResult, TemplateStoreError> {
+        let template = &prepared.template;
         let role_id = template.role_id.clone();
         validate_template_id(&role_id, "role")?;
         if let Ok(existing) = self.get_role(&role_id) {
@@ -228,7 +245,7 @@ impl TemplateStore {
                 role_id
             ))
         })?;
-        let action = match import_format {
+        let action = match prepared.import_format {
             Some(format) => format!(
                 "templates: import role {} from {}",
                 role_id,
@@ -240,6 +257,14 @@ impl TemplateStore {
             TemplateFileMutation::write(relative_path, payload.into_bytes()),
             &action,
         )
+    }
+
+    pub fn import_role(
+        &self,
+        external_path: &Path,
+    ) -> Result<TemplateMutationResult, TemplateStoreError> {
+        let prepared = self.prepare_role_import(external_path)?;
+        self.save_prepared_role_import(&prepared)
     }
 }
 

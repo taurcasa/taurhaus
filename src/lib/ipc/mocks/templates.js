@@ -293,6 +293,19 @@ export const MOCK_ROLE_TEMPLATES = [
   },
 ]
 
+export function mockRoleExportResult(roleId, targetFormat) {
+  const role = MOCK_ROLE_TEMPLATES.find((entry) => entry.roleId === roleId)
+  if (!role) {
+    throw new Error(`Role not found: ${roleId}`)
+  }
+
+  return {
+    targetFormat,
+    fileContent: `# ${role.name}\n\n${role.instructions ?? ''}\n`,
+    lossyFields: ['capabilities', 'constraints'],
+  }
+}
+
 export const MOCK_TEAM_PRESETS = [
   {
     presetId: 'standard-team',

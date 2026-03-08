@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -126,6 +126,20 @@ pub struct ExportRoleToFileRequest {
     pub target_format: RoleExportFormat,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRoleFromFileRequest {
+    pub file_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRoleFromFileResult {
+    pub success: bool,
+    pub role: RoleTemplate,
+    pub conflict: Option<RoleTemplateFull>,
+}
+
 #[tauri::command]
 pub fn templates_list_roles_full(
     state: State<'_, TemplateStoreState>,
@@ -196,6 +210,17 @@ pub fn templates_delete_role(
         store.delete_role(&role_id).map_err(map_template_error)?;
         Ok(())
     };
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub fn import_role_from_file(
+    state: State<'_, TemplateStoreState>,
+    request: ImportRoleFromFileRequest,
+) -> Result<ImportRoleFromFileResult, String> {
+    let span = IpcCommandSpan::start("import_role_from_file");
+    let result = import_role_from_file_internal(&state.0, request);
     span.finish_result(&result);
     result
 }
@@ -411,6 +436,38 @@ fn export_role_to_file_internal(
         .map_err(map_template_error)
 }
 
+fn import_role_from_file_internal(
+    store: &TemplateStore,
+    request: ImportRoleFromFileRequest,
+) -> Result<ImportRoleFromFileResult, String> {
+    let external_path = Path::new(&request.file_path);
+    let prepared = store
+        .prepare_role_import(external_path)
+        .map_err(map_template_error)?;
+    let role_id = prepared.template.role_id.clone();
+
+    if let Ok(existing) = store.get_role(&role_id) {
+        return Ok(ImportRoleFromFileResult {
+            success: false,
+            role: prepared.template,
+            conflict: Some(map_role_full(existing)),
+        });
+    }
+
+    store
+        .save_prepared_role_import(&prepared)
+        .map_err(map_template_error)?;
+
+    store
+        .get_role(&role_id)
+        .map(|record| ImportRoleFromFileResult {
+            success: true,
+            role: record.template,
+            conflict: None,
+        })
+        .map_err(map_template_error)
+}
+
 fn map_role_full(record: RoleTemplateRecord) -> RoleTemplateFull {
     RoleTemplateFull {
         template: record.template,
@@ -507,6 +564,19 @@ mod tests {
         let frontmatter = opening[..close].to_string();
         let body = opening[close + 5..].trim().to_string();
         (frontmatter, body)
+    }
+
+    fn store_state() -> (TempDir, TemplateStoreState) {
+        let root = TempDir::new().expect("tempdir");
+        let app_data = root.path().join("app-data");
+        let builtins = root.path().join("builtins");
+        std::fs::create_dir_all(builtins.join("roles")).expect("create builtins roles dir");
+        std::fs::create_dir_all(builtins.join("presets")).expect("create builtins presets dir");
+
+        (
+            root,
+            TemplateStoreState(TemplateStore::with_builtins_dir(app_data, builtins)),
+        )
     }
 
     #[test]
@@ -632,5 +702,95 @@ mod tests {
         .expect_err("missing role should fail");
 
         assert!(err.contains("role 'missing-role' not found"));
+    }
+
+    #[test]
+    fn import_role_from_file_returns_conflict_details_without_overwriting() {
+        let (_root, state) = store_state();
+        state.0.create_role(&sample_role()).expect("create role");
+
+        let import_path = state.0.templates_dir().join("incoming.md");
+        std::fs::write(
+            &import_path,
+            r#"---
+name: Sample Export Role
+model: claude-opus-4-6
+---
+Updated imported instructions.
+"#,
+        )
+        .expect("write import file");
+
+        let result = import_role_from_file_internal(
+            &state.0,
+            ImportRoleFromFileRequest {
+                file_path: import_path.to_string_lossy().to_string(),
+            },
+        )
+        .expect("import conflict result");
+
+        assert!(!result.success);
+        assert_eq!(result.role.role_id, "sample-export-role");
+        assert_eq!(
+            result
+                .conflict
+                .as_ref()
+                .map(|role| role.template.role_id.as_str()),
+            Some("sample-export-role")
+        );
+        assert_eq!(
+            state
+                .0
+                .get_role("sample-export-role")
+                .expect("existing role")
+                .template
+                .instructions,
+            "Ship the requested change with tests first."
+        );
+    }
+
+    #[test]
+    fn import_role_from_file_saves_markdown_role_with_provenance() {
+        let (root, state) = store_state();
+        let import_path = root.path().join("architect.md");
+        std::fs::write(
+            &import_path,
+            r#"---
+name: Architecture Reviewer
+model: claude-opus-4-6
+---
+Review structural changes and call out long-term tradeoffs.
+"#,
+        )
+        .expect("write import file");
+
+        let result = import_role_from_file_internal(
+            &state.0,
+            ImportRoleFromFileRequest {
+                file_path: import_path.to_string_lossy().to_string(),
+            },
+        )
+        .expect("import role");
+
+        assert!(result.success);
+        assert!(result.conflict.is_none());
+        assert_eq!(result.role.role_id, "architecture-reviewer");
+        assert_eq!(
+            result
+                .role
+                .provenance
+                .as_ref()
+                .and_then(|value| value.source_path.as_deref()),
+            Some(import_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            state
+                .0
+                .get_role("architecture-reviewer")
+                .expect("stored role")
+                .template
+                .instructions,
+            "Review structural changes and call out long-term tradeoffs."
+        );
     }
 }

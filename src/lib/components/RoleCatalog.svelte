@@ -20,9 +20,56 @@
     onResetDetail = () => {},
     onOpenCreateRoleEditor = () => {},
     onInspectRole = () => {},
+    onImportRole = () => {},
+    onExportRole = () => {},
     onOpenEditRoleEditor = () => {},
     onRequestRoleDelete = () => {},
+    exportingRoleId = '',
   } = $props()
+
+  const exportOptions = [
+    { value: 'claude_agent', label: 'Claude Code agent' },
+    { value: 'copilot_agent', label: 'Copilot agent' },
+    { value: 'agents_md', label: 'AGENTS.md' },
+    { value: 'gemini_md', label: 'GEMINI.md' },
+  ]
+
+  let openExportRoleId = $state('')
+  let detailExportMenuOpen = $state(false)
+
+  function provenanceSourceLabel(provenance) {
+    switch (String(provenance?.sourceFormat ?? '').toLowerCase()) {
+      case 'claude_agent':
+        return 'Claude Code'
+      case 'copilot_agent':
+        return 'Copilot'
+      case 'agents_md':
+        return 'AGENTS.md'
+      case 'gemini_md':
+        return 'GEMINI.md'
+      default:
+        return 'external source'
+    }
+  }
+
+  function provenanceBadgeLabel(provenance) {
+    return `from ${provenanceSourceLabel(provenance)}`
+  }
+
+  function formatImportedAt(value) {
+    const text = String(value ?? '').trim()
+    return text ? text.slice(0, 10) : 'Unknown'
+  }
+
+  function toggleRoleExportMenu(roleId) {
+    openExportRoleId = openExportRoleId === roleId ? '' : roleId
+  }
+
+  function handleRoleExport(role, format) {
+    openExportRoleId = ''
+    detailExportMenuOpen = false
+    void onExportRole(role, format)
+  }
 </script>
 
 {#if detailKind === 'role'}
@@ -47,6 +94,14 @@
           <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {roleKindBadgeTone(selectedRole.kind, dark)}">{selectedRole.kind}</span>
         </div>
         <p class="text-[10px] font-mono {toneMuted}">{selectedRole.roleId}</p>
+        {#if selectedRole.provenance}
+          <p
+            class="text-[9px] font-mono text-white/25"
+            data-testid={`role-provenance-badge-${selectedRole.roleId}`}
+          >
+            {provenanceBadgeLabel(selectedRole.provenance)}
+          </p>
+        {/if}
       </div>
 
       <div class="flex flex-wrap items-center gap-1.5">
@@ -99,13 +154,83 @@
         </p>
       </details>
 
-      <button
-        class="w-full h-10 rounded-lg bg-brand-600 px-4 py-1 text-xs font-bold text-white hover:bg-brand-500 shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
-        onclick={() => onSelectRole(selectedRole)}
-        data-testid={`role-select-${selectedRole.roleId}`}
-      >
-        Use this Role
-      </button>
+      {#if selectedRole.provenance}
+        <section
+          class="rounded-lg border p-3 {dark ? 'border-white/8 bg-black/10' : 'border-zinc-200 bg-zinc-50/80'}"
+          data-testid="role-provenance-section"
+        >
+          <p class="text-[10px] font-bold uppercase tracking-wide {toneMuted}">Provenance</p>
+          <dl class="mt-2 grid gap-2 text-xs">
+            <div>
+              <dt class="font-bold {toneMuted}">Imported format</dt>
+              <dd class="mt-0.5 {t.textSecondary}">{provenanceSourceLabel(selectedRole.provenance)}</dd>
+            </div>
+            {#if selectedRole.provenance.sourcePath}
+              <div>
+                <dt class="font-bold {toneMuted}">Source path</dt>
+                <dd class="mt-0.5 break-all font-mono text-[11px] {t.textSecondary}">
+                  {selectedRole.provenance.sourcePath}
+                </dd>
+              </div>
+            {/if}
+            <div>
+              <dt class="font-bold {toneMuted}">Import date</dt>
+              <dd class="mt-0.5 {t.textSecondary}">
+                {formatImportedAt(selectedRole.provenance.importedAt)}
+              </dd>
+            </div>
+            {#if selectedRole.provenance.nonRoundtrippableFields.length > 0}
+              <div>
+                <dt class="font-bold {toneMuted}">Non-roundtrippable fields</dt>
+                <dd class="mt-0.5 {t.textSecondary}">
+                  {selectedRole.provenance.nonRoundtrippableFields.join(', ')}
+                </dd>
+              </div>
+            {/if}
+          </dl>
+        </section>
+      {/if}
+
+      <div class="grid grid-cols-[auto,1fr] gap-2">
+        <div class="relative">
+          <button
+            class="h-10 rounded-lg border px-4 text-xs font-bold {actionSecondary}"
+            onclick={() => {
+              detailExportMenuOpen = !detailExportMenuOpen
+            }}
+            disabled={exportingRoleId === selectedRole.roleId}
+            data-testid={`role-detail-export-${selectedRole.roleId}`}
+          >
+            {exportingRoleId === selectedRole.roleId ? 'Exporting...' : 'Export'}
+          </button>
+
+          {#if detailExportMenuOpen}
+            <div
+              class="absolute bottom-full left-0 z-20 mb-2 min-w-[180px] rounded-xl border p-1.5 shadow-2xl {dark ? 'border-white/10 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'}"
+              data-testid={`role-detail-export-menu-${selectedRole.roleId}`}
+            >
+              {#each exportOptions as option}
+                <button
+                  class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[11px] font-semibold transition-colors {dark ? 'hover:bg-white/5' : 'hover:bg-zinc-100'}"
+                  onclick={() => handleRoleExport(selectedRole, option.value)}
+                  disabled={exportingRoleId === selectedRole.roleId}
+                  data-testid={`role-detail-export-format-${selectedRole.roleId}-${option.value}`}
+                >
+                  {option.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <button
+          class="h-10 rounded-lg bg-brand-600 px-4 py-1 text-xs font-bold text-white hover:bg-brand-500 shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
+          onclick={() => onSelectRole(selectedRole)}
+          data-testid={`role-select-${selectedRole.roleId}`}
+        >
+          Use this Role
+        </button>
+      </div>
     {/if}
   </section>
 {:else if filteredRoleTemplates.length === 0}
@@ -117,13 +242,23 @@
 {:else}
   <div class="flex items-center justify-between px-1">
     <p class="text-[10px] font-bold uppercase tracking-wider {t.textMuted}">Role Templates</p>
-    <button
-      class="h-8 px-3 rounded-lg text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10"
-      onclick={onOpenCreateRoleEditor}
-      data-testid="role-create-button"
-    >
-      + Create
-    </button>
+    <div class="flex items-center gap-2">
+      <button
+        class="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold {actionSecondary}"
+        onclick={onImportRole}
+        data-testid="role-import-button"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+        Import
+      </button>
+      <button
+        class="h-8 px-3 rounded-lg text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-500 active:scale-95 transition-all shadow-lg shadow-brand-500/10"
+        onclick={onOpenCreateRoleEditor}
+        data-testid="role-create-button"
+      >
+        + Create
+      </button>
+    </div>
   </div>
 
   {#if !hasCustomRoles}
@@ -139,6 +274,14 @@
           <div class="min-w-0">
             <p class="truncate text-[14px] font-bold {t.textPrimary}">{role.name}</p>
             <p class="text-[10px] font-mono {toneMuted}">{role.roleId}</p>
+            {#if role.provenance}
+              <p
+                class="mt-1 text-[9px] font-mono text-white/25"
+                data-testid={`role-provenance-badge-${role.roleId}`}
+              >
+                {provenanceBadgeLabel(role.provenance)}
+              </p>
+            {/if}
           </div>
           <span class="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-tight {roleKindBadgeTone(role.kind, dark)}">{role.kind}</span>
         </div>
@@ -194,6 +337,36 @@
             >
               Inspect
             </button>
+            <div class="relative">
+              <button
+                class="h-8 w-8 flex items-center justify-center rounded-lg {actionSecondary}"
+                onclick={() => toggleRoleExportMenu(role.roleId)}
+                aria-label="Export role"
+                title="Export role"
+                disabled={exportingRoleId === role.roleId}
+                data-testid={`role-export-trigger-${role.roleId}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+              </button>
+
+              {#if openExportRoleId === role.roleId}
+                <div
+                  class="absolute bottom-full right-0 z-20 mb-2 min-w-[180px] rounded-xl border p-1.5 shadow-2xl {dark ? 'border-white/10 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'}"
+                  data-testid={`role-export-menu-${role.roleId}`}
+                >
+                  {#each exportOptions as option}
+                    <button
+                      class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[11px] font-semibold transition-colors {dark ? 'hover:bg-white/5' : 'hover:bg-zinc-100'}"
+                      onclick={() => handleRoleExport(role, option.value)}
+                      disabled={exportingRoleId === role.roleId}
+                      data-testid={`role-export-format-${role.roleId}-${option.value}`}
+                    >
+                      {option.label}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           </div>
 
           {#if isCustomRole(role)}

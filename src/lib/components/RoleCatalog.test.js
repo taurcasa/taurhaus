@@ -21,7 +21,6 @@ function sampleRole(overrides = {}) {
     contextSummary: 'Owns cross-repo protocol awareness and runtime coordination constraints.',
     behaviorSummary: 'Advises on mesh boundaries and avoids unrelated product edits.',
     instructions: 'Long raw instructions that should stay in deeper inspection.',
-    capabilities: ['protocols', 'runtime'],
     builtIn: true,
     readOnly: true,
     ...overrides,
@@ -44,9 +43,12 @@ function renderCatalog(props = {}) {
       onSelectRole: vi.fn(),
       onResetDetail: vi.fn(),
       onOpenCreateRoleEditor: vi.fn(),
+      onImportRole: vi.fn(),
       onInspectRole: vi.fn(),
+      onExportRole: vi.fn(),
       onOpenEditRoleEditor: vi.fn(),
       onRequestRoleDelete: vi.fn(),
+      exportingRoleId: '',
       ...props,
     },
   })
@@ -61,6 +63,42 @@ describe('RoleCatalog', () => {
     expect(screen.getByText('Advises on mesh boundaries and avoids unrelated product edits.')).toBeInTheDocument()
     expect(screen.queryByText('protocols')).not.toBeInTheDocument()
     expect(screen.queryByText('runtime')).not.toBeInTheDocument()
+  })
+
+  it('renders the import button and forwards clicks', async () => {
+    const onImportRole = vi.fn()
+    renderCatalog({ onImportRole })
+
+    expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
+    await fireEvent.click(screen.getByTestId('role-import-button'))
+
+    expect(onImportRole).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders a provenance badge only for imported roles', () => {
+    renderCatalog({
+      filteredRoleTemplates: [
+        sampleRole({
+          roleId: 'imported-role',
+          provenance: {
+            sourceFormat: 'claude_agent',
+            sourcePath: '.claude/agents/imported-role.md',
+            importedAt: '2026-03-08T10:11:12Z',
+            nonRoundtrippableFields: ['constraints'],
+          },
+        }),
+        sampleRole({
+          roleId: 'native-role',
+          name: 'Native Role',
+          provenance: null,
+        }),
+      ],
+    })
+
+    expect(screen.getByTestId('role-provenance-badge-imported-role')).toHaveTextContent(
+      'from Claude Code'
+    )
+    expect(screen.queryByTestId('role-provenance-badge-native-role')).not.toBeInTheDocument()
   })
 
   it('renders role detail with context steering metadata and demoted raw instructions', async () => {
@@ -83,6 +121,27 @@ describe('RoleCatalog', () => {
     expect(onResetDetail).toHaveBeenCalledTimes(1)
   })
 
+  it('renders provenance metadata in the role detail panel when available', () => {
+    renderCatalog({
+      detailKind: 'role',
+      selectedRole: sampleRole({
+        provenance: {
+          sourceFormat: 'copilot_agent',
+          sourcePath: '.github/agents/mesh-expert.md',
+          importedAt: '2026-03-07T21:04:05Z',
+          nonRoundtrippableFields: ['constraints', 'behavioral_contract'],
+        },
+      }),
+    })
+
+    expect(screen.getByTestId('role-provenance-section')).toBeInTheDocument()
+    expect(screen.getByText('Imported format')).toBeInTheDocument()
+    expect(screen.getByText('Copilot')).toBeInTheDocument()
+    expect(screen.getByText('.github/agents/mesh-expert.md')).toBeInTheDocument()
+    expect(screen.getByText('2026-03-07')).toBeInTheDocument()
+    expect(screen.getByText('constraints, behavioral_contract')).toBeInTheDocument()
+  })
+
   it('keeps focus and behavior metadata visible in both light and dark themes', async () => {
     const view = renderCatalog({ dark: false })
     expect(screen.getByTestId('role-focus-area-mesh-expert')).toHaveTextContent('Mesh orchestration')
@@ -101,14 +160,44 @@ describe('RoleCatalog', () => {
       onSelectRole: vi.fn(),
       onResetDetail: vi.fn(),
       onOpenCreateRoleEditor: vi.fn(),
+      onImportRole: vi.fn(),
       onInspectRole: vi.fn(),
+      onExportRole: vi.fn(),
       onOpenEditRoleEditor: vi.fn(),
       onRequestRoleDelete: vi.fn(),
+      exportingRoleId: '',
     })
 
     expect(screen.getByTestId('role-focus-area-mesh-expert')).toHaveTextContent('Mesh orchestration')
     expect(screen.getByTestId('role-behavior-summary-mesh-expert')).toHaveTextContent(
       'Advises on mesh boundaries and avoids unrelated product edits.'
     )
+  })
+
+  it('renders export actions on role cards and in role detail', async () => {
+    const onExportRole = vi.fn()
+
+    const cardView = renderCatalog({ onExportRole })
+
+    await fireEvent.click(screen.getByTestId('role-export-trigger-mesh-expert'))
+    expect(screen.getByTestId('role-export-menu-mesh-expert')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('role-export-format-mesh-expert-claude_agent'))
+    expect(onExportRole).toHaveBeenCalledWith(expect.objectContaining({ roleId: 'mesh-expert' }), 'claude_agent')
+
+    onExportRole.mockClear()
+    cardView.unmount()
+
+    renderCatalog({
+      detailKind: 'role',
+      selectedRole: sampleRole(),
+      onExportRole,
+    })
+
+    await fireEvent.click(screen.getByTestId('role-detail-export-mesh-expert'))
+    expect(screen.getByTestId('role-detail-export-menu-mesh-expert')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('role-detail-export-format-mesh-expert-copilot_agent'))
+    expect(onExportRole).toHaveBeenCalledWith(expect.objectContaining({ roleId: 'mesh-expert' }), 'copilot_agent')
   })
 })

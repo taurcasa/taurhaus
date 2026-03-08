@@ -32,6 +32,25 @@ function normalizeBehavioralContractForEditor(contract) {
   return []
 }
 
+function normalizeRoleProvenance(value) {
+  const provenance = value?.provenance
+  if (!provenance || typeof provenance !== 'object') {
+    return null
+  }
+
+  return {
+    sourceFormat: provenance?.sourceFormat ?? provenance?.source_format ?? '',
+    sourceVersion: provenance?.sourceVersion ?? provenance?.source_version ?? null,
+    sourcePath: provenance?.sourcePath ?? provenance?.source_path ?? null,
+    importedAt: provenance?.importedAt ?? provenance?.imported_at ?? null,
+    nonRoundtrippableFields: Array.isArray(
+      provenance?.nonRoundtrippableFields ?? provenance?.non_roundtrippable_fields
+    )
+      ? (provenance?.nonRoundtrippableFields ?? provenance?.non_roundtrippable_fields)
+      : [],
+  }
+}
+
 export function normalizeRoleTemplate(value) {
   return {
     roleId: value?.roleId ?? value?.role_id ?? '',
@@ -46,6 +65,7 @@ export function normalizeRoleTemplate(value) {
     behavioralContract: normalizeBehavioralContractForEditor(
       value?.behavioralContract ?? value?.behavioral_contract
     ),
+    provenance: normalizeRoleProvenance(value),
     builtIn: Boolean(value?.builtIn ?? value?.built_in),
     readOnly: Boolean(value?.readOnly ?? value?.read_only),
   }

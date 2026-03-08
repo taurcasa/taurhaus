@@ -4,6 +4,7 @@ import {
   MOCK_TEMPLATE_DIFFS,
   MOCK_TEMPLATE_HISTORY,
   MOCK_TEMPLATE_STORAGE_STATUS,
+  mockRoleExportResult,
   roleTemplateSummary,
   teamPresetSummary,
 } from './mocks/index.js'
@@ -61,6 +62,63 @@ export function deleteRoleTemplate(roleId) {
     roleId,
     deleted: true,
   }))
+}
+
+export function importRoleFromFile(filePath) {
+  return invokeOrMock('import_role_from_file', { request: { filePath } }, () => ({
+    success: true,
+    role: {
+      roleId: 'imported-role',
+      name: 'Imported Role',
+      version: '1.0.0',
+      kind: 'agent',
+      defaults: {
+        cliTool: 'claude',
+        model: 'claude-opus-4-6',
+        defaultNamePattern: 'imported-role-{n}',
+      },
+      instructions: 'Imported role instructions.',
+      focusArea: 'Imported work',
+      contextSummary: 'Imported into the local template catalog.',
+      behaviorSummary: 'Preserves imported prompt semantics until edited.',
+      behavioralContract: {
+        communication: ['Acknowledge imports clearly.'],
+        execution: ['Preserve prompt intent when importing.'],
+        escalation: ['Escalate malformed role imports.'],
+      },
+      capabilities: [],
+      provenance: {
+        sourceFormat: 'claude_agent',
+        sourceVersion: null,
+        sourcePath: filePath,
+        importedAt: '2026-03-08T00:00:00Z',
+        nonRoundtrippableFields: [],
+      },
+      constraints: {
+        minInstances: 0,
+        maxInstances: 8,
+        requiresLeadTool: null,
+        allowedProjectBinding: 'any',
+      },
+    },
+    conflict: null,
+  }))
+}
+
+export async function exportRoleToFile(roleId, targetFormat) {
+  const exported = await invokeOrMock(
+    'export_role_to_file',
+    { request: { roleId, targetFormat } },
+    () => mockRoleExportResult(roleId, targetFormat)
+  )
+
+  return {
+    targetFormat: exported?.targetFormat ?? exported?.target_format ?? targetFormat,
+    fileContent: exported?.fileContent ?? exported?.file_content ?? '',
+    lossyFields: Array.isArray(exported?.lossyFields ?? exported?.lossy_fields)
+      ? (exported?.lossyFields ?? exported?.lossy_fields)
+      : [],
+  }
 }
 
 export async function listTeamPresets() {

@@ -5,6 +5,8 @@ import '@testing-library/jest-dom/vitest'
 vi.mock('../ipc.js', () => ({
   listRoleTemplates: vi.fn(),
   getRoleTemplate: vi.fn(),
+  exportRoleToFile: vi.fn(),
+  importRoleFromFile: vi.fn(),
   upsertRoleTemplate: vi.fn(),
   deleteRoleTemplate: vi.fn(),
   listTeamPresets: vi.fn(),
@@ -15,11 +17,23 @@ vi.mock('../ipc.js', () => ({
   getTemplateHistory: vi.fn(),
   getTemplateDiff: vi.fn(),
   revertTemplateVersion: vi.fn(),
+  isTauri: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: vi.fn(),
+  save: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+  writeTextFile: vi.fn(),
 }))
 
 const {
   listRoleTemplates,
   getRoleTemplate,
+  exportRoleToFile,
+  importRoleFromFile,
   upsertRoleTemplate,
   deleteRoleTemplate,
   listTeamPresets,
@@ -30,7 +44,10 @@ const {
   getTemplateHistory,
   getTemplateDiff,
   revertTemplateVersion,
+  isTauri,
 } = await import('../ipc.js')
+const { open, save } = await import('@tauri-apps/plugin-dialog')
+const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
 import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
 
@@ -47,6 +64,10 @@ function deferred() {
 describe('TemplateBrowserPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    isTauri.mockReturnValue(false)
+    open.mockResolvedValue(null)
+    save.mockResolvedValue(null)
+    writeTextFile.mockResolvedValue(undefined)
 
     listRoleTemplates.mockResolvedValue([
       {
@@ -199,6 +220,48 @@ describe('TemplateBrowserPanel', () => {
       stats: { filesChanged: 0, insertions: 0, deletions: 0 },
     })
     revertTemplateVersion.mockResolvedValue()
+    exportRoleToFile.mockResolvedValue({
+      targetFormat: 'claude_agent',
+      fileContent: '# Documentation Writer\n\nExport body\n',
+      lossyFields: [],
+    })
+    importRoleFromFile.mockResolvedValue({
+      success: true,
+      role: {
+        roleId: 'imported-reviewer',
+        name: 'Imported Reviewer',
+        version: '1.0.0',
+        kind: 'agent',
+        defaults: {
+          cliTool: 'claude',
+          model: 'claude-opus-4-6',
+          defaultNamePattern: 'imported-reviewer-{n}',
+        },
+        instructions: 'Imported role instructions',
+        focusArea: 'Imported reviews',
+        contextSummary: 'Imported from an external prompt file.',
+        behaviorSummary: 'Preserves import semantics until edited.',
+        behavioralContract: {
+          communication: ['Acknowledge imports clearly.'],
+          execution: ['Preserve imported role intent.'],
+          escalation: ['Escalate malformed prompt files.'],
+        },
+        capabilities: [],
+        provenance: {
+          sourceFormat: 'claude_agent',
+          sourcePath: '/tmp/imported-reviewer.md',
+          importedAt: '2026-03-08T11:30:00Z',
+          nonRoundtrippableFields: [],
+        },
+        constraints: {
+          minInstances: 0,
+          maxInstances: 8,
+          requiresLeadTool: null,
+          allowedProjectBinding: 'any',
+        },
+      },
+      conflict: null,
+    })
     upsertRoleTemplate.mockResolvedValue({
       roleId: 'custom-doc-writer',
       name: 'Documentation Writer',
@@ -611,6 +674,258 @@ describe('TemplateBrowserPanel', () => {
       'Writes and clarifies docs without taking over code ownership lanes.'
     )
     expect(screen.queryByText('documentation')).not.toBeInTheDocument()
+  })
+
+  it('opens the role export dropdown from the card action row', async () => {
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-trigger-custom-doc-writer')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-trigger-custom-doc-writer'))
+
+    expect(screen.getByTestId('role-export-menu-custom-doc-writer')).toBeInTheDocument()
+    expect(screen.getByTestId('role-export-format-custom-doc-writer-claude_agent')).toBeInTheDocument()
+    expect(screen.getByTestId('role-export-format-custom-doc-writer-copilot_agent')).toBeInTheDocument()
+    expect(screen.getByTestId('role-export-format-custom-doc-writer-agents_md')).toBeInTheDocument()
+    expect(screen.getByTestId('role-export-format-custom-doc-writer-gemini_md')).toBeInTheDocument()
+  })
+
+  it('exports a role through the save dialog and writes the returned file content', async () => {
+    isTauri.mockReturnValue(true)
+    save.mockResolvedValue('/tmp/documentation-writer.md')
+    exportRoleToFile.mockResolvedValue({
+      targetFormat: 'copilot_agent',
+      fileContent: '# Documentation Writer\n\nExport body\n',
+      lossyFields: ['constraints'],
+    })
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-trigger-custom-doc-writer')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-trigger-custom-doc-writer'))
+    await fireEvent.click(screen.getByTestId('role-export-format-custom-doc-writer-copilot_agent'))
+
+    await waitFor(() => {
+      expect(exportRoleToFile).toHaveBeenCalledWith('custom-doc-writer', 'copilot_agent')
+    })
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledWith({
+        defaultPath: 'documentation-writer.md',
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      expect(writeTextFile).toHaveBeenCalledWith('/tmp/documentation-writer.md', '# Documentation Writer\n\nExport body\n')
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent('Exported (1 fields approximated)')
+    })
+  })
+
+  it('opens the file picker and imports a role, then refreshes the catalog', async () => {
+    open.mockResolvedValue('/tmp/imported-reviewer.md')
+    listRoleTemplates
+      .mockResolvedValueOnce([
+        {
+          roleId: 'custom-doc-writer',
+          name: 'Documentation Writer',
+          kind: 'agent',
+          cliTool: 'gemini',
+          model: 'gemini-2.5-pro',
+          focusArea: 'Documentation systems',
+          contextSummary: 'Maintains operational docs and architecture-facing explanations.',
+          behaviorSummary: 'Writes and clarifies docs without taking over code ownership lanes.',
+          builtIn: false,
+          readOnly: false,
+        },
+      ])
+      .mockResolvedValue([
+        {
+          roleId: 'custom-doc-writer',
+          name: 'Documentation Writer',
+          kind: 'agent',
+          cliTool: 'gemini',
+          model: 'gemini-2.5-pro',
+          focusArea: 'Documentation systems',
+          contextSummary: 'Maintains operational docs and architecture-facing explanations.',
+          behaviorSummary: 'Writes and clarifies docs without taking over code ownership lanes.',
+          builtIn: false,
+          readOnly: false,
+        },
+        {
+          roleId: 'imported-reviewer',
+          name: 'Imported Reviewer',
+          kind: 'agent',
+          cliTool: 'claude',
+          model: 'claude-opus-4-6',
+          focusArea: 'Imported reviews',
+          contextSummary: 'Imported from an external prompt file.',
+          behaviorSummary: 'Preserves import semantics until edited.',
+          builtIn: false,
+          readOnly: false,
+          provenance: {
+            sourceFormat: 'claude_agent',
+            sourcePath: '/tmp/imported-reviewer.md',
+            importedAt: '2026-03-08T11:30:00Z',
+            nonRoundtrippableFields: [],
+          },
+        },
+      ])
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-import-button'))
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith({
+        multiple: false,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      expect(importRoleFromFile).toHaveBeenCalledWith('/tmp/imported-reviewer.md')
+      expect(listRoleTemplates.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent(
+        "Imported 'Imported Reviewer' from Claude Code"
+      )
+    })
+  })
+
+  it('shows a conflict dialog when an imported role id already exists', async () => {
+    open.mockResolvedValue('/tmp/custom-doc-writer.md')
+    importRoleFromFile.mockResolvedValue({
+      success: false,
+      role: {
+        roleId: 'custom-doc-writer',
+        name: 'Documentation Writer',
+        kind: 'agent',
+        defaults: {
+          cliTool: 'gemini',
+          model: 'gemini-2.5-pro',
+          defaultNamePattern: 'documentation-writer-{n}',
+        },
+        version: '1.0.0',
+        instructions: 'Imported duplicate instructions',
+        focusArea: 'Imported docs',
+        contextSummary: 'Imported from file.',
+        behaviorSummary: 'Preserves imported semantics.',
+        behavioralContract: {
+          communication: ['Acknowledge imports clearly.'],
+          execution: ['Preserve imported role intent.'],
+          escalation: ['Escalate malformed prompt files.'],
+        },
+        capabilities: [],
+        provenance: {
+          sourceFormat: 'claude_agent',
+          sourcePath: '/tmp/custom-doc-writer.md',
+          importedAt: '2026-03-08T11:31:00Z',
+          nonRoundtrippableFields: [],
+        },
+        constraints: {
+          minInstances: 0,
+          maxInstances: 8,
+          requiresLeadTool: null,
+          allowedProjectBinding: 'any',
+        },
+      },
+      conflict: {
+        roleId: 'custom-doc-writer',
+        name: 'Documentation Writer',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: 'gemini-2.5-pro',
+        source: 'user',
+        readOnly: false,
+      },
+    })
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-import-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+      expect(screen.getByText("Role 'Documentation Writer' already exists. Replace it or skip this import?")).toBeInTheDocument()
+    })
+  })
+
+  it('replaces a conflicting role import when Replace is confirmed', async () => {
+    open.mockResolvedValue('/tmp/custom-doc-writer.md')
+    importRoleFromFile.mockResolvedValue({
+      success: false,
+      role: {
+        roleId: 'custom-doc-writer',
+        name: 'Documentation Writer',
+        kind: 'agent',
+        version: '1.0.0',
+        defaults: {
+          cliTool: 'gemini',
+          model: 'gemini-2.5-pro',
+          defaultNamePattern: 'documentation-writer-{n}',
+        },
+        instructions: 'Imported replacement instructions',
+        focusArea: 'Imported docs',
+        contextSummary: 'Imported from file.',
+        behaviorSummary: 'Preserves imported semantics.',
+        behavioralContract: {
+          communication: ['Acknowledge imports clearly.'],
+          execution: ['Preserve imported role intent.'],
+          escalation: ['Escalate malformed prompt files.'],
+        },
+        capabilities: [],
+        provenance: {
+          sourceFormat: 'claude_agent',
+          sourcePath: '/tmp/custom-doc-writer.md',
+          importedAt: '2026-03-08T11:31:00Z',
+          nonRoundtrippableFields: [],
+        },
+        constraints: {
+          minInstances: 0,
+          maxInstances: 8,
+          requiresLeadTool: null,
+          allowedProjectBinding: 'any',
+        },
+      },
+      conflict: {
+        roleId: 'custom-doc-writer',
+        name: 'Documentation Writer',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: 'gemini-2.5-pro',
+        source: 'user',
+        readOnly: false,
+      },
+    })
+
+    render(TemplateBrowserPanel, { props: { open: true } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-import-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(upsertRoleTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roleId: 'custom-doc-writer',
+          provenance: expect.objectContaining({
+            sourcePath: '/tmp/custom-doc-writer.md',
+          }),
+        })
+      )
+    })
   })
 
   it('ignores stale catalog responses when panel is reopened quickly', async () => {

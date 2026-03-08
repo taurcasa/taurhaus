@@ -821,7 +821,7 @@ mod tests {
     #[test]
     fn role_templates_deserialize_and_validate() {
         let roles = load_role_templates();
-        assert_eq!(roles.len(), 9, "expected nine built-in role templates");
+        assert_eq!(roles.len(), 14, "expected fourteen built-in role templates");
         assert!(
             roles.iter().any(|role| role.role_id == "codex-architect"),
             "expected codex-architect role template in built-ins"
@@ -837,6 +837,34 @@ mod tests {
                 .iter()
                 .any(|role| role.role_id == "gemini-orchestrator"),
             "expected gemini-orchestrator role template in built-ins"
+        );
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.role_id == "taurhaus-lead-claude"),
+            "expected taurhaus-lead-claude role template in built-ins"
+        );
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.role_id == "taurhaus-lead-codex"),
+            "expected taurhaus-lead-codex role template in built-ins"
+        );
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.role_id == "taurhaus-developer"),
+            "expected taurhaus-developer role template in built-ins"
+        );
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.role_id == "taurhaus-architect"),
+            "expected taurhaus-architect role template in built-ins"
+        );
+        assert!(
+            roles.iter().any(|role| role.role_id == "taurhaus-designer"),
+            "expected taurhaus-designer role template in built-ins"
         );
 
         for role in &roles {
@@ -873,7 +901,7 @@ mod tests {
     fn team_presets_deserialize_and_validate_against_roles() {
         let roles = load_role_templates();
         let presets = load_team_presets();
-        assert_eq!(presets.len(), 12, "expected twelve built-in team presets");
+        assert_eq!(presets.len(), 14, "expected fourteen built-in team presets");
         assert!(
             presets
                 .iter()
@@ -891,6 +919,18 @@ mod tests {
                 .iter()
                 .any(|preset| preset.preset_id == "fullstack-dev-codex"),
             "expected fullstack-dev-codex preset in built-ins"
+        );
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.preset_id == "taurhaus-standard"),
+            "expected taurhaus-standard preset in built-ins"
+        );
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.preset_id == "taurhaus-standard-codex"),
+            "expected taurhaus-standard-codex preset in built-ins"
         );
 
         for preset in &presets {

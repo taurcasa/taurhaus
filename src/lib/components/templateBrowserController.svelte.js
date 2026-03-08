@@ -1,8 +1,11 @@
 import {
   deleteRoleTemplate,
   deleteTeamPreset,
+  exportRoleToFile,
   getRoleTemplate,
   getTeamPreset,
+  importRoleFromFile,
+  isTauri,
   listRoleTemplates,
   listTeamPresets,
   upsertRoleTemplate,
@@ -17,6 +20,44 @@ import {
   normalizeTeamPreset,
   presetDraftToTeamConfig,
 } from './templateBrowserUtils.js'
+
+function importSourceLabel(role) {
+  switch (String(role?.provenance?.sourceFormat ?? '').toLowerCase()) {
+    case 'claude_agent':
+      return 'Claude Code'
+    case 'copilot_agent':
+      return 'Copilot'
+    case 'agents_md':
+      return 'AGENTS.md'
+    case 'gemini_md':
+      return 'GEMINI.md'
+    default:
+      return 'external source'
+  }
+}
+
+function formatUiError(error, fallback) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  const message = String(error ?? '').trim()
+  return message || fallback
+}
+
+async function pickRoleImportFile() {
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const selection = await open({
+    multiple: false,
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  })
+
+  if (Array.isArray(selection)) {
+    return typeof selection[0] === 'string' ? selection[0] : null
+  }
+
+  return typeof selection === 'string' ? selection : null
+}
 
 export function createTemplateBrowserController({ getOpen }) {
   let loading = $state(false)
@@ -35,13 +76,17 @@ export function createTemplateBrowserController({ getOpen }) {
   let roleEditorRole = $state(null)
   let deleteRoleId = $state('')
   let deleteRoleName = $state('')
+  let importConflict = $state(null)
   let presetEditorOpen = $state(false)
   let presetEditorMode = $state('create')
   let presetEditorDraft = $state(null)
   let presetEditorTeamConfig = $state(null)
   let deletePresetId = $state('')
   let deletePresetName = $state('')
+  let exportingRoleId = $state('')
+  let exportNotice = $state('')
   let catalogLoadSequence = 0
+  let exportNoticeTimer = null
 
   const filteredRoleTemplates = $derived.by(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -71,6 +116,53 @@ export function createTemplateBrowserController({ getOpen }) {
 
   const buildPresetDraft = (source = {}) => normalizePresetDraft(source, roleTemplates, teamPresets)
   const buildTeamConfig = (draft) => presetDraftToTeamConfig(draft, roleTemplates)
+
+  function exportFilenameForRole(role) {
+    const base = String(role?.name ?? role?.roleId ?? 'role')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'role'
+    return `${base}.md`
+  }
+
+  function showExportNotice(message) {
+    exportNotice = message
+    if (exportNoticeTimer) {
+      clearTimeout(exportNoticeTimer)
+    }
+    exportNoticeTimer = setTimeout(() => {
+      exportNotice = ''
+      exportNoticeTimer = null
+    }, 2500)
+  }
+
+  async function saveExportedRoleFile(filename, fileContent) {
+    if (isTauri()) {
+      const [{ save }, { writeTextFile }] = await Promise.all([
+        import('@tauri-apps/plugin-dialog'),
+        import('@tauri-apps/plugin-fs'),
+      ])
+
+      const path = await save({
+        defaultPath: filename,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+
+      if (!path) return false
+      await writeTextFile(path, fileContent)
+      return true
+    }
+
+    const blob = new Blob([fileContent], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    return true
+  }
 
   function setSearchQuery(value) {
     searchQuery = value
@@ -159,6 +251,92 @@ export function createTemplateBrowserController({ getOpen }) {
       await refreshRoles()
     } catch (error) {
       errorMessage = error?.message || 'Failed to save role template.'
+    }
+  }
+
+  function clearImportConflict() {
+    importConflict = null
+  }
+
+  async function importRole() {
+    errorMessage = ''
+
+    let filePath
+    try {
+      filePath = await pickRoleImportFile()
+    } catch (error) {
+      errorMessage = formatUiError(error, 'Failed to open the role import dialog.')
+      return
+    }
+
+    if (!filePath) return
+
+    try {
+      const result = await importRoleFromFile(filePath)
+      const importedRole = normalizeRoleTemplate(result?.role ?? {})
+
+      if (result?.conflict) {
+        importConflict = {
+          rawRole: result.role,
+          importedRole,
+          existingRole: normalizeRoleTemplate(result.conflict),
+        }
+        return
+      }
+
+      clearImportConflict()
+      await refreshRoles()
+      showExportNotice(`Imported '${importedRole.name}' from ${importSourceLabel(importedRole)}`)
+    } catch (error) {
+      errorMessage = formatUiError(error, 'Failed to import role template.')
+    }
+  }
+
+  function skipImportConflict() {
+    clearImportConflict()
+  }
+
+  async function replaceImportedRole() {
+    if (!importConflict?.rawRole) return
+
+    const pendingImport = importConflict
+    clearImportConflict()
+    errorMessage = ''
+    try {
+      await upsertRoleTemplate(pendingImport.rawRole)
+      await refreshRoles()
+      showExportNotice(
+        `Imported '${pendingImport.importedRole.name}' from ${importSourceLabel(pendingImport.importedRole)}`
+      )
+    } catch (error) {
+      errorMessage = formatUiError(error, 'Failed to replace the existing role template.')
+    }
+  }
+
+  async function handleRoleExport(role, targetFormat) {
+    if (!role?.roleId || !targetFormat) return
+
+    exportingRoleId = role.roleId
+    errorMessage = ''
+
+    try {
+      const exported = await exportRoleToFile(role.roleId, targetFormat)
+      const saved = await saveExportedRoleFile(
+        exportFilenameForRole(role),
+        exported?.fileContent ?? ''
+      )
+      if (!saved) return
+
+      const approximatedFieldCount = Array.isArray(exported?.lossyFields)
+        ? exported.lossyFields.length
+        : 0
+      if (approximatedFieldCount > 0) {
+        showExportNotice(`Exported (${approximatedFieldCount} fields approximated)`)
+      }
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to export role.'
+    } finally {
+      exportingRoleId = ''
     }
   }
 
@@ -389,6 +567,9 @@ export function createTemplateBrowserController({ getOpen }) {
     get roleTemplates() {
       return roleTemplates
     },
+    get importConflict() {
+      return importConflict
+    },
     get presetEditorOpen() {
       return presetEditorOpen
     },
@@ -407,16 +588,27 @@ export function createTemplateBrowserController({ getOpen }) {
     get deletePresetName() {
       return deletePresetName
     },
+    get exportingRoleId() {
+      return exportingRoleId
+    },
+    get exportNotice() {
+      return exportNotice
+    },
     setSearchQuery,
     setTab,
     resetDetail,
     resetRoleEditor,
+    clearImportConflict,
     openCreateRoleEditor,
     openEditRoleEditor,
     handleRoleSave,
+    importRole,
+    skipImportConflict,
+    replaceImportedRole,
     requestRoleDelete,
     cancelRoleDelete,
     confirmRoleDelete,
+    handleRoleExport,
     closePresetEditor,
     openCreatePresetEditor,
     openPresetEditorForMutation,

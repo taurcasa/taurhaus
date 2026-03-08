@@ -81,6 +81,17 @@
         </div>
       {/if}
 
+      {#if controller.exportNotice}
+        <div
+          class="rounded-lg border border-brand-500/20 bg-brand-500/10 px-3 py-2 animate-in fade-in slide-in-from-bottom-2 duration-200"
+          data-testid="template-browser-notice"
+        >
+          <p class="text-[11px] font-medium text-brand-600 dark:text-brand-300 text-center">
+            {controller.exportNotice}
+          </p>
+        </div>
+      {/if}
+
       {#if controller.loading}
         <div class="flex flex-col items-center justify-center py-12 space-y-3 opacity-50">
           <div class="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
@@ -101,13 +112,18 @@
           {onSelectRole}
           onResetDetail={controller.resetDetail}
           onOpenCreateRoleEditor={controller.openCreateRoleEditor}
+          onImportRole={controller.importRole}
           onInspectRole={(role) => {
             void controller.inspectRole(role)
+          }}
+          onExportRole={(role, format) => {
+            void controller.handleRoleExport(role, format)
           }}
           onOpenEditRoleEditor={(role) => {
             void controller.openEditRoleEditor(role)
           }}
           onRequestRoleDelete={controller.requestRoleDelete}
+          exportingRoleId={controller.exportingRoleId}
         />
       {:else if controller.activeTab === 'presets'}
         <PresetCatalog
@@ -161,6 +177,21 @@
   onSave={controller.savePresetFromCustomizer}
   onReset={controller.closePresetEditor}
 />
+
+{#if controller.importConflict}
+  <ConfirmDialog
+    {dark}
+    open={true}
+    title="Role already exists?"
+    message={`Role '${controller.importConflict.importedRole.name || controller.importConflict.existingRole.name || controller.importConflict.importedRole.roleId}' already exists. Replace it or skip this import?`}
+    confirmLabel="Replace"
+    secondaryLabel="Skip"
+    variant="default"
+    onConfirm={controller.replaceImportedRole}
+    onSecondary={controller.skipImportConflict}
+    onCancel={controller.clearImportConflict}
+  />
+{/if}
 
 {#if controller.deleteRoleId}
   <ConfirmDialog

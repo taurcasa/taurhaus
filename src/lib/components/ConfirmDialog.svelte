@@ -8,8 +8,10 @@
     message = '',
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
+    secondaryLabel = '',
     variant = 'danger',
     onConfirm = () => {},
+    onSecondary = () => {},
     onCancel = () => {},
   } = $props()
 
@@ -24,6 +26,11 @@
     variant === 'default'
       ? 'bg-brand-600 text-white hover:bg-brand-700'
       : 'bg-danger-500 text-white hover:bg-danger-600'
+  )
+  const secondaryTone = $derived(
+    dark
+      ? 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.1]'
+      : 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200'
   )
 
   let dialogElement = $state(null)
@@ -58,6 +65,11 @@
   function handleCancelEvent(event) {
     event.preventDefault()
     dismiss()
+  }
+
+  function handleSecondary() {
+    onSecondary()
+    open = false
   }
 
   function handleBackdropClick(event) {
@@ -114,6 +126,15 @@
       >
         {cancelLabel}
       </button>
+      {#if secondaryLabel}
+        <button
+          class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {secondaryTone}"
+          onclick={handleSecondary}
+          data-testid="confirm-dialog-secondary"
+        >
+          {secondaryLabel}
+        </button>
+      {/if}
       <button
         class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {confirmTone}"
         onclick={handleConfirm}
