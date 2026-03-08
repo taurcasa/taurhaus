@@ -19,6 +19,7 @@ use crate::errors::SanitizeErr;
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
+use crate::session_scanner::tmux::TmuxFocusState;
 use crate::session_scanner::ClaudeSession;
 use crate::ProviderState;
 
@@ -144,6 +145,18 @@ pub fn get_project_activity(
     result
 }
 
+#[tauri::command]
+pub fn get_foreground_project(
+    app: tauri::AppHandle,
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+) -> Result<Option<String>, String> {
+    let span = IpcCommandSpan::start("get_foreground_project");
+    let result = get_foreground_project_impl(&app, db.inner(), provider.inner());
+    span.finish_result(&result);
+    result
+}
+
 fn normalize_project_path_key(path: &str) -> String {
     let normalized = path
         .trim_end_matches('/')
@@ -154,6 +167,42 @@ fn normalize_project_path_key(path: &str) -> String {
     } else {
         normalized
     }
+}
+
+pub(crate) fn get_foreground_project_impl(
+    app: &tauri::AppHandle,
+    db: &DbState,
+    provider: &ProviderState,
+) -> Result<Option<String>, String> {
+    let data_dir = crate::startup::resolve_app_data_dir(app.clone()).map_err(|error| {
+        format!("Failed to resolve app data dir for tmux focus lookup: {error}")
+    })?;
+    let Some(focus) = crate::session_scanner::tmux::read_focus_state(&data_dir) else {
+        return Ok(None);
+    };
+
+    let sessions = list_cli_sessions_impl(app, db, provider)?;
+    resolve_foreground_project_id_from_sessions(db, &focus, &sessions)
+}
+
+fn resolve_foreground_project_id_from_sessions(
+    db: &DbState,
+    focus: &TmuxFocusState,
+    sessions: &[ClaudeSession],
+) -> Result<Option<String>, String> {
+    let Some(project_path) =
+        crate::session_scanner::tmux::resolve_focus_project_path(focus, sessions)
+    else {
+        return Ok(None);
+    };
+
+    let project_key = normalize_project_path_key(&project_path);
+    let conn = db.0.lock().map_err(|error| error.to_string())?;
+    let projects = crate::db::queries::list_projects(&conn).sanitize_err()?;
+    Ok(projects
+        .into_iter()
+        .find(|project| normalize_project_path_key(&project.path) == project_key)
+        .map(|project| project.id))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

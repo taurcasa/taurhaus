@@ -480,6 +480,7 @@ fn ensure_taurhaus_session() -> Result<String, String> {
     // This ensures API keys and certs are available in all new panes,
     // even if the tmux server started before these were set in the shell.
     propagate_env_to_tmux();
+    install_tmux_focus_hooks();
 
     Ok(TMUX_SESSION_NAME.to_string())
 }
@@ -508,6 +509,61 @@ fn propagate_env_to_tmux() {
             }
         }
     }
+}
+
+fn install_tmux_focus_hooks() {
+    let Some(data_dir) = std::env::var_os("TAURHAUS_DATA_DIR").map(std::path::PathBuf::from) else {
+        tracing::debug!("Skipping tmux focus hook installation; TAURHAUS_DATA_DIR is not set");
+        return;
+    };
+
+    let focus_path = crate::session_scanner::tmux::focus_file_path(&data_dir);
+    if !focus_path.exists() {
+        let _ = crate::session_scanner::tmux::write_focus_state(
+            &focus_path,
+            &crate::session_scanner::tmux::TmuxFocusState::detached(),
+        );
+    }
+
+    let attached_hook = build_tmux_focus_hook_command(&focus_path);
+    let detached_hook = build_tmux_focus_detached_hook_command(&focus_path);
+    for (hook_name, hook_command) in [
+        ("session-window-changed", attached_hook.as_str()),
+        ("client-session-changed", attached_hook.as_str()),
+        ("client-detached", detached_hook.as_str()),
+    ] {
+        let _ = tmux_command()
+            .args(["set-hook", "-g", hook_name, hook_command])
+            .output();
+    }
+}
+
+fn build_tmux_focus_hook_command(focus_path: &Path) -> String {
+    let file = shell_escape(&focus_path.display().to_string());
+    let dir = shell_escape(
+        &focus_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .display()
+            .to_string(),
+    );
+    format!(
+        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_name}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}\""
+    )
+}
+
+fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
+    let file = shell_escape(&focus_path.display().to_string());
+    let dir = shell_escape(
+        &focus_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .display()
+            .to_string(),
+    );
+    format!(
+        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file}\""
+    )
 }
 
 /// Escape a string for safe use in a POSIX shell command.
@@ -767,6 +823,24 @@ mod tests {
         assert_eq!(f, LaunchMode::Fresh);
         let r: LaunchMode = serde_json::from_str("\"resume\"").unwrap();
         assert_eq!(r, LaunchMode::Resume);
+    }
+
+    #[test]
+    fn focus_hook_command_targets_json_file() {
+        let command = build_tmux_focus_hook_command(Path::new("/tmp/taurhaus/tmux-focus.json"));
+        assert!(command.contains("run-shell -b"));
+        assert!(command.contains("tmux-focus.json"));
+        assert!(command.contains("#{session_name}"));
+        assert!(command.contains("#{window_name}"));
+    }
+
+    #[test]
+    fn focus_detached_hook_command_writes_null_state() {
+        let command =
+            build_tmux_focus_detached_hook_command(Path::new("/tmp/taurhaus/tmux-focus.json"));
+        assert!(command.contains("tmux-focus.json"));
+        assert!(command.contains("\\\"session\\\":null"));
+        assert!(command.contains("\\\"window\\\":null"));
     }
 
     // -----------------------------------------------------------------------

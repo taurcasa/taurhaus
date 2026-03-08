@@ -1,6 +1,11 @@
 //! tmux mapper — map terminal TTYs to tmux pane/window IDs.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use super::ClaudeSession;
 
 /// Information about a tmux pane.
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +20,27 @@ pub struct TmuxPane {
     pub window_name: String,
     /// tmux session name (e.g., "0", "main").
     pub session_name: String,
+}
+
+/// Persisted foreground tmux focus state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TmuxFocusState {
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub window: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<u64>,
+}
+
+impl TmuxFocusState {
+    pub fn detached() -> Self {
+        Self {
+            session: None,
+            window: None,
+            timestamp: None,
+        }
+    }
 }
 
 /// List all tmux panes and build a TTY → TmuxPane lookup.
@@ -77,9 +103,92 @@ pub fn parse_tmux_output(output: &str) -> HashMap<String, TmuxPane> {
         .collect()
 }
 
+pub fn focus_file_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("tmux-focus.json")
+}
+
+pub fn read_focus_state(data_dir: &Path) -> Option<TmuxFocusState> {
+    let path = focus_file_path(data_dir);
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+pub fn write_focus_state(path: &Path, state: &TmuxFocusState) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create tmux focus parent directory: {error}"))?;
+    }
+    let payload = serde_json::to_string(state)
+        .map_err(|error| format!("Failed to serialize tmux focus state: {error}"))?;
+    std::fs::write(path, payload)
+        .map_err(|error| format!("Failed to write tmux focus state: {error}"))
+}
+
+pub fn resolve_focus_project_path(
+    focus: &TmuxFocusState,
+    sessions: &[ClaudeSession],
+) -> Option<String> {
+    let session_name = focus.session.as_deref()?.trim();
+    let window = focus.window.as_deref()?.trim();
+    if session_name.is_empty() || window.is_empty() {
+        return None;
+    }
+
+    sessions.iter().find_map(|session| {
+        let tmux_session = session.tmux_session.as_deref()?.trim();
+        if tmux_session != session_name {
+            return None;
+        }
+
+        let matches_window_name = session
+            .tmux_window_name
+            .as_deref()
+            .is_some_and(|value| value.trim() == window);
+        let matches_window_index = session
+            .tmux_window
+            .as_deref()
+            .is_some_and(|value| value.trim() == window);
+
+        if matches_window_name || matches_window_index {
+            Some(session.project_path.clone())
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::{
+        ActivityAttribution, ActivityConfidence, CliTool, SessionGroupKind, SessionState,
+    };
+
+    fn session_for(path: &str, session_name: Option<&str>, window: Option<&str>) -> ClaudeSession {
+        ClaudeSession {
+            pid: 42,
+            project_path: path.to_string(),
+            tty: "/dev/pts/1".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: session_name.map(str::to_string),
+            tmux_window: Some("1".to_string()),
+            tmux_pane: Some("%1".to_string()),
+            tmux_window_name: window.map(str::to_string),
+            state: SessionState::Active,
+            session_id: None,
+            jsonl_path: None,
+            recent_io: false,
+            last_output_age_secs: None,
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }
+    }
 
     #[test]
     fn parse_single_pane() {
@@ -172,5 +281,52 @@ bad line
         // HashMap insert overwrites, so which wins is non-deterministic
         // Just verify we have one entry
         assert!(map.contains_key("/dev/pts/1"));
+    }
+
+    #[test]
+    fn resolve_focus_matches_taurhaus_managed_window_name() {
+        let focus = TmuxFocusState {
+            session: Some("taurhaus".to_string()),
+            window: Some("mesh".to_string()),
+            timestamp: Some(123),
+        };
+        let sessions = vec![
+            session_for("/projects/other", Some("taurhaus"), Some("other")),
+            session_for("/projects/mesh", Some("taurhaus"), Some("mesh")),
+        ];
+
+        assert_eq!(
+            resolve_focus_project_path(&focus, &sessions),
+            Some("/projects/mesh".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_focus_returns_none_for_unknown_window() {
+        let focus = TmuxFocusState {
+            session: Some("taurhaus".to_string()),
+            window: Some("missing".to_string()),
+            timestamp: Some(123),
+        };
+        let sessions = vec![session_for(
+            "/projects/mesh",
+            Some("taurhaus"),
+            Some("mesh"),
+        )];
+
+        assert_eq!(resolve_focus_project_path(&focus, &sessions), None);
+    }
+
+    #[test]
+    fn resolve_focus_returns_none_without_attached_client() {
+        let sessions = vec![session_for(
+            "/projects/mesh",
+            Some("taurhaus"),
+            Some("mesh"),
+        )];
+        assert_eq!(
+            resolve_focus_project_path(&TmuxFocusState::detached(), &sessions),
+            None
+        );
     }
 }

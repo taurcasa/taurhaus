@@ -395,6 +395,7 @@ fn initialize_paths_and_logging(
 ) -> Result<SetupPaths, Box<dyn std::error::Error>> {
     let data_dir = resolve_app_data_dir(app.handle().clone())?;
     std::fs::create_dir_all(&data_dir)?;
+    std::env::set_var(DATA_DIR_OVERRIDE_ENV, &data_dir);
 
     let log_path = commands::logging::jsonl_log_path(&data_dir);
     let log_state = commands::logging::LogFileState::new(log_path.clone())?;
@@ -633,7 +634,9 @@ fn env_path_override(var: &str) -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
-fn resolve_app_data_dir(app: tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_app_data_dir(
+    app: tauri::AppHandle,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Some(path) = env_path_override(DATA_DIR_OVERRIDE_ENV) {
         tracing::info!(
             env = DATA_DIR_OVERRIDE_ENV,

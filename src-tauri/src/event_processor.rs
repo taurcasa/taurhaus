@@ -8,7 +8,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::bootstrap;
 use crate::commands::projects::DbState;
-use crate::sentinels::{CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX};
+use crate::sentinels::{
+    CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX, TMUX_FOCUS_PROJECT_ID,
+};
 use crate::{db, fs, search, services, ProviderState, SearchState};
 
 /// Look up a project's path from the database, returning None on any error.
@@ -513,12 +515,7 @@ pub(crate) fn process_watch_events(
         };
 
         // Fast-path: internal watch events (task directory) bypass batching.
-        if is_internal_event(&first) {
-            enqueue_task_trigger(
-                &task_trigger_tx,
-                internal_task_trigger(&first),
-                "first_event",
-            );
+        if handle_internal_event(&app, &task_trigger_tx, &first, "first_event") {
             continue;
         }
 
@@ -535,12 +532,7 @@ pub(crate) fn process_watch_events(
             let timeout = (MAX_WAIT - elapsed).min(QUIET_WINDOW);
             match rx.recv_timeout(timeout) {
                 Ok(event) => {
-                    if is_internal_event(&event) {
-                        enqueue_task_trigger(
-                            &task_trigger_tx,
-                            internal_task_trigger(&event),
-                            "batched_event",
-                        );
+                    if handle_internal_event(&app, &task_trigger_tx, &event, "batched_event") {
                     } else {
                         batch.accumulate(event);
                     }
@@ -915,16 +907,53 @@ fn internal_task_trigger(event: &fs::watcher::WatchEvent) -> crate::bootstrap::T
     }
 }
 
-/// Check if a watch event is an internal event (task directory etc.) that
-/// should bypass batching and trigger the task scan thread instead.
-pub(crate) fn is_internal_event(event: &fs::watcher::WatchEvent) -> bool {
+fn handle_internal_event(
+    app: &AppHandle,
+    task_trigger_tx: &std::sync::mpsc::Sender<crate::bootstrap::TaskScanTrigger>,
+    event: &fs::watcher::WatchEvent,
+    source: &'static str,
+) -> bool {
     use fs::watcher::WatchEvent;
-    matches!(
-        event,
-        WatchEvent::FileChanged { project_id, .. }
-        | WatchEvent::GitChanged { project_id }
-            if project_id.starts_with(INTERNAL_PROJECT_ID_PREFIX)
-    )
+
+    match event {
+        WatchEvent::FileChanged { project_id, .. } if project_id == CLAUDE_TASKS_PROJECT_ID => {
+            enqueue_task_trigger(task_trigger_tx, internal_task_trigger(event), source);
+            true
+        }
+        WatchEvent::FileChanged { project_id, paths } if project_id == TMUX_FOCUS_PROJECT_ID => {
+            if !paths.iter().any(|path| {
+                path.file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value == "tmux-focus.json")
+            }) {
+                return true;
+            }
+            let db = app.state::<DbState>();
+            let provider = app.state::<ProviderState>();
+            let project_id = crate::commands::command_center::get_foreground_project_impl(
+                app,
+                db.inner(),
+                provider.inner(),
+            )
+            .unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "Failed to resolve foreground tmux project");
+                None
+            });
+            emit_frontend_event(
+                app,
+                "tmux-focus-changed",
+                serde_json::json!({ "projectId": project_id }),
+            );
+            true
+        }
+        WatchEvent::GitChanged { project_id }
+            if project_id.starts_with(INTERNAL_PROJECT_ID_PREFIX) =>
+        {
+            enqueue_task_trigger(task_trigger_tx, internal_task_trigger(event), source);
+            true
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]

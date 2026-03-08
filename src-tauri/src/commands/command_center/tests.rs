@@ -11,6 +11,7 @@ use crate::coordination::runtime::{
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfig};
 use crate::session_scanner::control::resolve_configured_tool_command;
+use crate::session_scanner::tmux::TmuxFocusState;
 use crate::session_scanner::SessionGroupKind;
 use crate::session_scanner::SessionState;
 use std::io::{BufRead, BufReader, Write};
@@ -176,6 +177,14 @@ fn active_session_for(path: &str) -> ClaudeSession {
     }
 }
 
+fn attached_focus(session_name: &str, window: &str) -> TmuxFocusState {
+    TmuxFocusState {
+        session: Some(session_name.to_string()),
+        window: Some(window.to_string()),
+        timestamp: Some(123),
+    }
+}
+
 fn save_team_member(
     teams_dir: &Path,
     team_name: &str,
@@ -266,6 +275,48 @@ fn promote_activity_from_sessions_touches_dormant_project_once() {
     let promoted_again =
         promote_activity_from_sessions_impl(&db, &sessions).expect("promote activity again");
     assert_eq!(promoted_again, 0);
+}
+
+#[test]
+fn foreground_project_resolution_maps_focus_to_registered_project() {
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let sessions = vec![active_session_for("/tmp/project")];
+
+    let project_id = resolve_foreground_project_id_from_sessions(
+        &db,
+        &attached_focus("taurhaus", "work"),
+        &sessions,
+    )
+    .expect("resolve foreground project");
+
+    assert_eq!(project_id, Some("p1".to_string()));
+}
+
+#[test]
+fn foreground_project_resolution_returns_none_for_unknown_window() {
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let sessions = vec![active_session_for("/tmp/project")];
+
+    let project_id = resolve_foreground_project_id_from_sessions(
+        &db,
+        &attached_focus("taurhaus", "missing"),
+        &sessions,
+    )
+    .expect("resolve foreground project");
+
+    assert_eq!(project_id, None);
+}
+
+#[test]
+fn foreground_project_resolution_returns_none_without_attached_client() {
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let sessions = vec![active_session_for("/tmp/project")];
+
+    let project_id =
+        resolve_foreground_project_id_from_sessions(&db, &TmuxFocusState::detached(), &sessions)
+            .expect("resolve foreground project");
+
+    assert_eq!(project_id, None);
 }
 
 #[test]

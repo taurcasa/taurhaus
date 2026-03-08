@@ -8,7 +8,9 @@ use tauri::Manager;
 use crate::commands::projects::DbState;
 use crate::db::settings_queries;
 use crate::models::ActivityThresholds;
-use crate::sentinels::{CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX};
+use crate::sentinels::{
+    CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX, TMUX_FOCUS_PROJECT_ID,
+};
 use crate::{
     daemon_lifecycle, db, event_processor, platform, provider, watch_targets, WatcherState,
 };
@@ -89,6 +91,7 @@ pub(crate) fn initialize(
         reconcile_activity_watches(&startup_reconcile_handle, "startup");
     });
     ensure_task_directory_watch(app, context.daemon_connected_at_startup);
+    ensure_tmux_focus_watch(app, &context.data_dir);
 
     let periodic_handle = app.handle().clone();
     std::thread::spawn(move || loop {
@@ -280,5 +283,44 @@ fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
                 }
             }
         }
+    }
+}
+
+fn ensure_tmux_focus_watch(app: &tauri::App, data_dir: &std::path::Path) {
+    let watcher_state = app.state::<WatcherState>();
+    let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
+        tracing::warn!(
+            error = %error,
+            "Watcher lock poisoned while bootstrapping tmux focus watch; recovering"
+        );
+        error.into_inner()
+    });
+    let focus_path = crate::session_scanner::tmux::focus_file_path(data_dir);
+    if !focus_path.exists() {
+        if let Err(error) = crate::session_scanner::tmux::write_focus_state(
+            &focus_path,
+            &crate::session_scanner::tmux::TmuxFocusState::detached(),
+        ) {
+            tracing::warn!(
+                error = %error,
+                path = %focus_path.display(),
+                "Failed to initialize tmux focus file before watch registration"
+            );
+            return;
+        }
+    }
+    if let Err(error) =
+        watcher_guard.watch_file(TMUX_FOCUS_PROJECT_ID.to_string(), focus_path.clone())
+    {
+        tracing::debug!(
+            error = %error,
+            path = %focus_path.display(),
+            "Could not watch tmux focus file"
+        );
+    } else {
+        tracing::info!(
+            path = %focus_path.display(),
+            "Watching tmux focus file"
+        );
     }
 }

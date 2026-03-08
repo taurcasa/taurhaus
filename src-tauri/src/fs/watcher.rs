@@ -326,6 +326,54 @@ impl ProjectWatcher {
         Ok(())
     }
 
+    /// Start watching a single file path.
+    pub fn watch_file(
+        &mut self,
+        project_id: String,
+        file_path: PathBuf,
+    ) -> Result<(), notify::Error> {
+        let tx = self.event_tx.clone();
+        let pid = project_id.clone();
+        let target = file_path.clone();
+
+        let mut watcher = RecommendedWatcher::new(
+            move |res: Result<Event, notify::Error>| {
+                let Ok(event) = res else {
+                    return;
+                };
+                match event.kind {
+                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
+                    _ => return,
+                }
+
+                let matched_paths: Vec<PathBuf> = event
+                    .paths
+                    .into_iter()
+                    .filter(|path| path == &target)
+                    .collect();
+                if matched_paths.is_empty() {
+                    return;
+                }
+
+                send_watch_event(
+                    &tx,
+                    WatchEvent::FileChanged {
+                        project_id: pid.clone(),
+                        paths: matched_paths,
+                    },
+                    &pid,
+                    "file_changed",
+                );
+            },
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )?;
+
+        watcher.watch(&file_path, RecursiveMode::NonRecursive)?;
+        emit_watch_local_registered(&project_id, &file_path);
+        self.watchers.insert(project_id, (file_path, watcher));
+        Ok(())
+    }
+
     /// Stop watching a project.
     pub fn unwatch_project(&mut self, project_id: &str) {
         if let Some((root, mut watcher)) = self.watchers.remove(project_id) {

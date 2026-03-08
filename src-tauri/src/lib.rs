@@ -215,6 +215,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::command_center::navigate_to_session,
             commands::command_center::record_session_activity,
             commands::command_center::get_project_activity,
+            commands::command_center::get_foreground_project,
             commands::tasks::get_project_tasks,
             commands::tasks::get_task_detail,
             commands::tasks::get_archived_sessions,
