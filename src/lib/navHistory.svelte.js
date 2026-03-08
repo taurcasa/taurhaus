@@ -58,11 +58,13 @@ export function goForward() {
 }
 
 /** Whether back navigation is possible. */
+/** @public Test and shell consumers can query back-navigation availability. */
 export function canGoBack() {
   return cursor > 0
 }
 
 /** Whether forward navigation is possible. */
+/** @public Test and shell consumers can query forward-navigation availability. */
 export function canGoForward() {
   return cursor < stack.length - 1
 }

@@ -280,6 +280,7 @@ export async function hydrateFromBackend() {
 }
 
 /** Get the current sessions map (for testing or direct access). */
+/** @public Exposed for tests and direct session diagnostics. */
 export function getSessions() {
   return sessions
 }
@@ -301,6 +302,7 @@ export function getSessionForProject(projectPath) {
 }
 
 /** Get tracker stats for a PID (for testing). Returns null if not tracked. */
+/** @public Exposed for tests and session-tracker diagnostics. */
 export function getSessionStats(pid) {
   return trackers.get(pid) ?? null
 }

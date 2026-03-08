@@ -110,7 +110,7 @@ export function buildMockProjectMeshSnapshot(projectPath) {
   }
 }
 
-export function buildMockResumeTeamReport(teamName) {
+function buildMockResumeTeamReport(teamName) {
   return {
     teamName,
     resumed: true,

@@ -139,20 +139,6 @@ describe('ipc module', () => {
     })
   })
 
-  describe('registerProject()', () => {
-    it('calls invoke with correct command and args', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      const mockDetail = { id: 'p1', name: 'new', path: '/new' }
-      tauriCore.invoke.mockResolvedValue(mockDetail)
-
-      const result = await ipc.registerProject('/new', 'new')
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('register_project', { path: '/new', name: 'new' })
-      expect(result).toEqual(mockDetail)
-      delete window.__TAURI_INTERNALS__
-    })
-  })
-
   describe('createProject()', () => {
     it('calls invoke with correct command and args', async () => {
       window.__TAURI_INTERNALS__ = {}
@@ -178,23 +164,6 @@ describe('ipc module', () => {
         name: 'new-app',
         path: '/projects/new-app',
       })
-    })
-  })
-
-  describe('updateProject()', () => {
-    it('calls invoke with correct command and args', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      const mockDetail = { id: 'p1', name: 'renamed' }
-      tauriCore.invoke.mockResolvedValue(mockDetail)
-
-      const result = await ipc.updateProject('p1', { name: 'renamed' })
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('update_project', {
-        projectId: 'p1',
-        fields: { name: 'renamed' },
-      })
-      expect(result).toEqual(mockDetail)
-      delete window.__TAURI_INTERNALS__
     })
   })
 
@@ -307,28 +276,6 @@ describe('ipc module', () => {
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('get_all_commits', { projectId: 'p1', limit: 20, offset: 10 })
       delete window.__TAURI_INTERNALS__
-    })
-  })
-
-  describe('getGitStatus()', () => {
-    it('calls invoke with correct command and args', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      const mockStatus = { branch: 'main', isDirty: false, ahead: 0, behind: 0 }
-      tauriCore.invoke.mockResolvedValue(mockStatus)
-
-      const result = await ipc.getGitStatus('p1')
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('get_git_status', { projectId: 'p1' })
-      expect(result).toEqual(mockStatus)
-      delete window.__TAURI_INTERNALS__
-    })
-
-    it('falls back to mock data when not in Tauri', async () => {
-      delete window.__TAURI_INTERNALS__
-      const result = await ipc.getGitStatus('p1')
-
-      expect(result).toHaveProperty('branch')
-      expect(result).toHaveProperty('isDirty')
     })
   })
 
@@ -511,30 +458,6 @@ describe('ipc module', () => {
     })
   })
 
-  describe('getSession()', () => {
-    it('calls invoke with correct command and args', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      const mockSession = { id: 's1', project_id: 'p1', date: '2026-02-17', summary: 'Test' }
-      tauriCore.invoke.mockResolvedValue(mockSession)
-
-      const result = await ipc.getSession('s1')
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('get_session', { sessionId: 's1' })
-      expect(result).toMatchObject(mockSession)
-      expect(result.next_steps).toEqual([])
-      expect(result.open_questions).toEqual([])
-      delete window.__TAURI_INTERNALS__
-    })
-
-    it('falls back to mock data when not in Tauri', async () => {
-      delete window.__TAURI_INTERNALS__
-      const result = await ipc.getSession('s1')
-
-      expect(result).toHaveProperty('id')
-      expect(result).toHaveProperty('summary')
-    })
-  })
-
   // -----------------------------------------------------------------------
   // Search IPC functions
   // -----------------------------------------------------------------------
@@ -641,45 +564,6 @@ describe('ipc module', () => {
       await ipc.dismissRelationship('r1')
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('dismiss_relationship', { relationshipId: 'r1' })
-      delete window.__TAURI_INTERNALS__
-    })
-  })
-
-  describe('createRelationship()', () => {
-    it('calls invoke with correct command and args', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      const mockRel = { id: 'r-new', source_project_id: 'p1', target_project_id: 'p2' }
-      tauriCore.invoke.mockResolvedValue(mockRel)
-
-      const result = await ipc.createRelationship('p1', 'p2', 'depends_on')
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('create_relationship', {
-        sourceId: 'p1',
-        targetId: 'p2',
-        relationshipType: 'depends_on',
-      })
-      expect(result).toMatchObject(mockRel)
-      delete window.__TAURI_INTERNALS__
-    })
-
-    it('falls back to mock data when not in Tauri', async () => {
-      delete window.__TAURI_INTERNALS__
-      const result = await ipc.createRelationship('p1', 'p2', 'depends_on')
-
-      expect(result).toHaveProperty('id')
-      expect(result.detection_source).toBe('manual')
-      expect(result.relationship_type).toBe('depends_on')
-    })
-  })
-
-  describe('removeRelationship()', () => {
-    it('calls invoke with correct command and args', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue(undefined)
-
-      await ipc.removeRelationship('r1')
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('remove_relationship', { relationshipId: 'r1' })
       delete window.__TAURI_INTERNALS__
     })
   })
@@ -1783,19 +1667,6 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    it('coordinationReonboard calls invoke with named args and returns delivery mock', async () => {
-      const mockModeResult = await ipc.coordinationReonboard('arch', 'bob')
-      expect(mockModeResult).toEqual({ delivered: true, method: 'tmux_injection' })
-
-      window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue({ delivered: true, method: 'tmux_injection' })
-      await ipc.coordinationReonboard('arch', 'bob')
-      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_reonboard', {
-        request: { teamName: 'arch', memberName: 'bob' },
-      })
-      delete window.__TAURI_INTERNALS__
-    })
-
     it('coordinationResumeMember calls invoke with request and returns deterministic mock shape', async () => {
       const mockModeResult = await ipc.coordinationResumeMember('arch', 'bob', 'continue')
       expect(mockModeResult).toEqual({
@@ -1843,27 +1714,6 @@ describe('ipc module', () => {
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_resume_team', {
         request: { teamName: 'arch', contextMode: 'fresh' },
       })
-      delete window.__TAURI_INTERNALS__
-    })
-
-    it('coordinationGetFeatureAvailability calls invoke and returns deterministic mock shape', async () => {
-      const mockModeResult = await ipc.coordinationGetFeatureAvailability()
-      expect(mockModeResult).toEqual({
-        canInitialize: true,
-        meshAvailable: true,
-        tmuxAvailable: true,
-        blockingErrors: [],
-      })
-
-      window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue({
-        canInitialize: false,
-        meshAvailable: false,
-        tmuxAvailable: true,
-        blockingErrors: ['Mesh CLI not found'],
-      })
-      await ipc.coordinationGetFeatureAvailability()
-      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_feature_availability')
       delete window.__TAURI_INTERNALS__
     })
 

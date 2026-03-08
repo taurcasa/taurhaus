@@ -48,10 +48,6 @@ export function listSessions(projectId, limit = 20, offset = 0) {
   )
 }
 
-export function getSession(sessionId) {
-  return invokeOrMock('get_session', { sessionId }, () => MOCK_SESSION).then(normalizeSessionDetail)
-}
-
 export function listClaudeSessions() {
   return invokeOrMock('list_cli_sessions', undefined, () => MOCK_CLAUDE_SESSIONS)
 }
@@ -74,13 +70,4 @@ export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane, openTermina
 
 export function recordSessionActivity(projectId, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs) {
   return invokeOrMock('record_session_activity', { projectId, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs }, () => undefined)
-}
-
-export function getProjectActivity(projectId) {
-  return invokeOrMock('get_project_activity', { projectId }, () => ({
-    total_active_ms: 0,
-    total_duration_ms: 0,
-    session_count: 0,
-    last_session_at: null,
-  }))
 }

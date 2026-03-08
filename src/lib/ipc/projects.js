@@ -45,27 +45,11 @@ export function getProject(projectId) {
   return invokeOrMock('get_project', { projectId }, () => ({ ...MOCK_DETAIL, id: projectId }))
 }
 
-export function registerProject(path, name) {
-  return invokeOrMock('register_project', { path, name }, () => ({
-    ...MOCK_DETAIL,
-    path,
-    name: name || path.split('/').pop(),
-  }))
-}
-
 export function createProject(name, parentDir) {
   return invokeOrMock('create_project', { name, parentDir }, () => ({
     ...MOCK_DETAIL,
     name,
     path: `${parentDir.replace(/[\\/]+$/, '')}/${name}`,
-  }))
-}
-
-export function updateProject(projectId, fields) {
-  return invokeOrMock('update_project', { projectId, fields }, () => ({
-    ...MOCK_DETAIL,
-    id: projectId,
-    ...fields,
   }))
 }
 
@@ -102,15 +86,6 @@ export function getRecentCommits(projectId, limit = 10) {
 
 export function getAllCommits(projectId, limit = 50, offset = 0) {
   return invokeOrMock('get_all_commits', { projectId, limit, offset }, () => MOCK_COMMITS)
-}
-
-export function getGitStatus(projectId) {
-  return invokeOrMock('get_git_status', { projectId }, () => ({
-    branch: 'main',
-    isDirty: false,
-    ahead: 0,
-    behind: 0,
-  }))
 }
 
 export function getRemoteUrl(projectId) {
@@ -159,25 +134,4 @@ export function getRelationships(projectId) {
 
 export function dismissRelationship(relationshipId) {
   return invokeOrMock('dismiss_relationship', { relationshipId }, () => undefined)
-}
-
-export function createRelationship(sourceId, targetId, relationshipType) {
-  return invokeOrMock(
-    'create_relationship',
-    { sourceId, targetId, relationshipType },
-    () => ({
-      id: 'rel-new',
-      source_project_id: sourceId,
-      target_project_id: targetId,
-      relationship_type: relationshipType,
-      detection_source: 'manual',
-      dismissed: false,
-      first_detected_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString(),
-    })
-  ).then(normalizeRelationship)
-}
-
-export function removeRelationship(relationshipId) {
-  return invokeOrMock('remove_relationship', { relationshipId }, () => undefined)
 }

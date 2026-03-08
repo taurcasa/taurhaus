@@ -9,10 +9,6 @@ import {
 import { invokeOrMock } from './client.js'
 import { normalizeInitializeTeamPayload } from './coordinationPayloads.js'
 
-export function coordinationCreateTeam(teamName) {
-  return invokeOrMock('coordination_create_team', { teamName }, () => undefined)
-}
-
 export function coordinationDisbandTeam(teamName) {
   return invokeOrMock('coordination_disband_team', { teamName }, () => ({
     teamName,
@@ -20,10 +16,6 @@ export function coordinationDisbandTeam(teamName) {
     alreadyDisbanded: false,
     message: 'team disbanded',
   }))
-}
-
-export function coordinationAddMember(teamName, memberName, backendKind) {
-  return invokeOrMock('coordination_add_member', { teamName, memberName, backendKind }, () => undefined)
 }
 
 export function coordinationRemoveMember(teamName, memberName) {
@@ -39,10 +31,6 @@ export function coordinationRemoveMember(teamName, memberName) {
 
 export function coordinationListTeams() {
   return invokeOrMock('coordination_list_teams', undefined, () => ({ teams: [], warnings: [] }))
-}
-
-export function coordinationGetTeamStatus(teamName) {
-  return invokeOrMock('coordination_get_team_status', { teamName }, () => ({ teamName, members: [] }))
 }
 
 export function coordinationInitializeTeam(request) {
@@ -87,23 +75,6 @@ export function coordinationResumeTeam(teamName, contextMode = 'continue') {
     warnings: [],
     startedTeamDaemon: false,
     teamDaemonWarning: null,
-  }))
-}
-
-export function coordinationReonboard(teamName, memberName) {
-  return invokeOrMock(
-    'coordination_reonboard',
-    { request: { teamName, memberName } },
-    () => ({ delivered: true, method: 'tmux_injection' })
-  )
-}
-
-export function coordinationGetFeatureAvailability() {
-  return invokeOrMock('coordination_get_feature_availability', undefined, () => ({
-    canInitialize: true,
-    meshAvailable: true,
-    tmuxAvailable: true,
-    blockingErrors: [],
   }))
 }
 
