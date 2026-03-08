@@ -47,6 +47,11 @@ struct MeshCompatibleTeamConfigWire {
     members: Vec<MeshCompatibleMemberWire>,
 }
 
+/// Mesh-compatible member wire format.
+///
+/// `project_path` is the canonical internal field. `projectPath` and `cwd` are compatibility
+/// aliases that are always derived from `project_path` on write so the three serialized path
+/// fields cannot drift.
 #[derive(Debug, Serialize)]
 struct MeshCompatibleMemberWire {
     name: String,
@@ -150,6 +155,40 @@ struct MeshMemberWire {
     cwd: Option<PathBuf>,
     #[serde(default)]
     model: Option<String>,
+}
+
+/// Native config member wire format.
+///
+/// `project_path` is the canonical internal field. `projectPath` and `cwd` are accepted as
+/// backward-compatible aliases when reading older config files, but all in-memory consumers should
+/// use `Member::project_path`.
+#[derive(Debug, Deserialize)]
+struct NativeMemberWire {
+    name: String,
+    role: MemberRole,
+    #[serde(default)]
+    role_id: Option<String>,
+    #[serde(default)]
+    role_name: Option<String>,
+    #[serde(default)]
+    focus_area: Option<String>,
+    #[serde(default)]
+    context_summary: Option<String>,
+    #[serde(default)]
+    behavior_summary: Option<String>,
+    #[serde(default)]
+    instructions: Option<String>,
+    #[serde(default)]
+    behavioral_contract: Option<BehavioralContract>,
+    #[serde(default)]
+    capabilities: Option<Vec<String>>,
+    #[serde(default)]
+    project_path: Option<PathBuf>,
+    #[serde(rename = "projectPath", default)]
+    project_path_camel: Option<PathBuf>,
+    #[serde(default)]
+    cwd: Option<PathBuf>,
+    cli_tool: CliTool,
 }
 
 impl TeamConfigStore {
@@ -424,7 +463,7 @@ fn parse_native_config(value: Value, team_name: &str) -> Result<TeamConfig, Coor
         description: Option<String>,
         created_at: DateTime<Utc>,
         #[serde(default)]
-        members: Vec<Member>,
+        members: Vec<NativeMemberWire>,
     }
 
     let wire: NativeTeamConfigWire = serde_json::from_value(value).map_err(|err| {
@@ -433,12 +472,18 @@ fn parse_native_config(value: Value, team_name: &str) -> Result<TeamConfig, Coor
         ))
     })?;
 
+    let members = wire
+        .members
+        .into_iter()
+        .map(native_member_to_domain)
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(TeamConfig {
         schema_version: wire.schema_version,
         name: wire.name,
         description: wire.description,
         created_at: wire.created_at,
-        members: wire.members,
+        members,
     })
 }
 
@@ -505,6 +550,34 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         capabilities: member.capabilities,
         project_path,
         cli_tool,
+    })
+}
+
+fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, CoordinationError> {
+    let project_path = member
+        .project_path
+        .or(member.project_path_camel)
+        .or(member.cwd)
+        .ok_or_else(|| {
+            CoordinationError::StoreError(format!(
+                "native member '{}' missing project path field (project_path/projectPath/cwd)",
+                member.name
+            ))
+        })?;
+
+    Ok(Member {
+        name: member.name,
+        role: member.role,
+        role_id: member.role_id,
+        role_name: member.role_name,
+        focus_area: member.focus_area,
+        context_summary: member.context_summary,
+        behavior_summary: member.behavior_summary,
+        instructions: member.instructions,
+        behavioral_contract: member.behavioral_contract,
+        capabilities: member.capabilities,
+        project_path,
+        cli_tool: member.cli_tool,
     })
 }
 
@@ -630,6 +703,39 @@ mod tests {
     }
 
     #[test]
+    fn save_then_load_round_trip_keeps_all_project_path_aliases_consistent() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let config = sample_config(team_name);
+
+        TeamConfigStore::save(teams_dir, team_name, &config).expect("save should succeed");
+
+        let raw =
+            fs::read_to_string(config_path(teams_dir, team_name)).expect("read serialized config");
+        let value: Value = serde_json::from_str(&raw).expect("parse serialized config");
+        let member = value["members"][0].as_object().expect("member object");
+        let canonical = member
+            .get("project_path")
+            .and_then(Value::as_str)
+            .expect("project_path present");
+        assert_eq!(
+            member.get("projectPath").and_then(Value::as_str),
+            Some(canonical),
+            "projectPath alias should mirror canonical project_path"
+        );
+        assert_eq!(
+            member.get("cwd").and_then(Value::as_str),
+            Some(canonical),
+            "cwd alias should mirror canonical project_path"
+        );
+
+        let loaded = TeamConfigStore::load(teams_dir, team_name).expect("load should succeed");
+        assert_eq!(loaded.members[0].project_path, PathBuf::from(canonical));
+        assert_eq!(loaded, config);
+    }
+
+    #[test]
     fn save_writes_mesh_compatibility_fields() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path();
@@ -664,8 +770,16 @@ mod tests {
         assert!(members[0].get("joinedAt").is_some());
         assert!(members[0].get("model").is_some());
         assert!(
+            members[0].get("project_path").is_some(),
+            "project_path canonical field should be present"
+        );
+        assert!(
             members[0].get("projectPath").is_some(),
             "projectPath compatibility field should be present"
+        );
+        assert!(
+            members[0].get("cwd").is_some(),
+            "cwd compatibility field should be present"
         );
     }
 
@@ -949,6 +1063,57 @@ mod tests {
         assert_eq!(
             member.capabilities.as_ref().cloned().unwrap_or_default(),
             vec!["implementation".to_string(), "testing".to_string()]
+        );
+    }
+
+    #[test]
+    fn load_native_format_falls_back_to_project_path_aliases_in_order() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "native-alias-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+
+        let native_json = r#"{
+  "schema_version": 1,
+  "name": "native-alias-team",
+  "created_at": "2026-03-01T21:00:00Z",
+  "members": [
+    {
+      "name": "canonical-first",
+      "role": "lead",
+      "project_path": "/tmp/canonical",
+      "projectPath": "/tmp/ignored-camel",
+      "cwd": "/tmp/ignored-cwd",
+      "cli_tool": "claude"
+    },
+    {
+      "name": "camel-fallback",
+      "role": "agent",
+      "projectPath": "/tmp/camel-only",
+      "cli_tool": "codex"
+    },
+    {
+      "name": "cwd-fallback",
+      "role": "agent",
+      "cwd": "/tmp/cwd-only",
+      "cli_tool": "gemini"
+    }
+  ]
+}"#;
+        fs::write(dir.join(CONFIG_FILENAME), native_json).expect("write native config");
+
+        let config = TeamConfigStore::load(tmp.path(), team_name).expect("load should succeed");
+        assert_eq!(
+            config.members[0].project_path,
+            PathBuf::from("/tmp/canonical")
+        );
+        assert_eq!(
+            config.members[1].project_path,
+            PathBuf::from("/tmp/camel-only")
+        );
+        assert_eq!(
+            config.members[2].project_path,
+            PathBuf::from("/tmp/cwd-only")
         );
     }
 

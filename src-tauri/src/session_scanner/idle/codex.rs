@@ -1,4 +1,5 @@
 use super::*;
+use crate::provider::path::normalize_project_path;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -276,10 +277,7 @@ fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool 
         None => return false,
     };
 
-    // Normalize trailing slashes for comparison
-    let norm_cwd = cwd.trim_end_matches('/');
-    let norm_target = project_path.trim_end_matches('/');
-    norm_cwd == norm_target
+    normalize_project_path(cwd) == normalize_project_path(project_path)
 }
 
 #[cfg(test)]
@@ -440,6 +438,28 @@ mod tests {
         // Query without trailing slash — should still match
         let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
         assert_eq!(result.state, SessionState::Active);
+    }
+
+    #[test]
+    fn codex_normalizes_windows_style_project_paths() {
+        clear_codex_cache();
+        let tmp = TempDir::new().unwrap();
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-00-00-windows-uuid.jsonl",
+            "/mnt/d/projects/taurhaus",
+        );
+
+        let result = codex_detect_idle("D:\\projects\\taurhaus\\", tmp.path());
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(result.session_id.as_deref(), Some("windows-uuid"));
     }
 
     #[test]
