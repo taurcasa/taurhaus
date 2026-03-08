@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The app checks this on connect. If the daemon's protocol version is
 /// lower than what the app expects, it warns the user to rebuild the daemon.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
