@@ -32,6 +32,17 @@ function normalizeProjectPath(path) {
   return normalizeSharedProjectPath(path)
 }
 
+function normalizeRoleTemplateMetadata(role) {
+  return {
+    roleId: role?.roleId ?? role?.role_id ?? null,
+    roleName: role?.name ?? role?.roleName ?? role?.role_name ?? null,
+    focusArea: role?.focusArea ?? role?.focus_area ?? null,
+    contextSummary: role?.contextSummary ?? role?.context_summary ?? null,
+    behaviorSummary: role?.behaviorSummary ?? role?.behavior_summary ?? null,
+    instructions: role?.instructions ?? null,
+  }
+}
+
 function normalizeLeadPath(team) {
   return team?.leadProjectPath ?? team?.lead_project_path ?? null
 }
@@ -179,6 +190,8 @@ export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], pro
       model: resolveRoleModel(leadRoleTemplate, leadTool),
       status: 'offline',
       projectId: projectPath,
+      ...normalizeRoleTemplateMetadata(leadRoleTemplate),
+      description: leadRoleTemplate?.instructions ?? 'Team lead',
       roleId: leadRoleId || null,
     },
     projectPath
@@ -212,6 +225,8 @@ export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], pro
             model,
             status: 'offline',
             projectId: projectPath,
+            ...normalizeRoleTemplateMetadata(roleTemplate),
+            description: roleTemplate?.instructions ?? null,
             roleId,
           },
           projectPath
@@ -431,6 +446,10 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
       projectId: lead?.projectId || projectPath,
       description: lead?.description ?? 'Team lead',
       roleId: lead?.roleId ?? null,
+      roleName: lead?.roleName ?? null,
+      focusArea: lead?.focusArea ?? null,
+      contextSummary: lead?.contextSummary ?? null,
+      behaviorSummary: lead?.behaviorSummary ?? null,
       instructions: lead?.instructions ?? null,
       behavioralContract: lead?.behavioralContract ?? null,
       capabilities: Array.isArray(lead?.capabilities) ? lead.capabilities : null,
@@ -442,6 +461,10 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
       projectId: agent?.projectId || projectPath,
       description: agent?.description ?? null,
       roleId: agent?.roleId ?? null,
+      roleName: agent?.roleName ?? null,
+      focusArea: agent?.focusArea ?? null,
+      contextSummary: agent?.contextSummary ?? null,
+      behaviorSummary: agent?.behaviorSummary ?? null,
       instructions: agent?.instructions ?? null,
       behavioralContract: agent?.behavioralContract ?? null,
       capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,

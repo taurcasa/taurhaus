@@ -775,11 +775,16 @@ export function createMeshTabController({
     slideOver = 'addAgent'
     slideOverContext = {
       roleId: '',
+      roleName: '',
       name: '',
       tool: 'codex',
       model: defaultModelForTool('codex'),
       projectId: defaultProject,
       description: '',
+      instructions: '',
+      focusArea: '',
+      contextSummary: '',
+      behaviorSummary: '',
       submitting: false,
       error: '',
       isLocked: false,
@@ -802,18 +807,33 @@ export function createMeshTabController({
     const draft = addAgentDraft
     if (!draft) return
     if (!selectedRoleId) {
-      slideOverContext = { ...draft, roleId: '', isLocked: false }
+      slideOverContext = {
+        ...draft,
+        roleId: '',
+        roleName: '',
+        focusArea: '',
+        contextSummary: '',
+        behaviorSummary: '',
+        instructions: '',
+        isLocked: false,
+      }
       return
     }
 
     const role = roleTemplates.find((entry) => entry.roleId === selectedRoleId)
     if (!role) return
+    const instructions = role.instructions || ''
     slideOverContext = {
       ...draft,
       roleId: selectedRoleId,
+      roleName: role.name || '',
       tool: normalizeTool(role.cliTool),
       model: role.model || defaultModelForTool(role.cliTool),
-      description: role.instructions || '',
+      description: instructions,
+      instructions,
+      focusArea: role.focusArea || '',
+      contextSummary: role.contextSummary || '',
+      behaviorSummary: role.behaviorSummary || '',
       isLocked: true,
     }
   }
@@ -847,6 +867,12 @@ export function createMeshTabController({
           model: String(draft.model || '').trim(),
           projectId: String(draft.projectId || '').trim(),
           description: String(draft.description || '').trim() || null,
+          roleId: String(draft.roleId || '').trim() || null,
+          roleName: String(draft.roleName || '').trim() || null,
+          focusArea: String(draft.focusArea || '').trim() || null,
+          contextSummary: String(draft.contextSummary || '').trim() || null,
+          behaviorSummary: String(draft.behaviorSummary || '').trim() || null,
+          instructions: String(draft.instructions || '').trim() || null,
         },
       })
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildInitializationRequest,
   buildTeamConfigFromRuntimeStatus,
   deriveCrossProjectMeta,
 } from './meshTabUtils.js'
@@ -159,6 +160,58 @@ describe('meshTabUtils cross-project metadata', () => {
         focusArea: 'Architecture decisions and structural review',
         contextSummary: 'Carries long-lived context around module boundaries and reviews.',
         behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+      }),
+    ])
+  })
+
+  it('includes role metadata in initialization requests for runtime hover context', () => {
+    const request = buildInitializationRequest({
+      lead: {
+        name: 'team-lead',
+        tool: 'claude',
+        model: 'opus',
+        projectId: '/projects/taurhaus',
+        description: 'Owns orchestration and escalation.',
+        roleId: 'claude-orchestrator',
+        roleName: 'Claude Orchestrator',
+        focusArea: 'Team sequencing and escalation',
+        contextSummary: 'Keeps the delivery plan and blocker state in view.',
+        behaviorSummary: 'Coordinates specialists and escalates blockers.',
+        instructions: 'Drive the team plan and keep dependencies aligned.',
+      },
+      agents: [
+        {
+          name: 'frontend-dev',
+          tool: 'codex',
+          model: 'gpt-5.4 high',
+          projectId: '/projects/taurhaus',
+          description: 'Owns UI implementation.',
+          roleId: 'codex-developer',
+          roleName: 'Codex Developer',
+          focusArea: 'Scoped implementation',
+          contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+          behaviorSummary: 'Implements narrowly and escalates blockers.',
+          instructions: 'Implement the assigned UI surface and verify it locally.',
+        },
+      ],
+    }, 'taurhaus-team', '/projects/taurhaus')
+
+    expect(request.lead).toEqual(expect.objectContaining({
+      roleId: 'claude-orchestrator',
+      roleName: 'Claude Orchestrator',
+      focusArea: 'Team sequencing and escalation',
+      contextSummary: 'Keeps the delivery plan and blocker state in view.',
+      behaviorSummary: 'Coordinates specialists and escalates blockers.',
+      instructions: 'Drive the team plan and keep dependencies aligned.',
+    }))
+    expect(request.agents).toEqual([
+      expect.objectContaining({
+        roleId: 'codex-developer',
+        roleName: 'Codex Developer',
+        focusArea: 'Scoped implementation',
+        contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+        behaviorSummary: 'Implements narrowly and escalates blockers.',
+        instructions: 'Implement the assigned UI surface and verify it locally.',
       }),
     ])
   })

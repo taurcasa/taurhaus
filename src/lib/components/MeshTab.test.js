@@ -1806,6 +1806,64 @@ describe('MeshTab', () => {
     expect(screen.getByRole('option', { name: 'Manual configuration' })).toBeInTheDocument()
   })
 
+  it('preserves selected role metadata when hot-adding a runtime agent', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'codex-architect',
+        name: 'Codex Architect',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        focusArea: 'Architecture decisions and structural review',
+        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+        instructions: 'Own structural review',
+      },
+    ])
+
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-select')).not.toBeDisabled()
+    })
+
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
+      target: { value: 'codex-architect' },
+    })
+    await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
+      target: { value: 'review-architect' },
+    })
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
+      target: { value: 'proj-core' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
+
+    await waitFor(() => {
+      expect(coordinationAddAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'architecture-final',
+          agent: expect.objectContaining({
+            name: 'review-architect',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            instructions: 'Own structural review',
+            description: 'Own structural review',
+          }),
+        })
+      )
+    })
+  })
+
   it('captures runtime node as role and saves through upsertRoleTemplate', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
@@ -1918,6 +1976,10 @@ describe('MeshTab', () => {
         kind: 'lead',
         cliTool: 'claude',
         model: 'opus',
+        focusArea: 'Team sequencing and escalation',
+        contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+        behaviorSummary: 'Coordinates specialists and escalates blockers.',
+        instructions: 'Own orchestration',
         defaults: { defaultNamePattern: 'lead-{project}' },
       },
       {
@@ -1926,6 +1988,10 @@ describe('MeshTab', () => {
         kind: 'agent',
         cliTool: 'codex',
         model: 'gpt-5.4 high',
+        focusArea: 'Architecture decisions and structural review',
+        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+        instructions: 'Own structural review',
         defaults: { defaultNamePattern: 'architect-{n}' },
       },
       {
@@ -1934,6 +2000,10 @@ describe('MeshTab', () => {
         kind: 'agent',
         cliTool: 'codex',
         model: 'gpt-5.4 high',
+        focusArea: 'Scoped implementation',
+        contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+        behaviorSummary: 'Implements narrowly and escalates blockers.',
+        instructions: 'Own implementation',
         defaults: { defaultNamePattern: 'dev-{n}' },
       },
       {
@@ -1942,6 +2012,10 @@ describe('MeshTab', () => {
         kind: 'agent',
         cliTool: 'gemini',
         model: 'gemini-3.1-pro',
+        focusArea: 'Visual design and UX polish',
+        contextSummary: 'Maintains design consistency and visual clarity.',
+        behaviorSummary: 'Explores UI direction without broadening product scope.',
+        instructions: 'Own UI polish',
         defaults: { defaultNamePattern: 'ui-specialist-{n}' },
       },
     ])
@@ -1992,12 +2066,28 @@ describe('MeshTab', () => {
 
     const request = coordinationInitializeTeam.mock.calls.at(-1)?.[0]
     expect(request?.lead?.name).toBe('team-lead')
+    expect(request?.lead).toEqual(expect.objectContaining({
+      roleId: 'claude-orchestrator',
+      roleName: 'Claude Orchestrator',
+      focusArea: 'Team sequencing and escalation',
+      contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+      behaviorSummary: 'Coordinates specialists and escalates blockers.',
+      instructions: 'Own orchestration',
+    }))
     expect(request?.agents?.map((agent) => agent.name)).toEqual([
       'architect',
       'developer1',
       'developer2',
       'ui-specialist',
     ])
+    expect(request?.agents?.[0]).toEqual(expect.objectContaining({
+      roleId: 'codex-architect',
+      roleName: 'Codex Architect',
+      focusArea: 'Architecture decisions and structural review',
+      contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+      behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+      instructions: 'Own structural review',
+    }))
   })
 
   it('matches teams when lead project path uses windows drive notation', async () => {
