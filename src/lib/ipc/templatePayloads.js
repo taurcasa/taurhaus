@@ -17,18 +17,17 @@ export function normalizeRoleTemplateInput(roleData) {
   }
 
   const roleKind = String(source.kind ?? 'agent').toLowerCase() === 'lead' ? 'lead' : 'agent'
+  const explicitCliTool = source.tool ?? source.cliTool ?? source.defaults?.cliTool ?? source.defaults?.cli_tool
   const cliTool = String(
-    source.tool ??
-      source.cliTool ??
-      source.defaults?.cliTool ??
-      (roleKind === 'lead' ? 'claude' : 'codex')
+    explicitCliTool ??
+      (roleKind === 'lead' ? '' : 'codex')
   ).toLowerCase()
+  const explicitModel = source.model ?? source.defaults?.model
   const model = String(
-    source.model ??
-      source.defaults?.model ??
-      (cliTool === 'claude'
-        ? 'claude-opus-4-6'
-        : (cliTool === 'gemini' ? 'gemini-3.1-pro' : defaultModelForTool('codex')))
+    explicitModel ??
+      (roleKind === 'lead'
+        ? ''
+        : defaultModelForTool(cliTool || 'codex'))
   )
   const roleId = String(source.roleId ?? '').trim()
   const capabilities = Array.isArray(source.capabilities)

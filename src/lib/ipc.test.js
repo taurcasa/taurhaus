@@ -1386,7 +1386,7 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    it('upsertRoleTemplate enforces lead defaults and fallback behavioral contract', async () => {
+    it('upsertRoleTemplate does not backfill Claude defaults for lead roles and keeps fallback behavioral contract', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({ ok: true })
 
@@ -1404,8 +1404,8 @@ describe('ipc module', () => {
             roleId: 'lead-alpha',
             kind: 'lead',
             defaults: expect.objectContaining({
-              cliTool: 'claude',
-              model: 'claude-opus-4-6',
+              cliTool: '',
+              model: '',
             }),
             focusArea: null,
             contextSummary: null,
@@ -1615,12 +1615,12 @@ describe('ipc module', () => {
 
     it('returns lead-only warning in mock mode when no agent slots are provided', async () => {
       delete window.__TAURI_INTERNALS__
-      const result = await ipc.composeTeam({ leadRoleId: 'lead-a' })
+      const result = await ipc.composeTeam({ leadRoleId: 'claude-orchestrator' })
       expect(result.warnings).toContain('No agent slots selected; roster includes lead only.')
       expect(result.roster[0]).toEqual(expect.objectContaining({
         focusArea: 'Team orchestration',
         contextSummary: 'Keeps the team aligned on sequencing, blockers, and delivery quality.',
-        behaviorSummary: 'Coordinates specialists and escalates blockers instead of taking over implementation lanes.',
+        behaviorSummary: 'Coordinates specialists and avoids taking over implementation lanes.',
       }))
     })
 

@@ -101,7 +101,7 @@ export function defaultLeadRoleId(roleTemplates = []) {
   return (
     roleTemplates.find((role) => role.kind === 'lead')?.roleId ??
     roleTemplates[0]?.roleId ??
-    'claude-orchestrator'
+    ''
   )
 }
 
@@ -162,17 +162,22 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
       agentRoleCounts.set(slot.roleId, previous + 1)
       const roleSequence = agentRoleCounts.get(slot.roleId)
       const roleName = role?.name || 'agent'
+      const tool = String(role?.cliTool ?? '').trim().toLowerCase()
       agents.push({
         id: `agent-${nextAgent}`,
         name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
-        tool: role?.cliTool ?? 'codex',
-        model: role?.model ?? defaultModelForTool('codex'),
+        tool,
+        model: role?.model ?? (tool ? defaultModelForTool(tool) : ''),
         projectId: '',
-        description: slot.roleId,
+        description: slot.roleId || '',
+        roleId: slot.roleId ?? null,
+        roleName: role?.name ?? null,
       })
       nextAgent += 1
     }
   }
+
+  const leadTool = String(leadRole?.cliTool ?? '').trim().toLowerCase()
 
   return {
     teamName: draft.name,
@@ -181,10 +186,12 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
     lead: {
       id: 'lead',
       name: leadRole?.name || 'team-lead',
-      tool: leadRole?.cliTool ?? 'claude',
-      model: leadRole?.model ?? 'claude-opus-4-6',
+      tool: leadTool,
+      model: leadRole?.model ?? (leadTool ? defaultModelForTool(leadTool) : ''),
       projectId: '',
-      description: draft.leadRoleId,
+      description: draft.leadRoleId || 'Team lead',
+      roleId: draft.leadRoleId || null,
+      roleName: leadRole?.name ?? null,
     },
     agents,
   }

@@ -16,6 +16,7 @@ function baseTeamConfig() {
       model: 'opus',
       projectId: '/projects/taurhaus',
       description: 'Lead agent',
+      roleId: 'claude-orchestrator',
     },
     agents: [
       {
@@ -102,6 +103,43 @@ describe('TeamCustomizerPanel', () => {
 
     await fireEvent.click(screen.getByTestId('team-customizer-reset'))
     expect(onReset).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves a non-Claude lead selection when saving', async () => {
+    const onSave = vi.fn()
+
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: {
+          ...baseTeamConfig(),
+          lead: {
+            ...baseTeamConfig().lead,
+            tool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-orchestrator',
+          },
+        },
+        projectPath: '/projects/taurhaus',
+        onSave,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lead: expect.objectContaining({
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          roleId: 'codex-orchestrator',
+        }),
+      })
+    )
   })
 
   it('rejects case-insensitive duplicate member names and disables save', async () => {

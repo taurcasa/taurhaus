@@ -22,6 +22,7 @@ function baseTeamConfig() {
       model: 'opus',
       projectId: '/projects/taurhaus',
       description: 'Lead agent',
+      roleId: 'claude-orchestrator',
     },
     agents: [
       {
@@ -121,6 +122,34 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
             overrides: null,
           }),
         ],
+      })
+    )
+  })
+
+  it('preserves an explicit non-Claude lead role id when saving a preset', async () => {
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: {
+          ...baseTeamConfig(),
+          lead: {
+            ...baseTeamConfig().lead,
+            tool: 'gemini',
+            model: 'gemini-3.1-pro',
+            roleId: 'gemini-orchestrator',
+          },
+        },
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await fireEvent.click(await screen.findByTestId('team-customizer-save-preset-trigger'))
+    await fireEvent.input(screen.getByTestId('save-preset-name-input'), { target: { value: 'Gemini Team' } })
+    await fireEvent.click(screen.getByTestId('save-preset-confirm'))
+
+    expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leadRoleId: 'gemini-orchestrator',
       })
     )
   })

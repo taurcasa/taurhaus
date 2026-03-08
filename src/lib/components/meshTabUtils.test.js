@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildInitializationRequest,
+  buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
   deriveCrossProjectMeta,
 } from './meshTabUtils.js'
@@ -287,5 +288,55 @@ describe('meshTabUtils cross-project metadata', () => {
         },
       ],
     })
+  })
+
+  it('preserves a non-Claude lead from preset composition results', () => {
+    const config = buildTeamConfigFromPreset(
+      {
+        presetId: 'codex-team',
+        leadRoleId: 'codex-orchestrator',
+        tools: ['codex', 'gemini'],
+        agentSlots: [],
+      },
+      {
+        roster: [
+          {
+            name: 'team-lead',
+            roleId: 'codex-orchestrator',
+            roleName: 'Codex Orchestrator',
+            roleKind: 'lead',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+          },
+        ],
+      },
+      '/projects/taurhaus'
+    )
+
+    expect(config.lead).toEqual(expect.objectContaining({
+      roleId: 'codex-orchestrator',
+      roleName: 'Codex Orchestrator',
+      tool: 'codex',
+      model: 'gpt-5.4 high',
+    }))
+  })
+
+  it('does not backfill Claude when preset lead metadata is absent', () => {
+    const config = buildTeamConfigFromPreset(
+      {
+        presetId: 'unknown-lead',
+        leadRoleId: 'mystery-lead',
+        tools: [],
+        agentSlots: [],
+      },
+      null,
+      '/projects/taurhaus'
+    )
+
+    expect(config.lead).toEqual(expect.objectContaining({
+      roleId: 'mystery-lead',
+      tool: '',
+      model: '',
+    }))
   })
 })

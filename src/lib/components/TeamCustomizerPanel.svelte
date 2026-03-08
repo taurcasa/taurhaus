@@ -58,15 +58,34 @@
       .filter((project) => project.id)
   )
 
+  function normalizeOptionalTool(value) {
+    const normalized = String(value ?? '').trim().toLowerCase()
+    return normalized || ''
+  }
+
+  function selectedLeadDefaults() {
+    const selectedRole = context?.selectedRole
+    const tool = normalizeOptionalTool(selectedRole?.cliTool ?? selectedRole?.tool)
+
+    return {
+      tool,
+      model: String(selectedRole?.model ?? (tool ? defaultModelForTool(tool) : '')),
+      roleId: selectedRole?.roleId ?? null,
+      description: String(selectedRole?.name ?? 'Team lead'),
+    }
+  }
+
   function defaultLead() {
+    const defaults = selectedLeadDefaults()
+
     return {
       id: 'lead',
       name: 'team-lead',
-      tool: 'claude',
-      model: 'opus',
+      tool: defaults.tool,
+      model: defaults.model,
       projectId: projectPath || projectOptions[0]?.id || '',
-      description: 'Team lead',
-      roleId: null,
+      description: defaults.description,
+      roleId: defaults.roleId,
     }
   }
 
@@ -85,17 +104,24 @@
   function hydrateFromConfig(config) {
     localTeamName = String(config?.teamName ?? '').trim()
     localDescription = String(config?.description ?? '')
+    const defaults = selectedLeadDefaults()
 
     const incomingLead = config?.lead
     lead = incomingLead
       ? {
           id: String(incomingLead.id ?? 'lead'),
           name: String(incomingLead.name ?? 'team-lead'),
-          tool: String(incomingLead.tool ?? incomingLead.cliTool ?? 'claude').toLowerCase(),
-          model: String(incomingLead.model ?? 'opus'),
+          tool: normalizeOptionalTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool),
+          model: String(
+            incomingLead.model ??
+            defaults.model ??
+            (normalizeOptionalTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool)
+              ? defaultModelForTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool)
+              : '')
+          ),
           projectId: String(incomingLead.projectId ?? incomingLead.project_id ?? projectPath ?? ''),
-          description: String(incomingLead.description ?? 'Team lead'),
-          roleId: incomingLead.roleId ?? null,
+          description: String(incomingLead.description ?? defaults.description),
+          roleId: incomingLead.roleId ?? defaults.roleId ?? null,
         }
       : defaultLead()
 
@@ -160,11 +186,8 @@
     return slug || 'custom-preset'
   }
 
-  function fallbackLeadRoleId(tool) {
-    const normalized = String(tool || '').toLowerCase()
-    if (normalized === 'codex') return 'codex-developer'
-    if (normalized === 'gemini') return 'custom-doc-writer'
-    return 'claude-orchestrator'
+  function fallbackLeadRoleId() {
+    return lead?.roleId ?? selectedLeadDefaults().roleId ?? null
   }
 
   function fallbackAgentRoleId(tool) {
@@ -193,7 +216,12 @@
     presetSaveError = false
 
     try {
-      const leadRoleId = lead?.roleId || fallbackLeadRoleId(lead?.tool)
+      const leadRoleId = fallbackLeadRoleId()
+      if (!leadRoleId) {
+        presetSaveError = true
+        presetSaveMessage = 'Lead role selection is required to save a preset.'
+        return
+      }
       const agentSlots = agents.map((agent) => ({
         roleId: agent.roleId || fallbackAgentRoleId(agent.tool),
         count: 1,
@@ -245,10 +273,11 @@
       presetId: teamConfig?.presetId ?? '',
       lead: {
         name: String(lead?.name ?? '').trim(),
-        cliTool: String(lead?.tool ?? 'claude').toLowerCase(),
+        cliTool: normalizeOptionalTool(lead?.tool),
         model: String(lead?.model ?? '').trim(),
         projectId: String(lead?.projectId ?? '').trim(),
         description: String(lead?.description ?? '').trim(),
+        roleId: lead?.roleId ?? null,
       },
       agents: agents.map((agent) => ({
         name: String(agent.name ?? '').trim(),
@@ -256,6 +285,7 @@
         model: String(agent.model ?? '').trim(),
         projectId: String(agent.projectId ?? '').trim(),
         description: String(agent.description ?? '').trim(),
+        roleId: agent.roleId ?? null,
       })),
       ...payload,
     })

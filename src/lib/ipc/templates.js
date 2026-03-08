@@ -117,20 +117,21 @@ export function composeTeam(request) {
 
   return invokeOrMock('templates_compose_team', { request: normalizedRequest }, () => {
     const leadName = request?.projectName ? `lead-${request.projectName}` : 'lead-project'
+    const leadRole = MOCK_ROLE_TEMPLATES.find((entry) => entry.roleId === normalizedRequest.leadRoleId) ?? null
 
     return {
       roster: [
         {
           name: leadName,
-          roleId: 'claude-orchestrator',
+          roleId: normalizedRequest.leadRoleId || null,
           roleKind: 'lead',
-          cliTool: 'claude',
-          model: 'claude-opus-4-6',
-          focusArea: 'Team orchestration',
-          contextSummary: 'Keeps the team aligned on sequencing, blockers, and delivery quality.',
-          behaviorSummary: 'Coordinates specialists and escalates blockers instead of taking over implementation lanes.',
-          instructions: 'Coordinate execution and unblock the team.',
-          behavioralContract: {
+          cliTool: leadRole?.cliTool ?? '',
+          model: leadRole?.model ?? '',
+          focusArea: leadRole?.focusArea ?? '',
+          contextSummary: leadRole?.contextSummary ?? '',
+          behaviorSummary: leadRole?.behaviorSummary ?? '',
+          instructions: leadRole?.instructions ?? '',
+          behavioralContract: leadRole?.behavioralContract ?? {
             communication: ['Acknowledge assignments quickly.'],
             execution: ['Delegate scoped tasks and verify completion evidence.'],
             escalation: ['Escalate blockers immediately.'],

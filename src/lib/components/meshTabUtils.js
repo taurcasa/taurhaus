@@ -32,6 +32,11 @@ function normalizeProjectPath(path) {
   return normalizeSharedProjectPath(path)
 }
 
+function normalizeOptionalTool(tool) {
+  const value = String(tool ?? '').trim().toLowerCase()
+  return TOOL_OPTIONS.includes(value) ? value : ''
+}
+
 function normalizeRoleTemplateMetadata(role) {
   return {
     roleId: role?.roleId ?? role?.role_id ?? null,
@@ -86,11 +91,12 @@ function teamMatchesProject(team, currentProjectPath) {
 }
 
 export function createLead(overrides = {}, projectPath = '') {
+  const normalizedTool = normalizeOptionalTool(overrides.tool ?? overrides.cliTool)
   return {
     id: String(overrides.id ?? 'lead'),
     name: String(overrides.name ?? 'team-lead'),
-    tool: normalizeTool(overrides.tool ?? overrides.cliTool),
-    model: String(overrides.model ?? defaultModelForTool(overrides.tool ?? overrides.cliTool)),
+    tool: normalizedTool,
+    model: String(overrides.model ?? (normalizedTool ? defaultModelForTool(normalizedTool) : '')),
     status: normalizeStatus(overrides.status),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: false,
@@ -165,6 +171,19 @@ function isWindowsMountPath(path) {
   return /^\/mnt\/[a-z](?:\/|$)/i.test(path)
 }
 
+function resolvePresetLeadTool(preset) {
+  const explicitTool = normalizeOptionalTool(
+    preset?.lead?.tool ??
+    preset?.lead?.cliTool ??
+    preset?.leadTool ??
+    preset?.lead_tool
+  )
+  if (explicitTool) return explicitTool
+
+  const tools = Array.isArray(preset?.tools) ? preset.tools.map((entry) => normalizeOptionalTool(entry)).filter(Boolean) : []
+  return tools.length === 1 ? tools[0] : ''
+}
+
 export function buildTeamConfigFromPreset(preset, compositionResult = null, projectPath = '') {
   const tools = Array.isArray(preset?.tools) && preset.tools.length > 0
     ? preset.tools.map((entry) => normalizeTool(entry))
@@ -178,8 +197,12 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
   const resolvedLead = roster[0] ?? null
   const resolvedAgents = roster.slice(1)
 
-  const leadTool = resolvedLead?.cliTool ?? resolvedLead?.cli_tool ?? tools[0] ?? 'claude'
-  const leadModel = resolvedLead?.model ?? defaultModelForTool(leadTool)
+  const leadTool = normalizeOptionalTool(
+    resolvedLead?.cliTool ??
+    resolvedLead?.cli_tool ??
+    resolvePresetLeadTool(preset)
+  )
+  const leadModel = String(resolvedLead?.model ?? (leadTool ? defaultModelForTool(leadTool) : ''))
 
   const lead = createLead(
     {
@@ -197,7 +220,7 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
       instructions: resolvedLead?.instructions ?? null,
       behavioralContract: resolvedLead?.behavioralContract ?? resolvedLead?.behavioral_contract ?? null,
       capabilities: Array.isArray(resolvedLead?.capabilities) ? resolvedLead.capabilities : null,
-      description: resolvedLead?.instructions ?? 'Team lead',
+      description: resolvedLead?.instructions ?? (leadRoleId || 'Team lead'),
     },
     projectPath
   )
@@ -278,7 +301,7 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
           name,
           tool,
           status: 'offline',
-          projectId,
+          projectId: projectPath,
         },
         projectPath
       )
@@ -506,8 +529,8 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
     leadMode: 'launch_new',
     lead: {
       name: lead?.name ?? 'team-lead',
-      cliTool: normalizeTool(lead?.tool),
-      model: lead?.model ?? defaultModelForTool(lead?.tool),
+      cliTool: normalizeOptionalTool(lead?.tool),
+      model: lead?.model ?? (normalizeOptionalTool(lead?.tool) ? defaultModelForTool(lead?.tool) : ''),
       projectId: lead?.projectId || projectPath,
       description: lead?.description ?? 'Team lead',
       roleId: lead?.roleId ?? null,
