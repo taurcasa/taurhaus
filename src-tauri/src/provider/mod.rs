@@ -1,6 +1,7 @@
 pub mod daemon_client;
 pub mod local;
 pub mod path;
+pub mod platform_paths;
 
 pub use crate::project_provider::{provider_for, ProjectProvider};
 
