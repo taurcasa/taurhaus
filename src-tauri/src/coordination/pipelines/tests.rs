@@ -716,13 +716,21 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
     let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder")
         .expect("updated runtime");
     assert_eq!(updated.pane_id.as_deref(), Some("%11"));
+    assert_eq!(updated.session_id.as_deref(), Some("session-%11"));
     assert_eq!(updated.health, HealthState::Healthy);
     assert_eq!(updated.daemon_pid, Some(10000));
     assert!(updated.attached_at.is_some());
+    assert!(calls.iter().any(
+        |call| matches!(
+            call,
+            RuntimeCall::DetectSessionId { pane_id, cli_tool }
+                if pane_id == "%11" && *cli_tool == CliTool::Codex
+        )
+    ));
 }
 
 #[test]
-fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_without_session_capture() {
+fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -779,12 +787,13 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_without_session_captur
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 91)));
-    assert!(
-        !calls
-            .iter()
-            .any(|call| matches!(call, RuntimeCall::DetectSessionId { cli_tool, .. } if *cli_tool == CliTool::Codex)),
-        "non-Claude lead resume should skip Claude-only session capture"
-    );
+    assert!(calls.iter().any(
+        |call| matches!(
+            call,
+            RuntimeCall::DetectSessionId { pane_id, cli_tool }
+                if pane_id == "%21" && *cli_tool == CliTool::Codex
+        )
+    ));
     assert_eq!(
         backend.call_counts().1,
         1,
@@ -794,7 +803,7 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_without_session_captur
     let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead")
         .expect("updated runtime");
     assert_eq!(updated.pane_id.as_deref(), Some("%21"));
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id.as_deref(), Some("session-%21"));
     assert_eq!(updated.health, HealthState::Healthy);
     assert_eq!(updated.daemon_pid, Some(10000));
     assert!(updated.attached_at.is_some());

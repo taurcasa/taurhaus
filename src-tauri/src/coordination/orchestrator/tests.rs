@@ -2050,9 +2050,16 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
         "healthy repair should stamp last_seen_at"
     );
     assert_eq!(updated.pane_id.as_deref(), Some("%9"));
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id.as_deref(), Some("session-%9"));
     assert_eq!(updated.daemon_pid, Some(10000));
     let calls = runtime.calls();
+    assert!(calls.iter().any(
+        |call| matches!(
+            call,
+            RuntimeCall::DetectSessionId { pane_id, cli_tool }
+                if pane_id == "%9" && *cli_tool == CliTool::Codex
+        )
+    ));
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::SpawnDaemon { pane_id, team_name, member_name } if pane_id == "%9" && team_name == "architecture-final" && member_name == "codex-reviewer")));
@@ -3090,6 +3097,7 @@ fn assert_non_claude_lead_launch_new_uses_sidecar(
     lead_tool: &str,
     lead_model: &str,
     team_name: &str,
+    expect_session_capture: bool,
 ) {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
@@ -3111,10 +3119,14 @@ fn assert_non_claude_lead_launch_new_uses_sidecar(
         lead_runtime.pane_id.is_some(),
         "launch-new lead should still allocate a pane"
     );
-    assert_eq!(
-        lead_runtime.session_id, None,
-        "non-Claude leads should not attempt Claude session capture"
-    );
+    let expected_session_id = expect_session_capture.then(|| {
+        lead_runtime
+            .pane_id
+            .as_deref()
+            .map(|pane_id| format!("session-{pane_id}"))
+            .expect("lead pane id")
+    });
+    assert_eq!(lead_runtime.session_id, expected_session_id);
     assert_eq!(
         lead_runtime.daemon_pid,
         Some(10000),
@@ -3132,13 +3144,13 @@ fn assert_non_claude_lead_launch_new_uses_sidecar(
         RuntimeCall::SpawnDaemon { team_name: call_team, member_name, .. }
             if call_team == team_name && member_name == "team-lead"
     )));
-    assert!(
-        !calls.iter().any(|call| matches!(
-            call,
-            RuntimeCall::DetectSessionId { pane_id, .. } if pane_id == lead_runtime.pane_id.as_deref().unwrap_or_default()
-        )),
-        "non-Claude leads should skip Claude-only session-id capture"
-    );
+    let detected_session_id = calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == lead_runtime.pane_id.as_deref().unwrap_or_default()
+                && *cli_tool == CliTool::from_alias(lead_tool).expect("known tool")
+    ));
+    assert_eq!(detected_session_id, expect_session_capture);
 }
 
 #[test]
@@ -3147,6 +3159,7 @@ fn initialize_team_codex_lead_launch_new_uses_sidecar_lifecycle() {
         "codex",
         "gpt-5.4",
         "architecture-final-init-codex-lead",
+        true,
     );
 }
 
@@ -3156,6 +3169,7 @@ fn initialize_team_gemini_lead_launch_new_uses_sidecar_lifecycle() {
         "gemini",
         "gemini-2.5-pro",
         "architecture-final-init-gemini-lead",
+        false,
     );
 }
 

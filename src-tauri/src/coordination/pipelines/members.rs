@@ -600,8 +600,8 @@ impl CoordinationOrchestrator {
         self.runtime
             .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())?;
 
-        if member.cli_tool == CliTool::Claude {
-            runtime_state.session_id = self.runtime.detect_session_id(pane_id, CliTool::Claude)?;
+        if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
+            runtime_state.session_id = self.runtime.detect_session_id(pane_id, member.cli_tool)?;
         } else {
             runtime_state.session_id = None;
         }
@@ -649,7 +649,7 @@ impl CoordinationOrchestrator {
             cli_commands,
         )?;
         let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
-        if cli_tool == CliTool::Claude {
+        if matches!(cli_tool, CliTool::Claude | CliTool::Codex) {
             runtime_state.session_id = self.runtime.detect_session_id(pane_id, cli_tool)?;
         }
         Ok(())
@@ -676,7 +676,7 @@ impl CoordinationOrchestrator {
         agent: &AgentSetupConfig,
     ) -> Result<(), CoordinationError> {
         let cli_tool = parse_cli_tool(&agent.cli_tool)?;
-        if cli_tool != CliTool::Claude {
+        if !matches!(cli_tool, CliTool::Claude | CliTool::Codex) {
             return Ok(());
         }
 

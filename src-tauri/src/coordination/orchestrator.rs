@@ -837,6 +837,29 @@ impl CoordinationOrchestrator {
                 }
             }
 
+            if runtime.session_id.is_none()
+                && matches!(member.cli_tool, CliTool::Claude | CliTool::Codex)
+            {
+                if let Some(pane_id) = runtime.pane_id.as_deref() {
+                    match self.runtime.detect_session_id(pane_id, member.cli_tool) {
+                        Ok(Some(session_id)) => {
+                            runtime.session_id = Some(session_id);
+                            runtime_changed = true;
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pane_id = %pane_id,
+                                error = %err,
+                                "failed to refresh runtime session id during liveness reconciliation"
+                            );
+                        }
+                    }
+                }
+            }
+
             if runtime.health != HealthState::SessionDead && !runtime_changed {
                 continue;
             }
