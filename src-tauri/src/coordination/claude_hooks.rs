@@ -2,9 +2,11 @@
 
 use std::fs;
 use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -209,41 +211,6 @@ fn resolve_member_match(
         );
         return Ok(None);
     }
-
-    let Some(cwd) = payload.cwd.as_deref() else {
-        return Ok(None);
-    };
-
-    let mut cwd_matches = Vec::new();
-    for team_name in TeamConfigStore::list(teams_dir)? {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
-            Err(err) => {
-                tracing::warn!(
-                    team_name = team_name,
-                    error = %err,
-                    "failed to load team config during Claude compaction hook cwd fallback"
-                );
-                continue;
-            }
-        };
-
-        for member in config.members {
-            if member.cli_tool != CliTool::Claude {
-                continue;
-            }
-            if cwd_matches_member(Some(cwd), &member.project_path) {
-                cwd_matches.push(HookMemberMatch {
-                    team_name: team_name.clone(),
-                    member,
-                });
-            }
-        }
-    }
-
-    if cwd_matches.len() == 1 {
-        return Ok(cwd_matches.into_iter().next());
-    }
     Ok(None)
 }
 
@@ -361,17 +328,63 @@ fn ensure_settings_hook_entry(
     }
     let changed = settings != original_settings;
     if changed {
-        fs::write(
-            settings_path,
-            serde_json::to_string_pretty(&settings).map_err(|err| {
-                CoordinationError::StoreError(format!(
-                    "failed to serialize Claude settings '{}': {err}",
-                    settings_path.display()
-                ))
-            })?,
-        )?;
+        let payload = serde_json::to_vec_pretty(&settings).map_err(|err| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize Claude settings '{}': {err}",
+                settings_path.display()
+            ))
+        })?;
+        write_atomic_settings_file(settings_path, &payload)?;
     }
     Ok(changed)
+}
+
+fn write_atomic_settings_file(
+    settings_path: &Path,
+    payload: &[u8],
+) -> Result<(), CoordinationError> {
+    let Some(parent) = settings_path.parent() else {
+        return Err(CoordinationError::Validation(format!(
+            "Claude settings path '{}' has no parent directory",
+            settings_path.display()
+        )));
+    };
+
+    fs::create_dir_all(parent)?;
+    let tmp_path = temp_path_for(settings_path);
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&tmp_path)?;
+    file.write_all(payload)?;
+    file.sync_all()?;
+    drop(file);
+
+    if let Err(err) = fs::rename(&tmp_path, settings_path) {
+        if is_windows_unsupported_rename_error(&err) {
+            fs::write(settings_path, payload)?;
+            let _ = fs::remove_file(&tmp_path);
+            return Ok(());
+        }
+
+        let _ = fs::remove_file(&tmp_path);
+        return Err(CoordinationError::Io(err));
+    }
+
+    Ok(())
+}
+
+fn temp_path_for(path: &Path) -> PathBuf {
+    let random_suffix = format!("{:016x}", rand::thread_rng().next_u64());
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("settings");
+    path.with_file_name(format!("{file_name}.tmp.{random_suffix}"))
+}
+
+fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
 
 fn remove_existing_taurhaus_compact_hooks(entries: &mut [Value]) {
@@ -455,13 +468,62 @@ mod tests {
     use super::*;
 
     use chrono::DateTime;
+    use fs2::FileExt;
+    use std::ffi::OsString;
+    use std::sync::{LazyLock, Mutex, MutexGuard};
 
     use crate::coordination::domain::{HealthState, MemberRole};
     use crate::coordination::stores::{
-        MemberRuntimeRecord, OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
-        OperationalOwnershipSnapshot, OperationalTaskSnapshot, OperationalWorkingSetSnapshot,
-        TeamConfig,
+        MemberCompactionStore, MemberRuntimeRecord, OperationalAssignmentFooterSnapshot,
+        OperationalContextSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
+        OperationalWorkingSetSnapshot, TeamConfig,
     };
+
+    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct EnvTestGuard {
+        _in_process: MutexGuard<'static, ()>,
+        lock_file: std::fs::File,
+        previous_override: Option<OsString>,
+    }
+
+    impl EnvTestGuard {
+        fn set_override(&self, value: impl AsRef<std::ffi::OsStr>) {
+            std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, value);
+        }
+    }
+
+    impl Drop for EnvTestGuard {
+        fn drop(&mut self) {
+            match self.previous_override.as_ref() {
+                Some(previous) => std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, previous),
+                None => std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV),
+            }
+            let _ = self.lock_file.unlock();
+        }
+    }
+
+    fn acquire_env_test_guard() -> EnvTestGuard {
+        let in_process = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let lock_path = std::env::temp_dir().join("taurhaus-claude-hooks-env-tests.lock");
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap_or_else(|e| panic!("failed to open env test lock at {:?}: {e}", lock_path));
+        lock_file
+            .lock_exclusive()
+            .unwrap_or_else(|e| panic!("failed to lock env test lock at {:?}: {e}", lock_path));
+        EnvTestGuard {
+            _in_process: in_process,
+            lock_file,
+            previous_override: std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV),
+        }
+    }
 
     fn sample_member(project_path: &Path) -> Member {
         Member {
@@ -584,6 +646,44 @@ mod tests {
         assert!(output
             .additional_context
             .contains("\"member_name\": \"architect\""));
+    }
+
+    #[test]
+    fn compact_hook_skips_forged_session_id_even_when_cwd_matches_managed_project() {
+        // Regression: commit 34e7b9d allowed cwd-only fallback, so a forged compact hook with a
+        // managed project path could receive reinjection context without owning the live session.
+        let guard = acquire_env_test_guard();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        let team_name = "taurhaus-team-forged";
+        guard.set_override(&claude_dir);
+
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.name = "architect-forged".to_string();
+        write_team_fixture(tmp.path(), team_name, &member, "sess-123");
+        write_snapshot_fixture(tmp.path(), team_name, &member.name);
+
+        let response = handle_session_start_hook(
+            &json!({
+                "hookEventName": "SessionStart",
+                "sessionId": "forged-session",
+                "source": "compact",
+                "cwd": project,
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("hook should succeed");
+
+        assert_eq!(response, ClaudeHookResponse::default());
+        assert!(
+            MemberCompactionStore::load(&claude_dir.join("teams"), team_name, &member.name,)
+                .expect("load compaction state")
+                .is_none(),
+            "forged payload must not record delivery state"
+        );
     }
 
     #[test]
@@ -811,6 +911,53 @@ mod tests {
         assert_eq!(hooks.len(), 2);
         assert_eq!(hooks[0]["command"], "echo untouched");
         assert!(hooks[1]["command"]
+            .as_str()
+            .expect("command")
+            .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+    }
+
+    #[test]
+    fn ensure_settings_hook_entry_preserves_valid_json_after_atomic_update() {
+        // Regression: before task #712, ensure_settings_hook_entry rewrote settings.json via
+        // direct fs::write, which risked truncation or clobbering unrelated content mid-update.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let settings_path = tmp.path().join("settings.json");
+        let script_path = tmp.path().join("hooks").join(platform_hook_filename());
+        fs::create_dir_all(script_path.parent().expect("hooks dir")).expect("hooks dir");
+        fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&json!({
+                "theme": "dark",
+                "hooks": {
+                    "Stop": [{
+                        "matcher": "*",
+                        "hooks": [{
+                            "type": "command",
+                            "command": "echo stop"
+                        }]
+                    }]
+                }
+            }))
+            .expect("settings json"),
+        )
+        .expect("write settings");
+
+        let changed =
+            ensure_settings_hook_entry(&settings_path, &script_path).expect("update settings");
+        assert!(changed);
+
+        let updated: Value = serde_json::from_str(
+            &fs::read_to_string(&settings_path).expect("updated settings exists"),
+        )
+        .expect("updated settings remains valid json");
+
+        assert_eq!(updated["theme"], "dark");
+        assert_eq!(
+            updated["hooks"]["Stop"][0]["hooks"][0]["command"],
+            "echo stop"
+        );
+        assert_eq!(updated["hooks"]["SessionStart"][0]["matcher"], "compact");
+        assert!(updated["hooks"]["SessionStart"][0]["hooks"][0]["command"]
             .as_str()
             .expect("command")
             .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
