@@ -1977,7 +1977,117 @@ describe('MeshTab', () => {
     expect(listRoleTemplates).not.toHaveBeenCalled()
   })
 
+  it.each([
+    {
+      presetId: 'fullstack-dev-codex',
+      leadRoleId: 'codex-orchestrator',
+      leadTool: 'codex',
+      leadModel: 'gpt-5.4 high',
+    },
+    {
+      presetId: 'standard-team-gemini',
+      leadRoleId: 'gemini-orchestrator',
+      leadTool: 'gemini',
+      leadModel: 'gemini-3.1-pro',
+    },
+  ])('composes and initializes non-Claude quick preset $presetId cleanly', async ({
+    presetId,
+    leadRoleId,
+    leadTool,
+    leadModel,
+  }) => {
+    listTeamPresets.mockResolvedValueOnce([
+      {
+        presetId,
+        name: `Preset ${presetId}`,
+        description: 'Lead + agents',
+        leadRoleId,
+        roleCount: 3,
+        agentCount: 2,
+        tools: [leadTool, 'codex'],
+      },
+    ])
+    getTeamPreset.mockResolvedValueOnce({
+      presetId,
+      name: `Preset ${presetId}`,
+      leadRoleId,
+      agentSlots: [{ roleId: 'agent-default', count: 2 }],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [
+        {
+          name: 'team-lead',
+          roleId: leadRoleId,
+          roleKind: 'lead',
+          cliTool: leadTool,
+          model: leadModel,
+          instructions: 'Own orchestration',
+          focusArea: 'Lead orchestration',
+          contextSummary: 'Keeps the team aligned.',
+          behaviorSummary: 'Coordinates specialists and escalates blockers.',
+          behavioralContract: { communication: [], execution: [], escalation: [] },
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+      ],
+      warnings: [],
+      validationErrors: [],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-list')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId(`template-browser-preset-${presetId}`))
+
+    await waitFor(() => {
+      expect(composeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leadRoleId,
+        })
+      )
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'my-app-team',
+          presetId,
+          lead: expect.objectContaining({
+            cliTool: '',
+            model: '',
+            projectId: '/projects/my-app',
+          }),
+          agents: expect.arrayContaining([
+            expect.objectContaining({ cliTool: '', model: '' }),
+          ]),
+        })
+      )
+    })
+  })
+
   it('uses backend-composed preset roster for setup names but sends a minimal preset payload on initialize', async () => {
+    coordinationInitializeTeam.mockClear()
     getTeamPreset.mockResolvedValueOnce({
       presetId: 'standard-team',
       name: 'Standard Dev Team',

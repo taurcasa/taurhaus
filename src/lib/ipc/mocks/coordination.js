@@ -36,7 +36,8 @@ export function buildMockAddAgentReport(request) {
   }
 }
 
-export function buildMockLiveTeamStatus(teamName) {
+export function buildMockLiveTeamStatus(teamName, overrides = {}) {
+  const lead = overrides.lead ?? {}
   return {
     teamName,
     leadName: 'team-lead',
@@ -44,17 +45,17 @@ export function buildMockLiveTeamStatus(teamName) {
       {
         name: 'team-lead',
         role: 'lead',
-        cliTool: 'claude',
-        model: 'opus',
-        roleId: 'claude-orchestrator',
-        roleName: 'Claude Orchestrator',
-        focusArea: 'Team sequencing and escalation',
-        contextSummary: 'Keeps the full delivery plan and blocker state in view.',
-        behaviorSummary: 'Coordinates specialists and escalates blockers.',
+        cliTool: lead.cliTool ?? 'claude',
+        model: lead.model ?? 'opus',
+        roleId: lead.roleId ?? 'claude-orchestrator',
+        roleName: lead.roleName ?? 'Claude Orchestrator',
+        focusArea: lead.focusArea ?? 'Team sequencing and escalation',
+        contextSummary: lead.contextSummary ?? 'Keeps the full delivery plan and blocker state in view.',
+        behaviorSummary: lead.behaviorSummary ?? 'Coordinates specialists and escalates blockers.',
         projectId: 'proj-core',
         isCrossProject: false,
         projectLabel: '',
-        description: 'Own orchestration',
+        description: lead.description ?? 'Own orchestration',
         sessionStatus: 'active',
         paneId: '%1',
       },
@@ -79,7 +80,8 @@ export function buildMockLiveTeamStatus(teamName) {
   }
 }
 
-export function buildMockProjectMeshSnapshot(projectPath) {
+export function buildMockProjectMeshSnapshot(projectPath, overrides = {}) {
+  const lead = overrides.lead ?? {}
   return {
     meshAvailable: true,
     tmuxAvailable: true,
@@ -91,16 +93,16 @@ export function buildMockProjectMeshSnapshot(projectPath) {
         {
           name: 'team-lead',
           role: 'lead',
-          cliTool: 'claude',
-          roleId: 'claude-orchestrator',
-          roleName: 'Claude Orchestrator',
-          focusArea: 'Team sequencing and escalation',
-          contextSummary: 'Keeps the full delivery plan and blocker state in view.',
-          behaviorSummary: 'Coordinates specialists and escalates blockers.',
+          cliTool: lead.cliTool ?? 'claude',
+          roleId: lead.roleId ?? 'claude-orchestrator',
+          roleName: lead.roleName ?? 'Claude Orchestrator',
+          focusArea: lead.focusArea ?? 'Team sequencing and escalation',
+          contextSummary: lead.contextSummary ?? 'Keeps the full delivery plan and blocker state in view.',
+          behaviorSummary: lead.behaviorSummary ?? 'Coordinates specialists and escalates blockers.',
           projectId: projectPath,
           isCrossProject: false,
           projectLabel: '',
-          description: 'Own orchestration',
+          description: lead.description ?? 'Own orchestration',
           sessionStatus: 'active',
           paneId: '%1',
         },

@@ -24,6 +24,12 @@ Team templates let you define reusable team structure before launch:
 - **Team preset**: a lead role plus agent slot counts and overrides
 - **Composition**: the resolved roster generated from the selected lead and agent slots
 
+Lead roles are no longer Claude-only. Built-in and user presets can now target:
+
+- `claude` lead roles
+- `codex` lead roles
+- `gemini` lead roles
+
 The template flow is:
 
 `TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView` -> `coordination_initialize_team`
@@ -120,6 +126,11 @@ After composition, the roster is still editable in `MeshSetupView` for names, to
 
 Apply sends the final roster in the same initialize shape used by manual setup.
 
+Current lead-mode rule:
+
+- **Claude leads** may use the existing attach-existing flow.
+- **Codex and Gemini leads** are currently `launch_new` only. If a preset or request tries `attach_existing`, backend validation rejects it with a clear error instead of silently falling back.
+
 ## Template Sources
 
 Templates come from two sources:
@@ -147,8 +158,12 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (7)**: `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-architect`, `codex-developer`, `codex-qa`, `gemini-ui-specialist`
-- **Presets (4)**: `standard-team`, `fullstack-dev`, `research-dev`, `review-team`
+- **Roles (9)**: `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-orchestrator`, `codex-architect`, `codex-developer`, `codex-qa`, `gemini-orchestrator`, `gemini-ui-specialist`
+- **Presets (12)**:
+  - `standard-team`, `standard-team-codex`, `standard-team-gemini`
+  - `fullstack-dev`, `fullstack-dev-codex`, `fullstack-dev-gemini`
+  - `research-dev`, `research-dev-codex`, `research-dev-gemini`
+  - `review-team`, `review-team-codex`, `review-team-gemini`
 
 These built-ins are most useful when you read them as lane definitions:
 

@@ -63,6 +63,19 @@ describe('TemplateBrowserPanel', () => {
         readOnly: true,
       },
       {
+        roleId: 'codex-orchestrator',
+        name: 'Codex Orchestrator',
+        kind: 'lead',
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        focusArea: 'Execution orchestration',
+        contextSummary: 'Keeps the implementation plan and blockers aligned.',
+        behaviorSummary: 'Coordinates implementation flow and escalates direction changes.',
+        capabilities: ['planning', 'coordination'],
+        builtIn: true,
+        readOnly: true,
+      },
+      {
         roleId: 'custom-doc-writer',
         name: 'Documentation Writer',
         kind: 'agent',
@@ -79,8 +92,18 @@ describe('TemplateBrowserPanel', () => {
 
     getRoleTemplate.mockImplementation(async (id) => ({
       roleId: id,
-      name: id === 'claude-orchestrator' ? 'Claude Orchestrator' : 'Documentation Writer',
-      focusArea: id === 'claude-orchestrator' ? 'Team orchestration' : 'Documentation systems',
+      name:
+        id === 'claude-orchestrator'
+          ? 'Claude Orchestrator'
+          : id === 'codex-orchestrator'
+            ? 'Codex Orchestrator'
+            : 'Documentation Writer',
+      focusArea:
+        id === 'claude-orchestrator'
+          ? 'Team orchestration'
+          : id === 'codex-orchestrator'
+            ? 'Execution orchestration'
+            : 'Documentation systems',
       contextSummary: 'Detailed context summary',
       behaviorSummary: 'Detailed behavior boundary',
       instructions: 'Detailed role instructions',
@@ -107,9 +130,32 @@ describe('TemplateBrowserPanel', () => {
         tools: ['claude', 'codex'],
         builtIn: false,
       },
+      {
+        presetId: 'fullstack-dev-codex',
+        name: 'Full Stack Dev Team (Codex Lead)',
+        description: 'Codex lead plus two backend agents',
+        leadRoleId: 'codex-orchestrator',
+        roleCount: 1,
+        agentCount: 2,
+        tools: ['codex'],
+        builtIn: true,
+      },
     ])
 
     getTeamPreset.mockImplementation(async (id) => {
+      if (id === 'fullstack-dev-codex') {
+        return {
+          presetId: id,
+          name: 'Full Stack Dev Team (Codex Lead)',
+          description: 'Preset details',
+          leadRoleId: 'codex-orchestrator',
+          agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
+          defaults: {
+            teamNamePattern: '{project}-team',
+            tmuxLayout: 'tiled',
+          },
+        }
+      }
       if (id === 'backend-sprint-team') {
         return {
           presetId: id,
@@ -241,6 +287,20 @@ describe('TemplateBrowserPanel', () => {
 
     expect(onSelectPreset).toHaveBeenCalledTimes(1)
     expect(onSelectPreset.mock.calls[0][0].presetId).toBe('review-team')
+  })
+
+  it('exposes non-Claude lead presets in the catalog', async () => {
+    render(TemplateBrowserPanel, {
+      props: {
+        open: true,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-preset-fullstack-dev-codex')).toBeInTheDocument()
+    })
   })
 
   it('calls onSelectRole when role selected', async () => {
