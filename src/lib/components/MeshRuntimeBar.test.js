@@ -64,4 +64,34 @@ describe('MeshRuntimeBar', () => {
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     expect(onDisband).toHaveBeenCalledTimes(1)
   })
+
+  it('renders recent compaction reinjection audit entries when present', () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'active' },
+        agents,
+        teamRuntimeState: 'active',
+        compactionAudit: [
+          {
+            memberName: 'frontend-dev',
+            tool: 'codex',
+            lastSessionId: 'session-1',
+            lastCompactionTimestamp: '2026-03-08T14:46:41.037Z',
+            lastDeliveryResult: 'injected',
+          },
+        ],
+      },
+    })
+
+    expect(screen.getByTestId('mesh-runtime-compaction-audit')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-runtime-compaction-entry-frontend-dev')).toHaveTextContent(
+      'frontend-dev'
+    )
+    expect(screen.getByTestId('mesh-runtime-compaction-entry-frontend-dev')).toHaveTextContent(
+      'Codex'
+    )
+    expect(screen.getByText('Injected')).toBeInTheDocument()
+    expect(screen.getByText('2026-03-08T14:46:41.037Z')).toBeInTheDocument()
+  })
 })

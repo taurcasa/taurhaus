@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event'
 
 import {
   buildMockAddAgentReport,
+  buildMockCompactionAudit,
   buildMockInitializeReport,
   buildMockLiveTeamStatus,
   buildMockProjectMeshSnapshot,
@@ -89,6 +90,12 @@ export function coordinationPreflightCheck(request) {
 export function coordinationGetLiveTeamStatus(teamName) {
   return invokeOrMock('coordination_get_live_team_status', { teamName }, () =>
     buildMockLiveTeamStatus(teamName)
+  )
+}
+
+export function coordinationGetCompactionAudit(teamName) {
+  return invokeOrMock('coordination_get_compaction_audit', { teamName }, () =>
+    buildMockCompactionAudit(teamName)
   )
 }
 

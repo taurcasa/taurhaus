@@ -3,13 +3,21 @@ export async function refreshRuntimeTeamConfigWorkflow({
   sequence,
   getDiscoverySequence,
   coordinationGetLiveTeamStatus,
+  coordinationGetCompactionAudit = null,
   buildTeamConfigFromRuntimeStatus,
   getProjectPath,
   onTeamConfig,
+  onCompactionAudit = () => {},
 }) {
-  const report = await coordinationGetLiveTeamStatus(nextTeamName)
+  const [report, audit] = await Promise.all([
+    coordinationGetLiveTeamStatus(nextTeamName),
+    coordinationGetCompactionAudit
+      ? coordinationGetCompactionAudit(nextTeamName).catch(() => null)
+      : Promise.resolve(null),
+  ])
   if (sequence !== getDiscoverySequence()) return false
   onTeamConfig(buildTeamConfigFromRuntimeStatus(report, getProjectPath()))
+  onCompactionAudit(audit)
   return true
 }
 

@@ -8,6 +8,7 @@ vi.mock('../ipc.js', () => ({
   checkMeshInstallStatus: vi.fn(),
   composeTeam: vi.fn(),
   coordinationAddAgent: vi.fn(),
+  coordinationGetCompactionAudit: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
   coordinationGetProjectMeshSnapshot: vi.fn(),
   coordinationGetLiveTeamStatus: vi.fn(),
@@ -29,6 +30,7 @@ const {
   checkMeshInstallStatus,
   composeTeam,
   coordinationAddAgent,
+  coordinationGetCompactionAudit,
   coordinationDisbandTeam,
   coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
@@ -169,6 +171,10 @@ describe('MeshTab', () => {
 
     coordinationGetProjectMeshSnapshot.mockResolvedValue(buildProjectMeshSnapshot())
     coordinationGetLiveTeamStatus.mockResolvedValue(buildLiveTeamStatus())
+    coordinationGetCompactionAudit.mockResolvedValue({
+      teamName: 'architecture-final',
+      entries: [],
+    })
 
     coordinationInitializeTeam.mockResolvedValue({
       teamName: 'architecture-final',
@@ -288,6 +294,32 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
   }
+
+  it('shows compaction reinjection audit rows in runtime mode', async () => {
+    coordinationGetCompactionAudit.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      entries: [
+        {
+          memberName: 'frontend-dev',
+          tool: 'codex',
+          lastSessionId: 'session-1',
+          lastCompactionTimestamp: '2026-03-08T14:46:41.037Z',
+          lastDeliveryResult: 'injected',
+        },
+      ],
+    })
+
+    await renderRuntime()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-compaction-audit')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('mesh-runtime-compaction-entry-frontend-dev')).toHaveTextContent(
+      'frontend-dev'
+    )
+    expect(coordinationGetCompactionAudit).toHaveBeenCalledWith('architecture-final')
+  })
 
   it('shows a lifecycle header for cold-resume teams', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(

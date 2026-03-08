@@ -163,6 +163,7 @@
       selectedNode={controller.selectedNode}
       selectedNodeId={controller.selectedNodeId}
       teamRuntimeState={controller.teamRuntimeState}
+      compactionAudit={controller.compactionAudit}
       isResumingTeam={controller.isResumingTeam}
       resumeProgress={controller.teamResumeProgress}
       {availableProjects}

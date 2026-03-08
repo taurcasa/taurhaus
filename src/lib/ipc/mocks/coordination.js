@@ -112,6 +112,28 @@ export function buildMockProjectMeshSnapshot(projectPath, overrides = {}) {
   }
 }
 
+export function buildMockCompactionAudit(teamName, overrides = {}) {
+  return {
+    teamName,
+    entries: overrides.entries ?? [
+      {
+        memberName: 'frontend-dev',
+        tool: 'codex',
+        lastSessionId: '019ccdb2-09d5-7ff0-b5b6-72b7178c7dbf',
+        lastCompactionTimestamp: '2026-03-08T14:46:41.037Z',
+        lastDeliveryResult: 'injected',
+      },
+      {
+        memberName: 'team-lead',
+        tool: 'claude',
+        lastSessionId: 'claude-session-1',
+        lastCompactionTimestamp: '2026-03-08T14:22:10.000Z',
+        lastDeliveryResult: 'skipped',
+      },
+    ],
+  }
+}
+
 function buildMockResumeTeamReport(teamName) {
   return {
     teamName,

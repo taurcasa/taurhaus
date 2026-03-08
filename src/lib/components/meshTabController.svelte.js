@@ -2,6 +2,7 @@ import { untrack } from 'svelte'
 import {
   composeTeam,
   coordinationAddAgent,
+  coordinationGetCompactionAudit,
   coordinationDisbandTeam,
   coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
@@ -99,6 +100,7 @@ export function createMeshTabController({
   let captureRoleDialog = $state(null)
   let teamRuntimeState = $state('none')
   let teamResumeProgress = $state(null)
+  let compactionAudit = $state([])
 
   let discoverySequence = 0
   let presetSelectionSequence = 0
@@ -169,6 +171,27 @@ export function createMeshTabController({
     if (normalized === 'degraded') return 'degraded'
     if (normalized === 'coldresume' || normalized === 'cold_resume') return 'coldResume'
     return 'none'
+  }
+
+  function normalizeCompactionAuditResponse(response) {
+    const entries = Array.isArray(response?.entries)
+      ? response.entries
+      : Array.isArray(response?.compactionAudit)
+        ? response.compactionAudit
+        : []
+    return entries
+      .map((entry) => ({
+        memberName: String(entry?.memberName ?? entry?.member_name ?? '').trim(),
+        tool: String(entry?.tool ?? '').trim().toLowerCase(),
+        lastSessionId: String(entry?.lastSessionId ?? entry?.last_session_id ?? '').trim(),
+        lastCompactionTimestamp: String(
+          entry?.lastCompactionTimestamp ?? entry?.last_compaction_timestamp ?? ''
+        ).trim(),
+        lastDeliveryResult: String(
+          entry?.lastDeliveryResult ?? entry?.last_delivery_result ?? ''
+        ).trim().toLowerCase(),
+      }))
+      .filter((entry) => entry.memberName && entry.lastCompactionTimestamp)
   }
 
   function nowMs() {
@@ -515,11 +538,15 @@ export function createMeshTabController({
       sequence,
       getDiscoverySequence: () => discoverySequence,
       coordinationGetLiveTeamStatus,
+      coordinationGetCompactionAudit,
       buildTeamConfigFromRuntimeStatus,
       getProjectPath,
       onTeamConfig: (value) => {
         nextConfig = value
         teamConfig = value
+      },
+      onCompactionAudit: (value) => {
+        compactionAudit = normalizeCompactionAuditResponse(value)
       },
     })
     if (nextConfig && snapshot) {
@@ -630,6 +657,7 @@ export function createMeshTabController({
     availabilityMessage = ''
     teamRuntimeState = 'none'
     teamResumeProgress = null
+    compactionAudit = []
     errorMessage = ''
     runtimeMessage = ''
     clearRuntimeTeamRefresh({ dropInFlight: true })
@@ -1302,6 +1330,9 @@ export function createMeshTabController({
     },
     get teamResumeProgress() {
       return teamResumeProgress
+    },
+    get compactionAudit() {
+      return compactionAudit
     },
     get loadingRoles() {
       return loadingRoles

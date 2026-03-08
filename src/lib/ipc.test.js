@@ -1446,6 +1446,88 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    it('importRoleFromFile calls import_role_from_file in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        success: true,
+        role: {
+          roleId: 'imported-role',
+          name: 'Imported Role',
+        },
+        conflict: null,
+      })
+
+      const result = await ipc.importRoleFromFile('/tmp/imported-role.md')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('import_role_from_file', {
+        request: {
+          filePath: '/tmp/imported-role.md',
+        },
+      })
+      expect(result).toEqual({
+        success: true,
+        role: {
+          roleId: 'imported-role',
+          name: 'Imported Role',
+        },
+        conflict: null,
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('importRoleFromFile returns deterministic mock content outside Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.importRoleFromFile('/tmp/imported-role.md')
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          conflict: null,
+          role: expect.objectContaining({
+            roleId: 'imported-role',
+            provenance: expect.objectContaining({
+              sourcePath: '/tmp/imported-role.md',
+            }),
+          }),
+        })
+      )
+    })
+
+    it('exportRoleToFile calls export_role_to_file in Tauri mode and normalizes the response', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        target_format: 'agents_md',
+        file_content: '# Custom Role\n',
+        lossy_fields: ['constraints'],
+      })
+
+      const result = await ipc.exportRoleToFile('custom-role', 'agents_md')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('export_role_to_file', {
+        request: {
+          roleId: 'custom-role',
+          targetFormat: 'agents_md',
+        },
+      })
+      expect(result).toEqual({
+        targetFormat: 'agents_md',
+        fileContent: '# Custom Role\n',
+        lossyFields: ['constraints'],
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('exportRoleToFile returns deterministic mock content when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.exportRoleToFile('custom-doc-writer', 'gemini_md')
+
+      expect(result.targetFormat).toBe('gemini_md')
+      expect(result.fileContent).toContain('# Documentation Writer')
+      expect(result.lossyFields).toContain('capabilities')
+    })
+
     it('upsertTeamPreset returns sensible mock defaults when not in Tauri', async () => {
       delete window.__TAURI_INTERNALS__
 
@@ -1765,6 +1847,31 @@ describe('ipc module', () => {
       tauriCore.invoke.mockResolvedValue({ teamName: 'arch', leadName: 'lead', members: [] })
       await ipc.coordinationGetLiveTeamStatus('arch')
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_live_team_status', { teamName: 'arch' })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationGetCompactionAudit calls invoke and returns deterministic mock shape', async () => {
+      const mockModeResult = await ipc.coordinationGetCompactionAudit('arch')
+      expect(mockModeResult.teamName).toBe('arch')
+      expect(Array.isArray(mockModeResult.entries)).toBe(true)
+
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        teamName: 'arch',
+        entries: [
+          {
+            memberName: 'frontend-dev',
+            tool: 'codex',
+            lastSessionId: 'session-1',
+            lastCompactionTimestamp: '2026-03-08T14:46:41.037Z',
+            lastDeliveryResult: 'injected',
+          },
+        ],
+      })
+      await ipc.coordinationGetCompactionAudit('arch')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_compaction_audit', {
+        teamName: 'arch',
+      })
       delete window.__TAURI_INTERNALS__
     })
 
