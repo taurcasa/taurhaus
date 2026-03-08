@@ -45,7 +45,7 @@ serde_norway = "0.9.42"
 notify = "7"
 
 tantivy = "0.22"
-toml = "1.0.2"
+toml = "0.9.12"
 dirs = "6.0.0"
 rand = "0.8"
 sha2 = "0.10"
