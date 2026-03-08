@@ -429,6 +429,20 @@ def print_kv(key: str, value: object) -> None:
     print(f"{key}: {value}")
 
 
+def checkpoint_status(
+    level: str,
+    checkpoint_id: str,
+    name: str,
+    verification: str,
+    working: str,
+    broken: str,
+) -> None:
+    print(f"[{status_label(level)}] {checkpoint_id} {name}")
+    print(f"  verify: {verification}")
+    print(f"  working: {working}")
+    print(f"  broken: {broken}")
+
+
 def main() -> int:
     args = parse_args()
     since, _, window_desc = resolve_window(args)
@@ -616,6 +630,83 @@ def main() -> int:
         ("Claude hook status", hook_health),
     ):
         print(f"[{status_label(level)}] {name}: {message}")
+
+    print_section("Checkpoint Matrix")
+    cp1_level = "ok" if detected_count > 0 else "unknown"
+    cp1_working = (
+        "a downstream compaction.detected event exists in the selected window, so a transcript boundary definitely existed"
+        if detected_count > 0
+        else "manual transcript inspection finds compact/context_compacted records"
+    )
+    cp1_broken = "no compact/context_compacted record found in the target JSONL when inspected directly"
+    checkpoint_status(
+        cp1_level,
+        "CP1",
+        "Codex JSONL contains compaction boundary",
+        "grep -R 'context_compacted\\|\"type\":\"compacted\"' ~/.codex/sessions | tail",
+        cp1_working,
+        cp1_broken,
+    )
+
+    cp2_level = scanner_health[0]
+    checkpoint_status(
+        cp2_level,
+        "CP2",
+        "Session scanner ran scan cycles",
+        "grep 'session_scanner.scan.completed' <taurhaus.log.jsonl>",
+        "session_scanner.scan.completed events exist and the latest run reports session_count > 0",
+        "no scan.completed events, or the latest run reports session_count=0 for every cycle",
+    )
+
+    cp3_level = "ok" if detected_count > 0 else "warn"
+    checkpoint_status(
+        cp3_level,
+        "CP3",
+        "Compaction record was parsed and emitted",
+        "grep 'compaction.detected' <taurhaus.log.jsonl>",
+        "compaction.detected exists for the target team/member/session",
+        "transcript boundary exists but no compaction.detected event is emitted",
+    )
+
+    cp4_level = "ok" if detected_count > 0 else "warn"
+    checkpoint_status(
+        cp4_level,
+        "CP4",
+        "Managed member resolution succeeded",
+        "grep 'compaction.detected' <taurhaus.log.jsonl> and inspect team_name/member_name/session_id fields",
+        "compaction.detected is present; current code only emits it after managed-member resolution succeeds",
+        "scanner sees a boundary but no compaction.detected event appears for a managed member",
+    )
+
+    cp5_level = "ok" if injected_count or skipped_count or stale_count or failed_count else "warn"
+    checkpoint_status(
+        cp5_level,
+        "CP5",
+        "Delivery reached a terminal outcome",
+        "grep 'compaction.injected\\|compaction.skipped\\|compaction.stale\\|compaction.failed' <taurhaus.log.jsonl>",
+        "one of injected/skipped/stale/failed exists for the detected compaction",
+        "compaction.detected exists but no terminal delivery event follows",
+    )
+
+    cp6_level = runtime_health[0]
+    checkpoint_status(
+        cp6_level,
+        "CP6",
+        "Runtime member records can support exact session resolution",
+        "python3 scripts/analyze-compaction.py --team <team> --last 30m",
+        "runtime session_id health shows managed members with populated session_id values",
+        "runtime session_id health is partial or empty, causing ambiguous or skipped resolution",
+    )
+
+    cp7_level = hook_health[0]
+    checkpoint_status(
+        cp7_level,
+        "CP7",
+        "Claude compact hook bridge is installed",
+        "python3 scripts/analyze-compaction.py --team <team> --last 30m",
+        "Claude hook status is installed and optionally shows hook fire evidence",
+        "hook not installed, matcher missing, script missing, or no evidence in a window where Claude compactions should have fired",
+    )
 
     print_section("Compaction Outcomes")
     print_kv("Detected", detected_count)
