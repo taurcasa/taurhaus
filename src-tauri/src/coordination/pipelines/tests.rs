@@ -722,6 +722,85 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
 }
 
 #[test]
+fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_without_session_capture() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Codex,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+
+    let mut lead_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead").expect("runtime");
+    lead_runtime.pane_id = Some("%21".to_string());
+    lead_runtime.daemon_pid = Some(91);
+    lead_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "team-lead", &lead_runtime)
+        .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member(
+            "architecture-final",
+            "team-lead",
+            ResumeContextMode::Continue,
+        )
+        .expect("resume report");
+    assert!(report.resumed);
+    assert!(report.reused_pane);
+
+    let calls = runtime.calls();
+    let launch = calls
+        .iter()
+        .find_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys.clone()),
+            _ => None,
+        })
+        .expect("launch command");
+    assert_eq!(launch, "codex resume --last --yolo");
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnDaemon { member_name, .. } if member_name == "team-lead")));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 91)));
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::DetectSessionId { cli_tool, .. } if *cli_tool == CliTool::Codex)),
+        "non-Claude lead resume should skip Claude-only session capture"
+    );
+    assert_eq!(
+        backend.call_counts().1,
+        1,
+        "lead should still receive onboarding"
+    );
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead")
+        .expect("updated runtime");
+    assert_eq!(updated.pane_id.as_deref(), Some("%21"));
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.daemon_pid, Some(10000));
+    assert!(updated.attached_at.is_some());
+}
+
+#[test]
 fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

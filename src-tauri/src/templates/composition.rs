@@ -514,6 +514,78 @@ mod tests {
     }
 
     #[test]
+    fn compose_valid_fullstack_team_with_codex_lead() {
+        let roles = load_roles();
+        let preset = load_preset("fullstack-dev-codex");
+
+        let result = compose_team(
+            &preset.lead_role_id,
+            &preset.agent_slots,
+            &roles,
+            &CompositionOverrides {
+                project_name: Some("taurhaus".to_string()),
+                ..CompositionOverrides::default()
+            },
+        );
+
+        assert!(
+            result.is_valid(),
+            "expected valid composition, got errors: {:?}",
+            result.validation_errors
+        );
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.role_id == "codex-orchestrator"));
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.name == "lead-taurhaus"));
+    }
+
+    #[test]
+    fn compose_valid_standard_team_with_gemini_lead() {
+        let roles = load_roles();
+        let preset = load_preset("standard-team-gemini");
+
+        let result = compose_team(
+            &preset.lead_role_id,
+            &preset.agent_slots,
+            &roles,
+            &CompositionOverrides {
+                project_name: Some("taurhaus".to_string()),
+                ..CompositionOverrides::default()
+            },
+        );
+
+        assert!(
+            result.is_valid(),
+            "expected valid composition, got errors: {:?}",
+            result.validation_errors
+        );
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.role_id == "gemini-orchestrator"));
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.name == "architect"));
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.name == "developer1"));
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.name == "developer2"));
+        assert!(result
+            .roster
+            .iter()
+            .any(|member| member.name == "ui-specialist"));
+    }
+
+    #[test]
     fn compose_enforces_single_lead_role() {
         let roles = load_roles();
         let slots = vec![AgentSlot {

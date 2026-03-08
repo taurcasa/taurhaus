@@ -1,0 +1,30 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: research-dev-codex
+name: Research + Development Team (Codex Lead)
+description: Codex orchestrator with one research agent and one implementation agent.
+version: 1.0.0
+
+lead_role_id: codex-orchestrator
+
+agent_slots:
+  - role_id: claude-researcher
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: researcher-{n}
+      instructions_append: |
+        Produce decision-ready findings that unblock implementation.
+  - role_id: codex-developer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: dev-{n}
+      instructions_append: |
+        Convert approved research outcomes into scoped implementation tasks.
+
+defaults:
+  team_name_pattern: "{project}-research-dev"
+  tmux_layout: tiled

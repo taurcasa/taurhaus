@@ -3080,6 +3080,103 @@ fn initialize_team_attach_existing_skips_lead_launch() {
     );
 }
 
+fn assert_non_claude_lead_launch_new_uses_sidecar(
+    lead_tool: &str,
+    lead_model: &str,
+    team_name: &str,
+) {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let mut request = initialize_request(team_name);
+    request.lead.cli_tool = lead_tool.to_string();
+    request.lead.model = lead_model.to_string();
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+    assert!(
+        report.failed_step.is_none(),
+        "non-Claude launch-new lead should initialize cleanly"
+    );
+
+    let lead_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, "team-lead").expect("lead runtime");
+    assert!(
+        lead_runtime.pane_id.is_some(),
+        "launch-new lead should still allocate a pane"
+    );
+    assert_eq!(
+        lead_runtime.session_id, None,
+        "non-Claude leads should not attempt Claude session capture"
+    );
+    assert_eq!(
+        lead_runtime.daemon_pid,
+        Some(10000),
+        "non-Claude leads should start through the mesh sidecar"
+    );
+
+    let calls = runtime.calls();
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::JoinMesh { team_name: call_team, member_name, .. }
+            if call_team == team_name && member_name == "team-lead"
+    )));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnDaemon { team_name: call_team, member_name, .. }
+            if call_team == team_name && member_name == "team-lead"
+    )));
+    assert!(
+        !calls.iter().any(|call| matches!(
+            call,
+            RuntimeCall::DetectSessionId { pane_id, .. } if pane_id == lead_runtime.pane_id.as_deref().unwrap_or_default()
+        )),
+        "non-Claude leads should skip Claude-only session-id capture"
+    );
+}
+
+#[test]
+fn initialize_team_codex_lead_launch_new_uses_sidecar_lifecycle() {
+    assert_non_claude_lead_launch_new_uses_sidecar(
+        "codex",
+        "gpt-5.4",
+        "architecture-final-init-codex-lead",
+    );
+}
+
+#[test]
+fn initialize_team_gemini_lead_launch_new_uses_sidecar_lifecycle() {
+    assert_non_claude_lead_launch_new_uses_sidecar(
+        "gemini",
+        "gemini-2.5-pro",
+        "architecture-final-init-gemini-lead",
+    );
+}
+
+#[test]
+fn initialize_team_rejects_attach_existing_for_non_claude_lead() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(&tmp);
+    let mut request = initialize_request("architecture-final-attach-existing-codex");
+    request.lead_mode = LeadMode::AttachExisting;
+    request.lead.cli_tool = "codex".to_string();
+    request.lead.model = "gpt-5.4".to_string();
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("pipeline should return report");
+    assert_eq!(
+        report.failed_step.as_deref(),
+        Some("validate_configuration")
+    );
+    assert!(
+        report
+            .message
+            .contains("attach-existing is not supported yet for 'codex' leads"),
+        "report should explain the unsupported lead mode clearly"
+    );
+}
+
 #[test]
 fn initialize_team_duplicate_team_returns_partial_failure_report() {
     let tmp = TempDir::new().expect("tempdir");

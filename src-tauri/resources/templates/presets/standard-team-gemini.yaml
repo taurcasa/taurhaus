@@ -1,0 +1,35 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: standard-team-gemini
+name: Standard Dev Team (Gemini Lead)
+description: "Full development team with a Gemini orchestrator, architect, two full-stack developers, and a UI specialist. Clear separation of concerns: architect owns structural decisions, UI specialist owns frontend design, developers implement, lead orchestrates."
+version: "1.0.0"
+lead_role_id: gemini-orchestrator
+
+agent_slots:
+  - role_id: codex-architect
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: "architect"
+      instructions_append: "You are the single architect for this team. All structural decisions flow through you."
+
+  - role_id: codex-developer
+    count: 2
+    project_binding: lead_project
+    overrides:
+      name_pattern: "developer{n}"
+      instructions_append: "Coordinate with the architect on structural decisions. For smaller implementation choices, use your judgment. Escalate to team lead only for scope/priority questions."
+
+  - role_id: gemini-ui-specialist
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: "ui-specialist"
+      instructions_append: "You handle all frontend design and implementation. No backend/Rust work. If a task requires backend changes, hand it back to a developer."
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled

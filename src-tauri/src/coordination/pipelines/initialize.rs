@@ -209,6 +209,13 @@ impl CoordinationOrchestrator {
         validate_team_name(&request.team_name)?;
         validate_non_empty("lead name", &request.lead.name)?;
         validate_non_empty("lead cli tool", &request.lead.cli_tool)?;
+        if request.lead_mode == LeadMode::AttachExisting && should_use_mesh_sidecar(&request.lead)?
+        {
+            return Err(CoordinationError::Validation(format!(
+                "attach-existing is not supported yet for '{}' leads; use launch-new",
+                request.lead.cli_tool
+            )));
+        }
 
         let mut seen = std::collections::HashSet::new();
         seen.insert(request.lead.name.trim().to_string());

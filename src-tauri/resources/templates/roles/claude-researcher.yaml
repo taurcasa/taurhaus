@@ -41,5 +41,5 @@ capabilities: []
 constraints:
   min_instances: 0
   max_instances: 4
-  requires_lead_tool: claude
+  requires_lead_tool: null
   allowed_project_binding: any
