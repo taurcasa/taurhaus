@@ -2,6 +2,7 @@
 
 pub mod compaction;
 pub mod config;
+pub mod inbox;
 pub mod lock;
 pub mod operational;
 pub mod runtime;
@@ -13,6 +14,8 @@ pub use compaction::{
     MemberCompactionStore, COMPACTION_FRESHNESS_WINDOW_SECS,
 };
 pub use config::{DiscoveredTeam, TeamConfig, TeamConfigStore};
+#[allow(unused_imports)]
+pub use inbox::{MeshInboxMessage, MeshInboxStore};
 #[allow(unused_imports)]
 pub use operational::{
     read_snapshot, write_snapshot, OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,

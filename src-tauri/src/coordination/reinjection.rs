@@ -122,58 +122,10 @@ impl CompactionReinjectionService {
         serde_json::to_string_pretty(card)
     }
 
-    pub fn render_codex_tmux_text(card: &OperationalReinjectionCard) -> String {
-        let role_name = card
-            .role
-            .role_name
-            .as_deref()
-            .or(card.role.role_id.as_deref())
-            .unwrap_or("unknown");
-        let focus = card.role.focus_area.as_deref().unwrap_or("none");
-        let guardrail = card.role.behavior_summary.as_deref().unwrap_or("none");
-        let boundary = if card.boundaries.file_ownership_boundary.is_empty() {
-            "none".to_string()
-        } else {
-            card.boundaries.file_ownership_boundary.join(", ")
-        };
-        let validation = if card.task.validation_expectation.is_empty() {
-            "none"
-        } else {
-            card.task.validation_expectation.as_str()
-        };
-        let mode = if card.task.execution_mode.is_empty() {
-            "none"
-        } else {
-            card.task.execution_mode.as_str()
-        };
-        let override_status = match card.boundaries.active_override_reason.as_deref() {
-            Some(reason) => reason,
-            None if card.boundaries.override_allowed => "allowed",
-            None => "none",
-        };
-
-        format!(
-            concat!(
-                "[taurhaus] post_compaction_context\n",
-                "Role: {role_name}\n",
-                "Focus: {focus}\n",
-                "Guardrail: {guardrail}\n",
-                "Task: #{task_id} {task_subject}\n",
-                "Mode: {mode}\n",
-                "Boundary: {boundary}\n",
-                "Validation: {validation}\n",
-                "Override: {override_status}"
-            ),
-            role_name = role_name,
-            focus = focus,
-            guardrail = guardrail,
-            task_id = card.task.id,
-            task_subject = card.task.subject,
-            mode = mode,
-            boundary = boundary,
-            validation = validation,
-            override_status = override_status
-        )
+    pub fn render_codex_inbox_text(
+        card: &OperationalReinjectionCard,
+    ) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(card)
     }
 }
 
@@ -407,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_tmux_text_matches_expected_snapshot() {
+    fn render_codex_inbox_text_matches_expected_snapshot() {
         let card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -416,25 +368,16 @@ mod tests {
                 .with_timezone(&Utc),
         );
 
-        let rendered = CompactionReinjectionService::render_codex_tmux_text(&card);
+        let rendered = CompactionReinjectionService::render_codex_inbox_text(&card)
+            .expect("render codex inbox text");
+        let parsed: OperationalReinjectionCard =
+            serde_json::from_str(&rendered).expect("parse rendered inbox payload");
 
-        let expected = concat!(
-            "[taurhaus] post_compaction_context\n",
-            "Role: Taurhaus Architect\n",
-            "Focus: Cross-layer diagnosis\n",
-            "Guardrail: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.\n",
-            "Task: #673 Architecture: post-compaction operational re-injection\n",
-            "Mode: recommend\n",
-            "Boundary: docs/architecture/post-compaction-reinjection.md\n",
-            "Validation: report-only\n",
-            "Override: none"
-        );
-
-        assert_eq!(rendered, expected);
+        assert_eq!(parsed, card);
     }
 
     #[test]
-    fn render_codex_tmux_text_handles_missing_optionals_and_override_status() {
+    fn render_codex_inbox_text_preserves_missing_optionals_and_override_status() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -452,25 +395,16 @@ mod tests {
         card.boundaries.override_allowed = true;
         card.boundaries.active_override_reason = Some("lead-approved adjacent fix".to_string());
 
-        let rendered = CompactionReinjectionService::render_codex_tmux_text(&card);
+        let rendered = CompactionReinjectionService::render_codex_inbox_text(&card)
+            .expect("render codex inbox text");
+        let parsed: OperationalReinjectionCard =
+            serde_json::from_str(&rendered).expect("parse rendered inbox payload");
 
-        let expected = concat!(
-            "[taurhaus] post_compaction_context\n",
-            "Role: unknown\n",
-            "Focus: none\n",
-            "Guardrail: none\n",
-            "Task: #673 Architecture: post-compaction operational re-injection\n",
-            "Mode: none\n",
-            "Boundary: none\n",
-            "Validation: none\n",
-            "Override: lead-approved adjacent fix"
-        );
-
-        assert_eq!(rendered, expected);
+        assert_eq!(parsed, card);
     }
 
     #[test]
-    fn render_codex_tmux_text_falls_back_to_role_id_when_role_name_is_missing() {
+    fn render_codex_inbox_text_preserves_role_id_when_role_name_is_missing() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -480,20 +414,12 @@ mod tests {
         );
         card.role.role_name = None;
 
-        let rendered = CompactionReinjectionService::render_codex_tmux_text(&card);
+        let rendered = CompactionReinjectionService::render_codex_inbox_text(&card)
+            .expect("render codex inbox text");
+        let parsed: OperationalReinjectionCard =
+            serde_json::from_str(&rendered).expect("parse rendered inbox payload");
 
-        let expected = concat!(
-            "[taurhaus] post_compaction_context\n",
-            "Role: taurhaus-architect\n",
-            "Focus: Cross-layer diagnosis\n",
-            "Guardrail: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.\n",
-            "Task: #673 Architecture: post-compaction operational re-injection\n",
-            "Mode: recommend\n",
-            "Boundary: docs/architecture/post-compaction-reinjection.md\n",
-            "Validation: report-only\n",
-            "Override: none"
-        );
-
-        assert_eq!(rendered, expected);
+        assert_eq!(parsed.role.role_name, None);
+        assert_eq!(parsed.role.role_id.as_deref(), Some("taurhaus-architect"));
     }
 }

@@ -16,7 +16,8 @@ use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntim
 use crate::coordination::stores::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_stale_compaction,
     CompactionDeliveryResult, MemberCompactionState, MemberCompactionStore, MemberRuntimeStore,
-    OperationalContextSnapshot, OperationalContextSnapshotStore, TeamConfigStore,
+    MeshInboxMessage, MeshInboxStore, OperationalContextSnapshot, OperationalContextSnapshotStore,
+    TeamConfigStore,
 };
 use crate::provider::path::normalize_project_path;
 
@@ -30,7 +31,6 @@ pub struct PendingCodexCompactionReinjection {
     pub observed_jsonl_len: u64,
     pub compaction_timestamp: DateTime<Utc>,
     pub card: OperationalReinjectionCard,
-    pub rendered_text: String,
 }
 
 #[derive(Debug, Default)]
@@ -155,7 +155,6 @@ pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir
             );
 
             let card = CompactionReinjectionService::compose(&resolved.member, &resolved.snapshot);
-            let rendered_text = CompactionReinjectionService::render_codex_tmux_text(&card);
 
             enqueue_pending(PendingCodexCompactionReinjection {
                 team_name: resolved.team_name.clone(),
@@ -166,7 +165,6 @@ pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir
                 observed_jsonl_len,
                 compaction_timestamp: event.timestamp,
                 card,
-                rendered_text,
             });
         }
     }
@@ -439,7 +437,7 @@ fn deliver_pending_codex_compaction_reinjections_at(
                 pane_id = pending.pane_id,
                 session_id = pending.session_id,
                 error = %error,
-                "failed to deliver Codex post-compaction tmux injection"
+                "failed to deliver Codex post-compaction inbox message"
             );
             let _ = record_delivery_at(
                 teams_dir,
@@ -503,7 +501,25 @@ fn deliver_pending_codex_compaction_reinjection_at(
         );
     }
 
-    runtime.send_tmux_keys_with_enter(&pending.pane_id, &pending.rendered_text)?;
+    let rendered_text = CompactionReinjectionService::render_codex_inbox_text(&pending.card)
+        .map_err(|error| {
+            crate::coordination::errors::CoordinationError::StoreError(format!(
+                "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
+                pending.member_name, pending.team_name
+            ))
+        })?;
+    let inbox_message = MeshInboxMessage::new(
+        "taurhaus",
+        rendered_text,
+        Some("post_compaction_context".to_string()),
+        now,
+    );
+    MeshInboxStore::append(
+        teams_dir,
+        &pending.team_name,
+        &pending.member_name,
+        &inbox_message,
+    )?;
     record_delivery_at(
         teams_dir,
         &pending.team_name,
@@ -1014,9 +1030,8 @@ mod tests {
             pending[0].compaction_timestamp,
             timestamp("2026-03-08T13:46:41.037Z")
         );
-        assert!(pending[0]
-            .rendered_text
-            .contains("[taurhaus] post_compaction_context"));
+        assert_eq!(pending[0].card.task.id, "678");
+        assert_eq!(pending[0].card.member_name, "developer2");
     }
 
     #[test]
@@ -1404,7 +1419,6 @@ mod tests {
                 &member,
                 &sample_snapshot(team_name, &member.name, project_path),
             ),
-            rendered_text: "[taurhaus] post_compaction_context\nTask: #679".to_string(),
         };
         enqueue_pending(pending.clone());
 
@@ -1421,11 +1435,13 @@ mod tests {
             timestamp("2026-03-08T13:46:43.000Z"),
         );
 
-        assert!(runtime.calls().iter().any(|call| matches!(
-            call,
-            RuntimeCall::SendKeys { pane_id, keys }
-                if pane_id == "%7" && keys == &pending.rendered_text
-        )));
+        let inbox = MeshInboxStore::load(&teams_dir, team_name, &member.name).expect("load inbox");
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].from, "taurhaus");
+        assert_eq!(inbox[0].summary.as_deref(), Some("post_compaction_context"));
+        let delivered_card: OperationalReinjectionCard =
+            serde_json::from_str(&inbox[0].text).expect("parse inbox payload");
+        assert_eq!(delivered_card, pending.card);
 
         let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
             .expect("load state")
@@ -1477,7 +1493,6 @@ mod tests {
                 &member,
                 &sample_snapshot(team_name, &member.name, project_path),
             ),
-            rendered_text: "ignored".to_string(),
         });
 
         let runtime = RecordingCoordinationRuntime::default();
@@ -1540,7 +1555,6 @@ mod tests {
                 &member,
                 &sample_snapshot(team_name, &member.name, project_path),
             ),
-            rendered_text: "ignored".to_string(),
         });
 
         let runtime = RecordingCoordinationRuntime::default();
@@ -1610,7 +1624,6 @@ mod tests {
                 &member,
                 &sample_snapshot(team_name, &member.name, project_path),
             ),
-            rendered_text: "ignored".to_string(),
         });
 
         let runtime = RecordingCoordinationRuntime::default();
@@ -1681,7 +1694,6 @@ mod tests {
                 &member,
                 &sample_snapshot(team_name, &member.name, project_path),
             ),
-            rendered_text: "ignored".to_string(),
         });
 
         // Regression: a new turn started after compaction, so delayed reinjection must skip.
@@ -1760,7 +1772,6 @@ mod tests {
                 &member,
                 &sample_snapshot(team_name, &member.name, project_path),
             ),
-            rendered_text: "ignored".to_string(),
         });
 
         TeamConfigStore::delete(&teams_dir, team_name).expect("delete team");
