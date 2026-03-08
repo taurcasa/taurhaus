@@ -1955,10 +1955,28 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     fn copy_executable(from: &std::path::Path, to: &std::path::Path) {
-        std::fs::copy(from, to).expect("copy executable");
-        let mut permissions = std::fs::metadata(to).expect("metadata").permissions();
+        use std::io::{copy, Seek, SeekFrom};
+
+        let parent = to.parent().expect("copy target parent");
+        let mut source = std::fs::File::open(from).expect("open source executable");
+        let mut staged = tempfile::NamedTempFile::new_in(parent).expect("stage executable");
+        copy(&mut source, staged.as_file_mut()).expect("copy executable");
+        staged
+            .as_file_mut()
+            .seek(SeekFrom::Start(0))
+            .expect("rewind staged executable");
+        let mut permissions = staged
+            .as_file()
+            .metadata()
+            .expect("staged metadata")
+            .permissions();
         permissions.set_mode(0o755);
-        std::fs::set_permissions(to, permissions).expect("chmod");
+        staged
+            .as_file()
+            .set_permissions(permissions)
+            .expect("chmod staged executable");
+        staged.as_file().sync_all().expect("sync staged executable");
+        staged.persist(to).expect("persist staged executable");
     }
 
     #[test]
