@@ -1020,6 +1020,140 @@ mod tests {
     }
 
     #[test]
+    fn display_scan_unattributed_codex_sessions_still_drive_compaction_detection() {
+        let _guard = TEST_LOCK.lock().expect("lock");
+        reset_test_state();
+
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let member_a = sample_member("developer2", project_path);
+        let member_b = sample_member("developer3", project_path);
+        save_team_fixture(
+            &teams_dir,
+            "taurhaus-team",
+            &member_a,
+            Some("session-1"),
+            Some("%7"),
+        );
+        save_team_fixture(
+            &teams_dir,
+            "taurhaus-team",
+            &member_b,
+            Some("session-2"),
+            Some("%8"),
+        );
+
+        let jsonl_path_a = tmp.path().join("session-a.jsonl");
+        let jsonl_path_b = tmp.path().join("session-b.jsonl");
+        write_jsonl(
+            &jsonl_path_a,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:00.000Z","type":"session_meta","payload":{"cwd":"/home/mstie/projects/taurhaus"}}"#,
+            ],
+        );
+        write_jsonl(
+            &jsonl_path_b,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:00.000Z","type":"session_meta","payload":{"cwd":"/home/mstie/projects/taurhaus"}}"#,
+            ],
+        );
+
+        let processes = vec![
+            crate::session_scanner::process::ProcessInfo {
+                pid: 910_001,
+                project_path: project_path.to_string(),
+                tty: "/dev/pts/21".to_string(),
+                args: "codex".to_string(),
+                cli_tool: CliTool::Codex,
+            },
+            crate::session_scanner::process::ProcessInfo {
+                pid: 910_002,
+                project_path: project_path.to_string(),
+                tty: "/dev/pts/22".to_string(),
+                args: "codex".to_string(),
+                cli_tool: CliTool::Codex,
+            },
+        ];
+        let pane_map = HashMap::from([
+            (
+                "/dev/pts/21".to_string(),
+                crate::session_scanner::tmux::TmuxPane {
+                    pane_id: "%7".to_string(),
+                    tty: "/dev/pts/21".to_string(),
+                    window_index: "1".to_string(),
+                    window_name: "mesh-a".to_string(),
+                    session_name: "0".to_string(),
+                },
+            ),
+            (
+                "/dev/pts/22".to_string(),
+                crate::session_scanner::tmux::TmuxPane {
+                    pane_id: "%8".to_string(),
+                    tty: "/dev/pts/22".to_string(),
+                    window_index: "2".to_string(),
+                    window_name: "mesh-b".to_string(),
+                    session_name: "0".to_string(),
+                },
+            ),
+        ]);
+        let sessions_per_project_tool =
+            HashMap::from([((project_path.to_string(), CliTool::Codex), 2usize)]);
+
+        let idle_detector = |proc: &crate::session_scanner::process::ProcessInfo| {
+            if proc.pid == 910_001 {
+                crate::session_scanner::idle::IdleResult {
+                    state: crate::session_scanner::SessionState::Active,
+                    session_id: Some("session-1".to_string()),
+                    jsonl_path: Some(jsonl_path_a.display().to_string()),
+                    last_output_age_secs: Some(0),
+                }
+            } else {
+                crate::session_scanner::idle::IdleResult {
+                    state: crate::session_scanner::SessionState::Active,
+                    session_id: Some("session-2".to_string()),
+                    jsonl_path: Some(jsonl_path_b.display().to_string()),
+                    last_output_age_secs: Some(0),
+                }
+            }
+        };
+
+        let (sessions, ..) = super::super::classify_display_runtime_sessions_with(
+            processes.clone(),
+            pane_map.clone(),
+            &sessions_per_project_tool,
+            &idle_detector,
+        );
+        assert_eq!(sessions.len(), 2);
+        assert!(sessions
+            .iter()
+            .all(|session| session.project_unattributed_active));
+        assert!(sessions.iter().all(|session| session.session_id.is_some()));
+        assert!(sessions.iter().all(|session| session.jsonl_path.is_some()));
+
+        process_codex_compaction_events_at(&sessions, &teams_dir);
+        append_jsonl(
+            &jsonl_path_b,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
+            ],
+        );
+
+        let (sessions, ..) = super::super::classify_display_runtime_sessions_with(
+            processes,
+            pane_map,
+            &sessions_per_project_tool,
+            &idle_detector,
+        );
+        process_codex_compaction_events_at(&sessions, &teams_dir);
+
+        let pending = drain_pending_codex_compaction_reinjections();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].member_name, "developer3");
+        assert_eq!(pending[0].session_id, "session-2");
+    }
+
+    #[test]
     fn partial_trailing_line_is_re_read_on_next_poll() {
         let _guard = TEST_LOCK.lock().expect("lock");
         reset_test_state();

@@ -223,9 +223,131 @@ struct ScannerCache {
 
 static SCAN_CACHE: OnceLock<Mutex<ScannerCache>> = OnceLock::new();
 static TMUX_CHANGE_EPOCH: AtomicU64 = AtomicU64::new(0);
+#[cfg(test)]
+static RUNTIME_IDLE_DETECTOR_OVERRIDE: OnceLock<
+    Mutex<Option<fn(&process::ProcessInfo) -> idle::IdleResult>>,
+> = OnceLock::new();
+#[cfg(test)]
+static DISPLAY_SCAN_COMPACTION_HOOK: OnceLock<Mutex<Option<fn(&[RuntimeSession])>>> =
+    OnceLock::new();
+#[cfg(test)]
+static DISPLAY_SCAN_COMPLETED_HOOK: OnceLock<Mutex<Option<fn(usize)>>> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ScanCompletionMetrics {
+    process_scan_ms: u64,
+    tmux_ms: u64,
+    process_cache_hit: bool,
+    tmux_cache_hit: bool,
+    classify_ms: u64,
+    idle_ms: u64,
+    process_signal_ms: u64,
+    ownership_ms: u64,
+    total_ms: u64,
+}
 
 fn json_number_u64(value: u64) -> Value {
     Value::Number(serde_json::Number::from(value))
+}
+
+fn detect_runtime_idle_for_process(proc: &process::ProcessInfo) -> idle::IdleResult {
+    #[cfg(test)]
+    if let Some(detector) = RUNTIME_IDLE_DETECTOR_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .copied()
+    {
+        return detector(proc);
+    }
+
+    idle::detect_runtime_idle(&proc.project_path, proc.pid, proc.cli_tool)
+}
+
+fn process_display_scan_compaction(runtime_sessions: &[RuntimeSession]) {
+    #[cfg(test)]
+    if let Some(hook) = DISPLAY_SCAN_COMPACTION_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .copied()
+    {
+        hook(runtime_sessions);
+        return;
+    }
+
+    compaction::process_codex_compaction_events(runtime_sessions);
+}
+
+fn emit_scan_completed(metrics: ScanCompletionMetrics, session_count: usize) {
+    #[cfg(test)]
+    if let Some(hook) = DISPLAY_SCAN_COMPLETED_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .copied()
+    {
+        hook(session_count);
+    }
+
+    let mut fields = Map::new();
+    fields.insert(
+        "process_scan_ms".to_string(),
+        json_number_u64(metrics.process_scan_ms),
+    );
+    fields.insert("tmux_ms".to_string(), json_number_u64(metrics.tmux_ms));
+    fields.insert(
+        "process_cache_hit".to_string(),
+        Value::Bool(metrics.process_cache_hit),
+    );
+    fields.insert(
+        "tmux_cache_hit".to_string(),
+        Value::Bool(metrics.tmux_cache_hit),
+    );
+    fields.insert(
+        "classify_ms".to_string(),
+        json_number_u64(metrics.classify_ms),
+    );
+    fields.insert("idle_ms".to_string(), json_number_u64(metrics.idle_ms));
+    fields.insert(
+        "process_signal_ms".to_string(),
+        json_number_u64(metrics.process_signal_ms),
+    );
+    fields.insert(
+        "ownership_ms".to_string(),
+        json_number_u64(metrics.ownership_ms),
+    );
+    fields.insert("duration_ms".to_string(), json_number_u64(metrics.total_ms));
+    fields.insert(
+        "session_count".to_string(),
+        Value::Number(serde_json::Number::from(session_count)),
+    );
+    crate::commands::logging::emit_global(
+        "debug",
+        "backend",
+        "session_scanner.scan.completed",
+        Some("Session scanner cycle completed".to_string()),
+        fields,
+    );
+}
+
+fn finalize_display_scan(
+    display_sessions: Vec<DisplaySession>,
+    runtime_sessions_for_compaction: Option<&[RuntimeSession]>,
+    metrics: ScanCompletionMetrics,
+) -> Vec<DisplaySession> {
+    if let Some(runtime_sessions) = runtime_sessions_for_compaction {
+        process_display_scan_compaction(runtime_sessions);
+    }
+
+    let active_pids: Vec<u32> = display_sessions.iter().map(|s| s.pid).collect();
+    proc_io::retain_pids(&active_pids);
+    retain_state_trackers(&active_pids);
+    emit_scan_completed(metrics, display_sessions.len());
+    display_sessions
 }
 
 #[cfg_attr(not(any(test, target_os = "windows")), allow(dead_code))]
@@ -434,6 +556,7 @@ struct ActivityDecision {
     confidence: ActivityConfidence,
     attribution: ActivityAttribution,
     project_unattributed_active: bool,
+    #[cfg(test)]
     keep_session_metadata: bool,
 }
 
@@ -449,6 +572,7 @@ fn compute_activity_decision(
             confidence: ActivityConfidence::High,
             attribution: ActivityAttribution::Attributed,
             project_unattributed_active: false,
+            #[cfg(test)]
             keep_session_metadata: true,
         };
     }
@@ -460,6 +584,7 @@ fn compute_activity_decision(
                 confidence: ActivityConfidence::Medium,
                 attribution: ActivityAttribution::Attributed,
                 project_unattributed_active: false,
+                #[cfg(test)]
                 keep_session_metadata: true,
             };
         }
@@ -470,6 +595,7 @@ fn compute_activity_decision(
                 confidence: ActivityConfidence::High,
                 attribution: ActivityAttribution::Attributed,
                 project_unattributed_active: false,
+                #[cfg(test)]
                 keep_session_metadata: true,
             };
         }
@@ -479,6 +605,7 @@ fn compute_activity_decision(
             confidence: ActivityConfidence::Low,
             attribution: ActivityAttribution::Unattributed,
             project_unattributed_active: true,
+            #[cfg(test)]
             keep_session_metadata: false,
         };
     }
@@ -488,6 +615,7 @@ fn compute_activity_decision(
         confidence: ActivityConfidence::Low,
         attribution: ActivityAttribution::None,
         project_unattributed_active: false,
+        #[cfg(test)]
         keep_session_metadata: sessions_for_tool_in_project <= 1,
     }
 }
@@ -514,8 +642,13 @@ fn compute_activity_decision(
 /// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
     #[cfg(target_os = "windows")]
-    if let Some(sessions) = scan_display_sessions_via_daemon() {
-        return sessions;
+    if let Some(display_sessions) = scan_display_sessions_via_daemon() {
+        let runtime_sessions = scan_runtime_sessions_via_daemon();
+        return finalize_display_scan(
+            display_sessions,
+            runtime_sessions.as_deref(),
+            ScanCompletionMetrics::default(),
+        );
     }
 
     let scan_started = Instant::now();
@@ -535,6 +668,57 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
     }
 
     let classify_started = Instant::now();
+    let (sessions, idle_ms, process_signal_ms, ownership_ms) =
+        classify_display_runtime_sessions_with(
+            processes,
+            pane_map,
+            &sessions_per_project_tool,
+            &detect_runtime_idle_for_process,
+        );
+
+    let classify_ms = classify_started.elapsed().as_millis() as u64;
+    let total_ms = scan_started.elapsed().as_millis() as u64;
+    tracing::debug!(
+        process_scan_ms,
+        tmux_ms,
+        process_cache_hit,
+        tmux_cache_hit,
+        classify_ms,
+        idle_ms = idle_ms.as_millis() as u64,
+        process_signal_ms = process_signal_ms.as_millis() as u64,
+        ownership_ms = ownership_ms.as_millis() as u64,
+        total_ms,
+        sessions = sessions.len(),
+        "session_scanner metrics"
+    );
+    let display_sessions: Vec<DisplaySession> =
+        sessions.iter().cloned().map(DisplaySession::from).collect();
+    finalize_display_scan(
+        display_sessions,
+        Some(&sessions),
+        ScanCompletionMetrics {
+            process_scan_ms,
+            tmux_ms,
+            process_cache_hit,
+            tmux_cache_hit,
+            classify_ms,
+            idle_ms: idle_ms.as_millis() as u64,
+            process_signal_ms: process_signal_ms.as_millis() as u64,
+            ownership_ms: ownership_ms.as_millis() as u64,
+            total_ms,
+        },
+    )
+}
+
+fn classify_display_runtime_sessions_with<H>(
+    processes: Vec<process::ProcessInfo>,
+    pane_map: HashMap<String, tmux::TmuxPane>,
+    sessions_per_project_tool: &HashMap<(String, CliTool), usize>,
+    idle_detector: &H,
+) -> (Vec<RuntimeSession>, Duration, Duration, Duration)
+where
+    H: Fn(&process::ProcessInfo) -> idle::IdleResult,
+{
     let mut idle_ms = Duration::default();
     let mut process_signal_ms = Duration::default();
     let mut ownership_ms = Duration::default();
@@ -545,8 +729,7 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
             let tmux = pane_map.get(&proc.tty);
 
             let idle_started = Instant::now();
-            let idle_result =
-                idle::detect_runtime_idle(&proc.project_path, proc.pid, proc.cli_tool);
+            let idle_result = idle_detector(&proc);
             idle_ms += idle_started.elapsed();
             let file_active = idle_result.state == SessionState::Active;
             let sessions_for_tool_in_project = sessions_per_project_tool
@@ -593,8 +776,10 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
                 deterministic_file_owner,
             );
 
-            // Hide shared session metadata when activity attribution is unavailable.
-            // Apply bidirectional hysteresis
+            // Keep runtime metadata intact here. DisplaySession strips it at the
+            // type boundary, but scanner-side compaction watching still needs the
+            // full `(session_id, jsonl_path)` pair even when UI attribution is
+            // intentionally marked unattributed.
             let state = apply_hysteresis(proc.pid, decision.raw_state);
             let (activity_confidence, activity_attribution, project_unattributed_active) =
                 if state == SessionState::Active {
@@ -620,16 +805,8 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
                 tmux_pane: tmux.map(|t| t.pane_id.clone()),
                 tmux_window_name: tmux.map(|t| t.window_name.clone()),
                 state,
-                session_id: if decision.keep_session_metadata {
-                    idle_result.session_id
-                } else {
-                    None
-                },
-                jsonl_path: if decision.keep_session_metadata {
-                    idle_result.jsonl_path
-                } else {
-                    None
-                },
+                session_id: idle_result.session_id,
+                jsonl_path: idle_result.jsonl_path,
                 recent_io,
                 last_output_age_secs: idle_result.last_output_age_secs,
                 activity_confidence,
@@ -645,7 +822,7 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
 
     // Deduplicate: when a tool runs via an fnm/node shim, both the shim
     // process and the native binary appear in `ps` output sharing the same
-    // TTY.  Keep only one session per (tty, cli_tool) pair.
+    // TTY. Keep only one session per (tty, cli_tool) pair.
     //
     // We prefer the HIGHEST PID per group — the child process (native binary)
     // is the one that actually owns API sockets and does meaningful IO.
@@ -654,66 +831,7 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
 
-    compaction::process_codex_compaction_events(&sessions);
-
-    // Clean up stale PID entries from both trackers
-    let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
-    proc_io::retain_pids(&active_pids);
-    retain_state_trackers(&active_pids);
-
-    let classify_ms = classify_started.elapsed().as_millis() as u64;
-    let total_ms = scan_started.elapsed().as_millis() as u64;
-    tracing::debug!(
-        process_scan_ms,
-        tmux_ms,
-        process_cache_hit,
-        tmux_cache_hit,
-        classify_ms,
-        idle_ms = idle_ms.as_millis() as u64,
-        process_signal_ms = process_signal_ms.as_millis() as u64,
-        ownership_ms = ownership_ms.as_millis() as u64,
-        total_ms,
-        sessions = sessions.len(),
-        "session_scanner metrics"
-    );
-    let mut fields = Map::new();
-    fields.insert(
-        "process_scan_ms".to_string(),
-        json_number_u64(process_scan_ms),
-    );
-    fields.insert("tmux_ms".to_string(), json_number_u64(tmux_ms));
-    fields.insert(
-        "process_cache_hit".to_string(),
-        Value::Bool(process_cache_hit),
-    );
-    fields.insert("tmux_cache_hit".to_string(), Value::Bool(tmux_cache_hit));
-    fields.insert("classify_ms".to_string(), json_number_u64(classify_ms));
-    fields.insert(
-        "idle_ms".to_string(),
-        json_number_u64(idle_ms.as_millis() as u64),
-    );
-    fields.insert(
-        "process_signal_ms".to_string(),
-        json_number_u64(process_signal_ms.as_millis() as u64),
-    );
-    fields.insert(
-        "ownership_ms".to_string(),
-        json_number_u64(ownership_ms.as_millis() as u64),
-    );
-    fields.insert("duration_ms".to_string(), json_number_u64(total_ms));
-    fields.insert(
-        "session_count".to_string(),
-        Value::Number(serde_json::Number::from(sessions.len())),
-    );
-    crate::commands::logging::emit_global(
-        "debug",
-        "backend",
-        "session_scanner.scan.completed",
-        Some("Session scanner cycle completed".to_string()),
-        fields,
-    );
-
-    sessions.into_iter().map(DisplaySession::from).collect()
+    (sessions, idle_ms, process_signal_ms, ownership_ms)
 }
 
 /// Scan for runtime reconciliation/session-id detection without hiding session metadata.
@@ -739,7 +857,7 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
-            let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
+            let idle_result = detect_runtime_idle_for_process(&proc);
 
             RuntimeSession {
                 pid: proc.pid,
@@ -832,15 +950,10 @@ where
 }
 
 #[cfg(test)]
-fn scan_sessions_for_runtime_with<F, G, H>(
-    process_scanner: &F,
-    tmux_lister: &G,
-    idle_detector: &H,
-) -> Vec<RuntimeSession>
+fn scan_sessions_for_runtime_with<F, G>(process_scanner: &F, tmux_lister: &G) -> Vec<RuntimeSession>
 where
     F: Fn() -> Vec<process::ProcessInfo>,
     G: Fn() -> HashMap<String, tmux::TmuxPane>,
-    H: Fn(&process::ProcessInfo) -> idle::IdleResult,
 {
     let processes = process_scanner();
     let pane_map = tmux_lister();
@@ -849,7 +962,7 @@ where
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
-            let idle_result = idle_detector(&proc);
+            let idle_result = detect_runtime_idle_for_process(&proc);
 
             RuntimeSession {
                 pid: proc.pid,
@@ -887,9 +1000,52 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, OnceLock};
 
     static SCAN_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+    static TEST_COMPACTION_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static TEST_COMPLETED_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static TEST_COMPACTION_SESSION_IDS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+    fn set_runtime_idle_detector_override(
+        detector: Option<fn(&process::ProcessInfo) -> idle::IdleResult>,
+    ) {
+        *RUNTIME_IDLE_DETECTOR_OVERRIDE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = detector;
+    }
+
+    fn set_display_scan_compaction_hook(hook: Option<fn(&[RuntimeSession])>) {
+        *DISPLAY_SCAN_COMPACTION_HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = hook;
+    }
+
+    fn set_display_scan_completed_hook(hook: Option<fn(usize)>) {
+        *DISPLAY_SCAN_COMPLETED_HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = hook;
+    }
+
+    fn record_compaction_sessions(sessions: &[RuntimeSession]) {
+        TEST_COMPACTION_SESSION_COUNT.store(sessions.len(), Ordering::SeqCst);
+        let session_ids = sessions
+            .iter()
+            .filter_map(|session| session.session_id.clone())
+            .collect::<Vec<_>>();
+        *TEST_COMPACTION_SESSION_IDS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = session_ids;
+    }
+
+    fn record_completed_session_count(session_count: usize) {
+        TEST_COMPLETED_SESSION_COUNT.store(session_count, Ordering::SeqCst);
+    }
 
     #[test]
     fn session_state_serializes_lowercase() {
@@ -1059,6 +1215,70 @@ mod tests {
     }
 
     #[test]
+    fn finalize_display_scan_processes_runtime_compaction_and_emits_completion() {
+        let _guard = SCAN_CACHE_TEST_LOCK.lock().expect("lock");
+        TEST_COMPACTION_SESSION_COUNT.store(0, Ordering::SeqCst);
+        TEST_COMPLETED_SESSION_COUNT.store(0, Ordering::SeqCst);
+        TEST_COMPACTION_SESSION_IDS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clear();
+        set_display_scan_compaction_hook(Some(record_compaction_sessions));
+        set_display_scan_completed_hook(Some(record_completed_session_count));
+
+        let runtime_sessions = vec![RuntimeSession {
+            pid: 42,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%7".to_string()),
+            tmux_window_name: Some("taurhaus".to_string()),
+            state: SessionState::Active,
+            session_id: Some("sess-123".to_string()),
+            jsonl_path: Some("/home/user/.codex/sessions/sess-123.jsonl".to_string()),
+            recent_io: false,
+            last_output_age_secs: Some(1),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }];
+        let display_sessions = runtime_sessions
+            .iter()
+            .cloned()
+            .map(DisplaySession::from)
+            .collect::<Vec<_>>();
+
+        let finalized = finalize_display_scan(
+            display_sessions,
+            Some(&runtime_sessions),
+            ScanCompletionMetrics::default(),
+        );
+
+        set_display_scan_compaction_hook(None);
+        set_display_scan_completed_hook(None);
+
+        assert_eq!(finalized.len(), 1);
+        assert_eq!(TEST_COMPACTION_SESSION_COUNT.load(Ordering::SeqCst), 1);
+        assert_eq!(TEST_COMPLETED_SESSION_COUNT.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            TEST_COMPACTION_SESSION_IDS
+                .get_or_init(|| Mutex::new(Vec::new()))
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .as_slice(),
+            ["sess-123"]
+        );
+    }
+
+    #[test]
     fn scan_sessions_combines_all_sources() {
         let mock_processes = || {
             vec![
@@ -1200,7 +1420,7 @@ mod tests {
             ])
         };
 
-        let mock_idle = |proc: &process::ProcessInfo| -> idle::IdleResult {
+        fn runtime_idle_by_pid(proc: &process::ProcessInfo) -> idle::IdleResult {
             assert_eq!(proc.project_path, "/home/user/proj-a");
             assert_eq!(proc.cli_tool, CliTool::Codex);
             if proc.pid == 100 {
@@ -1218,9 +1438,11 @@ mod tests {
                     last_output_age_secs: Some(41),
                 }
             }
-        };
+        }
 
-        let sessions = scan_sessions_for_runtime_with(&mock_processes, &mock_tmux, &mock_idle);
+        set_runtime_idle_detector_override(Some(runtime_idle_by_pid));
+        let sessions = scan_sessions_for_runtime_with(&mock_processes, &mock_tmux);
+        set_runtime_idle_detector_override(None);
         assert_eq!(sessions.len(), 2);
         let first = sessions.iter().find(|session| session.pid == 100).unwrap();
         let second = sessions.iter().find(|session| session.pid == 200).unwrap();
