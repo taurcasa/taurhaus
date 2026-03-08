@@ -305,6 +305,7 @@ fn import_copilot_agent_at(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_imported_role(
     format: RoleExportFormat,
     body: &str,
