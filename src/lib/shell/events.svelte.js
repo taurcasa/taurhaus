@@ -36,6 +36,7 @@ export function setupShellEventListeners({
   onProjectFilesChanged,
   onDaemonStatus,
   onSessionsUpdated,
+  onTmuxFocusChanged,
   onHydrateSessions,
   logger = console,
 }) {
@@ -86,6 +87,7 @@ export function setupShellEventListeners({
       registerListener(listen, 'project-files-changed', onProjectFilesChanged)
       registerListener(listen, 'daemon-status', onDaemonStatus)
       registerListener(listen, 'sessions-updated', onSessionsUpdated)
+      registerListener(listen, 'tmux-focus-changed', onTmuxFocusChanged)
 
       if (!destroyed && typeof onHydrateSessions === 'function') {
         onHydrateSessions()

@@ -1,5 +1,5 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
   import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
@@ -86,6 +86,7 @@
   // --- Data state ---
   let projects = $state([])
   let selectedProject = $state(null)
+  let foregroundProjectId = $state(null)
   let sidebarLoading = $state(true)
   let sidebarError = $state(null)
   let detailLoading = $state(false)
@@ -251,6 +252,10 @@
     checkFirstRun()
   })
 
+  $effect(() => {
+    loadForegroundProject()
+  })
+
   async function checkFirstRun() {
     try {
       const first = await isFirstRun()
@@ -361,6 +366,23 @@
     }
   }
 
+  function setForegroundProject(projectId) {
+    foregroundProjectId = typeof projectId === 'string' && projectId.trim()
+      ? projectId
+      : null
+  }
+
+  async function loadForegroundProject() {
+    try {
+      setForegroundProject(await getForegroundProject())
+    } catch (error) {
+      console.warn('[sessions] failed to load foreground project; clearing foreground marker', {
+        error_message: errorMessage(error),
+      })
+      setForegroundProject(null)
+    }
+  }
+
   async function handleDaemonUpdate() {
     daemonUpdating = true
     try {
@@ -439,6 +461,9 @@
       onSessionsUpdated: (payload) => {
         sessionBridgeLive = true
         applyDaemonSessionUpdate(payload)
+      },
+      onTmuxFocusChanged: (payload) => {
+        setForegroundProject(payload?.project_id ?? payload?.projectId ?? null)
       },
       onHydrateSessions: () => {
         hydrateSessionsFromBackend()
@@ -666,6 +691,7 @@
     if (!selectedProject) return
     const session = getSessionForProject(selectedProject.path)
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
+      setForegroundProject(selectedProject.id)
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane, true)
     }
   }
@@ -694,6 +720,7 @@
         return
       }
 
+      setForegroundProject(matchingSession?.project_id ?? matchingSession?.projectId ?? null)
       await navigateToSession(tmuxSession, tmuxWindow, tmuxPane, true)
     } catch (error) {
       console.error('[mesh] focus pane failed:', {
@@ -1006,14 +1033,16 @@
   <div class="flex-1 flex gap-1.5 p-1.5 pt-0 min-h-0">
 
     <!-- ═══ SIDEBAR ═══ -->
-    <Sidebar
-      {projects}
-      {sidebarLoading}
-      {sidebarError}
-      {selectedProject}
-      daemonStatus={daemonStatus}
-      {settingsOpen}
-      {dark}
+      <Sidebar
+        {projects}
+        {sidebarLoading}
+        {sidebarError}
+        {selectedProject}
+        {foregroundProjectId}
+        onForegroundProjectChange={setForegroundProject}
+        daemonStatus={daemonStatus}
+        {settingsOpen}
+        {dark}
     />
 
     <!-- ═══ MAIN PANEL ═══ -->

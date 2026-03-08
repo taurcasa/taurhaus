@@ -81,6 +81,7 @@ describe('setupShellEventListeners', () => {
     const unlisten = vi.fn()
     const onProjectGitChanged = vi.fn()
     const onHydrateSessions = vi.fn()
+    const onTmuxFocusChanged = vi.fn()
 
     const cleanup = setupShellEventListeners({
       enabled: true,
@@ -96,6 +97,7 @@ describe('setupShellEventListeners', () => {
       onProjectFilesChanged: vi.fn(),
       onDaemonStatus: vi.fn(),
       onSessionsUpdated: vi.fn(),
+      onTmuxFocusChanged,
       onHydrateSessions,
       logger: console,
     })
@@ -104,6 +106,7 @@ describe('setupShellEventListeners', () => {
 
     expect(registeredHandlers.has('project-git-changed')).toBe(true)
     expect(registeredHandlers.has('sessions-updated')).toBe(true)
+    expect(registeredHandlers.has('tmux-focus-changed')).toBe(true)
     expect(onHydrateSessions).toHaveBeenCalledTimes(1)
 
     await registeredHandlers.get('project-git-changed')({
@@ -114,8 +117,15 @@ describe('setupShellEventListeners', () => {
       branch: 'main',
     })
 
+    await registeredHandlers.get('tmux-focus-changed')({
+      payload: { project_id: 'proj-2' },
+    })
+    expect(onTmuxFocusChanged).toHaveBeenCalledWith({
+      project_id: 'proj-2',
+    })
+
     cleanup()
-    expect(unlisten).toHaveBeenCalledTimes(6)
+    expect(unlisten).toHaveBeenCalledTimes(7)
   })
 
   it('disposes listeners that resolve after cleanup', async () => {
@@ -133,6 +143,7 @@ describe('setupShellEventListeners', () => {
       onProjectFilesChanged: vi.fn(),
       onDaemonStatus: vi.fn(),
       onSessionsUpdated: vi.fn(),
+      onTmuxFocusChanged: vi.fn(),
       onHydrateSessions: vi.fn(),
       logger: console,
     })
@@ -142,6 +153,35 @@ describe('setupShellEventListeners', () => {
     deferred.resolve(unlisten)
     await flushPromises()
 
-    expect(unlisten).toHaveBeenCalledTimes(6)
+    expect(unlisten).toHaveBeenCalledTimes(7)
+  })
+
+  it('forwards null tmux focus payloads so Shell can clear foreground state', async () => {
+    const registeredHandlers = new Map()
+    const onTmuxFocusChanged = vi.fn()
+
+    setupShellEventListeners({
+      enabled: true,
+      loadEventApi: async () => ({
+        listen: vi.fn((eventName, handler) => {
+          registeredHandlers.set(eventName, handler)
+          return Promise.resolve(() => {})
+        }),
+      }),
+      onProjectGitChanged: vi.fn(),
+      onSessionImported: vi.fn(),
+      onProjectsReseedComplete: vi.fn(),
+      onProjectFilesChanged: vi.fn(),
+      onDaemonStatus: vi.fn(),
+      onSessionsUpdated: vi.fn(),
+      onTmuxFocusChanged,
+      onHydrateSessions: vi.fn(),
+      logger: console,
+    })
+
+    await flushPromises()
+    await registeredHandlers.get('tmux-focus-changed')({ payload: null })
+
+    expect(onTmuxFocusChanged).toHaveBeenCalledWith(null)
   })
 })

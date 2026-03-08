@@ -68,6 +68,10 @@ export function navigateToSession(tmuxSession, tmuxWindow, tmuxPane, openTermina
   return invokeOrMock('navigate_to_session', { tmuxSession, tmuxWindow, tmuxPane, openTerminal }, () => undefined)
 }
 
+export function getForegroundProject() {
+  return invokeOrMock('get_foreground_project', undefined, () => null)
+}
+
 export function recordSessionActivity(projectId, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs) {
   return invokeOrMock('record_session_activity', { projectId, cliTool, startedAt, endedAt, activeDurationMs, totalDurationMs }, () => undefined)
 }

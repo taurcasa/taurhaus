@@ -805,6 +805,27 @@ describe('ipc module', () => {
     })
   })
 
+  describe('getForegroundProject()', () => {
+    it('calls invoke with the foreground project command', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue('proj-2')
+
+      const result = await ipc.getForegroundProject()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('get_foreground_project')
+      expect(result).toBe('proj-2')
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns null when not in Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const result = await ipc.getForegroundProject()
+
+      expect(result).toBeNull()
+    })
+  })
+
   describe('task IPC contract fields', () => {
     it('normalizes camelCase commit diff fields from Tauri', async () => {
       window.__TAURI_INTERNALS__ = {}

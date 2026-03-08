@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 let meshTabMountCount = 0
+let latestSidebarProps = {}
 
 function createMockComponent(name, renderContent) {
   return function MockComponent(target, props = {}) {
@@ -59,11 +60,16 @@ vi.mock('./lib/ipc.js', () => ({
   installDaemon: vi.fn(),
   launchClaudeSession: vi.fn(),
   navigateToSession: vi.fn(),
+  getForegroundProject: vi.fn(),
   getRemoteUrl: vi.fn(),
   checkPathType: vi.fn(),
   openExternalUrl: vi.fn(),
   getPlatform: vi.fn(),
   listClaudeSessions: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(),
 }))
 
 vi.mock('./lib/sessionStore.svelte.js', () => ({
@@ -100,7 +106,20 @@ vi.mock('./lib/fileChange.js', () => ({
 }))
 
 vi.mock('./lib/Sidebar.svelte', () => ({
-  default: createMockComponent('sidebar', () => {}),
+  default: createMockComponent('sidebar', (root, props) => {
+    latestSidebarProps = props
+    const foreground = document.createElement('div')
+    foreground.setAttribute('data-testid', 'sidebar-foreground-project')
+    foreground.textContent = props.foregroundProjectId ?? ''
+    root.appendChild(foreground)
+
+    const optimistic = document.createElement('button')
+    optimistic.type = 'button'
+    optimistic.textContent = 'Optimistic Foreground'
+    optimistic.setAttribute('data-testid', 'sidebar-foreground-trigger')
+    optimistic.onclick = () => props.onForegroundProjectChange?.('proj-2')
+    root.appendChild(optimistic)
+  }),
 }))
 
 vi.mock('./lib/OverviewTab.svelte', () => ({
@@ -162,6 +181,7 @@ vi.mock('./lib/components/MeshTab.svelte', () => ({
 }))
 
 const ipc = await import('./lib/ipc.js')
+const eventApi = await import('@tauri-apps/api/event')
 const { loadProjectSelectionData } = await import('./lib/projectSelection.js')
 const { loadThemePreferences } = await import('./lib/shell/themePreferences.js')
 const { setProjectContext } = await import('./lib/context/ProjectContext.js')
@@ -172,6 +192,7 @@ describe('Shell mesh focus integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     meshTabMountCount = 0
+    latestSidebarProps = {}
 
     ipc.listProjects.mockResolvedValue([
       {
@@ -197,6 +218,7 @@ describe('Shell mesh focus integration', () => {
     ipc.checkDaemonInstallStatus.mockResolvedValue({ installed: true, needs_update: false })
     ipc.getPlatform.mockResolvedValue('linux')
     ipc.navigateToSession.mockResolvedValue(undefined)
+    ipc.getForegroundProject.mockResolvedValue(null)
     ipc.listClaudeSessions.mockResolvedValue([
       {
         tmuxSession: 'taurhaus',
@@ -219,6 +241,8 @@ describe('Shell mesh focus integration', () => {
       readme: { ok: true, section: 'README', value: null },
       rels: { ok: true, section: 'Relationships', value: [] },
     })
+
+    eventApi.listen.mockResolvedValue(() => {})
   })
 
   it('resolves mesh pane focus to tmux coordinates and opens the terminal', async () => {
@@ -240,6 +264,59 @@ describe('Shell mesh focus integration', () => {
     await waitFor(() => {
       expect(ipc.listClaudeSessions).toHaveBeenCalled()
       expect(ipc.navigateToSession).toHaveBeenCalledWith('taurhaus', '2', '%2', true)
+    })
+  })
+
+  it('queries foreground project on mount and passes it to Sidebar', async () => {
+    ipc.getForegroundProject.mockResolvedValueOnce('proj-2')
+
+    render(Shell)
+
+    await waitFor(() => {
+      expect(ipc.getForegroundProject).toHaveBeenCalledTimes(1)
+      expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
+    })
+  })
+
+  it('updates foreground project immediately when the sidebar reports a session click', async () => {
+    render(Shell)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-foreground-trigger')).toBeInTheDocument()
+      expect(latestSidebarProps.foregroundProjectId).toBeNull()
+    })
+
+    await fireEvent.click(screen.getByTestId('sidebar-foreground-trigger'))
+
+    expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
+  })
+
+  it('updates foreground project from tmux focus events and clears it on detach', async () => {
+    ipc.isTauri.mockReturnValue(true)
+    const handlers = new Map()
+    eventApi.listen.mockImplementation((eventName, handler) => {
+      handlers.set(eventName, handler)
+      return Promise.resolve(() => {})
+    })
+
+    render(Shell)
+
+    await waitFor(() => {
+      expect(handlers.has('tmux-focus-changed')).toBe(true)
+    })
+
+    await handlers.get('tmux-focus-changed')({
+      payload: { project_id: 'proj-2' },
+    })
+
+    await waitFor(() => {
+      expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
+    })
+
+    await handlers.get('tmux-focus-changed')({ payload: null })
+
+    await waitFor(() => {
+      expect(latestSidebarProps.foregroundProjectId).toBeNull()
     })
   })
 
