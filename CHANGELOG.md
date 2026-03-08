@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-03-08
+
+Tmux foreground detection, non-blocking team initialization, and backend-owned role hydration. Mesh 0.2.5 with serde flatten to preserve extension fields.
+
+### Added
+
+- **Sidebar foreground indicator** — two horizontal brand-400 lines (top + bottom) highlight the project whose tmux window is currently focused, with 150ms fade-in animation
+- **Tmux focus detection backend** — after-select-window hooks write a focus file; backend watches it and emits `foreground-project-changed` events to the frontend
+- **Optimistic foreground clicks** — clicking a project immediately sets the foreground indicator while the backend event catches up
+
+### Fixed
+
+- **Tmux hooks on Windows** — hook commands now route through `wsl.exe` so they can write the focus file from the WSL tmux server to the correct Windows app data directory
+- **Stale tmux hooks** — hooks are force-reinstalled on every app startup, clearing leftovers from previous versions
+- **Focus file path drift** — canonicalized to `app_data_dir()` only, removing the `dirs::data_local_dir` fallback that caused path mismatch on Windows
+- **App freeze during team init** — `coordination_initialize_team` converted to async with `spawn_blocking`, keeping the UI responsive
+- **Preset role metadata missing on hover** — backend now hydrates role metadata (focus_area, context_summary, behavior_summary, instructions, behavioral_contract, capabilities) from template storage when the frontend sends minimal payloads
+- **Mesh stripping extension fields** — mesh 0.2.5 uses serde flatten on TeamConfig/Member types, preserving taurhaus-specific role metadata through heartbeat config rewrites
+
+### Changed
+
+- **Backend-owned preset resolution** — frontend sends minimal preset init payload (preset ID + agent names + project bindings); backend resolves full role definitions from template storage via the composition engine
+- **Mesh version pin** — bumped from 0.2.4 to 0.2.5
+
 ## [0.5.5] - 2026-03-07
 
 Security, code quality, and performance hardening release. Full security and quality audits drove targeted fixes across both taurhaus and mesh. Mesh tab navigation is now fully non-blocking on all platforms.
