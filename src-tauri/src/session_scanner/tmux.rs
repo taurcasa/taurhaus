@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::ClaudeSession;
+use super::DisplaySession;
 
 /// Information about a tmux pane.
 #[derive(Debug, Clone, PartialEq)]
@@ -130,7 +130,7 @@ pub fn write_focus_state(path: &Path, state: &TmuxFocusState) -> Result<(), Stri
 
 pub fn resolve_focus_project_path(
     focus: &TmuxFocusState,
-    sessions: &[ClaudeSession],
+    sessions: &[DisplaySession],
 ) -> Option<String> {
     let session_name = focus.session.as_deref()?.trim();
     let window = focus.window.as_deref()?.trim();
@@ -168,8 +168,8 @@ mod tests {
         ActivityAttribution, ActivityConfidence, CliTool, SessionGroupKind, SessionState,
     };
 
-    fn session_for(path: &str, session_name: Option<&str>, window: Option<&str>) -> ClaudeSession {
-        ClaudeSession {
+    fn session_for(path: &str, session_name: Option<&str>, window: Option<&str>) -> DisplaySession {
+        DisplaySession {
             pid: 42,
             project_path: path.to_string(),
             tty: "/dev/pts/1".to_string(),
@@ -180,8 +180,6 @@ mod tests {
             tmux_pane: Some("%1".to_string()),
             tmux_window_name: window.map(str::to_string),
             state: SessionState::Active,
-            session_id: None,
-            jsonl_path: None,
             recent_io: false,
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,

@@ -1,5 +1,11 @@
 /// Daemon protocol types for NDJSON communication over TCP.
 ///
+/// Warning:
+/// - `LIST_DISPLAY_SESSIONS` is the UI-safe session view and strips transcript
+///   metadata.
+/// - `LIST_RUNTIME_SESSIONS` preserves transcript metadata and must be used for
+///   coordination/runtime correlation.
+///
 /// Request/response pairs are matched by `id`. Events are push-only
 /// messages from daemon to client, distinguished by having an `event`
 /// field instead of `id`.
@@ -83,7 +89,7 @@ pub mod method {
     pub const SHUTDOWN: &str = "shutdown";
 
     // Command Center — session management
-    pub const LIST_CLAUDE_SESSIONS: &str = "list_claude_sessions";
+    pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
     pub const WAIT_SESSION_UPDATES: &str = "wait_session_updates";
     pub const LAUNCH_SESSION: &str = "launch_session";
     pub const STOP_SESSION: &str = "stop_session";
@@ -325,7 +331,7 @@ pub struct WaitSessionUpdatesResult {
     /// Whether this response contains a version newer than `since_version`.
     pub changed: bool,
     /// Full session snapshot for the reported version.
-    pub sessions: Vec<crate::session_scanner::ClaudeSession>,
+    pub sessions: Vec<crate::session_scanner::DisplaySession>,
 }
 
 // ---------------------------------------------------------------------------

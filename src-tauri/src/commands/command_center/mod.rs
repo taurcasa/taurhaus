@@ -20,7 +20,7 @@ use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
 use crate::session_scanner::tmux::TmuxFocusState;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::DisplaySession;
 use crate::ProviderState;
 
 #[cfg(test)]
@@ -43,7 +43,7 @@ pub fn list_cli_sessions(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
-) -> Result<Vec<ClaudeSession>, String> {
+) -> Result<Vec<DisplaySession>, String> {
     let span = IpcCommandSpan::start("list_cli_sessions");
     let result = list_cli_sessions_impl(&app, db.inner(), provider.inner());
     span.finish_result(&result);
@@ -188,7 +188,7 @@ pub(crate) fn get_foreground_project_impl(
 fn resolve_foreground_project_id_from_sessions(
     db: &DbState,
     focus: &TmuxFocusState,
-    sessions: &[ClaudeSession],
+    sessions: &[DisplaySession],
 ) -> Result<Option<String>, String> {
     let Some(project_path) =
         crate::session_scanner::tmux::resolve_focus_project_path(focus, sessions)

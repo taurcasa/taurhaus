@@ -867,7 +867,7 @@ mod tests {
             protocol::method::READ_README,
             protocol::method::READ_ASSET,
             protocol::method::SCAN_SESSIONS,
-            protocol::method::LIST_CLAUDE_SESSIONS,
+            protocol::method::LIST_DISPLAY_SESSIONS,
             protocol::method::LIST_RUNTIME_SESSIONS,
             protocol::method::WAIT_SESSION_UPDATES,
             protocol::method::LAUNCH_SESSION,

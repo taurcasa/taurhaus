@@ -21,14 +21,14 @@ pub use types::{
 };
 
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::ClaudeSourceIndex;
 
 /// Scan all task sources for a project and return a unified result.
 ///
 /// Calls each tool-specific parser and aggregates tasks. If a parser fails,
 /// its error is recorded but other parsers still contribute their results.
-pub fn get_tasks_for_project(project_path: &str, sessions: &[ClaudeSession]) -> TaskResult {
+pub fn get_tasks_for_project(project_path: &str, sessions: &[RuntimeSession]) -> TaskResult {
     get_tasks_for_project_with_index(project_path, sessions, None)
 }
 
@@ -36,7 +36,7 @@ pub fn get_tasks_for_project(project_path: &str, sessions: &[ClaudeSession]) -> 
 /// reusing a pre-built Claude source index for this scan cycle.
 pub fn get_tasks_for_project_with_index(
     project_path: &str,
-    sessions: &[ClaudeSession],
+    sessions: &[RuntimeSession],
     claude_index: Option<&ClaudeSourceIndex>,
 ) -> TaskResult {
     get_tasks_for_project_with(
@@ -51,21 +51,21 @@ pub fn get_tasks_for_project_with_index(
 
 fn get_tasks_for_project_with<CF, XF, GF>(
     project_path: &str,
-    sessions: &[ClaudeSession],
+    sessions: &[RuntimeSession],
     get_claude_tasks: CF,
     get_codex_tasks: XF,
     get_gemini_tasks: GF,
     claude_index: Option<&ClaudeSourceIndex>,
 ) -> TaskResult
 where
-    CF: Fn(&str, &[&ClaudeSession], Option<&ClaudeSourceIndex>) -> ScanOutcome,
-    XF: Fn(&str, &[&ClaudeSession]) -> ScanOutcome,
+    CF: Fn(&str, &[&RuntimeSession], Option<&ClaudeSourceIndex>) -> ScanOutcome,
+    XF: Fn(&str, &[&RuntimeSession]) -> ScanOutcome,
     GF: Fn(&str) -> ScanOutcome,
 {
     let mut result = TaskResult::empty();
 
     // Claude: structured task JSON
-    let claude_sessions: Vec<&ClaudeSession> = sessions
+    let claude_sessions: Vec<&RuntimeSession> = sessions
         .iter()
         .filter(|s| s.cli_tool == CliTool::Claude)
         .collect();
@@ -76,7 +76,7 @@ where
     );
 
     // Codex: update_plan from JSONL
-    let codex_sessions: Vec<&ClaudeSession> = sessions
+    let codex_sessions: Vec<&RuntimeSession> = sessions
         .iter()
         .filter(|s| s.cli_tool == CliTool::Codex)
         .collect();
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn empty_sessions_returns_empty_result() {
-        let sessions: Vec<ClaudeSession> = Vec::new();
+        let sessions: Vec<RuntimeSession> = Vec::new();
         let result = get_tasks_for_project_with(
             "/nonexistent/path",
             &sessions,

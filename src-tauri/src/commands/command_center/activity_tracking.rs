@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn promote_activity_from_sessions(
     app: &tauri::AppHandle,
     db: &DbState,
-    sessions: &[ClaudeSession],
+    sessions: &[DisplaySession],
 ) {
     match promote_activity_from_sessions_impl(db, sessions) {
         Ok(promoted) if promoted > 0 => {
@@ -23,7 +23,7 @@ pub(super) fn promote_activity_from_sessions(
 
 pub(super) fn promote_activity_from_sessions_impl(
     db: &DbState,
-    sessions: &[ClaudeSession],
+    sessions: &[DisplaySession],
 ) -> Result<usize, String> {
     let mut active_paths = HashSet::new();
     for session in sessions {

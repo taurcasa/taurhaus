@@ -8,7 +8,7 @@
 //! with 7-day lookback, match by `cwd` in first JSONL line.
 
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use chrono::{DateTime, Utc};
 use std::fs;
@@ -73,7 +73,7 @@ struct SessionDiscoveryOutcome {
 }
 
 /// Get tasks from Codex session JSONL files.
-pub fn get_tasks(project_path: &str, sessions: &[&ClaudeSession]) -> ScanOutcome {
+pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
     let mut diagnostics = CodexDiagnostics::default();
 
     // Try live sessions first — use jsonl_path directly
@@ -113,7 +113,7 @@ pub fn get_tasks(project_path: &str, sessions: &[&ClaudeSession]) -> ScanOutcome
 /// Testable version with injectable sessions directory.
 pub fn get_tasks_in(
     project_path: &str,
-    sessions: &[&ClaudeSession],
+    sessions: &[&RuntimeSession],
     sessions_dir: &Path,
 ) -> ScanOutcome {
     let mut diagnostics = CodexDiagnostics::default();

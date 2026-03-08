@@ -30,8 +30,8 @@ pub mod provider {
 
 pub mod session_scanner {
     pub use taurhaus_lib::session_scanner::{
-        scan_sessions, ActivityAttribution, ActivityConfidence, ClaudeSession, SessionGroupKind,
-        SessionState,
+        scan_sessions_for_display, scan_sessions_for_runtime, ActivityAttribution,
+        ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind, SessionState,
     };
 
     pub mod cli_tool {

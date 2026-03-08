@@ -8,13 +8,13 @@ pub(super) fn list_cli_sessions_impl(
     app: &tauri::AppHandle,
     db: &DbState,
     provider: &ProviderState,
-) -> Result<Vec<ClaudeSession>, String> {
+) -> Result<Vec<DisplaySession>, String> {
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "list-sessions";
             let request = protocol::DaemonRequest::new(
                 id,
-                protocol::method::LIST_CLAUDE_SESSIONS,
+                protocol::method::LIST_DISPLAY_SESSIONS,
                 serde_json::Value::Null,
             );
             match daemon.send_status_request(&request) {
@@ -52,7 +52,7 @@ pub(super) fn list_cli_sessions_impl(
         }
     }
 
-    let mut fallback = crate::session_scanner::scan_sessions();
+    let mut fallback = crate::session_scanner::scan_sessions_for_display();
     tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
     enrich_sessions_with_team_membership(
         app.state::<crate::coordination::state::CoordinationState>()
@@ -65,7 +65,7 @@ pub(super) fn list_cli_sessions_impl(
 
 pub(super) fn decode_daemon_session_list(
     payload: Option<serde_json::Value>,
-) -> Result<Vec<ClaudeSession>, String> {
+) -> Result<Vec<DisplaySession>, String> {
     match payload {
         Some(value) => serde_json::from_value(value).map_err(|e| {
             tracing::warn!(error = %e, "Failed to deserialize session list from daemon");

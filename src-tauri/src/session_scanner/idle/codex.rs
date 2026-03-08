@@ -22,6 +22,13 @@ impl CodexResolver {
         let base_dir = dirs::home_dir().map(|h| h.join(".codex").join("sessions"));
         Self { base_dir }
     }
+
+    pub fn detect_idle_for_pid(&self, project_path: &str, pid: u32) -> IdleResult {
+        let Some(base) = self.base_dir.as_ref() else {
+            return IdleResult::idle();
+        };
+        codex_detect_idle_for_pid(project_path, pid, base)
+    }
 }
 
 impl Default for CodexResolver {
@@ -98,6 +105,37 @@ pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> Idle
     }
 }
 
+pub(super) fn codex_detect_idle_for_pid(
+    project_path: &str,
+    pid: u32,
+    sessions_dir: &Path,
+) -> IdleResult {
+    codex_detect_idle_for_pid_with(project_path, sessions_dir, &|path| {
+        path.to_str()
+            .is_some_and(|path_str| crate::platform::process_has_open_path(pid, path_str))
+    })
+}
+
+fn codex_detect_idle_for_pid_with<F>(
+    project_path: &str,
+    sessions_dir: &Path,
+    file_open_by_pid: &F,
+) -> IdleResult
+where
+    F: Fn(&Path) -> bool,
+{
+    let candidates = codex_find_sessions_for_project(project_path, sessions_dir);
+    match candidates.as_slice() {
+        [] => IdleResult::idle(),
+        [only] => codex_result_from_file(only),
+        _ => candidates
+            .into_iter()
+            .find(|path| file_open_by_pid(path))
+            .map(|path| codex_result_from_file(&path))
+            .unwrap_or_else(IdleResult::idle),
+    }
+}
+
 /// Build an IdleResult from a Codex session file.
 fn codex_result_from_file(path: &Path) -> IdleResult {
     // Extract session ID from filename: "rollout-2026-02-21T17-25-42-UUID.jsonl"
@@ -144,9 +182,16 @@ const CODEX_LOOKBACK_DAYS: i64 = 7;
 /// within each directory, and directories are checked newest-first, so the
 /// active session is found quickly.
 fn codex_find_session_for_project(project_path: &str, sessions_dir: &Path) -> Option<PathBuf> {
+    codex_find_sessions_for_project(project_path, sessions_dir)
+        .into_iter()
+        .next()
+}
+
+fn codex_find_sessions_for_project(project_path: &str, sessions_dir: &Path) -> Vec<PathBuf> {
     use chrono::Local;
 
     let today = Local::now().date_naive();
+    let mut matches = Vec::new();
 
     // Scan backwards from today — most likely hit is today, then yesterday, etc.
     for days_back in 0..CODEX_LOOKBACK_DAYS {
@@ -186,12 +231,12 @@ fn codex_find_session_for_project(project_path: &str, sessions_dir: &Path) -> Op
 
         for entry in entries {
             if codex_session_matches_project(&entry.path(), project_path) {
-                return Some(entry.path());
+                matches.push(entry.path());
             }
         }
     }
 
-    None
+    matches
 }
 
 /// Check if a Codex JSONL file's session_meta.payload.cwd matches a project path.
@@ -452,5 +497,72 @@ mod tests {
         let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.session_id.is_none()); // Not found — beyond lookback
+    }
+
+    #[test]
+    fn codex_detect_idle_for_pid_prefers_open_jsonl_when_project_has_multiple_candidates() {
+        clear_codex_cache();
+        let tmp = TempDir::new().unwrap();
+        let project = "/home/user/projects/myapp";
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let first = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-00-00-first-uuid.jsonl",
+            project,
+        );
+        let second = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-05-00-second-uuid.jsonl",
+            project,
+        );
+
+        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &|path| path == second);
+        assert_eq!(result.session_id.as_deref(), Some("second-uuid"));
+        assert_eq!(
+            result.jsonl_path.as_deref(),
+            Some(second.to_string_lossy().as_ref())
+        );
+
+        let fallback = codex_detect_idle_for_pid_with(project, tmp.path(), &|path| path == first);
+        assert_eq!(fallback.session_id.as_deref(), Some("first-uuid"));
+        assert_eq!(
+            fallback.jsonl_path.as_deref(),
+            Some(first.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn codex_detect_idle_for_pid_refuses_project_level_guess_when_candidates_conflict() {
+        clear_codex_cache();
+        let tmp = TempDir::new().unwrap();
+        let project = "/home/user/projects/myapp";
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-00-00-first-uuid.jsonl",
+            project,
+        );
+        create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-05-00-second-uuid.jsonl",
+            project,
+        );
+
+        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &|_| false);
+        assert_eq!(result.state, SessionState::Idle);
+        assert!(result.session_id.is_none());
+        assert!(result.jsonl_path.is_none());
     }
 }

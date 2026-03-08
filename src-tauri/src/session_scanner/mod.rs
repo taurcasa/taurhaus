@@ -1,4 +1,4 @@
-//! Session scanner — detects Claude Code sessions running in tmux.
+//! Session scanner — detects CLI tool sessions running in tmux.
 //!
 //! Combines three detection strategies:
 //! 1. Process scanning (ps + /proc) — find claude processes and their project paths
@@ -8,6 +8,12 @@
 //! State changes use bidirectional hysteresis: a transition (idle↔active)
 //! only takes effect after 2 consecutive polls agree on the new state.
 //! This eliminates flickering from transient signals in either direction.
+//!
+//! Warning:
+//! - `DisplaySession` is the UI-safe view and intentionally strips transcript
+//!   metadata such as `session_id` and `jsonl_path`.
+//! - Coordination and other transcript-aware logic must use
+//!   `RuntimeSession` via `scan_sessions_for_runtime()`.
 
 pub mod cli_tool;
 pub mod compaction;
@@ -71,9 +77,9 @@ pub enum SessionGroupKind {
     Standalone,
 }
 
-/// A detected CLI tool session with all available metadata.
+/// A detected CLI tool session for UI/display consumers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ClaudeSession {
+pub struct DisplaySession {
     /// Process ID of the CLI tool.
     pub pid: u32,
     /// Absolute path to the project directory (from /proc/PID/cwd).
@@ -94,10 +100,6 @@ pub struct ClaudeSession {
     pub tmux_window_name: Option<String>,
     /// Session state: Active or Idle.
     pub state: SessionState,
-    /// Session ID (from JSONL filename, if found).
-    pub session_id: Option<String>,
-    /// Path to the active JSONL transcript file (if found).
-    pub jsonl_path: Option<String>,
     /// Whether proc-level IO/network detection reported recent active work.
     #[serde(default)]
     pub recent_io: bool,
@@ -125,6 +127,67 @@ pub struct ClaudeSession {
     /// Managed team member name associated with this session.
     #[serde(default)]
     pub member_name: Option<String>,
+}
+
+/// A detected CLI tool session with runtime transcript metadata preserved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeSession {
+    pub pid: u32,
+    pub project_path: String,
+    pub tty: String,
+    pub args: String,
+    pub cli_tool: CliTool,
+    pub tmux_session: Option<String>,
+    pub tmux_window: Option<String>,
+    pub tmux_pane: Option<String>,
+    pub tmux_window_name: Option<String>,
+    pub state: SessionState,
+    pub session_id: Option<String>,
+    pub jsonl_path: Option<String>,
+    #[serde(default)]
+    pub recent_io: bool,
+    #[serde(default)]
+    pub last_output_age_secs: Option<u64>,
+    #[serde(default)]
+    pub activity_confidence: ActivityConfidence,
+    #[serde(default)]
+    pub activity_attribution: ActivityAttribution,
+    #[serde(default)]
+    pub project_unattributed_active: bool,
+    #[serde(default)]
+    pub group_kind: SessionGroupKind,
+    #[serde(default)]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub group_label: Option<String>,
+    #[serde(default)]
+    pub member_name: Option<String>,
+}
+
+impl From<RuntimeSession> for DisplaySession {
+    fn from(session: RuntimeSession) -> Self {
+        Self {
+            pid: session.pid,
+            project_path: session.project_path,
+            tty: session.tty,
+            args: session.args,
+            cli_tool: session.cli_tool,
+            tmux_session: session.tmux_session,
+            tmux_window: session.tmux_window,
+            tmux_pane: session.tmux_pane,
+            tmux_window_name: session.tmux_window_name,
+            state: session.state,
+            recent_io: session.recent_io,
+            last_output_age_secs: session.last_output_age_secs,
+            activity_confidence: session.activity_confidence,
+            activity_attribution: session.activity_attribution,
+            project_unattributed_active: session.project_unattributed_active,
+            group_kind: session.group_kind,
+            group_id: session.group_id,
+            group_label: session.group_label,
+            member_name: session.member_name,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -166,9 +229,12 @@ fn json_number_u64(value: u64) -> Value {
 }
 
 #[cfg_attr(not(any(test, target_os = "windows")), allow(dead_code))]
-fn decode_daemon_session_response(
+fn decode_daemon_session_response<T>(
     response: crate::daemon::protocol::DaemonResponse,
-) -> Option<Vec<ClaudeSession>> {
+) -> Option<Vec<T>>
+where
+    T: for<'de> Deserialize<'de>,
+{
     if response.error.is_some() {
         return None;
     }
@@ -180,7 +246,10 @@ fn decode_daemon_session_response(
 }
 
 #[cfg(target_os = "windows")]
-fn scan_sessions_via_daemon(method: &str) -> Option<Vec<ClaudeSession>> {
+fn scan_sessions_via_daemon<T>(method: &str) -> Option<Vec<T>>
+where
+    T: for<'de> Deserialize<'de>,
+{
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
 
@@ -213,12 +282,12 @@ fn scan_sessions_via_daemon(method: &str) -> Option<Vec<ClaudeSession>> {
 }
 
 #[cfg(target_os = "windows")]
-fn scan_sessions_via_daemon_snapshot() -> Option<Vec<ClaudeSession>> {
-    scan_sessions_via_daemon(crate::daemon::protocol::method::LIST_CLAUDE_SESSIONS)
+fn scan_display_sessions_via_daemon() -> Option<Vec<DisplaySession>> {
+    scan_sessions_via_daemon(crate::daemon::protocol::method::LIST_DISPLAY_SESSIONS)
 }
 
 #[cfg(target_os = "windows")]
-fn scan_runtime_sessions_via_daemon() -> Option<Vec<ClaudeSession>> {
+fn scan_runtime_sessions_via_daemon() -> Option<Vec<RuntimeSession>> {
     scan_sessions_via_daemon(crate::daemon::protocol::method::LIST_RUNTIME_SESSIONS)
 }
 
@@ -443,10 +512,9 @@ fn compute_activity_decision(
 ///
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
-pub fn scan_sessions() -> Vec<ClaudeSession> {
+pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
     #[cfg(target_os = "windows")]
-    if let Some(sessions) = scan_sessions_via_daemon_snapshot() {
-        compaction::process_codex_compaction_events(&sessions);
+    if let Some(sessions) = scan_display_sessions_via_daemon() {
         return sessions;
     }
 
@@ -471,13 +539,14 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     let mut process_signal_ms = Duration::default();
     let mut ownership_ms = Duration::default();
 
-    let mut sessions: Vec<ClaudeSession> = processes
+    let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
 
             let idle_started = Instant::now();
-            let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
+            let idle_result =
+                idle::detect_runtime_idle(&proc.project_path, proc.pid, proc.cli_tool);
             idle_ms += idle_started.elapsed();
             let file_active = idle_result.state == SessionState::Active;
             let sessions_for_tool_in_project = sessions_per_project_tool
@@ -525,12 +594,6 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
             );
 
             // Hide shared session metadata when activity attribution is unavailable.
-            let (session_id, jsonl_path) = if decision.keep_session_metadata {
-                (idle_result.session_id, idle_result.jsonl_path)
-            } else {
-                (None, None)
-            };
-
             // Apply bidirectional hysteresis
             let state = apply_hysteresis(proc.pid, decision.raw_state);
             let (activity_confidence, activity_attribution, project_unattributed_active) =
@@ -546,7 +609,7 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                     (ActivityConfidence::Low, ActivityAttribution::None, false)
                 };
 
-            ClaudeSession {
+            RuntimeSession {
                 pid: proc.pid,
                 project_path: proc.project_path,
                 tty: proc.tty,
@@ -557,8 +620,16 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
                 tmux_pane: tmux.map(|t| t.pane_id.clone()),
                 tmux_window_name: tmux.map(|t| t.window_name.clone()),
                 state,
-                session_id,
-                jsonl_path,
+                session_id: if decision.keep_session_metadata {
+                    idle_result.session_id
+                } else {
+                    None
+                },
+                jsonl_path: if decision.keep_session_metadata {
+                    idle_result.jsonl_path
+                } else {
+                    None
+                },
                 recent_io,
                 last_output_age_secs: idle_result.last_output_age_secs,
                 activity_confidence,
@@ -642,15 +713,15 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
         fields,
     );
 
-    sessions
+    sessions.into_iter().map(DisplaySession::from).collect()
 }
 
 /// Scan for runtime reconciliation/session-id detection without hiding session metadata.
 ///
 /// Coordination uses this path when it needs exact `(pane, tool) -> session_id`
-/// correlation. Unlike the UI-facing `scan_sessions()`, this keeps session ids
+/// correlation. Unlike the UI-facing `scan_sessions_for_display()`, this keeps session ids
 /// even when activity attribution is ambiguous in multi-session projects.
-pub fn scan_sessions_for_runtime() -> Vec<ClaudeSession> {
+pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
     #[cfg(target_os = "windows")]
     if let Some(sessions) = scan_runtime_sessions_via_daemon() {
         return sessions;
@@ -664,13 +735,13 @@ pub fn scan_sessions_for_runtime() -> Vec<ClaudeSession> {
         &tmux::list_panes,
     );
 
-    let mut sessions: Vec<ClaudeSession> = processes
+    let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
             let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
 
-            ClaudeSession {
+            RuntimeSession {
                 pid: proc.pid,
                 project_path: proc.project_path,
                 tty: proc.tty,
@@ -708,7 +779,7 @@ pub fn scan_sessions_with<F, G, H>(
     process_scanner: &F,
     tmux_lister: &G,
     idle_detector: &H,
-) -> Vec<ClaudeSession>
+) -> Vec<DisplaySession>
 where
     F: Fn() -> Vec<process::ProcessInfo>,
     G: Fn() -> HashMap<String, tmux::TmuxPane>,
@@ -717,7 +788,7 @@ where
     let processes = process_scanner();
     let pane_map = tmux_lister();
 
-    let mut sessions: Vec<ClaudeSession> = processes
+    let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
         .map(|proc| {
             // Look up tmux pane by TTY
@@ -726,7 +797,7 @@ where
             // Check idle state via JSONL mtime
             let idle_result = idle_detector(&proc.project_path);
 
-            ClaudeSession {
+            RuntimeSession {
                 pid: proc.pid,
                 project_path: proc.project_path,
                 tty: proc.tty,
@@ -757,7 +828,7 @@ where
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
 
-    sessions
+    sessions.into_iter().map(DisplaySession::from).collect()
 }
 
 #[cfg(test)]
@@ -765,22 +836,22 @@ fn scan_sessions_for_runtime_with<F, G, H>(
     process_scanner: &F,
     tmux_lister: &G,
     idle_detector: &H,
-) -> Vec<ClaudeSession>
+) -> Vec<RuntimeSession>
 where
     F: Fn() -> Vec<process::ProcessInfo>,
     G: Fn() -> HashMap<String, tmux::TmuxPane>,
-    H: Fn(&str, CliTool) -> idle::IdleResult,
+    H: Fn(&process::ProcessInfo) -> idle::IdleResult,
 {
     let processes = process_scanner();
     let pane_map = tmux_lister();
 
-    let mut sessions: Vec<ClaudeSession> = processes
+    let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
-            let idle_result = idle_detector(&proc.project_path, proc.cli_tool);
+            let idle_result = idle_detector(&proc);
 
-            ClaudeSession {
+            RuntimeSession {
                 pid: proc.pid,
                 project_path: proc.project_path,
                 tty: proc.tty,
@@ -833,8 +904,8 @@ mod tests {
     }
 
     #[test]
-    fn claude_session_serializes_to_json() {
-        let session = ClaudeSession {
+    fn runtime_session_serializes_to_json() {
+        let session = RuntimeSession {
             pid: 1234,
             project_path: "/home/user/projects/foo".to_string(),
             tty: "/dev/pts/2".to_string(),
@@ -873,8 +944,8 @@ mod tests {
     }
 
     #[test]
-    fn claude_session_with_no_tmux_serializes() {
-        let session = ClaudeSession {
+    fn display_session_strips_runtime_metadata_on_serialize() {
+        let session = DisplaySession {
             pid: 1234,
             project_path: "/home/user/projects/foo".to_string(),
             tty: "/dev/pts/2".to_string(),
@@ -885,8 +956,6 @@ mod tests {
             tmux_pane: None,
             tmux_window_name: None,
             state: SessionState::Idle,
-            session_id: None,
-            jsonl_path: None,
             recent_io: false,
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
@@ -901,14 +970,13 @@ mod tests {
         let json = serde_json::to_value(&session).unwrap();
         assert_eq!(json["state"], "idle");
         assert!(json["tmux_session"].is_null());
-        assert!(json["session_id"].is_null());
+        assert!(json.get("session_id").is_none());
+        assert!(json.get("jsonl_path").is_none());
     }
 
     #[test]
-    fn decode_daemon_session_response_returns_sessions() {
-        // Regression: Windows host-side session consumers must accept daemon-
-        // backed session lists because the local Windows scanner is stubbed.
-        let session = ClaudeSession {
+    fn runtime_session_sanitizes_to_display_session() {
+        let runtime = RuntimeSession {
             pid: 42,
             project_path: "/home/user/projects/taurhaus".to_string(),
             tty: "/dev/pts/7".to_string(),
@@ -932,10 +1000,44 @@ mod tests {
             member_name: None,
         };
 
-        let decoded = decode_daemon_session_response(crate::daemon::protocol::DaemonResponse::ok(
-            "list",
-            vec![session.clone()],
-        ))
+        let display = DisplaySession::from(runtime);
+        let json = serde_json::to_value(&display).unwrap();
+
+        assert_eq!(display.pid, 42);
+        assert_eq!(display.tmux_pane.as_deref(), Some("%7"));
+        assert!(json.get("session_id").is_none());
+        assert!(json.get("jsonl_path").is_none());
+    }
+
+    #[test]
+    fn decode_daemon_display_session_response_returns_sessions() {
+        // Regression: Windows host-side session consumers must accept daemon-
+        // backed session lists because the local Windows scanner is stubbed.
+        let session = DisplaySession {
+            pid: 42,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%7".to_string()),
+            tmux_window_name: Some("taurhaus".to_string()),
+            state: SessionState::Active,
+            recent_io: false,
+            last_output_age_secs: Some(1),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        };
+
+        let decoded: Vec<DisplaySession> = decode_daemon_session_response(
+            crate::daemon::protocol::DaemonResponse::ok("list", vec![session.clone()]),
+        )
         .expect("daemon session list should decode");
 
         assert_eq!(decoded, vec![session]);
@@ -952,7 +1054,8 @@ mod tests {
             }),
         };
 
-        assert!(decode_daemon_session_response(response).is_none());
+        let decoded: Option<Vec<DisplaySession>> = decode_daemon_session_response(response);
+        assert!(decoded.is_none());
     }
 
     #[test]
@@ -1025,8 +1128,6 @@ mod tests {
         assert_eq!(a.tmux_session.as_deref(), Some("main"));
         assert_eq!(a.tmux_pane.as_deref(), Some("%0"));
         assert_eq!(a.state, SessionState::Active);
-        assert_eq!(a.session_id.as_deref(), Some("sess-aaa"));
-
         let b = sessions
             .iter()
             .find(|s| s.pid == 200)
@@ -1036,7 +1137,10 @@ mod tests {
         assert!(b.tmux_session.is_none());
         assert!(b.tmux_pane.is_none());
         assert_eq!(b.state, SessionState::Idle);
-        assert!(b.session_id.is_none());
+        let display_json = serde_json::to_value(a).unwrap();
+        assert!(display_json.get("session_id").is_none());
+        let display_json = serde_json::to_value(b).unwrap();
+        assert!(display_json.get("session_id").is_none());
     }
 
     #[test]
@@ -1051,7 +1155,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_sessions_for_runtime_keeps_session_metadata_for_multi_session_project() {
+    fn scan_sessions_for_runtime_uses_distinct_codex_metadata_per_pid_in_multi_session_project() {
         let mock_processes = || {
             vec![
                 process::ProcessInfo {
@@ -1096,29 +1200,34 @@ mod tests {
             ])
         };
 
-        let mock_idle = |project_path: &str, cli_tool: CliTool| -> idle::IdleResult {
-            assert_eq!(project_path, "/home/user/proj-a");
-            assert_eq!(cli_tool, CliTool::Codex);
-            idle::IdleResult {
-                state: SessionState::Idle,
-                session_id: Some("rollout-123".to_string()),
-                jsonl_path: Some("/tmp/rollout-123.jsonl".to_string()),
-                last_output_age_secs: Some(42),
+        let mock_idle = |proc: &process::ProcessInfo| -> idle::IdleResult {
+            assert_eq!(proc.project_path, "/home/user/proj-a");
+            assert_eq!(proc.cli_tool, CliTool::Codex);
+            if proc.pid == 100 {
+                idle::IdleResult {
+                    state: SessionState::Idle,
+                    session_id: Some("rollout-123".to_string()),
+                    jsonl_path: Some("/tmp/rollout-123.jsonl".to_string()),
+                    last_output_age_secs: Some(42),
+                }
+            } else {
+                idle::IdleResult {
+                    state: SessionState::Idle,
+                    session_id: Some("rollout-456".to_string()),
+                    jsonl_path: Some("/tmp/rollout-456.jsonl".to_string()),
+                    last_output_age_secs: Some(41),
+                }
             }
         };
 
         let sessions = scan_sessions_for_runtime_with(&mock_processes, &mock_tmux, &mock_idle);
         assert_eq!(sessions.len(), 2);
-        assert_eq!(sessions[0].session_id.as_deref(), Some("rollout-123"));
-        assert_eq!(sessions[1].session_id.as_deref(), Some("rollout-123"));
-        assert_eq!(
-            sessions[0].jsonl_path.as_deref(),
-            Some("/tmp/rollout-123.jsonl")
-        );
-        assert_eq!(
-            sessions[1].jsonl_path.as_deref(),
-            Some("/tmp/rollout-123.jsonl")
-        );
+        let first = sessions.iter().find(|session| session.pid == 100).unwrap();
+        let second = sessions.iter().find(|session| session.pid == 200).unwrap();
+        assert_eq!(first.session_id.as_deref(), Some("rollout-123"));
+        assert_eq!(second.session_id.as_deref(), Some("rollout-456"));
+        assert_eq!(first.jsonl_path.as_deref(), Some("/tmp/rollout-123.jsonl"));
+        assert_eq!(second.jsonl_path.as_deref(), Some("/tmp/rollout-456.jsonl"));
     }
 
     // -----------------------------------------------------------------------

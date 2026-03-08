@@ -12,8 +12,7 @@ use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfig};
 use crate::session_scanner::control::resolve_configured_tool_command;
 use crate::session_scanner::tmux::TmuxFocusState;
-use crate::session_scanner::SessionGroupKind;
-use crate::session_scanner::SessionState;
+use crate::session_scanner::{DisplaySession, SessionGroupKind, SessionState};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::Path;
@@ -151,8 +150,8 @@ fn launch_mode_deserializes_valid_values_and_rejects_invalid() {
     assert!(serde_json::from_str::<LaunchMode>("\"invalid\"").is_err());
 }
 
-fn active_session_for(path: &str) -> ClaudeSession {
-    ClaudeSession {
+fn active_session_for(path: &str) -> DisplaySession {
+    DisplaySession {
         pid: 1234,
         project_path: path.to_string(),
         tty: "/dev/pts/1".to_string(),
@@ -163,8 +162,6 @@ fn active_session_for(path: &str) -> ClaudeSession {
         tmux_pane: Some("%1".to_string()),
         tmux_window_name: Some("work".to_string()),
         state: SessionState::Active,
-        session_id: Some("sid".to_string()),
-        jsonl_path: Some("/tmp/sid.jsonl".to_string()),
         recent_io: false,
         last_output_age_secs: None,
         activity_confidence: crate::session_scanner::ActivityConfidence::High,
@@ -330,8 +327,8 @@ fn daemon_session_decode_handles_missing_invalid_and_valid_payloads() {
         .is_empty());
 
     let payload = Some(serde_json::json!([
-        {"pid": 1234, "project_path": "/tmp/project-a", "tty": "/dev/pts/1", "args": "claude --continue", "cli_tool": "claude", "tmux_session": "taurhaus", "tmux_window": "1", "tmux_pane": "%1", "tmux_window_name": "a", "state": "active", "session_id": "sess-a", "jsonl_path": "/tmp/a.jsonl"},
-        {"pid": 5678, "project_path": "/tmp/project-b", "tty": "/dev/pts/2", "args": "codex --yolo", "cli_tool": "codex", "tmux_session": null, "tmux_window": null, "tmux_pane": null, "tmux_window_name": null, "state": "idle", "session_id": null, "jsonl_path": null}
+        {"pid": 1234, "project_path": "/tmp/project-a", "tty": "/dev/pts/1", "args": "claude --continue", "cli_tool": "claude", "tmux_session": "taurhaus", "tmux_window": "1", "tmux_pane": "%1", "tmux_window_name": "a", "state": "active"},
+        {"pid": 5678, "project_path": "/tmp/project-b", "tty": "/dev/pts/2", "args": "codex --yolo", "cli_tool": "codex", "tmux_session": null, "tmux_window": null, "tmux_pane": null, "tmux_window_name": null, "state": "idle"}
     ]));
     let sessions = decode_daemon_session_list(payload).expect("valid session payload");
     assert_eq!(sessions.len(), 2);
@@ -460,7 +457,6 @@ fn enrich_sessions_with_team_membership_distinguishes_same_tool_members_by_pane(
     let mut second = active_session_for("/home/dev/projects/taurhaus");
     second.pid = 4321;
     second.tmux_pane = Some("%12".to_string());
-    second.session_id = Some("sid-2".to_string());
 
     let mut sessions = vec![first, second];
     enrich_sessions_with_team_membership(tmp.path(), &mut sessions);

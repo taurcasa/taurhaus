@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::RuntimeSession;
 
 /// Unified Claude source index.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -32,14 +32,14 @@ pub fn build_claude_source_index() -> ClaudeSourceIndex {
     let tasks_base = home.join(".claude").join("tasks");
     let projects_base = home.join(".claude").join("projects");
     let teams_base = home.join(".claude").join("teams");
-    let live_sessions = crate::session_scanner::scan_sessions();
+    let live_sessions = crate::session_scanner::scan_sessions_for_runtime();
 
     build_claude_source_index_in(&live_sessions, &tasks_base, &projects_base, &teams_base)
 }
 
 /// Build Claude source index using caller-provided live sessions.
 pub fn build_claude_source_index_with_live_sessions(
-    live_sessions: &[ClaudeSession],
+    live_sessions: &[RuntimeSession],
 ) -> ClaudeSourceIndex {
     let Some(home) = dirs::home_dir() else {
         return ClaudeSourceIndex::default();
@@ -54,7 +54,7 @@ pub fn build_claude_source_index_with_live_sessions(
 
 /// Build Claude source index from injectable inputs (testable variant).
 pub fn build_claude_source_index_in(
-    live_sessions: &[ClaudeSession],
+    live_sessions: &[RuntimeSession],
     tasks_base: &Path,
     projects_base: &Path,
     teams_base: &Path,
@@ -69,7 +69,7 @@ pub fn build_claude_source_index_in(
 }
 
 fn merge_live_session_map(
-    live_sessions: &[ClaudeSession],
+    live_sessions: &[RuntimeSession],
     sessions: &mut HashMap<String, PathBuf>,
 ) {
     for session in live_sessions
@@ -244,8 +244,8 @@ mod tests {
         f.sync_all().unwrap();
     }
 
-    fn make_live_claude_session(session_id: &str, project_path: &str) -> ClaudeSession {
-        ClaudeSession {
+    fn make_live_claude_session(session_id: &str, project_path: &str) -> RuntimeSession {
+        RuntimeSession {
             pid: 1,
             project_path: project_path.to_string(),
             tty: "/dev/pts/1".to_string(),

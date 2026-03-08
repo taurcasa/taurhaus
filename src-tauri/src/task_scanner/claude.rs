@@ -11,7 +11,7 @@
 //!    to the requested project path.
 
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::{build_claude_source_index_in, ClaudeSourceIndex};
 use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use std::fs;
@@ -70,7 +70,7 @@ struct RawClaudeTask {
 }
 
 /// Get tasks for a project from Claude Code's task storage.
-pub fn get_tasks(project_path: &str, sessions: &[&ClaudeSession]) -> ScanOutcome {
+pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
     let Some(home) = dirs::home_dir() else {
         return ScanOutcome::Unavailable("Could not resolve home directory".to_string());
     };
@@ -90,7 +90,7 @@ pub fn get_tasks(project_path: &str, sessions: &[&ClaudeSession]) -> ScanOutcome
 /// Get tasks for a project with an optional pre-built source index.
 pub fn get_tasks_with_index(
     project_path: &str,
-    sessions: &[&ClaudeSession],
+    sessions: &[&RuntimeSession],
     prebuilt_index: Option<&ClaudeSourceIndex>,
 ) -> ScanOutcome {
     let Some(home) = dirs::home_dir() else {
@@ -113,7 +113,7 @@ pub fn get_tasks_with_index(
 /// Testable version with injectable directories.
 pub fn get_tasks_in(
     project_path: &str,
-    sessions: &[&ClaudeSession],
+    sessions: &[&RuntimeSession],
     tasks_base: &Path,
     projects_base: &Path,
     teams_base: &Path,
@@ -130,7 +130,7 @@ pub fn get_tasks_in(
 
 pub fn get_tasks_in_with_index(
     project_path: &str,
-    sessions: &[&ClaudeSession],
+    sessions: &[&RuntimeSession],
     tasks_base: &Path,
     projects_base: &Path,
     teams_base: &Path,
@@ -149,7 +149,7 @@ pub fn get_tasks_in_with_index(
         ));
     }
 
-    let live_sessions: Vec<ClaudeSession> = sessions.iter().map(|s| (*s).clone()).collect();
+    let live_sessions: Vec<RuntimeSession> = sessions.iter().map(|s| (*s).clone()).collect();
     let built_index;
     let index = match prebuilt_index {
         Some(i) => i,
@@ -686,8 +686,8 @@ mod tests {
         );
     }
 
-    fn make_live_session(session_id: &str, project_path: &str) -> ClaudeSession {
-        ClaudeSession {
+    fn make_live_session(session_id: &str, project_path: &str) -> RuntimeSession {
+        RuntimeSession {
             pid: 1234,
             project_path: project_path.to_string(),
             tty: "/dev/pts/1".to_string(),

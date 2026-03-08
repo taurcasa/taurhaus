@@ -26,7 +26,7 @@ use crate::coordination::runtime::{
     apply_background_command_settings, CoordinationRuntime, SystemCoordinationRuntime,
 };
 use crate::coordination::stores::TeamConfigStore;
-use crate::session_scanner::{scan_sessions, ActivityConfidence, SessionState};
+use crate::session_scanner::{scan_sessions_for_display, ActivityConfidence, SessionState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1804,7 +1804,7 @@ fn default_session_scan(now: DateTime<Utc>) -> Vec<SessionSignal> {
         return Vec::new();
     }
 
-    scan_sessions()
+    scan_sessions_for_display()
         .into_iter()
         .map(|session| SessionSignal {
             pane_id: session.tmux_pane,

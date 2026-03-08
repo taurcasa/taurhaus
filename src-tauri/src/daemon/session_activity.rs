@@ -9,7 +9,7 @@ use crate::coordination::activity_export::{
     default_activity_export_teams_dir, export_activity_snapshots_for_sessions,
 };
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::DisplaySession;
 use crate::session_scanner::SessionState;
 
 /// Scanner cadence for daemon-owned session activity tracking.
@@ -23,7 +23,7 @@ const MAX_WAIT: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSnapshot {
     pub version: u64,
-    pub sessions: Vec<ClaudeSession>,
+    pub sessions: Vec<DisplaySession>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +36,7 @@ pub struct SessionUpdate {
 struct HubState {
     initialized: bool,
     version: u64,
-    sessions: Vec<ClaudeSession>,
+    sessions: Vec<DisplaySession>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +53,7 @@ struct SessionEventSignature {
     project_unattributed_active: bool,
 }
 
-fn event_signature(session: &ClaudeSession) -> SessionEventSignature {
+fn event_signature(session: &DisplaySession) -> SessionEventSignature {
     SessionEventSignature {
         pid: session.pid,
         project_path: session.project_path.clone(),
@@ -68,7 +68,7 @@ fn event_signature(session: &ClaudeSession) -> SessionEventSignature {
     }
 }
 
-fn activity_changed(prev: &[ClaudeSession], next: &[ClaudeSession]) -> bool {
+fn activity_changed(prev: &[DisplaySession], next: &[DisplaySession]) -> bool {
     let mut prev_sig: Vec<SessionEventSignature> = prev.iter().map(event_signature).collect();
     let mut next_sig: Vec<SessionEventSignature> = next.iter().map(event_signature).collect();
     prev_sig.sort_by_key(|s| s.pid);
@@ -82,7 +82,7 @@ struct ScannerCadence {
 }
 
 impl ScannerCadence {
-    fn next_interval(&mut self, changed: bool, sessions: &[ClaudeSession]) -> Duration {
+    fn next_interval(&mut self, changed: bool, sessions: &[DisplaySession]) -> Duration {
         let all_idle = sessions.iter().all(|s| s.state == SessionState::Idle);
 
         if changed || !all_idle {
@@ -196,7 +196,7 @@ impl SessionActivityHub {
             let mut cadence = ScannerCadence::default();
 
             loop {
-                let sessions = crate::session_scanner::scan_sessions();
+                let sessions = crate::session_scanner::scan_sessions_for_display();
                 let export_stats = export_activity_snapshots_for_sessions(
                     &default_activity_export_teams_dir(),
                     &sessions,
@@ -241,8 +241,8 @@ impl SessionActivityHub {
 mod tests {
     use super::*;
 
-    fn session_with_state(state: SessionState) -> ClaudeSession {
-        ClaudeSession {
+    fn session_with_state(state: SessionState) -> DisplaySession {
+        DisplaySession {
             pid: 1,
             project_path: "/tmp/project".to_string(),
             tty: "/dev/pts/1".to_string(),
@@ -253,8 +253,6 @@ mod tests {
             tmux_pane: Some("%1".to_string()),
             tmux_window_name: Some("project".to_string()),
             state,
-            session_id: None,
-            jsonl_path: None,
             recent_io: false,
             last_output_age_secs: None,
             activity_confidence: crate::session_scanner::ActivityConfidence::Low,

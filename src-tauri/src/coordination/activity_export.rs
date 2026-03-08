@@ -10,7 +10,7 @@ use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
-    ActivityAttribution, ActivityConfidence, ClaudeSession, SessionGroupKind, SessionState,
+    ActivityAttribution, ActivityConfidence, DisplaySession, SessionGroupKind, SessionState,
 };
 
 #[derive(Debug, Clone)]
@@ -77,7 +77,7 @@ pub(crate) fn default_activity_export_teams_dir() -> std::path::PathBuf {
 
 pub(crate) fn enrich_sessions_with_team_membership(
     teams_dir: &Path,
-    sessions: &mut [ClaudeSession],
+    sessions: &mut [DisplaySession],
 ) {
     if sessions.is_empty() {
         return;
@@ -109,7 +109,7 @@ pub(crate) fn enrich_sessions_with_team_membership(
 
 pub(crate) fn export_activity_snapshots_for_sessions(
     teams_dir: &Path,
-    sessions: &[ClaudeSession],
+    sessions: &[DisplaySession],
     observed_at: DateTime<Utc>,
 ) -> ActivitySnapshotExportStats {
     let team_names = match TeamConfigStore::list(teams_dir) {
@@ -205,9 +205,9 @@ pub(crate) fn export_activity_snapshots_for_sessions(
 }
 
 fn best_sessions_by_member<'a>(
-    sessions: &'a [ClaudeSession],
-) -> HashMap<(String, String), &'a ClaudeSession> {
-    let mut by_member: HashMap<(String, String), &'a ClaudeSession> = HashMap::new();
+    sessions: &'a [DisplaySession],
+) -> HashMap<(String, String), &'a DisplaySession> {
+    let mut by_member: HashMap<(String, String), &'a DisplaySession> = HashMap::new();
     for session in sessions {
         if session.group_kind != SessionGroupKind::MeshTeam {
             continue;
@@ -228,7 +228,7 @@ fn best_sessions_by_member<'a>(
     by_member
 }
 
-fn preferred_session(existing: &ClaudeSession, candidate: &ClaudeSession) -> bool {
+fn preferred_session(existing: &DisplaySession, candidate: &DisplaySession) -> bool {
     if existing.state == SessionState::Active && candidate.state != SessionState::Active {
         return true;
     }
@@ -300,7 +300,7 @@ fn load_session_memberships(
 }
 
 fn assign_session_memberships(
-    sessions: &mut [ClaudeSession],
+    sessions: &mut [DisplaySession],
     session_indices: &[usize],
     candidates: &[SessionMembershipMetadata],
 ) {
@@ -341,7 +341,7 @@ fn assign_session_memberships(
 }
 
 fn build_member_activity_snapshot(
-    session: Option<&ClaudeSession>,
+    session: Option<&DisplaySession>,
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,
 ) -> MemberActivitySnapshot {
@@ -367,7 +367,7 @@ fn build_member_activity_snapshot(
 }
 
 fn classify_activity_confidence(
-    session: Option<&ClaudeSession>,
+    session: Option<&DisplaySession>,
     pane_probe: &PaneActivityProbe,
     last_output_age_secs: Option<u64>,
 ) -> SnapshotActivityConfidence {
@@ -660,8 +660,8 @@ mod tests {
         .expect("runtime saved");
     }
 
-    fn sample_session(project_path: &str, pane_id: &str, state: SessionState) -> ClaudeSession {
-        ClaudeSession {
+    fn sample_session(project_path: &str, pane_id: &str, state: SessionState) -> DisplaySession {
+        DisplaySession {
             pid: 1234,
             project_path: project_path.to_string(),
             tty: "/dev/pts/9".to_string(),
@@ -672,8 +672,6 @@ mod tests {
             tmux_pane: Some(pane_id.to_string()),
             tmux_window_name: Some("project".to_string()),
             state,
-            session_id: None,
-            jsonl_path: None,
             recent_io: false,
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,

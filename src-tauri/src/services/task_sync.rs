@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::RuntimeSession;
 use crate::ProviderState;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -332,7 +332,7 @@ pub(crate) fn scan_tasks_from_files(
     provider: &ProviderState,
     project_path: &str,
     scan_cycle_id: Option<u64>,
-    cached_sessions: Option<&[ClaudeSession]>,
+    cached_sessions: Option<&[RuntimeSession]>,
     cached_claude_index: Option<&crate::task_scanner::claude_index::ClaudeSourceIndex>,
 ) -> crate::task_scanner::TaskResult {
     if let Some(ref daemon) = provider.daemon {
@@ -377,10 +377,10 @@ pub(crate) fn scan_tasks_from_files(
         }
     }
 
-    let all_sessions: Vec<ClaudeSession> = cached_sessions
+    let all_sessions: Vec<RuntimeSession> = cached_sessions
         .map(|s| s.to_vec())
-        .unwrap_or_else(crate::session_scanner::scan_sessions);
-    let project_sessions: Vec<ClaudeSession> = all_sessions
+        .unwrap_or_else(crate::session_scanner::scan_sessions_for_runtime);
+    let project_sessions: Vec<RuntimeSession> = all_sessions
         .into_iter()
         .filter(|s| s.project_path == project_path)
         .collect();

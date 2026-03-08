@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands;
 use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
-use crate::session_scanner::ClaudeSession;
+use crate::session_scanner::DisplaySession;
 use crate::{
     daemon, db, fs, models, provider, services, watch_targets, ProviderState, WatcherState,
 };
@@ -38,7 +38,7 @@ fn claude_tasks_watch_dir(projects: &[models::Project]) -> Option<String> {
 /// Convert daemon-emitted Linux session paths to frontend-visible Windows paths
 /// when the daemon runs in WSL mode.
 fn normalize_sessions_for_frontend(
-    sessions: &mut [ClaudeSession],
+    sessions: &mut [DisplaySession],
     wsl_distro: Option<&str>,
     native_daemon: bool,
 ) {
@@ -788,8 +788,8 @@ mod tests {
         }
     }
 
-    fn test_session(path: &str) -> ClaudeSession {
-        ClaudeSession {
+    fn test_session(path: &str) -> DisplaySession {
+        DisplaySession {
             pid: 1234,
             project_path: path.to_string(),
             tty: "/dev/pts/1".to_string(),
@@ -800,8 +800,6 @@ mod tests {
             tmux_pane: Some("%1".to_string()),
             tmux_window_name: Some("work".to_string()),
             state: SessionState::Active,
-            session_id: Some("sid".to_string()),
-            jsonl_path: Some("/home/dev/.codex/sessions/x.jsonl".to_string()),
             recent_io: false,
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,

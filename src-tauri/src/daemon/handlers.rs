@@ -16,7 +16,7 @@ use crate::task_scanner::claude_index::{
 #[derive(Debug, Clone)]
 struct ProjectTaskScanCache {
     cycle_id: u64,
-    sessions: Vec<crate::session_scanner::ClaudeSession>,
+    sessions: Vec<crate::session_scanner::RuntimeSession>,
     claude_index: ClaudeSourceIndex,
 }
 
@@ -65,7 +65,7 @@ pub(crate) fn dispatch(
         protocol::method::SCAN_SESSIONS => {
             handle_scan_sessions(&request.id, &request.params, provider)
         }
-        protocol::method::LIST_CLAUDE_SESSIONS => handle_list_claude_sessions(&request.id),
+        protocol::method::LIST_DISPLAY_SESSIONS => handle_list_display_sessions(&request.id),
         protocol::method::LIST_RUNTIME_SESSIONS => handle_list_runtime_sessions(&request.id),
         protocol::method::WAIT_SESSION_UPDATES => {
             handle_wait_session_updates(&request.id, &request.params)
@@ -317,7 +317,7 @@ pub(crate) fn handle_scan_sessions(
     }
 }
 
-pub(crate) fn handle_list_claude_sessions(id: &str) -> DaemonResponse {
+pub(crate) fn handle_list_display_sessions(id: &str) -> DaemonResponse {
     let sessions = crate::daemon::session_activity::SessionActivityHub::global()
         .snapshot()
         .sessions;
@@ -418,7 +418,7 @@ pub(crate) fn handle_get_project_tasks(
 
     let (all_sessions, claude_index) =
         load_project_task_scan_inputs(params.scan_cycle_id, project_task_scan_cache);
-    let project_sessions: Vec<crate::session_scanner::ClaudeSession> = all_sessions
+    let project_sessions: Vec<crate::session_scanner::RuntimeSession> = all_sessions
         .into_iter()
         .filter(|s| s.project_path == params.path)
         .collect();
@@ -435,7 +435,7 @@ fn load_project_task_scan_inputs(
     cycle_id: Option<u64>,
     project_task_scan_cache: &ProjectTaskScanCacheState,
 ) -> (
-    Vec<crate::session_scanner::ClaudeSession>,
+    Vec<crate::session_scanner::RuntimeSession>,
     ClaudeSourceIndex,
 ) {
     if let Some(cycle_id) = cycle_id {
@@ -449,7 +449,7 @@ fn load_project_task_scan_inputs(
             }
         }
 
-        let sessions = crate::session_scanner::scan_sessions();
+        let sessions = crate::session_scanner::scan_sessions_for_runtime();
         let claude_index = build_claude_source_index_with_live_sessions(&sessions);
         *guard = Some(ProjectTaskScanCache {
             cycle_id,
@@ -459,7 +459,7 @@ fn load_project_task_scan_inputs(
         return (sessions, claude_index);
     }
 
-    let sessions = crate::session_scanner::scan_sessions();
+    let sessions = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     (sessions, claude_index)
 }

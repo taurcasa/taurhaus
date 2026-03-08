@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
-use super::{cli_tool::CliTool, ClaudeSession};
+use super::{cli_tool::CliTool, RuntimeSession};
 use crate::coordination::domain::Member;
 use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
@@ -67,14 +67,14 @@ fn watcher_state() -> &'static Mutex<CompactionWatcherState> {
     WATCHER_STATE.get_or_init(|| Mutex::new(CompactionWatcherState::default()))
 }
 
-pub fn process_codex_compaction_events(sessions: &[ClaudeSession]) {
+pub fn process_codex_compaction_events(sessions: &[RuntimeSession]) {
     let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
     process_codex_compaction_events_at(sessions, &teams_dir);
     let runtime = SystemCoordinationRuntime;
     deliver_pending_codex_compaction_reinjections_at(sessions, &teams_dir, &runtime, Utc::now());
 }
 
-pub fn process_codex_compaction_events_at(sessions: &[ClaudeSession], teams_dir: &Path) {
+pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir: &Path) {
     let mut active_paths = HashSet::new();
     let mut processed_paths = HashSet::new();
 
@@ -299,7 +299,7 @@ fn parse_codex_compaction_record(line: &str, session_id: &str) -> Option<CodexCo
 
 fn resolve_managed_codex_session(
     teams_dir: &Path,
-    session: &ClaudeSession,
+    session: &RuntimeSession,
 ) -> Option<ResolvedManagedCodexSession> {
     let session_id = session.session_id.as_deref()?;
     let normalized_project = normalize_project_path(&session.project_path);
@@ -424,7 +424,7 @@ fn already_handled(
 }
 
 fn deliver_pending_codex_compaction_reinjections_at(
-    sessions: &[ClaudeSession],
+    sessions: &[RuntimeSession],
     teams_dir: &Path,
     runtime: &dyn CoordinationRuntime,
     now: DateTime<Utc>,
@@ -454,7 +454,7 @@ fn deliver_pending_codex_compaction_reinjections_at(
 }
 
 fn deliver_pending_codex_compaction_reinjection_at(
-    sessions: &[ClaudeSession],
+    sessions: &[RuntimeSession],
     teams_dir: &Path,
     runtime: &dyn CoordinationRuntime,
     now: DateTime<Utc>,
@@ -550,7 +550,7 @@ fn member_is_still_attached(
 }
 
 fn session_still_matches_pending(
-    sessions: &[ClaudeSession],
+    sessions: &[RuntimeSession],
     pending: &PendingCodexCompactionReinjection,
 ) -> bool {
     sessions.iter().any(|session| {
@@ -827,8 +827,8 @@ mod tests {
         jsonl_path: &Path,
         session_id: &str,
         tmux_pane: &str,
-    ) -> ClaudeSession {
-        ClaudeSession {
+    ) -> RuntimeSession {
+        RuntimeSession {
             pid: 1234,
             project_path: project_path.to_string(),
             tty: "/dev/pts/1".to_string(),

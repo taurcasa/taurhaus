@@ -242,7 +242,7 @@ pub(crate) enum TaskScanTrigger {
 #[derive(Debug, Clone)]
 struct TaskScanCycleContext {
     cycle_id: u64,
-    sessions: Vec<crate::session_scanner::ClaudeSession>,
+    sessions: Vec<crate::session_scanner::RuntimeSession>,
     claude_index: ClaudeSourceIndex,
 }
 
@@ -259,7 +259,7 @@ fn next_task_scan_cycle_id() -> u64 {
 }
 
 fn build_task_scan_cycle_context(cycle_id: u64) -> TaskScanCycleContext {
-    let sessions = crate::session_scanner::scan_sessions();
+    let sessions = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     TaskScanCycleContext {
         cycle_id,

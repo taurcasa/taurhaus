@@ -108,6 +108,23 @@ pub fn detect_idle(project_path: &str, tool: CliTool) -> IdleResult {
     resolver_for(tool).detect_idle(project_path)
 }
 
+/// Detect runtime idle state for a specific process.
+///
+/// Codex runtime correlation uses a per-PID JSONL match to avoid guessing when
+/// multiple Codex panes share one project path. Other tools still use the
+/// project-scoped resolver.
+pub fn detect_runtime_idle(project_path: &str, pid: u32, tool: CliTool) -> IdleResult {
+    match tool {
+        CliTool::Codex => {
+            static CODEX: OnceLock<CodexResolver> = OnceLock::new();
+            CODEX
+                .get_or_init(CodexResolver::new)
+                .detect_idle_for_pid(project_path, pid)
+        }
+        _ => detect_idle(project_path, tool),
+    }
+}
+
 /// Testable version: detect idle state for Claude using a custom projects directory.
 ///
 /// Kept for backward compatibility with existing tests.
