@@ -82,7 +82,8 @@ impl DaemonCompactionRuntime {
         let thread_processor = processor.clone();
         let join_handle = thread::spawn(move || {
             while !thread_shutdown.load(Ordering::Relaxed) {
-                let _ = thread_supplier();
+                let sessions = thread_supplier();
+                compaction_extractor::update_active_runtime_sessions(&sessions);
                 if let Err(error) = reconcile_team_watchers(
                     &thread_teams_dir,
                     &thread_watchers,

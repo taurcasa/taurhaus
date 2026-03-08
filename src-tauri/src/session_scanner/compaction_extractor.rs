@@ -5,11 +5,12 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -30,17 +31,24 @@ use crate::coordination::stores::{
 const EXTRACTOR_SCHEMA_VERSION: u32 = 1;
 const EXTRACTOR_STATE_FILENAME: &str = "extractor-state.json";
 const PAIRED_SIGNAL_WINDOW_MS: i64 = 2_000;
-const DEFAULT_EXTRACTOR_LOOP_TICK: Duration = Duration::from_millis(250);
+const DEFAULT_EXTRACTOR_RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
 
 struct CompactionSignalExtractorService {
     shutdown: Arc<AtomicBool>,
-    active_sessions: Arc<Mutex<Vec<RuntimeSession>>>,
+    command_tx: mpsc::Sender<ExtractorServiceCommand>,
     join_handle: Option<JoinHandle<()>>,
+}
+
+enum ExtractorServiceCommand {
+    SessionsUpdated(Vec<RuntimeSession>),
+    Notify(Result<Event, notify::Error>),
+    Stop,
 }
 
 impl Drop for CompactionSignalExtractorService {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::Relaxed);
+        let _ = self.command_tx.send(ExtractorServiceCommand::Stop);
         if let Some(handle) = self.join_handle.take() {
             let _ = handle.join();
         }
@@ -145,10 +153,10 @@ pub fn start_compaction_extractor_service_at(
     teams_dir: impl Into<PathBuf>,
     initial_sessions: Vec<RuntimeSession>,
 ) -> Result<(), CoordinationError> {
-    start_compaction_extractor_service_with_tick_at(
+    start_compaction_extractor_service_with_reconciliation_at(
         teams_dir,
         initial_sessions,
-        DEFAULT_EXTRACTOR_LOOP_TICK,
+        DEFAULT_EXTRACTOR_RECONCILIATION_INTERVAL,
     )
 }
 
@@ -157,7 +165,7 @@ pub fn update_active_runtime_sessions(sessions: &[RuntimeSession]) {
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .as_ref()
-        .map(|service| service.active_sessions.clone())
+        .map(|service| service.command_tx.clone())
     else {
         return;
     };
@@ -167,33 +175,34 @@ pub fn update_active_runtime_sessions(sessions: &[RuntimeSession]) {
         .filter(|session| session.cli_tool == CliTool::Codex)
         .cloned()
         .collect::<Vec<_>>();
-    *service.lock().unwrap_or_else(|error| error.into_inner()) = codex_sessions;
+    let _ = service.send(ExtractorServiceCommand::SessionsUpdated(codex_sessions));
 }
 
-fn start_compaction_extractor_service_with_tick_at(
+fn start_compaction_extractor_service_with_reconciliation_at(
     teams_dir: impl Into<PathBuf>,
     initial_sessions: Vec<RuntimeSession>,
-    tick: Duration,
+    reconciliation_interval: Duration,
 ) -> Result<(), CoordinationError> {
-    let active_sessions = Arc::new(Mutex::new(
-        initial_sessions
-            .into_iter()
-            .filter(|session| session.cli_tool == CliTool::Codex)
-            .collect::<Vec<_>>(),
-    ));
     let shutdown = Arc::new(AtomicBool::new(false));
     let thread_shutdown = shutdown.clone();
-    let thread_sessions = active_sessions.clone();
+    let (command_tx, command_rx) = mpsc::channel();
+    let loop_command_tx = command_tx.clone();
     let teams_dir = teams_dir.into();
     let loop_teams_dir = teams_dir.clone();
+    let initial_sessions = initial_sessions
+        .into_iter()
+        .filter(|session| session.cli_tool == CliTool::Codex)
+        .collect::<Vec<_>>();
     let join_handle = thread::spawn(move || {
-        while !thread_shutdown.load(Ordering::Relaxed) {
-            let snapshot = thread_sessions
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .clone();
-            extract_compaction_signals_at(&snapshot, &loop_teams_dir, Utc::now());
-            thread::sleep(tick);
+        if let Err(error) = run_extractor_service_loop(
+            loop_teams_dir,
+            initial_sessions,
+            loop_command_tx,
+            command_rx,
+            thread_shutdown,
+            reconciliation_interval,
+        ) {
+            tracing::warn!(error = %error, "compaction extractor loop exited with error");
         }
     });
 
@@ -202,7 +211,7 @@ fn start_compaction_extractor_service_with_tick_at(
         .unwrap_or_else(|error| error.into_inner());
     *slot = Some(CompactionSignalExtractorService {
         shutdown,
-        active_sessions,
+        command_tx,
         join_handle: Some(join_handle),
     });
     Ok(())
@@ -212,9 +221,13 @@ fn start_compaction_extractor_service_with_tick_at(
 pub fn start_compaction_extractor_service_for_test(
     teams_dir: impl Into<PathBuf>,
     initial_sessions: Vec<RuntimeSession>,
-    tick: Duration,
+    reconciliation_interval: Duration,
 ) -> Result<(), CoordinationError> {
-    start_compaction_extractor_service_with_tick_at(teams_dir, initial_sessions, tick)
+    start_compaction_extractor_service_with_reconciliation_at(
+        teams_dir,
+        initial_sessions,
+        reconciliation_interval,
+    )
 }
 
 pub(crate) fn stop_compaction_extractor_service() {
@@ -227,6 +240,105 @@ pub(crate) fn stop_compaction_extractor_service() {
 #[cfg(test)]
 pub fn stop_compaction_extractor_service_for_test() {
     stop_compaction_extractor_service();
+}
+
+fn run_extractor_service_loop(
+    teams_dir: PathBuf,
+    mut active_sessions: Vec<RuntimeSession>,
+    command_tx: mpsc::Sender<ExtractorServiceCommand>,
+    command_rx: mpsc::Receiver<ExtractorServiceCommand>,
+    shutdown: Arc<AtomicBool>,
+    reconciliation_interval: Duration,
+) -> Result<(), CoordinationError> {
+    let mut watcher = RecommendedWatcher::new(
+        move |res: Result<Event, notify::Error>| {
+            let _ = command_tx.send(ExtractorServiceCommand::Notify(res));
+        },
+        Config::default(),
+    )
+    .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+
+    let mut watched_paths = HashSet::new();
+    reconcile_watched_transcripts(&mut watcher, &mut watched_paths, &active_sessions);
+    extract_compaction_signals_at(&active_sessions, &teams_dir, Utc::now());
+
+    let loop_timeout = reconciliation_interval.max(Duration::from_millis(1));
+
+    while !shutdown.load(Ordering::Relaxed) {
+        match command_rx.recv_timeout(loop_timeout) {
+            Ok(ExtractorServiceCommand::SessionsUpdated(sessions)) => {
+                active_sessions = sessions;
+                reconcile_watched_transcripts(&mut watcher, &mut watched_paths, &active_sessions);
+                extract_compaction_signals_at(&active_sessions, &teams_dir, Utc::now());
+            }
+            Ok(ExtractorServiceCommand::Notify(Ok(event))) => {
+                if should_process_transcript_event(&event, &watched_paths) {
+                    extract_compaction_signals_at(&active_sessions, &teams_dir, Utc::now());
+                }
+            }
+            Ok(ExtractorServiceCommand::Notify(Err(error))) => {
+                tracing::warn!(error = %error, "compaction extractor received notify error");
+            }
+            Ok(ExtractorServiceCommand::Stop) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                reconcile_watched_transcripts(&mut watcher, &mut watched_paths, &active_sessions);
+                extract_compaction_signals_at(&active_sessions, &teams_dir, Utc::now());
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    Ok(())
+}
+
+fn reconcile_watched_transcripts(
+    watcher: &mut RecommendedWatcher,
+    watched_paths: &mut HashSet<PathBuf>,
+    sessions: &[RuntimeSession],
+) {
+    let desired_paths = sessions
+        .iter()
+        .filter(|session| session.cli_tool == CliTool::Codex)
+        .filter_map(|session| session.jsonl_path.as_deref())
+        .map(PathBuf::from)
+        .collect::<HashSet<_>>();
+
+    let stale_paths = watched_paths
+        .iter()
+        .filter(|path| !desired_paths.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    for path in stale_paths {
+        let _ = watcher.unwatch(&path);
+        watched_paths.remove(&path);
+    }
+
+    for path in desired_paths {
+        if watched_paths.contains(&path) {
+            continue;
+        }
+
+        match watcher.watch(&path, RecursiveMode::NonRecursive) {
+            Ok(()) => {
+                watched_paths.insert(path);
+            }
+            Err(error) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %error,
+                    "failed to register compaction transcript watch; reconciliation fallback remains active"
+                );
+            }
+        }
+    }
+}
+
+fn should_process_transcript_event(event: &Event, watched_paths: &HashSet<PathBuf>) -> bool {
+    if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+        return false;
+    }
+
+    event.paths.iter().any(|path| watched_paths.contains(path))
 }
 
 pub fn extract_compaction_signals_at(
