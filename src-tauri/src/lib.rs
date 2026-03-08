@@ -238,6 +238,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::templates::templates_revert,
             // Kept for direct E2E IPC assertions.
             commands::templates::templates_flush_pending,
+            commands::templates::export_role_to_file,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_create_team,
             #[cfg(feature = "mesh-bridged-backend")]

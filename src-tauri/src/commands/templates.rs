@@ -5,6 +5,7 @@ use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::errors::sanitize_error;
+use crate::templates::adapters::{export_role, RoleExportFormat, RoleExportResult};
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
     PendingAction, RoleTemplateRecord, TeamPresetRecord, TemplateCommitPage, TemplateDiff,
@@ -116,6 +117,13 @@ pub struct TemplateRevertRequest {
 pub struct TemplateFlushResult {
     pub committed: bool,
     pub commit_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportRoleToFileRequest {
+    pub role_id: String,
+    pub target_format: RoleExportFormat,
 }
 
 #[tauri::command]
@@ -382,6 +390,27 @@ pub fn templates_flush_pending(
     result
 }
 
+#[tauri::command]
+pub fn export_role_to_file(
+    state: State<'_, TemplateStoreState>,
+    request: ExportRoleToFileRequest,
+) -> Result<RoleExportResult, String> {
+    let span = IpcCommandSpan::start("export_role_to_file");
+    let result = export_role_to_file_internal(&state.0, request);
+    span.finish_result(&result);
+    result
+}
+
+fn export_role_to_file_internal(
+    store: &TemplateStore,
+    request: ExportRoleToFileRequest,
+) -> Result<RoleExportResult, String> {
+    store
+        .get_role(&request.role_id)
+        .map(|record| export_role(&record.template, request.target_format))
+        .map_err(map_template_error)
+}
+
 fn map_role_full(record: RoleTemplateRecord) -> RoleTemplateFull {
     RoleTemplateFull {
         template: record.template,
@@ -405,6 +434,80 @@ fn map_template_error(err: TemplateStoreError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::cli_tool::CliTool;
+    use crate::templates::types::{
+        BehavioralContract, RoleConstraints, RoleDefaults, RoleKind, TemplateKind, TemplateSchema,
+    };
+    use tempfile::TempDir;
+
+    #[derive(Debug, Deserialize)]
+    struct ClaudeAgentFrontmatter {
+        name: String,
+        model: String,
+        #[serde(default)]
+        tools: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct CopilotAgentFrontmatter {
+        name: String,
+        description: String,
+        model: String,
+    }
+
+    fn sample_role() -> RoleTemplate {
+        RoleTemplate {
+            schema: TemplateSchema {
+                kind: TemplateKind::RoleTemplate,
+                version: 1,
+            },
+            role_id: "sample-export-role".to_string(),
+            name: "Sample Export Role".to_string(),
+            version: "1.0.0".to_string(),
+            kind: RoleKind::Agent,
+            defaults: RoleDefaults {
+                cli_tool: CliTool::Claude,
+                model: "claude-opus-4-6".to_string(),
+                default_name_pattern: "export-{n}".to_string(),
+            },
+            instructions: "Ship the requested change with tests first.".to_string(),
+            focus_area: Some("Backend export pipelines".to_string()),
+            context_summary: Some(
+                "Keeps role portability constraints in working memory.".to_string(),
+            ),
+            behavior_summary: Some("Writes clean exports and flags lossy conversions.".to_string()),
+            behavioral_contract: BehavioralContract {
+                communication: vec!["Post concise progress updates.".to_string()],
+                execution: vec!["Validate generated output.".to_string()],
+                escalation: vec!["Escalate unsupported mappings.".to_string()],
+            },
+            capabilities: vec![
+                "read".to_string(),
+                "write".to_string(),
+                "shell".to_string(),
+                "unknown".to_string(),
+            ],
+            provenance: None,
+            constraints: RoleConstraints {
+                min_instances: 0,
+                max_instances: 2,
+                requires_lead_tool: Some(CliTool::Codex),
+                allowed_project_binding: ProjectBinding::LeadProject,
+            },
+        }
+    }
+
+    fn extract_frontmatter(content: &str) -> (String, String) {
+        let opening = content
+            .strip_prefix("---\n")
+            .expect("content should start with YAML frontmatter");
+        let close = opening
+            .find("\n---\n")
+            .expect("content should include closing YAML frontmatter delimiter");
+        let frontmatter = opening[..close].to_string();
+        let body = opening[close + 5..].trim().to_string();
+        (frontmatter, body)
+    }
 
     #[test]
     fn compose_request_accepts_camel_case_agent_slot_fields() {
@@ -448,5 +551,86 @@ mod tests {
             serde_json::from_value(value).expect("request should deserialize");
         assert_eq!(request.lead_role_id, "claude-orchestrator");
         assert_eq!(request.agent_slots[0].role_id, "codex-developer");
+    }
+
+    #[test]
+    fn export_role_to_file_returns_claude_agent_markdown_with_parseable_frontmatter() {
+        let tmp = TempDir::new().expect("tempdir");
+        let state = TemplateStoreState::new(tmp.path().to_path_buf());
+        state.0.create_role(&sample_role()).expect("create role");
+
+        let exported = export_role_to_file_internal(
+            &state.0,
+            ExportRoleToFileRequest {
+                role_id: "sample-export-role".to_string(),
+                target_format: RoleExportFormat::ClaudeAgent,
+            },
+        )
+        .expect("export role");
+
+        assert_eq!(exported.target_format, RoleExportFormat::ClaudeAgent);
+        let (frontmatter, body) = extract_frontmatter(&exported.file_content);
+        let parsed: ClaudeAgentFrontmatter =
+            serde_norway::from_str(&frontmatter).expect("parse YAML frontmatter");
+
+        assert_eq!(parsed.name, "Sample Export Role");
+        assert_eq!(parsed.model, "claude-opus-4-6");
+        assert_eq!(parsed.tools, vec!["read", "edit", "bash"]);
+        assert!(body.contains("Ship the requested change with tests first."));
+        assert!(body.contains("## Focus Area"));
+        assert!(body.contains("## Behavioral Contract"));
+        assert!(exported.lossy_fields.contains(&"capabilities".to_string()));
+        assert!(exported.lossy_fields.contains(&"constraints".to_string()));
+    }
+
+    #[test]
+    fn export_role_to_file_returns_copilot_agent_markdown_with_parseable_frontmatter() {
+        let tmp = TempDir::new().expect("tempdir");
+        let state = TemplateStoreState::new(tmp.path().to_path_buf());
+        state.0.create_role(&sample_role()).expect("create role");
+
+        let exported = export_role_to_file_internal(
+            &state.0,
+            ExportRoleToFileRequest {
+                role_id: "sample-export-role".to_string(),
+                target_format: RoleExportFormat::CopilotAgent,
+            },
+        )
+        .expect("export role");
+
+        assert_eq!(exported.target_format, RoleExportFormat::CopilotAgent);
+        let (frontmatter, body) = extract_frontmatter(&exported.file_content);
+        let parsed: CopilotAgentFrontmatter =
+            serde_norway::from_str(&frontmatter).expect("parse YAML frontmatter");
+
+        assert_eq!(parsed.name, "Sample Export Role");
+        assert_eq!(
+            parsed.description,
+            "Writes clean exports and flags lossy conversions."
+        );
+        assert_eq!(parsed.model, "claude-opus-4-6");
+        assert!(body.contains("## Context Summary"));
+        assert!(body.contains("## Constraints"));
+        assert!(exported
+            .lossy_fields
+            .contains(&"behavioral_contract".to_string()));
+        assert!(exported.lossy_fields.contains(&"constraints".to_string()));
+    }
+
+    #[test]
+    fn export_role_to_file_returns_not_found_for_missing_role() {
+        let tmp = TempDir::new().expect("tempdir");
+        let state = TemplateStoreState::new(tmp.path().to_path_buf());
+
+        let err = export_role_to_file_internal(
+            &state.0,
+            ExportRoleToFileRequest {
+                role_id: "missing-role".to_string(),
+                target_format: RoleExportFormat::ClaudeAgent,
+            },
+        )
+        .expect_err("missing role should fail");
+
+        assert!(err.contains("role 'missing-role' not found"));
     }
 }
