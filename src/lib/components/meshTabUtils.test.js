@@ -164,8 +164,9 @@ describe('meshTabUtils cross-project metadata', () => {
     ])
   })
 
-  it('includes role metadata in initialization requests for runtime hover context', () => {
+  it('keeps rich role metadata for custom initialization requests', () => {
     const request = buildInitializationRequest({
+      initializationMode: 'custom',
       lead: {
         name: 'team-lead',
         tool: 'claude',
@@ -214,5 +215,77 @@ describe('meshTabUtils cross-project metadata', () => {
         instructions: 'Implement the assigned UI surface and verify it locally.',
       }),
     ])
+  })
+
+  it('builds a minimal preset initialization payload and omits role metadata', () => {
+    const request = buildInitializationRequest({
+      initializationMode: 'preset',
+      presetId: 'standard-team',
+      lead: {
+        name: 'team-lead',
+        tool: 'claude',
+        model: 'opus',
+        projectId: '/projects/taurhaus',
+        roleId: 'claude-orchestrator',
+        roleName: 'Claude Orchestrator',
+        focusArea: 'Team sequencing and escalation',
+        contextSummary: 'Keeps the delivery plan and blocker state in view.',
+        behaviorSummary: 'Coordinates specialists and escalates blockers.',
+        instructions: 'Drive the team plan and keep dependencies aligned.',
+      },
+      agents: [
+        {
+          name: 'architect',
+          tool: 'codex',
+          model: 'gpt-5.4 high',
+          projectId: '/projects/taurhaus',
+          roleId: 'codex-architect',
+          roleName: 'Codex Architect',
+          focusArea: 'Architecture decisions and structural review',
+          contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+          behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+          instructions: 'Review structure and boundaries.',
+        },
+      ],
+    }, 'taurhaus-team', '/projects/taurhaus')
+
+    expect(request).toEqual({
+      teamName: 'taurhaus-team',
+      teamDescription: null,
+      leadMode: 'launch_new',
+      presetId: 'standard-team',
+      lead: {
+        name: 'team-lead',
+        cliTool: '',
+        model: '',
+        projectId: '/projects/taurhaus',
+        description: null,
+        roleId: null,
+        roleName: null,
+        focusArea: null,
+        contextSummary: null,
+        behaviorSummary: null,
+        instructions: null,
+        behavioralContract: null,
+        capabilities: null,
+      },
+      agents: [
+        {
+          name: 'architect',
+          cliTool: '',
+          model: '',
+          projectId: '/projects/taurhaus',
+          description: null,
+          roleId: null,
+          roleName: null,
+          focusArea: null,
+          contextSummary: null,
+          behaviorSummary: null,
+          instructions: null,
+          behavioralContract: null,
+          capabilities: null,
+        },
+      ],
+    })
   })
 })

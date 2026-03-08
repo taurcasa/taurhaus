@@ -165,51 +165,76 @@ function isWindowsMountPath(path) {
   return /^\/mnt\/[a-z](?:\/|$)/i.test(path)
 }
 
-export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], projectPath = '') {
+export function buildTeamConfigFromPreset(preset, compositionResult = null, projectPath = '') {
   const tools = Array.isArray(preset?.tools) && preset.tools.length > 0
     ? preset.tools.map((entry) => normalizeTool(entry))
     : TOOL_OPTIONS
 
-  const roleTemplatesById = new Map(
-    (Array.isArray(roleTemplatesCatalog) ? roleTemplatesCatalog : [])
-      .filter((entry) => entry && (entry.roleId ?? entry.role_id))
-      .map((entry) => [entry.roleId ?? entry.role_id, entry])
-  )
-
   const leadRoleId = preset?.leadRoleId ?? preset?.lead_role_id ?? ''
-  const leadRoleTemplate = roleTemplatesById.get(leadRoleId)
-  const leadTool = resolveRoleTool(leadRoleTemplate, tools[0] ?? 'claude')
   const seenNames = new Map()
   const leadName = uniquifyMemberName('team-lead', seenNames) || 'team-lead'
+  const agentSlots = normalizeAgentSlots(preset)
+  const roster = Array.isArray(compositionResult?.roster) ? compositionResult.roster : []
+  const resolvedLead = roster[0] ?? null
+  const resolvedAgents = roster.slice(1)
+
+  const leadTool = resolvedLead?.cliTool ?? resolvedLead?.cli_tool ?? tools[0] ?? 'claude'
+  const leadModel = resolvedLead?.model ?? defaultModelForTool(leadTool)
 
   const lead = createLead(
     {
       id: 'lead',
-      name: leadName,
+      name: String(resolvedLead?.name ?? leadName),
       tool: leadTool,
-      model: resolveRoleModel(leadRoleTemplate, leadTool),
+      model: String(leadModel),
       status: 'offline',
       projectId: projectPath,
-      ...normalizeRoleTemplateMetadata(leadRoleTemplate),
-      description: leadRoleTemplate?.instructions ?? 'Team lead',
-      roleId: leadRoleId || null,
+      roleId: (resolvedLead?.roleId ?? resolvedLead?.role_id ?? leadRoleId) || null,
+      roleName: resolvedLead?.roleName ?? resolvedLead?.role_name ?? null,
+      focusArea: resolvedLead?.focusArea ?? resolvedLead?.focus_area ?? null,
+      contextSummary: resolvedLead?.contextSummary ?? resolvedLead?.context_summary ?? null,
+      behaviorSummary: resolvedLead?.behaviorSummary ?? resolvedLead?.behavior_summary ?? null,
+      instructions: resolvedLead?.instructions ?? null,
+      behavioralContract: resolvedLead?.behavioralContract ?? resolvedLead?.behavioral_contract ?? null,
+      capabilities: Array.isArray(resolvedLead?.capabilities) ? resolvedLead.capabilities : null,
+      description: resolvedLead?.instructions ?? 'Team lead',
     },
     projectPath
   )
 
-  const projectName = normalizePatternProjectName(projectPath)
-  const agentSlots = normalizeAgentSlots(preset)
   let agents = []
 
-  if (agentSlots.length > 0) {
+  if (resolvedAgents.length > 0) {
+    agents = resolvedAgents.map((member, index) =>
+      createAgent(
+        index,
+        {
+          id: member?.name ?? `agent-${index + 1}`,
+          name: member?.name ?? `agent-${index + 1}`,
+          tool: member?.cliTool ?? member?.cli_tool ?? tools[(index + 1) % tools.length] ?? 'codex',
+          model: member?.model ?? defaultModelForTool(member?.cliTool ?? member?.cli_tool ?? 'codex'),
+          status: 'offline',
+          projectId: member?.projectId ?? member?.project_id ?? projectPath,
+          roleId: member?.roleId ?? member?.role_id ?? null,
+          roleName: member?.roleName ?? member?.role_name ?? null,
+          focusArea: member?.focusArea ?? member?.focus_area ?? null,
+          contextSummary: member?.contextSummary ?? member?.context_summary ?? null,
+          behaviorSummary: member?.behaviorSummary ?? member?.behavior_summary ?? null,
+          instructions: member?.instructions ?? null,
+          behavioralContract: member?.behavioralContract ?? member?.behavioral_contract ?? null,
+          capabilities: Array.isArray(member?.capabilities) ? member.capabilities : null,
+          description: member?.instructions ?? null,
+        },
+        projectPath
+      )
+    )
+  } else if (agentSlots.length > 0) {
+    const projectName = normalizePatternProjectName(projectPath)
     let agentIndex = 0
     agents = agentSlots.flatMap((slot) => {
       const count = Math.max(0, Number(slot?.count ?? 0))
       const roleId = slot?.roleId ?? slot?.role_id ?? null
-      const roleTemplate = roleTemplatesById.get(roleId)
-      const tool = resolveRoleTool(roleTemplate, tools[(agentIndex + 1) % tools.length] ?? 'codex')
-      const model = resolveRoleModel(roleTemplate, tool)
-      const pattern = resolveSlotNamePattern(slot, roleTemplate)
+      const pattern = resolveSlotNamePattern(slot, null)
 
       const members = Array.from({ length: count }, (_, offset) => {
         const memberIndex = offset + 1
@@ -221,12 +246,9 @@ export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], pro
           {
             id: name,
             name,
-            tool,
-            model,
+            tool: tools[(agentIndex + 1) % tools.length] ?? 'codex',
             status: 'offline',
             projectId: projectPath,
-            ...normalizeRoleTemplateMetadata(roleTemplate),
-            description: roleTemplate?.instructions ?? null,
             roleId,
           },
           projectPath
@@ -268,6 +290,7 @@ export function buildTeamConfigFromPreset(preset, roleTemplatesCatalog = [], pro
     agents,
     presetId: preset?.presetId ?? '',
     presetName: preset?.name ?? '',
+    initializationMode: 'preset',
     composition: {
       presetId: preset?.presetId ?? '',
       name: preset?.name ?? '',
@@ -364,6 +387,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     agents,
     presetId: '',
     presetName: '',
+    initializationMode: 'runtime',
     composition: null,
   }
 }
@@ -420,6 +444,7 @@ export function composeConfigFromPayload(payload, projectPath = '') {
     agents,
     presetId: '',
     presetName: '',
+    initializationMode: 'custom',
     composition: {
       presetId: payload?.presetId ?? '',
       name: payload?.presetName ?? '',
@@ -434,6 +459,46 @@ export function composeConfigFromPayload(payload, projectPath = '') {
 export function buildInitializationRequest(config, teamName, projectPath = '') {
   const lead = config?.lead
   const agents = Array.isArray(config?.agents) ? config.agents : []
+  const isPresetInitialization = config?.initializationMode === 'preset' && String(config?.presetId ?? '').trim()
+
+  if (isPresetInitialization) {
+    return {
+      teamName: teamName.trim() || inferTeamName(projectPath),
+      teamDescription: null,
+      leadMode: 'launch_new',
+      presetId: String(config?.presetId ?? '').trim(),
+      lead: {
+        name: lead?.name ?? 'team-lead',
+        cliTool: '',
+        model: '',
+        projectId: lead?.projectId || projectPath,
+        description: null,
+        roleId: null,
+        roleName: null,
+        focusArea: null,
+        contextSummary: null,
+        behaviorSummary: null,
+        instructions: null,
+        behavioralContract: null,
+        capabilities: null,
+      },
+      agents: agents.map((agent, index) => ({
+        name: agent?.name || `agent-${index + 1}`,
+        cliTool: '',
+        model: '',
+        projectId: agent?.projectId || projectPath,
+        description: null,
+        roleId: null,
+        roleName: null,
+        focusArea: null,
+        contextSummary: null,
+        behaviorSummary: null,
+        instructions: null,
+        behavioralContract: null,
+        capabilities: null,
+      })),
+    }
+  }
 
   return {
     teamName: teamName.trim() || inferTeamName(projectPath),

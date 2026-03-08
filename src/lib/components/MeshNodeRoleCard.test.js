@@ -20,6 +20,24 @@ function renderRoleCard(props = {}) {
 }
 
 describe('MeshNodeRoleCard', () => {
+  it('renders role description from the runtime description field', () => {
+    renderRoleCard({
+      node: {
+        roleName: 'Claude Reviewer',
+        description: 'Perform code reviews focused on correctness, regressions, security risk, and missing tests.',
+        focusArea: '',
+        contextSummary: '',
+        behaviorSummary: '',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Claude Reviewer')
+    expect(screen.getByTestId('mesh-node-role-card-description')).toHaveTextContent(
+      'Perform code reviews focused on correctness, regressions, security risk, and missing tests.'
+    )
+    expect(screen.queryByTestId('mesh-node-role-card-placeholder')).not.toBeInTheDocument()
+  })
+
   it('renders placeholder content when role fields are empty', () => {
     renderRoleCard({
       node: {

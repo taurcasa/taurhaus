@@ -1,5 +1,6 @@
 import { untrack } from 'svelte'
 import {
+  composeTeam,
   coordinationAddAgent,
   coordinationDisbandTeam,
   coordinationGetProjectMeshSnapshot,
@@ -58,7 +59,7 @@ export function createMeshTabController({
       name: 'Full Stack Dev Team',
       description: 'Lead with implementation and review agents',
       leadCount: 1,
-      agentCount: 3,
+      agentCount: 2,
       tools: ['claude', 'codex', 'gemini'],
       builtIn: true,
     },
@@ -67,7 +68,7 @@ export function createMeshTabController({
       name: 'Research + Development Team',
       description: 'Lead with research and implementation collaboration',
       leadCount: 1,
-      agentCount: 3,
+      agentCount: 2,
       tools: ['claude', 'gemini', 'codex'],
       builtIn: true,
     },
@@ -677,24 +678,35 @@ export function createMeshTabController({
     const sequence = ++presetSelectionSequence
     const presetId = preset?.presetId ?? preset?.preset_id ?? ''
     let resolvedPreset = preset
-    let roleCatalog = []
+    let compositionResult = null
 
     try {
-      const [hydratedPreset, hydratedRoles] = await Promise.all([
-        presetId ? getTeamPreset(presetId) : Promise.resolve(null),
-        listRoleTemplates(),
-      ])
+      const hydratedPreset = presetId ? await getTeamPreset(presetId) : null
       if (sequence !== presetSelectionSequence) return
       if (hydratedPreset && typeof hydratedPreset === 'object') {
         resolvedPreset = { ...preset, ...hydratedPreset }
       }
-      roleCatalog = Array.isArray(hydratedRoles) ? hydratedRoles : []
+
+      const leadRoleId = resolvedPreset?.leadRoleId ?? resolvedPreset?.lead_role_id ?? ''
+      const agentSlots = Array.isArray(resolvedPreset?.agentSlots ?? resolvedPreset?.agent_slots)
+        ? (resolvedPreset?.agentSlots ?? resolvedPreset?.agent_slots)
+        : []
+
+      if (leadRoleId) {
+        compositionResult = await composeTeam({
+          leadRoleId,
+          agentSlots,
+          overrides: {
+            projectName: inferTeamName(getProjectPath()).replace(/-team$/, ''),
+          },
+        })
+      }
     } catch (error) {
       console.error('Failed to hydrate quick preset details:', error)
     }
 
     if (sequence !== presetSelectionSequence) return
-    teamConfig = buildTeamConfigFromPreset(resolvedPreset, roleCatalog, getProjectPath())
+    teamConfig = buildTeamConfigFromPreset(resolvedPreset, compositionResult, getProjectPath())
     teamName = inferTeamName(getProjectPath())
     selectedNodeId = null
     mode = 'setup'

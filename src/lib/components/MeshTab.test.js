@@ -1498,6 +1498,9 @@ describe('MeshTab', () => {
 
     expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByTestId('mesh-node-role-card-description')).toHaveTextContent(
+      'Implements UI surface details for the mesh canvas.'
+    )
     expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
       'Architecture decisions and structural review'
     )
@@ -1527,6 +1530,9 @@ describe('MeshTab', () => {
     await vi.advanceTimersByTimeAsync(200)
 
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByTestId('mesh-node-role-card-description')).toHaveTextContent(
+      'Implements UI surface details for the mesh canvas.'
+    )
     expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
       'Architecture decisions and structural review'
     )
@@ -1957,68 +1963,21 @@ describe('MeshTab', () => {
       expect(coordinationInitializeTeam).toHaveBeenCalledWith(
         expect.objectContaining({
           teamName: 'my-app-team',
+          presetId: 'fullstack-dev',
           lead: expect.objectContaining({
-            cliTool: 'claude',
+            cliTool: '',
           }),
           agents: expect.arrayContaining([
-            expect.objectContaining({ cliTool: 'codex' }),
+            expect.objectContaining({ cliTool: '' }),
           ]),
         })
       )
     })
+
+    expect(listRoleTemplates).not.toHaveBeenCalled()
   })
 
-  it('resolves standard-team agent names from slot and role name patterns', async () => {
-    listRoleTemplates.mockResolvedValueOnce([
-      {
-        roleId: 'claude-orchestrator',
-        name: 'Claude Orchestrator',
-        kind: 'lead',
-        cliTool: 'claude',
-        model: 'opus',
-        focusArea: 'Team sequencing and escalation',
-        contextSummary: 'Keeps the full delivery plan and blocker state in view.',
-        behaviorSummary: 'Coordinates specialists and escalates blockers.',
-        instructions: 'Own orchestration',
-        defaults: { defaultNamePattern: 'lead-{project}' },
-      },
-      {
-        roleId: 'codex-architect',
-        name: 'Codex Architect',
-        kind: 'agent',
-        cliTool: 'codex',
-        model: 'gpt-5.4 high',
-        focusArea: 'Architecture decisions and structural review',
-        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
-        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
-        instructions: 'Own structural review',
-        defaults: { defaultNamePattern: 'architect-{n}' },
-      },
-      {
-        roleId: 'codex-developer',
-        name: 'Codex Developer',
-        kind: 'agent',
-        cliTool: 'codex',
-        model: 'gpt-5.4 high',
-        focusArea: 'Scoped implementation',
-        contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
-        behaviorSummary: 'Implements narrowly and escalates blockers.',
-        instructions: 'Own implementation',
-        defaults: { defaultNamePattern: 'dev-{n}' },
-      },
-      {
-        roleId: 'gemini-ui-specialist',
-        name: 'Gemini UI Specialist',
-        kind: 'agent',
-        cliTool: 'gemini',
-        model: 'gemini-3.1-pro',
-        focusArea: 'Visual design and UX polish',
-        contextSummary: 'Maintains design consistency and visual clarity.',
-        behaviorSummary: 'Explores UI direction without broadening product scope.',
-        instructions: 'Own UI polish',
-        defaults: { defaultNamePattern: 'ui-specialist-{n}' },
-      },
-    ])
+  it('uses backend-composed preset roster for setup names but sends a minimal preset payload on initialize', async () => {
     getTeamPreset.mockResolvedValueOnce({
       presetId: 'standard-team',
       name: 'Standard Dev Team',
@@ -2040,6 +1999,87 @@ describe('MeshTab', () => {
           overrides: { namePattern: 'ui-specialist' },
         },
       ],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [
+        {
+          name: 'team-lead',
+          roleId: 'claude-orchestrator',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          instructions: 'Own orchestration',
+          focusArea: 'Team sequencing and escalation',
+          contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+          behaviorSummary: 'Coordinates specialists and escalates blockers.',
+          behavioralContract: { communication: ['sync'], execution: ['plan'], escalation: ['escalate'] },
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'architect',
+          roleId: 'codex-architect',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own structural review',
+          focusArea: 'Architecture decisions and structural review',
+          contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+          behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+          behavioralContract: { communication: [], execution: [], escalation: [] },
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'developer1',
+          roleId: 'codex-developer',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own implementation',
+          focusArea: 'Scoped implementation',
+          contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+          behaviorSummary: 'Implements narrowly and escalates blockers.',
+          behavioralContract: { communication: [], execution: [], escalation: [] },
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'developer2',
+          roleId: 'codex-developer',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own implementation',
+          focusArea: 'Scoped implementation',
+          contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
+          behaviorSummary: 'Implements narrowly and escalates blockers.',
+          behavioralContract: { communication: [], execution: [], escalation: [] },
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'ui-specialist',
+          roleId: 'gemini-ui-specialist',
+          roleKind: 'agent',
+          cliTool: 'gemini',
+          model: 'gemini-3.1-pro',
+          instructions: 'Own UI polish',
+          focusArea: 'Visual design and UX polish',
+          contextSummary: 'Maintains design consistency and visual clarity.',
+          behaviorSummary: 'Explores UI direction without broadening product scope.',
+          behavioralContract: { communication: [], execution: [], escalation: [] },
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+      ],
+      warnings: [],
+      validationErrors: [],
     })
 
     render(MeshTab, {
@@ -2066,13 +2106,13 @@ describe('MeshTab', () => {
 
     const request = coordinationInitializeTeam.mock.calls.at(-1)?.[0]
     expect(request?.lead?.name).toBe('team-lead')
+    expect(request?.presetId).toBe('standard-team')
     expect(request?.lead).toEqual(expect.objectContaining({
-      roleId: 'claude-orchestrator',
-      roleName: 'Claude Orchestrator',
-      focusArea: 'Team sequencing and escalation',
-      contextSummary: 'Keeps the full delivery plan and blocker state in view.',
-      behaviorSummary: 'Coordinates specialists and escalates blockers.',
-      instructions: 'Own orchestration',
+      cliTool: '',
+      model: '',
+      roleId: null,
+      roleName: null,
+      instructions: null,
     }))
     expect(request?.agents?.map((agent) => agent.name)).toEqual([
       'architect',
@@ -2080,14 +2120,14 @@ describe('MeshTab', () => {
       'developer2',
       'ui-specialist',
     ])
-    expect(request?.agents?.[0]).toEqual(expect.objectContaining({
-      roleId: 'codex-architect',
-      roleName: 'Codex Architect',
-      focusArea: 'Architecture decisions and structural review',
-      contextSummary: 'Carries long-lived context around module boundaries and reviews.',
-      behaviorSummary: 'Handles pattern choices and escalates direction changes.',
-      instructions: 'Own structural review',
-    }))
+    expect(request?.agents.every((agent) => (
+      agent.cliTool === ''
+      && agent.model === ''
+      && agent.roleId === null
+      && agent.roleName === null
+      && agent.instructions === null
+    ))).toBe(true)
+    expect(listRoleTemplates).not.toHaveBeenCalled()
   })
 
   it('matches teams when lead project path uses windows drive notation', async () => {

@@ -10,6 +10,9 @@
   const focusArea = $derived.by(() => String(node?.focusArea ?? node?.focus_area ?? '').trim())
   const contextSummary = $derived.by(() => String(node?.contextSummary ?? node?.context_summary ?? '').trim())
   const behaviorSummary = $derived.by(() => String(node?.behaviorSummary ?? node?.behavior_summary ?? '').trim())
+  const roleDescription = $derived.by(() =>
+    String(node?.instructions ?? node?.description ?? '').trim()
+  )
   const toolLabel = $derived.by(() => {
     const value = String(node?.tool ?? node?.cliTool ?? node?.cli_tool ?? '').trim().toLowerCase()
     if (value === 'claude') return 'Claude'
@@ -19,7 +22,11 @@
   })
   const model = $derived.by(() => String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim())
   const hasRoleContent = $derived(
-    roleName.length > 0 || focusArea.length > 0 || contextSummary.length > 0 || behaviorSummary.length > 0
+    roleName.length > 0
+      || roleDescription.length > 0
+      || focusArea.length > 0
+      || contextSummary.length > 0
+      || behaviorSummary.length > 0
   )
   const placeholderTitle = $derived('No role defined')
   const placeholderMessage = $derived(
@@ -62,6 +69,12 @@
     </div>
 
     {#if hasRoleContent}
+      {#if roleDescription}
+        <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-description">
+          {roleDescription}
+        </p>
+      {/if}
+
       {#if focusArea}
         <div class="space-y-0.5">
           <p class="text-[10px] font-semibold uppercase tracking-wide {labelTone}">Focus</p>
