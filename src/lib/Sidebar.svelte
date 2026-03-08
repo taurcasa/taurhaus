@@ -14,6 +14,8 @@
     sidebarLoading = false,
     sidebarError = null,
     selectedProject: selectedProjectProp = null,
+    foregroundProjectId = null,
+    onForegroundProjectChange = () => {},
     daemonStatus: daemonStatusProp = null,
     settingsOpen = false,
     dark = false,
@@ -113,6 +115,7 @@
   function jumpToSession(e, session) {
     e.stopPropagation()
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
+      onForegroundProjectChange(session.project_id ?? session.projectId ?? null)
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
     }
   }
@@ -205,6 +208,7 @@
     const session = getSessionForProject(ctxMenu.project.path)
     console.log('[cmd-center] Open in Terminal:', ctxMenu.project.path, 'session:', session ? { tmux_session: session.tmux_session, tmux_window: session.tmux_window, tmux_pane: session.tmux_pane } : 'null')
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
+      onForegroundProjectChange(session.project_id ?? session.projectId ?? ctxMenu.project.id)
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane, true)
         .then(() => console.log('[cmd-center] navigate OK'))
         .catch(e => console.error('[cmd-center] navigate FAILED:', e))
@@ -411,6 +415,8 @@
       {sidebarRows}
       {sidebarWindow}
       {selectedProject}
+      {foregroundProjectId}
+      {dark}
       ctxMenuProjectId={ctxMenu?.project?.id ?? null}
       {getSessionsForProject}
       {toolIndicators}

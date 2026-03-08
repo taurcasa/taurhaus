@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('./ipc.js', () => ({
@@ -116,6 +116,82 @@ describe('Sidebar component branches', () => {
 
     await fireEvent.click(screen.getByTestId('settings-toggle'))
     expect(onToggleSettings).toHaveBeenCalled()
+  })
+
+  it('renders a right-side foreground indicator when the project matches the foreground project id', async () => {
+    const projects = makeProjects(2)
+
+    render(Sidebar, {
+      props: {
+        projects,
+        foregroundProjectId: projects[1].id,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    const row = document.querySelector(`[data-project-id="${projects[1].id}"]`)
+    expect(row).toBeTruthy()
+    expect(within(row).getByTestId('sidebar-foreground-indicator')).toBeInTheDocument()
+  })
+
+  it('does not render a right-side foreground indicator for non-matching projects', async () => {
+    const projects = makeProjects(2)
+
+    render(Sidebar, {
+      props: {
+        projects,
+        foregroundProjectId: projects[1].id,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    const row = document.querySelector(`[data-project-id="${projects[0].id}"]`)
+    expect(row).toBeTruthy()
+    expect(within(row).queryByTestId('sidebar-foreground-indicator')).not.toBeInTheDocument()
+  })
+
+  it('shows both left selection and right foreground indicators on the same row when both states are active', async () => {
+    const projects = makeProjects(2)
+
+    render(Sidebar, {
+      props: {
+        projects,
+        selectedProject: projects[0],
+        foregroundProjectId: projects[0].id,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    const row = document.querySelector(`[data-project-id="${projects[0].id}"]`)
+    expect(row).toBeTruthy()
+    expect(within(row).getByTestId('sidebar-selection-indicator')).toBeInTheDocument()
+    expect(within(row).getByTestId('sidebar-foreground-indicator')).toBeInTheDocument()
+  })
+
+  it('renders no right-side foreground indicator when foreground project id is null', async () => {
+    const projects = makeProjects(2)
+
+    render(Sidebar, {
+      props: {
+        projects,
+        foregroundProjectId: null,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    expect(screen.queryByTestId('sidebar-foreground-indicator')).not.toBeInTheDocument()
   })
 
   it('renders projects with canonical camelCase activity fields', async () => {

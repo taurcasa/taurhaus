@@ -9,6 +9,8 @@
     sidebarRows = [],
     sidebarWindow = { start: 0, end: 0, paddingTop: 0, paddingBottom: 0 },
     selectedProject = null,
+    foregroundProjectId = null,
+    dark = false,
     ctxMenuProjectId = null,
     getSessionsForProject = () => [],
     toolIndicators = () => [],
@@ -21,6 +23,12 @@
     onRetry = () => {},
     onOpenManageProjects = () => {},
   } = $props()
+
+  const foregroundIndicatorClass = $derived(
+    dark
+      ? 'bg-success-300/95 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]'
+      : 'bg-success-400/95 shadow-[0_0_0_1px_rgba(15,23,42,0.08)]'
+  )
 
   function hasTmuxTarget(session) {
     return Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
@@ -93,19 +101,24 @@
     {:else}
       {@const project = row.project}
       {@const selected = selectedProject && project.id === selectedProject.id}
+      {@const foregroundActive = foregroundProjectId && project.id === foregroundProjectId}
       {@const projectSessions = getSessionsForProject(project.path)}
       {@const indicators = toolIndicators(projectSessions)}
       <button
         data-testid="project-item"
+        data-project-id={project.id}
         class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75 cursor-pointer
-          {selected ? 'bg-white/[0.08]' : ctxMenuProjectId === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`}"
+          {selected ? 'bg-white/[0.08]' : ctxMenuProjectId === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`} relative overflow-hidden"
         onclick={() => onProjectClick(project)}
         oncontextmenu={(e) => onProjectContextMenu(e, project, projectSessions)}
         onmouseenter={(e) => onProjectMouseEnter(project, projectSessions, e.currentTarget)}
         onmouseleave={onProjectMouseLeave}
       >
         {#if selected}
-          <span class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"></span>
+          <span
+            data-testid="sidebar-selection-indicator"
+            class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"
+          ></span>
         {/if}
         <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
         {#if indicators.length > 0}
@@ -191,6 +204,13 @@
         {/if}
         {#if project.isDirty}
           <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
+        {/if}
+        {#if foregroundActive}
+          <span
+            data-testid="sidebar-foreground-indicator"
+            class="pointer-events-none absolute right-1 top-1 bottom-1 w-[3px] rounded-full {foregroundIndicatorClass}"
+            aria-hidden="true"
+          ></span>
         {/if}
       </button>
     {/if}
