@@ -107,10 +107,14 @@ pub fn focus_file_path(data_dir: &Path) -> PathBuf {
     data_dir.join("tmux-focus.json")
 }
 
-pub fn read_focus_state(data_dir: &Path) -> Option<TmuxFocusState> {
-    let path = focus_file_path(data_dir);
+pub fn read_focus_state_from_path(path: &Path) -> Option<TmuxFocusState> {
     let raw = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&raw).ok()
+}
+
+pub fn read_focus_state(data_dir: &Path) -> Option<TmuxFocusState> {
+    let path = focus_file_path(data_dir);
+    read_focus_state_from_path(&path)
 }
 
 pub fn write_focus_state(path: &Path, state: &TmuxFocusState) -> Result<(), String> {
@@ -327,6 +331,23 @@ bad line
         assert_eq!(
             resolve_focus_project_path(&TmuxFocusState::detached(), &sessions),
             None
+        );
+    }
+
+    #[test]
+    fn resolve_focus_matches_window_index_when_name_is_unavailable() {
+        let mut indexed_only = session_for("/projects/mesh", Some("taurhaus"), None);
+        indexed_only.tmux_window = Some("2".to_string());
+
+        let focus = TmuxFocusState {
+            session: Some("taurhaus".to_string()),
+            window: Some("2".to_string()),
+            timestamp: Some(123),
+        };
+
+        assert_eq!(
+            resolve_focus_project_path(&focus, &[indexed_only]),
+            Some("/projects/mesh".to_string())
         );
     }
 }

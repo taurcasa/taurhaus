@@ -921,28 +921,31 @@ fn handle_internal_event(
             true
         }
         WatchEvent::FileChanged { project_id, paths } if project_id == TMUX_FOCUS_PROJECT_ID => {
-            if !paths.iter().any(|path| {
+            let Some(focus_path) = paths.iter().find(|path| {
                 path.file_name()
                     .and_then(|value| value.to_str())
                     .is_some_and(|value| value == "tmux-focus.json")
-            }) {
+            }) else {
+                return true;
+            };
+            let focus_state = crate::session_scanner::tmux::read_focus_state_from_path(focus_path);
+            if focus_state.is_none() {
+                tracing::debug!(
+                    path = %focus_path.display(),
+                    "Skipping tmux focus event because focus file was unreadable"
+                );
                 return true;
             }
-            let db = app.state::<DbState>();
-            let provider = app.state::<ProviderState>();
-            let project_id = crate::commands::command_center::get_foreground_project_impl(
-                app,
-                db.inner(),
-                provider.inner(),
-            )
-            .unwrap_or_else(|error| {
-                tracing::warn!(error = %error, "Failed to resolve foreground tmux project");
-                None
-            });
+            tracing::info!(
+                path = %focus_path.display(),
+                session = ?focus_state.as_ref().and_then(|state| state.session.clone()),
+                window = ?focus_state.as_ref().and_then(|state| state.window.clone()),
+                "Observed tmux focus file change"
+            );
             emit_frontend_event(
                 app,
                 "tmux-focus-changed",
-                serde_json::json!({ "projectId": project_id }),
+                serde_json::to_value(focus_state).unwrap_or(serde_json::Value::Null),
             );
             true
         }

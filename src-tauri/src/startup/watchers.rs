@@ -309,6 +309,7 @@ fn ensure_tmux_focus_watch(app: &tauri::App, data_dir: &std::path::Path) {
             return;
         }
     }
+    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(&focus_path);
     if let Err(error) =
         watcher_guard.watch_file(TMUX_FOCUS_PROJECT_ID.to_string(), focus_path.clone())
     {

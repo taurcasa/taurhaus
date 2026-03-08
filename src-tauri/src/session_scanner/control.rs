@@ -9,7 +9,16 @@ use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::{self, CliTool};
 
 fn tmux_command() -> Command {
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut cmd = crate::daemon::launcher::wsl_command();
+        cmd.args(["--", "tmux"]);
+        cmd
+    };
+
+    #[cfg(not(target_os = "windows"))]
     let mut cmd = Command::new("tmux");
+
     apply_background_command_settings(&mut cmd);
     cmd
 }
@@ -512,58 +521,103 @@ fn propagate_env_to_tmux() {
 }
 
 fn install_tmux_focus_hooks() {
-    let Some(data_dir) = std::env::var_os("TAURHAUS_DATA_DIR").map(std::path::PathBuf::from) else {
-        tracing::debug!("Skipping tmux focus hook installation; TAURHAUS_DATA_DIR is not set");
+    let Some(focus_path) = default_tmux_focus_path() else {
+        tracing::debug!(
+            "Skipping tmux focus hook installation; tmux focus path could not be resolved"
+        );
         return;
     };
 
-    let focus_path = crate::session_scanner::tmux::focus_file_path(&data_dir);
-    if !focus_path.exists() {
-        let _ = crate::session_scanner::tmux::write_focus_state(
-            &focus_path,
-            &crate::session_scanner::tmux::TmuxFocusState::detached(),
-        );
-    }
+    ensure_tmux_focus_hooks_for_path(&focus_path);
+}
 
-    let attached_hook = build_tmux_focus_hook_command(&focus_path);
-    let detached_hook = build_tmux_focus_detached_hook_command(&focus_path);
+pub(crate) fn ensure_tmux_focus_hooks_for_path(focus_path: &Path) {
+    ensure_tmux_focus_file_exists(focus_path);
+    tracing::info!(
+        path = %focus_path.display(),
+        "Ensuring tmux focus hooks for focus file"
+    );
+
+    let attached_hook = build_tmux_focus_hook_command(focus_path);
+    let detached_hook = build_tmux_focus_detached_hook_command(focus_path);
     for (hook_name, hook_command) in [
+        ("after-select-window", attached_hook.as_str()),
         ("session-window-changed", attached_hook.as_str()),
         ("client-session-changed", attached_hook.as_str()),
         ("client-detached", detached_hook.as_str()),
     ] {
-        let _ = tmux_command()
+        match tmux_command()
             .args(["set-hook", "-g", hook_name, hook_command])
-            .output();
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                tracing::debug!(
+                    hook = hook_name,
+                    path = %focus_path.display(),
+                    "Installed tmux focus hook"
+                );
+            }
+            Ok(output) => {
+                tracing::warn!(
+                    hook = hook_name,
+                    path = %focus_path.display(),
+                    stderr = %String::from_utf8_lossy(&output.stderr),
+                    "Failed to install tmux focus hook"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    hook = hook_name,
+                    path = %focus_path.display(),
+                    error = %error,
+                    "Failed to execute tmux focus hook installation"
+                );
+            }
+        }
     }
 }
 
+fn ensure_tmux_focus_file_exists(focus_path: &Path) {
+    if !focus_path.exists() {
+        let _ = crate::session_scanner::tmux::write_focus_state(
+            focus_path,
+            &crate::session_scanner::tmux::TmuxFocusState::detached(),
+        );
+    }
+}
+
+fn default_tmux_focus_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("TAURHAUS_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .map(|data_dir| crate::session_scanner::tmux::focus_file_path(&data_dir))
+}
+
 fn build_tmux_focus_hook_command(focus_path: &Path) -> String {
-    let file = shell_escape(&focus_path.display().to_string());
-    let dir = shell_escape(
-        &focus_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .display()
-            .to_string(),
-    );
+    let file = shell_escape(&tmux_shell_path(focus_path));
+    let dir = shell_escape(&tmux_shell_parent_path(focus_path));
     format!(
-        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_name}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}\""
+        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}\""
     )
 }
 
 fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
-    let file = shell_escape(&focus_path.display().to_string());
-    let dir = shell_escape(
-        &focus_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .display()
-            .to_string(),
-    );
+    let file = shell_escape(&tmux_shell_path(focus_path));
+    let dir = shell_escape(&tmux_shell_parent_path(focus_path));
     format!(
         "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file}\""
     )
+}
+
+fn tmux_shell_parent_path(focus_path: &Path) -> String {
+    focus_path
+        .parent()
+        .map(tmux_shell_path)
+        .unwrap_or_else(|| ".".to_string())
+}
+
+fn tmux_shell_path(path: &Path) -> String {
+    let raw = path.display().to_string();
+    crate::provider::path::to_linux(&raw).unwrap_or(raw)
 }
 
 /// Escape a string for safe use in a POSIX shell command.
@@ -630,6 +684,7 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     // -----------------------------------------------------------------------
     // Claude command tests
@@ -831,7 +886,24 @@ mod tests {
         assert!(command.contains("run-shell -b"));
         assert!(command.contains("tmux-focus.json"));
         assert!(command.contains("#{session_name}"));
-        assert!(command.contains("#{window_name}"));
+        assert!(command.contains("#{window_index}"));
+    }
+
+    #[test]
+    fn focus_hook_command_converts_windows_drive_path_for_tmux_shell() {
+        let command = build_tmux_focus_hook_command(Path::new(
+            r"C:\Users\me\AppData\Roaming\taurhaus\tmux-focus.json",
+        ));
+        assert!(command.contains("/mnt/c/Users/me/AppData/Roaming/taurhaus/tmux-focus.json"));
+        assert!(!command.contains(r"C:\Users\me\AppData\Roaming\taurhaus\tmux-focus.json"));
+    }
+
+    #[test]
+    fn focus_hook_command_converts_wsl_unc_path_for_tmux_shell() {
+        let command = build_tmux_focus_hook_command(Path::new(
+            r"\\wsl.localhost\Ubuntu\home\me\.local\share\taurhaus\tmux-focus.json",
+        ));
+        assert!(command.contains("/home/me/.local/share/taurhaus/tmux-focus.json"));
     }
 
     #[test]
@@ -841,6 +913,51 @@ mod tests {
         assert!(command.contains("tmux-focus.json"));
         assert!(command.contains("\\\"session\\\":null"));
         assert!(command.contains("\\\"window\\\":null"));
+    }
+
+    #[test]
+    fn default_tmux_focus_path_uses_canonical_env_override() {
+        let temp = TempDir::new().expect("temp dir");
+        let original = std::env::var_os("TAURHAUS_DATA_DIR");
+        std::env::set_var("TAURHAUS_DATA_DIR", temp.path());
+
+        let path = default_tmux_focus_path().expect("default tmux focus path");
+        assert_eq!(path, temp.path().join("tmux-focus.json"));
+
+        match original {
+            Some(value) => std::env::set_var("TAURHAUS_DATA_DIR", value),
+            None => std::env::remove_var("TAURHAUS_DATA_DIR"),
+        }
+    }
+
+    #[test]
+    fn default_tmux_focus_path_requires_canonical_env_override() {
+        let original = std::env::var_os("TAURHAUS_DATA_DIR");
+        std::env::remove_var("TAURHAUS_DATA_DIR");
+
+        let path = default_tmux_focus_path();
+        assert_eq!(path, None);
+
+        match original {
+            Some(value) => std::env::set_var("TAURHAUS_DATA_DIR", value),
+            None => std::env::remove_var("TAURHAUS_DATA_DIR"),
+        }
+    }
+
+    #[test]
+    fn ensure_tmux_focus_file_exists_creates_focus_file() {
+        let temp = TempDir::new().expect("temp dir");
+        let focus_path = temp.path().join("tmux-focus.json");
+        assert!(!focus_path.exists());
+
+        ensure_tmux_focus_file_exists(&focus_path);
+
+        let focus = crate::session_scanner::tmux::read_focus_state_from_path(&focus_path)
+            .expect("focus state should be created");
+        assert_eq!(
+            focus,
+            crate::session_scanner::tmux::TmuxFocusState::detached()
+        );
     }
 
     // -----------------------------------------------------------------------
