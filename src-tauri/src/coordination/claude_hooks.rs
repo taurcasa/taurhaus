@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::coordination::domain::Member;
 use crate::coordination::errors::CoordinationError;
@@ -18,6 +18,7 @@ use crate::coordination::stores::{
     TeamConfigStore,
 };
 use crate::session_scanner::cli_tool::CliTool;
+use taurhaus_lib::logging::emit_global;
 
 const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
@@ -54,12 +55,65 @@ struct HookMemberMatch {
     member: Member,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaudeHookSkipReason {
+    NonCompactSessionStart,
+    NoManagedMemberMatch,
+    MultipleManagedMembersMatched,
+    MissingOperationalSnapshot,
+    EmptyAdditionalContext,
+}
+
+impl ClaudeHookSkipReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NonCompactSessionStart => "non_compact_session_start",
+            Self::NoManagedMemberMatch => "no_managed_member_match",
+            Self::MultipleManagedMembersMatched => "multiple_managed_members_matched",
+            Self::MissingOperationalSnapshot => "missing_operational_snapshot",
+            Self::EmptyAdditionalContext => "empty_additional_context",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaudeHookFailureStage {
+    ReadStdin,
+    ParsePayload,
+    RenderAdditionalContext,
+    RecordDelivery,
+    SerializeResponse,
+}
+
+impl ClaudeHookFailureStage {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadStdin => "read_stdin",
+            Self::ParsePayload => "parse_payload",
+            Self::RenderAdditionalContext => "render_additional_context",
+            Self::RecordDelivery => "record_delivery",
+            Self::SerializeResponse => "serialize_response",
+        }
+    }
+}
+
 pub fn handle_session_start_hook_stdin<R: Read>(
     mut stdin: R,
     teams_dir: &Path,
 ) -> Result<ClaudeHookResponse, CoordinationError> {
     let mut raw = String::new();
-    stdin.read_to_string(&mut raw)?;
+    stdin.read_to_string(&mut raw).map_err(|error| {
+        emit_claude_hook_failed(
+            ClaudeHookFailureStage::ReadStdin,
+            None,
+            None,
+            None,
+            None,
+            Some(raw.len()),
+            &error.to_string(),
+        );
+        CoordinationError::Io(error)
+    })?;
     handle_session_start_hook(&raw, teams_dir)
 }
 
@@ -68,27 +122,62 @@ pub fn handle_session_start_hook(
     teams_dir: &Path,
 ) -> Result<ClaudeHookResponse, CoordinationError> {
     let payload: ClaudeSessionStartHookInput = serde_json::from_str(raw).map_err(|err| {
+        emit_claude_hook_failed(
+            ClaudeHookFailureStage::ParsePayload,
+            None,
+            None,
+            None,
+            None,
+            Some(raw.len()),
+            &err.to_string(),
+        );
         CoordinationError::Validation(format!("invalid Claude SessionStart hook payload: {err}"))
     })?;
 
+    emit_claude_hook_received(&payload, raw.len());
+
     if payload.hook_event_name != SESSION_START_HOOK_EVENT || payload.source != COMPACT_SOURCE {
+        emit_claude_hook_skipped(&payload, None, ClaudeHookSkipReason::NonCompactSessionStart);
         return Ok(ClaudeHookResponse::default());
     }
 
-    let Some(matched) = resolve_member_match(teams_dir, &payload)? else {
-        return Ok(ClaudeHookResponse::default());
+    let matched = match resolve_member_match(teams_dir, &payload)? {
+        Ok(matched) => matched,
+        Err(reason) => {
+            emit_claude_hook_skipped(&payload, None, reason);
+            return Ok(ClaudeHookResponse::default());
+        }
     };
+
+    emit_claude_hook_resolved(&payload, &matched);
 
     let Some(snapshot) =
         OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
     else {
-        let _ = record_delivery(
+        record_delivery(
             &matched.team_name,
             &matched.member.name,
             CliTool::Claude,
             &payload.session_id,
             Utc::now(),
             CompactionDeliveryResult::Skipped,
+        )
+        .map_err(|error| {
+            emit_claude_hook_failed(
+                ClaudeHookFailureStage::RecordDelivery,
+                Some(&payload),
+                Some(&matched),
+                None,
+                None,
+                None,
+                &error.to_string(),
+            );
+            error
+        })?;
+        emit_claude_hook_skipped(
+            &payload,
+            Some(&matched),
+            ClaudeHookSkipReason::MissingOperationalSnapshot,
         );
         return Ok(ClaudeHookResponse::default());
     };
@@ -96,6 +185,15 @@ pub fn handle_session_start_hook(
     let card = CompactionReinjectionService::compose(&matched.member, &snapshot);
     let additional_context = CompactionReinjectionService::render_claude_additional_context(&card)
         .map_err(|err| {
+            emit_claude_hook_failed(
+                ClaudeHookFailureStage::RenderAdditionalContext,
+                Some(&payload),
+                Some(&matched),
+                None,
+                None,
+                None,
+                &err.to_string(),
+            );
             CoordinationError::StoreError(format!(
                 "failed to render Claude additional context for '{}': {err}",
                 matched.member.name
@@ -103,13 +201,30 @@ pub fn handle_session_start_hook(
         })?;
 
     if additional_context.trim().is_empty() {
-        let _ = record_delivery(
+        record_delivery(
             &matched.team_name,
             &matched.member.name,
             CliTool::Claude,
             &payload.session_id,
             Utc::now(),
             CompactionDeliveryResult::Skipped,
+        )
+        .map_err(|error| {
+            emit_claude_hook_failed(
+                ClaudeHookFailureStage::RecordDelivery,
+                Some(&payload),
+                Some(&matched),
+                None,
+                None,
+                None,
+                &error.to_string(),
+            );
+            error
+        })?;
+        emit_claude_hook_skipped(
+            &payload,
+            Some(&matched),
+            ClaudeHookSkipReason::EmptyAdditionalContext,
         );
         return Ok(ClaudeHookResponse::default());
     }
@@ -121,7 +236,21 @@ pub fn handle_session_start_hook(
         &payload.session_id,
         Utc::now(),
         CompactionDeliveryResult::Injected,
-    )?;
+    )
+    .map_err(|error| {
+        emit_claude_hook_failed(
+            ClaudeHookFailureStage::RecordDelivery,
+            Some(&payload),
+            Some(&matched),
+            None,
+            None,
+            None,
+            &error.to_string(),
+        );
+        error
+    })?;
+
+    emit_claude_hook_delivered(&payload, &matched, additional_context.len());
 
     Ok(ClaudeHookResponse {
         hook_specific_output: Some(ClaudeSessionStartHookSpecificOutput {
@@ -164,7 +293,7 @@ pub fn team_has_managed_claude_member(
 fn resolve_member_match(
     teams_dir: &Path,
     payload: &ClaudeSessionStartHookInput,
-) -> Result<Option<HookMemberMatch>, CoordinationError> {
+) -> Result<Result<HookMemberMatch, ClaudeHookSkipReason>, CoordinationError> {
     let mut runtime_matches = Vec::new();
 
     for team_name in TeamConfigStore::list(teams_dir)? {
@@ -202,16 +331,169 @@ fn resolve_member_match(
     }
 
     if runtime_matches.len() == 1 {
-        return Ok(runtime_matches.into_iter().next());
+        return Ok(Ok(runtime_matches
+            .into_iter()
+            .next()
+            .expect("single match")));
     }
     if runtime_matches.len() > 1 {
         tracing::warn!(
             session_id = %payload.session_id,
             "multiple Claude members matched hook payload by runtime session; skipping reinjection"
         );
-        return Ok(None);
+        return Ok(Err(ClaudeHookSkipReason::MultipleManagedMembersMatched));
     }
-    Ok(None)
+    Ok(Err(ClaudeHookSkipReason::NoManagedMemberMatch))
+}
+
+pub(crate) fn emit_claude_hook_cli_failed(error_message: &str) {
+    emit_claude_hook_failed(
+        ClaudeHookFailureStage::SerializeResponse,
+        None,
+        None,
+        None,
+        None,
+        None,
+        error_message,
+    );
+}
+
+fn emit_claude_hook_received(payload: &ClaudeSessionStartHookInput, raw_bytes: usize) {
+    let mut fields = base_claude_hook_fields(Some(payload), None);
+    fields.insert("raw_bytes".to_string(), Value::from(raw_bytes as u64));
+    emit_global(
+        "info",
+        "coordination",
+        "compaction.claude_hook.received",
+        Some("Claude compact hook payload received".to_string()),
+        fields,
+    );
+}
+
+fn emit_claude_hook_resolved(payload: &ClaudeSessionStartHookInput, matched: &HookMemberMatch) {
+    emit_global(
+        "info",
+        "coordination",
+        "compaction.claude_hook.resolved",
+        Some("Claude compact hook matched managed member".to_string()),
+        base_claude_hook_fields(Some(payload), Some(matched)),
+    );
+}
+
+fn emit_claude_hook_delivered(
+    payload: &ClaudeSessionStartHookInput,
+    matched: &HookMemberMatch,
+    additional_context_bytes: usize,
+) {
+    let mut fields = base_claude_hook_fields(Some(payload), Some(matched));
+    fields.insert(
+        "additional_context_bytes".to_string(),
+        Value::from(additional_context_bytes as u64),
+    );
+    emit_global(
+        "info",
+        "coordination",
+        "compaction.claude_hook.delivered",
+        Some("Claude compact hook returned additional context".to_string()),
+        fields,
+    );
+}
+
+fn emit_claude_hook_skipped(
+    payload: &ClaudeSessionStartHookInput,
+    matched: Option<&HookMemberMatch>,
+    reason: ClaudeHookSkipReason,
+) {
+    let mut fields = base_claude_hook_fields(Some(payload), matched);
+    fields.insert(
+        "skip_reason".to_string(),
+        Value::String(reason.as_str().to_string()),
+    );
+    emit_global(
+        "info",
+        "coordination",
+        "compaction.claude_hook.skipped",
+        Some("Claude compact hook did not return additional context".to_string()),
+        fields,
+    );
+}
+
+fn emit_claude_hook_failed(
+    stage: ClaudeHookFailureStage,
+    payload: Option<&ClaudeSessionStartHookInput>,
+    matched: Option<&HookMemberMatch>,
+    session_id: Option<&str>,
+    cwd: Option<&Path>,
+    raw_bytes: Option<usize>,
+    error_message: &str,
+) {
+    let mut fields = base_claude_hook_fields(payload, matched);
+    if payload.is_none() {
+        insert_optional_string(&mut fields, "session_id", session_id.map(ToOwned::to_owned));
+        insert_optional_string(&mut fields, "cwd", cwd.map(path_display));
+    }
+    if let Some(raw_bytes) = raw_bytes {
+        fields.insert("raw_bytes".to_string(), Value::from(raw_bytes as u64));
+    }
+    fields.insert(
+        "failure_stage".to_string(),
+        Value::String(stage.as_str().to_string()),
+    );
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "compaction.claude_hook.failed",
+        Some("Claude compact hook bridge failed".to_string()),
+        fields,
+    );
+}
+
+fn base_claude_hook_fields(
+    payload: Option<&ClaudeSessionStartHookInput>,
+    matched: Option<&HookMemberMatch>,
+) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert(
+        "tool".to_string(),
+        Value::String(CliTool::Claude.to_string()),
+    );
+    if let Some(payload) = payload {
+        fields.insert(
+            "hook_event_name".to_string(),
+            Value::String(payload.hook_event_name.clone()),
+        );
+        fields.insert("source".to_string(), Value::String(payload.source.clone()));
+        insert_optional_string(&mut fields, "session_id", Some(payload.session_id.clone()));
+        insert_optional_string(&mut fields, "cwd", payload.cwd.as_deref().map(path_display));
+    }
+    if let Some(matched) = matched {
+        insert_optional_string(&mut fields, "team_name", Some(matched.team_name.clone()));
+        insert_optional_string(
+            &mut fields,
+            "member_name",
+            Some(matched.member.name.clone()),
+        );
+        insert_optional_string(
+            &mut fields,
+            "project_path",
+            Some(matched.member.project_path.display().to_string()),
+        );
+    }
+    fields
+}
+
+fn insert_optional_string(fields: &mut Map<String, Value>, key: &str, value: Option<String>) {
+    if let Some(value) = value {
+        fields.insert(key.to_string(), Value::String(value));
+    }
+}
+
+fn path_display(path: &Path) -> String {
+    path.display().to_string()
 }
 
 fn cwd_matches_member(cwd: Option<&Path>, member_project_path: &Path) -> bool {
@@ -470,6 +752,7 @@ mod tests {
     use chrono::DateTime;
     use fs2::FileExt;
     use std::ffi::OsString;
+    use std::fs;
     use std::sync::{LazyLock, Mutex, MutexGuard};
 
     use crate::coordination::domain::{HealthState, MemberRole};
@@ -478,10 +761,12 @@ mod tests {
         OperationalContextSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
         OperationalWorkingSetSnapshot, TeamConfig,
     };
+    use taurhaus_lib::logging::{install_global_sink, LogFileState};
 
     const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     struct EnvTestGuard {
         _in_process: MutexGuard<'static, ()>,
@@ -652,6 +937,42 @@ mod tests {
     }
 
     #[test]
+    fn compact_hook_emits_received_resolved_and_delivered_events() {
+        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let log_path = tmp.path().join("claude-hook.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
+
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = sample_member(&project);
+        write_team_fixture(tmp.path(), "taurhaus-team", &member, "sess-123");
+        write_snapshot_fixture(tmp.path(), "taurhaus-team", &member.name);
+
+        let payload = json!({
+            "hookEventName": "SessionStart",
+            "sessionId": "sess-123",
+            "source": "compact",
+            "cwd": project,
+        })
+        .to_string();
+
+        let response =
+            handle_session_start_hook(&payload, tmp.path()).expect("hook should succeed");
+        assert!(response.hook_specific_output.is_some());
+
+        let contents =
+            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.delivered\"");
+        assert!(contents.contains("\"event\":\"compaction.claude_hook.received\""));
+        assert!(contents.contains("\"event\":\"compaction.claude_hook.resolved\""));
+        assert!(contents.contains("\"event\":\"compaction.claude_hook.delivered\""));
+        assert!(contents.contains("\"session_id\":\"sess-123\""));
+        assert!(contents.contains("\"team_name\":\"taurhaus-team\""));
+        assert!(contents.contains("\"member_name\":\"architect\""));
+    }
+
+    #[test]
     fn compact_hook_skips_forged_session_id_even_when_cwd_matches_managed_project() {
         // Regression: commit 34e7b9d allowed cwd-only fallback, so a forged compact hook with a
         // managed project path could receive reinjection context without owning the live session.
@@ -762,7 +1083,11 @@ mod tests {
 
     #[test]
     fn compact_hook_skips_when_snapshot_missing() {
+        let _log_guard = LOG_LOCK.lock().expect("log lock");
         let tmp = tempfile::tempdir().expect("tempdir");
+        let log_path = tmp.path().join("claude-hook.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project dir");
         let member = sample_member(&project);
@@ -781,6 +1106,27 @@ mod tests {
         .expect("hook should succeed");
 
         assert_eq!(response, ClaudeHookResponse::default());
+        let contents =
+            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.skipped\"");
+        assert!(contents.contains("\"skip_reason\":\"missing_operational_snapshot\""));
+    }
+
+    #[test]
+    fn compact_hook_logs_parse_failures() {
+        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let log_path = tmp.path().join("claude-hook.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
+
+        let error = handle_session_start_hook("{", tmp.path()).expect_err("parse should fail");
+        assert!(error
+            .to_string()
+            .contains("invalid Claude SessionStart hook payload"));
+
+        let contents =
+            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.failed\"");
+        assert!(contents.contains("\"failure_stage\":\"parse_payload\""));
     }
 
     #[test]
@@ -978,5 +1324,17 @@ mod tests {
         write_team_fixture(tmp.path(), "taurhaus-team", &member, "sess-123");
 
         assert!(team_has_managed_claude_member(tmp.path(), "taurhaus-team").expect("team loads"));
+    }
+
+    fn wait_for_log_contains(path: &Path, needle: &str) -> String {
+        for _ in 0..50 {
+            if let Ok(contents) = fs::read_to_string(path) {
+                if contents.contains(needle) {
+                    return contents;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        fs::read_to_string(path).unwrap_or_default()
     }
 }

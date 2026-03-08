@@ -337,6 +337,7 @@ fn run_claude_compact_hook_cli() -> i32 {
             println!("{payload}");
         }
         Err(err) => {
+            crate::coordination::claude_hooks::emit_claude_hook_cli_failed(&err.to_string());
             tracing::warn!(error = %err, "Claude compact hook bridge failed");
             println!("{{}}");
         }
