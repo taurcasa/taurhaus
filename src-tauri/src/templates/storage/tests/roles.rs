@@ -191,6 +191,80 @@ fn import_role_validates_and_writes_to_user_directory() {
 }
 
 #[test]
+fn import_markdown_role_persists_provenance_and_records_import_commit_message() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store
+        .ensure_repo_for_mutation()
+        .expect("ensure repo")
+        .expect("repo");
+
+    let external = app_data.join("imported-role.md");
+    write(
+        &external,
+        r#"---
+name: Imported Reviewer
+model: claude-opus-4-6
+tools:
+  - read
+  - bash
+---
+Review structural changes and summarize risks.
+"#,
+    );
+
+    store.import_role(&external).expect("import markdown role");
+    let flushed = store.flush_pending_commits().expect("flush pending");
+    assert!(flushed.is_some(), "flush should create commit");
+
+    let role = store
+        .get_role("imported-reviewer")
+        .expect("get imported role");
+    let provenance = role
+        .template
+        .provenance
+        .as_ref()
+        .expect("provenance should persist");
+    assert_eq!(
+        provenance.source_path.as_deref(),
+        Some(external.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        provenance.source_format,
+        crate::templates::adapters::RoleExportFormat::ClaudeAgent
+    );
+    assert_eq!(
+        latest_commit_message(&app_data.join("templates")),
+        "templates: import role imported-reviewer from claude_agent"
+    );
+}
+
+#[test]
+fn import_role_conflicts_when_role_id_already_exists() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+
+    let external = app_data.join("duplicate.md");
+    write(
+        &external,
+        r#"---
+name: Dev
+description: Imported duplicate
+model: gpt-5
+---
+Imported duplicate instructions.
+"#,
+    );
+
+    let err = store
+        .import_role(&external)
+        .expect_err("duplicate import should fail");
+    assert!(matches!(err, TemplateStoreError::Conflict(_)));
+}
+
+#[test]
 fn list_roles_picks_up_external_files_added_to_roles_directory() {
     let (_root, app_data, builtins) = setup_dirs();
     seed_valid_catalog(&builtins);

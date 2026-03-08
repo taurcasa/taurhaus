@@ -1,4 +1,7 @@
 use super::*;
+use crate::templates::adapters::{
+    import_role as import_external_role, RoleExportFormat, RoleImportError,
+};
 
 impl TemplateStore {
     pub fn list_roles(&self) -> Result<Vec<RoleTemplateRecord>, TemplateStoreError> {
@@ -191,28 +194,117 @@ impl TemplateStore {
         external_path: &Path,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
-        let template = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
-            TemplateStoreError::Parse(format!(
-                "failed to parse external role {}: {err}",
-                external_path.display()
-            ))
-        })?;
+        let import_format = infer_role_import_format(external_path, &raw)?;
+        let template = match import_format {
+            None => serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
+                TemplateStoreError::Parse(format!(
+                    "failed to parse external role {}: {err}",
+                    external_path.display()
+                ))
+            })?,
+            Some(format) => {
+                import_external_role(format, &raw, Some(external_path.to_string_lossy().as_ref()))
+                    .map(|imported| imported.template)
+                    .map_err(map_role_import_error)?
+            }
+        };
         template
             .validate()
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
 
         let role_id = template.role_id.clone();
         validate_template_id(&role_id, "role")?;
-        let action = match self.get_role(&role_id) {
-            Ok(_) => "update",
-            Err(TemplateStoreError::NotFound(_)) => "create",
-            Err(err) => return Err(err),
-        };
+        if let Ok(existing) = self.get_role(&role_id) {
+            return Err(TemplateStoreError::Conflict(format!(
+                "role '{}' already exists as a {:?} template; choose merge, replace, or skip",
+                role_id, existing.source
+            )));
+        }
 
         let relative_path = self.role_file_path(&role_id);
+        let payload = serde_norway::to_string(&template).map_err(|err| {
+            TemplateStoreError::Parse(format!(
+                "failed to serialize imported role '{}': {err}",
+                role_id
+            ))
+        })?;
+        let action = match import_format {
+            Some(format) => format!(
+                "templates: import role {} from {}",
+                role_id,
+                render_role_import_format(format)
+            ),
+            None => format!("templates: import role {role_id}"),
+        };
         self.apply_single_template_mutation(
-            TemplateFileMutation::write(relative_path, raw.into_bytes()),
-            &format!("templates: {action} role {role_id}"),
+            TemplateFileMutation::write(relative_path, payload.into_bytes()),
+            &action,
         )
+    }
+}
+
+fn infer_role_import_format(
+    external_path: &Path,
+    raw: &str,
+) -> Result<Option<RoleExportFormat>, TemplateStoreError> {
+    match external_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("yaml") | Some("yml") => Ok(None),
+        Some("md") => Ok(Some(infer_markdown_import_format(external_path, raw))),
+        Some(other) => Err(TemplateStoreError::Validation(format!(
+            "unsupported role import extension '.{}' for {}",
+            other,
+            external_path.display()
+        ))),
+        None => Err(TemplateStoreError::Validation(format!(
+            "cannot infer role import format for {}",
+            external_path.display()
+        ))),
+    }
+}
+
+fn infer_markdown_import_format(external_path: &Path, raw: &str) -> RoleExportFormat {
+    let normalized_path = external_path.to_string_lossy().replace('\\', "/");
+    if normalized_path.contains("/.github/agents/") {
+        return RoleExportFormat::CopilotAgent;
+    }
+    if normalized_path.contains("/.claude/agents/") {
+        return RoleExportFormat::ClaudeAgent;
+    }
+
+    let frontmatter = raw
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n"))
+        .map(|(frontmatter, _)| frontmatter)
+        .unwrap_or_default();
+    if frontmatter
+        .lines()
+        .any(|line| line.trim_start().starts_with("description:"))
+    {
+        RoleExportFormat::CopilotAgent
+    } else {
+        RoleExportFormat::ClaudeAgent
+    }
+}
+
+fn render_role_import_format(format: RoleExportFormat) -> &'static str {
+    match format {
+        RoleExportFormat::ClaudeAgent => "claude_agent",
+        RoleExportFormat::CopilotAgent => "copilot_agent",
+        RoleExportFormat::AgentsMd => "agents_md",
+        RoleExportFormat::GeminiMd => "gemini_md",
+    }
+}
+
+fn map_role_import_error(err: RoleImportError) -> TemplateStoreError {
+    match err {
+        RoleImportError::UnsupportedFormat(_) => TemplateStoreError::Validation(err.to_string()),
+        RoleImportError::InvalidFrontmatter(_) | RoleImportError::EmptyBody => {
+            TemplateStoreError::Parse(err.to_string())
+        }
     }
 }

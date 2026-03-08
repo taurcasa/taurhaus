@@ -5,6 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::adapters::RoleProvenance;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -116,6 +117,8 @@ pub struct RoleTemplate {
     pub behavioral_contract: BehavioralContract,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<RoleProvenance>,
     pub constraints: RoleConstraints,
 }
 
@@ -166,6 +169,13 @@ impl RoleTemplate {
             .validate("behavioral_contract", &mut errors);
 
         validate_string_list("capabilities", &self.capabilities, &mut errors);
+        if let Some(provenance) = &self.provenance {
+            validate_string_list(
+                "provenance.non_roundtrippable_fields",
+                &provenance.non_roundtrippable_fields,
+                &mut errors,
+            );
+        }
 
         if self.constraints.max_instances < self.constraints.min_instances {
             errors.push(format!(
@@ -716,6 +726,7 @@ mod tests {
                 escalation: vec!["raise blockers".to_string()],
             },
             capabilities: vec!["implementation".to_string()],
+            provenance: None,
             constraints: RoleConstraints {
                 min_instances: 1,
                 max_instances: 3,
@@ -810,10 +821,22 @@ mod tests {
     #[test]
     fn role_templates_deserialize_and_validate() {
         let roles = load_role_templates();
-        assert_eq!(roles.len(), 7, "expected seven built-in role templates");
+        assert_eq!(roles.len(), 9, "expected nine built-in role templates");
         assert!(
             roles.iter().any(|role| role.role_id == "codex-architect"),
             "expected codex-architect role template in built-ins"
+        );
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.role_id == "codex-orchestrator"),
+            "expected codex-orchestrator role template in built-ins"
+        );
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.role_id == "gemini-orchestrator"),
+            "expected gemini-orchestrator role template in built-ins"
         );
 
         for role in &roles {
@@ -850,12 +873,24 @@ mod tests {
     fn team_presets_deserialize_and_validate_against_roles() {
         let roles = load_role_templates();
         let presets = load_team_presets();
-        assert_eq!(presets.len(), 4, "expected four built-in team presets");
+        assert_eq!(presets.len(), 12, "expected twelve built-in team presets");
         assert!(
             presets
                 .iter()
                 .any(|preset| preset.preset_id == "standard-team"),
             "expected standard-team preset in built-ins"
+        );
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.preset_id == "standard-team-gemini"),
+            "expected standard-team-gemini preset in built-ins"
+        );
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.preset_id == "fullstack-dev-codex"),
+            "expected fullstack-dev-codex preset in built-ins"
         );
 
         for preset in &presets {
@@ -889,6 +924,44 @@ mod tests {
     }
 
     #[test]
+    fn codex_fullstack_preset_resolves_member_names() {
+        let roles = load_role_templates();
+        let presets = load_team_presets();
+        let preset = presets
+            .iter()
+            .find(|preset| preset.preset_id == "fullstack-dev-codex")
+            .expect("fullstack-dev-codex preset exists");
+
+        let names = preset
+            .resolve_member_names(&roles, "taurhaus")
+            .expect("member names should resolve");
+
+        assert!(names.iter().any(|name| name == "lead-taurhaus"));
+        assert!(names.iter().any(|name| name == "dev-1"));
+        assert!(names.iter().any(|name| name == "dev-2"));
+    }
+
+    #[test]
+    fn gemini_standard_preset_resolves_member_names() {
+        let roles = load_role_templates();
+        let presets = load_team_presets();
+        let preset = presets
+            .iter()
+            .find(|preset| preset.preset_id == "standard-team-gemini")
+            .expect("standard-team-gemini preset exists");
+
+        let names = preset
+            .resolve_member_names(&roles, "taurhaus")
+            .expect("member names should resolve");
+
+        assert!(names.iter().any(|name| name == "lead-taurhaus"));
+        assert!(names.iter().any(|name| name == "architect"));
+        assert!(names.iter().any(|name| name == "developer1"));
+        assert!(names.iter().any(|name| name == "developer2"));
+        assert!(names.iter().any(|name| name == "ui-specialist"));
+    }
+
+    #[test]
     fn resolve_member_names_adds_suffix_on_collision() {
         let lead_role = RoleTemplate {
             schema: TemplateSchema {
@@ -914,6 +987,7 @@ mod tests {
                 escalation: vec!["c".to_string()],
             },
             capabilities: vec!["planning".to_string()],
+            provenance: None,
             constraints: RoleConstraints {
                 min_instances: 1,
                 max_instances: 1,
@@ -945,6 +1019,7 @@ mod tests {
                 escalation: vec!["c".to_string()],
             },
             capabilities: vec!["implementation".to_string()],
+            provenance: None,
             constraints: RoleConstraints {
                 min_instances: 0,
                 max_instances: 10,
@@ -1200,6 +1275,30 @@ mod tests {
         assert_eq!(
             round_trip.behavior_summary.as_deref(),
             Some("Implements assigned work and escalates structural uncertainty.")
+        );
+    }
+
+    #[test]
+    fn role_template_serializes_optional_provenance() {
+        let mut role = sample_role_template();
+        role.provenance = Some(RoleProvenance {
+            source_format: crate::templates::adapters::RoleExportFormat::ClaudeAgent,
+            source_version: Some("1".to_string()),
+            source_path: Some(".claude/agents/sample-role.md".to_string()),
+            imported_at: chrono::Utc::now(),
+            non_roundtrippable_fields: vec!["constraints".to_string()],
+        });
+
+        let value = serde_json::to_value(&role).expect("serialize role");
+        assert!(value.get("provenance").is_some());
+
+        let round_trip = serde_json::from_value::<RoleTemplate>(value).expect("deserialize role");
+        assert_eq!(
+            round_trip
+                .provenance
+                .as_ref()
+                .and_then(|provenance| provenance.source_path.as_deref()),
+            Some(".claude/agents/sample-role.md")
         );
     }
 }
