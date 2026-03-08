@@ -1,4 +1,5 @@
 pub mod auth;
+pub(crate) mod compaction;
 pub mod event_listener;
 pub(crate) mod handlers;
 pub mod launcher;

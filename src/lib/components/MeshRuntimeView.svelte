@@ -15,6 +15,7 @@
     selectedNodeId = null,
     teamRuntimeState = 'none',
     compactionAudit = [],
+    compactionDiagnostics = null,
     isResumingTeam = false,
     resumeProgress = null,
     availableProjects = [],
@@ -159,6 +160,7 @@
       agents={teamConfig?.agents ?? []}
       teamRuntimeState={teamRuntimeState}
       compactionAudit={compactionAudit}
+      compactionDiagnostics={compactionDiagnostics}
       {dark}
       actionsDisabled={isResumingTeam}
       onAddAgent={onOpenAddAgent}

@@ -8,35 +8,30 @@ use std::sync::{Mutex, OnceLock};
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+use uuid::Uuid;
 
 use super::{cli_tool::CliTool, RuntimeSession};
-use crate::coordination::domain::Member;
-use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
+use crate::coordination::compaction_events::{
+    emit_compaction_extractor_failed, emit_compaction_signal_emitted, signal_event,
+    CompactionExtractorFailedEvent,
+};
+use crate::coordination::compaction_processor::{
+    CompactionSignalProcessOutcome, CompactionSignalProcessor,
+};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
-    emit_compaction_delivery_event, emit_compaction_detected_event, is_stale_compaction,
-    CompactionDeliveryResult, MemberCompactionState, MemberCompactionStore, MemberRuntimeStore,
-    MeshInboxMessage, MeshInboxStore, OperationalContextSnapshot, OperationalContextSnapshotStore,
-    TeamConfigStore,
+    CompactionSignalKind as StoreSignalKind, CompactionSignalRecord,
 };
-use crate::provider::path::normalize_project_path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PendingCodexCompactionReinjection {
-    pub team_name: String,
-    pub member_name: String,
-    pub pane_id: String,
-    pub session_id: String,
-    pub jsonl_path: PathBuf,
-    pub observed_jsonl_len: u64,
-    pub compaction_timestamp: DateTime<Utc>,
-    pub card: OperationalReinjectionCard,
+pub struct PendingCodexCompactionSignal {
+    pub signal: CompactionSignalRecord,
 }
 
 #[derive(Debug, Default)]
 struct CompactionWatcherState {
     offsets: HashMap<PathBuf, u64>,
-    pending: VecDeque<PendingCodexCompactionReinjection>,
+    pending: VecDeque<PendingCodexCompactionSignal>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,15 +47,6 @@ struct CodexCompactionEvent {
     kind: CompactionSignalKind,
 }
 
-#[derive(Debug, Clone)]
-struct ResolvedManagedCodexSession {
-    team_name: String,
-    member_name: String,
-    pane_id: String,
-    member: Member,
-    snapshot: OperationalContextSnapshot,
-}
-
 static WATCHER_STATE: OnceLock<Mutex<CompactionWatcherState>> = OnceLock::new();
 
 fn watcher_state() -> &'static Mutex<CompactionWatcherState> {
@@ -74,7 +60,7 @@ pub fn process_codex_compaction_events(sessions: &[RuntimeSession]) {
     deliver_pending_codex_compaction_reinjections_at(sessions, &teams_dir, &runtime, Utc::now());
 }
 
-pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir: &Path) {
+pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], _teams_dir: &Path) {
     let mut active_paths = HashSet::new();
     let mut processed_paths = HashSet::new();
 
@@ -98,6 +84,12 @@ pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir
         let observed_jsonl_len = match std::fs::metadata(&path) {
             Ok(metadata) => metadata.len(),
             Err(error) => {
+                emit_compaction_extractor_failed(CompactionExtractorFailedEvent {
+                    tool: CliTool::Codex,
+                    jsonl_path: path.display().to_string(),
+                    stage: "stat".to_string(),
+                    error_message: error.to_string(),
+                });
                 tracing::warn!(
                     path = %path.display(),
                     error = %error,
@@ -114,6 +106,12 @@ pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir
         let (appended_lines, committed_offset) = match read_appended_lines(&path, read_start) {
             Ok(result) => result,
             Err(error) => {
+                emit_compaction_extractor_failed(CompactionExtractorFailedEvent {
+                    tool: CliTool::Codex,
+                    jsonl_path: path.display().to_string(),
+                    stage: "read_appended_lines".to_string(),
+                    error_message: error.to_string(),
+                });
                 tracing::warn!(path = %path.display(), error = %error, "failed to read appended Codex JSONL lines");
                 continue;
             }
@@ -125,47 +123,34 @@ pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir
             continue;
         }
 
-        let Some(resolved) = resolve_managed_codex_session(teams_dir, session) else {
-            tracing::debug!(
-                project_path = %session.project_path,
-                session_id = session_id,
-                tmux_pane = session.tmux_pane.as_deref().unwrap_or(""),
-                "skipping Codex compaction event because no managed member resolution was available"
-            );
-            continue;
-        };
-
         for event in events {
-            if already_handled(
-                teams_dir,
-                &resolved.team_name,
-                &resolved.member_name,
-                &event.session_id,
-                event.timestamp,
-            ) {
+            let Some(pane_id) = session.tmux_pane.clone() else {
                 continue;
-            }
+            };
 
-            emit_compaction_detected_event(
-                &resolved.team_name,
-                &resolved.member_name,
-                CliTool::Codex,
-                &event.session_id,
-                event.timestamp,
-            );
-
-            let card = CompactionReinjectionService::compose(&resolved.member, &resolved.snapshot);
-
-            enqueue_pending(PendingCodexCompactionReinjection {
-                team_name: resolved.team_name.clone(),
-                member_name: resolved.member_name.clone(),
-                pane_id: resolved.pane_id.clone(),
+            let signal = CompactionSignalRecord {
+                version: 1,
+                signal_id: Uuid::new_v4().to_string(),
+                emitted_at: Utc::now(),
+                tool: CliTool::Codex,
                 session_id: event.session_id,
-                jsonl_path: path.clone(),
-                observed_jsonl_len,
-                compaction_timestamp: event.timestamp,
-                card,
-            });
+                pane_id,
+                project_path: session.project_path.clone(),
+                jsonl_path: path.display().to_string(),
+                jsonl_offset: observed_jsonl_len,
+                transcript_timestamp: event.timestamp,
+                signal_kind: store_signal_kind(event.kind),
+            };
+            emit_compaction_signal_emitted(signal_event(
+                signal.tool,
+                Some(&signal.session_id),
+                Some(&signal.pane_id),
+                Some(&signal.project_path),
+                Some(Path::new(&signal.jsonl_path)),
+                Some(signal.transcript_timestamp),
+                Some(event_signal_kind(signal.signal_kind)),
+            ));
+            enqueue_pending(PendingCodexCompactionSignal { signal });
         }
     }
 
@@ -175,7 +160,7 @@ pub fn process_codex_compaction_events_at(sessions: &[RuntimeSession], teams_dir
     guard.offsets.retain(|path, _| active_paths.contains(path));
 }
 
-pub fn drain_pending_codex_compaction_reinjections() -> Vec<PendingCodexCompactionReinjection> {
+pub fn drain_pending_codex_compaction_reinjections() -> Vec<PendingCodexCompactionSignal> {
     let mut guard = watcher_state()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -295,428 +280,53 @@ fn parse_codex_compaction_record(line: &str, session_id: &str) -> Option<CodexCo
     })
 }
 
-fn resolve_managed_codex_session(
-    teams_dir: &Path,
-    session: &RuntimeSession,
-) -> Option<ResolvedManagedCodexSession> {
-    let session_id = session.session_id.as_deref()?;
-    let normalized_project = normalize_project_path(&session.project_path);
-    let scanner_pane = session.tmux_pane.as_deref();
-
-    let team_names = TeamConfigStore::list(teams_dir).ok()?;
-    let mut best_match: Option<ResolvedManagedCodexSession> = None;
-    let mut best_score = 0u8;
-    let mut ambiguous = false;
-
-    for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
-            Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while resolving Codex compaction");
-                continue;
-            }
-        };
-        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
-            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
-            Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team runtime while resolving Codex compaction");
-                continue;
-            }
-        };
-
-        for member in config.members {
-            if member.cli_tool != CliTool::Codex {
-                continue;
-            }
-            if normalize_project_path(&member.project_path.display().to_string())
-                != normalized_project
-            {
-                continue;
-            }
-
-            let mut runtime = runtime_by_member.get(&member.name).cloned();
-            if let Some(record) = runtime.as_mut() {
-                let mut changed = false;
-                if record.cli_tool.is_none() {
-                    record.cli_tool = Some(member.cli_tool);
-                    changed = true;
-                }
-                if record.project_path.is_none() {
-                    record.project_path = Some(member.project_path.clone());
-                    changed = true;
-                }
-                if changed {
-                    let _ = MemberRuntimeStore::save(teams_dir, &team_name, &member.name, record);
-                }
-            }
-
-            let runtime_session = runtime
-                .as_ref()
-                .and_then(|record| record.session_id.as_deref());
-            let runtime_pane = runtime
-                .as_ref()
-                .and_then(|record| record.pane_id.as_deref());
-            let pane_matches = runtime_pane.is_some() && runtime_pane == scanner_pane;
-            let session_matches = runtime_session == Some(session_id);
-
-            let score = match (session_matches, pane_matches) {
-                (true, true) => 4,
-                (true, false) => 3,
-                (false, true) => 2,
-                (false, false) => 0,
-            };
-            if score == 0 {
-                continue;
-            }
-
-            let pane_id = runtime_pane
-                .map(ToOwned::to_owned)
-                .or_else(|| session.tmux_pane.clone());
-            let Some(pane_id) = pane_id else {
-                continue;
-            };
-
-            let snapshot =
-                match OperationalContextSnapshotStore::load(teams_dir, &team_name, &member.name) {
-                    Ok(Some(snapshot)) => snapshot,
-                    Ok(None) => continue,
-                    Err(error) => {
-                        tracing::warn!(
-                            team_name = team_name,
-                            member_name = member.name,
-                            error = %error,
-                            "failed to load operational snapshot while resolving Codex compaction"
-                        );
-                        continue;
-                    }
-                };
-
-            let resolved = ResolvedManagedCodexSession {
-                team_name: team_name.clone(),
-                member_name: member.name.clone(),
-                pane_id,
-                member,
-                snapshot,
-            };
-
-            let candidate_activity = runtime
-                .as_ref()
-                .and_then(|record| record.last_seen_at.or(record.attached_at));
-            let best_activity = best_match.as_ref().and_then(|current| {
-                runtime_by_member
-                    .get(&current.member_name)
-                    .and_then(|record| record.last_seen_at.or(record.attached_at))
-            });
-
-            if score > best_score {
-                best_score = score;
-                best_match = Some(resolved);
-                ambiguous = false;
-            } else if score == best_score {
-                match (candidate_activity, best_activity) {
-                    (Some(candidate), Some(current)) if candidate > current => {
-                        best_match = Some(resolved);
-                        ambiguous = false;
-                    }
-                    (Some(candidate), Some(current)) if candidate < current => {}
-                    _ => {
-                        ambiguous = true;
-                    }
-                }
-            }
-        }
-    }
-
-    if ambiguous {
-        None
-    } else {
-        best_match
-    }
-}
-
-fn already_handled(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-) -> bool {
-    match MemberCompactionStore::load(teams_dir, team_name, member_name) {
-        Ok(Some(state)) => {
-            state.last_session_id == session_id
-                && state.last_compaction_timestamp == compaction_timestamp
-        }
-        Ok(None) => false,
-        Err(error) => {
-            tracing::warn!(
-                team_name = team_name,
-                member_name = member_name,
-                error = %error,
-                "failed to load compaction state while resolving idempotency"
-            );
-            false
-        }
-    }
-}
-
 fn deliver_pending_codex_compaction_reinjections_at(
-    sessions: &[RuntimeSession],
+    _sessions: &[RuntimeSession],
     teams_dir: &Path,
     runtime: &dyn CoordinationRuntime,
     now: DateTime<Utc>,
 ) {
     for pending in drain_pending_codex_compaction_reinjections() {
-        if let Err(error) = deliver_pending_codex_compaction_reinjection_at(
-            sessions, teams_dir, runtime, now, &pending,
-        ) {
+        if let CompactionSignalProcessOutcome::Failed {
+            team_name,
+            member_name,
+            error_message,
+        } =
+            CompactionSignalProcessor::process_signal_at(&pending.signal, teams_dir, runtime, now)
+        {
             tracing::warn!(
-                team_name = pending.team_name,
-                member_name = pending.member_name,
-                pane_id = pending.pane_id,
-                session_id = pending.session_id,
-                error = %error,
-                "failed to deliver Codex post-compaction inbox message"
-            );
-            let _ = record_delivery_at(
-                teams_dir,
-                &pending.team_name,
-                &pending.member_name,
-                &pending.session_id,
-                pending.compaction_timestamp,
-                CompactionDeliveryResult::Failed,
+                team_name = team_name,
+                member_name = member_name,
+                pane_id = pending.signal.pane_id,
+                session_id = pending.signal.session_id,
+                error = error_message,
+                "failed to process Codex compaction signal"
             );
         }
     }
 }
 
-fn deliver_pending_codex_compaction_reinjection_at(
-    sessions: &[RuntimeSession],
-    teams_dir: &Path,
-    runtime: &dyn CoordinationRuntime,
-    now: DateTime<Utc>,
-    pending: &PendingCodexCompactionReinjection,
-) -> Result<(), crate::coordination::errors::CoordinationError> {
-    if is_stale_compaction(pending.compaction_timestamp, now) {
-        return record_delivery_at(
-            teams_dir,
-            &pending.team_name,
-            &pending.member_name,
-            &pending.session_id,
-            pending.compaction_timestamp,
-            CompactionDeliveryResult::Stale,
-        );
+fn store_signal_kind(kind: CompactionSignalKind) -> StoreSignalKind {
+    match kind {
+        CompactionSignalKind::Compacted => StoreSignalKind::Compacted,
+        CompactionSignalKind::ContextCompacted => StoreSignalKind::ContextCompacted,
     }
-
-    if already_handled(
-        teams_dir,
-        &pending.team_name,
-        &pending.member_name,
-        &pending.session_id,
-        pending.compaction_timestamp,
-    ) {
-        return record_delivery_at(
-            teams_dir,
-            &pending.team_name,
-            &pending.member_name,
-            &pending.session_id,
-            pending.compaction_timestamp,
-            CompactionDeliveryResult::Skipped,
-        );
-    }
-
-    if !member_is_still_attached(teams_dir, pending)?
-        || !session_still_matches_pending(sessions, pending)
-        || !jsonl_prompt_boundary_is_unchanged(pending)
-        || !pane_is_live_codex(runtime, &pending.pane_id)?
-    {
-        return record_delivery_at(
-            teams_dir,
-            &pending.team_name,
-            &pending.member_name,
-            &pending.session_id,
-            pending.compaction_timestamp,
-            CompactionDeliveryResult::Skipped,
-        );
-    }
-
-    let rendered_text = CompactionReinjectionService::render_codex_inbox_text(&pending.card)
-        .map_err(|error| {
-            crate::coordination::errors::CoordinationError::StoreError(format!(
-                "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
-                pending.member_name, pending.team_name
-            ))
-        })?;
-    let inbox_message = MeshInboxMessage::new(
-        "taurhaus",
-        rendered_text,
-        Some("post_compaction_context".to_string()),
-        now,
-    );
-    MeshInboxStore::append(
-        teams_dir,
-        &pending.team_name,
-        &pending.member_name,
-        &inbox_message,
-    )?;
-    record_delivery_at(
-        teams_dir,
-        &pending.team_name,
-        &pending.member_name,
-        &pending.session_id,
-        pending.compaction_timestamp,
-        CompactionDeliveryResult::Injected,
-    )
 }
 
-fn member_is_still_attached(
-    teams_dir: &Path,
-    pending: &PendingCodexCompactionReinjection,
-) -> Result<bool, crate::coordination::errors::CoordinationError> {
-    let config = match TeamConfigStore::load(teams_dir, &pending.team_name) {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!(
-                team_name = pending.team_name,
-                member_name = pending.member_name,
-                error = %error,
-                "failed to load team config while validating Codex compaction delivery"
-            );
-            return Ok(false);
+fn event_signal_kind(
+    kind: StoreSignalKind,
+) -> crate::coordination::compaction_events::CompactionSignalKind {
+    match kind {
+        StoreSignalKind::Compacted => {
+            crate::coordination::compaction_events::CompactionSignalKind::Compacted
         }
-    };
-
-    let Some(member) = config
-        .members
-        .iter()
-        .find(|member| member.name == pending.member_name)
-    else {
-        return Ok(false);
-    };
-
-    if member.cli_tool != CliTool::Codex {
-        return Ok(false);
-    }
-
-    let runtime = MemberRuntimeStore::load(teams_dir, &pending.team_name, &pending.member_name)?;
-
-    Ok(runtime.pane_id.as_deref() == Some(pending.pane_id.as_str())
-        && runtime.session_id.as_deref() == Some(pending.session_id.as_str()))
-}
-
-fn session_still_matches_pending(
-    sessions: &[RuntimeSession],
-    pending: &PendingCodexCompactionReinjection,
-) -> bool {
-    sessions.iter().any(|session| {
-        session.cli_tool == CliTool::Codex
-            && session.tmux_pane.as_deref() == Some(pending.pane_id.as_str())
-            && session.session_id.as_deref() == Some(pending.session_id.as_str())
-            && session.jsonl_path.as_deref() == Some(pending.jsonl_path.to_string_lossy().as_ref())
-    })
-}
-
-fn jsonl_prompt_boundary_is_unchanged(pending: &PendingCodexCompactionReinjection) -> bool {
-    match std::fs::metadata(&pending.jsonl_path) {
-        Ok(metadata) => metadata.len() == pending.observed_jsonl_len,
-        Err(error) => {
-            tracing::warn!(
-                path = %pending.jsonl_path.display(),
-                team_name = pending.team_name,
-                member_name = pending.member_name,
-                error = %error,
-                "failed to stat Codex JSONL while validating prompt boundary"
-            );
-            false
+        StoreSignalKind::ContextCompacted => {
+            crate::coordination::compaction_events::CompactionSignalKind::ContextCompacted
         }
     }
 }
 
-fn pane_is_live_codex(
-    runtime: &dyn CoordinationRuntime,
-    pane_id: &str,
-) -> Result<bool, crate::coordination::errors::CoordinationError> {
-    if !runtime.pane_exists(pane_id)? || runtime.pane_is_dead(pane_id)? {
-        return Ok(false);
-    }
-
-    let command = runtime.pane_current_command(pane_id)?;
-    Ok(command
-        .as_deref()
-        .is_some_and(foreground_command_matches_codex))
-}
-
-fn foreground_command_matches_codex(command: &str) -> bool {
-    let normalized = command.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return false;
-    }
-
-    let first = normalized.split_whitespace().next().unwrap_or_default();
-    let first = first.rsplit('/').next().unwrap_or(first);
-
-    first == "codex" || first.ends_with("codex")
-}
-
-fn record_delivery_at(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-    result: CompactionDeliveryResult,
-) -> Result<(), crate::coordination::errors::CoordinationError> {
-    if !should_persist_delivery_state(teams_dir, team_name, member_name)? {
-        tracing::debug!(
-            team_name = team_name,
-            member_name = member_name,
-            session_id = session_id,
-            result = ?result,
-            "skipping compaction bookkeeping because team/member no longer exists"
-        );
-        return Ok(());
-    }
-
-    MemberCompactionStore::save(
-        teams_dir,
-        team_name,
-        member_name,
-        &MemberCompactionState {
-            version: 1,
-            member_name: member_name.to_string(),
-            last_session_id: session_id.to_string(),
-            last_compaction_timestamp: compaction_timestamp,
-            last_delivery_result: result,
-        },
-    )?;
-    emit_compaction_delivery_event(
-        team_name,
-        member_name,
-        CliTool::Codex,
-        session_id,
-        compaction_timestamp,
-        result,
-    );
-    Ok(())
-}
-
-fn should_persist_delivery_state(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-) -> Result<bool, crate::coordination::errors::CoordinationError> {
-    let config = match TeamConfigStore::load(teams_dir, team_name) {
-        Ok(config) => config,
-        Err(crate::coordination::errors::CoordinationError::NotFound(_)) => return Ok(false),
-        Err(error) => return Err(error),
-    };
-
-    Ok(config
-        .members
-        .iter()
-        .any(|member| member.name == member_name && member.cli_tool == CliTool::Codex))
-}
-
-fn enqueue_pending(event: PendingCodexCompactionReinjection) {
+fn enqueue_pending(event: PendingCodexCompactionSignal) {
     let mut guard = watcher_state()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -736,14 +346,14 @@ fn reset_test_state() {
 mod tests {
     use super::*;
 
-    use chrono::TimeZone;
     use tempfile::TempDir;
 
-    use crate::coordination::domain::{HealthState, MemberRole};
-    use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+    use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::stores::{
-        MemberRuntimeRecord, OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot,
-        OperationalTaskSnapshot, OperationalWorkingSetSnapshot, TeamConfig,
+        CompactionDeliveryResult, MemberCompactionState, MemberCompactionStore,
+        MemberRuntimeRecord, MemberRuntimeStore, OperationalAssignmentFooterSnapshot,
+        OperationalContextSnapshot, OperationalContextSnapshotStore, OperationalOwnershipSnapshot,
+        OperationalTaskSnapshot, OperationalWorkingSetSnapshot, TeamConfig, TeamConfigStore,
     };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -1062,16 +672,13 @@ mod tests {
         let pending = drain_pending_codex_compaction_reinjections();
 
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].team_name, "taurhaus-team");
-        assert_eq!(pending[0].member_name, "developer2");
-        assert_eq!(pending[0].pane_id, "%7");
-        assert_eq!(pending[0].session_id, "session-1");
+        assert_eq!(pending[0].signal.pane_id, "%7");
+        assert_eq!(pending[0].signal.session_id, "session-1");
+        assert_eq!(pending[0].signal.project_path, project_path);
         assert_eq!(
-            pending[0].compaction_timestamp,
+            pending[0].signal.transcript_timestamp,
             timestamp("2026-03-08T13:46:41.037Z")
         );
-        assert_eq!(pending[0].card.task.id, "678");
-        assert_eq!(pending[0].card.member_name, "developer2");
     }
 
     #[test]
@@ -1204,8 +811,8 @@ mod tests {
 
         let pending = drain_pending_codex_compaction_reinjections();
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].member_name, "developer3");
-        assert_eq!(pending[0].session_id, "session-2");
+        assert_eq!(pending[0].signal.pane_id, "%8");
+        assert_eq!(pending[0].signal.session_id, "session-2");
     }
 
     #[test]
@@ -1249,7 +856,7 @@ mod tests {
         let pending = drain_pending_codex_compaction_reinjections();
         assert_eq!(pending.len(), 1);
         assert_eq!(
-            pending[0].compaction_timestamp,
+            pending[0].signal.transcript_timestamp,
             timestamp("2026-03-08T13:46:41.037Z")
         );
     }
@@ -1359,7 +966,7 @@ mod tests {
 
         let pending = drain_pending_codex_compaction_reinjections();
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].session_id, "session-2");
+        assert_eq!(pending[0].signal.session_id, "session-2");
     }
 
     #[test]
@@ -1414,583 +1021,8 @@ mod tests {
         let pending = drain_pending_codex_compaction_reinjections();
         assert_eq!(pending.len(), 1);
         assert_eq!(
-            pending[0].compaction_timestamp,
+            pending[0].signal.transcript_timestamp,
             timestamp("2026-03-08T13:46:43.250Z")
         );
-    }
-
-    #[test]
-    fn pending_reinjection_injects_into_live_codex_pane_and_records_delivery() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let team_name = "taurhaus-team";
-        let member = sample_member("developer2", project_path);
-        save_team_fixture(
-            &teams_dir,
-            team_name,
-            &member,
-            Some("session-1"),
-            Some("%7"),
-        );
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
-            ],
-        );
-        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
-            .expect("jsonl metadata")
-            .len();
-
-        let pending = PendingCodexCompactionReinjection {
-            team_name: team_name.to_string(),
-            member_name: member.name.clone(),
-            pane_id: "%7".to_string(),
-            session_id: "session-1".to_string(),
-            jsonl_path: jsonl_path.clone(),
-            observed_jsonl_len,
-            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
-            card: CompactionReinjectionService::compose(
-                &member,
-                &sample_snapshot(team_name, &member.name, project_path),
-            ),
-        };
-        enqueue_pending(pending.clone());
-
-        let runtime = RecordingCoordinationRuntime::default();
-        runtime.set_pane_exists("%7", true);
-        runtime.set_pane_dead("%7", false);
-        runtime.set_pane_current_command("%7", Some("codex --resume"));
-
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        deliver_pending_codex_compaction_reinjections_at(
-            &[session],
-            &teams_dir,
-            &runtime,
-            timestamp("2026-03-08T13:46:43.000Z"),
-        );
-
-        let inbox = MeshInboxStore::load(&teams_dir, team_name, &member.name).expect("load inbox");
-        assert_eq!(inbox.len(), 1);
-        assert_eq!(inbox[0].from, "taurhaus");
-        assert_eq!(inbox[0].summary.as_deref(), Some("post_compaction_context"));
-        let delivered_card: OperationalReinjectionCard =
-            serde_json::from_str(&inbox[0].text).expect("parse inbox payload");
-        assert_eq!(delivered_card, pending.card);
-
-        let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
-            .expect("load state")
-            .expect("saved state");
-        assert_eq!(stored.last_session_id, "session-1");
-        assert_eq!(
-            stored.last_delivery_result,
-            CompactionDeliveryResult::Injected
-        );
-    }
-
-    #[test]
-    fn pending_reinjection_marks_stale_when_delivery_is_too_old() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let team_name = "taurhaus-team";
-        let member = sample_member("developer2", project_path);
-        save_team_fixture(
-            &teams_dir,
-            team_name,
-            &member,
-            Some("session-1"),
-            Some("%7"),
-        );
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
-            ],
-        );
-        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
-            .expect("jsonl metadata")
-            .len();
-
-        enqueue_pending(PendingCodexCompactionReinjection {
-            team_name: team_name.to_string(),
-            member_name: member.name.clone(),
-            pane_id: "%7".to_string(),
-            session_id: "session-1".to_string(),
-            jsonl_path: jsonl_path.clone(),
-            observed_jsonl_len,
-            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
-            card: CompactionReinjectionService::compose(
-                &member,
-                &sample_snapshot(team_name, &member.name, project_path),
-            ),
-        });
-
-        let runtime = RecordingCoordinationRuntime::default();
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        deliver_pending_codex_compaction_reinjections_at(
-            &[session],
-            &teams_dir,
-            &runtime,
-            timestamp("2026-03-08T13:46:57.000Z"),
-        );
-
-        assert!(!runtime
-            .calls()
-            .iter()
-            .any(|call| matches!(call, RuntimeCall::SendKeys { .. })));
-
-        let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
-            .expect("load state")
-            .expect("saved state");
-        assert_eq!(stored.last_delivery_result, CompactionDeliveryResult::Stale);
-    }
-
-    #[test]
-    fn pending_reinjection_skips_when_pane_is_dead() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let team_name = "taurhaus-team";
-        let member = sample_member("developer2", project_path);
-        save_team_fixture(
-            &teams_dir,
-            team_name,
-            &member,
-            Some("session-1"),
-            Some("%7"),
-        );
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
-            ],
-        );
-        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
-            .expect("jsonl metadata")
-            .len();
-
-        enqueue_pending(PendingCodexCompactionReinjection {
-            team_name: team_name.to_string(),
-            member_name: member.name.clone(),
-            pane_id: "%7".to_string(),
-            session_id: "session-1".to_string(),
-            jsonl_path: jsonl_path.clone(),
-            observed_jsonl_len,
-            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
-            card: CompactionReinjectionService::compose(
-                &member,
-                &sample_snapshot(team_name, &member.name, project_path),
-            ),
-        });
-
-        let runtime = RecordingCoordinationRuntime::default();
-        runtime.set_pane_exists("%7", true);
-        runtime.set_pane_dead("%7", true);
-        runtime.set_pane_current_command("%7", Some("codex"));
-
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        deliver_pending_codex_compaction_reinjections_at(
-            &[session],
-            &teams_dir,
-            &runtime,
-            timestamp("2026-03-08T13:46:43.000Z"),
-        );
-
-        assert!(!runtime
-            .calls()
-            .iter()
-            .any(|call| matches!(call, RuntimeCall::SendKeys { .. })));
-
-        let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
-            .expect("load state")
-            .expect("saved state");
-        assert_eq!(
-            stored.last_delivery_result,
-            CompactionDeliveryResult::Skipped
-        );
-    }
-
-    #[test]
-    fn pending_reinjection_skips_when_live_session_has_moved_past_compaction_boundary() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let team_name = "taurhaus-team";
-        let member = sample_member("developer2", project_path);
-        save_team_fixture(
-            &teams_dir,
-            team_name,
-            &member,
-            Some("session-2"),
-            Some("%7"),
-        );
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
-            ],
-        );
-        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
-            .expect("jsonl metadata")
-            .len();
-
-        enqueue_pending(PendingCodexCompactionReinjection {
-            team_name: team_name.to_string(),
-            member_name: member.name.clone(),
-            pane_id: "%7".to_string(),
-            session_id: "session-1".to_string(),
-            jsonl_path: jsonl_path.clone(),
-            observed_jsonl_len,
-            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
-            card: CompactionReinjectionService::compose(
-                &member,
-                &sample_snapshot(team_name, &member.name, project_path),
-            ),
-        });
-
-        let runtime = RecordingCoordinationRuntime::default();
-        runtime.set_pane_exists("%7", true);
-        runtime.set_pane_dead("%7", false);
-        runtime.set_pane_current_command("%7", Some("codex --resume"));
-
-        let session = sample_session(project_path, &jsonl_path, "session-2", "%7");
-        deliver_pending_codex_compaction_reinjections_at(
-            &[session],
-            &teams_dir,
-            &runtime,
-            timestamp("2026-03-08T13:46:43.000Z"),
-        );
-
-        assert!(!runtime
-            .calls()
-            .iter()
-            .any(|call| matches!(call, RuntimeCall::SendKeys { .. })));
-
-        let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
-            .expect("load state")
-            .expect("saved state");
-        assert_eq!(
-            stored.last_delivery_result,
-            CompactionDeliveryResult::Skipped
-        );
-    }
-
-    #[test]
-    fn pending_reinjection_skips_when_jsonl_grew_after_compaction() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let team_name = "taurhaus-team";
-        let member = sample_member("developer2", project_path);
-        save_team_fixture(
-            &teams_dir,
-            team_name,
-            &member,
-            Some("session-1"),
-            Some("%7"),
-        );
-
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
-            ],
-        );
-        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
-            .expect("jsonl metadata")
-            .len();
-
-        enqueue_pending(PendingCodexCompactionReinjection {
-            team_name: team_name.to_string(),
-            member_name: member.name.clone(),
-            pane_id: "%7".to_string(),
-            session_id: "session-1".to_string(),
-            jsonl_path: jsonl_path.clone(),
-            observed_jsonl_len,
-            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
-            card: CompactionReinjectionService::compose(
-                &member,
-                &sample_snapshot(team_name, &member.name, project_path),
-            ),
-        });
-
-        // Regression: a new turn started after compaction, so delayed reinjection must skip.
-        append_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:42.500Z","type":"user_message","payload":{"text":"continue"}}"#,
-            ],
-        );
-
-        let runtime = RecordingCoordinationRuntime::default();
-        runtime.set_pane_exists("%7", true);
-        runtime.set_pane_dead("%7", false);
-        runtime.set_pane_current_command("%7", Some("codex --resume"));
-
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        deliver_pending_codex_compaction_reinjections_at(
-            &[session],
-            &teams_dir,
-            &runtime,
-            timestamp("2026-03-08T13:46:43.000Z"),
-        );
-
-        assert!(!runtime
-            .calls()
-            .iter()
-            .any(|call| matches!(call, RuntimeCall::SendKeys { .. })));
-
-        let stored = MemberCompactionStore::load(&teams_dir, team_name, &member.name)
-            .expect("load state")
-            .expect("saved state");
-        assert_eq!(
-            stored.last_delivery_result,
-            CompactionDeliveryResult::Skipped
-        );
-    }
-
-    #[test]
-    fn pending_reinjection_after_team_disband_does_not_recreate_compaction_state() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let team_name = "taurhaus-team";
-        let member = sample_member("developer2", project_path);
-        save_team_fixture(
-            &teams_dir,
-            team_name,
-            &member,
-            Some("session-1"),
-            Some("%7"),
-        );
-
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:41.037Z","type":"compacted","payload":{"replacement_history":[]}}"#,
-            ],
-        );
-        let observed_jsonl_len = std::fs::metadata(&jsonl_path)
-            .expect("jsonl metadata")
-            .len();
-
-        enqueue_pending(PendingCodexCompactionReinjection {
-            team_name: team_name.to_string(),
-            member_name: member.name.clone(),
-            pane_id: "%7".to_string(),
-            session_id: "session-1".to_string(),
-            jsonl_path: jsonl_path.clone(),
-            observed_jsonl_len,
-            compaction_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
-            card: CompactionReinjectionService::compose(
-                &member,
-                &sample_snapshot(team_name, &member.name, project_path),
-            ),
-        });
-
-        TeamConfigStore::delete(&teams_dir, team_name).expect("delete team");
-
-        let runtime = RecordingCoordinationRuntime::default();
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        deliver_pending_codex_compaction_reinjections_at(
-            &[session],
-            &teams_dir,
-            &runtime,
-            timestamp("2026-03-08T13:46:43.000Z"),
-        );
-
-        assert!(!teams_dir
-            .join(team_name)
-            .join("state")
-            .join("compaction")
-            .exists());
-    }
-
-    #[test]
-    fn resolve_managed_codex_session_prefers_exact_session_match_over_pane_match() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let member_by_pane = sample_member("pane-match", project_path);
-        let member_by_session = sample_member("session-match", project_path);
-
-        let config = TeamConfig {
-            schema_version: 1,
-            name: "taurhaus-team".to_string(),
-            description: None,
-            created_at: Utc
-                .with_ymd_and_hms(2026, 3, 8, 14, 0, 0)
-                .single()
-                .expect("datetime"),
-            members: vec![member_by_pane.clone(), member_by_session.clone()],
-        };
-        TeamConfigStore::save(&teams_dir, "taurhaus-team", &config).expect("save team config");
-
-        MemberRuntimeStore::save(
-            &teams_dir,
-            "taurhaus-team",
-            &member_by_pane.name,
-            &MemberRuntimeRecord {
-                schema_version: 2,
-                member_name: member_by_pane.name.clone(),
-                cli_tool: Some(CliTool::Codex),
-                project_path: Some(PathBuf::from(project_path)),
-                pane_id: Some("%7".to_string()),
-                session_id: Some("other-session".to_string()),
-                daemon_pid: None,
-                health: HealthState::Healthy,
-                delivery_lease: None,
-                attached_at: None,
-                last_seen_at: None,
-            },
-        )
-        .expect("save pane runtime");
-        MemberRuntimeStore::save(
-            &teams_dir,
-            "taurhaus-team",
-            &member_by_session.name,
-            &MemberRuntimeRecord {
-                schema_version: 2,
-                member_name: member_by_session.name.clone(),
-                cli_tool: Some(CliTool::Codex),
-                project_path: Some(PathBuf::from(project_path)),
-                pane_id: Some("%9".to_string()),
-                session_id: Some("session-1".to_string()),
-                daemon_pid: None,
-                health: HealthState::Healthy,
-                delivery_lease: None,
-                attached_at: None,
-                last_seen_at: None,
-            },
-        )
-        .expect("save session runtime");
-
-        OperationalContextSnapshotStore::save(
-            &teams_dir,
-            &sample_snapshot("taurhaus-team", &member_by_pane.name, project_path),
-        )
-        .expect("save pane snapshot");
-        OperationalContextSnapshotStore::save(
-            &teams_dir,
-            &sample_snapshot("taurhaus-team", &member_by_session.name, project_path),
-        )
-        .expect("save session snapshot");
-
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:00.000Z","type":"session_meta","payload":{"cwd":"/home/mstie/projects/taurhaus"}}"#,
-            ],
-        );
-
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        let resolved =
-            resolve_managed_codex_session(&teams_dir, &session).expect("resolved managed member");
-
-        assert_eq!(resolved.member_name, "session-match");
-        assert_eq!(resolved.pane_id, "%9");
-    }
-
-    #[test]
-    fn resolve_managed_codex_session_prefers_matching_pane_when_session_id_is_shared() {
-        let _guard = TEST_LOCK.lock().expect("lock");
-        reset_test_state();
-
-        let tmp = TempDir::new().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
-        let pane_match = sample_member("pane-match", project_path);
-        let other_match = sample_member("other-match", project_path);
-
-        let config = TeamConfig {
-            schema_version: 1,
-            name: "taurhaus-team".to_string(),
-            description: None,
-            created_at: Utc
-                .with_ymd_and_hms(2026, 3, 8, 14, 0, 0)
-                .single()
-                .expect("datetime"),
-            members: vec![pane_match.clone(), other_match.clone()],
-        };
-        TeamConfigStore::save(&teams_dir, "taurhaus-team", &config).expect("save team config");
-
-        for (member, pane_id, seen_at) in [
-            (&pane_match, "%7", "2026-03-08T13:46:44Z"),
-            (&other_match, "%9", "2026-03-08T13:46:43Z"),
-        ] {
-            MemberRuntimeStore::save(
-                &teams_dir,
-                "taurhaus-team",
-                &member.name,
-                &MemberRuntimeRecord {
-                    schema_version: 2,
-                    member_name: member.name.clone(),
-                    cli_tool: None,
-                    project_path: None,
-                    pane_id: Some(pane_id.to_string()),
-                    session_id: Some("session-1".to_string()),
-                    daemon_pid: None,
-                    health: HealthState::Healthy,
-                    delivery_lease: None,
-                    attached_at: None,
-                    last_seen_at: Some(timestamp(seen_at)),
-                },
-            )
-            .expect("save runtime");
-            OperationalContextSnapshotStore::save(
-                &teams_dir,
-                &sample_snapshot("taurhaus-team", &member.name, project_path),
-            )
-            .expect("save snapshot");
-        }
-
-        let jsonl_path = tmp.path().join("session.jsonl");
-        write_jsonl(
-            &jsonl_path,
-            &[
-                r#"{"timestamp":"2026-03-08T13:46:00.000Z","type":"session_meta","payload":{"cwd":"/home/mstie/projects/taurhaus"}}"#,
-            ],
-        );
-
-        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
-        let resolved =
-            resolve_managed_codex_session(&teams_dir, &session).expect("resolved managed member");
-
-        assert_eq!(resolved.member_name, "pane-match");
-
-        let repaired = MemberRuntimeStore::load(&teams_dir, "taurhaus-team", "pane-match")
-            .expect("load repaired runtime");
-        assert_eq!(repaired.cli_tool, Some(CliTool::Codex));
-        assert_eq!(repaired.project_path, Some(PathBuf::from(project_path)));
     }
 }

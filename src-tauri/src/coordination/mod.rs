@@ -4,6 +4,8 @@ pub mod activity_export;
 pub mod audit;
 pub mod backend;
 pub mod claude_hooks;
+pub mod compaction_events;
+pub mod compaction_processor;
 pub mod consumer;
 pub mod delivery;
 pub mod domain;

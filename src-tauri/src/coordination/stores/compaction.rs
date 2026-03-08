@@ -13,6 +13,7 @@ use serde_json::{Map, Value};
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const COMPACTION_SCHEMA_VERSION: u32 = 1;
 pub const COMPACTION_FRESHNESS_WINDOW_SECS: i64 = 15;
+const RESERVED_COMPACTION_STATE_BASENAMES: &[&str] = &["extractor-state", "signal-watcher-state"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -121,6 +122,9 @@ impl MemberCompactionStore {
             let Some(member_name) = path.file_stem().and_then(|stem| stem.to_str()) else {
                 continue;
             };
+            if RESERVED_COMPACTION_STATE_BASENAMES.contains(&member_name) {
+                continue;
+            }
             let Some(state) = Self::load(teams_dir, team_name, member_name)? else {
                 continue;
             };

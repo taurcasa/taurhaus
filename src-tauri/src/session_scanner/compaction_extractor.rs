@@ -1,0 +1,1143 @@
+//! Event-oriented Codex compaction signal extractor.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use uuid::Uuid;
+
+use super::{cli_tool::CliTool, RuntimeSession};
+use crate::coordination::compaction_events::{
+    emit_compaction_extractor_failed, emit_compaction_extractor_heartbeat,
+    emit_compaction_signal_emitted, CompactionExtractorFailedEvent,
+    CompactionExtractorHeartbeatEvent, CompactionSignalEvent,
+};
+use crate::coordination::errors::CoordinationError;
+use crate::coordination::stores::{
+    CompactionSignalKind, CompactionSignalLog, CompactionSignalRecord, MemberRuntimeStore,
+    TeamConfigStore,
+};
+use crate::provider::path::normalize_project_path;
+
+const EXTRACTOR_SCHEMA_VERSION: u32 = 1;
+const EXTRACTOR_STATE_FILENAME: &str = "extractor-state.json";
+const PAIRED_SIGNAL_WINDOW_MS: i64 = 2_000;
+const DEFAULT_EXTRACTOR_LOOP_TICK: Duration = Duration::from_millis(250);
+
+struct CompactionSignalExtractorService {
+    shutdown: Arc<AtomicBool>,
+    active_sessions: Arc<Mutex<Vec<RuntimeSession>>>,
+    join_handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for CompactionSignalExtractorService {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.join_handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+static EXTRACTOR_SERVICE: OnceLock<Mutex<Option<CompactionSignalExtractorService>>> =
+    OnceLock::new();
+
+fn extractor_service_slot() -> &'static Mutex<Option<CompactionSignalExtractorService>> {
+    EXTRACTOR_SERVICE.get_or_init(|| Mutex::new(None))
+}
+
+fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManagedCodexTranscript {
+    team_name: String,
+    session_id: String,
+    pane_id: String,
+    project_path: String,
+    jsonl_path: PathBuf,
+    cli_tool: CliTool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RouteCandidate {
+    team_name: String,
+    normalized_project_path: String,
+    pane_id: Option<String>,
+    session_id: Option<String>,
+    last_activity_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedSignalBoundary {
+    timestamp: DateTime<Utc>,
+    jsonl_offset: u64,
+    signal_kind: CompactionSignalKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ExtractorFileCheckpoint {
+    offset: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactionExtractorFileDiagnostics {
+    pub jsonl_path: String,
+    pub offset: u64,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactionExtractorDiagnostics {
+    pub heartbeat_at: Option<String>,
+    pub last_processed_signal_id: Option<String>,
+    pub last_processed_jsonl_path: Option<String>,
+    pub last_processed_jsonl_offset: Option<u64>,
+    pub active_files: Vec<CompactionExtractorFileDiagnostics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct LastProcessedSignal {
+    signal_id: String,
+    jsonl_path: String,
+    jsonl_offset: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ExtractorState {
+    version: u32,
+    #[serde(default)]
+    file_offsets: BTreeMap<String, ExtractorFileCheckpoint>,
+    #[serde(default)]
+    last_processed_signal: Option<LastProcessedSignal>,
+    #[serde(default)]
+    heartbeat_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    last_error_by_file: BTreeMap<String, String>,
+}
+
+impl Default for ExtractorState {
+    fn default() -> Self {
+        Self {
+            version: EXTRACTOR_SCHEMA_VERSION,
+            file_offsets: BTreeMap::new(),
+            last_processed_signal: None,
+            heartbeat_at: None,
+            last_error_by_file: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TeamExtractionStats {
+    tracked_file_count: usize,
+    emitted_signal_count: usize,
+}
+
+pub fn extract_compaction_signals(sessions: &[RuntimeSession]) {
+    let teams_dir =
+        crate::coordination::stores::compaction_signal::default_compaction_signal_teams_dir();
+    extract_compaction_signals_at(sessions, &teams_dir, Utc::now());
+}
+
+pub fn start_compaction_extractor_service_at(
+    teams_dir: impl Into<PathBuf>,
+    initial_sessions: Vec<RuntimeSession>,
+) -> Result<(), CoordinationError> {
+    start_compaction_extractor_service_with_tick_at(
+        teams_dir,
+        initial_sessions,
+        DEFAULT_EXTRACTOR_LOOP_TICK,
+    )
+}
+
+pub fn update_active_runtime_sessions(sessions: &[RuntimeSession]) {
+    let Some(service) = extractor_service_slot()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .map(|service| service.active_sessions.clone())
+    else {
+        return;
+    };
+
+    let codex_sessions = sessions
+        .iter()
+        .filter(|session| session.cli_tool == CliTool::Codex)
+        .cloned()
+        .collect::<Vec<_>>();
+    *service.lock().unwrap_or_else(|error| error.into_inner()) = codex_sessions;
+}
+
+fn start_compaction_extractor_service_with_tick_at(
+    teams_dir: impl Into<PathBuf>,
+    initial_sessions: Vec<RuntimeSession>,
+    tick: Duration,
+) -> Result<(), CoordinationError> {
+    let active_sessions = Arc::new(Mutex::new(
+        initial_sessions
+            .into_iter()
+            .filter(|session| session.cli_tool == CliTool::Codex)
+            .collect::<Vec<_>>(),
+    ));
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let thread_shutdown = shutdown.clone();
+    let thread_sessions = active_sessions.clone();
+    let teams_dir = teams_dir.into();
+    let loop_teams_dir = teams_dir.clone();
+    let join_handle = thread::spawn(move || {
+        while !thread_shutdown.load(Ordering::Relaxed) {
+            let snapshot = thread_sessions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone();
+            extract_compaction_signals_at(&snapshot, &loop_teams_dir, Utc::now());
+            thread::sleep(tick);
+        }
+    });
+
+    let mut slot = extractor_service_slot()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *slot = Some(CompactionSignalExtractorService {
+        shutdown,
+        active_sessions,
+        join_handle: Some(join_handle),
+    });
+    Ok(())
+}
+
+#[cfg(test)]
+pub fn start_compaction_extractor_service_for_test(
+    teams_dir: impl Into<PathBuf>,
+    initial_sessions: Vec<RuntimeSession>,
+    tick: Duration,
+) -> Result<(), CoordinationError> {
+    start_compaction_extractor_service_with_tick_at(teams_dir, initial_sessions, tick)
+}
+
+pub(crate) fn stop_compaction_extractor_service() {
+    let mut slot = extractor_service_slot()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *slot = None;
+}
+
+#[cfg(test)]
+pub fn stop_compaction_extractor_service_for_test() {
+    stop_compaction_extractor_service();
+}
+
+pub fn extract_compaction_signals_at(
+    sessions: &[RuntimeSession],
+    teams_dir: &Path,
+    emitted_at: DateTime<Utc>,
+) {
+    let routed = route_managed_codex_transcripts(sessions, teams_dir);
+    let active_file_count = routed.len();
+
+    let mut grouped = BTreeMap::<String, Vec<ManagedCodexTranscript>>::new();
+    for transcript in routed {
+        grouped
+            .entry(transcript.team_name.clone())
+            .or_default()
+            .push(transcript);
+    }
+
+    let mut tracked_offset_count = 0usize;
+    let mut pending_signal_count = 0usize;
+
+    for (team_name, transcripts) in grouped {
+        match extract_compaction_signals_for_team(teams_dir, &team_name, &transcripts, emitted_at) {
+            Ok(stats) => {
+                tracked_offset_count += stats.tracked_file_count;
+                pending_signal_count += stats.emitted_signal_count;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    team_name = team_name,
+                    error = %error,
+                    "failed to extract Codex compaction signals for team"
+                );
+            }
+        }
+    }
+
+    emit_compaction_extractor_heartbeat(CompactionExtractorHeartbeatEvent {
+        tool: CliTool::Codex,
+        active_file_count,
+        tracked_offset_count,
+        pending_signal_count,
+    });
+}
+
+fn extract_compaction_signals_for_team(
+    teams_dir: &Path,
+    team_name: &str,
+    transcripts: &[ManagedCodexTranscript],
+    emitted_at: DateTime<Utc>,
+) -> Result<TeamExtractionStats, CoordinationError> {
+    let mut state = load_extractor_state(teams_dir, team_name)?;
+    let mut seen_paths = HashSet::new();
+    let mut active_paths = HashSet::new();
+    let mut emitted_signal_count = 0usize;
+
+    for transcript in transcripts {
+        if !seen_paths.insert(transcript.jsonl_path.clone()) {
+            continue;
+        }
+        active_paths.insert(transcript.jsonl_path.display().to_string());
+
+        let path_key = transcript.jsonl_path.display().to_string();
+        let file_len = match fs::metadata(&transcript.jsonl_path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) => {
+                state
+                    .last_error_by_file
+                    .insert(path_key.clone(), error.to_string());
+                emit_compaction_extractor_failed(CompactionExtractorFailedEvent {
+                    tool: transcript.cli_tool,
+                    jsonl_path: path_key,
+                    stage: "stat".to_string(),
+                    error_message: error.to_string(),
+                });
+                continue;
+            }
+        };
+
+        let start_offset = match state.file_offsets.get_mut(&path_key) {
+            Some(checkpoint) if checkpoint.offset > file_len => {
+                checkpoint.offset = 0;
+                0
+            }
+            Some(checkpoint) => checkpoint.offset,
+            None => {
+                state.file_offsets.insert(
+                    path_key.clone(),
+                    ExtractorFileCheckpoint { offset: file_len },
+                );
+                state.last_error_by_file.remove(&path_key);
+                continue;
+            }
+        };
+
+        if start_offset == file_len {
+            state.last_error_by_file.remove(&path_key);
+            continue;
+        }
+
+        let (boundaries, committed_offset) =
+            match read_appended_compaction_boundaries(&transcript.jsonl_path, start_offset) {
+                Ok(result) => result,
+                Err(error) => {
+                    state
+                        .last_error_by_file
+                        .insert(path_key.clone(), error.to_string());
+                    emit_compaction_extractor_failed(CompactionExtractorFailedEvent {
+                        tool: transcript.cli_tool,
+                        jsonl_path: path_key,
+                        stage: "read_appended_boundaries".to_string(),
+                        error_message: error.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+        state.file_offsets.insert(
+            path_key.clone(),
+            ExtractorFileCheckpoint {
+                offset: committed_offset,
+            },
+        );
+        state.last_error_by_file.remove(&path_key);
+
+        for boundary in normalize_paired_boundaries(boundaries) {
+            let record = CompactionSignalRecord {
+                version: EXTRACTOR_SCHEMA_VERSION,
+                signal_id: Uuid::new_v4().to_string(),
+                emitted_at,
+                tool: transcript.cli_tool,
+                session_id: transcript.session_id.clone(),
+                pane_id: transcript.pane_id.clone(),
+                project_path: transcript.project_path.clone(),
+                jsonl_path: transcript.jsonl_path.display().to_string(),
+                jsonl_offset: boundary.jsonl_offset,
+                transcript_timestamp: boundary.timestamp,
+                signal_kind: boundary.signal_kind,
+            };
+
+            CompactionSignalLog::append(teams_dir, team_name, &record)?;
+            state.last_processed_signal = Some(LastProcessedSignal {
+                signal_id: record.signal_id.clone(),
+                jsonl_path: record.jsonl_path.clone(),
+                jsonl_offset: record.jsonl_offset,
+            });
+            emitted_signal_count += 1;
+
+            emit_compaction_signal_emitted(CompactionSignalEvent {
+                tool: record.tool,
+                team_name: Some(team_name.to_string()),
+                member_name: None,
+                session_id: Some(record.session_id.clone()),
+                pane_id: Some(record.pane_id.clone()),
+                project_path: Some(record.project_path.clone()),
+                jsonl_path: Some(record.jsonl_path.clone()),
+                compaction_timestamp: Some(record.transcript_timestamp),
+                signal_kind: Some(match record.signal_kind {
+                    CompactionSignalKind::Compacted => {
+                        crate::coordination::compaction_events::CompactionSignalKind::Compacted
+                    }
+                    CompactionSignalKind::ContextCompacted => crate::coordination::compaction_events::CompactionSignalKind::ContextCompacted,
+                }),
+            });
+        }
+    }
+
+    state
+        .file_offsets
+        .retain(|path, _| active_paths.contains(path));
+    state
+        .last_error_by_file
+        .retain(|path, _| active_paths.contains(path));
+    state.heartbeat_at = Some(emitted_at);
+    save_extractor_state(teams_dir, team_name, &state)?;
+
+    Ok(TeamExtractionStats {
+        tracked_file_count: state.file_offsets.len(),
+        emitted_signal_count,
+    })
+}
+
+fn route_managed_codex_transcripts(
+    sessions: &[RuntimeSession],
+    teams_dir: &Path,
+) -> Vec<ManagedCodexTranscript> {
+    let candidates = load_route_candidates(teams_dir);
+    let mut routed = Vec::new();
+
+    for session in sessions
+        .iter()
+        .filter(|session| session.cli_tool == CliTool::Codex)
+    {
+        let Some(session_id) = session.session_id.as_deref() else {
+            continue;
+        };
+        let Some(jsonl_path) = session.jsonl_path.as_deref() else {
+            continue;
+        };
+
+        let normalized_project_path = normalize_project_path(&session.project_path);
+        let scanner_pane = session.tmux_pane.as_deref();
+
+        let matches = candidates
+            .iter()
+            .filter(|candidate| candidate.normalized_project_path == normalized_project_path)
+            .filter_map(|candidate| {
+                let pane_matches = candidate.pane_id.as_deref() == scanner_pane;
+                let session_matches = candidate.session_id.as_deref() == Some(session_id);
+                let score = match (pane_matches, session_matches) {
+                    (true, true) => 4u8,
+                    (true, false) => 3u8,
+                    (false, true) => 2u8,
+                    (false, false) => 1u8,
+                };
+
+                let pane_id = scanner_pane
+                    .map(ToOwned::to_owned)
+                    .or_else(|| candidate.pane_id.clone())?;
+
+                Some((candidate.clone(), score, pane_id))
+            })
+            .collect::<Vec<_>>();
+
+        let Some((candidate, pane_id)) = select_route_candidate(matches) else {
+            continue;
+        };
+
+        routed.push(ManagedCodexTranscript {
+            team_name: candidate.team_name,
+            session_id: session_id.to_string(),
+            pane_id,
+            project_path: session.project_path.clone(),
+            jsonl_path: PathBuf::from(jsonl_path),
+            cli_tool: CliTool::Codex,
+        });
+    }
+
+    routed
+}
+
+fn load_route_candidates(teams_dir: &Path) -> Vec<RouteCandidate> {
+    let team_names = match TeamConfigStore::list(teams_dir) {
+        Ok(team_names) => team_names,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to list teams while routing compaction extractor transcripts");
+            return Vec::new();
+        }
+    };
+
+    let mut candidates = Vec::new();
+    for team_name in team_names {
+        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while routing compaction extractor transcripts");
+                continue;
+            }
+        };
+        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
+            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
+            Err(error) => {
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team runtime while routing compaction extractor transcripts");
+                continue;
+            }
+        };
+
+        for member in config
+            .members
+            .into_iter()
+            .filter(|member| member.cli_tool == CliTool::Codex)
+        {
+            let runtime = runtime_by_member.get(&member.name);
+            candidates.push(RouteCandidate {
+                team_name: team_name.clone(),
+                normalized_project_path: normalize_project_path(
+                    &member.project_path.display().to_string(),
+                ),
+                pane_id: runtime.and_then(|record| record.pane_id.clone()),
+                session_id: runtime.and_then(|record| record.session_id.clone()),
+                last_activity_at: runtime
+                    .and_then(|record| record.last_seen_at.or(record.attached_at)),
+            });
+        }
+    }
+
+    candidates
+}
+
+fn select_route_candidate(
+    matches: Vec<(RouteCandidate, u8, String)>,
+) -> Option<(RouteCandidate, String)> {
+    let mut best: Option<(RouteCandidate, u8, String)> = None;
+    let mut ambiguous = false;
+
+    for (candidate, score, pane_id) in matches {
+        match &best {
+            None => {
+                best = Some((candidate, score, pane_id));
+                ambiguous = false;
+            }
+            Some((best_candidate, best_score, _)) if score > *best_score => {
+                best = Some((candidate, score, pane_id));
+                ambiguous = false;
+            }
+            Some((best_candidate, best_score, _)) if score == *best_score => {
+                match (candidate.last_activity_at, best_candidate.last_activity_at) {
+                    (Some(left), Some(right)) if left > right => {
+                        best = Some((candidate, score, pane_id));
+                        ambiguous = false;
+                    }
+                    (Some(left), Some(right)) if left < right => {}
+                    _ => ambiguous = true,
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if ambiguous {
+        None
+    } else {
+        best.map(|(candidate, _, pane_id)| (candidate, pane_id))
+    }
+}
+
+fn read_appended_compaction_boundaries(
+    jsonl_path: &Path,
+    start_offset: u64,
+) -> std::io::Result<(Vec<ParsedSignalBoundary>, u64)> {
+    let file = File::open(jsonl_path)?;
+    let mut reader = BufReader::new(file);
+    reader.seek(SeekFrom::Start(start_offset))?;
+
+    let mut boundaries = Vec::new();
+    let mut line = String::new();
+    let mut committed_offset = start_offset;
+
+    loop {
+        line.clear();
+        let bytes_read = reader.read_line(&mut line)?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        if !line.ends_with('\n') {
+            break;
+        }
+
+        committed_offset += bytes_read as u64;
+
+        while matches!(line.chars().last(), Some('\n' | '\r')) {
+            line.pop();
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(boundary) = parse_signal_boundary(&line, committed_offset) {
+            boundaries.push(boundary);
+        }
+    }
+
+    Ok((boundaries, committed_offset))
+}
+
+fn parse_signal_boundary(line: &str, jsonl_offset: u64) -> Option<ParsedSignalBoundary> {
+    let parsed: Value = serde_json::from_str(line).ok()?;
+    let timestamp = parsed
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&Utc))?;
+
+    let signal_kind = match parsed.get("type").and_then(Value::as_str) {
+        Some("compacted") => CompactionSignalKind::Compacted,
+        Some("event_msg")
+            if parsed
+                .get("payload")
+                .and_then(|payload| payload.get("type"))
+                .and_then(Value::as_str)
+                == Some("context_compacted") =>
+        {
+            CompactionSignalKind::ContextCompacted
+        }
+        _ => return None,
+    };
+
+    Some(ParsedSignalBoundary {
+        timestamp,
+        jsonl_offset,
+        signal_kind,
+    })
+}
+
+fn normalize_paired_boundaries(boundaries: Vec<ParsedSignalBoundary>) -> Vec<ParsedSignalBoundary> {
+    let mut normalized: Vec<ParsedSignalBoundary> = Vec::new();
+
+    for boundary in boundaries {
+        if let Some(previous) = normalized.last_mut() {
+            let within_pair_window = boundary
+                .timestamp
+                .signed_duration_since(previous.timestamp)
+                .num_milliseconds()
+                .abs()
+                <= PAIRED_SIGNAL_WINDOW_MS;
+
+            if previous.signal_kind == CompactionSignalKind::Compacted
+                && boundary.signal_kind == CompactionSignalKind::ContextCompacted
+                && within_pair_window
+            {
+                previous.timestamp = boundary.timestamp;
+                previous.jsonl_offset = boundary.jsonl_offset;
+                previous.signal_kind = CompactionSignalKind::ContextCompacted;
+                continue;
+            }
+        }
+
+        normalized.push(boundary);
+    }
+
+    normalized
+}
+
+fn load_extractor_state(
+    teams_dir: &Path,
+    team_name: &str,
+) -> Result<ExtractorState, CoordinationError> {
+    let path = extractor_state_path(teams_dir, team_name);
+    let raw = match fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ExtractorState::default())
+        }
+        Err(err) => return Err(CoordinationError::Io(err)),
+    };
+
+    serde_json::from_str(&raw).map_err(|error| {
+        CoordinationError::StoreError(format!(
+            "failed to parse compaction extractor state for team '{team_name}': {error}"
+        ))
+    })
+}
+
+fn save_extractor_state(
+    teams_dir: &Path,
+    team_name: &str,
+    state: &ExtractorState,
+) -> Result<(), CoordinationError> {
+    let _lock = crate::coordination::stores::lock::acquire_team_lock(teams_dir, team_name)?;
+
+    let mut normalized = state.clone();
+    normalized.version = EXTRACTOR_SCHEMA_VERSION;
+
+    let compaction_dir = extractor_state_dir(teams_dir, team_name);
+    fs::create_dir_all(&compaction_dir)?;
+
+    let path = extractor_state_path(teams_dir, team_name);
+    let tmp_path = compaction_dir.join("extractor-state.json.tmp");
+    let payload = serde_json::to_string_pretty(&normalized).map_err(|error| {
+        CoordinationError::StoreError(format!(
+            "failed to serialize compaction extractor state for team '{team_name}': {error}"
+        ))
+    })?;
+
+    fs::write(&tmp_path, payload)?;
+    if let Err(err) = fs::rename(&tmp_path, &path) {
+        if is_windows_unsupported_rename_error(&err) {
+            if let Err(write_err) = fs::write(&path, normalized_payload_bytes(state, team_name)?) {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(CoordinationError::Io(write_err));
+            }
+            let _ = fs::remove_file(&tmp_path);
+            return Ok(());
+        }
+
+        let _ = fs::remove_file(&tmp_path);
+        return Err(CoordinationError::Io(err));
+    }
+
+    Ok(())
+}
+
+fn extractor_state_dir(teams_dir: &Path, team_name: &str) -> PathBuf {
+    teams_dir.join(team_name).join("state").join("compaction")
+}
+
+fn extractor_state_path(teams_dir: &Path, team_name: &str) -> PathBuf {
+    extractor_state_dir(teams_dir, team_name).join(EXTRACTOR_STATE_FILENAME)
+}
+
+pub fn load_compaction_extractor_diagnostics_at(
+    teams_dir: &Path,
+    team_name: &str,
+) -> Result<CompactionExtractorDiagnostics, CoordinationError> {
+    let state = load_extractor_state(teams_dir, team_name)?;
+    let ExtractorState {
+        file_offsets,
+        last_processed_signal,
+        heartbeat_at,
+        last_error_by_file,
+        ..
+    } = state;
+    let mut active_files = file_offsets
+        .into_iter()
+        .map(
+            |(jsonl_path, checkpoint)| CompactionExtractorFileDiagnostics {
+                last_error: last_error_by_file.get(&jsonl_path).cloned(),
+                jsonl_path,
+                offset: checkpoint.offset,
+            },
+        )
+        .collect::<Vec<_>>();
+    active_files.sort_by(|left, right| left.jsonl_path.cmp(&right.jsonl_path));
+
+    Ok(CompactionExtractorDiagnostics {
+        heartbeat_at: heartbeat_at.map(|value| value.to_rfc3339()),
+        last_processed_signal_id: last_processed_signal
+            .as_ref()
+            .map(|value| value.signal_id.clone()),
+        last_processed_jsonl_path: last_processed_signal
+            .as_ref()
+            .map(|value| value.jsonl_path.clone()),
+        last_processed_jsonl_offset: last_processed_signal
+            .as_ref()
+            .map(|value| value.jsonl_offset),
+        active_files,
+    })
+}
+
+fn normalized_payload_bytes(
+    state: &ExtractorState,
+    team_name: &str,
+) -> Result<Vec<u8>, CoordinationError> {
+    let mut normalized = state.clone();
+    normalized.version = EXTRACTOR_SCHEMA_VERSION;
+    serde_json::to_vec_pretty(&normalized).map_err(|error| {
+        CoordinationError::StoreError(format!(
+            "failed to serialize compaction extractor state for team '{team_name}': {error}"
+        ))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use chrono::TimeZone;
+    use pretty_assertions::assert_eq;
+
+    fn sample_transcript(team_name: &str, jsonl_path: &Path) -> ManagedCodexTranscript {
+        ManagedCodexTranscript {
+            team_name: team_name.to_string(),
+            session_id: "sess-123".to_string(),
+            pane_id: "%217".to_string(),
+            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            jsonl_path: jsonl_path.to_path_buf(),
+            cli_tool: CliTool::Codex,
+        }
+    }
+
+    fn write_runtime_and_config(
+        teams_dir: &Path,
+        team_name: &str,
+        pane_id: &str,
+        project_path: &str,
+    ) {
+        let config = crate::coordination::stores::TeamConfig {
+            schema_version: 1,
+            name: team_name.to_string(),
+            description: None,
+            created_at: Utc
+                .with_ymd_and_hms(2026, 3, 8, 20, 0, 0)
+                .single()
+                .expect("datetime"),
+            members: vec![crate::coordination::domain::Member {
+                name: "architect".to_string(),
+                role: crate::coordination::domain::MemberRole::Agent,
+                role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
+                project_path: PathBuf::from(project_path),
+                cli_tool: CliTool::Codex,
+            }],
+        };
+        TeamConfigStore::save(teams_dir, team_name, &config).expect("save config");
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            "architect",
+            &crate::coordination::stores::MemberRuntimeRecord {
+                schema_version: 2,
+                member_name: "architect".to_string(),
+                cli_tool: Some(CliTool::Codex),
+                project_path: Some(PathBuf::from(project_path)),
+                pane_id: Some(pane_id.to_string()),
+                session_id: Some("sess-123".to_string()),
+                daemon_pid: None,
+                health: crate::coordination::domain::HealthState::Healthy,
+                delivery_lease: None,
+                attached_at: Some(
+                    Utc.with_ymd_and_hms(2026, 3, 8, 19, 55, 0)
+                        .single()
+                        .expect("datetime"),
+                ),
+                last_seen_at: Some(
+                    Utc.with_ymd_and_hms(2026, 3, 8, 20, 4, 0)
+                        .single()
+                        .expect("datetime"),
+                ),
+            },
+        )
+        .expect("save runtime");
+    }
+
+    fn write_jsonl(path: &Path, lines: &[&str]) {
+        let mut body = lines.join("\n");
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        fs::write(path, body).expect("write jsonl");
+    }
+
+    fn append_raw(path: &Path, text: &str) {
+        use std::io::Write;
+
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .expect("open append");
+        file.write_all(text.as_bytes()).expect("append");
+    }
+
+    #[test]
+    fn extractor_state_round_trips_offsets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = ExtractorState {
+            version: EXTRACTOR_SCHEMA_VERSION,
+            file_offsets: BTreeMap::from([(
+                "/tmp/session.jsonl".to_string(),
+                ExtractorFileCheckpoint { offset: 42 },
+            )]),
+            last_processed_signal: Some(LastProcessedSignal {
+                signal_id: "sig-1".to_string(),
+                jsonl_path: "/tmp/session.jsonl".to_string(),
+                jsonl_offset: 42,
+            }),
+            heartbeat_at: Some(
+                Utc.with_ymd_and_hms(2026, 3, 8, 20, 6, 0)
+                    .single()
+                    .expect("datetime"),
+            ),
+            last_error_by_file: BTreeMap::from([(
+                "/tmp/session.jsonl".to_string(),
+                "boom".to_string(),
+            )]),
+        };
+
+        save_extractor_state(tmp.path(), "taurhaus-team", &state).expect("save");
+        let loaded = load_extractor_state(tmp.path(), "taurhaus-team").expect("load");
+
+        assert_eq!(loaded, state);
+    }
+
+    #[test]
+    fn normalize_paired_records_emits_single_canonical_context_compacted_signal() {
+        let boundaries = vec![
+            ParsedSignalBoundary {
+                timestamp: Utc
+                    .with_ymd_and_hms(2026, 3, 8, 20, 0, 0)
+                    .single()
+                    .expect("datetime"),
+                jsonl_offset: 10,
+                signal_kind: CompactionSignalKind::Compacted,
+            },
+            ParsedSignalBoundary {
+                timestamp: Utc
+                    .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                    .single()
+                    .expect("datetime"),
+                jsonl_offset: 40,
+                signal_kind: CompactionSignalKind::ContextCompacted,
+            },
+        ];
+
+        let normalized = normalize_paired_boundaries(boundaries);
+
+        assert_eq!(
+            normalized,
+            vec![ParsedSignalBoundary {
+                timestamp: Utc
+                    .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                    .single()
+                    .expect("datetime"),
+                jsonl_offset: 40,
+                signal_kind: CompactionSignalKind::ContextCompacted,
+            }]
+        );
+    }
+
+    #[test]
+    fn extractor_skips_partial_trailing_line_until_completed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let jsonl_path = tmp.path().join("session.jsonl");
+        let transcript = sample_transcript("taurhaus-team", &jsonl_path);
+
+        write_jsonl(
+            &jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript.clone()],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 5)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("prime state");
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10Z","type":"compacted"}"#,
+        );
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript.clone()],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("process partial");
+        let records = CompactionSignalLog::read_from_offset(&teams_dir, "taurhaus-team", 0)
+            .expect("read records");
+        assert!(records.is_empty());
+
+        append_raw(&jsonl_path, "\n");
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 12)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("process completed line");
+
+        let records = CompactionSignalLog::read_from_offset(&teams_dir, "taurhaus-team", 0)
+            .expect("read records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].signal_kind, CompactionSignalKind::Compacted);
+    }
+
+    #[test]
+    fn extractor_restart_recovery_resumes_from_saved_offset() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let jsonl_path = tmp.path().join("session.jsonl");
+        let transcript = sample_transcript("taurhaus-team", &jsonl_path);
+
+        write_jsonl(
+            &jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript.clone()],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("prime state");
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10Z","type":"compacted"}"#,
+        );
+        append_raw(&jsonl_path, "\n");
+
+        let stats = extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript.clone()],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("extract first appended event");
+        assert_eq!(stats.emitted_signal_count, 1);
+
+        let before_restart = load_extractor_state(&teams_dir, "taurhaus-team").expect("load");
+        assert_eq!(
+            before_restart
+                .file_offsets
+                .get(&jsonl_path.display().to_string())
+                .expect("offset checkpoint")
+                .offset,
+            fs::metadata(&jsonl_path).expect("metadata").len()
+        );
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:20Z","type":"event_msg","payload":{"type":"context_compacted"}}"#,
+        );
+        append_raw(&jsonl_path, "\n");
+
+        let stats = extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 21)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("extract after restart");
+        assert_eq!(stats.emitted_signal_count, 1);
+
+        let records = CompactionSignalLog::read_from_offset(&teams_dir, "taurhaus-team", 0)
+            .expect("read records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].signal_kind, CompactionSignalKind::Compacted);
+        assert_eq!(
+            records[1].signal_kind,
+            CompactionSignalKind::ContextCompacted
+        );
+    }
+
+    #[test]
+    fn runtime_sessions_route_into_team_signal_log() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let jsonl_path = tmp.path().join("session.jsonl");
+
+        write_runtime_and_config(
+            &teams_dir,
+            "taurhaus-team",
+            "%217",
+            "/home/mstie/projects/taurhaus",
+        );
+        write_jsonl(
+            &jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+
+        let session = RuntimeSession {
+            pid: 42,
+            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%217".to_string()),
+            tmux_window_name: Some("work".to_string()),
+            state: super::super::SessionState::Active,
+            session_id: Some("sess-123".to_string()),
+            jsonl_path: Some(jsonl_path.display().to_string()),
+            recent_io: true,
+            last_output_age_secs: Some(1),
+            activity_confidence: super::super::ActivityConfidence::High,
+            activity_attribution: super::super::ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: super::super::SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: Some("architect".to_string()),
+        };
+
+        extract_compaction_signals_at(
+            &[session.clone()],
+            &teams_dir,
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                .single()
+                .expect("datetime"),
+        );
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10Z","type":"compacted"}"#,
+        );
+        append_raw(&jsonl_path, "\n");
+
+        extract_compaction_signals_at(
+            &[session],
+            &teams_dir,
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
+                .single()
+                .expect("datetime"),
+        );
+
+        let records = CompactionSignalLog::read_from_offset(&teams_dir, "taurhaus-team", 0)
+            .expect("read records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].pane_id, "%217");
+        assert_eq!(records[0].session_id, "sess-123");
+    }
+}

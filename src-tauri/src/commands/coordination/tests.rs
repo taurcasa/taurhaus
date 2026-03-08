@@ -13,7 +13,8 @@ use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{
-    CompactionDeliveryResult, MemberCompactionState, MemberCompactionStore, MemberRuntimeStore,
+    CompactionDeliveryResult, CompactionSignalKind, CompactionSignalLog, CompactionSignalRecord,
+    MemberCompactionState, MemberCompactionStore, MemberRuntimeStore,
     OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::session_scanner::cli_tool::CliTool;
@@ -439,6 +440,128 @@ fn get_compaction_audit_keeps_entries_from_current_app_run() {
     assert_eq!(response.entries.len(), 1);
     assert_eq!(response.entries[0].member_name, "frontend-dev");
     assert_eq!(response.entries[0].last_delivery_result, "injected");
+}
+
+#[test]
+fn get_compaction_audit_returns_diagnostics_payload() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state_at(
+        tmp.path().to_path_buf(),
+        DateTime::parse_from_rfc3339("2026-03-08T15:00:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc),
+    );
+    let (db, _db_file) = test_db_state();
+
+    coordination_initialize_team_internal(
+        &state,
+        Some(&db),
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let compaction_dir = tmp
+        .path()
+        .join("architecture-final")
+        .join("state")
+        .join("compaction");
+    std::fs::create_dir_all(compaction_dir.join("signals")).expect("create compaction dir");
+    std::fs::write(
+        compaction_dir.join("extractor-state.json"),
+        serde_json::json!({
+            "version": 1,
+            "file_offsets": {
+                "/home/mstie/.codex/sessions/2026/03/08/run.jsonl": { "offset": 321 }
+            },
+            "last_processed_signal": {
+                "signal_id": "sig-123",
+                "jsonl_path": "/home/mstie/.codex/sessions/2026/03/08/run.jsonl",
+                "jsonl_offset": 321
+            },
+            "heartbeat_at": "2026-03-08T15:04:18Z",
+            "last_error_by_file": {
+                "/home/mstie/.codex/sessions/2026/03/08/run.jsonl": "tail read failed once"
+            }
+        })
+        .to_string(),
+    )
+    .expect("write extractor state");
+    std::fs::write(
+        compaction_dir.join("signal-watcher-state.json"),
+        serde_json::json!({
+            "version": 2,
+            "last_consumed_offset": 0,
+            "last_event_at": "2026-03-08T15:04:19Z",
+            "last_reconciliation_at": "2026-03-08T15:04:20Z",
+            "reconciliation_poll_count": 7,
+            "missed_event_recovery_count": 2
+        })
+        .to_string(),
+    )
+    .expect("write watcher state");
+
+    CompactionSignalLog::append(
+        tmp.path(),
+        "architecture-final",
+        &CompactionSignalRecord {
+            version: 1,
+            signal_id: "sig-123".to_string(),
+            emitted_at: DateTime::parse_from_rfc3339("2026-03-08T15:04:18Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+            tool: CliTool::Codex,
+            session_id: "session-codex".to_string(),
+            pane_id: "%12".to_string(),
+            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            jsonl_path: "/home/mstie/.codex/sessions/2026/03/08/run.jsonl".to_string(),
+            jsonl_offset: 321,
+            transcript_timestamp: DateTime::parse_from_rfc3339("2026-03-08T15:04:17Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+            signal_kind: CompactionSignalKind::ContextCompacted,
+        },
+    )
+    .expect("append compaction signal");
+
+    let response =
+        coordination_get_compaction_audit_for_tests(&state, "architecture-final".to_string())
+            .expect("load compaction audit");
+
+    assert_eq!(
+        response.diagnostics.extractor.heartbeat_at.as_deref(),
+        Some("2026-03-08T15:04:18+00:00")
+    );
+    assert_eq!(
+        response
+            .diagnostics
+            .extractor
+            .last_processed_signal_id
+            .as_deref(),
+        Some("sig-123")
+    );
+    assert_eq!(response.diagnostics.extractor.active_files.len(), 1);
+    assert_eq!(
+        response.diagnostics.extractor.active_files[0]
+            .last_error
+            .as_deref(),
+        Some("tail read failed once")
+    );
+    assert_eq!(response.diagnostics.signal_log.total_signals, 1);
+    assert_eq!(response.diagnostics.signal_log.unconsumed_count, 1);
+    assert_eq!(response.diagnostics.signal_log.recent_signals.len(), 1);
+    assert_eq!(
+        response.diagnostics.signal_log.recent_signals[0].signal_kind,
+        "context_compacted"
+    );
+    assert_eq!(response.diagnostics.watcher.reconciliation_poll_count, 7);
+    assert_eq!(response.diagnostics.watcher.missed_event_recovery_count, 2);
+    assert_eq!(
+        response.diagnostics.watcher.last_event_at.as_deref(),
+        Some("2026-03-08T15:04:19Z")
+    );
 }
 
 #[test]

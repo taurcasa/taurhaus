@@ -131,6 +131,46 @@ export function buildMockCompactionAudit(teamName, overrides = {}) {
         lastDeliveryResult: 'skipped',
       },
     ],
+    diagnostics: overrides.diagnostics ?? {
+      extractor: {
+        heartbeatAt: '2026-03-08T15:04:18Z',
+        lastProcessedSignalId: 'sig-123',
+        lastProcessedJsonlPath: '/home/mstie/.codex/sessions/2026/03/08/run.jsonl',
+        lastProcessedJsonlOffset: 321,
+        activeFiles: [
+          {
+            jsonlPath: '/home/mstie/.codex/sessions/2026/03/08/run.jsonl',
+            offset: 321,
+            lastError: '',
+          },
+        ],
+      },
+      signalLog: {
+        signalLogPath: '/tmp/teams/mock-team/state/compaction/signals/codex-compaction-signals.jsonl',
+        fileSizeBytes: 640,
+        totalSignals: 2,
+        lastConsumedOffset: 320,
+        unconsumedCount: 0,
+        recentSignals: [
+          {
+            signalId: 'sig-123',
+            emittedAt: '2026-03-08T15:04:18Z',
+            sessionId: 'session-1',
+            paneId: '%12',
+            projectPath: '/home/mstie/projects/taurhaus',
+            transcriptTimestamp: '2026-03-08T15:04:17Z',
+            signalKind: 'context_compacted',
+          },
+        ],
+      },
+      watcher: {
+        lastConsumedOffset: 320,
+        lastEventAt: '2026-03-08T15:04:19Z',
+        lastReconciliationAt: '2026-03-08T15:04:20Z',
+        reconciliationPollCount: 4,
+        missedEventRecoveryCount: 0,
+      },
+    },
   }
 }
 

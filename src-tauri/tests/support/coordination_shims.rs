@@ -38,6 +38,14 @@ pub mod session_scanner {
         pub use taurhaus_lib::session_scanner::cli_tool::CliTool;
     }
 
+    pub mod compaction_extractor {
+        pub use taurhaus_lib::session_scanner::compaction_extractor::*;
+    }
+
+    pub mod compaction_watcher {
+        pub use taurhaus_lib::session_scanner::compaction_watcher::*;
+    }
+
     pub mod control {
         use crate::daemon::protocol::LaunchMode;
         use crate::models::CliCommandSettings;

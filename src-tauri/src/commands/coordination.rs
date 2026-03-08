@@ -27,10 +27,12 @@ use crate::coordination::requests::{
     self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
 };
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{MemberCompactionStore, TeamConfigStore};
+use crate::coordination::stores::{inspect_signal_log_at, MemberCompactionStore, TeamConfigStore};
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::compaction_extractor::load_compaction_extractor_diagnostics_at;
+use crate::session_scanner::compaction_watcher::load_compaction_signal_watcher_diagnostics_at;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
 use crate::templates::types::RoleTemplate;
@@ -678,7 +680,73 @@ fn coordination_get_compaction_audit_impl(
             .then_with(|| left.member_name.cmp(&right.member_name))
     });
 
-    Ok(CompactionAuditResponse { team_name, entries })
+    let extractor = load_compaction_extractor_diagnostics_at(state.teams_dir(), &team_name)
+        .map_err(|error| error.to_string())?;
+    let watcher = load_compaction_signal_watcher_diagnostics_at(state.teams_dir(), &team_name)
+        .map_err(|error| error.to_string())?;
+    let signal_log = inspect_signal_log_at(
+        state.teams_dir(),
+        &team_name,
+        watcher.last_consumed_offset,
+        5,
+    )
+    .map_err(map_coordination_error)?;
+
+    Ok(CompactionAuditResponse {
+        team_name,
+        entries,
+        diagnostics: CompactionDiagnostics {
+            extractor: CompactionExtractorDiagnostics {
+                heartbeat_at: extractor.heartbeat_at,
+                last_processed_signal_id: extractor.last_processed_signal_id,
+                last_processed_jsonl_path: extractor.last_processed_jsonl_path,
+                last_processed_jsonl_offset: extractor.last_processed_jsonl_offset,
+                active_files: extractor
+                    .active_files
+                    .into_iter()
+                    .map(|file| CompactionExtractorFileDiagnostics {
+                        jsonl_path: file.jsonl_path,
+                        offset: file.offset,
+                        last_error: file.last_error,
+                    })
+                    .collect(),
+            },
+            signal_log: CompactionSignalDiagnostics {
+                signal_log_path: signal_log.signal_log_path.display().to_string(),
+                file_size_bytes: signal_log.file_size_bytes,
+                total_signals: signal_log.total_signals,
+                last_consumed_offset: signal_log.last_consumed_offset,
+                unconsumed_count: signal_log.unconsumed_count,
+                recent_signals: signal_log
+                    .recent_signals
+                    .into_iter()
+                    .map(|signal| CompactionSignalAuditEntry {
+                        signal_id: signal.signal_id,
+                        emitted_at: signal.emitted_at.to_rfc3339(),
+                        session_id: signal.session_id,
+                        pane_id: signal.pane_id,
+                        project_path: signal.project_path,
+                        transcript_timestamp: signal.transcript_timestamp.to_rfc3339(),
+                        signal_kind: match signal.signal_kind {
+                            crate::coordination::stores::CompactionSignalKind::Compacted => {
+                                "compacted".to_string()
+                            }
+                            crate::coordination::stores::CompactionSignalKind::ContextCompacted => {
+                                "context_compacted".to_string()
+                            }
+                        },
+                    })
+                    .collect(),
+            },
+            watcher: CompactionWatcherDiagnostics {
+                last_consumed_offset: watcher.last_consumed_offset,
+                last_event_at: watcher.last_event_at,
+                last_reconciliation_at: watcher.last_reconciliation_at,
+                reconciliation_poll_count: watcher.reconciliation_poll_count,
+                missed_event_recovery_count: watcher.missed_event_recovery_count,
+            },
+        },
+    })
 }
 
 #[cfg(test)]

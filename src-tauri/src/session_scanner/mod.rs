@@ -17,6 +17,8 @@
 
 pub mod cli_tool;
 pub mod compaction;
+pub mod compaction_extractor;
+pub mod compaction_watcher;
 pub mod control;
 pub mod idle;
 pub mod proc_io;
@@ -278,7 +280,7 @@ fn process_display_scan_compaction(runtime_sessions: &[RuntimeSession]) {
         return;
     }
 
-    compaction::process_codex_compaction_events(runtime_sessions);
+    compaction_extractor::update_active_runtime_sessions(runtime_sessions);
 }
 
 fn emit_scan_completed(metrics: ScanCompletionMetrics, session_count: usize) {
@@ -889,6 +891,7 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
 
+    compaction_extractor::update_active_runtime_sessions(&sessions);
     sessions
 }
 

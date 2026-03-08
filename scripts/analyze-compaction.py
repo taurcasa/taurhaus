@@ -37,6 +37,9 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 DEFAULT_TEAMS_DIR = Path.home() / ".claude" / "teams"
 DEFAULT_CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 DEFAULT_HOOKS_DIR = Path.home() / ".claude" / "hooks"
+COMPACTION_SIGNAL_FILENAME = "codex-compaction-signals.jsonl"
+EXTRACTOR_STATE_FILENAME = "extractor-state.json"
+WATCHER_STATE_FILENAME = "signal-watcher-state.json"
 COMPACTION_EVENTS = {
     "compaction.detected",
     "compaction.injected",
@@ -313,6 +316,128 @@ def load_team_member_tools(teams_dir: Path, team_filter: Optional[str]) -> Dict[
     return tool_by_member
 
 
+def iter_team_dirs(teams_dir: Path, team_filter: Optional[str]) -> List[Path]:
+    if not teams_dir.exists():
+        return []
+    if team_filter:
+        candidate = teams_dir / team_filter
+        return [candidate] if candidate.is_dir() else []
+    return sorted((path for path in teams_dir.iterdir() if path.is_dir()), key=lambda path: path.name)
+
+
+def load_json_file(path: Path) -> Optional[dict]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def inspect_signal_log_file(
+    signal_path: Path, last_consumed_offset: int, recent_limit: int
+) -> Dict[str, object]:
+    summary: Dict[str, object] = {
+        "path": signal_path,
+        "exists": signal_path.exists(),
+        "file_size_bytes": 0,
+        "total_signals": 0,
+        "unconsumed_count": 0,
+        "recent_signals": [],
+    }
+    if not signal_path.exists():
+        return summary
+
+    try:
+        summary["file_size_bytes"] = signal_path.stat().st_size
+    except OSError:
+        return summary
+
+    recent_signals: List[dict] = []
+    offset = 0
+    try:
+        with signal_path.open("rb") as handle:
+            while True:
+                line = handle.readline()
+                if not line:
+                    break
+                line_start = offset
+                offset += len(line)
+                if not line.endswith(b"\n"):
+                    break
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    payload = json.loads(stripped.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                summary["total_signals"] += 1
+                if line_start >= last_consumed_offset:
+                    summary["unconsumed_count"] += 1
+                recent_signals.append(payload)
+                if len(recent_signals) > recent_limit:
+                    recent_signals.pop(0)
+    except OSError:
+        return summary
+
+    summary["recent_signals"] = recent_signals
+    return summary
+
+
+def analyze_compaction_diagnostics(
+    teams_dir: Path, team_filter: Optional[str], recent_limit: int = 5
+) -> Dict[str, Dict[str, object]]:
+    diagnostics: Dict[str, Dict[str, object]] = {}
+
+    for team_dir in iter_team_dirs(teams_dir, team_filter):
+        compaction_dir = team_dir / "state" / "compaction"
+        extractor_payload = load_json_file(compaction_dir / EXTRACTOR_STATE_FILENAME) or {}
+        watcher_payload = load_json_file(compaction_dir / WATCHER_STATE_FILENAME) or {}
+        file_offsets = extractor_payload.get("file_offsets")
+        error_map = extractor_payload.get("last_error_by_file")
+        if not isinstance(file_offsets, dict):
+            file_offsets = {}
+        if not isinstance(error_map, dict):
+            error_map = {}
+
+        active_files = []
+        for jsonl_path, checkpoint in sorted(file_offsets.items()):
+            offset_value = checkpoint.get("offset") if isinstance(checkpoint, dict) else 0
+            active_files.append(
+                {
+                    "jsonl_path": str(jsonl_path),
+                    "offset": int(offset_value or 0),
+                    "last_error": error_map.get(jsonl_path),
+                }
+            )
+
+        last_consumed_offset = int(watcher_payload.get("last_consumed_offset") or 0)
+        signal_summary = inspect_signal_log_file(
+            compaction_dir / "signals" / COMPACTION_SIGNAL_FILENAME,
+            last_consumed_offset,
+            recent_limit,
+        )
+
+        diagnostics[team_dir.name] = {
+            "extractor": {
+                "heartbeat_at": extractor_payload.get("heartbeat_at"),
+                "last_processed_signal": extractor_payload.get("last_processed_signal"),
+                "active_files": active_files,
+            },
+            "watcher": {
+                "last_consumed_offset": last_consumed_offset,
+                "last_event_at": watcher_payload.get("last_event_at"),
+                "last_reconciliation_at": watcher_payload.get("last_reconciliation_at"),
+                "reconciliation_poll_count": int(watcher_payload.get("reconciliation_poll_count") or 0),
+                "missed_event_recovery_count": int(
+                    watcher_payload.get("missed_event_recovery_count") or 0
+                ),
+            },
+            "signal_log": signal_summary,
+        }
+
+    return diagnostics
+
+
 def analyze_runtime_session_health(
     teams_dir: Path, team_filter: Optional[str]
 ) -> Tuple[Counter, Dict[str, List[str]], List[Tuple[str, str, Optional[str]]]]:
@@ -443,6 +568,64 @@ def checkpoint_status(
     print(f"  broken: {broken}")
 
 
+def print_compaction_diagnostics(diagnostics_by_team: Dict[str, Dict[str, object]]) -> None:
+    print_section("Compaction Diagnostics")
+    if not diagnostics_by_team:
+        print("No team compaction state directories found.")
+        return
+
+    for team_name, diagnostics in sorted(diagnostics_by_team.items()):
+        extractor = diagnostics.get("extractor", {})
+        watcher = diagnostics.get("watcher", {})
+        signal_log = diagnostics.get("signal_log", {})
+        active_files = extractor.get("active_files", []) if isinstance(extractor, dict) else []
+        recent_signals = signal_log.get("recent_signals", []) if isinstance(signal_log, dict) else []
+
+        print(f"{team_name}:")
+        print(
+            f"  extractor heartbeat={extractor.get('heartbeat_at') or 'n/a'} "
+            f"active_files={len(active_files)}"
+        )
+        last_processed = extractor.get("last_processed_signal")
+        if isinstance(last_processed, dict):
+            print(
+                f"  last processed: id={last_processed.get('signal_id') or 'n/a'} "
+                f"offset={last_processed.get('jsonl_offset') or 'n/a'}"
+            )
+        for file_entry in active_files[:5]:
+            if not isinstance(file_entry, dict):
+                continue
+            error_suffix = ""
+            if file_entry.get("last_error"):
+                error_suffix = f" error={file_entry['last_error']}"
+            print(
+                f"  file: {file_entry.get('jsonl_path')} "
+                f"offset={file_entry.get('offset', 0)}{error_suffix}"
+            )
+
+        print(
+            f"  watcher last_event={watcher.get('last_event_at') or 'n/a'} "
+            f"last_reconcile={watcher.get('last_reconciliation_at') or 'n/a'} "
+            f"polls={watcher.get('reconciliation_poll_count', 0)} "
+            f"recovered={watcher.get('missed_event_recovery_count', 0)}"
+        )
+        print(
+            f"  signal log path={signal_log.get('path')} total={signal_log.get('total_signals', 0)} "
+            f"unconsumed={signal_log.get('unconsumed_count', 0)} "
+            f"offset={watcher.get('last_consumed_offset', 0)}"
+        )
+        for signal in recent_signals:
+            if not isinstance(signal, dict):
+                continue
+            signal_kind = signal.get("signal_kind")
+            print(
+                f"  recent signal: {signal.get('signal_id')} "
+                f"{signal_kind or 'unknown'} "
+                f"session={signal.get('session_id')} "
+                f"at={signal.get('emitted_at')}"
+            )
+
+
 def main() -> int:
     args = parse_args()
     since, _, window_desc = resolve_window(args)
@@ -540,6 +723,7 @@ def main() -> int:
     runtime_totals, missing_by_team, runtime_details = analyze_runtime_session_health(
         args.teams_dir, args.team
     )
+    compaction_diagnostics = analyze_compaction_diagnostics(args.teams_dir, args.team)
     hook_status = analyze_hook_installation(args.claude_settings, args.hooks_dir)
 
     detected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.detected")
@@ -812,6 +996,8 @@ def main() -> int:
             members_total = tool_totals[f"{tool}::members"]
             with_sid = tool_totals[f"{tool}::with_session_id"]
             print(f"{tool}: {with_sid}/{members_total} runtime members with session_id")
+
+    print_compaction_diagnostics(compaction_diagnostics)
 
     print_section("Claude Hook")
     print_kv("Settings file", args.claude_settings)

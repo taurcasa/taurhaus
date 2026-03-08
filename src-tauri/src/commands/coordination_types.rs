@@ -221,12 +221,78 @@ pub struct CompactionAuditEntry {
     pub last_delivery_result: String,
 }
 
+/// One tracked transcript file inside the compaction extractor state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionExtractorFileDiagnostics {
+    pub jsonl_path: String,
+    pub offset: u64,
+    pub last_error: Option<String>,
+}
+
+/// Extractor-side state for Codex compaction transcript parsing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionExtractorDiagnostics {
+    pub heartbeat_at: Option<String>,
+    pub last_processed_signal_id: Option<String>,
+    pub last_processed_jsonl_path: Option<String>,
+    pub last_processed_jsonl_offset: Option<u64>,
+    pub active_files: Vec<CompactionExtractorFileDiagnostics>,
+}
+
+/// One recent compaction signal from the canonical signal log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionSignalAuditEntry {
+    pub signal_id: String,
+    pub emitted_at: String,
+    pub session_id: String,
+    pub pane_id: String,
+    pub project_path: String,
+    pub transcript_timestamp: String,
+    pub signal_kind: String,
+}
+
+/// Signal-log state relative to the watcher offset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionSignalDiagnostics {
+    pub signal_log_path: String,
+    pub file_size_bytes: u64,
+    pub total_signals: usize,
+    pub last_consumed_offset: u64,
+    pub unconsumed_count: usize,
+    pub recent_signals: Vec<CompactionSignalAuditEntry>,
+}
+
+/// Watcher health and persisted offset state for signal consumption.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionWatcherDiagnostics {
+    pub last_consumed_offset: u64,
+    pub last_event_at: Option<String>,
+    pub last_reconciliation_at: Option<String>,
+    pub reconciliation_poll_count: u64,
+    pub missed_event_recovery_count: u64,
+}
+
+/// Full runtime diagnostics for the compaction pipeline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionDiagnostics {
+    pub extractor: CompactionExtractorDiagnostics,
+    pub signal_log: CompactionSignalDiagnostics,
+    pub watcher: CompactionWatcherDiagnostics,
+}
+
 /// Recent compaction reinjection audit rows for a team.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionAuditResponse {
     pub team_name: String,
     pub entries: Vec<CompactionAuditEntry>,
+    pub diagnostics: CompactionDiagnostics,
 }
 
 /// Fast snapshot row returned without tmux/daemon reconciliation.

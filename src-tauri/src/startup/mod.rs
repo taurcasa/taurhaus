@@ -11,6 +11,8 @@ use crate::commands::projects::DbState;
 use crate::{db, provider, services, ProviderState};
 
 pub(crate) mod bootstrap;
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) mod compaction;
 pub(crate) mod daemon;
 pub(crate) mod search;
 pub(crate) mod watchers;
@@ -276,6 +278,7 @@ fn emit_startup_orchestration_started() {
     let steps = vec![
         Value::String("daemon".to_string()),
         Value::String("watchers".to_string()),
+        Value::String("compaction".to_string()),
         Value::String("search".to_string()),
         Value::String("background_tasks".to_string()),
     ];
@@ -553,6 +556,9 @@ fn run_startup_orchestration(
         true,
         context.daemon_connected_at_startup && context.daemon_addr.is_some(),
     );
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    compaction::initialize(app)?;
 
     let search_started_at = Instant::now();
     let search_doc_count = match search::initialize(app, context) {

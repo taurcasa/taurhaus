@@ -1854,6 +1854,8 @@ describe('ipc module', () => {
       const mockModeResult = await ipc.coordinationGetCompactionAudit('arch')
       expect(mockModeResult.teamName).toBe('arch')
       expect(Array.isArray(mockModeResult.entries)).toBe(true)
+      expect(mockModeResult.diagnostics).toBeTruthy()
+      expect(mockModeResult.diagnostics.signalLog.totalSignals).toBeGreaterThanOrEqual(0)
 
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({
@@ -1867,6 +1869,11 @@ describe('ipc module', () => {
             lastDeliveryResult: 'injected',
           },
         ],
+        diagnostics: {
+          extractor: { heartbeatAt: '2026-03-08T15:04:18Z', activeFiles: [] },
+          signalLog: { totalSignals: 1, unconsumedCount: 0, recentSignals: [] },
+          watcher: { reconciliationPollCount: 1, missedEventRecoveryCount: 0 },
+        },
       })
       await ipc.coordinationGetCompactionAudit('arch')
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_compaction_audit', {

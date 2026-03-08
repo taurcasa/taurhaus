@@ -59,6 +59,8 @@ pub fn run(
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
     crate::daemon::session_activity::SessionActivityHub::global();
+    let _compaction_runtime = crate::daemon::compaction::DaemonCompactionRuntime::maybe_start()
+        .map_err(std::io::Error::other)?;
 
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
