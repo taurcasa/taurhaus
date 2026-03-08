@@ -142,11 +142,27 @@ def resolve_default_log_path() -> Path:
     )
     candidates.extend(windows_candidates)
 
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
+    selected = select_best_log_candidate(candidates)
+    if selected is not None:
+        return selected
 
     return candidates[0]
+
+
+def select_best_log_candidate(candidates: Iterable[Path]) -> Optional[Path]:
+    existing: List[Tuple[float, int, str, Path]] = []
+    for candidate in candidates:
+        try:
+            stat = candidate.stat()
+        except FileNotFoundError:
+            continue
+        existing.append((stat.st_mtime, stat.st_size, str(candidate), candidate))
+
+    if not existing:
+        return None
+
+    existing.sort(reverse=True)
+    return existing[0][3]
 
 
 def parse_iso_timestamp(value: str) -> datetime:
@@ -586,6 +602,7 @@ def main() -> int:
     print("==============================")
     print_kv("Window", window_desc)
     print_kv("Team filter", args.team or "all teams")
+    print_kv("Selected log", args.log)
     print_kv("Log files", ", ".join(path.name for path in existing_files))
     print_kv("Parsed lines", f"{state.parsed_lines}/{state.total_lines}")
     if state.invalid_lines:
