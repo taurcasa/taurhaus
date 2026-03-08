@@ -27,7 +27,7 @@ export const TOOL_ICONS = {
 }
 
 /** Simplified small variants tuned for dense 12-13px sidebar rendering. */
-export const TOOL_SIDEBAR_SMALL_ICONS = {
+const TOOL_SIDEBAR_SMALL_ICONS = {
   claude: {
     viewBox: '0 0 16 16',
     path: 'M8 0.9l1.38 3.36 3.58-.9-.9 3.56L15.1 8l-3.04 1.08.9 3.56-3.58-.9L8 15.1l-1.38-3.36-3.58.9.9-3.56L.9 8l3.04-1.08-.9-3.56 3.58.9z',

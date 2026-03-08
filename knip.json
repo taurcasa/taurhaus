@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/visual-host.js",
+    "src/visual-host/mocks/ipc.js",
+    "src/visual-host/mocks/sessionStore.svelte.js",
+    "vitest.visual.config.js",
+    "e2e/wdio.conf.js",
+    "e2e/specs/**/*.js",
+    "e2e/**/*.test.js",
+    "src/**/*.test.js",
+    "src/test/visual/specs/**/*.js"
+  ],
+  "project": [
+    "src/**/*.{js,svelte}",
+    "e2e/**/*.js",
+    "scripts/**/*.sh"
+  ],
+  "ignoreDependencies": [
+    "@crabnebula/tauri-driver",
+    "@wdio/cli",
+    "@wdio/local-runner",
+    "@wdio/mocha-framework",
+    "@wdio/spec-reporter",
+    "tailwindcss"
+  ]
+}

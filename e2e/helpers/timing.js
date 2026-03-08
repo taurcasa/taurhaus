@@ -45,10 +45,10 @@ export const POLL_WIZARD = 500
 // should resolve in <100ms for UI ops, <1s for content loads.
 
 /** Very fast UI — element should appear within 1-2 frames. */
-export const TIMEOUT_INSTANT = 1_500
+const TIMEOUT_INSTANT = 1_500
 
 /** Standard UI operation — tab switch, overlay open/close. */
-export const TIMEOUT_SHORT = 2_000
+const TIMEOUT_SHORT = 2_000
 
 /** Content loading — file tree, commit list, search results. */
 export const TIMEOUT_MEDIUM = 2_500

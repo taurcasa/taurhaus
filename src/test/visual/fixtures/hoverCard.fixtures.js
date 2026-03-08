@@ -11,7 +11,7 @@ function isoDaysAgo(days) {
   return new Date(NOW.getTime() - days * 24 * 60 * 60 * 1000).toISOString()
 }
 
-export function createProject(overrides = {}) {
+function createProject(overrides = {}) {
   return {
     id: 'proj-hovercard',
     path: '/projects/taurhaus',
@@ -23,7 +23,7 @@ export function createProject(overrides = {}) {
   }
 }
 
-export function createLiveSession(overrides = {}) {
+function createLiveSession(overrides = {}) {
   return {
     id: 'live-session-1',
     live: true,
@@ -36,7 +36,7 @@ export function createLiveSession(overrides = {}) {
   }
 }
 
-export function createLatestSession(overrides = {}) {
+function createLatestSession(overrides = {}) {
   return {
     date: NOW.toISOString(),
     summary: 'Implement structured IPC logging',
@@ -46,7 +46,7 @@ export function createLatestSession(overrides = {}) {
   }
 }
 
-export function createCommit(overrides = {}) {
+function createCommit(overrides = {}) {
   return {
     hash: 'abc1234',
     message: 'Stabilize visual screenshot harness',
@@ -55,7 +55,7 @@ export function createCommit(overrides = {}) {
   }
 }
 
-export function createRelationship(overrides = {}) {
+function createRelationship(overrides = {}) {
   return {
     source_project_id: 'proj-hovercard',
     target_project_id: 'proj-sidebar',
@@ -93,7 +93,7 @@ function createScenario({
   }
 }
 
-export const active_claudeWorking_dirty_dark = createScenario({
+const active_claudeWorking_dirty_dark = createScenario({
   name: 'active_claudeWorking_dirty_dark',
   theme: 'dark',
   project: createProject({ isDirty: true }),
@@ -109,7 +109,7 @@ export const active_claudeWorking_dirty_dark = createScenario({
   },
 })
 
-export const active_claudeWorking_dirty_light = createScenario({
+const active_claudeWorking_dirty_light = createScenario({
   name: 'active_claudeWorking_dirty_light',
   theme: 'light',
   project: createProject({ isDirty: true }),
@@ -126,7 +126,7 @@ export const active_claudeWorking_dirty_light = createScenario({
   compareAgainst: 'active_claudeWorking_dirty_dark',
 })
 
-export const idle_waitingInput_dark = createScenario({
+const idle_waitingInput_dark = createScenario({
   name: 'idle_waitingInput_dark',
   theme: 'dark',
   project: createProject(),
@@ -155,7 +155,7 @@ export const idle_waitingInput_dark = createScenario({
   },
 })
 
-export const recentHandoff_withQuestion_dark = createScenario({
+const recentHandoff_withQuestion_dark = createScenario({
   name: 'recentHandoff_withQuestion_dark',
   theme: 'dark',
   project: createProject({ activityState: 'recent' }),
@@ -175,7 +175,7 @@ export const recentHandoff_withQuestion_dark = createScenario({
   },
 })
 
-export const recentHandoff_withQuestion_light = createScenario({
+const recentHandoff_withQuestion_light = createScenario({
   name: 'recentHandoff_withQuestion_light',
   theme: 'light',
   project: createProject({ activityState: 'recent' }),
@@ -196,7 +196,7 @@ export const recentHandoff_withQuestion_light = createScenario({
   compareAgainst: 'recentHandoff_withQuestion_dark',
 })
 
-export const staleCommitOnly_dark = createScenario({
+const staleCommitOnly_dark = createScenario({
   name: 'staleCommitOnly_dark',
   theme: 'dark',
   project: createProject({ activityState: 'stale' }),
@@ -217,7 +217,7 @@ export const staleCommitOnly_dark = createScenario({
   },
 })
 
-export const dormant_empty_dark = createScenario({
+const dormant_empty_dark = createScenario({
   name: 'dormant_empty_dark',
   theme: 'dark',
   project: createProject({ activityState: 'dormant' }),
@@ -233,7 +233,7 @@ export const dormant_empty_dark = createScenario({
   },
 })
 
-export const dormant_empty_light = createScenario({
+const dormant_empty_light = createScenario({
   name: 'dormant_empty_light',
   theme: 'light',
   project: createProject({ activityState: 'dormant' }),
@@ -250,7 +250,7 @@ export const dormant_empty_light = createScenario({
   compareAgainst: 'dormant_empty_dark',
 })
 
-export const multiSession_threeLive_dark = createScenario({
+const multiSession_threeLive_dark = createScenario({
   name: 'multiSession_threeLive_dark',
   theme: 'dark',
   project: createProject(),
@@ -273,7 +273,7 @@ export const multiSession_threeLive_dark = createScenario({
   },
 })
 
-export const withRelationship_dependsOn_dark = createScenario({
+const withRelationship_dependsOn_dark = createScenario({
   name: 'withRelationship_dependsOn_dark',
   theme: 'dark',
   project: createProject({ activityState: 'recent' }),

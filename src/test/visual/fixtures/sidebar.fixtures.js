@@ -184,7 +184,7 @@ const groupedProjects = [
   }),
 ]
 
-export const active_claude_selected_dark = createScenario({
+const active_claude_selected_dark = createScenario({
   name: 'active_claude_selected_dark',
   theme: 'dark',
   projects: [activeClaudeProject],
@@ -206,7 +206,7 @@ export const active_claude_selected_dark = createScenario({
   },
 })
 
-export const active_multiTool_dark = createScenario({
+const active_multiTool_dark = createScenario({
   name: 'active_multiTool_dark',
   theme: 'dark',
   projects: [multiToolProject],
@@ -230,7 +230,7 @@ export const active_multiTool_dark = createScenario({
   },
 })
 
-export const idle_codex_dark = createScenario({
+const idle_codex_dark = createScenario({
   name: 'idle_codex_dark',
   theme: 'dark',
   projects: [idleCodexProject],
@@ -252,7 +252,7 @@ export const idle_codex_dark = createScenario({
   },
 })
 
-export const dirty_noSession_dark = createScenario({
+const dirty_noSession_dark = createScenario({
   name: 'dirty_noSession_dark',
   theme: 'dark',
   projects: [dirtyNoSessionProject],
@@ -270,7 +270,7 @@ export const dirty_noSession_dark = createScenario({
   },
 })
 
-export const dormant_clean_dark = createScenario({
+const dormant_clean_dark = createScenario({
   name: 'dormant_clean_dark',
   theme: 'dark',
   projects: [dormantCleanProject],
@@ -288,7 +288,7 @@ export const dormant_clean_dark = createScenario({
   },
 })
 
-export const active_claude_selected_light = createScenario({
+const active_claude_selected_light = createScenario({
   name: 'active_claude_selected_light',
   theme: 'light',
   projects: [activeClaudeProject],
@@ -311,7 +311,7 @@ export const active_claude_selected_light = createScenario({
   compareAgainst: 'active_claude_selected_dark',
 })
 
-export const groupHeaders_dark = createScenario({
+const groupHeaders_dark = createScenario({
   name: 'groupHeaders_dark',
   theme: 'dark',
   projects: groupedProjects,
@@ -336,7 +336,7 @@ export const groupHeaders_dark = createScenario({
   },
 })
 
-export const team_rail_two_dark = createScenario({
+const team_rail_two_dark = createScenario({
   name: 'team_rail_two_dark',
   theme: 'dark',
   projects: [teamRailTwoProject],
@@ -384,7 +384,7 @@ export const team_rail_two_dark = createScenario({
   },
 })
 
-export const team_rail_three_light = createScenario({
+const team_rail_three_light = createScenario({
   name: 'team_rail_three_light',
   theme: 'light',
   projects: [teamRailThreeProject],
@@ -444,7 +444,7 @@ export const team_rail_three_light = createScenario({
   },
 })
 
-export const team_rail_two_light = createScenario({
+const team_rail_two_light = createScenario({
   name: 'team_rail_two_light',
   theme: 'light',
   projects: [teamRailTwoProject],
@@ -493,7 +493,7 @@ export const team_rail_two_light = createScenario({
   compareAgainst: 'team_rail_two_dark',
 })
 
-export const team_stack_mixed_dark = createScenario({
+const team_stack_mixed_dark = createScenario({
   name: 'team_stack_mixed_dark',
   theme: 'dark',
   projects: [teamStackMixedProject],
@@ -573,7 +573,7 @@ export const team_stack_mixed_dark = createScenario({
   },
 })
 
-export const team_stack_mixed_light = createScenario({
+const team_stack_mixed_light = createScenario({
   name: 'team_stack_mixed_light',
   theme: 'light',
   projects: [teamStackMixedProject],
@@ -654,7 +654,7 @@ export const team_stack_mixed_light = createScenario({
   compareAgainst: 'team_stack_mixed_dark',
 })
 
-export const team_plus_standalone_dark = createScenario({
+const team_plus_standalone_dark = createScenario({
   name: 'team_plus_standalone_dark',
   theme: 'dark',
   projects: [teamPlusStandaloneProject],
@@ -711,7 +711,7 @@ export const team_plus_standalone_dark = createScenario({
   },
 })
 
-export const team_rail_threshold_dark = createScenario({
+const team_rail_threshold_dark = createScenario({
   name: 'team_rail_threshold_dark',
   theme: 'dark',
   projects: [teamRailThresholdProject],

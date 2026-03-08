@@ -74,7 +74,7 @@ export const active_claude_dark = createDetailScenario({
   member: activeClaudeMember,
 })
 
-export const active_claude_light = createDetailScenario({
+const active_claude_light = createDetailScenario({
   name: 'active_claude_light',
   theme: 'light',
   mode: 'runtime',
@@ -85,7 +85,7 @@ export const active_claude_light = createDetailScenario({
   },
 })
 
-export const idle_codex_dark = createDetailScenario({
+const idle_codex_dark = createDetailScenario({
   name: 'idle_codex_dark',
   theme: 'dark',
   mode: 'runtime',
@@ -109,7 +109,7 @@ export const idle_codex_dark = createDetailScenario({
   }),
 })
 
-export const idle_gemini_dark = createDetailScenario({
+const idle_gemini_dark = createDetailScenario({
   name: 'idle_gemini_dark',
   theme: 'dark',
   mode: 'runtime',
@@ -185,7 +185,7 @@ export const cross_project_gemini_light = createDetailScenario({
   }),
 })
 
-export const disconnected_dark = createDetailScenario({
+const disconnected_dark = createDetailScenario({
   name: 'disconnected_dark',
   theme: 'dark',
   mode: 'runtime',

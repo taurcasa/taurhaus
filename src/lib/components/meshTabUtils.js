@@ -10,7 +10,7 @@ import {
 } from '../meshDefaults.js'
 import { normalizeProjectPath as normalizeSharedProjectPath } from '../pathUtils.js'
 
-export function normalizeStatus(status) {
+function normalizeStatus(status) {
   const value = String(status || '').trim().toLowerCase()
   if (value === 'active' || value === 'idle') return value
   return 'offline'
@@ -28,7 +28,7 @@ export function inferTeamName(path) {
     .replace(/^-|-$/g, '')
 }
 
-export function normalizeProjectPath(path) {
+function normalizeProjectPath(path) {
   return normalizeSharedProjectPath(path)
 }
 
@@ -61,16 +61,16 @@ function normalizeAgentSlots(preset) {
     : []
 }
 
-export function coerceTeams(response) {
+function coerceTeams(response) {
   if (Array.isArray(response)) return response
   return Array.isArray(response?.teams) ? response.teams : []
 }
 
-export function normalizeTeamName(team) {
+function normalizeTeamName(team) {
   return team?.teamName ?? team?.team_name ?? ''
 }
 
-export function teamMatchesProject(team, currentProjectPath) {
+function teamMatchesProject(team, currentProjectPath) {
   return isSameProjectPath(normalizeLeadPath(team), currentProjectPath)
 }
 
@@ -500,7 +500,7 @@ export function contractHasRules(contract) {
   )
 }
 
-export function defaultBehavioralContract(roleName) {
+function defaultBehavioralContract(roleName) {
   const safeName = String(roleName || 'agent').trim() || 'agent'
   return {
     communication: [`Report concise progress as ${safeName} and escalate blockers quickly.`],
@@ -509,7 +509,7 @@ export function defaultBehavioralContract(roleName) {
   }
 }
 
-export function normalizeCapabilities(capabilities, tool) {
+function normalizeCapabilities(capabilities, tool) {
   if (Array.isArray(capabilities)) {
     const normalized = capabilities
       .map((entry) => String(entry || '').trim().toLowerCase())

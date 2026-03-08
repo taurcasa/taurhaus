@@ -150,7 +150,7 @@ export async function ensureMainApp() {
  * Optimized: uses a single browser.execute() to check all state and perform
  * in-page cleanup, minimizing WebDriver round-trips (~1-2 calls instead of ~15).
  */
-export async function resetAppState() {
+async function resetAppState() {
   // Close search overlay and modal if they are open.
   const searchOverlay = await $('[data-testid="search-overlay"]')
   if (await searchOverlay.isExisting()) await browser.keys('Escape')

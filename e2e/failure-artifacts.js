@@ -14,13 +14,13 @@ function sanitizeSegment(value) {
   return raw.replace(/[^a-zA-Z0-9._-]+/g, '-')
 }
 
-export function tailLines(text, limit = DEFAULT_TAIL_LINES) {
+function tailLines(text, limit = DEFAULT_TAIL_LINES) {
   const lines = String(text || '').split('\n')
   if (lines.length <= limit) return lines.join('\n')
   return lines.slice(-limit).join('\n')
 }
 
-export function extractRunIdFromJsonl(text) {
+function extractRunIdFromJsonl(text) {
   const lines = String(text || '')
     .split('\n')
     .map((line) => line.trim())
@@ -40,7 +40,7 @@ export function extractRunIdFromJsonl(text) {
   return null
 }
 
-export function readFirstTail(paths, lineLimit = DEFAULT_TAIL_LINES, deps = {}) {
+function readFirstTail(paths, lineLimit = DEFAULT_TAIL_LINES, deps = {}) {
   const io = {
     existsSync: deps.existsSync ?? existsSync,
     readFileSync: deps.readFileSync ?? readFileSync,

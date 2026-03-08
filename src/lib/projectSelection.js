@@ -24,7 +24,7 @@ function withTimeout(promise, timeoutMs, section) {
 /**
  * Normalize unknown errors for degraded project-load sections.
  */
-export function projectLoadErrorMessage(err) {
+function projectLoadErrorMessage(err) {
   return formatUserFacingError(err, "Couldn't load project data")
 }
 

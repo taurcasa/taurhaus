@@ -1,4 +1,4 @@
-export const SIDEBAR_GROUPS = [
+const SIDEBAR_GROUPS = [
   { key: 'active', label: 'ACTIVE' },
   { key: 'recent', label: 'RECENT' },
   { key: 'stale', label: 'STALE' },

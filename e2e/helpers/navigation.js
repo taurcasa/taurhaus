@@ -61,7 +61,7 @@ export async function switchToTab(tabName) {
  * Wait for tab-specific content to appear after switching.
  * @param {'overview'|'files'|'git'|'tasks'} tabName
  */
-export async function waitForTabContent(tabName) {
+async function waitForTabContent(tabName) {
   const selectorMap = {
     overview: ['[data-testid="quick-actions"]', '[data-testid="overview-readme"]'],
     files: [
@@ -164,7 +164,7 @@ export async function waitForFileContent(timeout = TIMEOUT_MEDIUM, msg = 'File c
  * @param {'overview'|'files'|'git'|'tasks'} tabName
  * @returns {Promise<boolean>}
  */
-export async function isTabActive(tabName) {
+async function isTabActive(tabName) {
   const tab = await $(`[data-testid="tab-${tabName}"]`)
   if (!(await tab.isExisting())) return false
   const ariaSelected = await tab.getAttribute('aria-selected')

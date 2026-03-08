@@ -2,7 +2,7 @@ function cycle(list, index) {
   return list[index % list.length]
 }
 
-export function createMember({
+function createMember({
   id,
   name,
   role = 'agent',

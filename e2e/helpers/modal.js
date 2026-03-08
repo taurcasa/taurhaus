@@ -107,7 +107,7 @@ export async function tryAddProjectPath(path) {
  * Wait for a modal identified by testid to appear.
  * @param {string} testid - The data-testid of the modal
  */
-export async function waitForModal(testid) {
+async function waitForModal(testid) {
   await browser.waitUntil(
     async () => browser.execute(
       (id) => document.querySelector(`[data-testid="${id}"]`) !== null,

@@ -30,13 +30,13 @@ function createMeshCanvasScenario({
   }
 }
 
-export const runtime_threeAgents_light = createMeshCanvasScenario({
+const runtime_threeAgents_light = createMeshCanvasScenario({
   name: 'runtime_threeAgents_light',
   theme: 'light',
   agentCount: 3,
 })
 
-export const runtime_oneAgent_dark = createMeshCanvasScenario({
+const runtime_oneAgent_dark = createMeshCanvasScenario({
   name: 'runtime_oneAgent_dark',
   theme: 'dark',
   agentCount: 1,
@@ -92,13 +92,13 @@ export const runtime_fiveAgents_light = createMeshCanvasScenario({
   ],
 })
 
-export const runtime_sevenAgents_dark = createMeshCanvasScenario({
+const runtime_sevenAgents_dark = createMeshCanvasScenario({
   name: 'runtime_sevenAgents_dark',
   theme: 'dark',
   agentCount: 7,
 })
 
-export const runtime_eightAgents_dark = createMeshCanvasScenario({
+const runtime_eightAgents_dark = createMeshCanvasScenario({
   name: 'runtime_eightAgents_dark',
   theme: 'dark',
   agentCount: 8,

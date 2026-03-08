@@ -13,7 +13,7 @@ export async function refreshRuntimeTeamConfigWorkflow({
   return true
 }
 
-export async function bootstrapFromGateWorkflow({
+async function bootstrapFromGateWorkflow({
   sequence,
   getDiscoverySequence,
   coordinationListTeams,

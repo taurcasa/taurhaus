@@ -9,7 +9,7 @@ async function waitForAnimationFrame() {
   await new Promise((resolve) => requestAnimationFrame(() => resolve()))
 }
 
-export async function waitForVisualReady() {
+async function waitForVisualReady() {
   if (document.fonts?.ready) {
     await document.fonts.ready
   }
@@ -17,7 +17,7 @@ export async function waitForVisualReady() {
   await waitForAnimationFrame()
 }
 
-export function applyVisualTheme(theme) {
+function applyVisualTheme(theme) {
   const dark = theme === 'dark'
   document.documentElement.classList.toggle('dark', dark)
   document.documentElement.dataset.theme = theme

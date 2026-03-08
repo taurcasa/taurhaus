@@ -73,7 +73,7 @@ export function isCustomPreset(preset) {
   return !Boolean(preset?.builtIn || preset?.readOnly)
 }
 
-export function toSlug(value) {
+function toSlug(value) {
   return String(value ?? '')
     .trim()
     .toLowerCase()

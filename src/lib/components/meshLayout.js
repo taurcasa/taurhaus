@@ -109,7 +109,7 @@ function routeControlOffset(agent, rowAgents, layout) {
   return 0
 }
 
-export function computeMeshTopology(input) {
+function computeMeshTopology(input) {
   const agents = Array.isArray(input?.agents) ? input.agents : []
   const normalizedAgents = agents.map((agent, index) => normalizeMember(agent, `agent-${index}`))
   const count = normalizedAgents.length
@@ -131,7 +131,7 @@ export function computeMeshTopology(input) {
   }
 }
 
-export function computeMeshBoxes(topology, input) {
+function computeMeshBoxes(topology, input) {
   const width = Math.max(320, Number(input?.width ?? 600))
   const height = Math.max(460, Number(input?.height ?? 460))
   const agents = topology.rows.flat()
@@ -188,7 +188,7 @@ export function computeMeshBoxes(topology, input) {
   }
 }
 
-export function computeMeshRoutes(boxes, input) {
+function computeMeshRoutes(boxes, input) {
   const agents = Array.isArray(boxes?.agents) ? boxes.agents : []
   if (!agents.length) return []
 
