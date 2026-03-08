@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { normalizeProjectPath, resolveRelativePath } from './pathUtils.js'
+
+const pathNormalizationCorpus = JSON.parse(
+  readFileSync(path.join(process.cwd(), 'test-fixtures/path-normalization-corpus.json'), 'utf8')
+)
 
 describe('resolveRelativePath', () => {
   it('resolves parent directory reference', () => {
@@ -44,6 +50,12 @@ describe('resolveRelativePath', () => {
 })
 
 describe('normalizeProjectPath', () => {
+  it('matches the shared golden corpus', () => {
+    for (const testCase of pathNormalizationCorpus.cases) {
+      expect(normalizeProjectPath(testCase.input), testCase.id).toBe(testCase.expected)
+    }
+  })
+
   it('normalizes WSL UNC paths to linux paths', () => {
     expect(normalizeProjectPath('\\\\wsl$\\Ubuntu\\home\\user\\proj\\')).toBe('/home/user/proj')
     expect(normalizeProjectPath('\\\\wsl.localhost\\Ubuntu\\home\\user\\proj\\')).toBe('/home/user/proj')

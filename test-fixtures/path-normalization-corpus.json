@@ -1,0 +1,55 @@
+{
+  "format": "Each case has an id, raw input path, and expected normalized output. Add new cross-platform edge cases here so backend and frontend corpus-driven tests stay aligned.",
+  "cases": [
+    {
+      "id": "wsl-dollar-unc",
+      "input": "\\\\wsl$\\Ubuntu\\home\\user\\project",
+      "expected": "/home/user/project"
+    },
+    {
+      "id": "wsl-localhost-unc",
+      "input": "\\\\wsl.localhost\\Ubuntu\\home\\user\\project",
+      "expected": "/home/user/project"
+    },
+    {
+      "id": "windows-c-drive",
+      "input": "C:\\Users\\user\\projects\\foo",
+      "expected": "/mnt/c/Users/user/projects/foo"
+    },
+    {
+      "id": "windows-d-drive",
+      "input": "D:\\builds\\bar",
+      "expected": "/mnt/d/builds/bar"
+    },
+    {
+      "id": "linux-mnt-drive",
+      "input": "/mnt/c/Users/user/projects/foo",
+      "expected": "/mnt/c/Users/user/projects/foo"
+    },
+    {
+      "id": "linux-native",
+      "input": "/home/user/projects/foo",
+      "expected": "/home/user/projects/foo"
+    },
+    {
+      "id": "trailing-slash",
+      "input": "/foo/bar/",
+      "expected": "/foo/bar"
+    },
+    {
+      "id": "no-trailing-slash",
+      "input": "/foo/bar",
+      "expected": "/foo/bar"
+    },
+    {
+      "id": "repeated-separators",
+      "input": "/foo//bar",
+      "expected": "/foo/bar"
+    },
+    {
+      "id": "mixed-slashes",
+      "input": "C:\\foo/bar\\baz",
+      "expected": "/mnt/c/foo/bar/baz"
+    }
+  ]
+}

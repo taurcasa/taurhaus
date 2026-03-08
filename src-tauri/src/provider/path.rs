@@ -180,6 +180,26 @@ fn strip_wsl_prefix(path: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct PathNormalizationCorpus {
+        cases: Vec<PathNormalizationCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct PathNormalizationCase {
+        id: String,
+        input: String,
+        expected: String,
+    }
+
+    fn normalization_corpus() -> PathNormalizationCorpus {
+        serde_json::from_str(include_str!(
+            "../../../test-fixtures/path-normalization-corpus.json"
+        ))
+        .expect("path normalization corpus should parse")
+    }
 
     // -- is_wsl_path --
 
@@ -467,6 +487,19 @@ mod tests {
             normalize_project_path(r"foo\\bar///baz/"),
             "foo/bar/baz".to_string()
         );
+    }
+
+    #[test]
+    fn normalize_project_path_matches_shared_golden_corpus() {
+        let corpus = normalization_corpus();
+        for case in corpus.cases {
+            assert_eq!(
+                normalize_project_path(&case.input),
+                case.expected,
+                "shared normalization corpus mismatch for case {}",
+                case.id
+            );
+        }
     }
 
     // -----------------------------------------------------------------------
