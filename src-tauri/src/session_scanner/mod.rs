@@ -165,6 +165,56 @@ fn json_number_u64(value: u64) -> Value {
     Value::Number(serde_json::Number::from(value))
 }
 
+#[cfg_attr(not(any(test, target_os = "windows")), allow(dead_code))]
+fn decode_daemon_session_response(
+    response: crate::daemon::protocol::DaemonResponse,
+) -> Option<Vec<ClaudeSession>> {
+    if response.error.is_some() {
+        return None;
+    }
+
+    match response.result {
+        Some(value) => serde_json::from_value(value).ok(),
+        None => Some(Vec::new()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn scan_sessions_via_daemon_snapshot() -> Option<Vec<ClaudeSession>> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+
+    const DAEMON_ADDR: &str = "127.0.0.1:17233";
+    const DAEMON_TIMEOUT: Duration = Duration::from_millis(500);
+
+    let request = crate::daemon::protocol::DaemonRequest::new(
+        "windows-session-scan",
+        crate::daemon::protocol::method::LIST_CLAUDE_SESSIONS,
+        Value::Null,
+    )
+    .with_auth(crate::daemon::auth::read_auth_token());
+
+    let mut stream = TcpStream::connect(DAEMON_ADDR).ok()?;
+    stream.set_nodelay(true).ok()?;
+    stream.set_read_timeout(Some(DAEMON_TIMEOUT)).ok()?;
+    stream.set_write_timeout(Some(DAEMON_TIMEOUT)).ok()?;
+
+    let payload = serde_json::to_string(&request).ok()?;
+    stream.write_all(payload.as_bytes()).ok()?;
+    stream.write_all(b"\n").ok()?;
+    stream.flush().ok()?;
+
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    if line.trim().is_empty() {
+        return None;
+    }
+
+    let response = serde_json::from_str(&line).ok()?;
+    decode_daemon_session_response(response)
+}
+
 /// Notify scanner cache that tmux layout metadata likely changed.
 ///
 /// Call this after tmux launch/stop operations so the next scan forces a
@@ -387,6 +437,12 @@ fn compute_activity_decision(
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions() -> Vec<ClaudeSession> {
+    #[cfg(target_os = "windows")]
+    if let Some(sessions) = scan_sessions_via_daemon_snapshot() {
+        compaction::process_codex_compaction_events(&sessions);
+        return sessions;
+    }
+
     let scan_started = Instant::now();
     let (processes, pane_map, process_cache_hit, tmux_cache_hit, process_scan_ms, tmux_ms) =
         scan_inputs_with_cache(
@@ -582,6 +638,64 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     sessions
 }
 
+/// Scan for runtime reconciliation/session-id detection without hiding session metadata.
+///
+/// Coordination uses this path when it needs exact `(pane, tool) -> session_id`
+/// correlation. Unlike the UI-facing `scan_sessions()`, this keeps session ids
+/// even when activity attribution is ambiguous in multi-session projects.
+pub fn scan_sessions_for_runtime() -> Vec<ClaudeSession> {
+    #[cfg(target_os = "windows")]
+    if let Some(sessions) = scan_sessions_via_daemon_snapshot() {
+        return sessions;
+    }
+
+    let scan_started = Instant::now();
+    let (processes, pane_map, ..) = scan_inputs_with_cache(
+        scan_started,
+        &process::scan_process_ids_cached,
+        &process::scan_processes,
+        &tmux::list_panes,
+    );
+
+    let mut sessions: Vec<ClaudeSession> = processes
+        .into_iter()
+        .map(|proc| {
+            let tmux = pane_map.get(&proc.tty);
+            let idle_result = idle::detect_idle(&proc.project_path, proc.cli_tool);
+
+            ClaudeSession {
+                pid: proc.pid,
+                project_path: proc.project_path,
+                tty: proc.tty,
+                args: proc.args,
+                cli_tool: proc.cli_tool,
+                tmux_session: tmux.map(|t| t.session_name.clone()),
+                tmux_window: tmux.map(|t| t.window_index.clone()),
+                tmux_pane: tmux.map(|t| t.pane_id.clone()),
+                tmux_window_name: tmux.map(|t| t.window_name.clone()),
+                state: idle_result.state,
+                session_id: idle_result.session_id,
+                jsonl_path: idle_result.jsonl_path,
+                recent_io: false,
+                last_output_age_secs: idle_result.last_output_age_secs,
+                activity_confidence: ActivityConfidence::Low,
+                activity_attribution: ActivityAttribution::None,
+                project_unattributed_active: false,
+                group_kind: SessionGroupKind::Standalone,
+                group_id: None,
+                group_label: None,
+                member_name: None,
+            }
+        })
+        .collect();
+
+    sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
+    let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
+    sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
+
+    sessions
+}
+
 /// Testable version of scan_sessions that accepts injectable functions.
 pub fn scan_sessions_with<F, G, H>(
     process_scanner: &F,
@@ -632,6 +746,59 @@ where
         .collect();
 
     // Deduplicate: same logic as scan_sessions (see comment there)
+    sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
+    let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
+    sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
+
+    sessions
+}
+
+#[cfg(test)]
+fn scan_sessions_for_runtime_with<F, G, H>(
+    process_scanner: &F,
+    tmux_lister: &G,
+    idle_detector: &H,
+) -> Vec<ClaudeSession>
+where
+    F: Fn() -> Vec<process::ProcessInfo>,
+    G: Fn() -> HashMap<String, tmux::TmuxPane>,
+    H: Fn(&str, CliTool) -> idle::IdleResult,
+{
+    let processes = process_scanner();
+    let pane_map = tmux_lister();
+
+    let mut sessions: Vec<ClaudeSession> = processes
+        .into_iter()
+        .map(|proc| {
+            let tmux = pane_map.get(&proc.tty);
+            let idle_result = idle_detector(&proc.project_path, proc.cli_tool);
+
+            ClaudeSession {
+                pid: proc.pid,
+                project_path: proc.project_path,
+                tty: proc.tty,
+                args: proc.args,
+                cli_tool: proc.cli_tool,
+                tmux_session: tmux.map(|t| t.session_name.clone()),
+                tmux_window: tmux.map(|t| t.window_index.clone()),
+                tmux_pane: tmux.map(|t| t.pane_id.clone()),
+                tmux_window_name: tmux.map(|t| t.window_name.clone()),
+                state: idle_result.state,
+                session_id: idle_result.session_id,
+                jsonl_path: idle_result.jsonl_path,
+                recent_io: false,
+                last_output_age_secs: idle_result.last_output_age_secs,
+                activity_confidence: ActivityConfidence::Low,
+                activity_attribution: ActivityAttribution::None,
+                project_unattributed_active: false,
+                group_kind: SessionGroupKind::Standalone,
+                group_id: None,
+                group_label: None,
+                member_name: None,
+            }
+        })
+        .collect();
+
     sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
@@ -731,6 +898,57 @@ mod tests {
     }
 
     #[test]
+    fn decode_daemon_session_response_returns_sessions() {
+        // Regression: Windows host-side session consumers must accept daemon-
+        // backed session lists because the local Windows scanner is stubbed.
+        let session = ClaudeSession {
+            pid: 42,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%7".to_string()),
+            tmux_window_name: Some("taurhaus".to_string()),
+            state: SessionState::Active,
+            session_id: Some("sess-123".to_string()),
+            jsonl_path: Some("/home/user/.codex/sessions/sess-123.jsonl".to_string()),
+            recent_io: false,
+            last_output_age_secs: Some(1),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        };
+
+        let decoded = decode_daemon_session_response(crate::daemon::protocol::DaemonResponse::ok(
+            "list",
+            vec![session.clone()],
+        ))
+        .expect("daemon session list should decode");
+
+        assert_eq!(decoded, vec![session]);
+    }
+
+    #[test]
+    fn decode_daemon_session_response_rejects_daemon_errors() {
+        let response = crate::daemon::protocol::DaemonResponse {
+            id: "list".to_string(),
+            result: None,
+            error: Some(crate::daemon::protocol::DaemonError {
+                code: "UNAVAILABLE".to_string(),
+                message: "daemon unavailable".to_string(),
+            }),
+        };
+
+        assert!(decode_daemon_session_response(response).is_none());
+    }
+
+    #[test]
     fn scan_sessions_combines_all_sources() {
         let mock_processes = || {
             vec![
@@ -823,6 +1041,77 @@ mod tests {
             last_output_age_secs: None,
         });
         assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn scan_sessions_for_runtime_keeps_session_metadata_for_multi_session_project() {
+        let mock_processes = || {
+            vec![
+                process::ProcessInfo {
+                    pid: 100,
+                    project_path: "/home/user/proj-a".to_string(),
+                    tty: "/dev/pts/1".to_string(),
+                    args: "codex".to_string(),
+                    cli_tool: CliTool::Codex,
+                },
+                process::ProcessInfo {
+                    pid: 200,
+                    project_path: "/home/user/proj-a".to_string(),
+                    tty: "/dev/pts/2".to_string(),
+                    args: "codex resume --last".to_string(),
+                    cli_tool: CliTool::Codex,
+                },
+            ]
+        };
+
+        let mock_tmux = || {
+            HashMap::from([
+                (
+                    "/dev/pts/1".to_string(),
+                    tmux::TmuxPane {
+                        pane_id: "%1".to_string(),
+                        tty: "/dev/pts/1".to_string(),
+                        window_index: "1".to_string(),
+                        window_name: "proj-a".to_string(),
+                        session_name: "main".to_string(),
+                    },
+                ),
+                (
+                    "/dev/pts/2".to_string(),
+                    tmux::TmuxPane {
+                        pane_id: "%2".to_string(),
+                        tty: "/dev/pts/2".to_string(),
+                        window_index: "2".to_string(),
+                        window_name: "proj-a".to_string(),
+                        session_name: "main".to_string(),
+                    },
+                ),
+            ])
+        };
+
+        let mock_idle = |project_path: &str, cli_tool: CliTool| -> idle::IdleResult {
+            assert_eq!(project_path, "/home/user/proj-a");
+            assert_eq!(cli_tool, CliTool::Codex);
+            idle::IdleResult {
+                state: SessionState::Idle,
+                session_id: Some("rollout-123".to_string()),
+                jsonl_path: Some("/tmp/rollout-123.jsonl".to_string()),
+                last_output_age_secs: Some(42),
+            }
+        };
+
+        let sessions = scan_sessions_for_runtime_with(&mock_processes, &mock_tmux, &mock_idle);
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].session_id.as_deref(), Some("rollout-123"));
+        assert_eq!(sessions[1].session_id.as_deref(), Some("rollout-123"));
+        assert_eq!(
+            sessions[0].jsonl_path.as_deref(),
+            Some("/tmp/rollout-123.jsonl")
+        );
+        assert_eq!(
+            sessions[1].jsonl_path.as_deref(),
+            Some("/tmp/rollout-123.jsonl")
+        );
     }
 
     // -----------------------------------------------------------------------

@@ -2053,13 +2053,11 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
     assert_eq!(updated.session_id.as_deref(), Some("session-%9"));
     assert_eq!(updated.daemon_pid, Some(10000));
     let calls = runtime.calls();
-    assert!(calls.iter().any(
-        |call| matches!(
-            call,
-            RuntimeCall::DetectSessionId { pane_id, cli_tool }
-                if pane_id == "%9" && *cli_tool == CliTool::Codex
-        )
-    ));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == "%9" && *cli_tool == CliTool::Codex
+    )));
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::SpawnDaemon { pane_id, team_name, member_name } if pane_id == "%9" && team_name == "architecture-final" && member_name == "codex-reviewer")));
@@ -3144,12 +3142,14 @@ fn assert_non_claude_lead_launch_new_uses_sidecar(
         RuntimeCall::SpawnDaemon { team_name: call_team, member_name, .. }
             if call_team == team_name && member_name == "team-lead"
     )));
-    let detected_session_id = calls.iter().any(|call| matches!(
-        call,
-        RuntimeCall::DetectSessionId { pane_id, cli_tool }
-            if pane_id == lead_runtime.pane_id.as_deref().unwrap_or_default()
-                && *cli_tool == CliTool::from_alias(lead_tool).expect("known tool")
-    ));
+    let detected_session_id = calls.iter().any(|call| {
+        matches!(
+            call,
+            RuntimeCall::DetectSessionId { pane_id, cli_tool }
+                if pane_id == lead_runtime.pane_id.as_deref().unwrap_or_default()
+                    && *cli_tool == CliTool::from_alias(lead_tool).expect("known tool")
+        )
+    });
     assert_eq!(detected_session_id, expect_session_capture);
 }
 

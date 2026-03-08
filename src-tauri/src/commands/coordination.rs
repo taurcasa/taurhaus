@@ -555,7 +555,7 @@ fn maybe_ensure_claude_compact_hook_for_team<T>(
     let current_exe = std::env::current_exe().map_err(|err| {
         IpcError::internal(format!("failed to resolve taurhaus executable: {err}"))
     })?;
-    ensure_compact_hook_installed(teams_dir, &current_exe)
+    let _ = ensure_compact_hook_installed(teams_dir, &current_exe)
         .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
     result
 }
@@ -642,6 +642,7 @@ fn coordination_get_compaction_audit_impl(
     team_name: String,
 ) -> Result<CompactionAuditResponse, String> {
     validate_non_empty("team_name", &team_name)?;
+    let app_started_at = state.app_started_at();
 
     let config =
         TeamConfigStore::load(state.teams_dir(), &team_name).map_err(map_coordination_error)?;
@@ -654,6 +655,7 @@ fn coordination_get_compaction_audit_impl(
     let mut entries = MemberCompactionStore::load_all(state.teams_dir(), &team_name)
         .map_err(map_coordination_error)?
         .into_iter()
+        .filter(|(_, state)| state.last_compaction_timestamp >= app_started_at)
         .map(|(member_name, state)| CompactionAuditEntry {
             member_name: member_name.clone(),
             tool: tool_by_member

@@ -132,7 +132,7 @@ pub fn handle_session_start_hook(
 pub fn ensure_compact_hook_installed(
     teams_dir: &Path,
     taurhaus_exe: &Path,
-) -> Result<(), CoordinationError> {
+) -> Result<bool, CoordinationError> {
     let Some(claude_dir) = teams_dir.parent() else {
         return Err(CoordinationError::Validation(format!(
             "team directory '{}' has no parent Claude dir",
@@ -145,8 +145,7 @@ pub fn ensure_compact_hook_installed(
 
     let script_path = hooks_dir.join(platform_hook_filename());
     write_hook_script(&script_path, taurhaus_exe)?;
-    ensure_settings_hook_entry(&claude_dir.join(CLAUDE_SETTINGS_FILENAME), &script_path)?;
-    Ok(())
+    ensure_settings_hook_entry(&claude_dir.join(CLAUDE_SETTINGS_FILENAME), &script_path)
 }
 
 pub fn team_has_managed_claude_member(
@@ -293,8 +292,9 @@ fn render_hook_script(taurhaus_exe: &Path) -> String {
 fn ensure_settings_hook_entry(
     settings_path: &Path,
     script_path: &Path,
-) -> Result<(), CoordinationError> {
+) -> Result<bool, CoordinationError> {
     let mut settings = load_settings_json(settings_path)?;
+    let original_settings = settings.clone();
     let command = settings_command_for_script(script_path);
 
     let root = settings.as_object_mut().ok_or_else(|| {
@@ -359,16 +359,19 @@ fn ensure_settings_hook_entry(
     if let Some(parent) = settings_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(
-        settings_path,
-        serde_json::to_string_pretty(&settings).map_err(|err| {
-            CoordinationError::StoreError(format!(
-                "failed to serialize Claude settings '{}': {err}",
-                settings_path.display()
-            ))
-        })?,
-    )?;
-    Ok(())
+    let changed = settings != original_settings;
+    if changed {
+        fs::write(
+            settings_path,
+            serde_json::to_string_pretty(&settings).map_err(|err| {
+                CoordinationError::StoreError(format!(
+                    "failed to serialize Claude settings '{}': {err}",
+                    settings_path.display()
+                ))
+            })?,
+        )?;
+    }
+    Ok(changed)
 }
 
 fn remove_existing_taurhaus_compact_hooks(entries: &mut [Value]) {
@@ -747,7 +750,8 @@ mod tests {
         let exe_path = tmp.path().join("taurhaus");
         fs::write(&exe_path, b"binary").expect("exe path");
 
-        ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install hook");
+        let installed = ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install hook");
+        assert!(installed);
 
         let script_path = tmp.path().join("hooks").join(platform_hook_filename());
         assert!(script_path.exists());
@@ -794,7 +798,8 @@ mod tests {
         )
         .expect("write settings");
 
-        ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install hook");
+        let installed = ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install hook");
+        assert!(installed);
 
         let settings: Value = serde_json::from_str(
             &fs::read_to_string(tmp.path().join("settings.json")).expect("settings exists"),

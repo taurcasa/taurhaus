@@ -271,7 +271,7 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         cli_tool: CliTool,
     ) -> Result<Option<String>, CoordinationError> {
         for _ in 0..SESSION_DETECT_ATTEMPTS {
-            let match_id = scan_sessions_for_runtime()
+            let match_id = collect_runtime_sessions()
                 .into_iter()
                 .find(|session| {
                     session.tmux_pane.as_deref() == Some(pane_id) && session.cli_tool == cli_tool
@@ -554,8 +554,8 @@ struct RuntimeSessionInfo {
 }
 
 #[cfg(not(test))]
-fn scan_sessions_for_runtime() -> Vec<RuntimeSessionInfo> {
-    crate::session_scanner::scan_sessions()
+fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
+    crate::session_scanner::scan_sessions_for_runtime()
         .into_iter()
         .map(|session| RuntimeSessionInfo {
             tmux_pane: session.tmux_pane,
@@ -566,7 +566,7 @@ fn scan_sessions_for_runtime() -> Vec<RuntimeSessionInfo> {
 }
 
 #[cfg(test)]
-fn scan_sessions_for_runtime() -> Vec<RuntimeSessionInfo> {
+fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
     Vec::new()
 }
 

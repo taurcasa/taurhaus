@@ -327,6 +327,85 @@ fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
 }
 
 #[test]
+fn initialize_pipeline_persists_codex_agent_session_id() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+
+    let runtime_record =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+    assert_eq!(
+        runtime_record.session_id.as_deref(),
+        Some("session-test-pane-2")
+    );
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == "test-pane-2" && *cli_tool == CliTool::Codex
+    )));
+}
+
+#[test]
+fn initialize_pipeline_persists_claude_agent_session_id() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        agents: vec![setup_config(
+            "researcher",
+            "claude",
+            "claude-opus-4-6",
+            "/tmp/research",
+        )],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+
+    let runtime_record =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "researcher").expect("runtime");
+    assert_eq!(
+        runtime_record.session_id.as_deref(),
+        Some("session-test-pane-2")
+    );
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == "test-pane-2" && *cli_tool == CliTool::Claude
+    )));
+}
+
+#[test]
 fn load_resume_member_state_preserves_role_template_context() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
@@ -720,13 +799,11 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
     assert_eq!(updated.health, HealthState::Healthy);
     assert_eq!(updated.daemon_pid, Some(10000));
     assert!(updated.attached_at.is_some());
-    assert!(calls.iter().any(
-        |call| matches!(
-            call,
-            RuntimeCall::DetectSessionId { pane_id, cli_tool }
-                if pane_id == "%11" && *cli_tool == CliTool::Codex
-        )
-    ));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == "%11" && *cli_tool == CliTool::Codex
+    )));
 }
 
 #[test]
@@ -787,13 +864,11 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 91)));
-    assert!(calls.iter().any(
-        |call| matches!(
-            call,
-            RuntimeCall::DetectSessionId { pane_id, cli_tool }
-                if pane_id == "%21" && *cli_tool == CliTool::Codex
-        )
-    ));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == "%21" && *cli_tool == CliTool::Codex
+    )));
     assert_eq!(
         backend.call_counts().1,
         1,

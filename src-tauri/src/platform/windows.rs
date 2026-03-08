@@ -1,12 +1,8 @@
 //! Windows platform implementation — no-op stubs for process inspection.
 //!
 //! On Windows, CLI tools (claude, codex, gemini) run inside WSL2, not as native
-//! Windows processes. Session scanning is handled by the daemon (a Linux binary
-//! running in WSL that uses the `linux.rs` platform module via `/proc`).
-//!
-//! The Tauri app's direct `scan_sessions()` fallback compiles on Windows but
-//! produces empty results — these functions correctly return `None`/empty since
-//! there are no native Windows processes to inspect.
+//! Windows processes. Low-level process inspection therefore remains stubbed
+//! here; higher-level session scanning must be routed through the WSL daemon.
 
 use std::path::PathBuf;
 

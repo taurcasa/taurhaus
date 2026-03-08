@@ -3,8 +3,13 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use chrono::{DateTime, Utc};
+
 use crate::coordination::backend::{
     BackendKind, BackendSelector, ClaudeNativeBackend, CoordinationBackend, MeshBridgedBackend,
+};
+use crate::coordination::claude_hooks::{
+    ensure_compact_hook_installed, team_has_managed_claude_member,
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli;
@@ -30,6 +35,7 @@ pub struct BackgroundSelfHealPassResult {
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
     teams_dir: PathBuf,
+    app_started_at: DateTime<Utc>,
     backend_selector: BackendSelector,
     backend_factory: Arc<BackendFactory>,
     runtime_factory: Arc<RuntimeFactory>,
@@ -82,8 +88,26 @@ impl CoordinationState {
         backend_factory: Arc<BackendFactory>,
         runtime_factory: Arc<RuntimeFactory>,
     ) -> Self {
+        Self::with_components_runtime_and_started_at(
+            teams_dir,
+            backend_selector,
+            backend_factory,
+            runtime_factory,
+            Utc::now(),
+        )
+    }
+
+    /// Build state with explicit backend + runtime dependencies and a fixed app start time.
+    pub fn with_components_runtime_and_started_at(
+        teams_dir: PathBuf,
+        backend_selector: BackendSelector,
+        backend_factory: Arc<BackendFactory>,
+        runtime_factory: Arc<RuntimeFactory>,
+        app_started_at: DateTime<Utc>,
+    ) -> Self {
         Self {
             teams_dir,
+            app_started_at,
             backend_selector,
             backend_factory,
             runtime_factory,
@@ -93,6 +117,10 @@ impl CoordinationState {
 
     pub fn teams_dir(&self) -> &PathBuf {
         &self.teams_dir
+    }
+
+    pub fn app_started_at(&self) -> DateTime<Utc> {
+        self.app_started_at
     }
 
     /// Lazily initialize and reuse a single orchestrator instance.
@@ -159,6 +187,22 @@ impl CoordinationState {
                 "startup runtime reconciliation failed"
             );
         }
+        match ensure_startup_claude_compact_hook(&self.teams_dir) {
+            Ok(true) => {
+                tracing::info!(
+                    teams_dir = %self.teams_dir.display(),
+                    "installed Claude compact hook during startup self-heal"
+                );
+            }
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    teams_dir = %self.teams_dir.display(),
+                    "startup Claude compact hook ensure failed"
+                );
+            }
+        }
         Ok(orchestrator)
     }
 
@@ -172,6 +216,30 @@ impl CoordinationState {
             runtime,
         ))
     }
+}
+
+fn ensure_startup_claude_compact_hook(
+    teams_dir: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let has_managed_claude =
+        TeamConfigStore::list(teams_dir)?
+            .into_iter()
+            .try_fold(false, |found, team_name| {
+                if found {
+                    return Ok(true);
+                }
+                team_has_managed_claude_member(teams_dir, &team_name)
+            })?;
+    if !has_managed_claude {
+        return Ok(false);
+    }
+
+    let current_exe = std::env::current_exe().map_err(|err| {
+        CoordinationError::Backend(format!(
+            "failed to resolve taurhaus executable for startup Claude hook install: {err}"
+        ))
+    })?;
+    ensure_compact_hook_installed(teams_dir, &current_exe)
 }
 
 fn default_backend_factory(
@@ -238,7 +306,7 @@ mod tests {
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
     use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
-    use crate::coordination::stores::MemberRuntimeStore;
+    use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -294,6 +362,23 @@ mod tests {
             project_path: PathBuf::from(project_path),
             cli_tool: tool,
         }
+    }
+
+    fn save_team_fixture(teams_dir: &std::path::Path, team_name: &str, members: Vec<Member>) {
+        TeamConfigStore::save(
+            teams_dir,
+            team_name,
+            &TeamConfig {
+                schema_version: 1,
+                name: team_name.to_string(),
+                description: None,
+                created_at: chrono::DateTime::parse_from_rfc3339("2026-03-08T16:30:00Z")
+                    .expect("timestamp")
+                    .with_timezone(&chrono::Utc),
+                members,
+            },
+        )
+        .expect("team fixture saved");
     }
 
     #[derive(Debug, Default)]
@@ -567,6 +652,109 @@ mod tests {
             other => panic!("expected backend error, got {other:?}"),
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn startup_with_existing_claude_team_installs_compact_hook() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        save_team_fixture(
+            &teams_dir,
+            "architecture-final",
+            vec![sample_member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead",
+            )],
+        );
+
+        let state = CoordinationState::with_components(
+            teams_dir.clone(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
+        );
+
+        state
+            .with_orchestrator(|_| Ok(()))
+            .expect("bootstrap succeeds");
+
+        let settings_raw =
+            std::fs::read_to_string(tmp.path().join("settings.json")).expect("settings exists");
+        assert!(
+            settings_raw.contains("taurhaus-session-start-compact"),
+            "startup should install the Claude compact hook for existing managed Claude teams"
+        );
+    }
+
+    #[test]
+    fn startup_with_existing_compact_hook_is_idempotent() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        save_team_fixture(
+            &teams_dir,
+            "architecture-final",
+            vec![sample_member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead",
+            )],
+        );
+        let current_exe = std::env::current_exe().expect("current exe");
+        let first_install =
+            ensure_compact_hook_installed(&teams_dir, &current_exe).expect("first install");
+        assert!(first_install);
+        let before =
+            std::fs::read_to_string(tmp.path().join("settings.json")).expect("settings before");
+
+        let state = CoordinationState::with_components(
+            teams_dir.clone(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
+        );
+
+        state
+            .with_orchestrator(|_| Ok(()))
+            .expect("bootstrap succeeds");
+
+        let after =
+            std::fs::read_to_string(tmp.path().join("settings.json")).expect("settings after");
+        assert_eq!(after, before, "startup hook ensure should be idempotent");
+    }
+
+    #[test]
+    fn startup_with_no_managed_claude_teams_leaves_compact_hook_uninstalled() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        save_team_fixture(
+            &teams_dir,
+            "architecture-final",
+            vec![sample_member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/app",
+            )],
+        );
+
+        let state = CoordinationState::with_components(
+            teams_dir.clone(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
+        );
+
+        state
+            .with_orchestrator(|_| Ok(()))
+            .expect("bootstrap succeeds");
+
+        assert!(
+            !tmp.path().join("settings.json").exists(),
+            "startup should not touch Claude hook settings when no managed Claude teams exist"
+        );
     }
 
     #[test]

@@ -46,6 +46,16 @@ fn test_state(teams_dir: PathBuf) -> CoordinationState {
     )
 }
 
+fn test_state_at(teams_dir: PathBuf, app_started_at: DateTime<Utc>) -> CoordinationState {
+    CoordinationState::with_components_runtime_and_started_at(
+        teams_dir,
+        BackendSelector::m0(),
+        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+        app_started_at,
+    )
+}
+
 fn test_state_with_runtime(
     teams_dir: PathBuf,
     runtime: Arc<RecordingCoordinationRuntime>,
@@ -277,7 +287,12 @@ fn get_compaction_audit_validates_non_empty_team_name() {
 #[test]
 fn get_compaction_audit_returns_recent_entries_sorted_desc() {
     let tmp = TempDir::new().expect("tempdir");
-    let state = test_state(tmp.path().to_path_buf());
+    let state = test_state_at(
+        tmp.path().to_path_buf(),
+        DateTime::parse_from_rfc3339("2026-03-08T14:00:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc),
+    );
     let (db, _db_file) = test_db_state();
 
     coordination_initialize_team_internal(
@@ -334,6 +349,96 @@ fn get_compaction_audit_returns_recent_entries_sorted_desc() {
     assert_eq!(response.entries[1].member_name, "team-lead");
     assert_eq!(response.entries[1].tool, "claude");
     assert_eq!(response.entries[1].last_delivery_result, "skipped");
+}
+
+#[test]
+fn get_compaction_audit_filters_entries_from_before_current_app_run() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state_at(
+        tmp.path().to_path_buf(),
+        DateTime::parse_from_rfc3339("2026-03-08T15:00:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc),
+    );
+    let (db, _db_file) = test_db_state();
+
+    coordination_initialize_team_internal(
+        &state,
+        Some(&db),
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    MemberCompactionStore::save(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+        &MemberCompactionState {
+            version: 1,
+            member_name: "frontend-dev".to_string(),
+            last_session_id: "session-codex".to_string(),
+            last_compaction_timestamp: DateTime::parse_from_rfc3339("2026-03-08T14:46:41Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+            last_delivery_result: CompactionDeliveryResult::Stale,
+        },
+    )
+    .expect("save stale compaction state");
+
+    let response =
+        coordination_get_compaction_audit_for_tests(&state, "architecture-final".to_string())
+            .expect("load compaction audit");
+
+    assert!(response.entries.is_empty());
+}
+
+#[test]
+fn get_compaction_audit_keeps_entries_from_current_app_run() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state_at(
+        tmp.path().to_path_buf(),
+        DateTime::parse_from_rfc3339("2026-03-08T15:00:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc),
+    );
+    let (db, _db_file) = test_db_state();
+
+    coordination_initialize_team_internal(
+        &state,
+        Some(&db),
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    MemberCompactionStore::save(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+        &MemberCompactionState {
+            version: 1,
+            member_name: "frontend-dev".to_string(),
+            last_session_id: "session-codex".to_string(),
+            last_compaction_timestamp: DateTime::parse_from_rfc3339("2026-03-08T15:04:19Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+            last_delivery_result: CompactionDeliveryResult::Injected,
+        },
+    )
+    .expect("save current-run compaction state");
+
+    let response =
+        coordination_get_compaction_audit_for_tests(&state, "architecture-final".to_string())
+            .expect("load compaction audit");
+
+    assert_eq!(response.entries.len(), 1);
+    assert_eq!(response.entries[0].member_name, "frontend-dev");
+    assert_eq!(response.entries[0].last_delivery_result, "injected");
 }
 
 #[test]
