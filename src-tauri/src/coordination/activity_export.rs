@@ -648,6 +648,8 @@ mod tests {
             &MemberRuntimeRecord {
                 schema_version: 1,
                 member_name: member_name.to_string(),
+                cli_tool: None,
+                project_path: None,
                 pane_id: Some(pane_id.to_string()),
                 session_id: None,
                 daemon_pid: Some(42),

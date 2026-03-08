@@ -565,6 +565,8 @@ mod tests {
             &MemberRuntimeRecord {
                 schema_version: 1,
                 member_name: member.name.clone(),
+                cli_tool: Some(member.cli_tool),
+                project_path: Some(member.project_path.clone()),
                 pane_id: Some("%217".to_string()),
                 session_id: Some(session_id.to_string()),
                 daemon_pid: None,
@@ -814,6 +816,8 @@ mod tests {
                 &MemberRuntimeRecord {
                     schema_version: 1,
                     member_name: member.name.clone(),
+                    cli_tool: Some(member.cli_tool),
+                    project_path: Some(member.project_path.clone()),
                     pane_id: Some("%217".to_string()),
                     session_id: Some("sess-123".to_string()),
                     daemon_pid: None,

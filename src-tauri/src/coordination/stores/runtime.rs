@@ -9,15 +9,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::{DeliveryLease, HealthState};
 use crate::coordination::errors::CoordinationError;
+use crate::session_scanner::cli_tool::CliTool;
 
 const RUNTIME_DIRNAME: &str = "runtime";
-const RUNTIME_SCHEMA_VERSION: u32 = 1;
+const RUNTIME_SCHEMA_VERSION: u32 = 2;
 
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
     pub schema_version: u32,
     pub member_name: String,
+    pub cli_tool: Option<CliTool>,
+    pub project_path: Option<PathBuf>,
     pub pane_id: Option<String>,
     pub session_id: Option<String>,
     pub daemon_pid: Option<u32>,
@@ -226,6 +229,10 @@ fn parse_runtime_record(
         schema_version: u32,
         #[serde(default)]
         member_name: Option<String>,
+        #[serde(default, alias = "cliTool")]
+        cli_tool: Option<CliTool>,
+        #[serde(default, alias = "projectPath", alias = "cwd")]
+        project_path: Option<PathBuf>,
         #[serde(default, alias = "paneId")]
         pane_id: Option<String>,
         #[serde(default, alias = "sessionId")]
@@ -250,6 +257,8 @@ fn parse_runtime_record(
     Ok(MemberRuntimeRecord {
         schema_version: wire.schema_version,
         member_name: wire.member_name.unwrap_or_else(|| member_name.to_string()),
+        cli_tool: wire.cli_tool,
+        project_path: wire.project_path,
         pane_id: wire.pane_id,
         session_id: wire.session_id,
         daemon_pid: wire.daemon_pid,
@@ -312,8 +321,10 @@ mod tests {
 
     fn sample_record(member_name: &str) -> MemberRuntimeRecord {
         MemberRuntimeRecord {
-            schema_version: 1,
+            schema_version: 2,
             member_name: member_name.to_string(),
+            cli_tool: Some(CliTool::Codex),
+            project_path: Some(PathBuf::from("/tmp/taurhaus")),
             pane_id: Some("%12".to_string()),
             session_id: Some("session-123".to_string()),
             daemon_pid: Some(4242),
@@ -344,6 +355,38 @@ mod tests {
             .expect("load should succeed");
 
         assert_eq!(loaded, record);
+    }
+
+    #[test]
+    fn load_legacy_runtime_without_metadata_defaults_new_fields_to_none() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "legacy-agent";
+        let runtime_dir = teams_dir.join(team_name).join("runtime");
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        fs::write(
+            runtime_dir.join(format!("{member_name}.json")),
+            r#"{
+  "schema_version": 1,
+  "member_name": "legacy-agent",
+  "pane_id": "%7",
+  "session_id": "session-123",
+  "daemon_pid": 1234,
+  "health": "healthy",
+  "delivery_lease": null,
+  "attached_at": null,
+  "last_seen_at": null
+}"#,
+        )
+        .expect("legacy runtime");
+
+        let loaded =
+            MemberRuntimeStore::load(teams_dir, team_name, member_name).expect("load runtime");
+
+        assert_eq!(loaded.cli_tool, None);
+        assert_eq!(loaded.project_path, None);
+        assert_eq!(loaded.session_id.as_deref(), Some("session-123"));
     }
 
     #[test]
@@ -444,8 +487,10 @@ mod tests {
         let team_name = "architecture-final";
 
         let no_timestamps = MemberRuntimeRecord {
-            schema_version: 1,
+            schema_version: 2,
             member_name: "no-heartbeat".to_string(),
+            cli_tool: None,
+            project_path: None,
             pane_id: None,
             session_id: None,
             daemon_pid: None,

@@ -137,8 +137,10 @@ pub(super) fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
 
 pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
     MemberRuntimeRecord {
-        schema_version: 1,
+        schema_version: 2,
         member_name: member_name.to_string(),
+        cli_tool: None,
+        project_path: None,
         pane_id: None,
         session_id: None,
         daemon_pid: None,

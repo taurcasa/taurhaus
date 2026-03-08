@@ -241,8 +241,10 @@ impl CoordinationOrchestrator {
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
 
         let runtime = MemberRuntimeRecord {
-            schema_version: 1,
+            schema_version: 2,
             member_name: member.name.clone(),
+            cli_tool: Some(member.cli_tool),
+            project_path: Some(member.project_path.clone()),
             pane_id: None,
             session_id: None,
             daemon_pid: None,
@@ -620,6 +622,15 @@ impl CoordinationOrchestrator {
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
             };
+            let mut metadata_backfilled = false;
+            if runtime.cli_tool.is_none() {
+                runtime.cli_tool = Some(member.cli_tool);
+                metadata_backfilled = true;
+            }
+            if runtime.project_path.is_none() {
+                runtime.project_path = Some(member.project_path.clone());
+                metadata_backfilled = true;
+            }
 
             let (offline_detected, reason) = match runtime.pane_id.as_deref() {
                 None => (true, "missing_pane_id"),
@@ -638,7 +649,7 @@ impl CoordinationOrchestrator {
 
             if offline_detected {
                 // Write only when the persisted health is stale.
-                if runtime.health == HealthState::SessionDead {
+                if runtime.health == HealthState::SessionDead && !metadata_backfilled {
                     continue;
                 }
 
@@ -684,7 +695,7 @@ impl CoordinationOrchestrator {
                 continue;
             }
 
-            let mut runtime_changed = false;
+            let mut runtime_changed = metadata_backfilled;
             if member.cli_tool != CliTool::Claude {
                 let pane_id = runtime.pane_id.as_deref();
                 let discovered_daemon_pids = if let Some(pane_id) = pane_id {

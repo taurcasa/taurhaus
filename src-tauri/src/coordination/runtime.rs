@@ -1933,8 +1933,10 @@ mod tests {
 
     fn sample_runtime_with_pane(member_name: &str, pane_id: &str) -> MemberRuntimeRecord {
         MemberRuntimeRecord {
-            schema_version: 1,
+            schema_version: 2,
             member_name: member_name.to_string(),
+            cli_tool: None,
+            project_path: None,
             pane_id: Some(pane_id.to_string()),
             session_id: None,
             daemon_pid: None,

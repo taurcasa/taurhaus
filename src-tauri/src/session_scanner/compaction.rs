@@ -334,16 +334,36 @@ fn resolve_managed_codex_session(
                 continue;
             }
 
-            let runtime = runtime_by_member.get(&member.name);
-            let runtime_session = runtime.and_then(|record| record.session_id.as_deref());
-            let runtime_pane = runtime.and_then(|record| record.pane_id.as_deref());
+            let mut runtime = runtime_by_member.get(&member.name).cloned();
+            if let Some(record) = runtime.as_mut() {
+                let mut changed = false;
+                if record.cli_tool.is_none() {
+                    record.cli_tool = Some(member.cli_tool);
+                    changed = true;
+                }
+                if record.project_path.is_none() {
+                    record.project_path = Some(member.project_path.clone());
+                    changed = true;
+                }
+                if changed {
+                    let _ = MemberRuntimeStore::save(teams_dir, &team_name, &member.name, record);
+                }
+            }
 
-            let score = if runtime_session == Some(session_id) {
-                3
-            } else if runtime_pane.is_some() && runtime_pane == scanner_pane {
-                2
-            } else {
-                0
+            let runtime_session = runtime
+                .as_ref()
+                .and_then(|record| record.session_id.as_deref());
+            let runtime_pane = runtime
+                .as_ref()
+                .and_then(|record| record.pane_id.as_deref());
+            let pane_matches = runtime_pane.is_some() && runtime_pane == scanner_pane;
+            let session_matches = runtime_session == Some(session_id);
+
+            let score = match (session_matches, pane_matches) {
+                (true, true) => 4,
+                (true, false) => 3,
+                (false, true) => 2,
+                (false, false) => 0,
             };
             if score == 0 {
                 continue;
@@ -379,12 +399,30 @@ fn resolve_managed_codex_session(
                 snapshot,
             };
 
+            let candidate_activity = runtime
+                .as_ref()
+                .and_then(|record| record.last_seen_at.or(record.attached_at));
+            let best_activity = best_match.as_ref().and_then(|current| {
+                runtime_by_member
+                    .get(&current.member_name)
+                    .and_then(|record| record.last_seen_at.or(record.attached_at))
+            });
+
             if score > best_score {
                 best_score = score;
                 best_match = Some(resolved);
                 ambiguous = false;
             } else if score == best_score {
-                ambiguous = true;
+                match (candidate_activity, best_activity) {
+                    (Some(candidate), Some(current)) if candidate > current => {
+                        best_match = Some(resolved);
+                        ambiguous = false;
+                    }
+                    (Some(candidate), Some(current)) if candidate < current => {}
+                    _ => {
+                        ambiguous = true;
+                    }
+                }
             }
         }
     }
@@ -785,8 +823,10 @@ mod tests {
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save team config");
 
         let runtime = MemberRuntimeRecord {
-            schema_version: 1,
+            schema_version: 2,
             member_name: member.name.clone(),
+            cli_tool: Some(member.cli_tool),
+            project_path: Some(member.project_path.clone()),
             pane_id: runtime_pane_id.map(ToOwned::to_owned),
             session_id: runtime_session_id.map(ToOwned::to_owned),
             daemon_pid: Some(42),
@@ -1820,8 +1860,10 @@ mod tests {
             "taurhaus-team",
             &member_by_pane.name,
             &MemberRuntimeRecord {
-                schema_version: 1,
+                schema_version: 2,
                 member_name: member_by_pane.name.clone(),
+                cli_tool: Some(CliTool::Codex),
+                project_path: Some(PathBuf::from(project_path)),
                 pane_id: Some("%7".to_string()),
                 session_id: Some("other-session".to_string()),
                 daemon_pid: None,
@@ -1837,8 +1879,10 @@ mod tests {
             "taurhaus-team",
             &member_by_session.name,
             &MemberRuntimeRecord {
-                schema_version: 1,
+                schema_version: 2,
                 member_name: member_by_session.name.clone(),
+                cli_tool: Some(CliTool::Codex),
+                project_path: Some(PathBuf::from(project_path)),
                 pane_id: Some("%9".to_string()),
                 session_id: Some("session-1".to_string()),
                 daemon_pid: None,
@@ -1875,5 +1919,78 @@ mod tests {
 
         assert_eq!(resolved.member_name, "session-match");
         assert_eq!(resolved.pane_id, "%9");
+    }
+
+    #[test]
+    fn resolve_managed_codex_session_prefers_matching_pane_when_session_id_is_shared() {
+        let _guard = TEST_LOCK.lock().expect("lock");
+        reset_test_state();
+
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let pane_match = sample_member("pane-match", project_path);
+        let other_match = sample_member("other-match", project_path);
+
+        let config = TeamConfig {
+            schema_version: 1,
+            name: "taurhaus-team".to_string(),
+            description: None,
+            created_at: Utc
+                .with_ymd_and_hms(2026, 3, 8, 14, 0, 0)
+                .single()
+                .expect("datetime"),
+            members: vec![pane_match.clone(), other_match.clone()],
+        };
+        TeamConfigStore::save(&teams_dir, "taurhaus-team", &config).expect("save team config");
+
+        for (member, pane_id, seen_at) in [
+            (&pane_match, "%7", "2026-03-08T13:46:44Z"),
+            (&other_match, "%9", "2026-03-08T13:46:43Z"),
+        ] {
+            MemberRuntimeStore::save(
+                &teams_dir,
+                "taurhaus-team",
+                &member.name,
+                &MemberRuntimeRecord {
+                    schema_version: 2,
+                    member_name: member.name.clone(),
+                    cli_tool: None,
+                    project_path: None,
+                    pane_id: Some(pane_id.to_string()),
+                    session_id: Some("session-1".to_string()),
+                    daemon_pid: None,
+                    health: HealthState::Healthy,
+                    delivery_lease: None,
+                    attached_at: None,
+                    last_seen_at: Some(timestamp(seen_at)),
+                },
+            )
+            .expect("save runtime");
+            OperationalContextSnapshotStore::save(
+                &teams_dir,
+                &sample_snapshot("taurhaus-team", &member.name, project_path),
+            )
+            .expect("save snapshot");
+        }
+
+        let jsonl_path = tmp.path().join("session.jsonl");
+        write_jsonl(
+            &jsonl_path,
+            &[
+                r#"{"timestamp":"2026-03-08T13:46:00.000Z","type":"session_meta","payload":{"cwd":"/home/mstie/projects/taurhaus"}}"#,
+            ],
+        );
+
+        let session = sample_session(project_path, &jsonl_path, "session-1", "%7");
+        let resolved =
+            resolve_managed_codex_session(&teams_dir, &session).expect("resolved managed member");
+
+        assert_eq!(resolved.member_name, "pane-match");
+
+        let repaired = MemberRuntimeStore::load(&teams_dir, "taurhaus-team", "pane-match")
+            .expect("load repaired runtime");
+        assert_eq!(repaired.cli_tool, Some(CliTool::Codex));
+        assert_eq!(repaired.project_path, Some(PathBuf::from(project_path)));
     }
 }

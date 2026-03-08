@@ -1,5 +1,7 @@
 use super::*;
 
+use std::path::PathBuf;
+
 use chrono::Utc;
 
 use crate::coordination::domain::{HealthState, Member, MemberRole};
@@ -419,6 +421,10 @@ impl CoordinationOrchestrator {
         }
 
         runtime_record.pane_id = Some(pane_id.clone());
+        runtime_record.cli_tool.get_or_insert(member.cli_tool);
+        if runtime_record.project_path.is_none() {
+            runtime_record.project_path = Some(member.project_path.clone());
+        }
         runtime_record.session_id = runtime_state.session_id.clone();
         runtime_record.daemon_pid = runtime_state.daemon_pid;
         runtime_record.attached_at = Some(Utc::now());
@@ -686,6 +692,10 @@ impl CoordinationOrchestrator {
         };
 
         let mut runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)?;
+        runtime.cli_tool.get_or_insert(cli_tool);
+        if runtime.project_path.is_none() {
+            runtime.project_path = Some(PathBuf::from(&agent.project_id));
+        }
         runtime.session_id = Some(session_id);
         MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)?;
         Ok(())

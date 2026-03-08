@@ -1,5 +1,7 @@
 use super::*;
 
+use std::path::PathBuf;
+
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -345,6 +347,7 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
+        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
         let desired_member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
         let mut config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
 
@@ -369,6 +372,11 @@ impl CoordinationOrchestrator {
             Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.agent.name),
             Err(err) => return Err(err),
         };
+        runtime.cli_tool.get_or_insert(cli_tool);
+        runtime.project_path = runtime
+            .project_path
+            .take()
+            .or_else(|| Some(PathBuf::from(&request.agent.project_id)));
         runtime.pane_id = runtime_state.pane_id.clone();
         runtime.session_id = runtime_state.session_id.clone();
         runtime.daemon_pid = runtime_state.daemon_pid;

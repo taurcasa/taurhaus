@@ -245,6 +245,10 @@ impl CoordinationOrchestrator {
                 .create_aitx_pane(&request.lead.project_id, tmux_layout)?;
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
+            runtime.cli_tool =
+                Some(member_from_agent_setup(&request.lead, MemberRole::Lead)?.cli_tool);
+            runtime.project_path =
+                Some(member_from_agent_setup(&request.lead, MemberRole::Lead)?.project_path);
             runtime.pane_id = Some(pane_id);
             runtime.session_id = None;
             runtime.daemon_pid = None;
@@ -267,6 +271,8 @@ impl CoordinationOrchestrator {
 
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
+            runtime.cli_tool = Some(member.cli_tool);
+            runtime.project_path = Some(member.project_path.clone());
             runtime.pane_id = Some(pane_id);
             runtime.session_id = None;
             runtime.daemon_pid = None;

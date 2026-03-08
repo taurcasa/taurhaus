@@ -15,7 +15,7 @@ use crate::session_scanner::tmux::TmuxFocusState;
 use crate::session_scanner::{DisplaySession, SessionGroupKind, SessionState};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
@@ -239,6 +239,8 @@ fn save_member_runtime(teams_dir: &Path, team_name: &str, member_name: &str, pan
         &MemberRuntimeRecord {
             schema_version: 1,
             member_name: member_name.to_string(),
+            cli_tool: None,
+            project_path: None,
             pane_id: Some(pane_id.to_string()),
             session_id: None,
             daemon_pid: None,
@@ -766,6 +768,8 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         MemberRuntimeRecord {
             schema_version: 1,
             member_name: "developer2".to_string(),
+            cli_tool: Some(CliTool::Codex),
+            project_path: Some(PathBuf::from("/tmp/project")),
             pane_id: Some("%9".to_string()),
             session_id: None,
             daemon_pid: Some(4242),
