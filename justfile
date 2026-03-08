@@ -75,6 +75,11 @@ typecheck:
 metrics:
     ./scripts/metrics.sh
 
+# Analyze compaction reinjection pipeline health from current + rotated JSONL logs.
+# Example: just analyze-compaction --team taurhaus-team --last 24h
+analyze-compaction *ARGS:
+    python3 scripts/analyze-compaction.py {{ARGS}}
+
 # Run the unified resource monitor (live table by default).
 # Example: just monitor --samples 1 --interval 1
 monitor *ARGS:

@@ -1,0 +1,727 @@
+#!/usr/bin/env python3
+"""analyze-compaction.py
+
+One-shot compaction reinjection pipeline analyzer for taurhaus.
+
+Primary source:
+  - structured JSONL app logs (`taurhaus.log.jsonl` plus rotated siblings)
+
+Current-state supplements:
+  - `~/.claude/teams/*/runtime/*.json` for session_id population health
+  - `~/.claude/settings.json` + `~/.claude/hooks/` for Claude compact hook installation
+
+Typical usage:
+  python3 scripts/analyze-compaction.py --team taurhaus-team --last 24h
+  python3 scripts/analyze-compaction.py --since 2026-03-08T12:00:00Z
+  just analyze-compaction --team taurhaus-team --last 6h
+
+Output is a human-readable stdout report. This is intentionally a post-hoc
+analysis tool, not a continuous monitor.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from statistics import median
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+
+
+DEFAULT_TEAMS_DIR = Path.home() / ".claude" / "teams"
+DEFAULT_CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
+DEFAULT_HOOKS_DIR = Path.home() / ".claude" / "hooks"
+COMPACTION_EVENTS = {
+    "compaction.detected",
+    "compaction.injected",
+    "compaction.skipped",
+    "compaction.stale",
+    "compaction.failed",
+}
+TERMINAL_COMPACTION_EVENTS = {
+    "compaction.injected",
+    "compaction.skipped",
+    "compaction.stale",
+    "compaction.failed",
+}
+HOOK_TEXT_PATTERNS = (
+    "--claude-compact-hook",
+    '"hookEventName":"SessionStart"',
+    '"source":"compact"',
+    "source=compact",
+)
+
+
+@dataclass(frozen=True)
+class CompactionKey:
+    team_name: str
+    member_name: str
+    tool: str
+    session_id: str
+    compaction_timestamp: str
+
+
+@dataclass
+class AnalyzerState:
+    total_lines: int = 0
+    parsed_lines: int = 0
+    invalid_lines: int = 0
+    compaction_events: List[dict] = None  # type: ignore[assignment]
+    scanner_events: List[dict] = None  # type: ignore[assignment]
+    hook_log_hits: int = 0
+    hook_log_examples: List[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.compaction_events = []
+        self.scanner_events = []
+        self.hook_log_examples = []
+
+
+def parse_args() -> argparse.Namespace:
+    default_log_path = resolve_default_log_path()
+    parser = argparse.ArgumentParser(
+        description="Analyze compaction reinjection pipeline health from taurhaus JSONL logs."
+    )
+    parser.add_argument(
+        "--log",
+        type=Path,
+        default=default_log_path,
+        help=f"Path to current taurhaus.log.jsonl (default: {default_log_path})",
+    )
+    parser.add_argument(
+        "--team",
+        help="Restrict report to one team name (default: all teams in logs/runtime files).",
+    )
+    parser.add_argument(
+        "--since",
+        help="Only include log events at or after this ISO timestamp.",
+    )
+    parser.add_argument(
+        "--last",
+        help="Only include log events within the last duration (e.g. 30m, 6h, 1d).",
+    )
+    parser.add_argument(
+        "--teams-dir",
+        type=Path,
+        default=DEFAULT_TEAMS_DIR,
+        help=f"Teams directory for current runtime snapshots (default: {DEFAULT_TEAMS_DIR})",
+    )
+    parser.add_argument(
+        "--claude-settings",
+        type=Path,
+        default=DEFAULT_CLAUDE_SETTINGS,
+        help=f"Claude settings.json path (default: {DEFAULT_CLAUDE_SETTINGS})",
+    )
+    parser.add_argument(
+        "--hooks-dir",
+        type=Path,
+        default=DEFAULT_HOOKS_DIR,
+        help=f"Claude hooks directory (default: {DEFAULT_HOOKS_DIR})",
+    )
+    return parser.parse_args()
+
+
+def resolve_default_log_path() -> Path:
+    override = os.environ.get("TAURHAUS_DATA_DIR")
+    if override:
+        return Path(override) / "taurhaus.log.jsonl"
+
+    candidates = [
+        Path.home() / ".local" / "share" / "com.taurhaus.dev" / "taurhaus.log.jsonl",
+        Path.home() / "Library" / "Application Support" / "com.taurhaus.dev" / "taurhaus.log.jsonl",
+    ]
+
+    windows_candidates = sorted(
+        Path("/mnt/c/Users").glob("*/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl")
+    )
+    candidates.extend(windows_candidates)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
+
+
+def parse_iso_timestamp(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def parse_duration(value: str) -> timedelta:
+    match = re.fullmatch(r"(?i)\s*(\d+)\s*([smhdw])\s*", value)
+    if not match:
+        raise ValueError(f"invalid duration '{value}' (expected 30m, 6h, 1d, 1w)")
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    seconds = {
+        "s": 1,
+        "m": 60,
+        "h": 3600,
+        "d": 86400,
+        "w": 604800,
+    }[unit]
+    return timedelta(seconds=amount * seconds)
+
+
+def resolve_window(args: argparse.Namespace) -> Tuple[Optional[datetime], Optional[datetime], str]:
+    if args.since and args.last:
+        raise SystemExit("Use only one of --since or --last.")
+    if args.since:
+        since = parse_iso_timestamp(args.since)
+        return since, None, f"since {since.isoformat()}"
+    if args.last:
+        delta = parse_duration(args.last)
+        since = datetime.now(timezone.utc) - delta
+        return since, None, f"last {args.last}"
+    return None, None, "entire available log set"
+
+
+def discover_log_files(log_path: Path) -> List[Path]:
+    if log_path.name == "taurhaus.log.jsonl" and log_path.parent.is_dir():
+        rotated = sorted(
+            log_path.parent.glob("taurhaus.log*.jsonl"),
+            key=lambda path: (path.name == "taurhaus.log.jsonl", path.name),
+        )
+        return rotated
+    return [log_path]
+
+
+def iter_jsonl_records(files: Iterable[Path]) -> Iterator[Tuple[Path, int, str, dict]]:
+    for path in files:
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line_no, raw in enumerate(handle, start=1):
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    yield path, line_no, line, {"__invalid_json__": True}
+                    continue
+                yield path, line_no, line, payload
+
+
+def record_in_window(payload: dict, since: Optional[datetime]) -> bool:
+    if since is None:
+        return True
+    ts_value = payload.get("ts")
+    if not isinstance(ts_value, str):
+        return False
+    try:
+        event_ts = parse_iso_timestamp(ts_value)
+    except ValueError:
+        return False
+    return event_ts >= since
+
+
+def compaction_key(payload: dict) -> Optional[CompactionKey]:
+    team = payload.get("team_name")
+    member = payload.get("member_name")
+    tool = payload.get("tool")
+    session_id = payload.get("session_id")
+    compaction_timestamp = payload.get("compaction_timestamp")
+    if not all(isinstance(value, str) for value in (team, member, tool, session_id, compaction_timestamp)):
+        return None
+    return CompactionKey(team, member, tool, session_id, compaction_timestamp)
+
+
+def format_duration_ms(value: Optional[float]) -> str:
+    if value is None:
+        return "n/a"
+    if value >= 1000:
+        return f"{value / 1000:.2f}s"
+    return f"{value:.0f}ms"
+
+
+def status_label(level: str) -> str:
+    return {
+        "ok": "OK",
+        "warn": "WARN",
+        "fail": "FAIL",
+        "unknown": "UNKNOWN",
+    }[level]
+
+
+def infer_cli_tool(cli_tool: object, model: object) -> Optional[str]:
+    if isinstance(cli_tool, str) and cli_tool.strip():
+        return cli_tool.strip().lower()
+    if not isinstance(model, str) or not model.strip():
+        return None
+    lower = model.strip().lower()
+    if "claude" in lower:
+        return "claude"
+    if "gpt" in lower or "codex" in lower:
+        return "codex"
+    if "gemini" in lower:
+        return "gemini"
+    return None
+
+
+def load_team_member_tools(teams_dir: Path, team_filter: Optional[str]) -> Dict[Tuple[str, str], str]:
+    tool_by_member: Dict[Tuple[str, str], str] = {}
+    if not teams_dir.exists():
+        return tool_by_member
+
+    team_dirs = [teams_dir / team_filter] if team_filter else [p for p in teams_dir.iterdir() if p.is_dir()]
+    for team_dir in team_dirs:
+        config_path = team_dir / "config.json"
+        if not config_path.exists():
+            continue
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        team_name = config.get("name") or team_dir.name
+        members = config.get("members")
+        if not isinstance(members, list):
+            continue
+        for member in members:
+            if not isinstance(member, dict):
+                continue
+            member_name = member.get("name")
+            cli_tool = infer_cli_tool(member.get("cliTool"), member.get("model"))
+            if isinstance(member_name, str) and cli_tool:
+                tool_by_member[(team_name, member_name)] = cli_tool
+    return tool_by_member
+
+
+def analyze_runtime_session_health(
+    teams_dir: Path, team_filter: Optional[str]
+) -> Tuple[Counter, Dict[str, List[str]], List[Tuple[str, str, Optional[str]]]]:
+    totals = Counter()
+    missing_by_team: Dict[str, List[str]] = defaultdict(list)
+    details: List[Tuple[str, str, Optional[str]]] = []
+
+    if not teams_dir.exists():
+        return totals, missing_by_team, details
+
+    team_dirs = [teams_dir / team_filter] if team_filter else [p for p in teams_dir.iterdir() if p.is_dir()]
+    tool_map = load_team_member_tools(teams_dir, team_filter)
+
+    for team_dir in team_dirs:
+        runtime_dir = team_dir / "runtime"
+        if not runtime_dir.is_dir():
+            continue
+        team_name = team_dir.name
+        for runtime_path in sorted(runtime_dir.glob("*.json")):
+            try:
+                payload = json.loads(runtime_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                totals["runtime_invalid"] += 1
+                continue
+            member_name = payload.get("member_name") or runtime_path.stem
+            session_id = payload.get("session_id")
+            tool = tool_map.get((team_name, str(member_name)))
+            totals["runtime_members"] += 1
+            if session_id:
+                totals["runtime_with_session_id"] += 1
+            else:
+                totals["runtime_missing_session_id"] += 1
+                missing_by_team[team_name].append(str(member_name))
+            if tool:
+                totals[f"tool::{tool}::members"] += 1
+                if session_id:
+                    totals[f"tool::{tool}::with_session_id"] += 1
+            details.append((team_name, str(member_name), tool))
+
+    for members in missing_by_team.values():
+        members.sort()
+    return totals, missing_by_team, details
+
+
+def analyze_hook_installation(settings_path: Path, hooks_dir: Path) -> Dict[str, object]:
+    status: Dict[str, object] = {
+        "settings_exists": settings_path.exists(),
+        "installed": False,
+        "matcher_found": False,
+        "command": None,
+        "script_exists": False,
+    }
+    if not settings_path.exists():
+        return status
+
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        status["parse_error"] = True
+        return status
+
+    session_start = (
+        settings.get("hooks", {})
+        .get("SessionStart", [])
+        if isinstance(settings, dict)
+        else []
+    )
+    if not isinstance(session_start, list):
+        return status
+
+    for entry in session_start:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("matcher") != "compact":
+            continue
+        status["matcher_found"] = True
+        hooks = entry.get("hooks")
+        if not isinstance(hooks, list):
+            continue
+        for hook in hooks:
+            if not isinstance(hook, dict):
+                continue
+            command = hook.get("command")
+            if isinstance(command, str) and "taurhaus-session-start-compact" in command:
+                status["installed"] = True
+                status["command"] = command
+                break
+        if status["installed"]:
+            break
+
+    scripts = list(hooks_dir.glob("taurhaus-session-start-compact.*"))
+    status["script_exists"] = any(script.is_file() for script in scripts)
+    status["scripts"] = [str(script) for script in scripts]
+    return status
+
+
+def line_matches_hook_signal(raw_line: str, payload: dict) -> bool:
+    if any(pattern in raw_line for pattern in HOOK_TEXT_PATTERNS):
+        return True
+    event = payload.get("event")
+    message = payload.get("message")
+    if isinstance(event, str) and "hook" in event.lower():
+        return True
+    if isinstance(message, str) and "compact hook" in message.lower():
+        return True
+    return False
+
+
+def print_section(title: str) -> None:
+    print(f"\n== {title} ==")
+
+
+def print_kv(key: str, value: object) -> None:
+    print(f"{key}: {value}")
+
+
+def main() -> int:
+    args = parse_args()
+    since, _, window_desc = resolve_window(args)
+    log_files = discover_log_files(args.log)
+    existing_files = [path for path in log_files if path.exists()]
+
+    if not existing_files:
+        print(f"FAIL: no log files found for {args.log}", file=sys.stderr)
+        return 1
+
+    state = AnalyzerState()
+    detected_at: Dict[CompactionKey, datetime] = {}
+    terminal_latencies_ms: List[float] = []
+    injected_latencies_ms: List[float] = []
+    compaction_by_tool = Counter()
+    compaction_by_member = Counter()
+    outcome_by_tool = Counter()
+    outcome_by_member = Counter()
+    delivery_reason_presence = Counter()
+    scanner_counts_by_run: Dict[str, List[int]] = defaultdict(list)
+    latest_scanner_run_id: Optional[str] = None
+    latest_scanner_run_ts: Optional[datetime] = None
+
+    for path, line_no, raw_line, payload in iter_jsonl_records(existing_files):
+        state.total_lines += 1
+        if payload.get("__invalid_json__"):
+            state.invalid_lines += 1
+            continue
+        state.parsed_lines += 1
+
+        if not record_in_window(payload, since):
+            continue
+
+        if args.team and payload.get("team_name") not in (None, args.team):
+            event = payload.get("event")
+            if event in COMPACTION_EVENTS:
+                continue
+
+        if line_matches_hook_signal(raw_line, payload):
+            state.hook_log_hits += 1
+            if len(state.hook_log_examples) < 3:
+                state.hook_log_examples.append(f"{path.name}:{line_no}")
+
+        event = payload.get("event")
+        if event == "session_scanner.scan.completed":
+            state.scanner_events.append(payload)
+            run_id = payload.get("run_id")
+            if isinstance(run_id, str):
+                scanner_counts_by_run[run_id].append(int(payload.get("session_count", 0)))
+                ts_value = payload.get("ts")
+                if isinstance(ts_value, str):
+                    try:
+                        event_ts = parse_iso_timestamp(ts_value)
+                    except ValueError:
+                        event_ts = None
+                    if event_ts and (latest_scanner_run_ts is None or event_ts >= latest_scanner_run_ts):
+                        latest_scanner_run_ts = event_ts
+                        latest_scanner_run_id = run_id
+            continue
+
+        if event not in COMPACTION_EVENTS:
+            continue
+        if args.team and payload.get("team_name") != args.team:
+            continue
+
+        state.compaction_events.append(payload)
+        tool = str(payload.get("tool", "unknown"))
+        member = f"{payload.get('team_name', '?')}/{payload.get('member_name', '?')}"
+        compaction_by_tool[(tool, event)] += 1
+        compaction_by_member[(member, event)] += 1
+
+        key = compaction_key(payload)
+        ts_value = payload.get("ts")
+        event_ts = parse_iso_timestamp(ts_value) if isinstance(ts_value, str) else None
+
+        if event == "compaction.detected" and key and event_ts:
+            detected_at.setdefault(key, event_ts)
+        if event in TERMINAL_COMPACTION_EVENTS:
+            outcome_by_tool[(tool, event)] += 1
+            outcome_by_member[(member, event)] += 1
+            if key and event_ts:
+                detect_ts = detected_at.get(key)
+                if detect_ts is not None:
+                    terminal_latencies_ms.append((event_ts - detect_ts).total_seconds() * 1000)
+                if event == "compaction.injected":
+                    if detect_ts is not None:
+                        injected_latencies_ms.append((event_ts - detect_ts).total_seconds() * 1000)
+
+        reason = payload.get("reason") or payload.get("error") or payload.get("delivery_reason")
+        if reason:
+            delivery_reason_presence["with_reason"] += 1
+        elif event in TERMINAL_COMPACTION_EVENTS:
+            delivery_reason_presence["without_reason"] += 1
+
+    runtime_totals, missing_by_team, runtime_details = analyze_runtime_session_health(
+        args.teams_dir, args.team
+    )
+    hook_status = analyze_hook_installation(args.claude_settings, args.hooks_dir)
+
+    detected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.detected")
+    injected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.injected")
+    skipped_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.skipped")
+    stale_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.stale")
+    failed_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.failed")
+
+    scanner_counts = [int(event.get("session_count", 0)) for event in state.scanner_events]
+    scanner_zero = sum(1 for count in scanner_counts if count == 0)
+    scanner_positive = sum(1 for count in scanner_counts if count > 0)
+    latest_scanner_counts = (
+        list(scanner_counts_by_run.get(latest_scanner_run_id, [])) if latest_scanner_run_id else []
+    )
+    latest_scanner_zero = sum(1 for count in latest_scanner_counts if count == 0)
+
+    if not state.compaction_events:
+        compaction_health = ("warn", "no compaction events found in selected window")
+    elif detected_count > 0 and injected_count == 0:
+        compaction_health = ("warn", "compactions detected but none injected")
+    elif failed_count > 0:
+        compaction_health = ("warn", f"{failed_count} failed compaction deliveries observed")
+    else:
+        compaction_health = ("ok", "compaction events present with no failures in window")
+
+    if not latest_scanner_counts:
+        scanner_health = ("unknown", "no session scanner events in selected window")
+    elif max(latest_scanner_counts) == 0:
+        scanner_health = (
+            "fail",
+            f"latest run {latest_scanner_run_id} reported session_count=0 for all {len(latest_scanner_counts)} cycles",
+        )
+    elif latest_scanner_zero > 0:
+        scanner_health = (
+            "warn",
+            f"latest run {latest_scanner_run_id} had {latest_scanner_zero}/{len(latest_scanner_counts)} zero-session cycles",
+        )
+    else:
+        scanner_health = (
+            "ok",
+            f"latest run {latest_scanner_run_id} reported session_count>0 for all {len(latest_scanner_counts)} cycles",
+        )
+
+    runtime_members = runtime_totals["runtime_members"]
+    runtime_with_session_id = runtime_totals["runtime_with_session_id"]
+    if runtime_members == 0:
+        runtime_health = ("unknown", "no runtime member files found")
+    elif runtime_with_session_id == runtime_members:
+        runtime_health = ("ok", f"all {runtime_members} runtime members have session_id")
+    elif runtime_with_session_id == 0:
+        runtime_health = ("fail", f"0/{runtime_members} runtime members have session_id")
+    else:
+        runtime_health = (
+            "warn",
+            f"{runtime_with_session_id}/{runtime_members} runtime members have session_id",
+        )
+
+    claude_injected = sum(
+        1
+        for event in state.compaction_events
+        if event.get("event") == "compaction.injected" and event.get("tool") == "claude"
+    )
+    if hook_status.get("installed"):
+        if state.hook_log_hits > 0:
+            hook_health = ("ok", "Claude compact hook installed and hook-related log evidence found")
+        elif claude_injected > 0:
+            hook_health = ("ok", "Claude compact hook installed; hook fire inferred from Claude injected outcomes")
+        else:
+            hook_health = ("unknown", "Claude compact hook installed, but no hook fire evidence in selected window")
+    else:
+        hook_health = ("fail", "Claude compact hook is not installed in current settings")
+
+    print("Compaction Reinjection Analysis")
+    print("==============================")
+    print_kv("Window", window_desc)
+    print_kv("Team filter", args.team or "all teams")
+    print_kv("Log files", ", ".join(path.name for path in existing_files))
+    print_kv("Parsed lines", f"{state.parsed_lines}/{state.total_lines}")
+    if state.invalid_lines:
+        print_kv("Invalid JSON lines", state.invalid_lines)
+
+    print_section("Health Signals")
+    for name, (level, message) in (
+        ("Compaction pipeline", compaction_health),
+        ("Scanner health", scanner_health),
+        ("Runtime session_id health", runtime_health),
+        ("Claude hook status", hook_health),
+    ):
+        print(f"[{status_label(level)}] {name}: {message}")
+
+    print_section("Compaction Outcomes")
+    print_kv("Detected", detected_count)
+    print_kv("Injected", injected_count)
+    print_kv("Skipped", skipped_count)
+    print_kv("Stale", stale_count)
+    print_kv("Failed", failed_count)
+    success_rate = (injected_count / detected_count * 100.0) if detected_count else None
+    print_kv("Injected / detected ratio", f"{success_rate:.1f}%" if success_rate is not None else "n/a")
+    if delivery_reason_presence["without_reason"]:
+        print_kv(
+            "Delivery reasons",
+            "Structured compaction events do not currently include skip/fail reason fields",
+        )
+
+    print_section("Latency")
+    if terminal_latencies_ms:
+        print_kv("Detected -> terminal samples", len(terminal_latencies_ms))
+        print_kv("Detected -> terminal min", format_duration_ms(min(terminal_latencies_ms)))
+        print_kv("Detected -> terminal median", format_duration_ms(median(terminal_latencies_ms)))
+        print_kv("Detected -> terminal max", format_duration_ms(max(terminal_latencies_ms)))
+    else:
+        print_kv("Detected -> terminal samples", 0)
+        print_kv("Detected -> terminal latency", "n/a (no detected->terminal pairs in selected window)")
+
+    if injected_latencies_ms:
+        print_kv("Detected -> injected samples", len(injected_latencies_ms))
+        print_kv("Detected -> injected min", format_duration_ms(min(injected_latencies_ms)))
+        print_kv("Detected -> injected median", format_duration_ms(median(injected_latencies_ms)))
+        print_kv("Detected -> injected max", format_duration_ms(max(injected_latencies_ms)))
+    else:
+        print_kv("Detected -> injected samples", 0)
+        print_kv("Detected -> injected latency", "n/a (no detected->injected pairs in selected window)")
+
+    print_section("Per Tool")
+    tools = sorted({tool for tool, _ in compaction_by_tool.keys()} | {tool for tool, _ in outcome_by_tool.keys()})
+    if not tools:
+        print("No compaction events for any tool in selected window.")
+    else:
+        for tool in tools:
+            print(
+                f"{tool}: detected={compaction_by_tool[(tool, 'compaction.detected')]} "
+                f"injected={outcome_by_tool[(tool, 'compaction.injected')]} "
+                f"skipped={outcome_by_tool[(tool, 'compaction.skipped')]} "
+                f"stale={outcome_by_tool[(tool, 'compaction.stale')]} "
+                f"failed={outcome_by_tool[(tool, 'compaction.failed')]}"
+            )
+
+    print_section("Per Member")
+    members = sorted({member for member, _ in compaction_by_member.keys()} | {member for member, _ in outcome_by_member.keys()})
+    if not members:
+        print("No member-level compaction events in selected window.")
+    else:
+        for member in members:
+            print(
+                f"{member}: detected={compaction_by_member[(member, 'compaction.detected')]} "
+                f"injected={outcome_by_member[(member, 'compaction.injected')]} "
+                f"skipped={outcome_by_member[(member, 'compaction.skipped')]} "
+                f"stale={outcome_by_member[(member, 'compaction.stale')]} "
+                f"failed={outcome_by_member[(member, 'compaction.failed')]}"
+            )
+
+    print_section("Scanner Health")
+    print_kv("Scanner cycles", len(scanner_counts))
+    print_kv("Scanner runs", len(scanner_counts_by_run))
+    if latest_scanner_run_id:
+        print_kv("Latest scanner run_id", latest_scanner_run_id)
+        print_kv("Latest run cycles", len(latest_scanner_counts))
+        if latest_scanner_counts:
+            print_kv("Latest run zero-session cycles", latest_scanner_zero)
+            print_kv("Latest run min session_count", min(latest_scanner_counts))
+            print_kv("Latest run max session_count", max(latest_scanner_counts))
+            print_kv("Latest run last session_count", latest_scanner_counts[-1])
+    if scanner_counts:
+        print_kv("Zero-session cycles", scanner_zero)
+        print_kv("Positive-session cycles", scanner_positive)
+        print_kv("Min session_count", min(scanner_counts))
+        print_kv("Max session_count", max(scanner_counts))
+        print_kv("Last session_count", scanner_counts[-1])
+
+    print_section("Runtime Session IDs")
+    print_kv("Runtime members", runtime_members)
+    print_kv("Members with session_id", runtime_with_session_id)
+    for team_name in sorted(missing_by_team):
+        missing = ", ".join(missing_by_team[team_name])
+        print(f"{team_name}: missing session_id -> {missing}")
+
+    if runtime_details:
+        tool_map = load_team_member_tools(args.teams_dir, args.team)
+        tool_totals = Counter()
+        for team_name, member_name, tool in runtime_details:
+            if not tool:
+                continue
+            tool_totals[f"{tool}::members"] += 1
+            runtime_path = args.teams_dir / team_name / "runtime" / f"{member_name}.json"
+            try:
+                payload = json.loads(runtime_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if payload.get("session_id"):
+                tool_totals[f"{tool}::with_session_id"] += 1
+        for tool in sorted({key.split("::")[0] for key in tool_totals if key.endswith("::members")}):
+            members_total = tool_totals[f"{tool}::members"]
+            with_sid = tool_totals[f"{tool}::with_session_id"]
+            print(f"{tool}: {with_sid}/{members_total} runtime members with session_id")
+
+    print_section("Claude Hook")
+    print_kv("Settings file", args.claude_settings)
+    print_kv("Hook installed", hook_status.get("installed"))
+    print_kv("Compact matcher present", hook_status.get("matcher_found"))
+    print_kv("Hook script exists", hook_status.get("script_exists"))
+    if hook_status.get("command"):
+        print_kv("Configured command", hook_status["command"])
+    if state.hook_log_hits:
+        print_kv("Hook-related log hits", state.hook_log_hits)
+        print_kv("Hook log examples", ", ".join(state.hook_log_examples))
+    elif claude_injected:
+        print_kv("Hook fire evidence", f"inferred from {claude_injected} Claude injected outcomes")
+    else:
+        print_kv("Hook fire evidence", "none in selected window")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
