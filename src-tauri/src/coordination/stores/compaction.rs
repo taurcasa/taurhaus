@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::coordination::compaction_events::{emit_compaction_delivery, CompactionDeliveryEvent};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli;
 use crate::session_scanner::cli_tool::CliTool;
@@ -187,6 +188,8 @@ pub fn record_delivery(
         session_id,
         compaction_timestamp,
         result,
+        None,
+        None,
     );
     Ok(())
 }
@@ -210,7 +213,7 @@ pub fn emit_compaction_detected_event(
         compaction_timestamp = %compaction_timestamp.to_rfc3339(),
         "compaction.detected"
     );
-    emit_global(
+    taurhaus_lib::logging::emit_global(
         "info",
         "coordination",
         "compaction.detected",
@@ -221,6 +224,8 @@ pub fn emit_compaction_detected_event(
             tool,
             session_id,
             compaction_timestamp,
+            None,
+            None,
             None,
         ),
     );
@@ -233,6 +238,8 @@ pub fn emit_compaction_delivery_event(
     session_id: &str,
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
+    skip_reason: Option<&str>,
+    fail_reason: Option<&str>,
 ) {
     let event = match result {
         CompactionDeliveryResult::Injected => "compaction.injected",
@@ -250,45 +257,22 @@ pub fn emit_compaction_delivery_event(
         result = ?result,
         "{event}"
     );
-    emit_global(
-        if matches!(result, CompactionDeliveryResult::Failed) {
-            "warn"
-        } else {
-            "info"
-        },
-        "coordination",
+    emit_compaction_delivery(
         event,
-        Some("Compaction delivery outcome recorded".to_string()),
-        compaction_event_fields(
-            team_name,
-            member_name,
+        CompactionDeliveryEvent {
             tool,
-            session_id,
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+            session_id: session_id.to_string(),
             compaction_timestamp,
-            Some(result),
-        ),
+            delivery_result: serde_json::to_value(result)
+                .ok()
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+                .unwrap_or_else(|| "unknown".to_string()),
+            skip_reason: skip_reason.map(ToOwned::to_owned),
+            fail_reason: fail_reason.map(ToOwned::to_owned),
+        },
     );
-}
-
-#[cfg(not(test))]
-fn emit_global(
-    level: &str,
-    component: &str,
-    event: &str,
-    message: Option<String>,
-    fields: Map<String, Value>,
-) {
-    crate::logging::emit_global(level, component, event, message, fields);
-}
-
-#[cfg(test)]
-fn emit_global(
-    _level: &str,
-    _component: &str,
-    _event: &str,
-    _message: Option<String>,
-    _fields: Map<String, Value>,
-) {
 }
 
 fn is_already_handled_state(
@@ -338,6 +322,8 @@ fn compaction_event_fields(
     session_id: &str,
     compaction_timestamp: DateTime<Utc>,
     result: Option<CompactionDeliveryResult>,
+    skip_reason: Option<&str>,
+    fail_reason: Option<&str>,
 ) -> Map<String, Value> {
     let mut fields = Map::new();
     fields.insert(
@@ -368,6 +354,18 @@ fn compaction_event_fields(
             ),
         );
     }
+    if let Some(skip_reason) = skip_reason {
+        fields.insert(
+            "skip_reason".to_string(),
+            Value::String(skip_reason.to_string()),
+        );
+    }
+    if let Some(fail_reason) = fail_reason {
+        fields.insert(
+            "fail_reason".to_string(),
+            Value::String(fail_reason.to_string()),
+        );
+    }
     fields
 }
 
@@ -377,6 +375,7 @@ mod tests {
     use fs2::FileExt;
     use std::ffi::OsString;
     use std::sync::{LazyLock, Mutex, MutexGuard};
+    use taurhaus_lib::logging::{install_global_sink, LogFileState};
 
     fn timestamp(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -597,5 +596,40 @@ mod tests {
             "session-1",
             timestamp("2026-03-08T14:30:01Z"),
         ));
+    }
+
+    #[test]
+    fn emit_compaction_delivery_event_includes_skip_and_fail_reason() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let log_path = tmp.path().join("compaction-delivery.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
+
+        emit_compaction_delivery_event(
+            "taurhaus-team",
+            "developer1",
+            CliTool::Codex,
+            "session-1",
+            timestamp("2026-03-08T14:30:16Z"),
+            CompactionDeliveryResult::Failed,
+            Some("intervening_user_message"),
+            Some("append_inbox_failed"),
+        );
+
+        let contents = wait_for_log_contains(&log_path, "\"event\":\"compaction.failed\"");
+        assert!(contents.contains("\"skip_reason\":\"intervening_user_message\""));
+        assert!(contents.contains("\"fail_reason\":\"append_inbox_failed\""));
+    }
+
+    fn wait_for_log_contains(path: &std::path::Path, needle: &str) -> String {
+        for _ in 0..50 {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                if contents.contains(needle) {
+                    return contents;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        std::fs::read_to_string(path).unwrap_or_default()
     }
 }

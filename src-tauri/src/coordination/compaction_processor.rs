@@ -21,6 +21,15 @@ use crate::coordination::stores::{
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 
+const SKIP_REASON_ALREADY_HANDLED: &str = "already_handled";
+const SKIP_REASON_MEMBER_NOT_ATTACHED: &str = "member_not_attached";
+const SKIP_REASON_PANE_NOT_LIVE_CODEX: &str = "pane_not_live_codex";
+
+const FAIL_REASON_RECORD_STALE_DELIVERY_FAILED: &str = "record_stale_delivery_failed";
+const FAIL_REASON_RECORD_SKIPPED_DELIVERY_FAILED: &str = "record_skipped_delivery_failed";
+const FAIL_REASON_RECORD_INJECTED_DELIVERY_FAILED: &str = "record_injected_delivery_failed";
+const FAIL_REASON_APPEND_INBOX_FAILED: &str = "append_inbox_failed";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompactionSignalProcessOutcome {
     Injected {
@@ -111,11 +120,13 @@ impl CompactionSignalProcessor {
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Stale,
+                None,
+                None,
             ) {
                 return CompactionSignalProcessOutcome::Failed {
                     team_name: resolved.team_name,
                     member_name: resolved.member_name,
-                    error_message: error.to_string(),
+                    error_message: format!("{FAIL_REASON_RECORD_STALE_DELIVERY_FAILED}: {error}"),
                 };
             }
             return CompactionSignalProcessOutcome::Stale {
@@ -138,11 +149,13 @@ impl CompactionSignalProcessor {
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Skipped,
+                Some(SKIP_REASON_ALREADY_HANDLED),
+                None,
             ) {
                 return CompactionSignalProcessOutcome::Failed {
                     team_name: resolved.team_name,
                     member_name: resolved.member_name,
-                    error_message: error.to_string(),
+                    error_message: format!("{FAIL_REASON_RECORD_SKIPPED_DELIVERY_FAILED}: {error}"),
                 };
             }
             return CompactionSignalProcessOutcome::Skipped {
@@ -151,9 +164,8 @@ impl CompactionSignalProcessor {
             };
         }
 
-        if !member_is_still_attached(teams_dir, signal, &resolved)
-            || !jsonl_prompt_boundary_is_unchanged(signal)
-            || !pane_is_live_codex(runtime, &signal.pane_id)
+        if let Some(skip_reason) =
+            delivery_skip_reason(teams_dir, &resolved, runtime, &signal.pane_id)
         {
             if let Err(error) = record_delivery_at(
                 teams_dir,
@@ -162,11 +174,13 @@ impl CompactionSignalProcessor {
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Skipped,
+                Some(skip_reason),
+                None,
             ) {
                 return CompactionSignalProcessOutcome::Failed {
                     team_name: resolved.team_name,
                     member_name: resolved.member_name,
-                    error_message: error.to_string(),
+                    error_message: format!("{FAIL_REASON_RECORD_SKIPPED_DELIVERY_FAILED}: {error}"),
                 };
             }
             return CompactionSignalProcessOutcome::Skipped {
@@ -191,11 +205,15 @@ impl CompactionSignalProcessor {
                     &signal.session_id,
                     signal.transcript_timestamp,
                     CompactionDeliveryResult::Injected,
+                    None,
+                    None,
                 ) {
                     return CompactionSignalProcessOutcome::Failed {
                         team_name: resolved.team_name,
                         member_name: resolved.member_name,
-                        error_message: error.to_string(),
+                        error_message: format!(
+                            "{FAIL_REASON_RECORD_INJECTED_DELIVERY_FAILED}: {error}"
+                        ),
                     };
                 }
                 CompactionSignalProcessOutcome::Injected {
@@ -211,11 +229,13 @@ impl CompactionSignalProcessor {
                     &signal.session_id,
                     signal.transcript_timestamp,
                     CompactionDeliveryResult::Failed,
+                    None,
+                    Some(FAIL_REASON_APPEND_INBOX_FAILED),
                 );
                 CompactionSignalProcessOutcome::Failed {
                     team_name: resolved.team_name,
                     member_name: resolved.member_name,
-                    error_message: error.to_string(),
+                    error_message: format!("{FAIL_REASON_APPEND_INBOX_FAILED}: {error}"),
                 }
             }
         }
@@ -395,7 +415,7 @@ fn already_handled(
 
 fn member_is_still_attached(
     teams_dir: &Path,
-    signal: &CompactionSignalRecord,
+    pane_id: &str,
     resolved: &ResolvedManagedCodexSignal,
 ) -> bool {
     let roster = match get_team_roster_with_attachments(teams_dir, &resolved.team_name) {
@@ -422,23 +442,24 @@ fn member_is_still_attached(
         return false;
     }
 
-    member.pane_id.as_deref() == Some(signal.pane_id.as_str())
-        && member.session_id.as_deref() == Some(signal.session_id.as_str())
+    member.pane_id.as_deref() == Some(pane_id)
 }
 
-fn jsonl_prompt_boundary_is_unchanged(signal: &CompactionSignalRecord) -> bool {
-    match std::fs::metadata(&signal.jsonl_path) {
-        Ok(metadata) => metadata.len() == signal.jsonl_offset,
-        Err(error) => {
-            tracing::warn!(
-                path = signal.jsonl_path,
-                session_id = signal.session_id,
-                error = %error,
-                "failed to stat Codex JSONL while validating signal prompt boundary"
-            );
-            false
-        }
+fn delivery_skip_reason(
+    teams_dir: &Path,
+    resolved: &ResolvedManagedCodexSignal,
+    runtime: &dyn CoordinationRuntime,
+    pane_id: &str,
+) -> Option<&'static str> {
+    if !member_is_still_attached(teams_dir, pane_id, resolved) {
+        return Some(SKIP_REASON_MEMBER_NOT_ATTACHED);
     }
+
+    if !pane_is_live_codex(runtime, pane_id) {
+        return Some(SKIP_REASON_PANE_NOT_LIVE_CODEX);
+    }
+
+    None
 }
 
 fn pane_is_live_codex(runtime: &dyn CoordinationRuntime, pane_id: &str) -> bool {
@@ -481,6 +502,8 @@ fn record_delivery_at(
     session_id: &str,
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
+    skip_reason: Option<&str>,
+    fail_reason: Option<&str>,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
     if !should_persist_delivery_state(teams_dir, team_name, member_name)? {
         tracing::debug!(
@@ -512,6 +535,8 @@ fn record_delivery_at(
         session_id,
         compaction_timestamp,
         result,
+        skip_reason,
+        fail_reason,
     );
     Ok(())
 }
@@ -754,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn process_signal_skips_when_prompt_boundary_changed() {
+    fn process_signal_injects_even_when_jsonl_grows_after_compaction() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
         let project_path = "/home/mstie/projects/taurhaus";
@@ -785,7 +810,7 @@ mod tests {
 
         assert_eq!(
             outcome,
-            CompactionSignalProcessOutcome::Skipped {
+            CompactionSignalProcessOutcome::Injected {
                 team_name: "taurhaus-team".to_string(),
                 member_name: "developer2".to_string(),
             }
