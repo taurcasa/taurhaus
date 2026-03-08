@@ -21,6 +21,7 @@ use crate::session_scanner::control::{
 pub(super) struct PendingRuntimeState {
     pub(super) pane_id: Option<String>,
     pub(super) session_id: Option<String>,
+    pub(super) jsonl_path: Option<PathBuf>,
     pub(super) daemon_pid: Option<u32>,
     pub(super) attached_at: Option<chrono::DateTime<Utc>>,
     pub(super) health: Option<HealthState>,
@@ -32,6 +33,7 @@ pub(super) struct PendingRuntimeState {
 pub(super) struct PendingResumeState {
     pub(super) pane_id: Option<String>,
     pub(super) session_id: Option<String>,
+    pub(super) jsonl_path: Option<PathBuf>,
     pub(super) daemon_pid: Option<u32>,
     pub(super) new_daemon_pid: Option<u32>,
     pub(super) created_pane_id: Option<String>,
@@ -137,12 +139,13 @@ pub(super) fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
 
 pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
     MemberRuntimeRecord {
-        schema_version: 2,
+        schema_version: 3,
         member_name: member_name.to_string(),
         cli_tool: None,
         project_path: None,
         pane_id: None,
         session_id: None,
+        jsonl_path: None,
         daemon_pid: None,
         health: HealthState::SessionDead,
         delivery_lease: None,

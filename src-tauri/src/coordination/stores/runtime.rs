@@ -12,7 +12,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
 
 const RUNTIME_DIRNAME: &str = "runtime";
-const RUNTIME_SCHEMA_VERSION: u32 = 2;
+const RUNTIME_SCHEMA_VERSION: u32 = 3;
 
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +23,7 @@ pub struct MemberRuntimeRecord {
     pub project_path: Option<PathBuf>,
     pub pane_id: Option<String>,
     pub session_id: Option<String>,
+    pub jsonl_path: Option<PathBuf>,
     pub daemon_pid: Option<u32>,
     pub health: HealthState,
     pub delivery_lease: Option<DeliveryLease>,
@@ -237,6 +238,8 @@ fn parse_runtime_record(
         pane_id: Option<String>,
         #[serde(default, alias = "sessionId")]
         session_id: Option<String>,
+        #[serde(default, alias = "jsonlPath")]
+        jsonl_path: Option<PathBuf>,
         #[serde(default, alias = "daemonPid")]
         daemon_pid: Option<u32>,
         health: HealthState,
@@ -261,6 +264,7 @@ fn parse_runtime_record(
         project_path: wire.project_path,
         pane_id: wire.pane_id,
         session_id: wire.session_id,
+        jsonl_path: wire.jsonl_path,
         daemon_pid: wire.daemon_pid,
         health: wire.health,
         delivery_lease: wire.delivery_lease,
@@ -321,12 +325,13 @@ mod tests {
 
     fn sample_record(member_name: &str) -> MemberRuntimeRecord {
         MemberRuntimeRecord {
-            schema_version: 2,
+            schema_version: 3,
             member_name: member_name.to_string(),
             cli_tool: Some(CliTool::Codex),
             project_path: Some(PathBuf::from("/tmp/taurhaus")),
             pane_id: Some("%12".to_string()),
             session_id: Some("session-123".to_string()),
+            jsonl_path: Some(PathBuf::from("/tmp/taurhaus/.codex/session.jsonl")),
             daemon_pid: Some(4242),
             health: HealthState::Healthy,
             delivery_lease: Some(DeliveryLease {
@@ -387,6 +392,7 @@ mod tests {
         assert_eq!(loaded.cli_tool, None);
         assert_eq!(loaded.project_path, None);
         assert_eq!(loaded.session_id.as_deref(), Some("session-123"));
+        assert_eq!(loaded.jsonl_path, None);
     }
 
     #[test]
@@ -487,12 +493,13 @@ mod tests {
         let team_name = "architecture-final";
 
         let no_timestamps = MemberRuntimeRecord {
-            schema_version: 2,
+            schema_version: 3,
             member_name: "no-heartbeat".to_string(),
             cli_tool: None,
             project_path: None,
             pane_id: None,
             session_id: None,
+            jsonl_path: None,
             daemon_pid: None,
             health: HealthState::SessionDead,
             delivery_lease: None,

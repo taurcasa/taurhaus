@@ -51,6 +51,16 @@ pub trait CoordinationRuntime: Send + Sync {
         pane_id: &str,
         cli_tool: CliTool,
     ) -> Result<Option<String>, CoordinationError>;
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<DetectedRuntimeSession, CoordinationError> {
+        Ok(DetectedRuntimeSession {
+            session_id: self.detect_session_id(pane_id, cli_tool)?,
+            jsonl_path: None,
+        })
+    }
     fn join_mesh(
         &self,
         team_name: &str,
@@ -115,6 +125,12 @@ pub struct PaneResolution {
     pub pane_id: String,
     pub reused_pane: bool,
     pub created_new_pane: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DetectedRuntimeSession {
+    pub session_id: Option<String>,
+    pub jsonl_path: Option<PathBuf>,
 }
 
 /// Resolve a reusable pane for a member or create a fresh one.
@@ -270,22 +286,30 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         pane_id: &str,
         cli_tool: CliTool,
     ) -> Result<Option<String>, CoordinationError> {
-        for _ in 0..SESSION_DETECT_ATTEMPTS {
-            let match_id = collect_runtime_sessions()
-                .into_iter()
-                .find(|session| {
-                    session.tmux_pane.as_deref() == Some(pane_id) && session.cli_tool == cli_tool
-                })
-                .and_then(|session| session.session_id);
+        Ok(self.detect_runtime_session(pane_id, cli_tool)?.session_id)
+    }
 
-            if match_id.is_some() {
-                return Ok(match_id);
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<DetectedRuntimeSession, CoordinationError> {
+        for _ in 0..SESSION_DETECT_ATTEMPTS {
+            let matched = collect_runtime_sessions().into_iter().find(|session| {
+                session.tmux_pane.as_deref() == Some(pane_id) && session.cli_tool == cli_tool
+            });
+
+            if let Some(session) = matched {
+                return Ok(DetectedRuntimeSession {
+                    session_id: session.session_id,
+                    jsonl_path: session.jsonl_path,
+                });
             }
 
             thread::sleep(SESSION_DETECT_INTERVAL);
         }
 
-        Ok(None)
+        Ok(DetectedRuntimeSession::default())
     }
 
     fn spawn_mesh_daemon(
@@ -551,6 +575,7 @@ struct RuntimeSessionInfo {
     tmux_pane: Option<String>,
     cli_tool: CliTool,
     session_id: Option<String>,
+    jsonl_path: Option<PathBuf>,
 }
 
 #[cfg(not(test))]
@@ -561,6 +586,7 @@ fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
             tmux_pane: session.tmux_pane,
             cli_tool: session.cli_tool,
             session_id: session.session_id,
+            jsonl_path: session.jsonl_path.map(PathBuf::from),
         })
         .collect()
 }
@@ -654,6 +680,7 @@ pub struct RecordingCoordinationRuntime {
     pid_current_mesh_binary: Mutex<HashMap<u32, bool>>,
     team_daemon_current_mesh_binary: Mutex<HashMap<String, bool>>,
     daemon_matches: Mutex<HashMap<(String, String, String), Vec<u32>>>,
+    detected_runtime_sessions: Mutex<HashMap<(String, CliTool), DetectedRuntimeSession>>,
     pane_counter: AtomicUsize,
     pid_counter: AtomicU32,
 }
@@ -738,6 +765,24 @@ impl RecordingCoordinationRuntime {
             );
         }
     }
+
+    pub fn set_detected_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+        session_id: Option<&str>,
+        jsonl_path: Option<&str>,
+    ) {
+        if let Ok(mut map) = self.detected_runtime_sessions.lock() {
+            map.insert(
+                (pane_id.to_string(), cli_tool),
+                DetectedRuntimeSession {
+                    session_id: session_id.map(ToString::to_string),
+                    jsonl_path: jsonl_path.map(PathBuf::from),
+                },
+            );
+        }
+    }
 }
 
 impl CoordinationRuntime for RecordingCoordinationRuntime {
@@ -775,11 +820,28 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         pane_id: &str,
         cli_tool: CliTool,
     ) -> Result<Option<String>, CoordinationError> {
+        Ok(self.detect_runtime_session(pane_id, cli_tool)?.session_id)
+    }
+
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<DetectedRuntimeSession, CoordinationError> {
         self.push_call(RuntimeCall::DetectSessionId {
             pane_id: pane_id.to_string(),
             cli_tool,
         });
-        Ok(Some(format!("session-{pane_id}")))
+        let key = (pane_id.to_string(), cli_tool);
+        Ok(self
+            .detected_runtime_sessions
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&key).cloned())
+            .unwrap_or_else(|| DetectedRuntimeSession {
+                session_id: Some(format!("session-{pane_id}")),
+                jsonl_path: None,
+            }))
     }
 
     fn join_mesh(
@@ -1933,12 +1995,13 @@ mod tests {
 
     fn sample_runtime_with_pane(member_name: &str, pane_id: &str) -> MemberRuntimeRecord {
         MemberRuntimeRecord {
-            schema_version: 2,
+            schema_version: 3,
             member_name: member_name.to_string(),
             cli_tool: None,
             project_path: None,
             pane_id: Some(pane_id.to_string()),
             session_id: None,
+            jsonl_path: None,
             daemon_pid: None,
             health: HealthState::SessionDead,
             delivery_lease: None,

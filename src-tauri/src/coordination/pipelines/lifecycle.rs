@@ -379,6 +379,7 @@ impl CoordinationOrchestrator {
             .or_else(|| Some(PathBuf::from(&request.agent.project_id)));
         runtime.pane_id = runtime_state.pane_id.clone();
         runtime.session_id = runtime_state.session_id.clone();
+        runtime.jsonl_path = runtime_state.jsonl_path.clone();
         runtime.daemon_pid = runtime_state.daemon_pid;
         runtime.attached_at = runtime_state.attached_at;
         runtime.health = runtime_state.health.unwrap_or(HealthState::SessionDead);

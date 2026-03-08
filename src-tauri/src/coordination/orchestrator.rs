@@ -241,12 +241,13 @@ impl CoordinationOrchestrator {
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
 
         let runtime = MemberRuntimeRecord {
-            schema_version: 2,
+            schema_version: 3,
             member_name: member.name.clone(),
             cli_tool: Some(member.cli_tool),
             project_path: Some(member.project_path.clone()),
             pane_id: None,
             session_id: None,
+            jsonl_path: None,
             daemon_pid: None,
             health: HealthState::SessionDead,
             delivery_lease: None,
@@ -655,6 +656,7 @@ impl CoordinationOrchestrator {
 
                 runtime.health = HealthState::SessionDead;
                 runtime.session_id = None;
+                runtime.jsonl_path = None;
 
                 if member.cli_tool != CliTool::Claude {
                     if let Some(pid) = runtime.daemon_pid {
@@ -848,23 +850,30 @@ impl CoordinationOrchestrator {
                 }
             }
 
-            if runtime.session_id.is_none()
+            if (runtime.session_id.is_none() || runtime.jsonl_path.is_none())
                 && matches!(member.cli_tool, CliTool::Claude | CliTool::Codex)
             {
                 if let Some(pane_id) = runtime.pane_id.as_deref() {
-                    match self.runtime.detect_session_id(pane_id, member.cli_tool) {
-                        Ok(Some(session_id)) => {
-                            runtime.session_id = Some(session_id);
+                    match self
+                        .runtime
+                        .detect_runtime_session(pane_id, member.cli_tool)
+                    {
+                        Ok(detected) => {
+                            if let Some(session_id) = detected.session_id {
+                                runtime.session_id = Some(session_id);
+                            }
+                            if detected.jsonl_path.is_some() {
+                                runtime.jsonl_path = detected.jsonl_path;
+                            }
                             runtime_changed = true;
                         }
-                        Ok(None) => {}
                         Err(err) => {
                             tracing::warn!(
                                 team = %team_name,
                                 member = %member_name,
                                 pane_id = %pane_id,
                                 error = %err,
-                                "failed to refresh runtime session id during liveness reconciliation"
+                                "failed to refresh runtime session metadata during liveness reconciliation"
                             );
                         }
                     }

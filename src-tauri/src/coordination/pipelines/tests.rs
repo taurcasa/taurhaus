@@ -331,6 +331,12 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_detected_runtime_session(
+        "test-pane-2",
+        CliTool::Codex,
+        Some("session-test-pane-2"),
+        Some("/tmp/builder-session.jsonl"),
+    );
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
@@ -356,6 +362,10 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
         runtime_record.session_id.as_deref(),
         Some("session-test-pane-2")
     );
+    assert_eq!(
+        runtime_record.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/builder-session.jsonl"))
+    );
     assert!(runtime.calls().iter().any(|call| matches!(
         call,
         RuntimeCall::DetectSessionId { pane_id, cli_tool }
@@ -368,6 +378,12 @@ fn initialize_pipeline_persists_claude_agent_session_id() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_detected_runtime_session(
+        "test-pane-2",
+        CliTool::Claude,
+        Some("session-test-pane-2"),
+        Some("/tmp/researcher-session.jsonl"),
+    );
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
@@ -397,6 +413,10 @@ fn initialize_pipeline_persists_claude_agent_session_id() {
     assert_eq!(
         runtime_record.session_id.as_deref(),
         Some("session-test-pane-2")
+    );
+    assert_eq!(
+        runtime_record.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/researcher-session.jsonl"))
     );
     assert!(runtime.calls().iter().any(|call| matches!(
         call,
@@ -735,6 +755,12 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_detected_runtime_session(
+        "%11",
+        CliTool::Codex,
+        Some("session-%11"),
+        Some("/tmp/builder-resume.jsonl"),
+    );
     let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
 
     orchestrator
@@ -796,6 +822,10 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
         .expect("updated runtime");
     assert_eq!(updated.pane_id.as_deref(), Some("%11"));
     assert_eq!(updated.session_id.as_deref(), Some("session-%11"));
+    assert_eq!(
+        updated.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/builder-resume.jsonl"))
+    );
     assert_eq!(updated.health, HealthState::Healthy);
     assert_eq!(updated.daemon_pid, Some(10000));
     assert!(updated.attached_at.is_some());
@@ -811,6 +841,12 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("session-%21"),
+        Some("/tmp/team-lead-resume.jsonl"),
+    );
     let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
 
     orchestrator
@@ -879,6 +915,10 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
         .expect("updated runtime");
     assert_eq!(updated.pane_id.as_deref(), Some("%21"));
     assert_eq!(updated.session_id.as_deref(), Some("session-%21"));
+    assert_eq!(
+        updated.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/team-lead-resume.jsonl"))
+    );
     assert_eq!(updated.health, HealthState::Healthy);
     assert_eq!(updated.daemon_pid, Some(10000));
     assert!(updated.attached_at.is_some());

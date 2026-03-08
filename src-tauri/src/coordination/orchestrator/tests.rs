@@ -1775,12 +1775,13 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         .expect("create should succeed");
 
     let orphan_runtime = MemberRuntimeRecord {
-        schema_version: 1,
+        schema_version: 3,
         member_name: "orphan-agent".to_string(),
         cli_tool: None,
         project_path: None,
         pane_id: Some("%7".to_string()),
         session_id: None,
+        jsonl_path: None,
         daemon_pid: None,
         health: HealthState::SessionDead,
         delivery_lease: None,
@@ -2040,6 +2041,12 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
     runtime.set_pane_exists("%9", true);
     runtime.set_pane_dead("%9", false);
     runtime.set_pane_shell("%9", false);
+    runtime.set_detected_runtime_session(
+        "%9",
+        CliTool::Codex,
+        Some("session-%9"),
+        Some("/tmp/codex-reviewer.jsonl"),
+    );
 
     orchestrator
         .reconcile_team_liveness(team_name)
@@ -2053,6 +2060,10 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
     );
     assert_eq!(updated.pane_id.as_deref(), Some("%9"));
     assert_eq!(updated.session_id.as_deref(), Some("session-%9"));
+    assert_eq!(
+        updated.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/codex-reviewer.jsonl"))
+    );
     assert_eq!(updated.daemon_pid, Some(10000));
     let calls = runtime.calls();
     assert!(calls.iter().any(|call| matches!(
@@ -2069,6 +2080,37 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
             RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
         )),
         "session-dead repair should start a daemon without daemon cleanup"
+    );
+}
+
+#[test]
+fn add_agent_persists_runtime_jsonl_path() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final-hot-add-jsonl";
+    create_running_team(&mut orchestrator, team_name);
+    let request = add_agent_request(team_name, "new-agent", "codex");
+    runtime.set_detected_runtime_session(
+        "test-pane-1",
+        CliTool::Codex,
+        Some("session-test-pane-1"),
+        Some("/tmp/new-agent.jsonl"),
+    );
+
+    let report = orchestrator
+        .add_agent_to_team(&request)
+        .expect("pipeline should return report");
+    assert!(report.failed_step.is_none());
+
+    let runtime_record = MemberRuntimeStore::load(tmp.path(), team_name, "new-agent")
+        .expect("runtime state should exist");
+    assert_eq!(
+        runtime_record.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/new-agent.jsonl"))
+    );
+    assert_eq!(
+        runtime_record.session_id.as_deref(),
+        Some("session-test-pane-1")
     );
 }
 

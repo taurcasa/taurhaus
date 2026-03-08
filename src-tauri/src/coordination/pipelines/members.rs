@@ -426,6 +426,7 @@ impl CoordinationOrchestrator {
             runtime_record.project_path = Some(member.project_path.clone());
         }
         runtime_record.session_id = runtime_state.session_id.clone();
+        runtime_record.jsonl_path = runtime_state.jsonl_path.clone();
         runtime_record.daemon_pid = runtime_state.daemon_pid;
         runtime_record.attached_at = Some(Utc::now());
         runtime_record.health = HealthState::Healthy;
@@ -607,9 +608,14 @@ impl CoordinationOrchestrator {
             .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())?;
 
         if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
-            runtime_state.session_id = self.runtime.detect_session_id(pane_id, member.cli_tool)?;
+            let detected = self
+                .runtime
+                .detect_runtime_session(pane_id, member.cli_tool)?;
+            runtime_state.session_id = detected.session_id;
+            runtime_state.jsonl_path = detected.jsonl_path;
         } else {
             runtime_state.session_id = None;
+            runtime_state.jsonl_path = None;
         }
 
         Ok(())
@@ -630,6 +636,7 @@ impl CoordinationOrchestrator {
             .create_aitx_pane(&request.agent.project_id, tmux_layout)?;
         runtime_state.pane_id = Some(pane_id);
         runtime_state.session_id = None;
+        runtime_state.jsonl_path = None;
         runtime_state.attached_at = Some(Utc::now());
         runtime_state.health = Some(HealthState::Healthy);
         Ok(())
@@ -656,7 +663,9 @@ impl CoordinationOrchestrator {
         )?;
         let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
         if matches!(cli_tool, CliTool::Claude | CliTool::Codex) {
-            runtime_state.session_id = self.runtime.detect_session_id(pane_id, cli_tool)?;
+            let detected = self.runtime.detect_runtime_session(pane_id, cli_tool)?;
+            runtime_state.session_id = detected.session_id;
+            runtime_state.jsonl_path = detected.jsonl_path;
         }
         Ok(())
     }
@@ -686,8 +695,8 @@ impl CoordinationOrchestrator {
             return Ok(());
         }
 
-        let session_id = self.runtime.detect_session_id(pane_id, cli_tool)?;
-        let Some(session_id) = session_id else {
+        let detected = self.runtime.detect_runtime_session(pane_id, cli_tool)?;
+        let Some(session_id) = detected.session_id else {
             return Ok(());
         };
 
@@ -697,6 +706,7 @@ impl CoordinationOrchestrator {
             runtime.project_path = Some(PathBuf::from(&agent.project_id));
         }
         runtime.session_id = Some(session_id);
+        runtime.jsonl_path = detected.jsonl_path;
         MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)?;
         Ok(())
     }

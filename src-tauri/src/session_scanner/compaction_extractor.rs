@@ -25,7 +25,6 @@ use crate::coordination::stores::{
     CompactionSignalKind, CompactionSignalLog, CompactionSignalRecord, MemberRuntimeStore,
     TeamConfigStore,
 };
-use crate::provider::path::normalize_project_path;
 
 const EXTRACTOR_SCHEMA_VERSION: u32 = 1;
 const EXTRACTOR_STATE_FILENAME: &str = "extractor-state.json";
@@ -61,20 +60,12 @@ fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ManagedCodexTranscript {
     team_name: String,
+    member_name: String,
     session_id: String,
     pane_id: String,
     project_path: String,
     jsonl_path: PathBuf,
     cli_tool: CliTool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RouteCandidate {
-    team_name: String,
-    normalized_project_path: String,
-    pane_id: Option<String>,
-    session_id: Option<String>,
-    last_activity_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,11 +233,12 @@ pub fn extract_compaction_signals_at(
     teams_dir: &Path,
     emitted_at: DateTime<Utc>,
 ) {
-    let routed = route_managed_codex_transcripts(sessions, teams_dir);
-    let active_file_count = routed.len();
+    sync_managed_codex_runtime_jsonl_paths(sessions, teams_dir);
+    let transcripts = load_managed_codex_transcripts_from_runtime(teams_dir);
+    let active_file_count = transcripts.len();
 
     let mut grouped = BTreeMap::<String, Vec<ManagedCodexTranscript>>::new();
-    for transcript in routed {
+    for transcript in transcripts {
         grouped
             .entry(transcript.team_name.clone())
             .or_default()
@@ -417,87 +409,28 @@ fn extract_compaction_signals_for_team(
     })
 }
 
-fn route_managed_codex_transcripts(
-    sessions: &[RuntimeSession],
-    teams_dir: &Path,
-) -> Vec<ManagedCodexTranscript> {
-    let candidates = load_route_candidates(teams_dir);
-    let mut routed = Vec::new();
-
-    for session in sessions
-        .iter()
-        .filter(|session| session.cli_tool == CliTool::Codex)
-    {
-        let Some(session_id) = session.session_id.as_deref() else {
-            continue;
-        };
-        let Some(jsonl_path) = session.jsonl_path.as_deref() else {
-            continue;
-        };
-
-        let normalized_project_path = normalize_project_path(&session.project_path);
-        let scanner_pane = session.tmux_pane.as_deref();
-
-        let matches = candidates
-            .iter()
-            .filter(|candidate| candidate.normalized_project_path == normalized_project_path)
-            .filter_map(|candidate| {
-                let pane_matches = candidate.pane_id.as_deref() == scanner_pane;
-                let session_matches = candidate.session_id.as_deref() == Some(session_id);
-                let score = match (pane_matches, session_matches) {
-                    (true, true) => 4u8,
-                    (true, false) => 3u8,
-                    (false, true) => 2u8,
-                    (false, false) => 1u8,
-                };
-
-                let pane_id = scanner_pane
-                    .map(ToOwned::to_owned)
-                    .or_else(|| candidate.pane_id.clone())?;
-
-                Some((candidate.clone(), score, pane_id))
-            })
-            .collect::<Vec<_>>();
-
-        let Some((candidate, pane_id)) = select_route_candidate(matches) else {
-            continue;
-        };
-
-        routed.push(ManagedCodexTranscript {
-            team_name: candidate.team_name,
-            session_id: session_id.to_string(),
-            pane_id,
-            project_path: session.project_path.clone(),
-            jsonl_path: PathBuf::from(jsonl_path),
-            cli_tool: CliTool::Codex,
-        });
-    }
-
-    routed
-}
-
-fn load_route_candidates(teams_dir: &Path) -> Vec<RouteCandidate> {
+fn load_managed_codex_transcripts_from_runtime(teams_dir: &Path) -> Vec<ManagedCodexTranscript> {
     let team_names = match TeamConfigStore::list(teams_dir) {
         Ok(team_names) => team_names,
         Err(error) => {
-            tracing::warn!(error = %error, "failed to list teams while routing compaction extractor transcripts");
+            tracing::warn!(error = %error, "failed to list teams while loading compaction runtime transcripts");
             return Vec::new();
         }
     };
 
-    let mut candidates = Vec::new();
+    let mut transcripts = Vec::new();
     for team_name in team_names {
         let config = match TeamConfigStore::load(teams_dir, &team_name) {
             Ok(config) => config,
             Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while routing compaction extractor transcripts");
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while loading compaction runtime transcripts");
                 continue;
             }
         };
         let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
             Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
             Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team runtime while routing compaction extractor transcripts");
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team runtime while loading compaction runtime transcripts");
                 continue;
             }
         };
@@ -507,58 +440,119 @@ fn load_route_candidates(teams_dir: &Path) -> Vec<RouteCandidate> {
             .into_iter()
             .filter(|member| member.cli_tool == CliTool::Codex)
         {
-            let runtime = runtime_by_member.get(&member.name);
-            candidates.push(RouteCandidate {
+            let Some(runtime) = runtime_by_member.get(&member.name) else {
+                continue;
+            };
+            let Some(session_id) = runtime.session_id.clone() else {
+                continue;
+            };
+            let Some(pane_id) = runtime.pane_id.clone() else {
+                continue;
+            };
+            let Some(jsonl_path) = runtime.jsonl_path.clone() else {
+                continue;
+            };
+            let project_path = runtime
+                .project_path
+                .as_ref()
+                .unwrap_or(&member.project_path)
+                .display()
+                .to_string();
+            transcripts.push(ManagedCodexTranscript {
                 team_name: team_name.clone(),
-                normalized_project_path: normalize_project_path(
-                    &member.project_path.display().to_string(),
-                ),
-                pane_id: runtime.and_then(|record| record.pane_id.clone()),
-                session_id: runtime.and_then(|record| record.session_id.clone()),
-                last_activity_at: runtime
-                    .and_then(|record| record.last_seen_at.or(record.attached_at)),
+                member_name: member.name,
+                session_id,
+                pane_id,
+                project_path,
+                jsonl_path,
+                cli_tool: CliTool::Codex,
             });
         }
     }
 
-    candidates
+    transcripts
 }
 
-fn select_route_candidate(
-    matches: Vec<(RouteCandidate, u8, String)>,
-) -> Option<(RouteCandidate, String)> {
-    let mut best: Option<(RouteCandidate, u8, String)> = None;
-    let mut ambiguous = false;
+fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir: &Path) {
+    let codex_sessions = sessions
+        .iter()
+        .filter(|session| session.cli_tool == CliTool::Codex)
+        .filter(|session| session.jsonl_path.is_some())
+        .cloned()
+        .collect::<Vec<_>>();
+    let team_names = match TeamConfigStore::list(teams_dir) {
+        Ok(team_names) => team_names,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to list teams while syncing compaction runtime jsonl paths");
+            return;
+        }
+    };
 
-    for (candidate, score, pane_id) in matches {
-        match &best {
-            None => {
-                best = Some((candidate, score, pane_id));
-                ambiguous = false;
+    for team_name in team_names {
+        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while syncing compaction runtime jsonl paths");
+                continue;
             }
-            Some((best_candidate, best_score, _)) if score > *best_score => {
-                best = Some((candidate, score, pane_id));
-                ambiguous = false;
-            }
-            Some((best_candidate, best_score, _)) if score == *best_score => {
-                match (candidate.last_activity_at, best_candidate.last_activity_at) {
-                    (Some(left), Some(right)) if left > right => {
-                        best = Some((candidate, score, pane_id));
-                        ambiguous = false;
-                    }
-                    (Some(left), Some(right)) if left < right => {}
-                    _ => ambiguous = true,
+        };
+
+        for member in config
+            .members
+            .into_iter()
+            .filter(|member| member.cli_tool == CliTool::Codex)
+        {
+            let mut runtime = match MemberRuntimeStore::load(teams_dir, &team_name, &member.name) {
+                Ok(runtime) => runtime,
+                Err(CoordinationError::NotFound(_)) => continue,
+                Err(error) => {
+                    tracing::warn!(team_name = team_name, member_name = member.name, error = %error, "failed to load member runtime while syncing compaction runtime jsonl paths");
+                    continue;
                 }
+            };
+
+            let matched_jsonl_path = select_runtime_session_for_member(&runtime, &codex_sessions)
+                .and_then(|session| session.jsonl_path.as_deref())
+                .map(PathBuf::from);
+            if runtime.jsonl_path == matched_jsonl_path {
+                continue;
             }
-            _ => {}
+            runtime.jsonl_path = matched_jsonl_path;
+            if let Err(error) =
+                MemberRuntimeStore::save(teams_dir, &team_name, &member.name, &runtime)
+            {
+                tracing::warn!(team_name = team_name, member_name = member.name, error = %error, "failed to persist compaction runtime jsonl path");
+            }
+        }
+    }
+}
+
+fn select_runtime_session_for_member<'a>(
+    runtime: &crate::coordination::stores::MemberRuntimeRecord,
+    sessions: &'a [RuntimeSession],
+) -> Option<&'a RuntimeSession> {
+    let mut best: Option<(&RuntimeSession, u8)> = None;
+
+    for session in sessions {
+        let pane_matches = runtime.pane_id.as_deref() == session.tmux_pane.as_deref();
+        let session_matches = runtime.session_id.as_deref() == session.session_id.as_deref();
+        let score = match (pane_matches, session_matches) {
+            (true, true) => 4u8,
+            (true, false) => 3u8,
+            (false, true) => 2u8,
+            (false, false) => 0u8,
+        };
+        if score == 0 {
+            continue;
+        }
+
+        match best {
+            Some((_, best_score)) if best_score >= score => {}
+            _ => best = Some((session, score)),
         }
     }
 
-    if ambiguous {
-        None
-    } else {
-        best.map(|(candidate, _, pane_id)| (candidate, pane_id))
-    }
+    best.map(|(session, _)| session)
 }
 
 fn read_appended_compaction_boundaries(
@@ -788,6 +782,7 @@ mod tests {
     fn sample_transcript(team_name: &str, jsonl_path: &Path) -> ManagedCodexTranscript {
         ManagedCodexTranscript {
             team_name: team_name.to_string(),
+            member_name: "architect".to_string(),
             session_id: "sess-123".to_string(),
             pane_id: "%217".to_string(),
             project_path: "/home/mstie/projects/taurhaus".to_string(),
@@ -831,12 +826,13 @@ mod tests {
             team_name,
             "architect",
             &crate::coordination::stores::MemberRuntimeRecord {
-                schema_version: 2,
+                schema_version: 3,
                 member_name: "architect".to_string(),
                 cli_tool: Some(CliTool::Codex),
                 project_path: Some(PathBuf::from(project_path)),
                 pane_id: Some(pane_id.to_string()),
                 session_id: Some("sess-123".to_string()),
+                jsonl_path: None,
                 daemon_pid: None,
                 health: crate::coordination::domain::HealthState::Healthy,
                 delivery_lease: None,
@@ -1139,5 +1135,119 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].pane_id, "%217");
         assert_eq!(records[0].session_id, "sess-123");
+    }
+
+    #[test]
+    fn extractor_ignores_same_project_scanner_session_without_matching_runtime_record() {
+        // Regression: commit 8f3ac2a matched Codex transcripts back to teams by project path,
+        // so a second same-project session could be treated as managed even when no runtime
+        // member record owned its pane/session.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let tracked_jsonl_path = tmp.path().join("tracked-session.jsonl");
+        let stray_jsonl_path = tmp.path().join("stray-session.jsonl");
+
+        write_runtime_and_config(
+            &teams_dir,
+            "taurhaus-team",
+            "%217",
+            "/home/mstie/projects/taurhaus",
+        );
+        write_jsonl(
+            &tracked_jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+        write_jsonl(
+            &stray_jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+
+        let tracked_session = RuntimeSession {
+            pid: 42,
+            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%217".to_string()),
+            tmux_window_name: Some("work".to_string()),
+            state: super::super::SessionState::Active,
+            session_id: Some("sess-123".to_string()),
+            jsonl_path: Some(tracked_jsonl_path.display().to_string()),
+            recent_io: true,
+            last_output_age_secs: Some(1),
+            activity_confidence: super::super::ActivityConfidence::High,
+            activity_attribution: super::super::ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: super::super::SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: Some("architect".to_string()),
+        };
+        let stray_session = RuntimeSession {
+            pid: 99,
+            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            tty: "/dev/pts/8".to_string(),
+            args: "codex".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("1".to_string()),
+            tmux_pane: Some("%999".to_string()),
+            tmux_window_name: Some("work-2".to_string()),
+            state: super::super::SessionState::Active,
+            session_id: Some("sess-999".to_string()),
+            jsonl_path: Some(stray_jsonl_path.display().to_string()),
+            recent_io: true,
+            last_output_age_secs: Some(1),
+            activity_confidence: super::super::ActivityConfidence::High,
+            activity_attribution: super::super::ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: super::super::SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: Some("stray".to_string()),
+        };
+
+        extract_compaction_signals_at(
+            &[tracked_session.clone(), stray_session.clone()],
+            &teams_dir,
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                .single()
+                .expect("datetime"),
+        );
+
+        let runtime = MemberRuntimeStore::load(&teams_dir, "taurhaus-team", "architect")
+            .expect("load runtime");
+        assert_eq!(runtime.jsonl_path, Some(tracked_jsonl_path.clone()));
+
+        append_raw(
+            &tracked_jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10Z","type":"compacted"}"#,
+        );
+        append_raw(&tracked_jsonl_path, "\n");
+        append_raw(
+            &stray_jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10Z","type":"compacted"}"#,
+        );
+        append_raw(&stray_jsonl_path, "\n");
+
+        extract_compaction_signals_at(
+            &[tracked_session, stray_session],
+            &teams_dir,
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
+                .single()
+                .expect("datetime"),
+        );
+
+        let records = CompactionSignalLog::read_from_offset(&teams_dir, "taurhaus-team", 0)
+            .expect("read records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].pane_id, "%217");
+        assert_eq!(records[0].session_id, "sess-123");
+        assert_eq!(
+            records[0].jsonl_path,
+            tracked_jsonl_path.display().to_string()
+        );
     }
 }

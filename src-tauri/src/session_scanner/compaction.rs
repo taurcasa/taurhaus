@@ -433,12 +433,13 @@ mod tests {
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save team config");
 
         let runtime = MemberRuntimeRecord {
-            schema_version: 2,
+            schema_version: 3,
             member_name: member.name.clone(),
             cli_tool: Some(member.cli_tool),
             project_path: Some(member.project_path.clone()),
             pane_id: runtime_pane_id.map(ToOwned::to_owned),
             session_id: runtime_session_id.map(ToOwned::to_owned),
+            jsonl_path: None,
             daemon_pid: Some(42),
             health: HealthState::Healthy,
             delivery_lease: None,

@@ -295,6 +295,10 @@ fn resolve_managed_codex_signal(
                 runtime.project_path = Some(member.project_path.clone());
                 changed = true;
             }
+            if runtime.jsonl_path.is_none() {
+                runtime.jsonl_path = Some(signal.jsonl_path.clone().into());
+                changed = true;
+            }
             if changed {
                 let _ = MemberRuntimeStore::save(teams_dir, &team_name, &member.name, &runtime);
             }
@@ -647,12 +651,13 @@ mod tests {
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save team config");
 
         let runtime = MemberRuntimeRecord {
-            schema_version: 2,
+            schema_version: 3,
             member_name: member.name.clone(),
             cli_tool: Some(member.cli_tool),
             project_path: Some(member.project_path.clone()),
             pane_id: runtime_pane_id.map(ToOwned::to_owned),
             session_id: runtime_session_id.map(ToOwned::to_owned),
+            jsonl_path: None,
             daemon_pid: Some(42),
             health: HealthState::Healthy,
             delivery_lease: None,
@@ -734,6 +739,10 @@ mod tests {
             MeshInboxStore::load(&teams_dir, "taurhaus-team", "developer2").expect("load inbox");
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].summary.as_deref(), Some("post_compaction_context"));
+
+        let runtime =
+            MemberRuntimeStore::load(&teams_dir, "taurhaus-team", "developer2").expect("runtime");
+        assert_eq!(runtime.jsonl_path.as_deref(), Some(jsonl_path.as_path()));
     }
 
     #[test]
