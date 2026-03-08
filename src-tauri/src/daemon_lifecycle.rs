@@ -508,6 +508,7 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
     let mut consecutive_failures: u32 = 0;
     let mut restart_attempts: u32 = 0;
     let mut ever_connected = connected_at_startup;
+    let mut recovering = !connected_at_startup;
 
     // Initial delay — let the app finish starting.
     // Short delay when daemon wasn't connected: it was already spawned in setup(),
@@ -521,12 +522,22 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
     std::thread::sleep(initial_delay);
 
     loop {
-        // Use shorter interval while waiting for first connection
-        let interval = if ever_connected {
-            CHECK_INTERVAL
-        } else {
-            FAST_CHECK_INTERVAL
+        // Use shorter interval while waiting for an initial connection or while recovering from
+        // a disconnect so status can clear quickly when the daemon comes back.
+        let connected = {
+            let provider_state = app.state::<ProviderState>();
+            provider_state
+                .daemon
+                .as_ref()
+                .is_some_and(|daemon| daemon.is_connected())
         };
+        let interval = daemon_health_check_interval(
+            connected,
+            ever_connected,
+            recovering,
+            CHECK_INTERVAL,
+            FAST_CHECK_INTERVAL,
+        );
         std::thread::sleep(interval);
 
         let provider_state = app.state::<ProviderState>();
@@ -540,7 +551,14 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                     if consecutive_failures > 0 {
                         tracing::debug!("Daemon health check recovered");
                     }
+                    if recovering {
+                        tracing::info!("Daemon health monitor observed recovered connectivity");
+                        handle_daemon_recovered(&app);
+                        recovering = false;
+                    }
                     consecutive_failures = 0;
+                    restart_attempts = 0;
+                    ever_connected = true;
                 }
                 Err(e) => {
                     consecutive_failures += 1;
@@ -549,12 +567,13 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                         error = %e,
                         "Daemon health check failed"
                     );
-                    if consecutive_failures >= 3 {
+                    if consecutive_failures >= 3 && !recovering {
                         emit_frontend_event(
                             &app,
                             "daemon-status",
                             serde_json::json!({ "status": "disconnected" }),
                         );
+                        recovering = true;
                     }
                 }
             }
@@ -572,11 +591,14 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                 return;
             }
 
-            emit_frontend_event(
-                &app,
-                "daemon-status",
-                serde_json::json!({ "status": "reconnecting" }),
-            );
+            if !recovering {
+                emit_frontend_event(
+                    &app,
+                    "daemon-status",
+                    serde_json::json!({ "status": "reconnecting" }),
+                );
+                recovering = true;
+            }
 
             // Try reconnecting to existing daemon first
             if daemon.reconnect().is_ok() {
@@ -584,18 +606,8 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                 consecutive_failures = 0;
                 restart_attempts = 0;
                 ever_connected = true;
-                respawn_daemon_watches(&app);
-                {
-                    let app_for_reseed = app.clone();
-                    std::thread::spawn(move || {
-                        crate::event_processor::reseed_daemon_watched_git_status(&app_for_reseed);
-                    });
-                }
-                emit_frontend_event(
-                    &app,
-                    "daemon-status",
-                    serde_json::json!({ "status": "connected" }),
-                );
+                handle_daemon_recovered(&app);
+                recovering = false;
                 continue;
             }
 
@@ -618,20 +630,8 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                         consecutive_failures = 0;
                         restart_attempts = 0;
                         ever_connected = true;
-                        respawn_daemon_watches(&app);
-                        {
-                            let app_for_reseed = app.clone();
-                            std::thread::spawn(move || {
-                                crate::event_processor::reseed_daemon_watched_git_status(
-                                    &app_for_reseed,
-                                );
-                            });
-                        }
-                        emit_frontend_event(
-                            &app,
-                            "daemon-status",
-                            serde_json::json!({ "status": "connected" }),
-                        );
+                        handle_daemon_recovered(&app);
+                        recovering = false;
                         continue;
                     }
                 }
@@ -640,6 +640,35 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
             tracing::warn!(attempt = restart_attempts, "Daemon restart attempt failed");
         }
     }
+}
+
+fn daemon_health_check_interval(
+    connected: bool,
+    ever_connected: bool,
+    recovering: bool,
+    normal_interval: std::time::Duration,
+    fast_interval: std::time::Duration,
+) -> std::time::Duration {
+    if !connected || !ever_connected || recovering {
+        fast_interval
+    } else {
+        normal_interval
+    }
+}
+
+fn handle_daemon_recovered(app: &AppHandle) {
+    respawn_daemon_watches(app);
+    {
+        let app_for_reseed = app.clone();
+        std::thread::spawn(move || {
+            crate::event_processor::reseed_daemon_watched_git_status(&app_for_reseed);
+        });
+    }
+    emit_frontend_event(
+        app,
+        "daemon-status",
+        serde_json::json!({ "status": "connected" }),
+    );
 }
 
 /// Bridge daemon-owned session updates into frontend Tauri events.
@@ -925,6 +954,29 @@ mod tests {
         assert_eq!(
             dormant_plan.claude_tasks_dir.as_deref(),
             Some("/home/dev/.claude/tasks")
+        );
+    }
+
+    #[test]
+    fn daemon_health_check_uses_fast_interval_while_recovering_or_disconnected() {
+        let normal = std::time::Duration::from_secs(30);
+        let fast = std::time::Duration::from_secs(2);
+
+        assert_eq!(
+            daemon_health_check_interval(false, true, false, normal, fast),
+            fast
+        );
+        assert_eq!(
+            daemon_health_check_interval(true, false, false, normal, fast),
+            fast
+        );
+        assert_eq!(
+            daemon_health_check_interval(true, true, true, normal, fast),
+            fast
+        );
+        assert_eq!(
+            daemon_health_check_interval(true, true, false, normal, fast),
+            normal
         );
     }
 }

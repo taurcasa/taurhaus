@@ -335,10 +335,10 @@
 
     try {
       const status = await getDaemonStatus()
-      // Only show non-connected states (connected is the happy path, don't clutter)
-      if (status.status !== 'connected') {
-        daemonStatus = status.status
-      }
+      daemonStatus =
+        status.status === 'connected' || status.status === 'not_configured'
+          ? null
+          : status.status
     } catch (error) {
       console.warn('[daemon] status check failed; preserving current status', {
         error_message: errorMessage(error),

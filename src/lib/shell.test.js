@@ -951,14 +951,18 @@ describe('Daemon status filtering', () => {
     ipc = await import('./ipc.js')
   })
 
+  function nextDaemonStatus(currentStatus, nextStatus) {
+    return nextStatus === 'connected' || nextStatus === 'not_configured'
+      ? null
+      : nextStatus ?? currentStatus
+  }
+
   it('suppresses connected status (happy path)', async () => {
     ipc.getDaemonStatus.mockResolvedValue({ status: 'connected' })
 
     let daemonStatus = null
     const status = await ipc.getDaemonStatus()
-    if (status.status !== 'connected') {
-      daemonStatus = status.status
-    }
+    daemonStatus = nextDaemonStatus(daemonStatus, status.status)
 
     expect(daemonStatus).toBeNull()
   })
@@ -968,9 +972,7 @@ describe('Daemon status filtering', () => {
 
     let daemonStatus = null
     const status = await ipc.getDaemonStatus()
-    if (status.status !== 'connected') {
-      daemonStatus = status.status
-    }
+    daemonStatus = nextDaemonStatus(daemonStatus, status.status)
 
     expect(daemonStatus).toBe('disconnected')
   })
@@ -980,11 +982,19 @@ describe('Daemon status filtering', () => {
 
     let daemonStatus = null
     const status = await ipc.getDaemonStatus()
-    if (status.status !== 'connected') {
-      daemonStatus = status.status
-    }
+    daemonStatus = nextDaemonStatus(daemonStatus, status.status)
 
     expect(daemonStatus).toBe('reconnecting')
+  })
+
+  it('clears stale offline status after a later connected probe', async () => {
+    ipc.getDaemonStatus.mockResolvedValue({ status: 'connected' })
+
+    let daemonStatus = 'disconnected'
+    const status = await ipc.getDaemonStatus()
+    daemonStatus = nextDaemonStatus(daemonStatus, status.status)
+
+    expect(daemonStatus).toBeNull()
   })
 
   it('ignores getDaemonStatus errors', async () => {
@@ -993,9 +1003,7 @@ describe('Daemon status filtering', () => {
     let daemonStatus = null
     try {
       const status = await ipc.getDaemonStatus()
-      if (status.status !== 'connected') {
-        daemonStatus = status.status
-      }
+      daemonStatus = nextDaemonStatus(daemonStatus, status.status)
     } catch { /* ignore — not critical */ }
 
     expect(daemonStatus).toBeNull()
