@@ -66,6 +66,7 @@ pub(crate) fn dispatch(
             handle_scan_sessions(&request.id, &request.params, provider)
         }
         protocol::method::LIST_CLAUDE_SESSIONS => handle_list_claude_sessions(&request.id),
+        protocol::method::LIST_RUNTIME_SESSIONS => handle_list_runtime_sessions(&request.id),
         protocol::method::WAIT_SESSION_UPDATES => {
             handle_wait_session_updates(&request.id, &request.params)
         }
@@ -320,6 +321,11 @@ pub(crate) fn handle_list_claude_sessions(id: &str) -> DaemonResponse {
     let sessions = crate::daemon::session_activity::SessionActivityHub::global()
         .snapshot()
         .sessions;
+    DaemonResponse::ok(id, sessions)
+}
+
+pub(crate) fn handle_list_runtime_sessions(id: &str) -> DaemonResponse {
+    let sessions = crate::session_scanner::scan_sessions_for_runtime();
     DaemonResponse::ok(id, sessions)
 }
 

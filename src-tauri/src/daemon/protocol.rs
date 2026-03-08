@@ -77,6 +77,7 @@ pub mod method {
     pub const READ_ASSET: &str = "read_asset";
     pub const LIST_DIRECTORY: &str = "list_directory";
     pub const SCAN_SESSIONS: &str = "scan_sessions";
+    pub const LIST_RUNTIME_SESSIONS: &str = "list_runtime_sessions";
     pub const WATCH: &str = "watch";
     pub const UNWATCH: &str = "unwatch";
     pub const SHUTDOWN: &str = "shutdown";

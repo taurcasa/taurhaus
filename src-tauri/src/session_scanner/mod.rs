@@ -180,19 +180,16 @@ fn decode_daemon_session_response(
 }
 
 #[cfg(target_os = "windows")]
-fn scan_sessions_via_daemon_snapshot() -> Option<Vec<ClaudeSession>> {
+fn scan_sessions_via_daemon(method: &str) -> Option<Vec<ClaudeSession>> {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
 
     const DAEMON_ADDR: &str = "127.0.0.1:17233";
     const DAEMON_TIMEOUT: Duration = Duration::from_millis(500);
 
-    let request = crate::daemon::protocol::DaemonRequest::new(
-        "windows-session-scan",
-        crate::daemon::protocol::method::LIST_CLAUDE_SESSIONS,
-        Value::Null,
-    )
-    .with_auth(crate::daemon::auth::read_auth_token());
+    let request =
+        crate::daemon::protocol::DaemonRequest::new("windows-session-scan", method, Value::Null)
+            .with_auth(crate::daemon::auth::read_auth_token());
 
     let mut stream = TcpStream::connect(DAEMON_ADDR).ok()?;
     stream.set_nodelay(true).ok()?;
@@ -213,6 +210,16 @@ fn scan_sessions_via_daemon_snapshot() -> Option<Vec<ClaudeSession>> {
 
     let response = serde_json::from_str(&line).ok()?;
     decode_daemon_session_response(response)
+}
+
+#[cfg(target_os = "windows")]
+fn scan_sessions_via_daemon_snapshot() -> Option<Vec<ClaudeSession>> {
+    scan_sessions_via_daemon(crate::daemon::protocol::method::LIST_CLAUDE_SESSIONS)
+}
+
+#[cfg(target_os = "windows")]
+fn scan_runtime_sessions_via_daemon() -> Option<Vec<ClaudeSession>> {
+    scan_sessions_via_daemon(crate::daemon::protocol::method::LIST_RUNTIME_SESSIONS)
 }
 
 /// Notify scanner cache that tmux layout metadata likely changed.
@@ -645,7 +652,7 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
 /// even when activity attribution is ambiguous in multi-session projects.
 pub fn scan_sessions_for_runtime() -> Vec<ClaudeSession> {
     #[cfg(target_os = "windows")]
-    if let Some(sessions) = scan_sessions_via_daemon_snapshot() {
+    if let Some(sessions) = scan_runtime_sessions_via_daemon() {
         return sessions;
     }
 

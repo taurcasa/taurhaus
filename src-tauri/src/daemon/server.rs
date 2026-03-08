@@ -868,6 +868,7 @@ mod tests {
             protocol::method::READ_ASSET,
             protocol::method::SCAN_SESSIONS,
             protocol::method::LIST_CLAUDE_SESSIONS,
+            protocol::method::LIST_RUNTIME_SESSIONS,
             protocol::method::WAIT_SESSION_UPDATES,
             protocol::method::LAUNCH_SESSION,
             protocol::method::STOP_SESSION,
