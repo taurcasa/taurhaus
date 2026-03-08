@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::provider::daemon_client::DaemonProvider;
+use crate::provider::path;
 use serde_json::{Map, Value};
 
 fn blog(log_path: &Path, msg: &str) {
@@ -283,12 +284,15 @@ fn try_start_daemon_native(
         &format!("Spawning: {binary_path} --port {port} (native daemon)"),
     );
 
-    let child = std::process::Command::new(binary_path)
-        .args(["--port", &port.to_string()])
+    let mut cmd = std::process::Command::new(binary_path);
+    cmd.args(["--port", &port.to_string()])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+        .stderr(std::process::Stdio::null());
+    if let Some(data_dir) = daemon_data_dir_env_value(log_path) {
+        cmd.env("TAURHAUS_DATA_DIR", data_dir);
+    }
+    let child = cmd.spawn();
 
     match child {
         Ok(_child) => {
@@ -355,12 +359,18 @@ fn try_start_daemon_wsl(
         ),
     );
 
-    let child = wsl_command()
-        .args(["-d", distro, "--", binary_path, "--port", &port.to_string()])
+    let mut cmd = wsl_command();
+    cmd.arg("-d").arg(distro).arg("--");
+    if let Some(data_dir) = daemon_data_dir_env_value_for_launch(log_path, false) {
+        cmd.arg("env").arg(format!("TAURHAUS_DATA_DIR={data_dir}"));
+    }
+    cmd.arg(binary_path)
+        .arg("--port")
+        .arg(port.to_string())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+        .stderr(std::process::Stdio::null());
+    let child = cmd.spawn();
 
     match child {
         Ok(_child) => {
@@ -386,6 +396,32 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
         }
         std::thread::sleep(POLL_INTERVAL);
     }
+}
+
+fn daemon_data_dir_env_value(log_path: &Path) -> Option<String> {
+    daemon_data_dir_env_value_for_launch(log_path, is_native_daemon())
+}
+
+fn daemon_data_dir_env_value_for_launch(log_path: &Path, daemon_is_native: bool) -> Option<String> {
+    let raw = daemon_data_dir_raw(log_path)?;
+    if daemon_is_native {
+        return Some(raw);
+    }
+    path::to_linux(&raw).or(Some(raw))
+}
+
+fn daemon_data_dir_raw(log_path: &Path) -> Option<String> {
+    if let Some(parent) = log_path.parent() {
+        let value = parent.to_string_lossy().to_string();
+        if !value.is_empty() {
+            return Some(value);
+        }
+    }
+
+    let raw = log_path.to_string_lossy();
+    raw.strip_suffix("\\taurhaus.log.jsonl")
+        .or_else(|| raw.strip_suffix("/taurhaus.log.jsonl"))
+        .map(|value| value.to_string())
 }
 
 /// Ensure the taurhaus tmux session exists.
@@ -775,6 +811,24 @@ mod tests {
         assert!(
             !path.as_os_str().is_empty(),
             "Health check log path should not be empty"
+        );
+    }
+
+    #[test]
+    fn daemon_data_dir_env_value_uses_parent_dir_for_native_launch() {
+        let log_path = PathBuf::from("/tmp/taurhaus/taurhaus.log.jsonl");
+        let resolved = daemon_data_dir_env_value_for_launch(&log_path, true);
+        assert_eq!(resolved, Some("/tmp/taurhaus".to_string()));
+    }
+
+    #[test]
+    fn daemon_data_dir_env_value_converts_windows_path_for_wsl_launch() {
+        let log_path =
+            PathBuf::from(r"C:\Users\me\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl");
+        let resolved = daemon_data_dir_env_value_for_launch(&log_path, false);
+        assert_eq!(
+            resolved,
+            Some("/mnt/c/Users/me/AppData/Roaming/com.taurhaus.dev".to_string())
         );
     }
 }

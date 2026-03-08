@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use taurhaus_lib::daemon::server::{DaemonConfig, DEFAULT_PORT};
+use taurhaus_lib::logging::{install_global_sink, LogFileState};
 use taurhaus_lib::provider::local::LocalProvider;
+use taurhaus_lib::provider::platform_paths::PlatformPaths;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -26,6 +28,12 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
         .init();
+
+    let log_state = LogFileState::new(PlatformPaths::log_path()).unwrap_or_else(|error| {
+        tracing::error!(error = %error, "Failed to initialize daemon structured log sink");
+        std::process::exit(1);
+    });
+    install_global_sink(&log_state);
 
     // Prevent auth-token desync:
     // if another daemon instance already owns the port, don't rotate token.

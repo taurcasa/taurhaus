@@ -58,6 +58,8 @@ pub fn run(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
+    crate::daemon::session_activity::SessionActivityHub::global();
+
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
     // it there can permit duplicate listeners on the same port.
@@ -482,6 +484,35 @@ mod tests {
         assert_eq!(result.version, env!("CARGO_PKG_VERSION"));
 
         server.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn server_start_eagerly_emits_session_scan_cycles() {
+        let log_dir = tempfile::TempDir::new().expect("tempdir");
+        let log_path = log_dir.path().join("taurhaus.log.jsonl");
+        let log_state =
+            crate::commands::logging::LogFileState::new(log_path.clone()).expect("log state");
+        crate::commands::logging::install_global_sink(&log_state);
+
+        let server = start_test_server();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let mut observed = false;
+
+        while std::time::Instant::now() < deadline {
+            if let Ok(contents) = std::fs::read_to_string(&log_path) {
+                if contents.contains("\"event\":\"session_scanner.scan.completed\"") {
+                    observed = true;
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
+        server.shutdown.store(true, Ordering::Relaxed);
+        assert!(
+            observed,
+            "daemon should emit session_scanner.scan.completed without waiting for a client request"
+        );
     }
 
     #[test]
