@@ -1,6 +1,5 @@
 //! Downstream compaction processing from canonical signal records.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
@@ -11,12 +10,13 @@ use crate::coordination::compaction_events::{
 };
 use crate::coordination::domain::Member;
 use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
+use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_stale_compaction,
     CompactionDeliveryResult, CompactionSignalKind, CompactionSignalRecord, MemberCompactionState,
-    MemberCompactionStore, MemberRuntimeRecord, MemberRuntimeStore, MeshInboxMessage,
-    MeshInboxStore, OperationalContextSnapshot, OperationalContextSnapshotStore, TeamConfigStore,
+    MemberCompactionStore, MemberRuntimeStore, MeshInboxMessage, MeshInboxStore,
+    OperationalContextSnapshot, OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
@@ -257,57 +257,26 @@ fn resolve_managed_codex_signal(
     let mut ambiguous = false;
 
     for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
+        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+            Ok(roster) => roster,
             Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while resolving compaction signal");
-                continue;
-            }
-        };
-        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
-            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
-            Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team runtime while resolving compaction signal");
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team roster while resolving compaction signal");
                 continue;
             }
         };
 
-        for member in config.members {
-            if member.cli_tool != CliTool::Codex {
+        for member in &roster {
+            if member.configured_cli_tool != CliTool::Codex {
                 continue;
             }
-            if normalize_project_path(&member.project_path.display().to_string())
+            if normalize_project_path(&member.configured_project_path.display().to_string())
                 != normalized_project
             {
                 continue;
             }
 
-            let Some(mut runtime) = runtime_by_member.get(&member.name).cloned() else {
-                continue;
-            };
-
-            let mut changed = false;
-            if runtime.cli_tool.is_none() {
-                runtime.cli_tool = Some(member.cli_tool);
-                changed = true;
-            }
-            if runtime.project_path.is_none() {
-                runtime.project_path = Some(member.project_path.clone());
-                changed = true;
-            }
-            if runtime.jsonl_path.is_none() {
-                runtime.jsonl_path = Some(signal.jsonl_path.clone().into());
-                changed = true;
-            }
-            if changed {
-                let _ = MemberRuntimeStore::save(teams_dir, &team_name, &member.name, &runtime);
-            }
-
-            let runtime_session = runtime.session_id.as_deref();
-            let runtime_pane = runtime.pane_id.as_deref();
-            let pane_matches = runtime_pane == Some(signal.pane_id.as_str());
-            let session_matches = runtime_session == Some(signal.session_id.as_str());
-
+            let pane_matches = member.pane_id.as_deref() == Some(signal.pane_id.as_str());
+            let session_matches = member.session_id.as_deref() == Some(signal.session_id.as_str());
             let score = match (session_matches, pane_matches) {
                 (true, true) => 4,
                 (true, false) => 3,
@@ -318,34 +287,62 @@ fn resolve_managed_codex_signal(
                 continue;
             }
 
-            let snapshot =
-                match OperationalContextSnapshotStore::load(teams_dir, &team_name, &member.name) {
-                    Ok(Some(snapshot)) => snapshot,
-                    Ok(None) => continue,
-                    Err(error) => {
-                        tracing::warn!(
-                            team_name = team_name,
-                            member_name = member.name,
-                            error = %error,
-                            "failed to load operational snapshot while resolving compaction signal"
-                        );
-                        continue;
-                    }
-                };
+            let Some(mut runtime) = member.runtime_record() else {
+                continue;
+            };
+
+            let mut changed = false;
+            if runtime.cli_tool.is_none() {
+                runtime.cli_tool = Some(member.configured_cli_tool);
+                changed = true;
+            }
+            if runtime.project_path.is_none() {
+                runtime.project_path = Some(member.configured_project_path.clone());
+                changed = true;
+            }
+            if runtime.jsonl_path.is_none() {
+                runtime.jsonl_path = Some(signal.jsonl_path.clone().into());
+                changed = true;
+            }
+            if changed {
+                let _ =
+                    MemberRuntimeStore::save(teams_dir, &team_name, &member.member_name, &runtime);
+            }
+
+            let snapshot = match OperationalContextSnapshotStore::load(
+                teams_dir,
+                &team_name,
+                &member.member_name,
+            ) {
+                Ok(Some(snapshot)) => snapshot,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        team_name = team_name,
+                        member_name = member.member_name,
+                        error = %error,
+                        "failed to load operational snapshot while resolving compaction signal"
+                    );
+                    continue;
+                }
+            };
 
             let resolved = ResolvedManagedCodexSignal {
                 team_name: team_name.clone(),
-                member_name: member.name.clone(),
-                member,
+                member_name: member.member_name.clone(),
+                member: member.configured_member(),
                 snapshot,
             };
 
-            let candidate_activity = latest_runtime_activity(&runtime);
-            let best_activity = best_match.as_ref().and_then(|current| {
-                runtime_by_member
-                    .get(&current.member_name)
-                    .and_then(latest_runtime_activity)
-            });
+            let candidate_activity = member.latest_runtime_activity();
+            let best_activity = best_match
+                .as_ref()
+                .and_then(|current| {
+                    roster
+                        .iter()
+                        .find(|view| view.member_name == current.member_name)
+                })
+                .and_then(|view| view.latest_runtime_activity());
 
             if score > best_score {
                 best_score = score;
@@ -369,10 +366,6 @@ fn resolve_managed_codex_signal(
     } else {
         best_match
     }
-}
-
-fn latest_runtime_activity(record: &MemberRuntimeRecord) -> Option<DateTime<Utc>> {
-    record.last_seen_at.or(record.attached_at)
 }
 
 fn already_handled(
@@ -405,46 +398,32 @@ fn member_is_still_attached(
     signal: &CompactionSignalRecord,
     resolved: &ResolvedManagedCodexSignal,
 ) -> bool {
-    let config = match TeamConfigStore::load(teams_dir, &resolved.team_name) {
-        Ok(config) => config,
+    let roster = match get_team_roster_with_attachments(teams_dir, &resolved.team_name) {
+        Ok(roster) => roster,
         Err(error) => {
             tracing::warn!(
                 team_name = resolved.team_name,
                 member_name = resolved.member_name,
                 error = %error,
-                "failed to load team config while validating compaction signal delivery"
+                "failed to load team roster while validating compaction signal delivery"
             );
             return false;
         }
     };
 
-    let Some(member) = config
-        .members
+    let Some(member) = roster
         .iter()
-        .find(|member| member.name == resolved.member_name)
+        .find(|member| member.member_name == resolved.member_name)
     else {
         return false;
     };
 
-    if member.cli_tool != CliTool::Codex {
+    if member.configured_cli_tool != CliTool::Codex {
         return false;
     }
 
-    match MemberRuntimeStore::load(teams_dir, &resolved.team_name, &resolved.member_name) {
-        Ok(runtime) => {
-            runtime.pane_id.as_deref() == Some(signal.pane_id.as_str())
-                && runtime.session_id.as_deref() == Some(signal.session_id.as_str())
-        }
-        Err(error) => {
-            tracing::warn!(
-                team_name = resolved.team_name,
-                member_name = resolved.member_name,
-                error = %error,
-                "failed to load runtime while validating compaction signal delivery"
-            );
-            false
-        }
-    }
+    member.pane_id.as_deref() == Some(signal.pane_id.as_str())
+        && member.session_id.as_deref() == Some(signal.session_id.as_str())
 }
 
 fn jsonl_prompt_boundary_is_unchanged(signal: &CompactionSignalRecord) -> bool {
@@ -820,20 +799,41 @@ mod tests {
         let project_path = "/home/mstie/projects/taurhaus";
         let pane_match = sample_member("pane-match", project_path);
         let other_match = sample_member("other-match", project_path);
-        save_team_fixture(
+        TeamConfigStore::save(
             &teams_dir,
             "taurhaus-team",
-            &pane_match,
-            Some("session-1"),
-            Some("%7"),
-        );
-        save_team_fixture(
-            &teams_dir,
-            "taurhaus-team",
-            &other_match,
-            Some("session-1"),
-            Some("%9"),
-        );
+            &TeamConfig {
+                schema_version: 1,
+                name: "taurhaus-team".to_string(),
+                description: None,
+                created_at: timestamp("2026-03-08T14:00:00Z"),
+                members: vec![pane_match.clone(), other_match.clone()],
+            },
+        )
+        .expect("save team config");
+        for (member, pane_id) in [(&pane_match, "%7"), (&other_match, "%9")] {
+            let runtime = MemberRuntimeRecord {
+                schema_version: 3,
+                member_name: member.name.clone(),
+                cli_tool: Some(member.cli_tool),
+                project_path: Some(member.project_path.clone()),
+                pane_id: Some(pane_id.to_string()),
+                session_id: Some("session-1".to_string()),
+                jsonl_path: None,
+                daemon_pid: Some(42),
+                health: HealthState::Healthy,
+                delivery_lease: None,
+                attached_at: Some(timestamp("2026-03-08T14:01:00Z")),
+                last_seen_at: Some(timestamp("2026-03-08T14:02:00Z")),
+            };
+            MemberRuntimeStore::save(&teams_dir, "taurhaus-team", &member.name, &runtime)
+                .expect("save runtime");
+            OperationalContextSnapshotStore::save(
+                &teams_dir,
+                &sample_snapshot("taurhaus-team", &member.name, project_path),
+            )
+            .expect("save snapshot");
+        }
         let jsonl_path = tmp.path().join("session.jsonl");
         std::fs::write(&jsonl_path, "{\"line\":1}\n").expect("jsonl");
         let signal = sample_signal(project_path, &jsonl_path, "session-1", "%7");

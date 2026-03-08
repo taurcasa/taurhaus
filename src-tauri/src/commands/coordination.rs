@@ -26,6 +26,7 @@ use crate::coordination::operational_context::{sync_member_snapshot, sync_team_s
 use crate::coordination::requests::{
     self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
 };
+use crate::coordination::roster::{get_team_roster_with_attachments, TeamMemberView};
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{inspect_signal_log_at, MemberCompactionStore, TeamConfigStore};
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
@@ -566,66 +567,22 @@ fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
-    let status = state
+    state
         .with_orchestrator(|orchestrator| {
-            orchestrator.reconcile_team_presence_for_live_status(&team_name)?;
-            orchestrator.get_team_status_fast(&team_name)
+            orchestrator.reconcile_team_presence_for_live_status(&team_name)
         })
         .map_err(map_coordination_error)?;
-
-    let runtime_by_member = status
-        .members_runtime
+    let roster = get_team_roster_with_attachments(state.teams_dir(), &team_name)
+        .map_err(map_coordination_error)?;
+    let lead_name = roster_lead_name(&roster);
+    let lead_project_path = roster_lead_project_path(&roster);
+    let members = roster
         .into_iter()
-        .collect::<HashMap<_, _>>();
-
-    let lead_member = status
-        .config
-        .members
-        .iter()
-        .find(|member| member.role == MemberRole::Lead)
-        .or_else(|| status.config.members.first());
-    let lead_name = lead_member
-        .map(|member| member.name.clone())
-        .unwrap_or_default();
-    let lead_project_path = lead_member.map(|member| member.project_path.clone());
-
-    let members = status
-        .config
-        .members
-        .into_iter()
-        .map(|member| {
-            let runtime = runtime_by_member.get(&member.name);
-            let cross_project = member_cross_project_status(
-                lead_project_path.as_deref(),
-                member.project_path.as_path(),
-            );
-            LiveAgentStatus {
-                name: member.name,
-                role: match member.role {
-                    MemberRole::Lead => AgentRole::Lead,
-                    MemberRole::Agent => AgentRole::Member,
-                },
-                cli_tool: member.cli_tool.to_string(),
-                model: String::new(),
-                role_id: member.role_id,
-                role_name: member.role_name,
-                focus_area: member.focus_area,
-                context_summary: member.context_summary,
-                behavior_summary: member.behavior_summary,
-                project_id: member.project_path.display().to_string(),
-                is_cross_project: cross_project.is_cross_project,
-                project_label: cross_project.project_label,
-                description: member.instructions,
-                session_status: runtime
-                    .map(|entry| session_status_from_health(entry.health))
-                    .unwrap_or(SessionStatus::Offline),
-                pane_id: runtime.and_then(|entry| entry.pane_id.clone()),
-            }
-        })
+        .map(|member| live_agent_status_from_roster(member, lead_project_path.as_deref()))
         .collect();
 
     Ok(LiveTeamStatus {
-        team_name: status.config.name,
+        team_name,
         lead_name,
         members,
     })
@@ -971,8 +928,7 @@ fn coordination_get_project_mesh_snapshot_with_availability(
 
     let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
         Some(
-            state
-                .with_orchestrator(|orchestrator| orchestrator.get_team_status_fast(team_name))
+            get_team_roster_with_attachments(state.teams_dir(), team_name)
                 .map(map_fast_team_snapshot)
                 .map_err(map_coordination_error)?,
         )
@@ -1631,60 +1587,93 @@ fn discover_team_for_project_path(
     })
 }
 
-fn map_fast_team_snapshot(
-    status: crate::coordination::orchestrator::TeamStatus,
-) -> FastTeamSnapshot {
-    let runtime_by_member = status
-        .members_runtime
+fn map_fast_team_snapshot(roster: Vec<TeamMemberView>) -> FastTeamSnapshot {
+    let lead_name = roster_lead_name(&roster);
+    let lead_project_path = roster_lead_project_path(&roster);
+    let members = roster
         .into_iter()
-        .collect::<HashMap<_, _>>();
-
-    let lead_member = status
-        .config
-        .members
-        .iter()
-        .find(|member| member.role == MemberRole::Lead)
-        .or_else(|| status.config.members.first());
-    let lead_name = lead_member
-        .map(|member| member.name.clone())
-        .unwrap_or_default();
-    let lead_project_path = lead_member.map(|member| member.project_path.clone());
-
-    let members = status
-        .config
-        .members
-        .into_iter()
-        .map(|member| {
-            let runtime = runtime_by_member.get(&member.name);
-            let cross_project = member_cross_project_status(
-                lead_project_path.as_deref(),
-                member.project_path.as_path(),
-            );
-            FastAgentSnapshot {
-                name: member.name,
-                role: match member.role {
-                    MemberRole::Lead => AgentRole::Lead,
-                    MemberRole::Agent => AgentRole::Member,
-                },
-                cli_tool: member.cli_tool.to_string(),
-                role_id: member.role_id,
-                role_name: member.role_name,
-                focus_area: member.focus_area,
-                context_summary: member.context_summary,
-                behavior_summary: member.behavior_summary,
-                project_id: member.project_path.display().to_string(),
-                is_cross_project: cross_project.is_cross_project,
-                project_label: cross_project.project_label,
-                description: member.instructions,
-                session_status: runtime
-                    .map(|entry| session_status_from_health(entry.health))
-                    .unwrap_or(SessionStatus::Offline),
-                pane_id: runtime.and_then(|entry| entry.pane_id.clone()),
-            }
-        })
+        .map(|member| fast_agent_snapshot_from_roster(member, lead_project_path.as_deref()))
         .collect();
 
     FastTeamSnapshot { lead_name, members }
+}
+
+fn roster_lead_name(roster: &[TeamMemberView]) -> String {
+    roster
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+        .or_else(|| roster.first())
+        .map(|member| member.member_name.clone())
+        .unwrap_or_default()
+}
+
+fn roster_lead_project_path(roster: &[TeamMemberView]) -> Option<PathBuf> {
+    roster
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+        .or_else(|| roster.first())
+        .map(|member| member.configured_project_path.clone())
+}
+
+fn live_agent_status_from_roster(
+    member: TeamMemberView,
+    lead_project_path: Option<&Path>,
+) -> LiveAgentStatus {
+    let cross_project =
+        member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
+    LiveAgentStatus {
+        name: member.member_name,
+        role: match member.role {
+            MemberRole::Lead => AgentRole::Lead,
+            MemberRole::Agent => AgentRole::Member,
+        },
+        cli_tool: member.configured_cli_tool.to_string(),
+        model: String::new(),
+        role_id: member.role_id,
+        role_name: member.role_name,
+        focus_area: member.focus_area,
+        context_summary: member.context_summary,
+        behavior_summary: member.behavior_summary,
+        project_id: member.configured_project_path.display().to_string(),
+        is_cross_project: cross_project.is_cross_project,
+        project_label: cross_project.project_label,
+        description: member.instructions,
+        session_status: member
+            .attached_health
+            .map(session_status_from_health)
+            .unwrap_or(SessionStatus::Offline),
+        pane_id: member.pane_id,
+    }
+}
+
+fn fast_agent_snapshot_from_roster(
+    member: TeamMemberView,
+    lead_project_path: Option<&Path>,
+) -> FastAgentSnapshot {
+    let cross_project =
+        member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
+    FastAgentSnapshot {
+        name: member.member_name,
+        role: match member.role {
+            MemberRole::Lead => AgentRole::Lead,
+            MemberRole::Agent => AgentRole::Member,
+        },
+        cli_tool: member.configured_cli_tool.to_string(),
+        role_id: member.role_id,
+        role_name: member.role_name,
+        focus_area: member.focus_area,
+        context_summary: member.context_summary,
+        behavior_summary: member.behavior_summary,
+        project_id: member.configured_project_path.display().to_string(),
+        is_cross_project: cross_project.is_cross_project,
+        project_label: cross_project.project_label,
+        description: member.instructions,
+        session_status: member
+            .attached_health
+            .map(session_status_from_health)
+            .unwrap_or(SessionStatus::Offline),
+        pane_id: member.pane_id,
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

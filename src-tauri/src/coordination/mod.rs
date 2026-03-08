@@ -19,6 +19,7 @@ pub mod pipelines;
 pub mod reconcile;
 pub mod reinjection;
 pub mod requests;
+pub mod roster;
 pub mod runtime;
 pub mod stall_detector;
 pub mod state;

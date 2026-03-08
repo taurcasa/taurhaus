@@ -5,8 +5,9 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::TeamConfigStore;
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
@@ -135,51 +136,36 @@ pub(crate) fn export_activity_snapshots_for_sessions(
     let runtime = SystemCoordinationRuntime;
 
     for team_name in team_names {
-        let runtime_records = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
-            Ok(records) => records,
+        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+            Ok(roster) => roster,
             Err(error) => {
                 tracing::warn!(
                     team_name = %team_name,
                     error = %error,
-                    "failed to load runtime records for activity snapshot export"
+                    "failed to load team roster for activity snapshot export"
                 );
                 continue;
             }
         };
-        if runtime_records.is_empty() {
+        if !roster.iter().any(|member| member.has_runtime_record) {
             continue;
         }
 
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
-            Err(error) => {
-                tracing::warn!(
-                    team_name = %team_name,
-                    error = %error,
-                    "failed to load team config for activity snapshot export"
-                );
-                continue;
-            }
-        };
-
-        let expected_members: HashSet<String> = config
-            .members
-            .into_iter()
-            .map(|member| member.name)
+        let expected_members: HashSet<String> = roster
+            .iter()
+            .map(|member| member.member_name.clone())
             .filter(|name| !name.trim().is_empty())
             .collect();
         if expected_members.is_empty() {
             continue;
         }
-        let runtime_by_member = runtime_records.into_iter().collect::<HashMap<_, _>>();
 
         stats.teams_exported += 1;
-        for member_name in &expected_members {
+        for member in &roster {
+            let member_name = &member.member_name;
             let pane_probe = probe_member_pane_state(
                 &runtime,
-                runtime_by_member
-                    .get(member_name)
-                    .and_then(|record| record.pane_id.as_deref()),
+                member.pane_id.as_deref(),
                 &team_name,
                 member_name,
             );
@@ -253,45 +239,32 @@ fn load_session_memberships(
     let mut memberships: HashMap<_, Vec<SessionMembershipMetadata>> = HashMap::new();
 
     for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
+        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+            Ok(roster) => roster,
             Err(error) => {
                 tracing::warn!(
                     team_name = %team_name,
                     error = %error,
-                    "failed to load team config while enriching session metadata"
+                    "failed to load team roster while enriching session metadata"
                 );
                 continue;
             }
         };
-        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
-            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
-            Err(error) => {
-                tracing::warn!(
-                    team_name = %team_name,
-                    error = %error,
-                    "failed to load runtime records while enriching session metadata"
-                );
-                HashMap::new()
-            }
-        };
 
-        for member in config.members {
+        for member in roster {
             let key = (
-                normalize_project_path(&member.project_path.display().to_string()),
-                member.cli_tool,
+                normalize_project_path(&member.configured_project_path.display().to_string()),
+                member.configured_cli_tool,
             );
 
             memberships
                 .entry(key)
                 .or_default()
                 .push(SessionMembershipMetadata {
-                    group_id: config.name.clone(),
-                    group_label: config.name.clone(),
-                    member_name: member.name.clone(),
-                    pane_id: runtime_by_member
-                        .get(&member.name)
-                        .and_then(|runtime| runtime.pane_id.clone()),
+                    group_id: team_name.clone(),
+                    group_label: team_name.clone(),
+                    member_name: member.member_name.clone(),
+                    pane_id: member.pane_id.clone(),
                 });
         }
     }
@@ -608,6 +581,7 @@ mod tests {
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::stores::config::TeamConfig;
     use crate::coordination::stores::runtime::MemberRuntimeRecord;
+    use crate::coordination::stores::MemberRuntimeStore;
     use crate::session_scanner::ActivityAttribution;
     use crate::session_scanner::ActivityConfidence;
 

@@ -1,6 +1,6 @@
 //! Event-oriented Codex compaction signal extractor.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -21,6 +21,7 @@ use crate::coordination::compaction_events::{
     CompactionExtractorHeartbeatEvent, CompactionSignalEvent,
 };
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::stores::{
     CompactionSignalKind, CompactionSignalLog, CompactionSignalRecord, MemberRuntimeStore,
     TeamConfigStore,
@@ -420,47 +421,36 @@ fn load_managed_codex_transcripts_from_runtime(teams_dir: &Path) -> Vec<ManagedC
 
     let mut transcripts = Vec::new();
     for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
+        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+            Ok(roster) => roster,
             Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while loading compaction runtime transcripts");
-                continue;
-            }
-        };
-        let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, &team_name) {
-            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
-            Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team runtime while loading compaction runtime transcripts");
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team roster while loading compaction runtime transcripts");
                 continue;
             }
         };
 
-        for member in config
-            .members
+        for member in roster
             .into_iter()
-            .filter(|member| member.cli_tool == CliTool::Codex)
+            .filter(|member| member.configured_cli_tool == CliTool::Codex)
         {
-            let Some(runtime) = runtime_by_member.get(&member.name) else {
+            let Some(session_id) = member.session_id.clone() else {
                 continue;
             };
-            let Some(session_id) = runtime.session_id.clone() else {
+            let Some(pane_id) = member.pane_id.clone() else {
                 continue;
             };
-            let Some(pane_id) = runtime.pane_id.clone() else {
+            let Some(jsonl_path) = member.jsonl_path.clone() else {
                 continue;
             };
-            let Some(jsonl_path) = runtime.jsonl_path.clone() else {
-                continue;
-            };
-            let project_path = runtime
-                .project_path
+            let project_path = member
+                .attached_project_path
                 .as_ref()
-                .unwrap_or(&member.project_path)
+                .unwrap_or(&member.configured_project_path)
                 .display()
                 .to_string();
             transcripts.push(ManagedCodexTranscript {
                 team_name: team_name.clone(),
-                member_name: member.name,
+                member_name: member.member_name,
                 session_id,
                 pane_id,
                 project_path,
@@ -489,28 +479,21 @@ fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir
     };
 
     for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
-            Ok(config) => config,
+        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+            Ok(roster) => roster,
             Err(error) => {
-                tracing::warn!(team_name = team_name, error = %error, "failed to load team config while syncing compaction runtime jsonl paths");
+                tracing::warn!(team_name = team_name, error = %error, "failed to load team roster while syncing compaction runtime jsonl paths");
                 continue;
             }
         };
 
-        for member in config
-            .members
+        for member in roster
             .into_iter()
-            .filter(|member| member.cli_tool == CliTool::Codex)
+            .filter(|member| member.configured_cli_tool == CliTool::Codex)
         {
-            let mut runtime = match MemberRuntimeStore::load(teams_dir, &team_name, &member.name) {
-                Ok(runtime) => runtime,
-                Err(CoordinationError::NotFound(_)) => continue,
-                Err(error) => {
-                    tracing::warn!(team_name = team_name, member_name = member.name, error = %error, "failed to load member runtime while syncing compaction runtime jsonl paths");
-                    continue;
-                }
+            let Some(mut runtime) = member.runtime_record() else {
+                continue;
             };
-
             let matched_jsonl_path = select_runtime_session_for_member(&runtime, &codex_sessions)
                 .and_then(|session| session.jsonl_path.as_deref())
                 .map(PathBuf::from);
@@ -519,9 +502,9 @@ fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir
             }
             runtime.jsonl_path = matched_jsonl_path;
             if let Err(error) =
-                MemberRuntimeStore::save(teams_dir, &team_name, &member.name, &runtime)
+                MemberRuntimeStore::save(teams_dir, &team_name, &member.member_name, &runtime)
             {
-                tracing::warn!(team_name = team_name, member_name = member.name, error = %error, "failed to persist compaction runtime jsonl path");
+                tracing::warn!(team_name = team_name, member_name = member.member_name, error = %error, "failed to persist compaction runtime jsonl path");
             }
         }
     }

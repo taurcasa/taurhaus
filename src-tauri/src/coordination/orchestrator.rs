@@ -19,6 +19,7 @@ use crate::coordination::requests::{
     DeliveryMethod, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, ResumeMemberRequest,
     ResumeTeamMemberFailure, ResumeTeamReport, TeardownMode, TeardownRequest,
 };
+use crate::coordination::roster::{get_team_roster_with_attachments, TeamMemberView};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
     DiscoveredTeam, MemberRuntimeRecord, MemberRuntimeStore, TeamConfig, TeamConfigStore,
@@ -168,8 +169,8 @@ impl CoordinationOrchestrator {
         reason: Option<String>,
     ) -> Result<DisbandTeamResult, CoordinationError> {
         validate_team_name(name)?;
-        let config = match TeamConfigStore::load(&self.teams_dir, name) {
-            Ok(config) => config,
+        match TeamConfigStore::load(&self.teams_dir, name) {
+            Ok(_) => {}
             Err(CoordinationError::NotFound(_)) => {
                 return Ok(DisbandTeamResult {
                     team_name: name.to_string(),
@@ -178,28 +179,30 @@ impl CoordinationOrchestrator {
                 });
             }
             Err(err) => return Err(err),
-        };
+        }
 
-        let runtime_by_member = match MemberRuntimeStore::load_all(&self.teams_dir, name) {
-            Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
+        let roster = match get_team_roster_with_attachments(&self.teams_dir, name) {
+            Ok(roster) => roster,
             Err(err) => {
                 tracing::warn!(
                     team = %name,
                     error = %err,
-                    "failed to load runtime records during disband teardown"
+                    "failed to load team roster during disband teardown"
                 );
-                HashMap::new()
+                Vec::new()
             }
         };
 
-        for member in config.members.iter().filter(|member| {
-            should_teardown_member_on_team_cleanup(member, runtime_by_member.get(&member.name))
-        }) {
+        for member in roster
+            .iter()
+            .filter(|member| should_teardown_member_on_team_cleanup(member))
+        {
+            let runtime = member.runtime_record();
             self.teardown_member_resources_best_effort(
                 name,
-                &member.name,
-                Some(member.project_path.as_path()),
-                runtime_by_member.get(&member.name),
+                &member.member_name,
+                Some(member.configured_project_path.as_path()),
+                runtime.as_ref(),
             );
         }
 
@@ -1534,19 +1537,16 @@ fn discovered_team_to_status(team: DiscoveredTeam) -> DiscoveredTeamStatus {
     }
 }
 
-fn should_teardown_member_on_team_cleanup(
-    member: &Member,
-    runtime: Option<&MemberRuntimeRecord>,
-) -> bool {
+fn should_teardown_member_on_team_cleanup(member: &TeamMemberView) -> bool {
     if member.role != MemberRole::Lead {
         return true;
     }
 
-    if member.cli_tool != CliTool::Claude {
+    if member.configured_cli_tool != CliTool::Claude {
         return true;
     }
 
-    runtime.is_some_and(|record| {
+    member.runtime_record().is_some_and(|record| {
         record.daemon_pid.is_some() || (record.pane_id.is_some() && record.attached_at.is_some())
     })
 }
