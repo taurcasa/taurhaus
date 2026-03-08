@@ -143,6 +143,7 @@ fn make_ipc_request(team_name: &str) -> commands::coordination::InitializeTeamRe
     commands::coordination::InitializeTeamRequest {
         team_name: request.team_name,
         team_description: request.team_description,
+        preset_id: None,
         lead_mode: request.lead_mode,
         lead: commands::coordination::AgentSetupConfig {
             name: request.lead.name,

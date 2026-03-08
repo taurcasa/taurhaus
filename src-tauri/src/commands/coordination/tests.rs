@@ -6,10 +6,11 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
-use crate::coordination::domain::HealthState;
+use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::MemberRuntimeStore;
+use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::session_scanner::cli_tool::CliTool;
 
 #[derive(Debug, Default)]
 struct MockBinaryLookup {
@@ -55,6 +56,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
     InitializeTeamRequest {
         team_name: "architecture-final".to_string(),
         team_description: Some("Cross-project implementation team".to_string()),
+        preset_id: None,
         lead_mode: LeadMode::LaunchNew,
         lead: AgentSetupConfig {
             name: "team-lead".to_string(),
@@ -1331,6 +1333,204 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
 }
 
 #[test]
+fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has_role_ids() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().join("teams"));
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    let request = InitializeTeamRequest {
+        team_name: "review-team".to_string(),
+        team_description: Some("Review-focused team".to_string()),
+        preset_id: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: AgentSetupConfig {
+            name: "team-lead".to_string(),
+            cli_tool: "claude".to_string(),
+            model: "claude-opus-4-6".to_string(),
+            role_id: Some("claude-orchestrator".to_string()),
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            project_id: "proj-core".to_string(),
+            description: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
+        },
+        agents: vec![
+            AgentSetupConfig {
+                name: "reviewer-1".to_string(),
+                cli_tool: "claude".to_string(),
+                model: "claude-opus-4-6".to_string(),
+                role_id: Some("claude-reviewer".to_string()),
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                project_id: "proj-web".to_string(),
+                description: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
+            },
+            AgentSetupConfig {
+                name: "reviewer-2".to_string(),
+                cli_tool: "claude".to_string(),
+                model: "claude-opus-4-6".to_string(),
+                role_id: Some("claude-reviewer".to_string()),
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                project_id: "proj-web".to_string(),
+                description: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
+            },
+        ],
+    };
+
+    coordination_initialize_team_internal(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+    let team_status = snapshot.team_status.expect("team status");
+
+    let reviewer = team_status
+        .members
+        .iter()
+        .find(|member| member.name == "reviewer-1")
+        .expect("reviewer-1 should be present");
+
+    assert_eq!(reviewer.role_id.as_deref(), Some("claude-reviewer"));
+    assert_eq!(reviewer.role_name.as_deref(), Some("Claude Reviewer"));
+    assert_eq!(
+        reviewer.focus_area.as_deref(),
+        Some("Risk-focused review and validation")
+    );
+    assert!(reviewer
+        .context_summary
+        .as_deref()
+        .unwrap_or_default()
+        .contains("risk hotspots"));
+    assert!(reviewer
+        .behavior_summary
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Reports findings by severity"));
+    assert!(reviewer
+        .description
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Perform code reviews focused on correctness"));
+}
+
+#[test]
+fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().join("teams"));
+
+    let request = InitializeTeamRequest {
+        team_name: "review-team".to_string(),
+        team_description: Some("Review-focused team".to_string()),
+        preset_id: Some("review-team".to_string()),
+        lead_mode: LeadMode::LaunchNew,
+        lead: AgentSetupConfig {
+            name: "team-lead".to_string(),
+            cli_tool: String::new(),
+            model: String::new(),
+            role_id: None,
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            project_id: "proj-core".to_string(),
+            description: None,
+            instructions: None,
+            behavioral_contract: None,
+            capabilities: None,
+        },
+        agents: vec![
+            AgentSetupConfig {
+                name: "reviewer-1".to_string(),
+                cli_tool: String::new(),
+                model: String::new(),
+                role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                project_id: "proj-core".to_string(),
+                description: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
+            },
+            AgentSetupConfig {
+                name: "reviewer-2".to_string(),
+                cli_tool: String::new(),
+                model: String::new(),
+                role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                project_id: "proj-core".to_string(),
+                description: None,
+                instructions: None,
+                behavioral_contract: None,
+                capabilities: None,
+            },
+        ],
+    };
+
+    let report = coordination_initialize_team_internal(
+        &state,
+        request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    assert_eq!(report.team_name, "review-team");
+
+    let stored = TeamConfigStore::load(state.teams_dir(), "review-team").expect("load team config");
+    let lead = stored
+        .members
+        .iter()
+        .find(|member| member.role == MemberRole::Lead)
+        .expect("lead");
+    let reviewer = stored
+        .members
+        .iter()
+        .find(|member| member.name == "reviewer-1")
+        .expect("reviewer");
+
+    assert_eq!(lead.role_id.as_deref(), Some("claude-orchestrator"));
+    assert_eq!(lead.role_name.as_deref(), Some("Claude Orchestrator"));
+    assert_eq!(lead.cli_tool, CliTool::Claude);
+    assert_eq!(reviewer.role_id.as_deref(), Some("claude-reviewer"));
+    assert_eq!(reviewer.role_name.as_deref(), Some("Claude Reviewer"));
+    assert_eq!(reviewer.cli_tool, CliTool::Claude);
+    assert!(reviewer
+        .instructions
+        .as_deref()
+        .unwrap_or("")
+        .contains("Split review scope to avoid duplication"));
+}
+
+#[test]
 fn project_mesh_snapshot_matches_windows_project_path_to_linux_team_config() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -1425,6 +1625,7 @@ fn initialize_team_request_round_trip() {
     let value = InitializeTeamRequest {
         team_name: "architecture-final".to_string(),
         team_description: Some("Cross-project implementation team".to_string()),
+        preset_id: None,
         lead_mode: LeadMode::LaunchNew,
         lead: AgentSetupConfig {
             name: "team-lead".to_string(),

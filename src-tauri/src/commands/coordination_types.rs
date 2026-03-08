@@ -64,6 +64,7 @@ pub struct AgentSetupConfig {
 pub struct InitializeTeamRequest {
     pub team_name: String,
     pub team_description: Option<String>,
+    pub preset_id: Option<String>,
     pub lead_mode: LeadMode,
     pub lead: AgentSetupConfig,
     pub agents: Vec<AgentSetupConfig>,

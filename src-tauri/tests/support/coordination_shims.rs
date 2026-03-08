@@ -7,8 +7,18 @@ pub mod models {
 }
 
 pub mod templates {
+    pub mod composition {
+        pub use taurhaus_lib::templates::composition::{
+            compose_team, CompositionOverrides, ResolvedMember,
+        };
+    }
+
+    pub mod storage {
+        pub use taurhaus_lib::templates::storage::{TemplateStore, TemplateStoreError};
+    }
+
     pub mod types {
-        pub use taurhaus_lib::templates::types::BehavioralContract;
+        pub use taurhaus_lib::templates::types::{BehavioralContract, RoleTemplate};
     }
 }
 
