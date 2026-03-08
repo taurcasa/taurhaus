@@ -1,8 +1,9 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
-  import { getSessionForProject, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
+  import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
+  import { normalizeProjectPath } from './lib/pathUtils.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
   import MeshTab from './lib/components/MeshTab.svelte'
@@ -114,6 +115,7 @@
   let sessionLoading = $state(false)
   let readmeContent = $state(null)
   let sessionBridgeLive = $state(false)
+  let tmuxFocusRefreshTimer = null
 
   // Relationship state
   let relationships = $state([])
@@ -372,9 +374,85 @@
       : null
   }
 
+  function clearTmuxFocusRefreshTimer() {
+    if (tmuxFocusRefreshTimer !== null) {
+      clearTimeout(tmuxFocusRefreshTimer)
+      tmuxFocusRefreshTimer = null
+    }
+  }
+
+  function logTmuxFocus(stage, details = {}) {
+    console.debug('[tmux-focus]', {
+      stage,
+      ...details,
+    })
+  }
+
+  function resolveProjectIdFromSession(session) {
+    const directProjectId = session?.project_id ?? session?.projectId ?? null
+    if (typeof directProjectId === 'string' && directProjectId.trim()) {
+      return directProjectId
+    }
+
+    const projectPath = session?.project_path ?? session?.projectPath ?? null
+    if (typeof projectPath === 'string' && projectPath.trim()) {
+      const normalizedSessionPath = normalizeProjectPath(projectPath)
+      const matchingProject = projects.find((project) =>
+        normalizeProjectPath(project?.path) === normalizedSessionPath
+      )
+      if (matchingProject?.id) {
+        return matchingProject.id
+      }
+    }
+
+    return null
+  }
+
+  function focusPayloadField(payload, snakeName, camelName) {
+    const value = payload?.[snakeName] ?? payload?.[camelName] ?? null
+    return typeof value === 'string' && value.trim() ? value.trim() : null
+  }
+
+  function resolveProjectIdFromTmuxFocusPayload(payload) {
+    const directProjectId = payload?.project_id ?? payload?.projectId ?? null
+    if (typeof directProjectId === 'string' && directProjectId.trim()) {
+      return directProjectId
+    }
+
+    const focusSession = focusPayloadField(payload, 'session', 'tmuxSession')
+    const focusWindow = focusPayloadField(payload, 'window', 'tmuxWindow')
+    if (!focusSession || !focusWindow) {
+      return null
+    }
+
+    const liveSessions = Array.from(getSessions().values()).flat()
+    const matchingSession = liveSessions.find((session) => {
+      const sessionName = focusPayloadField(session, 'tmux_session', 'tmuxSession')
+      if (sessionName !== focusSession) {
+        return false
+      }
+
+      const windowIndex = focusPayloadField(session, 'tmux_window', 'tmuxWindow')
+      const windowName = focusPayloadField(session, 'tmux_window_name', 'tmuxWindowName')
+      return windowIndex === focusWindow || windowName === focusWindow
+    })
+
+    return resolveProjectIdFromSession(matchingSession)
+  }
+
+  function scheduleForegroundProjectRefresh() {
+    clearTmuxFocusRefreshTimer()
+    tmuxFocusRefreshTimer = setTimeout(() => {
+      tmuxFocusRefreshTimer = null
+      void loadForegroundProject()
+    }, 75)
+  }
+
   async function loadForegroundProject() {
     try {
-      setForegroundProject(await getForegroundProject())
+      const projectId = await getForegroundProject()
+      logTmuxFocus('foreground-ipc-refresh', { projectId })
+      setForegroundProject(projectId)
     } catch (error) {
       console.warn('[sessions] failed to load foreground project; clearing foreground marker', {
         error_message: errorMessage(error),
@@ -463,13 +541,40 @@
         applyDaemonSessionUpdate(payload)
       },
       onTmuxFocusChanged: (payload) => {
-        setForegroundProject(payload?.project_id ?? payload?.projectId ?? null)
+        const projectId = resolveProjectIdFromTmuxFocusPayload(payload)
+        if (projectId) {
+          logTmuxFocus('event-resolved-from-session-store', { payload, projectId })
+          clearTmuxFocusRefreshTimer()
+          setForegroundProject(projectId)
+          return
+        }
+
+        const hasAttachedFocus = Boolean(
+          focusPayloadField(payload, 'session', 'tmuxSession')
+          && focusPayloadField(payload, 'window', 'tmuxWindow')
+        )
+
+        if (hasAttachedFocus) {
+          logTmuxFocus('event-scheduling-ipc-refresh', { payload })
+          scheduleForegroundProjectRefresh()
+          return
+        }
+
+        logTmuxFocus('event-cleared', { payload })
+        clearTmuxFocusRefreshTimer()
+        setForegroundProject(null)
       },
       onHydrateSessions: () => {
         hydrateSessionsFromBackend()
       },
       logger: console,
     })
+  })
+
+  $effect(() => {
+    return () => {
+      clearTmuxFocusRefreshTimer()
+    }
   })
 
   async function loadProjects() {
@@ -720,7 +825,7 @@
         return
       }
 
-      setForegroundProject(matchingSession?.project_id ?? matchingSession?.projectId ?? null)
+      setForegroundProject(resolveProjectIdFromSession(matchingSession))
       await navigateToSession(tmuxSession, tmuxWindow, tmuxPane, true)
     } catch (error) {
       console.error('[mesh] focus pane failed:', {

@@ -24,12 +24,6 @@
     onOpenManageProjects = () => {},
   } = $props()
 
-  const foregroundIndicatorClass = $derived(
-    dark
-      ? 'bg-success-300/95 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]'
-      : 'bg-success-400/95 shadow-[0_0_0_1px_rgba(15,23,42,0.08)]'
-  )
-
   function hasTmuxTarget(session) {
     return Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
   }
@@ -48,11 +42,11 @@
       || null
   }
 
-  function handleGroupedSessionJump(event, indicator) {
+  function handleGroupedSessionJump(event, indicator, project) {
     event.stopPropagation()
     const target = groupedSessionTarget(indicator)
     if (target) {
-      onSessionJump(event, target)
+      onSessionJump(event, target, project)
     }
   }
 </script>
@@ -134,11 +128,11 @@
                   data-testid="sidebar-team-indicator"
                   role="button"
                   tabindex="0"
-                  onclick={(event) => handleGroupedSessionJump(event, ind)}
+                  onclick={(event) => handleGroupedSessionJump(event, ind, project)}
                   onkeydown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      handleGroupedSessionJump(event, ind)
+                      handleGroupedSessionJump(event, ind, project)
                     }
                   }}
                 >
@@ -174,11 +168,11 @@
                   role="button"
                   tabindex="0"
                   aria-label={ind.ariaLabel}
-                  onclick={(e) => onSessionJump(e, ind.session)}
+                  onclick={(e) => onSessionJump(e, ind.session, project)}
                   onkeydown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      onSessionJump(e, ind.session)
+                      onSessionJump(e, ind.session, project)
                     }
                   }}
                 >
@@ -208,7 +202,11 @@
         {#if foregroundActive}
           <span
             data-testid="sidebar-foreground-indicator"
-            class="pointer-events-none absolute right-1 top-1 bottom-1 w-[3px] rounded-full {foregroundIndicatorClass}"
+            class="sidebar-foreground-lines pointer-events-none absolute left-2 right-2 top-0 h-[2px] bg-brand-400"
+            aria-hidden="true"
+          ></span>
+          <span
+            class="sidebar-foreground-lines pointer-events-none absolute left-2 right-2 bottom-0 h-[2px] bg-brand-400"
             aria-hidden="true"
           ></span>
         {/if}

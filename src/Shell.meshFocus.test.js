@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest'
 
 let meshTabMountCount = 0
 let latestSidebarProps = {}
+let mockSessionMap = new Map()
 
 function createMockComponent(name, renderContent) {
   return function MockComponent(target, props = {}) {
@@ -74,6 +75,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 vi.mock('./lib/sessionStore.svelte.js', () => ({
   getSessionForProject: vi.fn(() => null),
+  getSessions: vi.fn(() => mockSessionMap),
   applyDaemonSessionUpdate: vi.fn(),
   hydrateFromBackend: vi.fn(),
   startPolling: vi.fn(),
@@ -193,6 +195,16 @@ describe('Shell mesh focus integration', () => {
     vi.clearAllMocks()
     meshTabMountCount = 0
     latestSidebarProps = {}
+    mockSessionMap = new Map([
+      ['/projects/mesh', [
+        {
+          tmux_session: 'taurhaus',
+          tmux_window: '2',
+          tmux_pane: '%2',
+          project_path: '/projects/mesh',
+        },
+      ]],
+    ])
 
     ipc.listProjects.mockResolvedValue([
       {
@@ -224,6 +236,7 @@ describe('Shell mesh focus integration', () => {
         tmuxSession: 'taurhaus',
         tmuxWindow: '2',
         tmuxPane: '%2',
+        projectPath: '/projects/mesh',
       },
     ])
 
@@ -245,7 +258,7 @@ describe('Shell mesh focus integration', () => {
     eventApi.listen.mockResolvedValue(() => {})
   })
 
-  it('resolves mesh pane focus to tmux coordinates and opens the terminal', async () => {
+  it('resolves mesh pane focus to tmux coordinates, foreground project, and opens the terminal', async () => {
     render(Shell)
 
     await waitFor(() => {
@@ -263,6 +276,7 @@ describe('Shell mesh focus integration', () => {
 
     await waitFor(() => {
       expect(ipc.listClaudeSessions).toHaveBeenCalled()
+      expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
       expect(ipc.navigateToSession).toHaveBeenCalledWith('taurhaus', '2', '%2', true)
     })
   })
@@ -306,7 +320,7 @@ describe('Shell mesh focus integration', () => {
     })
 
     await handlers.get('tmux-focus-changed')({
-      payload: { project_id: 'proj-2' },
+      payload: { session: 'taurhaus', window: '2' },
     })
 
     await waitFor(() => {
@@ -317,6 +331,32 @@ describe('Shell mesh focus integration', () => {
 
     await waitFor(() => {
       expect(latestSidebarProps.foregroundProjectId).toBeNull()
+    })
+  })
+
+  it('falls back to getForegroundProject once when a tmux focus event cannot be resolved locally', async () => {
+    ipc.isTauri.mockReturnValue(true)
+    ipc.getForegroundProject.mockResolvedValueOnce(null).mockResolvedValueOnce('proj-2')
+    mockSessionMap = new Map()
+    const handlers = new Map()
+    eventApi.listen.mockImplementation((eventName, handler) => {
+      handlers.set(eventName, handler)
+      return Promise.resolve(() => {})
+    })
+
+    render(Shell)
+
+    await waitFor(() => {
+      expect(handlers.has('tmux-focus-changed')).toBe(true)
+    })
+
+    await handlers.get('tmux-focus-changed')({
+      payload: { session: 'taurhaus', window: '2' },
+    })
+
+    await waitFor(() => {
+      expect(ipc.getForegroundProject).toHaveBeenCalledTimes(2)
+      expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
     })
   })
 

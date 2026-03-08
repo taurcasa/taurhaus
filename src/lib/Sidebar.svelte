@@ -2,6 +2,7 @@
   import { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } from './ipc.js'
   import { getProjectContext } from './context/ProjectContext.js'
   import { getSessionContext } from './context/SessionContext.js'
+  import { normalizeProjectPath } from './pathUtils.js'
   import { getSessionForProject, getSessionsForProject } from './sessionStore.svelte.js'
   import { rowTintForSessions, toolIndicators } from './sessionIndicator.js'
   import { buildSidebarProjection } from './sidebar.js'
@@ -111,11 +112,31 @@
     projectListScrollTop = event.currentTarget?.scrollTop || 0
   }
 
+  function resolveSessionProjectId(session, fallbackProject = null) {
+    const directProjectId = session?.project_id ?? session?.projectId ?? null
+    if (typeof directProjectId === 'string' && directProjectId.trim()) {
+      return directProjectId
+    }
+
+    const sessionProjectPath = session?.project_path ?? session?.projectPath ?? null
+    if (typeof sessionProjectPath === 'string' && sessionProjectPath.trim()) {
+      const normalizedSessionPath = normalizeProjectPath(sessionProjectPath)
+      const matchingProject = projects.find((project) =>
+        normalizeProjectPath(project?.path) === normalizedSessionPath
+      )
+      if (matchingProject?.id) {
+        return matchingProject.id
+      }
+    }
+
+    return fallbackProject?.id ?? null
+  }
+
   /** Navigate to a project's CLI session in tmux. */
-  function jumpToSession(e, session) {
+  function jumpToSession(e, session, project = null) {
     e.stopPropagation()
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
-      onForegroundProjectChange(session.project_id ?? session.projectId ?? null)
+      onForegroundProjectChange(resolveSessionProjectId(session, project))
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
     }
   }
@@ -208,7 +229,7 @@
     const session = getSessionForProject(ctxMenu.project.path)
     console.log('[cmd-center] Open in Terminal:', ctxMenu.project.path, 'session:', session ? { tmux_session: session.tmux_session, tmux_window: session.tmux_window, tmux_pane: session.tmux_pane } : 'null')
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
-      onForegroundProjectChange(session.project_id ?? session.projectId ?? ctxMenu.project.id)
+      onForegroundProjectChange(resolveSessionProjectId(session, ctxMenu.project))
       navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane, true)
         .then(() => console.log('[cmd-center] navigate OK'))
         .catch(e => console.error('[cmd-center] navigate FAILED:', e))

@@ -238,12 +238,14 @@ describe('Sidebar component branches', () => {
 
   it('navigates through interactive session indicator pills only when session has tmux fields', async () => {
     const projects = [makeProjects(1)[0]]
+    const onForegroundProjectChange = vi.fn()
     const interactiveSession = {
       tmux_session: 'team',
       tmux_window: '1',
       tmux_pane: '%3',
       cli_tool: 'codex',
       state: 'active',
+      project_path: projects[0].path,
     }
 
     getSessionsForProject.mockImplementation(() => [interactiveSession])
@@ -268,7 +270,7 @@ describe('Sidebar component branches', () => {
       },
     ]))
 
-    render(Sidebar, { props: { projects } })
+    render(Sidebar, { props: { projects, onForegroundProjectChange } })
 
     await waitFor(() => {
       expect(screen.getByLabelText('Codex active')).toBeInTheDocument()
@@ -276,6 +278,7 @@ describe('Sidebar component branches', () => {
     })
 
     await fireEvent.click(screen.getByLabelText('Codex active'))
+    expect(onForegroundProjectChange).toHaveBeenCalledWith(projects[0].id)
     expect(navigateToSession).toHaveBeenCalledWith('team', '1', '%3')
   })
 
