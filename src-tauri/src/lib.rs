@@ -2,6 +2,8 @@
 // git_init.rs with a scoped #[allow]. Any new `unsafe` block will fail compilation.
 #![deny(unsafe_code)]
 
+extern crate self as taurhaus_lib;
+
 mod bootstrap;
 mod commands;
 mod config;
@@ -18,6 +20,8 @@ mod watch_targets;
 pub mod git;
 
 pub mod fs;
+
+pub mod logging;
 
 pub mod session;
 
@@ -47,6 +51,7 @@ pub mod templates;
 mod test_support;
 
 use std::sync::Mutex;
+use std::{io, process};
 
 use tauri_plugin_window_state::StateFlags;
 use tracing_subscriber::filter::LevelFilter;
@@ -121,6 +126,8 @@ fn inherit_macos_shell_env() {
 
 fn build_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -227,6 +234,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::templates::templates_get_role,
             commands::templates::templates_upsert_role,
             commands::templates::templates_delete_role,
+            commands::templates::import_role_from_file,
             commands::templates::templates_list_presets_full,
             commands::templates::templates_get_preset,
             commands::templates::templates_upsert_preset,
@@ -264,6 +272,8 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_live_team_status,
             #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_get_compaction_audit,
+            #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_preflight_check,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_feature_availability,
@@ -288,7 +298,49 @@ pub fn run() {
 
     disable_git_owner_validation();
 
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Some(exit_code) = maybe_run_coordination_cli_mode() {
+        process::exit(exit_code);
+    }
+
     if let Err(error) = build_app().run(tauri::generate_context!()) {
         tracing::error!(error = %error, "error while running taurhaus");
     }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn maybe_run_coordination_cli_mode() -> Option<i32> {
+    let mut args = std::env::args().skip(1);
+    match args.next().as_deref() {
+        Some("--claude-compact-hook") => Some(run_claude_compact_hook_cli()),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_claude_compact_hook_cli() -> i32 {
+    let response = (|| -> Result<String, crate::coordination::errors::CoordinationError> {
+        let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
+        let hook_response = crate::coordination::claude_hooks::handle_session_start_hook_stdin(
+            io::stdin(),
+            &teams_dir,
+        )?;
+        serde_json::to_string(&hook_response).map_err(|err| {
+            crate::coordination::errors::CoordinationError::StoreError(format!(
+                "failed to serialize Claude compact hook response: {err}"
+            ))
+        })
+    })();
+
+    match response {
+        Ok(payload) => {
+            println!("{payload}");
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "Claude compact hook bridge failed");
+            println!("{{}}");
+        }
+    }
+
+    0
 }

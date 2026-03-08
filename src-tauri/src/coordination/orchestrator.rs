@@ -14,6 +14,7 @@ use crate::coordination::audit::{
 use crate::coordination::backend::{BackendKind, CoordinationBackend};
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::operational_context::apply_delivery_context;
 use crate::coordination::requests::{
     DeliveryMethod, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, ResumeMemberRequest,
     ResumeTeamMemberFailure, ResumeTeamReport, TeardownMode, TeardownRequest,
@@ -351,6 +352,7 @@ impl CoordinationOrchestrator {
                         team_name: team_name.to_string(),
                         message: notice,
                         sender_name: None,
+                        operational_context: None,
                     },
                 )) {
                     Ok(_) => {
@@ -1254,6 +1256,7 @@ impl CoordinationOrchestrator {
         request: DeliveryRequest,
     ) -> Result<DeliveryResult, CoordinationError> {
         let (team_name, member_name) = delivery_meta(&request);
+        let operational_context = delivery_operational_context(&request).cloned();
         let delivery_type = delivery_type_name(&request).to_string();
         let attempted_method = default_method_for_backend(self.backend.kind());
         let team_name_owned = team_name.to_string();
@@ -1292,6 +1295,22 @@ impl CoordinationOrchestrator {
                         method: result.method,
                         succeeded_at: Utc::now(),
                     }));
+
+                if let Some(context) = operational_context.as_ref() {
+                    if let Err(err) = apply_delivery_context(
+                        &self.teams_dir,
+                        &team_name_owned,
+                        &member_name_owned,
+                        context,
+                    ) {
+                        tracing::warn!(
+                            team_name = %team_name_owned,
+                            member_name = %member_name_owned,
+                            error = %err,
+                            "failed to persist operational snapshot update after successful delivery"
+                        );
+                    }
+                }
 
                 if let Ok(mut runtime) =
                     MemberRuntimeStore::load(&self.teams_dir, &team_name_owned, &member_name_owned)
@@ -1446,6 +1465,15 @@ fn delivery_type_name(req: &DeliveryRequest) -> &'static str {
         DeliveryRequest::Bootstrap(_) => "bootstrap",
         DeliveryRequest::RecoveryNudge(_) => "recovery_nudge",
         DeliveryRequest::OperatorNotice(_) => "operator_notice",
+    }
+}
+
+fn delivery_operational_context(
+    req: &DeliveryRequest,
+) -> Option<&crate::coordination::requests::OperationalContextUpdate> {
+    match req {
+        DeliveryRequest::OperatorNotice(payload) => payload.operational_context.as_ref(),
+        _ => None,
     }
 }
 

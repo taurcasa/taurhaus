@@ -2669,6 +2669,7 @@ fn deliver_operator_notice_succeeds() {
             team_name: team_name.to_string(),
             message: "status?".to_string(),
             sender_name: None,
+            operational_context: None,
         }))
         .expect("delivery should succeed");
     assert!(result.delivered);
@@ -2705,6 +2706,7 @@ fn deliver_to_nonexistent_member_fails() {
             team_name: team_name.to_string(),
             message: "status?".to_string(),
             sender_name: None,
+            operational_context: None,
         }))
         .expect_err("delivery should fail");
     assert_not_found(err);
@@ -2734,6 +2736,7 @@ fn deliver_updates_runtime_last_seen() {
             team_name: team_name.to_string(),
             message: "status?".to_string(),
             sender_name: None,
+            operational_context: None,
         }))
         .expect("delivery should succeed");
 
@@ -2767,6 +2770,7 @@ fn deliver_backend_failure_emits_failed_event() {
             team_name: team_name.to_string(),
             message: "status?".to_string(),
             sender_name: None,
+            operational_context: None,
         }))
         .expect_err("delivery should fail");
     match err {
@@ -2908,6 +2912,7 @@ fn all_mutations_emit_events() {
             team_name: team_name.to_string(),
             message: "check status".to_string(),
             sender_name: None,
+            operational_context: None,
         }))
         .expect("delivery should succeed");
     orchestrator.record_lease_claimed(team_name, member_name, 4242, "inst-1");
@@ -2983,6 +2988,7 @@ fn deliver_to_nonexistent_team_fails_without_delivery_audit_events() {
             team_name: "missing-team".to_string(),
             message: "status?".to_string(),
             sender_name: None,
+            operational_context: None,
         }))
         .expect_err("delivery should fail");
     assert_not_found(err);

@@ -199,6 +199,7 @@ mod tests {
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect("deliver");
 
@@ -233,6 +234,7 @@ mod tests {
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect_err("delivery should fail");
         match err {
@@ -249,6 +251,7 @@ mod tests {
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect("delivery should recover");
         assert!(result.delivered);
@@ -267,6 +270,7 @@ mod tests {
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect_err("delivery should fail");
         match err {

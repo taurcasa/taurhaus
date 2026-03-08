@@ -436,6 +436,7 @@ impl CoordinationOrchestrator {
                 team_name: request.team_name.clone(),
                 message: onboarding,
                 sender_name: Some(request.lead.name.clone()),
+                operational_context: None,
             }))?;
         }
         Ok(())

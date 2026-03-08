@@ -1,15 +1,21 @@
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 
-use tempfile::TempDir;
+use chrono::{DateTime, Utc};
+use tempfile::{NamedTempFile, TempDir};
 
 use super::*;
+use crate::commands::projects::DbState;
 use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
 use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::{
+    CompactionDeliveryResult, MemberCompactionState, MemberCompactionStore, MemberRuntimeStore,
+    OperationalContextSnapshotStore, TeamConfigStore,
+};
 use crate::session_scanner::cli_tool::CliTool;
 
 #[derive(Debug, Default)]
@@ -50,6 +56,12 @@ fn test_state_with_runtime(
         Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
         Arc::new(move || runtime.clone()),
     )
+}
+
+fn test_db_state() -> (DbState, NamedTempFile) {
+    let tmp = NamedTempFile::new().expect("temp db");
+    let conn = taurhaus_lib::db::init_db(tmp.path()).expect("init db");
+    (DbState(Mutex::new(conn).into()), tmp)
 }
 
 fn sample_preflight_request() -> InitializeTeamRequest {
@@ -253,6 +265,77 @@ fn get_team_status_validates_non_empty_team_name() {
 }
 
 #[test]
+fn get_compaction_audit_validates_non_empty_team_name() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let err = coordination_get_compaction_audit_for_tests(&state, " ".to_string())
+        .expect_err("whitespace invalid");
+    assert!(err.contains("team_name"));
+}
+
+#[test]
+fn get_compaction_audit_returns_recent_entries_sorted_desc() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let (db, _db_file) = test_db_state();
+
+    coordination_initialize_team_internal(
+        &state,
+        Some(&db),
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    MemberCompactionStore::save(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+        &MemberCompactionState {
+            version: 1,
+            member_name: "frontend-dev".to_string(),
+            last_session_id: "session-codex".to_string(),
+            last_compaction_timestamp: DateTime::parse_from_rfc3339("2026-03-08T14:45:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+            last_delivery_result: CompactionDeliveryResult::Injected,
+        },
+    )
+    .expect("save frontend compaction state");
+
+    MemberCompactionStore::save(
+        tmp.path(),
+        "architecture-final",
+        "team-lead",
+        &MemberCompactionState {
+            version: 1,
+            member_name: "team-lead".to_string(),
+            last_session_id: "session-claude".to_string(),
+            last_compaction_timestamp: DateTime::parse_from_rfc3339("2026-03-08T14:40:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+            last_delivery_result: CompactionDeliveryResult::Skipped,
+        },
+    )
+    .expect("save lead compaction state");
+
+    let response =
+        coordination_get_compaction_audit_for_tests(&state, "architecture-final".to_string())
+            .expect("load compaction audit");
+
+    assert_eq!(response.team_name, "architecture-final");
+    assert_eq!(response.entries.len(), 2);
+    assert_eq!(response.entries[0].member_name, "frontend-dev");
+    assert_eq!(response.entries[0].tool, "codex");
+    assert_eq!(response.entries[0].last_delivery_result, "injected");
+    assert_eq!(response.entries[1].member_name, "team-lead");
+    assert_eq!(response.entries[1].tool, "claude");
+    assert_eq!(response.entries[1].last_delivery_result, "skipped");
+}
+
+#[test]
 fn preflight_all_tools_present_returns_clean_report() {
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "codex", "gemini"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
@@ -341,10 +424,12 @@ fn feature_availability_reports_ready_when_required_tools_exist() {
 fn initialize_ipc_delegates_to_orchestrator_and_returns_report_shape() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
+    let (db, _db_file) = test_db_state();
     let request = sample_preflight_request();
 
     let report = coordination_initialize_team_internal(
         &state,
+        Some(&db),
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -359,6 +444,35 @@ fn initialize_ipc_delegates_to_orchestrator_and_returns_report_shape() {
 }
 
 #[test]
+fn initialize_writes_initial_operational_snapshots_for_members() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let (db, _db_file) = test_db_state();
+
+    coordination_initialize_team_internal(
+        &state,
+        Some(&db),
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let snapshot =
+        OperationalContextSnapshotStore::load(tmp.path(), "architecture-final", "frontend-dev")
+            .expect("load snapshot")
+            .expect("snapshot exists");
+
+    assert_eq!(snapshot.task.id, "");
+    assert_eq!(snapshot.task.subject, "");
+    assert_eq!(snapshot.task.status, "");
+    assert_eq!(snapshot.assignment_footer.execution_mode, "");
+    assert_eq!(snapshot.working_set.project_path, "proj-web");
+    assert!(snapshot.working_set.focal_files.is_empty());
+}
+
+#[test]
 fn initialize_progress_events_are_emitted_in_step_order() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -370,6 +484,7 @@ fn initialize_progress_events_are_emitted_in_step_order() {
     };
     let report = coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -398,6 +513,7 @@ fn initialize_error_case_returns_structured_failed_step_report() {
 
     let report = coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -421,6 +537,7 @@ fn add_agent_ipc_returns_add_agent_report_shape() {
 
     let report = coordination_add_agent_internal(
         &state,
+        None,
         sample_add_agent_request("arch", "bob"),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -447,6 +564,7 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
     let mut emit = |event: &StepProgressEvent| emitted.push(event.clone());
     let report = coordination_add_agent_internal(
         &state,
+        None,
         sample_add_agent_request("arch", "bob"),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -472,6 +590,7 @@ fn reonboard_succeeds_for_existing_member() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -480,6 +599,7 @@ fn reonboard_succeeds_for_existing_member() {
     .expect("initialize");
 
     let result = coordination_reonboard_impl(
+        None,
         &state,
         ReonboardRequest {
             team_name: "architecture-final".to_string(),
@@ -497,6 +617,7 @@ fn reonboard_fails_for_nonexistent_team_or_member() {
     let state = test_state(tmp.path().to_path_buf());
 
     let missing_team = coordination_reonboard_impl(
+        None,
         &state,
         ReonboardRequest {
             team_name: "missing".to_string(),
@@ -508,6 +629,7 @@ fn reonboard_fails_for_nonexistent_team_or_member() {
 
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
     let missing_member = coordination_reonboard_impl(
+        None,
         &state,
         ReonboardRequest {
             team_name: "arch".to_string(),
@@ -526,6 +648,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
 
     let add_agent_err = coordination_add_agent_internal(
         &state,
+        None,
         AddAgentRequest {
             team_name: " ".to_string(),
             agent: AgentSetupConfig {
@@ -552,6 +675,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
     assert!(add_agent_err.contains("team_name"));
 
     let reonboard_team_err = coordination_reonboard_impl(
+        None,
         &state,
         ReonboardRequest {
             team_name: "".to_string(),
@@ -562,6 +686,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
     assert!(reonboard_team_err.contains("team_name"));
 
     let reonboard_member_err = coordination_reonboard_impl(
+        None,
         &state,
         ReonboardRequest {
             team_name: "arch".to_string(),
@@ -579,6 +704,7 @@ fn resume_member_validates_empty_fields() {
 
     let err = coordination_resume_member_internal(
         &state,
+        None,
         ResumeMemberRequest {
             team_name: "".to_string(),
             member_name: "agent".to_string(),
@@ -593,6 +719,7 @@ fn resume_member_validates_empty_fields() {
 
     let err = coordination_resume_member_internal(
         &state,
+        None,
         ResumeMemberRequest {
             team_name: "arch".to_string(),
             member_name: " ".to_string(),
@@ -612,6 +739,7 @@ fn resume_member_ipc_returns_report_shape() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -636,6 +764,7 @@ fn resume_member_ipc_returns_report_shape() {
 
     let report = coordination_resume_member_internal(
         &state,
+        None,
         ResumeMemberRequest {
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
@@ -678,6 +807,7 @@ fn resume_team_ipc_returns_report_shape() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -837,6 +967,7 @@ fn add_member_defaults_to_lead_project_path_instead_of_process_cwd() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1005,6 +1136,7 @@ fn list_teams_includes_lead_project_anchor() {
     let request = sample_preflight_request();
     coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1097,6 +1229,7 @@ fn project_mesh_snapshot_classifies_active_when_all_members_are_live() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1120,6 +1253,7 @@ fn project_mesh_snapshot_classifies_degraded_when_live_and_offline_members_mix()
 
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1169,6 +1303,7 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1215,6 +1350,7 @@ fn project_mesh_snapshot_uses_fast_snapshot_without_runtime_reconcile_calls() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1277,6 +1413,7 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1394,6 +1531,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
 
     coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1496,6 +1634,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
 
     let report = coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1543,6 +1682,7 @@ fn project_mesh_snapshot_matches_windows_project_path_to_linux_team_config() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1589,6 +1729,7 @@ fn project_mesh_snapshot_skips_missing_config_dirs_without_warning() {
 
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1946,6 +2087,7 @@ fn live_status_test_helper_invokes_live_status_impl() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -1975,6 +2117,7 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
     coordination_initialize_team_internal(
         &state,
+        None,
         sample_preflight_request(),
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,

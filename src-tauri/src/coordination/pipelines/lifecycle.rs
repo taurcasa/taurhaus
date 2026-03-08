@@ -185,6 +185,7 @@ impl CoordinationOrchestrator {
             team_name: request.team_name.clone(),
             message: onboarding,
             sender_name: Some(lead_name.to_string()),
+            operational_context: None,
         }))?;
         Ok(())
     }
@@ -334,6 +335,7 @@ impl CoordinationOrchestrator {
                 team_name: request.team_name.clone(),
                 message: onboarding,
                 sender_name: Some(lead_name),
+                operational_context: None,
             }))?;
         Ok(())
     }

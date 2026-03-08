@@ -16,14 +16,18 @@ use crate::coordination::backend::bridged::{
 use crate::coordination::backend::bridged::{
     availability_check_with_lookup, preflight_check_with_lookup, BinaryLookup,
 };
+use crate::coordination::claude_hooks::{
+    ensure_compact_hook_installed, team_has_managed_claude_member,
+};
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::operational_context::{sync_member_snapshot, sync_team_snapshots};
 use crate::coordination::requests::{
     self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
 };
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::TeamConfigStore;
+use crate::coordination::stores::{MemberCompactionStore, TeamConfigStore};
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -58,16 +62,19 @@ pub async fn coordination_initialize_team(
     request: InitializeTeamRequest,
 ) -> IpcResult<InitializeReport> {
     let span = IpcCommandSpan::start("coordination_initialize_team");
+    let requested_team_name = request.team_name.clone();
+    let app_for_task = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let db = app.state::<DbState>();
-        let state = app.state::<CoordinationState>();
+        let db = app_for_task.state::<DbState>();
+        let state = app_for_task.state::<CoordinationState>();
         let request = normalize_initialize_request_paths(&db, request)?;
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let mut emit = |event: &StepProgressEvent| {
-            let _ = app.emit("coordination-step-progress", event);
+            let _ = app_for_task.emit("coordination-step-progress", event);
         };
         coordination_initialize_team_internal(
             state.inner(),
+            Some(&db),
             request,
             &cli_commands,
             &tmux_layout,
@@ -81,6 +88,7 @@ pub async fn coordination_initialize_team(
             "failed to join initialize team task: {err}"
         )))
     });
+    let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
     span.finish_result(&result);
     result
 }
@@ -93,6 +101,7 @@ pub fn coordination_add_agent(
     request: AddAgentRequest,
 ) -> IpcResult<AddAgentReport> {
     let span = IpcCommandSpan::start("coordination_add_agent");
+    let requested_team_name = request.team_name.clone();
     let result = {
         let request = normalize_add_agent_request_path(&db, request)?;
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
@@ -101,6 +110,7 @@ pub fn coordination_add_agent(
         };
         coordination_add_agent_internal(
             state.inner(),
+            Some(&db),
             request,
             &cli_commands,
             &tmux_layout,
@@ -108,6 +118,7 @@ pub fn coordination_add_agent(
         )
         .ipc()
     };
+    let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
     span.finish_result(&result);
     result
 }
@@ -120,6 +131,7 @@ pub fn coordination_resume_member(
     request: ResumeMemberRequest,
 ) -> IpcResult<ResumeAgentReport> {
     let span = IpcCommandSpan::start("coordination_resume_member");
+    let requested_team_name = request.team_name.clone();
     let result = {
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let mut emit = |event: &StepProgressEvent| {
@@ -127,6 +139,7 @@ pub fn coordination_resume_member(
         };
         coordination_resume_member_internal(
             state.inner(),
+            Some(&db),
             request,
             &cli_commands,
             &tmux_layout,
@@ -134,32 +147,37 @@ pub fn coordination_resume_member(
         )
         .ipc()
     };
+    let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
 pub fn coordination_resume_team(
+    app: AppHandle,
     db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: ResumeTeamRequest,
 ) -> IpcResult<ResumeTeamReport> {
     let span = IpcCommandSpan::start("coordination_resume_team");
+    let requested_team_name = request.team_name.clone();
     let result = {
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         coordination_resume_team_internal(state.inner(), request, &cli_commands, &tmux_layout).ipc()
     };
+    let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
 pub fn coordination_reonboard(
+    db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
     request: ReonboardRequest,
 ) -> IpcResult<DeliveryResult> {
     let span = IpcCommandSpan::start("coordination_reonboard");
-    let result = coordination_reonboard_impl(state.inner(), request).ipc();
+    let result = coordination_reonboard_impl(Some(&db), state.inner(), request).ipc();
     span.finish_result(&result);
     result
 }
@@ -178,6 +196,26 @@ pub async fn coordination_get_live_team_status(
     .unwrap_or_else(|err| {
         Err(IpcError::internal(format!(
             "failed to join live team status task: {err}"
+        )))
+    });
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub async fn coordination_get_compaction_audit(
+    app: AppHandle,
+    team_name: String,
+) -> IpcResult<CompactionAuditResponse> {
+    let span = IpcCommandSpan::start("coordination_get_compaction_audit");
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CoordinationState>();
+        coordination_get_compaction_audit_impl(state.inner(), team_name).ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join compaction audit task: {err}"
         )))
     });
     span.finish_result(&result);
@@ -289,6 +327,7 @@ pub fn coordination_get_project_mesh_snapshot(
 
 fn coordination_initialize_team_internal(
     state: &CoordinationState,
+    db: Option<&DbState>,
     request: InitializeTeamRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
@@ -307,12 +346,17 @@ fn coordination_initialize_team_internal(
         })
         .map(map_initialize_report_from_contract)
         .map_err(map_coordination_error)?;
+    if let Some(db) = db {
+        sync_team_snapshots_after_change(state, db, &report.team_name)
+            .map_err(map_coordination_error)?;
+    }
     emit_progress_events(initialize_progress_events(&report), emit);
     Ok(report)
 }
 
 fn coordination_add_agent_internal(
     state: &CoordinationState,
+    db: Option<&DbState>,
     request: AddAgentRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
@@ -334,12 +378,17 @@ fn coordination_add_agent_internal(
         })
         .map(map_add_agent_report_from_contract)
         .map_err(map_coordination_error)?;
+    if let Some(db) = db {
+        sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
+            .map_err(map_coordination_error)?;
+    }
     emit_progress_events(add_agent_progress_events(&report), emit);
     Ok(report)
 }
 
 fn coordination_resume_member_internal(
     state: &CoordinationState,
+    db: Option<&DbState>,
     request: ResumeMemberRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
@@ -358,6 +407,10 @@ fn coordination_resume_member_internal(
         })
         .map(map_resume_agent_report_from_contract)
         .map_err(map_coordination_error)?;
+    if let Some(db) = db {
+        sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
+            .map_err(map_coordination_error)?;
+    }
     emit_progress_events(resume_member_progress_events(&report), emit);
     Ok(report)
 }
@@ -395,13 +448,14 @@ fn emit_progress_events(
 }
 
 fn coordination_reonboard_impl(
+    db: Option<&DbState>,
     state: &CoordinationState,
     request: ReonboardRequest,
 ) -> Result<DeliveryResult, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("member_name", &request.member_name)?;
 
-    state
+    let result = state
         .with_orchestrator(|orchestrator| {
             let team = orchestrator.get_team_status(&request.team_name)?;
             if !team
@@ -449,9 +503,63 @@ fn coordination_reonboard_impl(
                 team_name: request.team_name.clone(),
                 message,
                 sender_name: Some(lead_name),
+                operational_context: None,
             }))
         })
-        .map_err(map_coordination_error)
+        .map_err(map_coordination_error)?;
+    if let Some(db) = db {
+        sync_member_snapshot_after_change(state, db, &request.team_name, &request.member_name)
+            .map_err(map_coordination_error)?;
+    }
+    Ok(result)
+}
+
+fn sync_team_snapshots_after_change(
+    state: &CoordinationState,
+    db: &DbState,
+    team_name: &str,
+) -> Result<(), CoordinationError> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| CoordinationError::StoreError("db mutex poisoned".to_string()))?;
+    sync_team_snapshots(state.teams_dir(), &conn, team_name)
+}
+
+fn sync_member_snapshot_after_change(
+    state: &CoordinationState,
+    db: &DbState,
+    team_name: &str,
+    member_name: &str,
+) -> Result<(), CoordinationError> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| CoordinationError::StoreError("db mutex poisoned".to_string()))?;
+    sync_member_snapshot(state.teams_dir(), &conn, team_name, member_name)
+}
+
+fn maybe_ensure_claude_compact_hook_for_team<T>(
+    app: &AppHandle,
+    team_name: &str,
+    result: IpcResult<T>,
+) -> IpcResult<T> {
+    if result.is_err() {
+        return result;
+    }
+
+    let state = app.state::<CoordinationState>();
+    let teams_dir = state.teams_dir();
+    let has_claude = team_has_managed_claude_member(teams_dir, team_name)
+        .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
+    if !has_claude {
+        return result;
+    }
+
+    let current_exe = std::env::current_exe().map_err(|err| {
+        IpcError::internal(format!("failed to resolve taurhaus executable: {err}"))
+    })?;
+    ensure_compact_hook_installed(teams_dir, &current_exe)
+        .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
+    result
 }
 
 fn coordination_get_live_team_status_impl(
@@ -529,6 +637,56 @@ pub(crate) fn coordination_get_live_team_status_for_tests(
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
     coordination_get_live_team_status_impl(state, team_name)
+}
+
+fn coordination_get_compaction_audit_impl(
+    state: &CoordinationState,
+    team_name: String,
+) -> Result<CompactionAuditResponse, String> {
+    validate_non_empty("team_name", &team_name)?;
+
+    let config =
+        TeamConfigStore::load(state.teams_dir(), &team_name).map_err(map_coordination_error)?;
+    let tool_by_member = config
+        .members
+        .into_iter()
+        .map(|member| (member.name, member.cli_tool.to_string()))
+        .collect::<HashMap<_, _>>();
+
+    let mut entries = MemberCompactionStore::load_all(state.teams_dir(), &team_name)
+        .map_err(map_coordination_error)?
+        .into_iter()
+        .map(|(member_name, state)| CompactionAuditEntry {
+            member_name: member_name.clone(),
+            tool: tool_by_member
+                .get(&member_name)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string()),
+            last_session_id: state.last_session_id,
+            last_compaction_timestamp: state.last_compaction_timestamp.to_rfc3339(),
+            last_delivery_result: serde_json::to_value(state.last_delivery_result)
+                .ok()
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+                .unwrap_or_else(|| "unknown".to_string()),
+        })
+        .collect::<Vec<_>>();
+
+    entries.sort_by(|left, right| {
+        right
+            .last_compaction_timestamp
+            .cmp(&left.last_compaction_timestamp)
+            .then_with(|| left.member_name.cmp(&right.member_name))
+    });
+
+    Ok(CompactionAuditResponse { team_name, entries })
+}
+
+#[cfg(test)]
+pub(crate) fn coordination_get_compaction_audit_for_tests(
+    state: &CoordinationState,
+    team_name: String,
+) -> Result<CompactionAuditResponse, String> {
+    coordination_get_compaction_audit_impl(state, team_name)
 }
 
 fn coordination_create_team_impl(

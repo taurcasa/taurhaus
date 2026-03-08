@@ -210,6 +210,25 @@ pub struct LiveTeamStatus {
     pub members: Vec<LiveAgentStatus>,
 }
 
+/// One compaction reinjection audit row for debug/inspection surfaces.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionAuditEntry {
+    pub member_name: String,
+    pub tool: String,
+    pub last_session_id: String,
+    pub last_compaction_timestamp: String,
+    pub last_delivery_result: String,
+}
+
+/// Recent compaction reinjection audit rows for a team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionAuditResponse {
+    pub team_name: String,
+    pub entries: Vec<CompactionAuditEntry>,
+}
+
 /// Fast snapshot row returned without tmux/daemon reconciliation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

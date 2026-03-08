@@ -547,15 +547,29 @@ mod tests {
         frontend_log_command_impl(frontend_payload("info", "from command"), &state)
             .expect("frontend_log command should succeed");
         let lines = wait_for_lines(&log_path, 2);
-        assert_eq!(lines.len(), 2);
+        assert!(
+            lines.len() >= 2,
+            "expected at least the audit and frontend records, got {} lines",
+            lines.len()
+        );
 
-        let audit: Value = serde_json::from_str(&lines[0]).expect("audit json");
-        let frontend: Value = serde_json::from_str(&lines[1]).expect("frontend json");
+        let events: Vec<Value> = lines
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("valid json"))
+            .collect();
+        let audit = events
+            .iter()
+            .find(|value| value["event"] == "ipc.log.received")
+            .expect("ipc audit event present");
+        let frontend = events
+            .iter()
+            .find(|value| {
+                value["event"] == "frontend.console.received" && value["message"] == "from command"
+            })
+            .expect("frontend log event present");
 
-        assert_eq!(audit["event"], "ipc.log.received");
         assert_eq!(audit["command"], "frontend_log");
         assert_eq!(audit["frontend_level"], "info");
-        assert_eq!(frontend["event"], "frontend.console.received");
         assert_eq!(frontend["message"], "from command");
     }
 

@@ -1251,6 +1251,7 @@ impl StallDetectorService {
                             team_name: decision.transition.team_name.clone(),
                             message,
                             sender_name: Some("stall-detector".to_string()),
+                            operational_context: None,
                         },
                     ))
                 }
@@ -1267,6 +1268,7 @@ impl StallDetectorService {
                                     team_name: decision.transition.team_name.clone(),
                                     message,
                                     sender_name: Some("stall-detector".to_string()),
+                                    operational_context: None,
                                 },
                             ))
                         }

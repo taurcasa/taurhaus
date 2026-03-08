@@ -970,11 +970,28 @@ mod tests {
         assert!(provider.reconnect().is_ok());
         provider.mark_disconnected("test_disconnect");
 
-        let lines = wait_for_lines(&log_path, 4);
-        let events: Vec<serde_json::Value> = lines
-            .iter()
-            .map(|line| serde_json::from_str(line).expect("valid json"))
-            .collect();
+        let mut events: Vec<serde_json::Value> = Vec::new();
+        for _ in 0..100 {
+            let lines = wait_for_lines(&log_path, 1);
+            events = lines
+                .iter()
+                .map(|line| serde_json::from_str(line).expect("valid json"))
+                .collect();
+            if events
+                .iter()
+                .any(|value| value["event"] == "daemon.connection.established")
+                && events
+                    .iter()
+                    .any(|value| value["event"] == "daemon.connection.reconnecting")
+                && events
+                    .iter()
+                    .any(|value| value["event"] == "daemon.connection.lost")
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
         assert!(events
             .iter()
             .any(|value| value["event"] == "daemon.connection.established"));

@@ -227,6 +227,7 @@ mod tests {
             team_name: "architecture-final".to_string(),
             message: "Please report status".to_string(),
             sender_name: None,
+            operational_context: None,
         };
 
         let rendered = DeliveryRenderer::render_operator_notice(&payload);
@@ -283,6 +284,7 @@ mod tests {
             team_name: "team-c".to_string(),
             message: "notice".to_string(),
             sender_name: None,
+            operational_context: None,
         });
 
         assert_eq!(

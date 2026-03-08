@@ -48,6 +48,64 @@ pub struct RecoveryNudgeDelivery {
 }
 
 /// Typed payload for operator-authored notifications.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalTaskContext {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalAssignmentFooter {
+    #[serde(default)]
+    pub execution_mode: String,
+    #[serde(default)]
+    pub file_ownership_boundary: Vec<String>,
+    #[serde(default)]
+    pub adjacent_fix_policy: String,
+    #[serde(default)]
+    pub validation_expectation: String,
+    #[serde(default)]
+    pub response_expectation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalOwnershipContext {
+    #[serde(default)]
+    pub override_allowed: bool,
+    #[serde(default)]
+    pub active_override_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalWorkingSetContext {
+    #[serde(default)]
+    pub project_path: String,
+    #[serde(default)]
+    pub focal_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalContextUpdate {
+    #[serde(default)]
+    pub task: Option<OperationalTaskContext>,
+    #[serde(default)]
+    pub assignment_footer: Option<OperationalAssignmentFooter>,
+    #[serde(default)]
+    pub ownership: Option<OperationalOwnershipContext>,
+    #[serde(default)]
+    pub working_set: Option<OperationalWorkingSetContext>,
+}
+
+/// Typed payload for operator-authored notifications.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorNoticeDelivery {
     pub member_name: String,
@@ -55,6 +113,8 @@ pub struct OperatorNoticeDelivery {
     pub message: String,
     #[serde(default)]
     pub sender_name: Option<String>,
+    #[serde(default)]
+    pub operational_context: Option<OperationalContextUpdate>,
 }
 
 /// Typed delivery request variants.
@@ -386,6 +446,7 @@ mod tests {
             team_name: "architecture-final".to_string(),
             message: "Check your inbox".to_string(),
             sender_name: Some("team-lead".to_string()),
+            operational_context: None,
         });
 
         let encoded = serde_json::to_value(&req).expect("request should serialize");

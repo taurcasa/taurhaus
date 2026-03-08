@@ -730,6 +730,7 @@ mod tests {
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect("delivery should succeed");
 
@@ -777,6 +778,7 @@ mod tests {
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect("delivery should succeed after fallback retry");
 
@@ -837,6 +839,7 @@ mod tests {
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
                 sender_name: None,
+                operational_context: None,
             }))
             .expect("delivery should succeed after retry");
 
@@ -891,6 +894,7 @@ mod tests {
                     team_name: "architecture-final".to_string(),
                     message: "hello".to_string(),
                     sender_name: None,
+                    operational_context: None,
                 }));
             assert!(delivered.is_ok());
 

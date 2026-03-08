@@ -866,6 +866,7 @@ mod tests {
                     member_name: "existing-dev".to_string(),
                     message: "post-upgrade ping".to_string(),
                     sender_name: Some("team-lead".to_string()),
+                    operational_context: None,
                 }))
             })
             .expect("delivery after upgrade cycle");

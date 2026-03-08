@@ -10,6 +10,7 @@
 //! This eliminates flickering from transient signals in either direction.
 
 pub mod cli_tool;
+pub mod compaction;
 pub mod control;
 pub mod idle;
 pub mod proc_io;
@@ -518,6 +519,8 @@ pub fn scan_sessions() -> Vec<ClaudeSession> {
     sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
+
+    compaction::process_codex_compaction_events(&sessions);
 
     // Clean up stale PID entries from both trackers
     let active_pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
