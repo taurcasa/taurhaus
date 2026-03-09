@@ -5,8 +5,8 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 
 use crate::coordination::compaction_events::{
-    emit_compaction_signal_consumed, emit_compaction_unresolved, signal_event,
-    CompactionSignalKind as EventSignalKind, CompactionUnresolvedEvent, CompactionUnresolvedReason,
+    emit_compaction_unresolved, CompactionSignalKind as EventSignalKind, CompactionUnresolvedEvent,
+    CompactionUnresolvedReason,
 };
 use crate::coordination::domain::Member;
 use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
@@ -77,16 +77,6 @@ impl CompactionSignalProcessor {
         runtime: &dyn CoordinationRuntime,
         now: DateTime<Utc>,
     ) -> CompactionSignalProcessOutcome {
-        emit_compaction_signal_consumed(signal_event(
-            signal.tool,
-            Some(&signal.session_id),
-            Some(&signal.pane_id),
-            Some(&signal.project_path),
-            Some(Path::new(&signal.jsonl_path)),
-            Some(signal.transcript_timestamp),
-            Some(event_signal_kind(signal.signal_kind)),
-        ));
-
         let Some(resolved) = resolve_managed_codex_signal(teams_dir, signal) else {
             emit_compaction_unresolved(CompactionUnresolvedEvent {
                 tool: signal.tool,
@@ -248,8 +238,8 @@ fn append_codex_inbox_message(
     card: &OperationalReinjectionCard,
     now: DateTime<Utc>,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
-    let rendered_text =
-        CompactionReinjectionService::render_codex_inbox_text(card).map_err(|error| {
+    let rendered_payload =
+        CompactionReinjectionService::render_codex_inbox_payload(card).map_err(|error| {
             crate::coordination::errors::CoordinationError::StoreError(format!(
                 "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
                 member_name, team_name
@@ -257,7 +247,7 @@ fn append_codex_inbox_message(
         })?;
     let inbox_message = MeshInboxMessage::new(
         "taurhaus",
-        rendered_text,
+        rendered_payload,
         Some("post_compaction_context".to_string()),
         now,
     );

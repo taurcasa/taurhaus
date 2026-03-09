@@ -122,7 +122,7 @@ impl CompactionReinjectionService {
         serde_json::to_string_pretty(card)
     }
 
-    pub fn render_codex_inbox_text(
+    pub fn render_codex_inbox_payload(
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(card)
@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_inbox_text_matches_expected_snapshot() {
+    fn render_codex_inbox_payload_matches_expected_snapshot() {
         let card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -368,7 +368,7 @@ mod tests {
                 .with_timezone(&Utc),
         );
 
-        let rendered = CompactionReinjectionService::render_codex_inbox_text(&card)
+        let rendered = CompactionReinjectionService::render_codex_inbox_payload(&card)
             .expect("render codex inbox text");
         let parsed: OperationalReinjectionCard =
             serde_json::from_str(&rendered).expect("parse rendered inbox payload");
@@ -377,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_inbox_text_preserves_missing_optionals_and_override_status() {
+    fn render_codex_inbox_payload_preserves_missing_optionals_and_override_status() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -395,7 +395,7 @@ mod tests {
         card.boundaries.override_allowed = true;
         card.boundaries.active_override_reason = Some("lead-approved adjacent fix".to_string());
 
-        let rendered = CompactionReinjectionService::render_codex_inbox_text(&card)
+        let rendered = CompactionReinjectionService::render_codex_inbox_payload(&card)
             .expect("render codex inbox text");
         let parsed: OperationalReinjectionCard =
             serde_json::from_str(&rendered).expect("parse rendered inbox payload");
@@ -404,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_inbox_text_preserves_role_id_when_role_name_is_missing() {
+    fn render_codex_inbox_payload_preserves_role_id_when_role_name_is_missing() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -414,7 +414,7 @@ mod tests {
         );
         card.role.role_name = None;
 
-        let rendered = CompactionReinjectionService::render_codex_inbox_text(&card)
+        let rendered = CompactionReinjectionService::render_codex_inbox_payload(&card)
             .expect("render codex inbox text");
         let parsed: OperationalReinjectionCard =
             serde_json::from_str(&rendered).expect("parse rendered inbox payload");
