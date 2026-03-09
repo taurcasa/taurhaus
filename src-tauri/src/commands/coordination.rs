@@ -28,12 +28,10 @@ use crate::coordination::requests::{
 };
 use crate::coordination::roster::{get_team_roster_with_attachments, TeamMemberView};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{inspect_signal_log_at, MemberCompactionStore, TeamConfigStore};
+use crate::coordination::stores::TeamConfigStore;
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::compaction_extractor::load_compaction_extractor_diagnostics_at;
-use crate::session_scanner::compaction_watcher::load_compaction_signal_watcher_diagnostics_at;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
 use crate::templates::types::RoleTemplate;
@@ -199,26 +197,6 @@ pub async fn coordination_get_live_team_status(
     .unwrap_or_else(|err| {
         Err(IpcError::internal(format!(
             "failed to join live team status task: {err}"
-        )))
-    });
-    span.finish_result(&result);
-    result
-}
-
-#[tauri::command]
-pub async fn coordination_get_compaction_audit(
-    app: AppHandle,
-    team_name: String,
-) -> IpcResult<CompactionAuditResponse> {
-    let span = IpcCommandSpan::start("coordination_get_compaction_audit");
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<CoordinationState>();
-        coordination_get_compaction_audit_impl(state.inner(), team_name).ipc()
-    })
-    .await
-    .unwrap_or_else(|err| {
-        Err(IpcError::internal(format!(
-            "failed to join compaction audit task: {err}"
         )))
     });
     span.finish_result(&result);
@@ -594,124 +572,6 @@ pub(crate) fn coordination_get_live_team_status_for_tests(
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
     coordination_get_live_team_status_impl(state, team_name)
-}
-
-fn coordination_get_compaction_audit_impl(
-    state: &CoordinationState,
-    team_name: String,
-) -> Result<CompactionAuditResponse, String> {
-    validate_non_empty("team_name", &team_name)?;
-    let app_started_at = state.app_started_at();
-
-    let config =
-        TeamConfigStore::load(state.teams_dir(), &team_name).map_err(map_coordination_error)?;
-    let tool_by_member = config
-        .members
-        .into_iter()
-        .map(|member| (member.name, member.cli_tool.to_string()))
-        .collect::<HashMap<_, _>>();
-
-    let mut entries = MemberCompactionStore::load_all(state.teams_dir(), &team_name)
-        .map_err(map_coordination_error)?
-        .into_iter()
-        .filter(|(_, state)| state.last_compaction_timestamp >= app_started_at)
-        .map(|(member_name, state)| CompactionAuditEntry {
-            member_name: member_name.clone(),
-            tool: tool_by_member
-                .get(&member_name)
-                .cloned()
-                .unwrap_or_else(|| "unknown".to_string()),
-            last_session_id: state.last_session_id,
-            last_compaction_timestamp: state.last_compaction_timestamp.to_rfc3339(),
-            last_delivery_result: serde_json::to_value(state.last_delivery_result)
-                .ok()
-                .and_then(|value| value.as_str().map(ToOwned::to_owned))
-                .unwrap_or_else(|| "unknown".to_string()),
-        })
-        .collect::<Vec<_>>();
-
-    entries.sort_by(|left, right| {
-        right
-            .last_compaction_timestamp
-            .cmp(&left.last_compaction_timestamp)
-            .then_with(|| left.member_name.cmp(&right.member_name))
-    });
-
-    let extractor = load_compaction_extractor_diagnostics_at(state.teams_dir(), &team_name)
-        .map_err(|error| error.to_string())?;
-    let watcher = load_compaction_signal_watcher_diagnostics_at(state.teams_dir(), &team_name)
-        .map_err(|error| error.to_string())?;
-    let signal_log = inspect_signal_log_at(
-        state.teams_dir(),
-        &team_name,
-        watcher.last_consumed_offset,
-        5,
-    )
-    .map_err(map_coordination_error)?;
-
-    Ok(CompactionAuditResponse {
-        team_name,
-        entries,
-        diagnostics: CompactionDiagnostics {
-            extractor: CompactionExtractorDiagnostics {
-                heartbeat_at: extractor.heartbeat_at,
-                last_processed_signal_id: extractor.last_processed_signal_id,
-                last_processed_jsonl_path: extractor.last_processed_jsonl_path,
-                last_processed_jsonl_offset: extractor.last_processed_jsonl_offset,
-                active_files: extractor
-                    .active_files
-                    .into_iter()
-                    .map(|file| CompactionExtractorFileDiagnostics {
-                        jsonl_path: file.jsonl_path,
-                        offset: file.offset,
-                        last_error: file.last_error,
-                    })
-                    .collect(),
-            },
-            signal_log: CompactionSignalDiagnostics {
-                signal_log_path: signal_log.signal_log_path.display().to_string(),
-                file_size_bytes: signal_log.file_size_bytes,
-                total_signals: signal_log.total_signals,
-                last_consumed_offset: signal_log.last_consumed_offset,
-                unconsumed_count: signal_log.unconsumed_count,
-                recent_signals: signal_log
-                    .recent_signals
-                    .into_iter()
-                    .map(|signal| CompactionSignalAuditEntry {
-                        signal_id: signal.signal_id,
-                        emitted_at: signal.emitted_at.to_rfc3339(),
-                        session_id: signal.session_id,
-                        pane_id: signal.pane_id,
-                        project_path: signal.project_path,
-                        transcript_timestamp: signal.transcript_timestamp.to_rfc3339(),
-                        signal_kind: match signal.signal_kind {
-                            crate::coordination::stores::CompactionSignalKind::Compacted => {
-                                "compacted".to_string()
-                            }
-                            crate::coordination::stores::CompactionSignalKind::ContextCompacted => {
-                                "context_compacted".to_string()
-                            }
-                        },
-                    })
-                    .collect(),
-            },
-            watcher: CompactionWatcherDiagnostics {
-                last_consumed_offset: watcher.last_consumed_offset,
-                last_event_at: watcher.last_event_at,
-                last_reconciliation_at: watcher.last_reconciliation_at,
-                reconciliation_poll_count: watcher.reconciliation_poll_count,
-                missed_event_recovery_count: watcher.missed_event_recovery_count,
-            },
-        },
-    })
-}
-
-#[cfg(test)]
-pub(crate) fn coordination_get_compaction_audit_for_tests(
-    state: &CoordinationState,
-    team_name: String,
-) -> Result<CompactionAuditResponse, String> {
-    coordination_get_compaction_audit_impl(state, team_name)
 }
 
 fn coordination_create_team_impl(

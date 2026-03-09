@@ -272,8 +272,6 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_live_team_status,
             #[cfg(feature = "mesh-bridged-backend")]
-            commands::coordination::coordination_get_compaction_audit,
-            #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_preflight_check,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_feature_availability,

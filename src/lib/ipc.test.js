@@ -1850,38 +1850,6 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    it('coordinationGetCompactionAudit calls invoke and returns deterministic mock shape', async () => {
-      const mockModeResult = await ipc.coordinationGetCompactionAudit('arch')
-      expect(mockModeResult.teamName).toBe('arch')
-      expect(Array.isArray(mockModeResult.entries)).toBe(true)
-      expect(mockModeResult.diagnostics).toBeTruthy()
-      expect(mockModeResult.diagnostics.signalLog.totalSignals).toBeGreaterThanOrEqual(0)
-
-      window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue({
-        teamName: 'arch',
-        entries: [
-          {
-            memberName: 'frontend-dev',
-            tool: 'codex',
-            lastSessionId: 'session-1',
-            lastCompactionTimestamp: '2026-03-08T14:46:41.037Z',
-            lastDeliveryResult: 'injected',
-          },
-        ],
-        diagnostics: {
-          extractor: { heartbeatAt: '2026-03-08T15:04:18Z', activeFiles: [] },
-          signalLog: { totalSignals: 1, unconsumedCount: 0, recentSignals: [] },
-          watcher: { reconciliationPollCount: 1, missedEventRecoveryCount: 0 },
-        },
-      })
-      await ipc.coordinationGetCompactionAudit('arch')
-      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_compaction_audit', {
-        teamName: 'arch',
-      })
-      delete window.__TAURI_INTERNALS__
-    })
-
     it('coordinationGetProjectMeshSnapshot calls invoke and returns deterministic mock shape', async () => {
       const mockModeResult = await ipc.coordinationGetProjectMeshSnapshot('/projects/arch')
       expect(mockModeResult).toEqual({

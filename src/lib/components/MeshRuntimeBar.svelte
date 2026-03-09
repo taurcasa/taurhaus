@@ -4,8 +4,6 @@
     lead = null,
     agents = [],
     teamRuntimeState = 'active',
-    compactionAudit = [],
-    compactionDiagnostics = null,
     dark = false,
     actionsDisabled = false,
     onAddAgent = () => {},
@@ -42,28 +40,8 @@
     dark ? 'text-danger-300 hover:bg-danger-500/12' : 'text-danger-600 hover:bg-danger-500/10'
   )
   const hintTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
-  const auditPanelTone = $derived(
-    dark ? 'border-white/10 bg-white/[0.03]' : 'border-brand-200/70 bg-white/80'
-  )
-  const auditRowTone = $derived(
-    dark ? 'border-white/8 bg-white/[0.02]' : 'border-brand-100/80 bg-brand-50/45'
-  )
-  const auditMetaTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
-  const auditMutedTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
 
   const members = $derived.by(() => [lead, ...(Array.isArray(agents) ? agents : [])].filter(Boolean))
-  const auditEntries = $derived.by(() =>
-    (Array.isArray(compactionAudit) ? compactionAudit : []).filter((entry) => entry?.memberName)
-  )
-  const diagnostics = $derived(
-    compactionDiagnostics && typeof compactionDiagnostics === 'object' ? compactionDiagnostics : null
-  )
-  const extractorFiles = $derived.by(() =>
-    Array.isArray(diagnostics?.extractor?.activeFiles) ? diagnostics.extractor.activeFiles : []
-  )
-  const recentSignals = $derived.by(() =>
-    Array.isArray(diagnostics?.signalLog?.recentSignals) ? diagnostics.signalLog.recentSignals : []
-  )
 
   const statusCounts = $derived.by(() => {
     const counts = { active: 0, idle: 0, offline: 0 }
@@ -128,52 +106,6 @@
     if (actionsDisabled) return
     closeOverflow()
     onDisband()
-  }
-
-  function formatTool(tool) {
-    const value = String(tool ?? '').trim().toLowerCase()
-    if (value === 'claude') return 'Claude'
-    if (value === 'codex') return 'Codex'
-    if (value === 'gemini') return 'Gemini'
-    return value || 'Unknown'
-  }
-
-  function formatResult(result) {
-    const value = String(result ?? '').trim().toLowerCase()
-    if (value === 'injected') return 'Injected'
-    if (value === 'skipped') return 'Skipped'
-    if (value === 'stale') return 'Stale'
-    if (value === 'failed') return 'Failed'
-    return value || 'Unknown'
-  }
-
-  function resultTone(result) {
-    const value = String(result ?? '').trim().toLowerCase()
-    if (value === 'injected') {
-      return dark
-        ? 'border-success-400/30 bg-success-500/12 text-success-200'
-        : 'border-success-300 bg-success-50 text-success-700'
-    }
-    if (value === 'failed') {
-      return dark
-        ? 'border-danger-400/30 bg-danger-500/12 text-danger-200'
-        : 'border-danger-300 bg-danger-50 text-danger-700'
-    }
-    if (value === 'stale') {
-      return dark
-        ? 'border-warning-400/30 bg-warning-500/12 text-warning-200'
-        : 'border-warning-300 bg-warning-50 text-warning-700'
-    }
-    return dark
-      ? 'border-white/10 bg-white/[0.05] text-zinc-200'
-      : 'border-brand-200 bg-white text-zinc-700'
-  }
-
-  function formatCompactKind(kind) {
-    const value = String(kind ?? '').trim().toLowerCase()
-    if (value === 'context_compacted') return 'Context compacted'
-    if (value === 'compacted') return 'Compacted'
-    return value || 'Unknown'
   }
 </script>
 
@@ -273,139 +205,4 @@
     </div>
   </div>
 
-  {#if auditEntries.length > 0}
-    <section
-      class="rounded-xl border px-3 py-3 space-y-2 {auditPanelTone}"
-      data-testid="mesh-runtime-compaction-audit"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h3 class="text-xs font-semibold {titleTone}">Recent Reinjection Audit</h3>
-          <p class="text-[11px] {hintTone}">Latest compaction delivery outcomes for this team.</p>
-        </div>
-        <span class="text-[10px] uppercase tracking-wide {hintTone}">Debug</span>
-      </div>
-
-      <ul class="space-y-1.5">
-        {#each auditEntries as entry}
-          <li
-            class="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs {auditRowTone}"
-            data-testid={`mesh-runtime-compaction-entry-${entry.memberName}`}
-          >
-            <div class="min-w-0 space-y-0.5">
-              <p class="font-medium {auditMetaTone}">
-                {entry.memberName}
-                <span class="{auditMutedTone}"> · {formatTool(entry.tool)}</span>
-              </p>
-              <p class="truncate {auditMutedTone}" title={entry.lastSessionId}>
-                {entry.lastCompactionTimestamp}
-              </p>
-            </div>
-            <span class="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide {resultTone(entry.lastDeliveryResult)}">
-              {formatResult(entry.lastDeliveryResult)}
-            </span>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
-
-  {#if diagnostics}
-    <section
-      class="rounded-xl border px-3 py-3 space-y-3 {auditPanelTone}"
-      data-testid="mesh-runtime-compaction-diagnostics"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h3 class="text-xs font-semibold {titleTone}">Compaction Diagnostics</h3>
-          <p class="text-[11px] {hintTone}">Extractor, signal log, and watcher health snapshot.</p>
-        </div>
-        <span class="text-[10px] uppercase tracking-wide {hintTone}">Debug</span>
-      </div>
-
-      <div class="grid gap-2 md:grid-cols-3">
-        <div
-          class="rounded-lg border px-3 py-2 text-xs space-y-1 {auditRowTone}"
-          data-testid="mesh-runtime-compaction-extractor"
-        >
-          <p class="font-medium {auditMetaTone}">Extractor</p>
-          <p class="{auditMutedTone}">
-            {extractorFiles.length} active file{extractorFiles.length === 1 ? '' : 's'}
-          </p>
-          <p class="{auditMutedTone}">
-            heartbeat {diagnostics.extractor?.heartbeatAt || 'n/a'}
-          </p>
-          <p class="{auditMutedTone}">
-            last signal {diagnostics.extractor?.lastProcessedSignalId || 'n/a'}
-          </p>
-        </div>
-
-        <div
-          class="rounded-lg border px-3 py-2 text-xs space-y-1 {auditRowTone}"
-          data-testid="mesh-runtime-compaction-signal-log"
-        >
-          <p class="font-medium {auditMetaTone}">Signal Log</p>
-          <p class="{auditMutedTone}">
-            {diagnostics.signalLog?.totalSignals ?? 0} total, {diagnostics.signalLog?.unconsumedCount ?? 0} unconsumed
-          </p>
-          <p class="{auditMutedTone}">
-            offset {diagnostics.signalLog?.lastConsumedOffset ?? 0}
-          </p>
-          <p class="truncate {auditMutedTone}" title={diagnostics.signalLog?.signalLogPath || ''}>
-            {diagnostics.signalLog?.signalLogPath || 'n/a'}
-          </p>
-        </div>
-
-        <div
-          class="rounded-lg border px-3 py-2 text-xs space-y-1 {auditRowTone}"
-          data-testid="mesh-runtime-compaction-watcher"
-        >
-          <p class="font-medium {auditMetaTone}">Watcher</p>
-          <p class="{auditMutedTone}">
-            last event {diagnostics.watcher?.lastEventAt || 'n/a'}
-          </p>
-          <p class="{auditMutedTone}">
-            reconciles {diagnostics.watcher?.reconciliationPollCount ?? 0}
-          </p>
-          <p class="{auditMutedTone}">
-            recovered {diagnostics.watcher?.missedEventRecoveryCount ?? 0}
-          </p>
-        </div>
-      </div>
-
-      {#if extractorFiles.length > 0}
-        <div class="space-y-1.5" data-testid="mesh-runtime-compaction-extractor-files">
-          <p class="text-[11px] font-medium {auditMetaTone}">Tracked transcript files</p>
-          <ul class="space-y-1.5">
-            {#each extractorFiles as file}
-              <li class="rounded-lg border px-3 py-2 text-xs {auditRowTone}">
-                <p class="truncate {auditMetaTone}" title={file.jsonlPath}>{file.jsonlPath}</p>
-                <p class="{auditMutedTone}">offset {file.offset}</p>
-                {#if file.lastError}
-                  <p class="{dark ? 'text-warning-300' : 'text-warning-700'}">{file.lastError}</p>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
-
-      {#if recentSignals.length > 0}
-        <div class="space-y-1.5" data-testid="mesh-runtime-compaction-signals">
-          <p class="text-[11px] font-medium {auditMetaTone}">Recent signals</p>
-          <ul class="space-y-1.5">
-            {#each recentSignals as signal}
-              <li class="rounded-lg border px-3 py-2 text-xs {auditRowTone}">
-                <p class="font-medium {auditMetaTone}">
-                  {formatCompactKind(signal.signalKind)}
-                  <span class="{auditMutedTone}"> · {signal.sessionId || 'unknown session'}</span>
-                </p>
-                <p class="{auditMutedTone}">{signal.emittedAt || signal.transcriptTimestamp}</p>
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
-    </section>
-  {/if}
 </header>

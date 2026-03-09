@@ -6,7 +6,6 @@ vi.mock('../ipc.js', () => ({
   checkMeshInstallStatus: vi.fn(),
   composeTeam: vi.fn(),
   coordinationAddAgent: vi.fn(),
-  coordinationGetCompactionAudit: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
   coordinationGetProjectMeshSnapshot: vi.fn(),
   coordinationGetLiveTeamStatus: vi.fn(),
@@ -28,7 +27,6 @@ const {
   checkMeshInstallStatus,
   composeTeam,
   coordinationAddAgent,
-  coordinationGetCompactionAudit,
   coordinationDisbandTeam,
   coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
@@ -142,11 +140,6 @@ describe('Mesh flow smoke', () => {
       leadName: 'team-lead',
       members: rosterMembers,
     }))
-    coordinationGetCompactionAudit.mockResolvedValue({
-      teamName: 'taurhaus-team',
-      entries: [],
-    })
-
     coordinationInitializeTeam.mockResolvedValue({
       teamName: 'taurhaus-team',
       failedStep: null,

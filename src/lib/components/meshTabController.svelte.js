@@ -2,7 +2,6 @@ import { untrack } from 'svelte'
 import {
   composeTeam,
   coordinationAddAgent,
-  coordinationGetCompactionAudit,
   coordinationDisbandTeam,
   coordinationGetProjectMeshSnapshot,
   coordinationGetLiveTeamStatus,
@@ -100,8 +99,6 @@ export function createMeshTabController({
   let captureRoleDialog = $state(null)
   let teamRuntimeState = $state('none')
   let teamResumeProgress = $state(null)
-  let compactionAudit = $state([])
-  let compactionDiagnostics = $state(null)
 
   let discoverySequence = 0
   let presetSelectionSequence = 0
@@ -172,139 +169,6 @@ export function createMeshTabController({
     if (normalized === 'degraded') return 'degraded'
     if (normalized === 'coldresume' || normalized === 'cold_resume') return 'coldResume'
     return 'none'
-  }
-
-  function normalizeCompactionAuditResponse(response) {
-    const entries = Array.isArray(response?.entries)
-      ? response.entries
-      : Array.isArray(response?.compactionAudit)
-        ? response.compactionAudit
-        : []
-    const normalizedEntries = entries
-      .map((entry) => ({
-        memberName: String(entry?.memberName ?? entry?.member_name ?? '').trim(),
-        tool: String(entry?.tool ?? '').trim().toLowerCase(),
-        lastSessionId: String(entry?.lastSessionId ?? entry?.last_session_id ?? '').trim(),
-        lastCompactionTimestamp: String(
-          entry?.lastCompactionTimestamp ?? entry?.last_compaction_timestamp ?? ''
-        ).trim(),
-        lastDeliveryResult: String(
-          entry?.lastDeliveryResult ?? entry?.last_delivery_result ?? ''
-        ).trim().toLowerCase(),
-      }))
-      .filter((entry) => entry.memberName && entry.lastCompactionTimestamp)
-
-    const diagnostics = response?.diagnostics ?? response?.compactionDiagnostics ?? null
-    const extractorFiles = Array.isArray(diagnostics?.extractor?.activeFiles)
-      ? diagnostics.extractor.activeFiles
-      : Array.isArray(diagnostics?.extractor?.active_files)
-        ? diagnostics.extractor.active_files
-        : []
-    const recentSignals = Array.isArray(diagnostics?.signalLog?.recentSignals)
-      ? diagnostics.signalLog.recentSignals
-      : Array.isArray(diagnostics?.signalLog?.recent_signals)
-        ? diagnostics.signalLog.recent_signals
-        : []
-
-    return {
-      entries: normalizedEntries,
-      diagnostics: diagnostics
-        ? {
-            extractor: {
-              heartbeatAt: String(
-                diagnostics?.extractor?.heartbeatAt ?? diagnostics?.extractor?.heartbeat_at ?? ''
-              ).trim(),
-              lastProcessedSignalId: String(
-                diagnostics?.extractor?.lastProcessedSignalId ??
-                  diagnostics?.extractor?.last_processed_signal_id ??
-                  ''
-              ).trim(),
-              lastProcessedJsonlPath: String(
-                diagnostics?.extractor?.lastProcessedJsonlPath ??
-                  diagnostics?.extractor?.last_processed_jsonl_path ??
-                  ''
-              ).trim(),
-              lastProcessedJsonlOffset: Number(
-                diagnostics?.extractor?.lastProcessedJsonlOffset ??
-                  diagnostics?.extractor?.last_processed_jsonl_offset ??
-                  0
-              ),
-              activeFiles: extractorFiles
-                .map((file) => ({
-                  jsonlPath: String(file?.jsonlPath ?? file?.jsonl_path ?? '').trim(),
-                  offset: Number(file?.offset ?? 0),
-                  lastError: String(file?.lastError ?? file?.last_error ?? '').trim(),
-                }))
-                .filter((file) => file.jsonlPath),
-            },
-            signalLog: {
-              signalLogPath: String(
-                diagnostics?.signalLog?.signalLogPath ??
-                  diagnostics?.signalLog?.signal_log_path ??
-                  ''
-              ).trim(),
-              fileSizeBytes: Number(
-                diagnostics?.signalLog?.fileSizeBytes ??
-                  diagnostics?.signalLog?.file_size_bytes ??
-                  0
-              ),
-              totalSignals: Number(
-                diagnostics?.signalLog?.totalSignals ??
-                  diagnostics?.signalLog?.total_signals ??
-                  0
-              ),
-              lastConsumedOffset: Number(
-                diagnostics?.signalLog?.lastConsumedOffset ??
-                  diagnostics?.signalLog?.last_consumed_offset ??
-                  0
-              ),
-              unconsumedCount: Number(
-                diagnostics?.signalLog?.unconsumedCount ??
-                  diagnostics?.signalLog?.unconsumed_count ??
-                  0
-              ),
-              recentSignals: recentSignals
-                .map((signal) => ({
-                  signalId: String(signal?.signalId ?? signal?.signal_id ?? '').trim(),
-                  emittedAt: String(signal?.emittedAt ?? signal?.emitted_at ?? '').trim(),
-                  sessionId: String(signal?.sessionId ?? signal?.session_id ?? '').trim(),
-                  paneId: String(signal?.paneId ?? signal?.pane_id ?? '').trim(),
-                  projectPath: String(signal?.projectPath ?? signal?.project_path ?? '').trim(),
-                  transcriptTimestamp: String(
-                    signal?.transcriptTimestamp ?? signal?.transcript_timestamp ?? ''
-                  ).trim(),
-                  signalKind: String(signal?.signalKind ?? signal?.signal_kind ?? '').trim(),
-                }))
-                .filter((signal) => signal.signalId),
-            },
-            watcher: {
-              lastConsumedOffset: Number(
-                diagnostics?.watcher?.lastConsumedOffset ??
-                  diagnostics?.watcher?.last_consumed_offset ??
-                  0
-              ),
-              lastEventAt: String(
-                diagnostics?.watcher?.lastEventAt ?? diagnostics?.watcher?.last_event_at ?? ''
-              ).trim(),
-              lastReconciliationAt: String(
-                diagnostics?.watcher?.lastReconciliationAt ??
-                  diagnostics?.watcher?.last_reconciliation_at ??
-                  ''
-              ).trim(),
-              reconciliationPollCount: Number(
-                diagnostics?.watcher?.reconciliationPollCount ??
-                  diagnostics?.watcher?.reconciliation_poll_count ??
-                  0
-              ),
-              missedEventRecoveryCount: Number(
-                diagnostics?.watcher?.missedEventRecoveryCount ??
-                  diagnostics?.watcher?.missed_event_recovery_count ??
-                  0
-              ),
-            },
-          }
-        : null,
-    }
   }
 
   function nowMs() {
@@ -651,17 +515,11 @@ export function createMeshTabController({
       sequence,
       getDiscoverySequence: () => discoverySequence,
       coordinationGetLiveTeamStatus,
-      coordinationGetCompactionAudit,
       buildTeamConfigFromRuntimeStatus,
       getProjectPath,
       onTeamConfig: (value) => {
         nextConfig = value
         teamConfig = value
-      },
-      onCompactionAudit: (value) => {
-        const normalized = normalizeCompactionAuditResponse(value)
-        compactionAudit = normalized.entries
-        compactionDiagnostics = normalized.diagnostics
       },
     })
     if (nextConfig && snapshot) {
@@ -772,8 +630,6 @@ export function createMeshTabController({
     availabilityMessage = ''
     teamRuntimeState = 'none'
     teamResumeProgress = null
-    compactionAudit = []
-    compactionDiagnostics = null
     errorMessage = ''
     runtimeMessage = ''
     clearRuntimeTeamRefresh({ dropInFlight: true })
@@ -1446,12 +1302,6 @@ export function createMeshTabController({
     },
     get teamResumeProgress() {
       return teamResumeProgress
-    },
-    get compactionAudit() {
-      return compactionAudit
-    },
-    get compactionDiagnostics() {
-      return compactionDiagnostics
     },
     get loadingRoles() {
       return loadingRoles
