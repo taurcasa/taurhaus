@@ -89,6 +89,13 @@ struct ExtractorFileCheckpoint {
     offset: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ExtractorRecentBoundary {
+    timestamp: DateTime<Utc>,
+    jsonl_offset: u64,
+    signal_kind: CompactionSignalKind,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompactionExtractorFileDiagnostics {
     pub jsonl_path: String,
@@ -118,6 +125,8 @@ struct ExtractorState {
     #[serde(default)]
     file_offsets: BTreeMap<String, ExtractorFileCheckpoint>,
     #[serde(default)]
+    last_emitted_boundary_by_file: BTreeMap<String, ExtractorRecentBoundary>,
+    #[serde(default)]
     last_processed_signal: Option<LastProcessedSignal>,
     #[serde(default)]
     heartbeat_at: Option<DateTime<Utc>>,
@@ -130,6 +139,7 @@ impl Default for ExtractorState {
         Self {
             version: EXTRACTOR_SCHEMA_VERSION,
             file_offsets: BTreeMap::new(),
+            last_emitted_boundary_by_file: BTreeMap::new(),
             last_processed_signal: None,
             heartbeat_at: None,
             last_error_by_file: BTreeMap::new(),
@@ -466,6 +476,21 @@ fn extract_compaction_signals_for_team(
         state.last_error_by_file.remove(&path_key);
 
         for boundary in normalize_paired_boundaries(boundaries) {
+            if should_suppress_paired_boundary(
+                state.last_emitted_boundary_by_file.get(&path_key),
+                &boundary,
+            ) {
+                state.last_emitted_boundary_by_file.insert(
+                    path_key.clone(),
+                    ExtractorRecentBoundary {
+                        timestamp: boundary.timestamp,
+                        jsonl_offset: boundary.jsonl_offset,
+                        signal_kind: boundary.signal_kind,
+                    },
+                );
+                continue;
+            }
+
             let record = CompactionSignalRecord {
                 version: EXTRACTOR_SCHEMA_VERSION,
                 signal_id: Uuid::new_v4().to_string(),
@@ -486,6 +511,14 @@ fn extract_compaction_signals_for_team(
                 jsonl_path: record.jsonl_path.clone(),
                 jsonl_offset: record.jsonl_offset,
             });
+            state.last_emitted_boundary_by_file.insert(
+                path_key.clone(),
+                ExtractorRecentBoundary {
+                    timestamp: boundary.timestamp,
+                    jsonl_offset: boundary.jsonl_offset,
+                    signal_kind: boundary.signal_kind,
+                },
+            );
             emitted_signal_count += 1;
 
             emit_compaction_signal_emitted(CompactionSignalEvent {
@@ -509,6 +542,9 @@ fn extract_compaction_signals_for_team(
 
     state
         .file_offsets
+        .retain(|path, _| active_paths.contains(path));
+    state
+        .last_emitted_boundary_by_file
         .retain(|path, _| active_paths.contains(path));
     state
         .last_error_by_file
@@ -748,6 +784,24 @@ fn normalize_paired_boundaries(boundaries: Vec<ParsedSignalBoundary>) -> Vec<Par
     normalized
 }
 
+fn should_suppress_paired_boundary(
+    previous: Option<&ExtractorRecentBoundary>,
+    boundary: &ParsedSignalBoundary,
+) -> bool {
+    let Some(previous) = previous else {
+        return false;
+    };
+
+    previous.signal_kind == CompactionSignalKind::Compacted
+        && boundary.signal_kind == CompactionSignalKind::ContextCompacted
+        && boundary
+            .timestamp
+            .signed_duration_since(previous.timestamp)
+            .num_milliseconds()
+            .abs()
+            <= PAIRED_SIGNAL_WINDOW_MS
+}
+
 fn load_extractor_state(
     teams_dir: &Path,
     team_name: &str,
@@ -974,6 +1028,17 @@ mod tests {
                 "/tmp/session.jsonl".to_string(),
                 ExtractorFileCheckpoint { offset: 42 },
             )]),
+            last_emitted_boundary_by_file: BTreeMap::from([(
+                "/tmp/session.jsonl".to_string(),
+                ExtractorRecentBoundary {
+                    timestamp: Utc
+                        .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                        .single()
+                        .expect("datetime"),
+                    jsonl_offset: 42,
+                    signal_kind: CompactionSignalKind::ContextCompacted,
+                },
+            )]),
             last_processed_signal: Some(LastProcessedSignal {
                 signal_id: "sig-1".to_string(),
                 jsonl_path: "/tmp/session.jsonl".to_string(),
@@ -1030,6 +1095,28 @@ mod tests {
                 signal_kind: CompactionSignalKind::ContextCompacted,
             }]
         );
+    }
+
+    #[test]
+    fn suppresses_cross_pass_context_compacted_pair_after_compacted_signal() {
+        let previous = ExtractorRecentBoundary {
+            timestamp: Utc
+                .with_ymd_and_hms(2026, 3, 8, 20, 0, 0)
+                .single()
+                .expect("datetime"),
+            jsonl_offset: 10,
+            signal_kind: CompactionSignalKind::Compacted,
+        };
+        let boundary = ParsedSignalBoundary {
+            timestamp: Utc
+                .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                .single()
+                .expect("datetime"),
+            jsonl_offset: 40,
+            signal_kind: CompactionSignalKind::ContextCompacted,
+        };
+
+        assert!(should_suppress_paired_boundary(Some(&previous), &boundary));
     }
 
     #[test]
@@ -1160,6 +1247,67 @@ mod tests {
             records[1].signal_kind,
             CompactionSignalKind::ContextCompacted
         );
+    }
+
+    #[test]
+    fn extractor_emits_single_signal_when_pair_arrives_across_two_passes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let jsonl_path = tmp.path().join("session.jsonl");
+        let transcript = sample_transcript("taurhaus-team", &jsonl_path);
+
+        write_jsonl(
+            &jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript.clone()],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("prime state");
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10.000Z","type":"compacted"}"#,
+        );
+        append_raw(&jsonl_path, "\n");
+
+        let first_stats = extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript.clone()],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 10)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("extract compacted");
+        assert_eq!(first_stats.emitted_signal_count, 1);
+
+        append_raw(
+            &jsonl_path,
+            r#"{"timestamp":"2026-03-08T20:00:10.030Z","type":"event_msg","payload":{"type":"context_compacted"}}"#,
+        );
+        append_raw(&jsonl_path, "\n");
+
+        let second_stats = extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("extract context_compacted");
+        assert_eq!(second_stats.emitted_signal_count, 0);
+
+        let records = CompactionSignalLog::read_from_offset(&teams_dir, "taurhaus-team", 0)
+            .expect("read records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].signal_kind, CompactionSignalKind::Compacted);
     }
 
     #[test]
