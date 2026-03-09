@@ -1,5 +1,7 @@
 # Role Management Review Against The Context-Steering Model
 
+> Archived design review. This document captures the rationale behind the role-system reframing that shipped in the v0.5.x cycle. It is retained for historical design context; current behavior is defined by the live role schema, frontend/runtime code, and tests.
+
 ## Executive Summary
 
 The current role system is **partially aligned** with the context-steering mental model, but not consistently.

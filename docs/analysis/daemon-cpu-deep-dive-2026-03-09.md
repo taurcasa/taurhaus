@@ -1,5 +1,7 @@
 # Daemon CPU Deep Dive — 2026-03-09
 
+> Status update (later on 2026-03-09): this analysis accurately described the daemon before the independent `DaemonCompactionRuntime` 500 ms runtime-session loop was removed. Treat the duplicated-scan findings here as historical pre-fix context, not current-state architecture.
+
 ## Objective
 
 Identify what is actually burning CPU in the daemon's steady-state path, classify each recurring loop/function by reduction strategy, and propose concrete next steps with expected impact.

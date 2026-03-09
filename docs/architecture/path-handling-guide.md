@@ -6,7 +6,11 @@ Background: see `docs/analysis/path-handling-audit-2026-03-08.md` for the full i
 
 ## Use This First
 
-If your feature touches any of these, start with `src-tauri/src/provider/path.rs`:
+If your feature touches any of these, start with the existing authorities instead of inventing new path logic:
+- `src-tauri/src/provider/path.rs` for project identity / normalization / Windows<->WSL conversion
+- `src-tauri/src/provider/platform_paths.rs` for app-data, Claude-dir, teams-dir, log, hook, and daemon-binary roots
+
+Use `provider/path.rs` when you are comparing or converting project/session paths:
 - project identity / project matching
 - Windows <-> WSL conversion
 - UNC handling
@@ -22,9 +26,15 @@ Current canonical helpers:
 - `windows_drive_to_linux()`
 - `linux_mount_to_windows()`
 
-Future direction:
-- once a shared `PlatformPaths` authority exists, use it for root discovery too
-- do not invent new app-data, Claude-dir, log, or hook-path discovery logic per feature
+Current root authority:
+- `PlatformPaths::app_data_root()`
+- `PlatformPaths::log_path()`
+- `PlatformPaths::claude_dir()`
+- `PlatformPaths::teams_dir()`
+- `PlatformPaths::tool_session_root(tool)`
+- `PlatformPaths::daemon_binary_path()`
+- `PlatformPaths::hook_script_dir()`
+- `PlatformPaths::hook_settings_path()`
 
 ## Which Path Form To Use
 
@@ -111,8 +121,8 @@ Bad:
 
 Good:
 - consume `TAURHAUS_DATA_DIR` / `TAURHAUS_CLAUDE_DIR` when explicitly provided
-- otherwise use app-authoritative root discovery once available
-- if no authority exists yet, document the heuristic and its limitations clearly
+- otherwise resolve roots through `PlatformPaths`
+- if a script cannot call app code, document any temporary heuristic and keep it clearly secondary to app authority
 
 Rule:
 - operational tooling should consume the same resolved roots as the app, not a parallel guess

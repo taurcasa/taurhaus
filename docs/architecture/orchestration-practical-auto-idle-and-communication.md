@@ -13,6 +13,11 @@ This design solves exactly two problems:
 
 Everything else is out of scope.
 
+Current status note (`2026-03-09`):
+- the mesh-side `IdleMonitor` loop landed
+- Taurhaus now exposes runtime recovery through header actions such as `Resume Team` and `Resume Offline (n)`
+- message-quality enforcement remains partly a design direction; the operational assignment checklist is standardized, but not every free-form send path is hard-linted yet
+
 ## Ground Truth Inputs (already available)
 
 Reliable inputs already present in code/data:

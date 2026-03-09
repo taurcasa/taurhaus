@@ -46,7 +46,7 @@ When you author a role, write down three things first:
 - `context_summary`: the long-lived context it should keep accumulating
 - `behavior_summary`: the boundary for independent action vs escalation
 
-Those labels are the right authoring model even though the current persisted schema still centers on instructions, behavioral contract, and constraints. In today’s implementation, you express these ideas through the existing role instructions and behavioral contract fields.
+Those labels are not just the right authoring model. They are first-class persisted fields in the current role schema and now flow through composition, mesh runtime snapshots, hover/detail UI, and role import/export adapters. Instructions, behavioral contract, and constraints still matter, but they now support these context-steering fields instead of replacing them.
 
 ## What A Good Role Definition Looks Like
 
@@ -88,7 +88,7 @@ context_summary: "Carries long-lived context around module boundaries, design tr
 behavior_summary: "Handles pattern choices independently; escalates direction changes immediately."
 ```
 
-Then map that into the current template system by encoding the same meaning in:
+Then support it with:
 
 - role instructions
 - behavioral contract
@@ -96,13 +96,13 @@ Then map that into the current template system by encoding the same meaning in:
 
 ## Current Structural Reference
 
-The current template system remains structurally the same:
+The current template system remains structurally the same, but the role schema now explicitly carries the context-steering fields:
 
-- **Role template**: tool, model defaults, instructions, behavioral contract, constraints, and current schema fields
+- **Role template**: tool, model defaults, `focus_area`, `context_summary`, `behavior_summary`, instructions, behavioral contract, constraints, and optional import provenance
 - **Team preset**: one lead role plus agent slots and preset-specific overrides
 - **Composition**: resolved roster produced from the selected lead and slots
 
-That means this guide changes **how to think about roles**, not how template composition works today.
+That means this guide changes both **how to think about roles** and what concrete fields you should author.
 
 ## Using Templates In Setup
 
@@ -131,6 +131,27 @@ Current lead-mode rule:
 - **Claude leads** may use the existing attach-existing flow.
 - **Codex and Gemini leads** are currently `launch_new` only. If a preset or request tries `attach_existing`, backend validation rejects it with a clear error instead of silently falling back.
 
+## Import, Export, and Provenance
+
+Roles can now move across external agent-file formats through the adapter layer:
+
+- **Export**:
+  - Claude agent files
+  - Copilot agent files
+  - instruction-only formats such as `AGENTS.md` and `GEMINI.md`
+- **Import**:
+  - Claude custom-agent Markdown
+  - Copilot custom-agent Markdown
+
+Imported roles persist provenance metadata:
+
+- source format
+- source path
+- import timestamp
+- `non_roundtrippable_fields` for lossy conversions
+
+The catalog UI surfaces that provenance so imported roles are visibly different from native Taurhaus roles.
+
 ## Template Sources
 
 Templates come from two sources:
@@ -158,12 +179,17 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (9)**: `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-orchestrator`, `codex-architect`, `codex-developer`, `codex-qa`, `gemini-orchestrator`, `gemini-ui-specialist`
-- **Presets (12)**:
+- **Roles (14)**:
+  - `claude-orchestrator`, `claude-researcher`, `claude-reviewer`
+  - `codex-orchestrator`, `codex-architect`, `codex-developer`, `codex-qa`
+  - `gemini-orchestrator`, `gemini-ui-specialist`
+  - `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, `taurhaus-designer`
+- **Presets (14)**:
   - `standard-team`, `standard-team-codex`, `standard-team-gemini`
   - `fullstack-dev`, `fullstack-dev-codex`, `fullstack-dev-gemini`
   - `research-dev`, `research-dev-codex`, `research-dev-gemini`
   - `review-team`, `review-team-codex`, `review-team-gemini`
+  - `taurhaus-standard`, `taurhaus-standard-codex`
 
 These built-ins are most useful when you read them as lane definitions:
 

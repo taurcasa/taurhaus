@@ -1,8 +1,14 @@
-# Mesh Versioning + Bundling Contract (Joint Proposal)
+# Mesh Versioning + Bundling Contract
 
 Date: 2026-03-06  
 Owner: architect  
 Contributors: architect + mesh-expert
+
+Status note (`2026-03-09`):
+- the lock-manifest strategy in this document has shipped
+- Taurhaus currently pins mesh `0.2.6`
+- `install_mesh` now uses atomic replacement plus daemon cycling
+- running daemon currentity is validated instead of trusting only the on-disk bundle version
 
 ## 1. Problem Statement
 
@@ -61,11 +67,16 @@ Taurhaus pins and verifies:
 
 Recommendation: enforce equality for protocol/schema during pre-1.0.
 
+Current Taurhaus behavior already follows that rule through the checked-in lock manifest.
+
 ## 3. Build/Bundling Recipe Changes
 
-### 3.1 Add Lock Manifest In Taurhaus
+### 3.1 Lock Manifest In Taurhaus
 
-Add a tracked lock file (proposal: `src-tauri/resources/mesh.lock.json` or repo-root `mesh.lock.json`):
+Tracked lock file:
+- `src-tauri/resources/mesh.lock.json`
+
+Shape:
 
 ```json
 {
@@ -78,7 +89,7 @@ Add a tracked lock file (proposal: `src-tauri/resources/mesh.lock.json` or repo-
 }
 ```
 
-This becomes the source of truth for bundling and install checks.
+This is now the source of truth for bundling and install checks.
 
 Pinning policy:
 
@@ -86,9 +97,9 @@ Pinning policy:
 - Optional `git_commit` pin is recommended for local/dev reproducibility.
 - Compatibility can still be reasoned via protocol/schema keys and SemVer policy, but shipped bundles should use exact pins.
 
-### 3.2 Add/Update `just` Recipes
+### 3.2 `just` Recipe Status
 
-Proposed recipe set:
+Current recipe set:
 
 1. `just mesh-verify-lock`
 - build/locate mesh binary
@@ -99,7 +110,7 @@ Proposed recipe set:
 - updates lock manifest intentionally (single bump entry point)
 - optional: validates release tag exists and checksum matches published artifact
 
-3. `just bundle-mesh` (replace current loose version read)
+3. `just bundle-mesh`
 - depends on `mesh-verify-lock`
 - bundles binary to `src-tauri/resources/mesh`
 - writes:
@@ -107,8 +118,8 @@ Proposed recipe set:
   - `src-tauri/resources/mesh.manifest.json` (full metadata snapshot)
 
 4. `build-windows` and all `build-macos*`
-- must depend on `mesh-verify-lock` before bundling
-- remote mac recipes must verify remote-built mesh metadata matches lock before copying into resources
+- verify lock metadata before bundling
+- remote mac recipes verify remote-built mesh metadata against the same lock before copying into resources
 
 ### 3.3 Remote macOS Specifics
 
@@ -123,6 +134,12 @@ Add a verification step on remote:
 
 Current state already blocks mesh usage in Mesh setup flow when installed and bundled versions differ (`check_mesh_install_status` + `MeshAvailabilityGate`).
 
+Current implementation goes further than the original proposal:
+- `install_mesh` performs atomic replacement on native and WSL installs
+- Taurhaus detects and repairs running member-daemon drift
+- Taurhaus detects and repairs running team-daemon drift
+- startup/runtime logic validates current serving binaries rather than trusting only the installed file on disk
+
 Proposal:
 
 1. Keep Mesh-tab gate as hard block for mesh operations.
@@ -136,11 +153,12 @@ Rationale:
 
 ## 5. Migration Path
 
-Phase 0 (immediate, before mesh JSON endpoint lands):
+Completed phases:
 
-- keep current `mesh --version` comparison path
-- introduce lock manifest in taurhaus
-- require `bundle-mesh` and platform build recipes to verify pinned semver (and optional commit pin by git check where possible)
+- introduce lock manifest in Taurhaus
+- require bundling/build recipes to verify pinned metadata
+- upgrade install path to atomic swap + daemon cycling
+- add runtime currentity checks for running daemons
 
 Phase 1 (mesh PR lands):
 
@@ -191,6 +209,7 @@ Feasible minimal mesh PR:
 - document release/tag/checksum workflow
 - document install command examples with correct home expansion, e.g. `cargo install --path . --root "$HOME/.local" --force`
 
-Operational note:
+Operational fallback:
 
-- daemon restart coordination remains necessary after binary replacement (running processes may still point at deleted inodes).
+- manual daemon restart commands remain useful for diagnostics
+- they are no longer the normal Taurhaus-managed upgrade path

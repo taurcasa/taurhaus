@@ -1,6 +1,6 @@
 # Data Architecture
 
-This document is the authoritative data architecture reference for Taurhaus as of `v0.5.5+`.
+This document is the authoritative data architecture reference for Taurhaus as of `v0.5.6+`.
 
 It complements [data-model.md](./data-model.md), which still covers the SQLite schema and search index in detail, but does not fully describe the live coordination/runtime filesystem model that Taurhaus now depends on.
 
@@ -50,11 +50,11 @@ All of the following are rooted under:
 | Store | Path | Format | Primary writer | Primary readers | Authority level | Notes |
 |---|---|---|---|---|---|---|
 | Team config | `teams/<team>/config.json` | JSON | Taurhaus + mesh-compatible tooling | Taurhaus, mesh, UI/backend | Authoritative logical roster | Members, roles, role metadata, project path, tool, model |
-| Member runtime | `teams/<team>/runtime/<member>.json` | JSON | Taurhaus | Taurhaus, mesh read-only | Authoritative current attachment | Pane, session id, transcript path, daemon pid, health |
+| Member runtime | `teams/<team>/runtime/<member>.json` | JSON | Taurhaus | Taurhaus, mesh read-only | Authoritative current attachment | Pane, session id, transcript path, `cli_tool`, `project_path`, daemon pid, health |
 | Mesh inbox | `teams/<team>/inboxes/<member>.json` | JSON array | Taurhaus, mesh | Taurhaus, mesh daemons/agents | Authoritative message queue for file-based delivery | Shared protocol surface |
 | Operational snapshot | `teams/<team>/state/operational/<member>.json` | JSON | Taurhaus | Taurhaus reinjection/delivery | Derived contextual snapshot | Current task, assignment footer, working set, override state |
 | Member compaction state | `teams/<team>/state/compaction/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
-| Compaction signal log | `teams/<team>/state/compaction/signals/codex-compaction-signals.jsonl` | JSONL | Taurhaus extractor | Taurhaus watcher/diagnostics | Derived canonical signal stream | Normalized Codex compaction records |
+| Compaction signal log | `teams/<team>/state/compaction/signals/codex-compaction-signals.jsonl` | JSONL | Taurhaus extractor | Taurhaus watcher/processor/diagnostics | Derived canonical signal stream | Normalized Codex compaction records |
 | Compaction extractor state | `teams/<team>/state/compaction/extractor-state.json` | JSON | Taurhaus extractor | Taurhaus diagnostics | Derived processing checkpoint | Tracked transcript offsets + last error by file |
 | Compaction watcher state | `teams/<team>/state/compaction/signal-watcher-state.json` | JSON | Taurhaus watcher | Taurhaus diagnostics | Derived processing checkpoint | Last consumed offset + recovery stats |
 
@@ -81,6 +81,7 @@ Current implementation answers common questions from different stores:
 | What tool/model is member `Y` configured to use? | `teams/<team>/config.json` |
 | Which pane is member `Y` attached to right now? | `teams/<team>/runtime/<member>.json` |
 | Which session/transcript is member `Y` attached to right now? | `teams/<team>/runtime/<member>.json` |
+| Which tool/project does member `Y` currently attach to? | `teams/<team>/runtime/<member>.json` |
 | What message queue should member `Y` read? | `teams/<team>/inboxes/<member>.json` |
 | What was the last handled compaction for member `Y`? | `teams/<team>/state/compaction/<member>.json` |
 | What compaction signals have been emitted but not yet consumed? | signal log + watcher offset under `state/compaction/` |
@@ -102,6 +103,8 @@ Team
       -> pane_id
       -> session_id
       -> jsonl_path
+      -> cli_tool
+      -> project_path
       -> daemon_pid
       -> health
   -> per-member operational context snapshots
@@ -134,7 +137,7 @@ There are three different concepts that often get conflated:
    - what the current process/session scan sees right now
    - ephemeral, computed at runtime
 
-The compaction bugs audited on `2026-03-08` happened when transcript ownership was inferred from scanner/project heuristics instead of consuming authoritative runtime attachment state directly.
+The compaction bugs audited on `2026-03-08` happened when transcript ownership was inferred from scanner/project heuristics instead of consuming authoritative runtime attachment state directly. Current code fixes that by persisting `cli_tool`, `project_path`, and `jsonl_path` on runtime records and by joining config + runtime through the shared roster view (`get_team_roster_with_attachments()`).
 
 ## Ownership Boundaries
 
@@ -204,7 +207,7 @@ managed runtime attachments
   -> compaction extractor tails transcript files
   -> canonical signal JSONL append
   -> signal watcher consumes from offset
-  -> compaction processor resolves team/member via runtime attachment
+  -> compaction processor resolves team/member via roster + runtime attachment
   -> inject / skip / stale / fail
   -> update per-member compaction state
 ```

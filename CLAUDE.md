@@ -239,10 +239,17 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/services/task_sync.rs` | Task synchronization service for daemon/IPC flows. |
 | `src-tauri/src/daemon_api.rs` | Daemon process API wrapper used by commands/startup flows. |
 | `src-tauri/src/project_provider.rs` | Active project resolution/provider utilities. |
+| `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, team roots, daemon binary, log path, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
+| `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
+| `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |
+| `src-tauri/src/session_scanner/compaction_watcher.rs` | Signal-log watcher that feeds compaction processing. |
+| `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
+| `docs/architecture/data-architecture.md` | Authoritative map of live coordination stores, ownership boundaries, and derived state. |
+| `docs/architecture/path-handling-guide.md` | Rules for root authority, normalization, and Windows/WSL/Linux path boundaries. |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
 | `docs/design/role-context-steering-review.md` | Review notes for the role-system shift from capability labels to context steering |
 | `docs/design/agent-role-visibility.md` | Mesh runtime role-visibility guidance built around focus area, context summary, and behavior boundaries |
@@ -263,6 +270,8 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Add/fix a Svelte component | `src/lib/components/` (component file plus matching test in same directory) |
 | Fix file watcher behavior | `src-tauri/src/startup/watchers.rs`, `src-tauri/src/fs/watcher.rs`, `src-tauri/src/event_processor.rs` |
 | Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/idle/`, `src-tauri/src/session_scanner/process.rs` |
+| Fix compaction detection / reinjection | `src-tauri/src/session_scanner/compaction_extractor.rs`, `src-tauri/src/session_scanner/compaction_watcher.rs`, `src-tauri/src/coordination/compaction_processor.rs` |
+| Fix path/root resolution | `src-tauri/src/provider/path.rs`, `src-tauri/src/provider/platform_paths.rs` |
 | Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 
 ## Development Workflow (Phase 5)

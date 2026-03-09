@@ -27,24 +27,25 @@ This flow covers:
 5. Claude compact-hook readiness as the parallel delivery path for Claude members
 
 Core source files:
-- `src-tauri/src/session_scanner/compaction.rs`
-- `src-tauri/src/session_scanner/mod.rs`
-- `src-tauri/src/daemon/session_activity.rs`
-- `src-tauri/src/daemon/handlers.rs`
+- `src-tauri/src/session_scanner/compaction_extractor.rs`
+- `src-tauri/src/session_scanner/compaction_watcher.rs`
+- `src-tauri/src/coordination/compaction_processor.rs`
+- `src-tauri/src/coordination/stores/compaction_signal.rs`
+- `src-tauri/src/coordination/stores/compaction.rs`
 - `src-tauri/src/coordination/reinjection.rs`
 - `src-tauri/src/coordination/claude_hooks.rs`
-- `src-tauri/src/coordination/stores/compaction.rs`
+- `src-tauri/src/daemon/compaction.rs`
 - `scripts/analyze-compaction.py`
 
 ## High-Level Pipeline
 
 ### Common logical flow
 
-1. Codex writes a compaction boundary into its JSONL transcript.
-2. Taurhaus session scanning discovers the active transcript path and session metadata.
-3. Compaction watcher reads newly appended JSONL lines.
-4. Compaction watcher parses `compacted` or `context_compacted` records.
-5. The event is matched to a managed Codex member using project path + runtime metadata.
+1. Codex writes `compacted` and/or `context_compacted` into its JSONL transcript.
+2. The active-session registry tells the extractor which Codex JSONLs are managed and worth tracking.
+3. `CompactionSignalExtractor` reads appended bytes and emits canonical signal records to the per-team signal log.
+4. `CompactionSignalWatcher` consumes newly appended signal-log records from its persisted offset.
+5. `CompactionSignalProcessor` resolves the managed member from team config + runtime attachment state.
 6. Taurhaus loads the member's `OperationalContextSnapshot`.
 7. Taurhaus composes an `OperationalReinjectionCard`.
 8. Delivery is attempted:
@@ -59,54 +60,43 @@ Core source files:
 
 ```text
 Codex JSONL append
-  -> app scan_sessions_for_display()
-  -> classify RuntimeSession list with session_id + jsonl_path
-  -> finalize_display_scan(runtime_sessions)
-  -> process_display_scan_compaction(runtime_sessions)
-  -> process_codex_compaction_events()
-  -> detect_compaction_events()
-  -> resolve_managed_codex_session()
+  -> app runtime scan updates active Codex transcript set
+  -> CompactionSignalExtractor reads appended bytes
+  -> codex-compaction-signals.jsonl append
+  -> CompactionSignalWatcher consumes new signal records
+  -> CompactionSignalProcessor resolves managed member
   -> compose reinjection card
-  -> enqueue pending reinjection
-  -> deliver_pending_codex_compaction_reinjections()
   -> MeshInboxStore::append(...)
   -> record_delivery_at(...)
   -> compaction.injected / skipped / stale / failed
 ```
 
 Key boundary facts:
-- the app owns the full scan loop
-- the app owns both display and runtime session metadata
-- compaction processing runs in-process after each display scan finalization
-- no daemon proxy is involved in the main detection path
+- the app still owns the local runtime scan loop
+- the scan loop only maintains the active transcript registry; it is no longer the compaction trigger
+- compaction detection/delivery is extractor -> signal log -> watcher -> processor
+- no daemon proxy is involved in the Linux/macOS path
 
 ### Windows via daemon flow
 
 ```text
 Codex JSONL append inside WSL
-  -> daemon SessionActivityHub scanner thread runs scan_sessions_for_display()
-  -> daemon produces display-safe session snapshot
-  -> Windows app requests LIST_DISPLAY_SESSIONS
-  -> Windows app also requests LIST_RUNTIME_SESSIONS for runtime metadata
-  -> app finalize_display_scan(display_sessions, runtime_sessions)
-  -> process_display_scan_compaction(runtime_sessions)
-  -> process_codex_compaction_events()
-  -> detect_compaction_events()
-  -> resolve_managed_codex_session()
-  -> compose reinjection card
-  -> enqueue pending reinjection
-  -> deliver_pending_codex_compaction_reinjections()
+  -> daemon runtime scan updates active Codex transcript set
+  -> daemon CompactionSignalExtractor reads appended bytes
+  -> daemon codex-compaction-signals.jsonl append
+  -> daemon CompactionSignalWatcher consumes new signal records
+  -> daemon-owned CompactionSignalProcessor resolves member
   -> MeshInboxStore::append(...)
   -> record_delivery_at(...)
   -> compaction.injected / skipped / stale / failed
+  -> Windows app observes resulting audit/runtime state
 ```
 
 Key boundary facts:
-- the daemon owns the background display scan loop
-- the daemon does not own compaction reinjection bookkeeping
-- the Windows app must still feed runtime-authoritative sessions into compaction processing
-- `LIST_DISPLAY_SESSIONS` is UI-safe and strips transcript metadata
-- `LIST_RUNTIME_SESSIONS` preserves `session_id` and `jsonl_path` and is required for compaction/runtime correlation
+- the daemon owns both runtime scanning and the Codex compaction pipeline on Windows
+- the Windows app no longer watches Linux transcript files directly
+- `LIST_DISPLAY_SESSIONS` remains UI-safe and strips transcript metadata
+- `LIST_RUNTIME_SESSIONS` remains the runtime-authoritative view for app-side status/debugging
 
 ## Platform Divergence Points
 

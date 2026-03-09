@@ -110,7 +110,8 @@ Shell composition:
 
 - Native OS decorations are disabled.
 - Drag is opt-in using `data-tauri-drag-region` on non-interactive titlebar areas.
-- Theme toggle and window controls live in the titlebar.
+- Search, theme toggle, and window controls live in the titlebar.
+- Settings does **not** live in the titlebar; it is opened from the sidebar footer and replaces the main panel content.
 
 ## Icons, logos, and motion
 
@@ -125,6 +126,13 @@ Session activity styling:
 - `.session-pill-active`: breathing pulse animation (`1.8s`, opacity cycle).
 - `.session-pill-idle`: inset + outer amber ring treatment.
 - `prefers-reduced-motion: reduce` disables pulse and applies a static emphasis.
+
+Sidebar session patterns:
+
+- single sessions render as `14px` currentColor SVG marks
+- mesh-team groups render as either a rail (`<=3` members) or shallow stack (`4+` members)
+- the foreground project gets top/bottom brand-color guide lines, separate from the selected-row left accent
+- sidebar footer exposes daemon connection state plus settings/manage-project affordances
 
 ## Shade gotcha (important)
 
@@ -145,8 +153,9 @@ Before introducing a new shade class, add the corresponding `--color-<family>-<s
 | `src/lib/themeTokens.js` | Shared dark/light class token map |
 | `src/lib/toolLogos.js` | Tool SVG icons and display-name mapping |
 | `src/Shell.svelte` | Frame, titlebar, tabs, theme toggle, drag-region behavior |
-| `src/lib/Sidebar.svelte` | Sidebar panel styling and live session indicators |
-| `src/lib/sessionIndicator.js` | Session badge semantics + active/idle visual classes |
+| `src/lib/Sidebar.svelte` | Sidebar shell, filter, footer, daemon state, settings entry point |
+| `src/lib/SidebarProjectList.svelte` | Project rows, grouped tool indicators, foreground-project affordance |
+| `src/lib/sessionIndicator.js` | Session badge semantics + active/idle/team grouping classes |
 
 ## Related documents
 

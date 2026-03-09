@@ -1,5 +1,7 @@
 # Sidebar Session Indicator Grouping
 
+> Archived design review. This file captures the grouping threshold and rationale used during the sidebar session-indicator redesign. It is kept as historical product reasoning; current behavior is defined in the implementation and its tests.
+
 ## Summary
 
 Recommendation: keep the current per-session logos for `1-3` live sessions, and collapse **team-linked** sessions into a single grouped indicator at `4+` live sessions.

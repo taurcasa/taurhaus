@@ -18,7 +18,7 @@ The app and the daemon exist as separate processes because of platform boundarie
 | Transport | TCP |
 | Address | `localhost:17233` |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 6 (current) |
+| Protocol version | 7 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -35,11 +35,12 @@ The app reads this token on connect and includes it in the `auth` field of every
 
 ### Connection lifecycle
 
-1. **Startup**: App tries to connect to an already-running daemon
-2. **Auto-launch**: If connection fails, the app starts the daemon and retries
-3. **Health check**: Periodic `ping` requests verify the connection is alive
-4. **Reconnect**: On connection loss, the app retries connection/restart and re-registers daemon watches
-5. **Disconnect detection**: Failed sends mark the provider as disconnected; IPC commands fall back to `LocalProvider`
+1. **Startup**: App tries to connect to an already-running daemon.
+2. **Current-binary validation**: after connect, startup validates that the serving daemon matches the currently installed binary; stale/deleted inodes are evicted and restarted before the app keeps using the connection.
+3. **Auto-launch**: if connection fails, the app starts the daemon and retries.
+4. **Health check**: periodic `ping` requests verify the connection is alive and protocol-compatible.
+5. **Reconnect**: on connection loss, the app retries connection/restart and re-registers daemon watches.
+6. **Disconnect detection**: failed sends mark the provider as disconnected; IPC commands fall back to `LocalProvider`.
 
 ### Timeouts
 
@@ -126,7 +127,7 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
-| `ping` | — | `{ version, protocol_version, uptime_secs }` | Health check. App checks `protocol_version` compatibility. |
+| `ping` | — | `{ version, protocol_version, uptime_secs }` | Health check. App checks `protocol_version` compatibility; startup separately validates serving-binary currentity. |
 | `shutdown` | — | — | Graceful daemon shutdown |
 | `watch` | `{ path }` | `{ ok }` | Start watching a project directory for file/git changes |
 | `unwatch` | `{ path }` | `{ ok }` | Stop watching a project directory |
@@ -156,7 +157,8 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
 | `scan_sessions` | `{ path }` | `{ paths[] }` | Scan for session handoff files |
-| `list_claude_sessions` | — | `Session[]` | List all running CLI tool sessions |
+| `list_display_sessions` | — | `DisplaySession[]` | UI-safe session list for sidebar/session surfaces. |
+| `list_runtime_sessions` | — | `RuntimeSession[]` | Runtime-authoritative session list including transcript/session metadata for coordination and compaction logic. |
 | `wait_session_updates` | `{ since_version, timeout_ms }` | `{ version, changed, sessions[] }` | Long-poll for a newer session snapshot version |
 | `launch_session` | `{ project_path, mode, cli_tool?, tmux_layout?, command_override? }` | `{ tmux_session?, tmux_window, tmux_pane }` | Launch a CLI tool in a tmux pane |
 | `stop_session` | `{ tmux_pane, cli_tool? }` | — | Stop a running CLI tool session |
@@ -186,9 +188,9 @@ This keeps polling encapsulated inside daemon + app backend while the frontend s
 |--------|--------|--------|-------------|
 | `get_project_tasks` | `{ path, scan_cycle_id? }` | `TaskResult` (`{ tasks, errors, source_outcomes }`) | Aggregated tasks from all CLI tools for a project. `scan_cycle_id` is optional. |
 
-### Per-cycle task scan caching (v6)
+### Per-cycle task scan caching (v6+)
 
-`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6):
+`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6 and still present in v7):
 
 - When present, the daemon reuses cached `scan_sessions()` + `ClaudeSourceIndex` inputs for repeated project scans in the same cycle.
 - When absent, the daemon performs a fresh input scan (backward compatible behavior).
@@ -223,7 +225,9 @@ The daemon runs natively as a subprocess:
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v6), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v7), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+
+Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 
 ## Key files
 

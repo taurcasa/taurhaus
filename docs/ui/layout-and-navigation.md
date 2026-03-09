@@ -29,16 +29,24 @@ All non-interactive titlebar space is draggable (`data-tauri-drag-region`).
 Project list organized by activity groups (Active, Recent, Stale, Dormant). Each project row shows:
 - Project name (14px, white/75 opacity)
 - Git branch as a rounded pill
-- CLI tool session logos (up to 3: Claude, Codex, Gemini) color-coded by state
+- CLI tool session logos (Claude, Codex, Gemini) color-coded by state
+- Mesh team indicators render as a rail for small groups and a stacked cluster with count for larger groups
 - Row tint (`bg-white/[0.03]`) when any session exists
-- Active item: 3px left border accent
+- Selected item: 3px left border accent
+- Foreground item: thin brand-color lines at the top and bottom of the row
 
 **Group headers**: Whitespace-separated (pt-8 pb-1.5), no rules or bars. Row height: 36px.
+
+Sidebar chrome:
+
+- top filter input (`32px` tall)
+- scrollable project list
+- footer with manage-projects button, daemon connection state, and settings toggle
 
 Interactions:
 - **Click** — select project, load its data
 - **Right-click** — context menu with per-tool launch/stop/restart
-- **Hover** — HoverCard popup showing full session details per tool
+- **Hover** — HoverCard popup showing current activity, latest change, and relationship cues
 
 ### Main content panel
 
@@ -55,7 +63,7 @@ Tabs are rendered as pills in the titlebar. Available tabs:
 | Tasks | `TaskBoard.svelte` | Always |
 | Mesh | `MeshTab.svelte` | Always |
 | Git | `GitTab.svelte` | Always |
-| Settings | `Settings.svelte` | Via gear icon (replaces tab content) |
+| Settings | `Settings.svelte` | Opened from the sidebar footer (replaces tab content) |
 
 Tabs are tracked in a `visitedTabs` set — only tabs that have been visited render their component (lazy initialization).
 
@@ -115,7 +123,7 @@ Each tab component exposes view state via `position = $bindable(null)`. Shell sa
 
 ### Search overlay (Ctrl+K)
 
-A modal that overlays the entire view. Triggered by Ctrl+K or Cmd+K. Searches across all registered projects via tantivy full-text search. Selecting a result navigates to the relevant project, tab, and file.
+A modal that overlays the entire view. Triggered by the titlebar search button or `Ctrl+K` / `Cmd+K`. Searches across all registered projects via tantivy full-text search. Selecting a result navigates to the relevant project, tab, and file.
 
 ### Context menu
 
@@ -128,16 +136,17 @@ Right-click on sidebar project items. Provides per-tool actions:
 ### HoverCard
 
 Hover popup on sidebar items showing session details per running CLI tool:
-- Tool logo and name
-- Activity state (active/idle) with dot indicator
-- Session duration
+- current session activity
+- latest project/session cue
+- relationship and dirty-state context
 
 ## Key files
 
 | File | Purpose |
 |------|---------|
 | `src/Shell.svelte` | Main layout: titlebar, sidebar, tab routing, position memory, theme |
-| `src/lib/Sidebar.svelte` | Project list, activity groups, session indicators |
+| `src/lib/Sidebar.svelte` | Sidebar shell, filter, footer controls, daemon state |
+| `src/lib/SidebarProjectList.svelte` | Project rows, grouped team indicators, foreground highlight |
 | `src/lib/navHistory.svelte.js` | Back/forward navigation history stack |
 | `src/lib/HoverCard.svelte` | Session detail popup on sidebar hover |
 | `src/lib/ContextMenu.svelte` | Right-click menu for project actions |

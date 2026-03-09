@@ -50,6 +50,11 @@ So even when one bug is fixed, the architecture is still prone to missed or dela
 
 ## Recommended Architecture
 
+Current shipped note:
+- the two-stage signal architecture landed
+- the extractor is now `notify`-driven for active Codex transcript files with a `5s` reconciliation fallback
+- Windows runs the extractor -> signal log -> watcher -> processor pipeline inside the WSL daemon rather than in the app process
+
 ## Summary
 
 Use a two-stage design:
@@ -104,8 +109,8 @@ Cons:
 - some wasted wakeups during steady active sessions
 
 Assessment:
-- this is the best phase-1 choice
-- it respects the user constraint because the *trigger* path is event-driven even if the extractor's internal tailer polls
+- this was the best phase-1 choice before active-file watching landed
+- current code has since moved to active-file watch events plus periodic reconciliation
 
 ### Option B: JSONL-level file-event subscription inside extractor
 
@@ -129,9 +134,11 @@ Assessment:
 
 ## Recommendation
 
-Use **tight polling inside the extractor** and **filesystem watching only on the derived signal file**.
-
-That is the cleanest reading of the user constraint and the most reliable cross-platform implementation path.
+Keep the current shipped design:
+- active Codex transcript files are watched inside the extractor
+- the extractor persists offsets and emits canonical signal records
+- the signal log remains the low-traffic watched handoff to downstream delivery
+- a low-frequency reconciliation pass repairs missed watch drift without returning to the old poll-driven compaction path
 
 ## Proposed Components
 

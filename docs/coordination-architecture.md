@@ -21,7 +21,9 @@ This document captures the shipped/active coordination subsystem architecture in
 
 - The practical orchestration direction for auto-idle and communication quality now lives in [`architecture/orchestration-practical-auto-idle-and-communication.md`](architecture/orchestration-practical-auto-idle-and-communication.md).
 - The v0.2.0 protocol exploration is archived in [`archive/architecture/orchestration-protocol-design.md`](archive/architecture/orchestration-protocol-design.md) and is not an active implementation target.
-- Taurhaus currently contributes runtime activity handoff by exporting per-member snapshots under `~/.claude/teams/{team}/state/activity/{member}.json` from `coordination/stall_detector.rs`.
+- Taurhaus now owns a broader operational context layer under `~/.claude/teams/{team}/state/`, including per-member operational snapshots, canonical Codex compaction signal logs, and per-member compaction delivery state.
+- The historical `state/activity/` export from `coordination/stall_detector.rs` is no longer the main reinjection context path.
+- Codex compaction reinjection is no longer poll-based. The shipped path is extractor -> watcher -> processor -> mesh inbox append.
 
 ## Design Decision Log
 
@@ -48,7 +50,10 @@ Status labels use current implementation state:
 |-------|------|-------|----------|
 | Durable config | `teams/<team>/config.json` | Shared (mesh + taurhaus) | Members, roles, instructions, projectPath |
 | Protocol data | `teams/<team>/inboxes/` | Shared | Messages |
-| Runtime state | `teams/<team>/runtime/<member>.json` | Taurhaus (mesh read-only) | Pane binding, delivery lease, health snapshot |
+| Runtime state | `teams/<team>/runtime/<member>.json` | Taurhaus (mesh read-only) | Pane binding, session/jsonl attachment, daemon pid, delivery lease, health snapshot |
+| Operational context | `teams/<team>/state/operational/<member>.json` | Taurhaus | Bounded post-compaction work context |
+| Compaction signal log | `teams/<team>/state/compaction/signals/*.jsonl` | Taurhaus | Canonical Codex compaction signal records |
+| Compaction delivery state | `teams/<team>/state/compaction/members/<member>.json` | Taurhaus | Last handled session/timestamp/result for idempotent compaction delivery |
 
 **Rationale**: Eliminates config.json write contention. Config is mostly write-once. Runtime files are hot and disposable — delete them and taurhaus rebuilds from live session scanning.
 
@@ -75,7 +80,7 @@ Status labels use current implementation state:
 **Decision**: A team member is a logical role that persists independently of any specific tmux pane or process.
 
 - **Logical member** (durable, in config.json): name, role, instructions, projectPath
-- **Attachment** (volatile, in runtime/): pane_id, process info, delivery lease, health state
+- **Attachment** (volatile, in runtime/): pane_id, process info, session/jsonl attachment, daemon pid, delivery lease, health state
 
 Members can be "detached" (pane died) but remain on the team. Rebind via process scanning without re-joining.
 
@@ -87,8 +92,8 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 
 | Agent Type | Launch Method | Delivery | Messaging |
 |---|---|---|---|
-| Claude Code | Native CLI flags (`--team-name`, `--agent-name`, etc.) | Inbox file write → native poller | Native `SendMessage` tool |
-| Codex / Gemini | tmux + `mesh daemon` | Daemon inotify → tmux send-keys | `mesh send` / `mesh read` CLI |
+| Claude Code | Native CLI flags (`--team-name`, `--agent-name`, etc.) | Inbox file write → native poller, plus `SessionStart(source=compact)` hook bridge | Native `SendMessage` tool |
+| Codex / Gemini | tmux + `mesh daemon` | Mesh inbox append + wake prompt | `mesh send` / `mesh read` CLI |
 
 **Rationale**: Claude Code is the only CLI tool with native local team capabilities (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Gemini CLI has no team features.
 
@@ -103,18 +108,20 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 - Atomic create via rename prevents startup races
 - PID + instance UUID handles PID-reuse edge case
 
+This lease still exists for daemon ownership coordination, but it is no longer the compaction delivery gate. Codex compaction delivery now validates current managed attachment directly from roster/runtime state and records idempotency separately in per-member compaction state.
+
 ### D7: Explicit health state machine
 
 **Status**: Partial
 
-**Decision**: Health monitoring uses explicit states, events, and a deterministic transition function.
+**Decision**: Health monitoring uses explicit states, events, and a deterministic transition function for runtime monitoring and UI state.
 
 **States**: Healthy, AwaitingRead, SuspectedStuck, Rebriefed, Suppressed, SessionDead
 
 **Events**: UnreadDetected, IdleThresholdMet, IoResumed, InboxCleared, CooldownExpired, SessionMissing, DeliveryFailed, ManualSuppress, ManualResume
 
 **Recovery evidence**:
-- Weak: terminal IO resumed after injection → clears to Monitoring
+- Weak: terminal IO resumed after injection → clears toward healthy monitoring
 - Strong: inbox unread count decreased or task activity → clears to Healthy
 
 ### D8: Typed delivery payloads
@@ -281,6 +288,45 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
   - foreground snapshot IPC therefore does not contend with background liveness repair on the shared coordination mutex
 
 **Rationale**: This keeps first-render and polling snapshots cheap and predictable while still giving taurhaus a bounded repair path for stale panes/daemons and cold-restart recovery.
+
+### D20: Display and runtime session views are explicitly split
+
+**Status**: Implemented
+
+**Decision**: Session scanning and daemon RPC expose two distinct views:
+
+- `DisplaySession` / `list_display_sessions` for UI consumers
+- `RuntimeSession` / `list_runtime_sessions` for transcript-aware coordination and compaction logic
+
+`DisplaySession` intentionally strips transcript metadata such as `session_id` and `jsonl_path`. Runtime correlation, task sync, and compaction processing must use `RuntimeSession`.
+
+**Rationale**: This prevents UI-safe data stripping from silently leaking into runtime logic when Windows/daemon and native/local session paths diverge.
+
+### D21: Codex compaction is event-driven and file-backed
+
+**Status**: Implemented
+
+**Decision**: Codex compaction delivery now flows through a file-backed event pipeline instead of the old poll-based reinjection path.
+
+- `CompactionSignalExtractor` tails active managed Codex `RuntimeSession` transcripts, persists per-file offsets, collapses paired `compacted` + `context_compacted` boundaries, and appends canonical signal records
+- `CompactionSignalWatcher` watches the low-traffic signal log, replays missed events from durable offsets, and hands each signal to the processor once per watcher state
+- `CompactionSignalProcessor` resolves the managed member from roster/runtime context, loads the operational snapshot, renders a bounded reinjection card, appends it to the mesh inbox, and records the delivery result in per-member compaction state
+
+**Current delivery semantics**:
+- The legacy poll-based `session_scanner/compaction.rs` module is gone.
+- Delivery guards based on stale deferred state were removed. The processor now checks only current managed-member attachment and pane liveness before delivery.
+- Idempotency is recorded in `MemberCompactionStore` by `session_id` + compaction timestamp.
+- Stale compaction records are persisted as `Stale` results instead of being injected late.
+- Mesh inbox corruption now fails closed: corrupt inbox files are quarantined and logged as `mesh.inbox.corrupt`, and append/load return an error instead of silently treating corruption as empty.
+
+**End-to-end path**:
+1. `RuntimeSession` discovery identifies active managed Codex transcripts.
+2. `CompactionSignalExtractor` tails those JSONL files and emits canonical signal records into the team compaction signal log.
+3. `CompactionSignalWatcher` watches the signal log, advances durable offsets, and replays missed records after watcher drift or restart.
+4. `CompactionSignalProcessor` resolves the target member, validates current attachment, composes the reinjection card, appends the inbox message, and records the delivery outcome.
+5. Coordination audit surfaces and runtime diagnostics read the resulting signal and delivery state for operator visibility.
+
+**Rationale**: This keeps transcript watching on the hot path, gives restart-safe durable offsets, moves delivery to an observable lower-traffic signal boundary, and avoids the old poller/delivery-guard failure mode.
 
 ### D18: Implementation tasks require a Rust quality gate before completion
 

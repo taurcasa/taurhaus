@@ -1,5 +1,7 @@
 # Legacy Artifact Audit — 2026-03-09
 
+> Status update (later on 2026-03-09): the independent `DaemonCompactionRuntime` 500 ms runtime scan identified here was subsequently removed. This document remains useful as a pre-cleanup audit snapshot, but any references to that loop describe historical state, not the current daemon.
+
 ## Scope
 
 Exhaustive audit of the compaction-adjacent and daemon-adjacent paths after the event-driven Codex compaction migration.

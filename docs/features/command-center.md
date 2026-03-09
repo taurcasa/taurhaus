@@ -21,7 +21,7 @@ Supported launch modes:
 - `Resume` — resume prior session context
 
 Mode handling:
-- Frontend passes mode + tool to `launch_claude_session` IPC.
+- Frontend uses compatibility helpers such as `launchClaudeSession(...)`, which call backend `launch_cli_session`.
 - Backend resolves project path, then resolves command from settings per `(tool, mode)`.
 - Session launches in tmux using selected layout strategy.
 
@@ -81,13 +81,17 @@ Unified flow:
    - else: launch with `tmux attach-session -t <session>`
 4. `custom` emulator runs user command template with placeholders
 
+Foreground detection is also part of command-center state now:
+- backend reads tmux focus state and resolves the currently foregrounded registered project with `get_foreground_project`
+- frontend uses that project id to highlight the active project row while focus is inside a managed tmux pane
+
 ## Platform support
 
 | Platform | Emulator options | Default | Behavior |
 |----------|------------------|---------|----------|
 | Windows | `windows_terminal`, `custom` | `windows_terminal` | 3-state WT detection (`Focused`/`Running`/`NotRunning`), launch via `wt.exe` + `wsl.exe ... tmux attach` |
 | macOS | `iterm2`, `ghostty`, `terminal_app`, `custom` | `iterm2` | Resolve preferred app, activate existing or launch with tmux attach |
-| Linux | user-managed | n/a | terminal handler is a no-op (tmux still used for session control) |
+| Linux | `custom` | `custom` | no built-in terminal activator; tmux still backs session control and custom commands remain available |
 
 Windows-specific detail:
 - Windows Terminal detection handles WinUI window-handle quirks with process + window-enumeration fallback.
@@ -131,7 +135,10 @@ If daemon is unavailable:
 | `src/lib/Sidebar.svelte` | Project context-menu actions that trigger launch/stop/restart/navigation |
 | `src/lib/ContextMenu.svelte` | Menu interaction component used by command-center entry points |
 | `src/lib/Settings.svelte` | Emulator, tmux layout, and per-tool command configuration UI |
-| `src-tauri/src/commands/command_center.rs` | IPC commands for list/launch/stop/navigate and activity metrics |
+| `src-tauri/src/commands/command_center/mod.rs` | IPC commands for list/launch/stop/navigate, activity metrics, and foreground project lookup |
+| `src-tauri/src/commands/command_center/session_listing.rs` | Session listing bridge and daemon/display-session decoding |
+| `src-tauri/src/commands/command_center/navigation.rs` | Stop and navigate implementations |
+| `src-tauri/src/commands/command_center/launching.rs` | Launch implementation and resume delegation logic |
 | `src-tauri/src/session_scanner/control.rs` | tmux launch/stop/navigation core logic + command resolution |
 | `src-tauri/src/terminal.rs` | Cross-platform terminal focus/open decision tree |
 | `src-tauri/src/session_scanner/cli_tool.rs` | Tool config (`exit_command`, tool identity) |

@@ -10,7 +10,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 |------|---------|---------|
 | WSL2 | Ubuntu recommended | `wsl --install` |
 | Rust | Latest stable | [rustup.rs](https://rustup.rs/) |
-| Node.js | 20+ | Via [fnm](https://github.com/Schniz/fnm) or nvm |
+| Bun | Latest stable | [bun.sh](https://bun.sh/) |
 | just | Latest | `cargo install just` |
 | tmux | 3.0+ | `sudo apt install tmux` |
 
@@ -19,7 +19,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ```bash
 git clone https://github.com/taurcasa/taurhaus.git
 cd taurhaus
-bun install --frozen-lockfile
+bun install
 just dev  # Full Tauri dev mode with hot-reload
 ```
 
@@ -28,6 +28,8 @@ For frontend-only development (no Rust backend):
 ```bash
 just dev-frontend
 ```
+
+Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `just` recipes instead of raw `cargo tauri build`, `bunx tauri build`, or ad hoc cross-compilation commands.
 
 ## Code Standards
 
@@ -48,6 +50,7 @@ just dev-frontend
 - Standard Rust conventions: `clippy` clean, `rustfmt` formatted.
 - Error handling via `thiserror` for typed errors.
 - Tests use `#[test]` with `pretty_assertions` and `tempfile` for temp dirs.
+- Command-layer modules keep tests in sibling `tests.rs` files; lower-level modules keep inline `#[cfg(test)] mod tests`.
 
 ### General
 
@@ -72,6 +75,10 @@ Core release-lane recipes (from `justfile`):
 | `just check-quick` | Per-task fast gate (`cargo check --tests`, `typecheck`, frontend tests) |
 | `just check` | Full quality gate (`fmt`, `lint`, `typecheck`, `test`) for team-lead serialized runs or pre-release/PR validation |
 | `just metrics` | Quality KPI report (tests, coverage, build health, code size, E2E inventory) |
+| `just test-visual` | Browser-mode visual screenshot lane for mocked component states |
+| `just test-macos` | Rust tests on the remote Mac Mini |
+| `just test-macos-e2e` | macOS E2E suite on the remote Mac Mini |
+| `just agent-quality` | Agent-facing wrapper around `just check-quick` |
 
 In team/agent workflows, run this before declaring completion:
 
@@ -79,7 +86,7 @@ In team/agent workflows, run this before declaring completion:
 just check-quick
 ```
 
-Run `just check` before release, or before opening a PR when a full gate is required.
+Use `just check` only when a full serialized gate is explicitly required, typically by the team lead or during release preparation.
 
 Individual test suites:
 
@@ -140,7 +147,7 @@ Each regression test must document what broke and why (commit reference if avail
 
 1. Create a feature branch from `main`
 2. Make your changes with clear, focused commits
-3. Run `just check` (full gate) and ensure everything passes
+3. Run `just check-quick` during implementation; run `just check` only when a full serialized gate is required
 4. Open a PR with a clear title and description
 5. Include a brief test plan (what you tested and how)
 

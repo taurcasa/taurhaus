@@ -20,8 +20,8 @@ Core rules:
 |---|---|
 | `just` | Entry point for all supported build/release workflows. |
 | Rust toolchain (`cargo`, `rustc`, `clippy`, `rustfmt`) | Backend build, tests, lint, and packaging. |
-| Node.js + Bun (Bun available on build hosts) | Frontend build and Tauri frontend pipeline. |
-| Tauri CLI | App bundling (`cargo tauri build` or `bunx tauri build` via recipes). |
+| Bun | Frontend install/build pipeline on local, Windows, and macOS hosts. |
+| Tauri CLI | App bundling through the supported `just` recipes. |
 | `rsync` + `ssh` | Remote sync/build on macOS host. |
 | Windows `cmd.exe` interop from WSL | Native Windows NSIS build from synced workspace. |
 | `gh` CLI (authenticated) | `just release` creates GitHub releases and uploads artifacts. |
@@ -39,8 +39,16 @@ Project-specific environment assumptions from `justfile`:
 |---|---|
 | `just dev` | Full Tauri development mode (frontend + backend hot-reload). |
 | `just dev-frontend` | Frontend-only development server. |
+| `just test-fast` | Fast Rust compile + frontend unit lane. |
+| `just test-visual` | Browser-mode visual screenshot lane. |
 | `just check-quick` | Standard iteration gate (`cargo check --tests`, typecheck, frontend tests). |
 | `just check` | Full quality gate (`fmt`, lint, typecheck, tests) for team-lead serialized runs or release validation. |
+| `just build-daemon` | Build the WSL/native daemon binary only. |
+| `just install-daemon` | Install/update the daemon in `~/.local/bin/`. |
+| `just build-mesh` | Build the mesh CLI from the local mesh workspace. |
+| `just install-mesh` | Install/update mesh in `~/.local/bin/`. |
+| `just analyze-compaction --team <team> --last <window>` | Analyze recent compaction detection/reinjection events from current and rotated logs. |
+| `just capture-readme-screenshots` | Export the curated README screenshot set. |
 
 Use the quick-reference table in [CLAUDE.md](../../CLAUDE.md#build--development) for the full dev/test matrix.
 
@@ -56,6 +64,8 @@ just build-linux
 
 What it runs:
 
+- `bundle-daemon`
+- `bundle-mesh`
 - `bun run tauri build`
 
 ### Windows build (native via WSL interop)
@@ -70,9 +80,10 @@ Pipeline summary:
 
 1. `install-daemon` (WSL daemon binary rebuilt/installed).
 2. `bundle-daemon` (copies daemon binary into `src-tauri/resources/`).
-3. `sync-windows` (rsync to `D:\taurhaus_build`).
-4. `cmd.exe /c "cd /d D:\taurhaus_build && bun install --frozen-lockfile"` (with `%USERPROFILE%\.bun\bin\bun.exe` fallback from WSL).
-5. `cmd.exe /c "cd /d D:\taurhaus_build && set PATH=%USERPROFILE%\.bun\bin;%PATH% && cargo tauri build --bundles nsis"`.
+3. `mesh-verify-lock` + `bundle-mesh` (verifies the pinned mesh build and copies binary/version/manifest into `src-tauri/resources/`).
+4. `sync-windows` (rsync to `D:\taurhaus_build`).
+5. `cmd.exe /c "cd /d D:\taurhaus_build && bun install --frozen-lockfile"` (with `%USERPROFILE%\.bun\bin\bun.exe` fallback from WSL).
+6. `cmd.exe /c "cd /d D:\taurhaus_build && set PATH=%USERPROFILE%\.bun\bin;%PATH% && cargo tauri build --bundles nsis"`.
 
 Expected artifact location:
 
@@ -95,12 +106,15 @@ just build-macos
 Pipeline summary:
 
 1. `sync-macos` via rsync.
-2. Remote `bun install --frozen-lockfile` using `zsh -ilc` login shell.
-3. Remote daemon release build (`cargo build --release --bin taurhaus-daemon`).
-4. Copy daemon to `~/.local/bin/` and `src-tauri/resources/`.
-5. Re-sign daemon binaries (`codesign --force --sign - ...`).
-6. Remote app build (`cargo tauri build`).
-7. Copy artifacts back to `builds/macos-aarch64/`.
+2. Sync mesh source separately from `$MESH_PROJECT`.
+3. Remote `bun install --frozen-lockfile` using `zsh -ilc` login shell.
+4. Remote daemon release build (`cargo build --release --bin taurhaus-daemon`).
+5. Remote mesh release build (`cargo build --release --bin mesh`) and lock-version verification.
+6. Copy daemon and mesh into `~/.local/bin/` and `src-tauri/resources/`.
+7. Re-sign copied daemon and mesh binaries (`codesign --force --sign - ...`).
+8. Write `mesh.version` and `mesh.manifest.json` into bundled resources.
+9. Remote app build (`cargo tauri build`).
+10. Copy artifacts back to `builds/macos-aarch64/`.
 
 Why login shell matters:
 
@@ -121,16 +135,34 @@ just build-macos-universal
 
 Pipeline summary:
 
-1. Build daemon for `aarch64-apple-darwin`.
-2. Build daemon for `x86_64-apple-darwin`.
-3. Combine with `lipo -create` into `target/universal-apple-darwin/release/taurhaus-daemon`.
-4. Re-sign universal daemon and bundled resource copy.
-5. Build app with `cargo tauri build --target universal-apple-darwin`.
-6. Copy `.dmg` to `builds/macos-universal/`.
+1. Sync app + mesh source to the remote Mac.
+2. Build daemon for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
+3. Build mesh for both macOS architectures and verify the universal output against `src-tauri/resources/mesh.lock.json`.
+4. Combine daemon and mesh with `lipo -create` into universal binaries.
+5. Copy the universal daemon + mesh into bundled resources, re-sign them, and write `mesh.version` plus `mesh.manifest.json`.
+6. Build app with `cargo tauri build --target universal-apple-darwin`.
+7. Copy `.dmg` to `builds/macos-universal/`.
 
 Expected artifact location:
 
 - `builds/macos-universal/*.dmg`
+
+### macOS Intel build (x86_64)
+
+Use when you need a standalone Intel macOS DMG instead of the universal artifact.
+
+```bash
+just build-macos-intel
+```
+
+Pipeline summary:
+
+1. Sync app + mesh source to the remote Mac.
+2. Build the daemon natively on the Mac host.
+3. Build mesh for `x86_64-apple-darwin` and verify it matches `src-tauri/resources/mesh.lock.json`.
+4. Bundle daemon + mesh into app resources and re-sign them.
+5. Build the app with `cargo tauri build --target x86_64-apple-darwin`.
+6. Copy artifacts back to `builds/macos-x86_64/`.
 
 Daemon signing note:
 
@@ -145,9 +177,10 @@ just build-mesh       # Build mesh release binary from $MESH_PROJECT (default: ~
 just bundle-mesh      # Build + copy binary and version to src-tauri/resources/
 ```
 
-`bundle-mesh` writes two files:
+`bundle-mesh` writes three files:
 - `src-tauri/resources/mesh` — the mesh binary
 - `src-tauri/resources/mesh.version` — pinned version string (read at runtime by `check_mesh_install_status`)
+- `src-tauri/resources/mesh.manifest.json` — version/protocol/schema metadata stamped at bundle time
 
 The `build-linux`, `build-windows`, and `build-macos` recipes automatically include `bundle-mesh` as a dependency.
 
@@ -166,6 +199,25 @@ just install-daemon
 - Builds release daemon binary.
 - Atomically installs to `~/.local/bin/taurhaus-daemon`.
 - Restarts daemon if it had been running.
+
+App/runtime lifecycle notes:
+
+- `check_daemon_install_status` compares the installed daemon version against the bundled app version.
+- If the installed daemon version is older, unknown, or fails `--version`, the UI surfaces an update banner instead of assuming the binary is healthy.
+- On Windows, `install_daemon` installs inside the default WSL distro, verifies `--version`, and restarts the daemon automatically if it had been running before the swap.
+- On native macOS/Linux, copied daemon binaries are verified immediately after install; macOS builds are re-signed after copy.
+
+## Compaction operations
+
+The current compaction pipeline is event-driven. Detection and reinjection no longer depend on a periodic scan loop to notice Codex transcript boundaries.
+
+Use this when validating or debugging recent compaction handling:
+
+```bash
+just analyze-compaction --team taurhaus-team --last 30m
+```
+
+This summarizes recent `compaction.detected`, `compaction.injected`, `compaction.skipped`, `compaction.stale`, and `compaction.failed` events from the structured JSONL logs.
 
 ## Release workflow
 
@@ -229,6 +281,7 @@ After bumping:
 | File | Purpose |
 |---|---|
 | `justfile` | Source of truth for build, daemon, version, and release automation. |
+| `src-tauri/resources/mesh.lock.json` | Pinned mesh version/protocol/schema manifest verified before bundling. |
 | `CLAUDE.md` | Quick-reference build/development tables and release policy constraints. |
 | `src-tauri/tauri.conf.json` | App version source used by release tagging (`v<version>`). |
 | `CHANGELOG.md` | Release notes source section consumed by `just release`. |

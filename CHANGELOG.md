@@ -6,6 +6,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-03-09
+
+Event-driven compaction pipeline, daemon CPU optimization, multi-CLI lead support, and role import/export. The compaction detection chain is now fully notify-based — no more polling in the middle of an event-driven architecture. Daemon steady-state CPU dropped from ~49% to ~31% of one core.
+
+### Added
+
+- **Event-driven compaction detection** — compaction signal extraction now uses inotify/notify on Codex JSONL files instead of 500ms polling, with offset persistence and paired-record normalization
+- **CompactionSignalWatcher** — file-system watcher on the signal log with reconciliation fallback, replacing the old poll-based consumption loop
+- **CompactionSignalProcessor** — extracted downstream delivery logic into a clean single-responsibility processor
+- **Config-dir topology watching** — team watcher reconciliation driven by inotify on `~/.claude/teams/` instead of periodic directory scanning
+- **Shared runtime-session cache** — single scanner path feeds both display and compaction consumers, eliminating duplicate scanning
+- **Stale daemon binary detection** — app startup validates running daemon via `/proc/<pid>/exe` against installed binary, auto-restarts on mismatch
+- **Claude compact hook observability** — pipeline health reports and structured audit events for compaction lifecycle
+- **PlatformPaths authority** — centralized cross-platform path resolution for Windows, WSL UNC, and Linux path forms
+- **Compaction analysis tool** — `just analyze-compaction` recipe for live pipeline debugging
+- **Role import/export** — adapter schema for Claude Code and Copilot custom agent formats with round-trip provenance tracking
+- **Multi-CLI lead roles** — non-Claude agents (Codex, Gemini) can now serve as team lead with tool-appropriate presets and lifecycle
+- **Unified team roster query** — single join point for member runtime state across all coordination consumers
+- **Imperative resume card** — post-compaction reinjection card explicitly instructs agents to continue working rather than summarizing metadata
+- **Compaction reinjection audit surface** — mesh runtime view shows compaction detection and delivery events
+
+### Fixed
+
+- **Inbox corruption handling** — corrupt inbox files are now quarantined instead of silently treated as empty, preventing delivered messages from being hidden
+- **Paired Codex compaction boundaries** — extractor collapses `compacted` + `context_compacted` records within 2s into a single delivery
+- **Liveness reconcile session_id overwrite** — reconciliation no longer clobbers existing session_id when backfilling missing jsonl_path
+- **Daemon offline indicator** — recovers correctly when daemon comes back online
+- **Cross-platform path normalization** — Codex normalizer and config aliases handle Windows ↔ WSL ↔ Linux path translation
+
+### Performance
+
+- **Daemon CPU ~31% steady-state** (down from ~61% pre-optimization, ~49% after first pass) — removed redundant 500ms compaction scan loop and switched to diff-based downstream fanout
+- **Diff-based daemon fanout** — session activity exports and extractor updates only pushed when data actually changes, not every 500ms tick
+
+### Changed
+
+- **Mesh version pin** — bumped from 0.2.5 to 0.2.6 (selective mark-read: only marks displayed messages, not entire inbox)
+- **Session type split** — `DisplaySession` and `RuntimeSession` are now separate types with distinct responsibilities
+- **Legacy compaction module removed** — deleted `session_scanner/compaction.rs` (superseded by event-driven pipeline)
+- **Dead defensive branches removed** — `EmptyAdditionalContext` skip, pane foreground guard, JSONL boundary guard all removed as irrelevant for inbox-file delivery
+
+### Reliability
+
+- **Flaky integration tests hardened** — TCP server tests (daemon_client, event_listener, session_listener) now use port-readiness waits instead of fixed sleeps
+
 ## [0.5.6] - 2026-03-08
 
 Tmux foreground detection, non-blocking team initialization, and backend-owned role hydration. Mesh 0.2.5 with serde flatten to preserve extension fields.

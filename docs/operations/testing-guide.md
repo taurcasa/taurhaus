@@ -4,7 +4,7 @@ Testing strategy, test lanes, and procedures for the taurhaus project.
 
 ## Overview
 
-Testing follows TDD for logic and visual review for layout. Three layers cover the stack: Rust unit tests, frontend Vitest tests, and E2E tests via WebdriverIO. The per-task verification gate is `just check-quick`.
+Testing follows TDD for logic and visual review for layout. The maintained lanes are Rust tests, frontend Vitest tests, browser-mode visual tests, and E2E tests via WebdriverIO. The per-task verification gate is `just check-quick`.
 
 ## Philosophy
 
@@ -15,29 +15,37 @@ Testing follows TDD for logic and visual review for layout. Three layers cover t
 
 ## Test layers
 
-### Rust unit tests
+### Rust tests
 
 Per-module `#[test]` functions with `pretty_assertions` for readable diffs and `tempfile` for isolated filesystem tests.
 
 ```bash
-just test-rust-unit       # Unit tests (excludes daemon/network-heavy tests)
+just test-rust            # Full Rust lane (fast compile + unit + integration/system)
 just test-rust-fast       # Compile check only (fast feedback)
-just test-rust-integration # System/integration tests
+just test-rust-unit       # Unit/bin tests, heavy suites excluded
+just test-rust-integration # Serialized integration/system suites
+just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
 
-Tests live alongside the code they test (standard Rust `#[cfg(test)] mod tests` pattern).
+Test placement follows two patterns:
+
+- command-layer modules keep external sibling `tests.rs` files
+- lower-level modules keep inline `#[cfg(test)] mod tests`
 
 ### Frontend unit tests
 
 Vitest + JSDOM + `@testing-library/svelte`. Tests cover components, stores, and utility modules.
 
 ```bash
-just test-frontend        # Run all frontend tests
+just test-frontend        # Run all frontend Vitest tests
+just test-visual          # Run browser-mode visual screenshot tests
 ```
 
 **Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), not from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this automatically.
 
 Test files follow the pattern `*.test.js` alongside the source they test (e.g., `src/lib/format.test.js`).
+
+For manual visual review, run `bun run dev:visual` and use the fixture host documented in [`visual-testing-guide.md`](./visual-testing-guide.md).
 
 ### E2E tests
 
@@ -55,28 +63,32 @@ just test-macos-e2e       # macOS E2E via SSH on remote Mac Mini
 - **Tier 2**: Tests requiring a running daemon (session detection, file watching, command center)
 
 **E2E setup** (see [e2e/README.md](../../e2e/README.md) for troubleshooting):
-1. Ensure daemon is current: `just install-daemon`
-2. Build E2E binary: `just build-e2e` (debug/no-bundle Tauri build)
-3. Run tests
+1. By default the recipes do **not** reinstall the daemon. Opt in only if needed: `E2E_INSTALL_DAEMON=1 just test-e2e`
+2. The recipes build the E2E binary automatically unless `E2E_SKIP_BUILD=1` is set
+3. Run the tier/spec command you need
 
 **Skip build** (when binary is known-fresh): `E2E_SKIP_BUILD=1 just test-e2e-spec SPEC`
 
-Test specs live in `e2e/specs/` — 20 spec files covering all major features.
+Test specs live in `e2e/specs/` and are split by workflow/domain rather than by one monolithic suite.
 
 ## Test lanes
 
-| Recipe | What it runs | Speed |
-|--------|-------------|-------|
-| `just test` | All unit tests (Rust + frontend) | ~30s |
-| `just test-rust-fast` | Cargo test compile check | ~10s |
-| `just test-rust-unit` | Rust unit tests (no daemon/network) | ~15s |
-| `just test-rust-integration` | System/integration tests | ~30s |
-| `just test-frontend` | Vitest frontend tests | ~10s |
-| `just test-e2e` | Tier 1 E2E (build + run) | ~3min |
-| `just test-e2e-full` | Tier 1 + Tier 2 E2E | ~5min |
-| `just test-e2e-spec SPEC` | Single E2E spec | ~2min |
-| `just test-macos` | Rust tests on remote Mac Mini | ~1min |
-| `just test-macos-e2e` | macOS E2E on remote Mac Mini | ~5min |
+| Recipe | What it runs |
+|--------|-------------|
+| `just test` | All non-E2E tests (Rust + frontend) |
+| `just test-fast` | Rust compile-check + frontend Vitest |
+| `just test-rust-fast` | Cargo test compile check |
+| `just test-rust-unit` | Rust unit tests (no daemon/network) |
+| `just test-rust-integration` | System/integration tests |
+| `just test-frontend` | Vitest frontend tests |
+| `just test-visual` | Browser-mode visual screenshot lane |
+| `just test-daemon-connectivity` | Manual daemon connectivity chain checks |
+| `just test-e2e` | Tier 1 E2E |
+| `just test-e2e-full` | Tier 1 + Tier 2 E2E |
+| `just test-e2e-spec SPEC` | Single E2E spec |
+| `just test-macos` | Rust tests on remote Mac Mini |
+| `just test-macos-e2e` | macOS E2E on remote Mac Mini |
+| `just agent-quality` | Agent-facing wrapper around `just check-quick` |
 
 ### Bisection recipes
 
@@ -97,15 +109,19 @@ just check         # Full gate (team-lead serialized runs or pre-release)
 ```
 
 `just check-quick` runs:
-1. `cargo check --tests` — Rust compile + test-target validation
-2. `bun run check` — Svelte type checking
-3. `bun run test` — Frontend unit tests
+1. `cargo fmt` — Rust format auto-fix
+2. `cargo check --tests` — Rust compile + test-target validation
+3. `bun run typecheck` — Svelte type checking
+4. `bun run test` — Frontend unit tests
+
+`just agent-quality` delegates to `just check-quick` and exists as the explicit pre-completion gate for agent workflows.
 
 `just check` runs the full gate:
-1. `cargo fmt --check` — Rust formatting
+1. `cargo fmt --check` via `just fmt` — Rust formatting enforcement
 2. `cargo clippy` — Rust lints
-3. `bun run check` — Svelte type checking
-4. All tests (Rust + frontend)
+3. `bun run lint` — frontend lint
+4. `bun run typecheck` — Svelte type checking
+5. All non-E2E tests via `just test`
 
 **Run `just check-quick` on every task.** In team/agent workflows, agents should not run `just check`; team-lead owns serialized full-gate runs.
 
@@ -159,10 +175,13 @@ This applies to frontend tasks only — backend tasks skip visual review.
 | `justfile` | All test recipes and verification gates |
 | `e2e/README.md` | E2E runbook and troubleshooting |
 | `e2e/specs/regressions.js` | E2E regression test suite |
-| `vitest.config.js` | Frontend test configuration |
+| `vitest.config.ts` | Frontend unit test configuration |
+| `vitest.visual.config.js` | Browser-mode visual test configuration |
 | `e2e/wdio.conf.js` | WebdriverIO configuration |
+| `scripts/rust-test-bisect.sh` | Rust lane/module bisect helper |
 
 ## Related documents
 
 - [CLAUDE.md](../../CLAUDE.md) — TDD policy, quality gates, regression testing rules
+- [visual-testing-guide.md](./visual-testing-guide.md) — manual visual host and screenshot lane details
 - [Build and release](build-and-release.md) — build recipes and release workflow

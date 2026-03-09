@@ -1,5 +1,7 @@
 # Compaction Architecture Review — 2026-03-09
 
+> Status update (later on 2026-03-09): the review was written before the independent daemon compaction scan loop was removed. The remaining live architecture is still event-driven delivery on top of poll-driven session discovery, but the specific “two daemon-owned 500 ms authorities” critique is now historical rather than current.
+
 ## Verdict
 
 The compaction pipeline is **mostly coherent downstream**, but **not yet fully coherent end-to-end**.

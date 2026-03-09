@@ -17,7 +17,13 @@ _Note: this infographic is stale and needs regeneration. The current codebase us
 
 ## Platform Abstraction
 
-The `platform/` module provides compile-time dispatch (`#[cfg(target_os)]`) across Linux, macOS, and Windows implementations. Linux and macOS implement the real process-inspection surface; Windows provides explicit stubs for scanner-only APIs while still sharing command-spawn helpers such as hidden-window process launching. The compiler enforces the API contract per target.
+The platform boundary is intentionally split:
+
+- `platform/` provides compile-time dispatch (`#[cfg(target_os)]`) for process-inspection primitives such as cwd, tty, IO, and socket state.
+- `provider/path.rs` owns cross-platform project-path normalization and Windows/WSL/Linux translation.
+- `provider/platform_paths.rs` is the authority for app data, Claude/team roots, tool session roots, daemon binary location, log path, and Claude hook paths.
+
+Linux and macOS implement the real process-inspection surface. Windows still uses explicit stubs for scanner-only APIs while sharing hidden-window process launch helpers and UNC-path resolution for WSL-backed tool state.
 
 | Function | Linux (daemon in WSL2) | macOS (native daemon) |
 |----------|--------------------|--------------------|
@@ -81,13 +87,14 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `daemon_api.rs` | App-facing daemon request wrapper used by commands and startup flows |
 | `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
-| `provider/` | Concrete provider implementations and path translation utilities |
+| `provider/` | Concrete provider implementations plus path translation and `PlatformPaths` root authority |
 | `project_provider.rs` | Shared `ProjectProvider` trait and provider selection boundary |
 | `services/` | Cross-cutting services: relationships, scanner, project utilities, session import |
 | `models/` | Shared data structures (Project, Session, ActivityState, etc.) |
 | `config/` | Application configuration |
 | `coordination/` | Multi-CLI team orchestration (behind `mesh-bridged-backend` feature flag) |
 | `startup/` | Startup sequence orchestration (DB init, daemon connect, watcher/index bootstrap, task/session hydration) |
+| `templates/adapters.rs` | Role import/export adapters, provenance, and field-mapping rules for external agent formats |
 | `sentinels.rs` | Shared sentinel/fallback utilities used by startup and command flows |
 | `event_processor.rs` | File/git event batching (300ms quiet window, 2s ceiling) |
 | `daemon_lifecycle.rs` | Daemon auto-launch, reconnection, shutdown |
@@ -171,6 +178,7 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Mesh daemon hot-swap**: mesh installs are version-aware. Member daemon reconciliation checks executable identity and automatically replaces drifted daemons; bounded background self-heal does the same for drifted team-daemons, so normal upgrades do not require a manual `team-daemon stop/start/restart-all` cycle.
 - **Runtime responsiveness**: Mesh steady-state polling stays on the fast snapshot path, and the frontend suspends hidden-tab refresh work, which avoids switch-away stalls and reduces Windows popup latency during runtime navigation.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude. Codex/Gemini leads currently validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
+- **Compaction reinjection**: Codex compaction now runs through an event-driven path: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox. Claude uses a `SessionStart(source=compact)` hook bridge that returns `hookSpecificOutput.additionalContext`.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model. `MeshRuntimeBar` is also the shipped cold-restart/degraded recovery surface for team resume.
 
@@ -188,12 +196,18 @@ The template system provides reusable role templates and team presets, with comp
 - **Operational visibility**: storage mode, dirty state, and pending actions are exposed via `templates_get_storage_status`; manual flush is available via `templates_flush_pending`.
 - **Role model**: roles are context-steering lanes, not capability labels. The key persisted fields are `focus_area`, `context_summary`, and `behavior_summary`, which steer what context a role keeps accumulating and where it should act independently versus escalate.
 - **Lead tool support**: built-in and user templates can define lead roles for Claude, Codex, or Gemini. Frontend preset/customizer flows preserve the selected lead tool/model all the way into `coordination_initialize_team`; they do not silently backfill Claude defaults.
+- **Role adapters**: Taurhaus can export/import Claude agent files, Copilot agent files, and instruction-only formats. Imported roles persist `provenance` and explicit `non_roundtrippable_fields` so lossy conversions stay visible to operators.
 
 See [team templates guide](docs/team-templates.md) for user-facing workflows.
 
 ### Session Scanner
 
 Detects running CLI tool sessions (Claude Code, Codex, Gemini CLI). The detection logic is platform-agnostic — it calls into the `platform/` module for OS-specific process inspection.
+
+Two session views exist on purpose:
+
+- `DisplaySession`: UI-safe session view for sidebar/runtime display
+- `RuntimeSession`: transcript-aware session view for coordination, task sync, and compaction, preserving `session_id` and `jsonl_path`
 
 | Tool | Detection | Activity Signal |
 |------|-----------|-----------------|
@@ -202,6 +216,12 @@ Detects running CLI tool sessions (Claude Code, Codex, Gemini CLI). The detectio
 | Gemini CLI | Process name + SHA-256 path hash | TCP socket state to :443 (ESTABLISHED = active) |
 
 All detection uses 2-poll bidirectional hysteresis to prevent flickering.
+
+Managed Codex compaction is no longer a legacy poll-and-inject loop. It flows through:
+
+- `session_scanner/compaction_extractor.rs`
+- `session_scanner/compaction_watcher.rs`
+- `coordination/compaction_processor.rs`
 
 **Platform details:**
 - **Linux**: reads `/proc/PID/io` for IO bytes, `/proc/PID/fd` + `/proc/PID/net/tcp` for socket state
@@ -242,11 +262,11 @@ JSON-line protocol over TCP (localhost:17233). Same protocol on both platforms �
 - `git_changed` — .git directory modified (triggers commit list refresh)
 - `session_file_created` — new session handoff file detected
 
-**Commands (app → daemon, 21 methods):**
+**Commands (app → daemon, 23 methods):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
 - `file_tree`, `read_file`, `read_readme`, `read_asset`
-- `list_claude_sessions`, `wait_session_updates`, `launch_session`, `stop_session`, `navigate_to_session`
+- `list_display_sessions`, `list_runtime_sessions`, `wait_session_updates`, `launch_session`, `stop_session`, `navigate_to_session`
 - `get_project_tasks` (supports optional `scan_cycle_id` in protocol v6)
 
 ## Startup Sequence
@@ -303,7 +323,7 @@ All builds use `just` recipes. Both Windows and macOS builds happen natively on 
 just dev              # Tauri dev mode (hot-reload)
 just build-windows    # Sync to D:\, bun install, cargo build natively via cmd.exe
 just build-macos      # Sync to Mac Mini, build ARM DMG via SSH
-just build-macos-intel # Build Intel (x86_64) DMG via SSH
+just build-macos-universal # Build universal macOS app via SSH
 just check-quick      # Fast iteration gate: fmt + cargo check --tests + frontend typecheck/tests
 just check            # Full gate: fmt + lint + typecheck + just test
 just test             # All non-E2E tests (Rust + frontend)

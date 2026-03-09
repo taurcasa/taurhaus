@@ -26,7 +26,7 @@ taurhaus is built for exactly that situation:
 
 The sidebar groups your projects by how active they are and shows which AI tools have sessions running. Hover over a project to see session details; click a tool icon to jump straight into its tmux pane.
 
-You can also launch, resume, stop, and restart sessions from inside the app — no need to switch to the terminal just to kick something off.
+You can also launch, resume, stop, and restart sessions from inside the app, see grouped Mesh team indicators in the sidebar, and spot which project currently owns foreground tmux focus.
 
 ![Sidebar live supervision](docs/screenshots/readme-sidebar-live-supervision.png)
 
@@ -73,6 +73,8 @@ The setup flow lets you define a lead plus agents across different tools and pro
 ### Watch the team work
 
 Once running, taurhaus shows each team member as a node on a canvas — their status, their tool, what they're focused on — with actions available on each one.
+
+The runtime also surfaces recent compaction reinjection outcomes, so you can see when Taurhaus restored operational context after an agent compacted.
 
 ![Mesh runtime canvas](docs/screenshots/readme-mesh-runtime-canvas.png)
 
@@ -152,7 +154,7 @@ On macOS:
 - **Windows**: download `taurhaus_x.x.x_x64-setup.exe` from [Releases](../../releases) and run the installer.
 - **macOS**: download the DMG from [Releases](../../releases), move taurhaus to Applications, and launch it.
 
-On first launch, taurhaus sets up its background daemon, creates a managed tmux session, and walks you through project discovery.
+On first launch, taurhaus checks whether the bundled daemon needs to be installed or updated, walks you through project discovery, and transitions you into the main app once registration finishes.
 
 > macOS note: if Gatekeeper blocks the app on first launch, right-click it in Applications, choose **Open**, and confirm once.
 
@@ -202,10 +204,17 @@ Taurhaus uses **Bun-only** JavaScript workflows and `just` recipes for build, te
 ```bash
 just dev              # full Tauri development mode
 just check-quick      # fast implementation gate
+just test-fast        # quick Rust compile + frontend unit lane
 just test             # full non-E2E test lane
 just test-visual      # browser-mode visual screenshot lane
+just build-daemon     # build the daemon binary only
+just install-daemon   # install or update the daemon in ~/.local/bin
+just build-mesh       # build the mesh CLI from the local mesh workspace
+just install-mesh     # install or update mesh in ~/.local/bin
 just build-windows    # native Windows installer build
 just build-macos      # native macOS DMG build
+just build-macos-universal # universal macOS DMG build
+just capture-readme-screenshots # refresh README screenshot assets
 just release          # create GitHub release from current version
 ```
 
@@ -214,6 +223,7 @@ Contributor notes:
 - use `just check-quick` during implementation
 - treat `just check` as the full gate for releases
 - run Vitest from the project root, not `src-tauri/`
+- use `just` recipes for daemon and mesh installs instead of ad hoc copy steps
 
 Further reading:
 
@@ -229,7 +239,7 @@ Further reading:
 Taurhaus is a native desktop app with two parts:
 
 - a **Tauri application** that handles the UI, storage, git, and search
-- a **lightweight daemon** that scans for running processes, watches files, and manages tmux sessions
+- a **lightweight daemon** that scans for running processes, watches files, manages tmux sessions, and maintains foreground/session activity state
 
 On Windows, the daemon runs inside WSL2. On macOS, it runs as a native subprocess.
 

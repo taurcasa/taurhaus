@@ -9,16 +9,21 @@ taurhaus session management has three layers:
 - UI surfacing in sidebar indicators, hover cards, and overview/session history views
 - Handoff and activity persistence for historical context
 
-The runtime scanner is process-based and tool-aware, with explicit hysteresis to avoid flickering state changes.
+The runtime scanner is process-based and tool-aware, with explicit hysteresis to avoid flickering state changes. The code now separates UI-safe session delivery from transcript-aware runtime correlation.
 
 ## Runtime delivery model
 
 Session state delivery is event-driven above the daemon:
-- Daemon scanner polls and classifies sessions every 500ms.
-- Daemon serves versioned snapshots via `wait_session_updates` long-poll.
+- The daemon maintains UI-safe `DisplaySession` snapshots for sidebar and session surfaces.
+- The daemon exposes those snapshots through `list_display_sessions` and versioned `wait_session_updates` long-poll responses.
 - App backend bridge (`start_session_updates_bridge`) long-polls daemon updates and emits frontend `sessions-updated` events.
 - Frontend session store applies those events and drives sidebar/hover indicators reactively.
-- On startup, frontend runs a one-shot `list_claude_sessions` hydrate to avoid waiting for first delta event.
+- On startup, frontend runs a one-shot `listClaudeSessions()` hydrate to avoid waiting for the first delta event.
+
+Transcript-aware consumers do not use `DisplaySession`:
+- task sync, compaction extraction, and coordination runtime matching use `RuntimeSession`
+- `RuntimeSession` keeps transcript metadata such as `session_id` and `jsonl_path`
+- `DisplaySession` intentionally strips that metadata before UI delivery
 
 ## Supported tools
 
@@ -95,8 +100,10 @@ SessionResolver-based file detection:
 | Tool | Session file source | Activity threshold | Extra notes |
 |------|---------------------|--------------------|------------|
 | Claude | `~/.claude/projects/<slug>/*.jsonl` + `<session>/subagents/*.jsonl` | 5s mtime | Subagent mtime keeps compaction work marked active |
-| Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` matched by `session_meta.payload.cwd` | 10s mtime | 7-day lookback supports resumed sessions stored in older date dirs |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` matched by transcript/project metadata | 10s mtime | 7-day lookback supports resumed sessions stored in older date dirs |
 | Gemini | `~/.gemini/tmp/<dir-or-hash>/chats/*.json` | 5s mtime | Supports both newer directory-name layout and older path-hash layout |
+
+Path roots for these tool-specific locations are centralized behind backend `PlatformPaths` and shared path-normalization helpers so Windows, WSL, and native lookups use one authority.
 
 Process-level supplemental signals:
 - Claude: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis
@@ -110,10 +117,15 @@ Two hysteresis layers reduce state flicker:
 - Session state hysteresis (all tools): reported state changes only after two consecutive raw polls agree on the new state
 
 Polling cadence:
-- Daemon scanner cadence is `500ms` (`SessionActivityHub`).
+- Daemon scanner cadence is `500ms` while activity is changing or any session is active.
+- After 30 stable all-idle cycles, daemon cadence backs off to `1500ms`.
 - Tauri UI path is event-driven (daemon long-poll -> `sessions-updated`), not frontend IPC polling.
 - Frontend-only mock mode still uses a `500ms` polling loop for local development.
 - State transition confirmation requires sustained agreement across consecutive scanner polls.
+
+Snapshot fanout is also diff-based now:
+- the daemon publishes a new UI snapshot only when the display-session signature changes
+- activity export work runs off the same changed/not-changed boundary instead of unconditional fanout
 
 ## Sidebar indicators and hover details
 
@@ -183,13 +195,14 @@ Activity statistics:
 | `src/lib/HoverCard.svelte` | Live session detail card + historical activity preview |
 | `src/lib/SessionHistory.svelte` | Archived session timeline with task/commit/file drill-down |
 | `src-tauri/src/session_scanner/mod.rs` | Scanner orchestration, dedup logic, global bidirectional hysteresis |
+| `src-tauri/src/daemon/session_activity.rs` | Daemon-owned `DisplaySession` hub, adaptive cadence, and long-poll snapshots |
+| `src-tauri/src/provider/platform_paths.rs` | Authoritative platform-sensitive path roots for CLI/session locations |
 | `src-tauri/src/session_scanner/process.rs` | Process discovery and CLI tool detection from `ps` output |
 | `src-tauri/src/session_scanner/proc_io.rs` | Claude/Codex IO activity heuristic + Gemini TCP activity checks |
 | `src-tauri/src/session_scanner/idle/mod.rs` | SessionResolver abstraction and shared detection helpers |
 | `src-tauri/src/session_scanner/idle/claude.rs` | Claude session file + subagent mtime logic |
 | `src-tauri/src/session_scanner/idle/codex.rs` | Codex date-tree lookup + CWD matching + 7-day lookback |
 | `src-tauri/src/session_scanner/idle/gemini.rs` | Gemini chats directory/hash resolution + mtime logic |
-| `src-tauri/src/daemon/session_activity.rs` | Daemon-owned global scanner hub, versioned snapshots, long-poll waiters |
 | `src-tauri/src/daemon/session_listener.rs` | App-side daemon long-poll client for `wait_session_updates` |
 | `src-tauri/src/daemon_lifecycle.rs` | Session updates bridge (`sessions-updated`) and daemon reconnect flow |
 | `src-tauri/src/platform/linux.rs` | Linux `/proc` process/IO/socket inspection |

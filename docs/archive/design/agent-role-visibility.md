@@ -1,5 +1,7 @@
 # Agent Role Visibility In Mesh Runtime Canvas
 
+> Archived design review. This document records the runtime-role visibility direction that informed the shipped hover-card work. It remains directionally accurate, but the live UI and tests are the source of truth.
+
 ## Recommendation
 
 Show a **small role summary on deliberate hover/focus**, and keep **click for actions**.

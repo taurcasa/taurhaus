@@ -22,7 +22,7 @@ On every launch, a splash screen displays while the backend bootstraps. It uses 
 
 **Minimum display**: 800ms + 300ms hold — prevents the splash from flashing too quickly on fast machines.
 
-The splash screen listens for `daemon-status` Tauri events to track connection progress. On `connected`, it completes. On `failed`, it shows an error with retry/continue options.
+The splash screen listens for `daemon-status` Tauri events to track connection progress. It completes on `connected` or `not_configured`, and shows an error state when daemon startup definitively fails.
 
 ## First-run wizard
 
@@ -102,6 +102,7 @@ Theme options are populated from `shikiThemes.js` — separate light and dark th
 |----------|---------|
 | macOS | iTerm2, Ghostty, Terminal.app, Custom |
 | Windows | Windows Terminal, Custom |
+| Linux | Custom |
 
 **Default CLI commands:**
 
@@ -135,7 +136,8 @@ All settings are stored in the SQLite `settings` table as key-value pairs (JSON-
 | `src/lib/shikiThemes.js` | Code theme definitions (light + dark) |
 | `src-tauri/src/commands/settings.rs` | Settings get/update IPC handlers |
 | `src-tauri/src/commands/projects.rs` | `is_first_run`, `scan_directory`, `register_projects_batch` |
-| `src-tauri/src/bootstrap.rs` | Backend startup sequence |
+| `src-tauri/src/startup/mod.rs` | Backend startup bootstrap and path/log/database setup |
+| `src-tauri/src/daemon_lifecycle.rs` | Frontend-facing daemon status and reconnect events |
 
 ## Related documents
 

@@ -41,7 +41,7 @@ The sidebar is grouped by activity state headers:
 What users see:
 - Projects listed under group headers (headers only appear when group has items)
 - Filter input to narrow by project name
-- Per-project row indicators: session tool badges, cached branch badge, dirty indicator
+- Per-project row indicators: session tool badges, cached branch badge, dirty indicator, and foreground-project emphasis when tmux focus resolves to that project
 - Footer controls: Manage Projects button and daemon status
 
 Ordering behavior:

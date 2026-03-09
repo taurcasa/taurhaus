@@ -1,5 +1,7 @@
 # Daemon Polling Audit — 2026-03-09
 
+> Status update (later on 2026-03-09): the “future improvement” in this audit has since landed. `src-tauri/src/daemon/compaction.rs` now uses config-directory `notify` watching for team watcher topology, and the redundant daemon-owned 500 ms compaction runtime scan loop has been removed. Keep this document as the historical audit snapshot that motivated those changes.
+
 ## Scope
 
 Audit all polling-style loops in the daemon-owned session and compaction paths, classify each as:
@@ -20,18 +22,18 @@ Two hot-path fixes were warranted and implemented:
    - activity snapshot export now runs only when the session activity signature actually changes
 
 2. `src-tauri/src/daemon/compaction.rs`
-   - kept the runtime-session scan cadence
-   - stopped pushing unchanged Codex runtime session sets into the compaction extractor every 500 ms
-   - stopped reconciling team watchers every 500 ms
-   - team-watcher reconcile now runs on the watcher reconciliation interval instead of the scan interval
+   - initially kept the runtime-session scan cadence
+   - initially stopped pushing unchanged Codex runtime session sets into the compaction extractor every 500 ms
+   - initially stopped reconciling team watchers every 500 ms
+   - this was later followed by config-dir `notify` watching for team watcher topology and then removal of the independent daemon compaction runtime scan loop
 
 ## Loop Classification
 
 | Area | File | Current mechanism | Classification | Decision |
 | --- | --- | --- | --- | --- |
 | Display session scanner | `src-tauri/src/daemon/session_activity.rs` | `scan_sessions_for_display()` at 500 ms / 1500 ms cadence | Must-poll boundary, diff-based fanout | Keep poll, keep daemon-owned cadence, export only on diff |
-| Compaction runtime scan | `src-tauri/src/daemon/compaction.rs` | `scan_sessions_for_runtime()` every 500 ms | Must-poll boundary, diff-based fanout | Keep poll, push extractor updates only on Codex runtime-session diff |
-| Compaction watcher roster reconcile | `src-tauri/src/daemon/compaction.rs` | team config scan every 500 ms | Should be event-driven eventually | Reduced to watcher reconcile cadence; future improvement is config-dir watch |
+| Compaction runtime scan | `src-tauri/src/daemon/compaction.rs` | Historical at audit time: `scan_sessions_for_runtime()` every 500 ms | Historical pre-cleanup state | Removed later the same day |
+| Compaction watcher roster reconcile | `src-tauri/src/daemon/compaction.rs` | Current: config-dir `notify` watch + bounded fallback reconcile | Event-driven with bounded recovery poll | Landed |
 | Daemon TCP accept loop | `src-tauri/src/daemon/server.rs` | nonblocking `accept()` + 50 ms backoff on `WouldBlock` | Must-poll boundary | Keep; needed for idle-timeout shutdown without a second control thread |
 | Session update delivery | `src-tauri/src/daemon/session_listener.rs` | long-poll `wait_session_updates` RPC | Already event-driven at app layer | Keep |
 | Filesystem event delivery | `src-tauri/src/daemon/event_listener.rs` | blocking socket read with timeout | Already event-driven | Keep |
@@ -102,13 +104,12 @@ Changes:
 
 What remains polling:
 
-- runtime session scan itself
-- periodic watcher topology reconcile
+- only the bounded fallback reconcile inside the watcher/extractor services
 
 Why:
 
-- runtime session attachment is still derived from boundary scanning
-- watcher topology still depends on team config changes, and no config-dir watch exists yet in this daemon path
+- the primary topology path is now event-driven via config-dir watching
+- bounded recovery polling remains appropriate in case filesystem events are missed
 
 ## macOS Compaction Story
 

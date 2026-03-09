@@ -10,6 +10,7 @@ taurhaus has three frontend test lanes:
 |---|---|---|---|
 | JSDOM Vitest | `bun run test` | logic, state, DOM interaction, unit assertions | simulated DOM, no real browser |
 | Vitest Browser Mode | `just test-visual` | component screenshots with mocked state | real browser rendering |
+| README screenshot export | `just capture-readme-screenshots` | curated marketing/docs screenshots | real browser rendering |
 | WDIO + `tauri-driver` | `just test-e2e`, `just test-e2e-full` | real integration and full workflows | real app + real backend |
 
 Use the lightest lane that answers the question.
@@ -84,6 +85,22 @@ Relevant files:
 
 The fixture host is for fast manual inspection. It does not replace automated screenshots.
 
+## README screenshot workflow
+
+Use:
+
+```bash
+just capture-readme-screenshots
+```
+
+This exports the curated screenshot set used by `README.md` from the dedicated visual host/spec path. It is narrower than `just test-visual`: the goal is reproducible documentation imagery, not broad component coverage.
+
+Relevant files:
+
+- `scripts/export-readme-screenshots.sh`
+- `src/test/visual/specs/ReadmeScreenshotsHost.svelte`
+- `src/test/visual/fixtures/readmeScreenshots.fixtures.js`
+
 ## Boundary rules
 
 - Visual tests are for appearance, not behavior.
@@ -96,5 +113,6 @@ The fixture host is for fast manual inspection. It does not replace automated sc
 ## Quick decision rule
 
 - “Does it look right with this exact mock state?” -> visual test
+- “Do I need to refresh the README marketing screenshots?” -> `just capture-readme-screenshots`
 - “Does the component behave correctly?” -> JSDOM Vitest
 - “Does the real app work end-to-end?” -> WDIO E2E

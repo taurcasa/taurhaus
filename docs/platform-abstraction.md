@@ -1,298 +1,146 @@
-# Platform Abstraction — Design Doc
+# Platform Abstraction
 
-## Problem
+Current platform handling is split into three explicit layers, but root/path authority is intentionally centralized: `PlatformPaths` is the single source of truth for durable filesystem roots and launcher paths.
 
-taurhaus currently targets Windows (native exe) + WSL2 (daemon). macOS support requires abstracting all Linux-specific (`/proc`) and Windows-specific (`wsl.exe`, `wt.exe`) code behind compile-time dispatched platform modules.
+## 1. Process Inspection Surface: `src-tauri/src/platform/`
 
-## Strategy
+`platform/` is the compile-time OS boundary for process-level facts:
 
-**Compile-time dispatch with `cfg(target_os)`** at the module level. No runtime branching, no trait objects. Each platform gets its own concrete implementation file. The public API is identical across platforms.
+- `process_cwd(pid)`
+- `process_tty(pid)`
+- `process_rchar(pid)`
+- `has_established_443(pid)`
 
----
+Structure:
 
-## 1. Platform Module Structure
-
-```
+```text
 src-tauri/src/platform/
-  mod.rs          # cfg-based re-exports
-  linux.rs        # LinuxProbe — /proc filesystem
-  darwin.rs       # DarwinProbe — libproc + lsof
-  windows.rs      # No-op stubs (session scanning via WSL daemon)
-  types.rs        # Shared types (ProcessInfo, ActivityState)
+  mod.rs
+  linux.rs
+  darwin.rs
+  windows.rs
+  types.rs
 ```
 
-### mod.rs
+This boundary is still pure `#[cfg(target_os)]` dispatch. There are no trait objects here.
 
-```rust
-mod types;
-pub use types::*;
+Platform behavior:
 
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-pub use linux::*;
+| Platform | Implementation | Notes |
+|----------|----------------|-------|
+| Linux | `/proc`-based | Used directly on Linux and inside the WSL daemon |
+| macOS | `libproc` + `lsof` | Native daemon/session scanning path |
+| Windows | explicit stubs | The app does not inspect WSL processes directly; daemon/runtime feeds provide the real session data |
 
-#[cfg(target_os = "macos")]
-mod darwin;
-#[cfg(target_os = "macos")]
-pub use darwin::*;
+## 2. Path Translation and Identity: `src-tauri/src/provider/path.rs`
 
-#[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-pub use windows::*;
-```
+`provider/path.rs` owns path-shape translation and project identity normalization:
 
-No trait — just matching function signatures. The compiler ensures the API contract at build time. This is simpler than `dyn Trait` and has zero runtime cost.
+- WSL UNC <-> Linux (`\\wsl$\\...`, `\\wsl.localhost\\...`)
+- Windows drive <-> `/mnt/<drive>/...`
+- `normalize_project_path()` for stable cross-platform matching
 
-**Windows note**: On Windows, CLI tools run inside WSL2, not as native Windows processes. The daemon (a Linux binary in WSL) handles session scanning using `linux.rs`. The `windows.rs` stubs return `None`/empty — the app's direct `scan_sessions()` fallback compiles but produces empty results, which is correct behavior (the daemon path provides the real data).
+Use this layer when the question is:
 
----
+- “Do these two paths identify the same project?”
+- “What Linux path should the daemon receive?”
+- “What Windows/UNC path should the app show or access?”
 
-## 2. Platform API Surface
+## 3. Root Authority: `src-tauri/src/provider/platform_paths.rs`
 
-Functions that each platform must implement:
+`PlatformPaths` is the authoritative root resolver for platform-sensitive file locations:
 
-### Process Detection
+- app data root
+- structured JSONL log path
+- Claude home / teams dir
+- tool session roots
+- daemon binary path
+- Claude hook script/settings paths
 
-```rust
-/// Get the working directory of a process.
-pub fn process_cwd(pid: u32) -> Option<PathBuf>
+Important nuance:
 
-/// Get the TTY/pts path for a process's stdin.
-pub fn process_tty(pid: u32) -> Option<String>
-```
+- file-backed roots resolve to paths the current process can access directly
+- on Windows, WSL-backed tool state resolves to UNC paths for the app
+- the daemon binary path is different: it resolves to the WSL Linux path because launcher commands execute it inside WSL
 
-**Linux**: Read `/proc/{pid}/cwd` and `/proc/{pid}/fd/0` symlinks.
-**macOS**: Use `libproc::proc_pidpath()` for binary path, `libproc::proc_pidinfo()` with `PROC_PIDVNODEPATHINFO` for cwd. TTY via `libproc::proc_pidfdinfo()`.
+This is now the required entry point for durable root resolution. New path-sensitive features should call `PlatformPaths` rather than rediscovering roots ad hoc in commands, scripts, providers, or startup code.
 
-### IO Activity Detection
+## Daemon Lifecycle by Platform
 
-```rust
-/// Read cumulative bytes read by a process (for IO hysteresis).
-pub fn process_rchar(pid: u32) -> Option<u64>
-```
+| Aspect | Windows | macOS | Linux |
+|--------|---------|-------|-------|
+| GUI app | native `.exe` | native `.app` | native desktop app |
+| Daemon location | WSL `~/.local/bin/taurhaus-daemon` | native `~/.local/bin/taurhaus-daemon` | native `~/.local/bin/taurhaus-daemon` |
+| Spawn path | `wsl.exe ... <linux-binary>` | direct subprocess | direct subprocess |
+| Console behavior | hidden-window spawn for background work | normal background subprocess | normal background subprocess |
+| Process inspection authority | daemon/runtime feeds | native process probes | native process probes |
 
-**Linux**: Parse `rchar:` from `/proc/{pid}/io`.
-**macOS**: Use `proc_pid_rusage()` from `libproc` crate → `ri_diskio_bytesread`.
+Windows is intentionally asymmetric:
 
-### TCP Socket Detection
+- the app is native Windows
+- the daemon is Linux in WSL
+- tool/session roots are often accessed from Windows via UNC paths
+- project matching must normalize Windows, UNC, and Linux forms before comparing
 
-```rust
-/// Check if a process has any ESTABLISHED TCP connections to port 443.
-pub fn has_established_443(pid: u32) -> bool
-```
+## Session View Split
 
-**Linux**: Cross-reference `/proc/{pid}/fd/` socket inodes with `/proc/{pid}/net/tcp`.
-**macOS**: `lsof -i TCP:443 -a -p {pid} -s TCP:ESTABLISHED -t` (shell out). Or use `proc_pidfdinfo()` with `PROC_PIDFDSOCKETINFO`.
+Platform abstraction now includes a session-data split:
 
-### Types
+- `DisplaySession` / `list_display_sessions`: UI-safe session view
+- `RuntimeSession` / `list_runtime_sessions`: transcript-aware runtime view
 
-```rust
-pub struct ProcessInfo {
-    pub pid: u32,
-    pub cwd: Option<PathBuf>,
-    pub tty: Option<String>,
-}
-```
+This matters most on Windows, where the daemon provides both feeds and only the runtime feed preserves `session_id` and `jsonl_path`.
 
----
+## File Watching Split
 
-## 3. Daemon Launcher Abstraction
+The watcher model is intentionally split:
 
-The daemon lifecycle differs fundamentally between platforms:
+| Work | Owner |
+|------|-------|
+| Native/local project watchers | app |
+| WSL project watchers | daemon |
+| Activity-based watch reconciliation | app startup/runtime logic |
+| Compaction signal watching | dedicated compaction watcher path |
 
-| Aspect | Windows/WSL | macOS | Linux (dev) |
-|--------|------------|-------|-------------|
-| Binary location | `~/.local/bin/taurhaus-daemon` in WSL | `~/.local/bin/taurhaus-daemon` native | Same |
-| Spawn mechanism | `wsl.exe -d {distro} -- {binary}` | Direct `Command::new(binary)` | Direct |
-| Keep-alive | Long-lived wsl.exe parent (WSL#4649) | Daemon self-daemonizes or app keeps handle | Same as macOS |
-| Console hiding | `CREATE_NO_WINDOW` flag | Not needed | Not needed |
+This is why “platform abstraction” is not just `platform/`: path authority, daemon routing, and watcher ownership all participate. The key boundary is:
 
-### Abstraction
+- `PlatformPaths` decides where important roots live
+- `provider/path.rs` translates between Windows, WSL UNC, and Linux path shapes
+- `platform/` inspects live process facts once the right paths/processes are known
 
-```rust
-// daemon/launcher.rs keeps the existing Windows code behind cfg(target_os = "windows")
-// Add new block:
+## Terminal Management
 
-#[cfg(target_os = "macos")]
-fn try_start_daemon(port: u16, log_path: &Path) -> Result<(), std::io::Error> {
-    let home = std::env::var("HOME").map_err(std::io::Error::other)?;
-    let binary = format!("{home}/.local/bin/taurhaus-daemon");
-    // Direct spawn — no WSL wrapper needed
-    Command::new(&binary)
-        .args(["--port", &port.to_string()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-    Ok(())
-}
-```
+Terminal behavior is unified at the decision-tree level, with platform-specific launch/activate mechanics underneath:
 
-The daemon binary itself is cross-platform Rust — it compiles natively for macOS. No WSL indirection.
+| Platform | Supported emulators |
+|----------|---------------------|
+| Windows | Windows Terminal + custom |
+| macOS | iTerm2, Ghostty, Terminal.app, custom |
+| Linux | user-managed / no dedicated taurhaus surface |
 
----
+The invariant is unchanged: respect the configured emulator, and only launch a new attach path when an existing attached client is not available.
 
-## 4. Terminal Integration
+## Build and Distribution
 
-**Source of truth**: `src-tauri/src/terminal.rs`
+| Target | Build path |
+|--------|------------|
+| Windows | `just build-windows` via native Windows build under WSL interop |
+| macOS | `just build-macos` / `just build-macos-universal` on the remote Mac |
+| Linux | development/test target; not the release-first platform |
 
-### Unified Decision Tree (all platforms)
+Cross-compiling Windows from WSL remains out of bounds. macOS builds still require native Mac hardware.
 
-```
-handle_terminal(intent)
-  ├── FocusOnly { emulator }
-  │   └── Resolve emulator → is it running? → activate it
-  │
-  └── EnsureOpen { emulator, tmux_session, ... }
-      ├── "custom" → run user's command template with placeholders
-      └── Resolve emulator → is it running + tmux has client?
-          ├── Yes → activate (no duplicate tab/window)
-          └── No  → launch with `tmux attach-session -t <session>`
-```
+## Rules for New Features
 
-The tree is **identical on every platform**. Only the concrete emulator options and detection mechanisms differ:
+When adding platform-sensitive behavior:
 
-| Platform | Emulators | Default | Detection | Launch |
-|----------|-----------|---------|-----------|--------|
-| Windows | Windows Terminal, Custom | `windows_terminal` | PowerShell `Get-Process` + `EnumWindows` (WinUI 3 quirk) | `wt.exe -w taurhaus new-tab -- wsl.exe -d {distro} -- tmux attach` |
-| macOS | iTerm2, Ghostty, Terminal.app, Custom | `iterm2` | AppleScript `application "X" is running` + `tmux list-clients` | AppleScript (`create tab`/`do script`) or CLI (`ghostty -e`) |
-| Linux | (no-op) | — | — | User manages their own terminal |
+1. Use `PlatformPaths` for every durable root or launcher path: app data, logs, `~/.claude`, teams dir, hook paths, daemon binary path, and per-tool session roots.
+2. Use `provider/path.rs` for identity normalization and WSL/Windows/Linux translation.
+3. Use `platform/` only for process/socket/TTY inspection primitives.
+4. Use `DisplaySession` only for UI surfaces.
+5. Use `RuntimeSession` for coordination, transcript ownership, task sync, and compaction.
 
-### macOS: `MacEmulator` Enum
+Related references:
 
-```rust
-enum MacEmulator { ITerm2, Ghostty, TerminalApp }
-
-impl MacEmulator {
-    fn from_setting(pref: &str) -> Self;   // resolve setting → concrete emulator
-    fn is_running(self) -> bool;           // AppleScript check
-    fn activate(self) -> Result<(), String>;  // bring to front
-    fn launch_with_tmux(self, session: &str) -> Result<(), String>;  // open + attach
-}
-```
-
-Key invariant: we **always respect the user's emulator preference**. We never fall through to a different terminal just because it happens to be running. `tmux list-clients` (not `pgrep`) determines attachment state.
-
----
-
-## 5. Daemon Install (macOS)
-
-On macOS, there's no WSL — the daemon runs natively. The wizard flow simplifies:
-
-| Step | Windows | macOS |
-|------|---------|-------|
-| Bundle binary | Linux ELF in resources | macOS binary in resources |
-| Check exists | `wsl -d {distro} -- test -f ~/.local/bin/...` | `test -f ~/.local/bin/...` |
-| Install | Copy via `wsl -d {distro} -- cp /mnt/...` | Direct `fs::copy()` |
-| Permissions | `wsl -d {distro} -- chmod +x` | Direct `fs::set_permissions()` |
-
-The `check_daemon_install_status` and `install_daemon` commands need `cfg` blocks for macOS-native paths.
-
----
-
-## 6. File System Roots
-
-```rust
-// commands/projects.rs get_system_roots()
-
-#[cfg(target_os = "macos")]
-fn get_system_roots() -> Vec<SystemRoot> {
-    vec![
-        SystemRoot { path: "/".into(), label: "Macintosh HD".into(), kind: "local".into() },
-        SystemRoot { path: dirs::home_dir().unwrap().display().to_string(), label: "Home".into(), kind: "local".into() },
-    ]
-}
-```
-
----
-
-## 7. File Watching
-
-The `notify` crate handles this transparently:
-- **Linux**: inotify
-- **macOS**: FSEvents (via `kqueue` or `fsevent`)
-- **Windows**: ReadDirectoryChangesW
-
-Error messages should be generic. The current inotify-specific error handling in `lib.rs` should check for platform-generic "too many files" errors.
-
----
-
-## 8. Build Pipeline
-
-| Target | Build method | Output |
-|--------|-------------|--------|
-| Windows | `just build-windows` (native via cmd.exe) | NSIS installer |
-| macOS | `cargo tauri build` on Mac hardware | .dmg |
-| Linux | `cargo tauri build` | AppImage + .deb |
-
-macOS builds require a real Mac (or Mac VM). Cross-compilation is not reliable for Tauri apps due to framework linking, code signing, and notarization requirements.
-
-### macOS-specific build needs:
-- Xcode Command Line Tools (for `cc`, frameworks)
-- Universal binary: `--target aarch64-apple-darwin` + `--target x86_64-apple-darwin` + `lipo`
-- Code signing: Developer ID certificate (optional for beta, required for distribution)
-- Notarization: Apple notarization service (required for gatekeeper bypass)
-
----
-
-## 9. Migration Plan
-
-### Phase 1: Extract LinuxProbe (M02-M06)
-Move existing `/proc` code into `platform/linux.rs` without changing behavior.
-1. Create `platform/` module with `types.rs` and `linux.rs`
-2. Extract `process_cwd()` and `process_tty()` from `process.rs`
-3. Extract `process_rchar()` from `proc_io.rs`
-4. Extract `has_established_443()` from `proc_io.rs`
-5. Genericize inotify error messages in `lib.rs`
-
-### Phase 2: Implement DarwinProbe (M07-M09)
-Write macOS equivalents using `libproc` and `lsof`.
-1. Implement `process_cwd()` via libproc
-2. Implement `process_rchar()` via proc_pid_rusage
-3. Implement `has_established_443()` via lsof or libproc
-
-### Phase 3: macOS Integration (M10-M11)
-1. Add `cfg(target_os = "macos")` blocks to daemon launcher
-2. Add Terminal.app / iTerm2 integration
-
-### Phase 4: Build & Test (M12-M18)
-1. macOS bundle config (icon, .dmg settings)
-2. Set up remote Mac build environment
-3. Build, run, test on macOS
-4. Universal binary (arm64 + x86_64)
-
----
-
-## 10. Dependencies
-
-### Existing (already in Cargo.toml)
-- `notify` — cross-platform file watching
-- `dirs` — cross-platform home directory
-
-### New (macOS only)
-- `libproc` — macOS process inspection (`#[cfg(target_os = "macos")]`)
-  - Crate: `libproc = "0.14"` (well-maintained, thin wrapper over Apple APIs)
-
-### Build-time only
-- `lipo` — universal binary creation (macOS command line tool)
-- Xcode CLT — C compiler + framework headers
-
----
-
-## 11. Implementation Checklist
-
-- [ ] Create `src-tauri/src/platform/mod.rs` with cfg dispatch
-- [ ] Create `src-tauri/src/platform/types.rs` with shared types
-- [ ] Create `src-tauri/src/platform/linux.rs` — extract from process.rs + proc_io.rs
-- [ ] Update `session_scanner/process.rs` to call `platform::process_cwd()` etc.
-- [ ] Update `session_scanner/proc_io.rs` to call `platform::process_rchar()` etc.
-- [ ] Genericize inotify error messages in `lib.rs`
-- [ ] Create `src-tauri/src/platform/darwin.rs` — macOS implementations
-- [ ] Add `cfg(target_os = "macos")` blocks to `daemon/launcher.rs`
-- [ ] Add `cfg(target_os = "macos")` to `terminal.rs`
-- [ ] Add macOS roots to `commands/projects.rs`
-- [ ] Add macOS daemon install path to `commands/daemon.rs`
-- [ ] Configure macOS bundle in `tauri.conf.json`
-- [ ] Test on real macOS hardware
+- [path handling guide](architecture/path-handling-guide.md)
+- [path handling audit](analysis/path-handling-audit-2026-03-08.md)

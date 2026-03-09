@@ -1,33 +1,35 @@
 # Compaction / Context-Reset Detection Across Claude Code, Codex CLI, and Gemini CLI
 
-Date: March 8, 2026
+Date: March 9, 2026
+
+Updated after the March 9, 2026 Taurhaus event-driven compaction rollout.
 
 ## Executive Summary
 
-If Taurhaus wants reliable post-compaction role-card re-injection or context re-seeding, the three CLIs are not equally capable:
+The three CLIs are still not equally capable, but the practical Taurhaus answer changed after the event-driven Codex rollout.
 
-| Tool | Explicit compaction primitive | Detectable external signal | Can inject context after compaction | Resume behavior | Practical feasibility |
+| Tool | Explicit compaction primitive | Detectable external signal | Can inject context after compaction | Resume behavior | Practical feasibility in Taurhaus |
 | --- | --- | --- | --- | --- | --- |
 | Claude Code | Yes | Yes, first-party hooks | Yes, first-party hooks and memory files | Strong | High |
 | Gemini CLI | Yes | Yes, first-party hooks | Yes, but less targeted than Claude | Strong | Medium-high |
-| Codex CLI | No stable first-party hook found | Only indirect artifacts or terminal/UI heuristics | No clean post-compaction callback found | Moderate | Low |
+| Codex CLI | No public first-party hook | Yes, via stable on-disk session events | Yes, via Taurhaus-owned post-detect delivery | Moderate to strong | Medium |
 
 Recommendation:
 
-- Build the first production version around Claude Code.
-- Add Gemini support second.
-- Treat Codex support as heuristic-only until OpenAI exposes a first-party compaction/session hook.
+- Keep Claude Code as the strongest first-party integration path.
+- Add Gemini support next.
+- Treat Codex as implementation-coupled rather than hook-native: it is now viable in Taurhaus, but it still depends on Codex session artifact semantics instead of a published callback contract.
 
 ## What "reliable" means here
 
 For Taurhaus, a reliable solution needs all of the following:
 
 1. A detectable event when context is compressed, reset, or resumed.
-2. A supported place to inject fresh context after that event.
+2. A supported or product-owned place to inject fresh context after that event.
 3. A session identity that survives resume.
 4. A signal that is external to the terminal UI so backend supervision can observe it safely.
 
-Claude Code meets all four. Gemini CLI meets three cleanly and the fourth partially. Codex CLI currently misses the key hook/callback piece.
+Claude Code meets all four with first-party support. Gemini CLI meets them with a weaker but still official hook surface. Codex CLI still lacks the first-party hook piece, but Taurhaus now satisfies the product requirement by normalizing Codex JSONL compaction records into its own signal log, watcher, processor, and reinjection pipeline.
 
 ## Claude Code
 
@@ -39,7 +41,7 @@ Claude Code has an explicit compact lifecycle:
 - `PreCompact` exposes whether the trigger was manual (`/compact`) or automatic (context full).
 - `SessionStart` also fires after compaction with `source: "compact"`.
 
-This is the strongest first-party compaction contract of the three tools.
+This remains the strongest first-party compaction contract of the three tools.
 
 ### Detectable external signals
 
@@ -50,7 +52,7 @@ Claude Code exposes direct, machine-readable signals:
 - `transcript_path` and `session_id` in hook payloads
 - `InstructionsLoaded` events when instruction files are loaded into context
 
-This means Taurhaus does not need to scrape terminal output or infer compaction from opaque file churn.
+Taurhaus does not need to scrape terminal output or infer compaction from opaque file churn.
 
 ### Can Taurhaus inject content after compaction?
 
@@ -62,13 +64,13 @@ The best hook point is `SessionStart` with `source: "compact"`:
 - SessionStart supports `additionalContext`.
 - stdout from the hook is also added as context.
 
-That gives Taurhaus a supported way to re-inject role state, project guardrails, or a short role-card summary after compaction.
+That gives Taurhaus a supported way to re-inject role state, project guardrails, or a short operational resume card after compaction.
 
 ### What survives resume?
 
 Claude Code explicitly documents strong resume semantics:
 
-- `claude --continue` and `claude --resume` restore the prior conversation.
+- `claude --continue` and `claude --resume` restore the prior conversation
 - conversation history is stored locally
 - message history is restored
 - tool state/results are preserved
@@ -79,14 +81,9 @@ Separate from session resume, Claude Code also has persistent memory files:
 - project instructions via `./CLAUDE.md` or `./.claude/CLAUDE.md`
 - user instructions via `~/.claude/CLAUDE.md`
 
-So Claude has both:
-
-- persistent static memory, and
-- explicit dynamic reinjection hooks.
-
 ### Practical assessment
 
-Claude Code is the only tool here with a clearly supported post-compaction reinjection path. This is the best base for Taurhaus role persistence.
+Claude Code is still the cleanest and most portable base for role persistence.
 
 ## Gemini CLI
 
@@ -94,10 +91,10 @@ Claude Code is the only tool here with a clearly supported post-compaction reinj
 
 Gemini CLI exposes an explicit compression lifecycle:
 
-- `PreCompress` fires before the CLI summarizes history to save tokens.
-- trigger is `auto` or `manual`.
+- `PreCompress` fires before the CLI summarizes history to save tokens
+- trigger is `auto` or `manual`
 
-This is materially weaker than Claude because the hook is advisory-only, but it is still a first-party compaction signal.
+This is weaker than Claude because the hook is advisory-only, but it is still a first-party compaction signal.
 
 ### Detectable external signals
 
@@ -115,18 +112,16 @@ Locally, this machine also shows Gemini project/session state under `~/.gemini/`
 
 Yes, but not as precisely as Claude.
 
-Gemini hook capabilities relevant here:
+Relevant hook capabilities:
 
 - `SessionStart` supports `hookSpecificOutput.additionalContext`
 - in interactive mode, that additional context is injected as the first turn in history
 - `BeforeAgent` can append per-turn context before planning
 
-The limitation is that Gemini's `PreCompress` hook is advisory only and cannot directly alter the compression flow. The likely Taurhaus strategy would be:
+The likely Taurhaus strategy remains:
 
 1. Observe `PreCompress` for telemetry and state save.
 2. Re-inject on the next `SessionStart` or `BeforeAgent`.
-
-That is workable, but slightly less direct than Claude's explicit `SessionStart(source=compact)` path.
 
 ### What survives resume?
 
@@ -141,64 +136,56 @@ Gemini documents strong resume/storage behavior:
 
 Gemini also supports chat save/resume and `/rewind`, and the docs state rewind works across chat compression points by reconstructing history from stored session data.
 
-That is useful for Taurhaus because it implies compression does not fully destroy recoverable structure.
-
 ### Practical assessment
 
-Gemini is viable for Taurhaus role reinjection. It has first-party hooks, durable session artifacts, and injectable startup/turn context. The main weakness is that the compaction callback is advisory rather than a crisp "compact finished, now inject" lifecycle like Claude.
+Gemini is viable for Taurhaus role reinjection. The main weakness is not observability; it is the softer "observe now, inject on next lifecycle point" model.
 
 ## Codex CLI
 
 ### How compaction works
 
-I found no first-party documented compaction hook or lifecycle callback in the current Codex CLI surface.
+I still found no first-party documented compaction hook or lifecycle callback in the current Codex CLI surface.
 
 Local CLI evidence on this machine:
 
-- `codex --help` exposes `resume` and `fork`, but no hook command.
-- `codex resume --help` exposes resume behavior, but no post-resume callback or hook integration.
-- `codex debug --help` does not expose compaction/session hooks.
+- `codex --help` exposes `resume` and `fork`, but no hook command
+- `codex resume --help` exposes resume behavior, but no post-resume callback or hook integration
+- `codex debug --help` does not expose compaction/session hooks
 
-Upstream community evidence in the official `openai/codex` repo suggests hooks are still a requested feature, not an established one.
-
-There is also evidence that Codex maintains internal summarization state:
-
-- local rollout/session JSON files under `~/.codex/sessions/*.json` contain `summary` arrays with `summary_text` items
-- official issue discussion around backtracking/forking references rollout JSON/JSONL internals
-
-Inference: Codex clearly has internal summarization/history management, but it is not exposed through a stable public hook interface.
+Upstream community evidence in the official `openai/codex` repo still suggests hooks are a requested feature, not an established one.
 
 ### Detectable external signals
 
-Codex has only indirect signals today:
+Codex is no longer "terminal heuristics only" for Taurhaus.
 
-- local files under `~/.codex/sessions/`
-- local history file `~/.codex/history.jsonl`
-- possible terminal/UI behavior
-- possible log mutations under `~/.codex/log/`
+The useful signal is the active session JSONL itself:
 
-Those are observable, but fragile:
+- live sessions append to `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+- compaction appends `type:"compacted"` followed by an `event_msg` carrying `payload.type:"context_compacted"`
+- Taurhaus now normalizes those records into a team-scoped append-only signal log and consumes them through an event-driven watcher/processor chain
 
-- file formats are implementation details
-- there is no documented event meaning "compaction just happened"
-- session file mutation may lag or batch changes
-- terminal scraping is the weakest option and should be avoided for product logic
+Important limitation:
+
+- this is still an implementation-level contract, not a published Codex hook
+- Taurhaus should continue to fail closed on ambiguous parse or pairing state
+- terminal scraping remains a fallback, not the primary path
 
 ### Can Taurhaus inject content after compaction?
 
-Not cleanly.
+Yes, with Taurhaus-owned delivery rather than a Codex-owned callback.
 
-I found no supported Codex equivalent of:
+There is still no supported Codex equivalent of:
 
 - Claude `SessionStart(source=compact)` plus `additionalContext`, or
-- Gemini `SessionStart`/`BeforeAgent` hook system.
+- Gemini `SessionStart`/`BeforeAgent` hook system
 
-What Taurhaus could still do:
+But Taurhaus now has a workable product path:
 
-- inject on resume by wrapping the Codex launch/resume command
-- infer compaction via file changes or UI text and then push a new user turn
+1. Detect the append-only compaction boundary in the Codex session JSONL.
+2. Normalize it into Taurhaus's signal log.
+3. Deliver a bounded post-compaction resume card through the existing team messaging channel.
 
-But those are heuristics, not first-party lifecycle integrations. They are good enough for experiments, not for a robust role-persistence feature.
+That is weaker than a first-party hook, but it is strong enough for production Taurhaus behavior if the parser remains strict and observable.
 
 ### What survives resume?
 
@@ -208,23 +195,15 @@ Codex resume is real and first-party:
 - local session files exist under `~/.codex/sessions`
 - upstream issue discussion confirms the CLI can fork/backtrack from prior history and references rollout JSON/JSONL internals
 
-Local evidence on this machine also shows structured session artifacts:
-
-- `~/.codex/sessions/*.json`
-- top-level `session` and `items`
-- `summary` entries attached to some items
-
-So Codex does preserve enough history for resume/fork workflows. The problem is not persistence. The problem is the lack of a public, deterministic hook around compaction/reset.
+Local evidence on this machine also shows structured session artifacts with persisted summaries and history continuity.
 
 ### Practical assessment
 
-Codex support is possible only through heuristics:
+Codex support is now medium-feasibility for Taurhaus:
 
-- watch session/history files
-- wrap `codex resume`
-- optionally inspect terminal output
-
-That is acceptable for diagnostics or best-effort UX hints. It is not strong enough for reliable automatic role-card re-injection.
+- detection is good enough through event-driven JSONL monitoring
+- reinjection is good enough through Taurhaus-owned delivery
+- pre-compaction save and long-term portability remain weaker than Claude/Gemini because there is still no official Codex hook surface
 
 ## Comparison by Taurhaus use case
 
@@ -232,19 +211,19 @@ That is acceptable for diagnostics or best-effort UX hints. It is not strong eno
 
 - Claude Code: strong yes
 - Gemini CLI: yes
-- Codex CLI: only inferred
+- Codex CLI: yes, via event-driven session artifact monitoring
 
 ### 2. Save state before compaction
 
 - Claude Code: yes, `PreCompact`
 - Gemini CLI: yes, `PreCompress`
-- Codex CLI: only by polling/watching artifacts continuously
+- Codex CLI: no clean pre-compaction hook
 
 ### 3. Inject state immediately after compaction
 
 - Claude Code: yes, best path
 - Gemini CLI: yes, but less exact
-- Codex CLI: no clean first-party callback found
+- Codex CLI: yes, via Taurhaus post-detect delivery rather than a first-party callback
 
 ### 4. Resume with prior context
 
@@ -256,50 +235,41 @@ That is acceptable for diagnostics or best-effort UX hints. It is not strong eno
 
 - Claude Code: strong
 - Gemini CLI: strong
-- Codex CLI: weak to medium
+- Codex CLI: medium after Taurhaus normalization
 
 ## Recommended product strategy
 
-### Phase 1
+### Phase 1: shipped in current Taurhaus
 
-Ship support only for:
+- Claude Code: first-party compaction lifecycle support
+- Codex: event-driven JSONL extraction, watcher/processor delivery, bounded resume card, and compaction audit surface
 
-- Claude Code: full support
-- Gemini CLI: partial/full support if we keep the implementation simple
+### Phase 2: next product value
 
-Do not promise robust Codex post-compaction reinjection yet.
+- Gemini integration on the same bounded operational-card model
+- compaction-aware runtime classification and mesh idle-monitor suppression
 
-### Phase 2
+### Phase 3: future simplification
 
-For Codex, support only:
-
-- resume-aware reinjection when Taurhaus launches or resumes the session itself
-- heuristic warnings when session artifacts suggest a context reset or summarization event
-
-Do not couple critical product behavior to Codex session file internals.
-
-### Phase 3
-
-Upgrade Codex support only if OpenAI adds one of:
+Upgrade Codex support if OpenAI adds one of:
 
 - a session lifecycle hook system
 - a documented compaction event
 - a stable transcript/session event stream
-- a documented "session resumed" callback with context injection support
+- a documented resume callback with context injection support
 
 ## Bottom Line
 
 If the goal is reliable role persistence across context resets:
 
-- Claude Code is ready now.
-- Gemini CLI is good enough to support next.
-- Codex CLI is not ready for a robust implementation without heuristics.
+- Claude Code is still the cleanest option.
+- Gemini CLI is still a good second integration.
+- Codex CLI is now practically supportable in Taurhaus, but by product-owned event normalization rather than a first-party hook contract.
 
-For Taurhaus, the practical architecture is:
+That is the key distinction:
 
-1. First-class Claude integration.
-2. Gemini integration behind a simpler reinjection path.
-3. Codex treated as best-effort until the product exposes a real hook/event contract.
+- Codex is still weaker at the CLI contract level.
+- It is no longer "not ready" at the Taurhaus product level.
 
 ## Sources
 
@@ -314,10 +284,14 @@ For Taurhaus, the practical architecture is:
 - OpenAI Codex official repo discussions index: https://github.com/openai/codex/discussions
 - OpenAI Codex discussion: "Hook would be a great feature" #2150: https://github.com/openai/codex/discussions/2150
 - OpenAI Codex issue: fork/backtrack API request #4972: https://github.com/openai/codex/issues/4972
+- [CHANGELOG.md](/home/mstie/projects/taurhaus/CHANGELOG.md)
+- [compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
+- [compaction_events.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_events.rs)
+- [reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
 
 ## Local Evidence Used
 
-Local inspection on this machine, March 8, 2026:
+Local inspection on this machine, March 8-9, 2026:
 
 - `codex --help`
 - `codex resume --help`
@@ -325,10 +299,4 @@ Local inspection on this machine, March 8, 2026:
 - `gemini --list-sessions`
 - inspection of `~/.codex/`
 - inspection of `~/.gemini/`
-
-Key local findings:
-
-- Codex exposes resume/fork but no public hooks in CLI help.
-- Codex stores structured session artifacts under `~/.codex/sessions/`, including embedded summaries.
-- Gemini exposes hooks and resume directly in CLI help.
-- Gemini stores project-scoped session artifacts locally and lists resumable sessions cleanly.
+- current Taurhaus compaction implementation and changelog

@@ -1,10 +1,12 @@
 # Sidebar Team Session Visuals
 
+> Archived design review. This file captures the visual-direction decision for grouped team indicators. It is retained as historical rationale; current shipped behavior lives in the sidebar/session-indicator code and tests.
+
 ## Summary
 
 Recommendation: keep the current `14px` standalone tool-logo treatment, but change grouped mesh-team indicators so they still read as "tool runtime" rather than "generic badge".
 
-This supersedes the earlier `T<count>` fallback from [sidebar-session-grouping.md](/home/mstie/projects/taurhaus/docs/design/sidebar-session-grouping.md).
+This supersedes the earlier `T<count>` fallback from [sidebar-session-grouping.md](/home/mstie/projects/taurhaus/docs/archive/design/sidebar-session-grouping.md).
 
 Two visual states:
 

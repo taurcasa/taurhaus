@@ -93,35 +93,49 @@ The previous policy created repeated stalls when validation failed on small unre
 
 ## 3. Idle-Monitor Policy (Revised)
 
-Adopted as the new baseline behavior for automated reminders.
+Originally adopted on March 8, 2026 as a correction to noisy reminders. Updated on March 9, 2026 to reflect the newer communication-flow redesign: the right fix is better classification, not merely a longer grace period.
 
 ### Hard suppression
 
 No idle reminders should ever be sent for:
 - completed tasks
 - formally blocked tasks
+- freshly assigned tasks with recent progress or coordination activity
 
-### Rate-limited reminders for `in_progress` tasks
+### State-based classification for `in_progress` tasks
 
-For `in_progress` tasks:
-- no reminder if there was recent real activity within the cooldown window
-- real activity includes:
-  - recent commentary/progress update
-  - recent task update
-  - active test/build session
-  - recent human coordination
-- after the cooldown window (`5-10 minutes`), send at most one reminder if the task is truly idle
-- if the task remains silent after that reminder, escalate to a human instead of sending repeated nudges
+For `in_progress` tasks, the monitor should classify the task state before deciding whether to remind:
+
+- `healthy`
+- `busy working`
+- `uncertain`
+- `stalled`
+- `broken`
+
+The classifier should consider:
+- recent commentary/progress update
+- recent task update
+- active test/build session
+- recent human coordination
+- explicit compaction or context-reset activity when available
+- runtime/activity snapshot freshness
+
+### Reminder and escalation behavior
+
+- do not remind while the state is `healthy` or `busy working`
+- if the state is `uncertain`, prefer one targeted check rather than repeated nudges
+- if the state becomes `stalled`, send at most one reminder, then escalate to a human if silence continues
+- if the state is `broken`, escalate immediately
 
 ### Why this was adopted
 
-The team agreed that repeated stale reminders are noisy, but a silently stalled agent is worse. The monitor should still catch real stalls on active tasks; it just needs to do so without flooding work that is obviously still moving.
+The team agreed that repeated stale reminders are noisy, but a silently stalled agent is worse. The March 9 refinement is that timer-only cooldowns are too blunt: they suppress some noise, but they do not reliably distinguish active work, compaction, uncertainty, and real stalls.
 
 ### Intended effect
 
 - hard-suppress clearly wrong reminders
-- preserve stall detection for `in_progress` work
-- replace repeated nudges with one smart reminder plus human escalation
+- improve stall detection accuracy for `in_progress` work
+- replace repeated nudges with state-aware reminders plus human escalation
 
 ## Bridge to Role Definitions
 
@@ -140,7 +154,7 @@ This is clearly process-level because it changes how work is assigned, not how a
 
 ### Idle-monitor policy
 
-This is also process-level because it changes team automation behavior and escalation policy.
+This is also process-level because it changes team automation behavior, state classification, and escalation policy.
 
 ## B. Role-Level Guardrails
 
@@ -225,7 +239,7 @@ Should explicitly include:
 ## Immediate process actions
 
 1. Update assignment templates to include the 6-field footer standard.
-2. Update idle-monitor behavior to implement the revised hard-suppress plus rate-limited `in_progress` policy.
+2. Update idle-monitor behavior to implement the revised hard-suppress plus state-classified reminder policy.
 3. Communicate the ownership override rule as an explicit team norm.
 
 ## Immediate role-definition actions

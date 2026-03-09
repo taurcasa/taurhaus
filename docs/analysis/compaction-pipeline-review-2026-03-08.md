@@ -1,5 +1,7 @@
 # Compaction Pipeline Review — 2026-03-08
 
+> Historical note: this review targeted the now-removed `src-tauri/src/session_scanner/compaction.rs` poll-based pipeline. It is retained as a pre-migration audit record; the current live pipeline is extractor -> signal watcher -> processor.
+
 Task: `#685`
 
 Reviewed code:

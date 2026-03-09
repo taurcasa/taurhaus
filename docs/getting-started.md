@@ -134,7 +134,7 @@ This prevents oh-my-zsh from blocking headless terminal sessions with update pro
 3. Launch taurhaus from the Start menu
 
 On first launch, taurhaus will:
-- Start the WSL daemon automatically (you may see a brief console flash — this is normal)
+- Start the WSL daemon automatically in the background
 - Create a tmux session named "taurhaus" in WSL
 - Show the First Run Wizard
 
@@ -203,7 +203,7 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 
 ### Mesh View
 
-The Mesh tab lets you set up and manage multi-agent teams. Define a team roster (lead + agents using any mix of Claude, Codex, and Gemini), launch with one click, and monitor all agents from a live roster. See [Mesh view](features/mesh.md) for details.
+The Mesh tab lets you set up and manage multi-agent teams. Start from a built-in preset, user template, or blank slate; choose Claude, Codex, or Gemini lead roles where supported by the selected preset; then launch and monitor the team from the live roster/canvas. See [Mesh view](features/mesh.md) for details.
 
 ### Search
 

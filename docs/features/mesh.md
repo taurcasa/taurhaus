@@ -1,216 +1,193 @@
 # Mesh view
 
-The mesh view is taurhaus's multi-agent team coordination tab. It provides one-click team setup, a live team roster, and agent lifecycle management — all backed by mesh CLI and tmux.
+The mesh view is taurhaus's project-scoped multi-agent coordination surface. It now centers on template-driven team composition, a live runtime canvas, resumable lifecycle management, and compaction visibility.
 
 ![Mesh View Lifecycle](../images/mesh-view-lifecycle.jpg)
 
 ## Overview
 
 Mesh view responsibilities:
-- check mesh CLI and tmux prerequisites before enabling team features
-- define and launch multi-agent teams with a single click
-- display a live roster of team members with session status
-- hot-add agents to running teams
-- remove agents from running teams with managed teardown diagnostics
-- re-send onboarding instructions to agents that lose context
-- disband teams with full resource cleanup (panes, daemons, mesh state)
-- discover and clean up stale teams from previous sessions
+- check mesh CLI and tool availability before enabling coordination
+- compose teams from built-in or custom role/preset templates
+- launch teams with lead/agent project bindings and role metadata
+- show a live canvas of members, status, and cross-project placement
+- hot-add, resume, stop, focus, or remove members from running teams
+- capture runtime members back into reusable role templates
+- surface compaction reinjection audit data in the runtime header
+- disband or recover previously created teams for the current project
 
 ## Prerequisites
 
-Mesh view requires two external tools:
+Mesh requires two external tools:
 
 | Tool | Purpose | Install location |
 |------|---------|-----------------|
 | mesh CLI | Agent coordination protocol | `~/.local/bin/mesh` |
 | tmux | Terminal multiplexer for agent sessions | System package manager |
 
-If either is missing, the availability gate blocks the setup flow with actionable guidance.
+`MeshAvailabilityGate.svelte` blocks setup until:
 
-## Availability gate
+1. `check_mesh_install_status` verifies the bundled mesh binary is installed and current.
+2. `coordination_preflight_check` validates required CLI tools for the selected roster.
 
-`MeshAvailabilityGate.svelte` runs two checks before showing the setup form:
+Missing or outdated mesh can be fixed inline with the bundled installer. Per-tool warnings remain non-blocking so users can still compose teams while seeing degraded runtime risk up front.
 
-1. **Mesh install status** (`check_mesh_install_status`) — detects whether mesh CLI is installed, its version, and whether an update is needed. Compares installed version against the bundled version shipped with taurhaus.
-2. **Preflight check** (`coordination_preflight_check`) — validates that all requested agent tools (Claude, Codex, Gemini) are available in the environment. Returns blocking errors and per-agent warnings.
+## Project scoping and restore
 
-If mesh is missing or outdated, the gate shows an "Install Bundled Mesh" button that copies the bundled binary to `~/.local/bin/mesh` and verifies the installation. On Windows, this operates through WSL interop.
+Mesh is a top-level tab alongside Overview, Files, Tasks, and Git, but it is still project-scoped. The current project path is the lookup key for:
 
-Agent warnings (e.g., a specific CLI tool not installed) are non-blocking — the user can still proceed, and agents will report issues at runtime.
+- `coordination_get_project_mesh_snapshot` during tab hydration
+- runtime cache reuse while switching projects
+- matching existing team configs by lead project path
 
-## Tab placement
+The tab moves through five modes:
 
-Mesh is a top-level tab alongside Overview, Files, Tasks, and Git. It is per-project — the team lead's project anchors the mesh tab. Switching projects in the sidebar shows that project's mesh state.
-
-On app reopen, taurhaus auto-detects existing teams by scanning `~/.claude/teams/` and restores the runtime view if a matching team exists for the current project.
+- `gate` - prerequisite checks are running
+- `empty` - no team yet; quick presets and template actions are shown
+- `setup` - a draft team exists and can be edited or initialized
+- `initializing` - backend pipeline is running with streamed progress
+- `runtime` - a live or resumable team snapshot exists
 
 ## Setup flow
 
-When no team exists for the current project, the mesh tab shows the setup form.
+When no team exists for the current project, Mesh opens in the empty/setup path instead of a fixed roster form.
 
-### Team roster builder
+### Empty state
 
-The setup form (`MeshSetupView.svelte`) presents a visual roster:
+`MeshEmptyState.svelte` offers three entry points:
 
-- **Team lead** — fixed to Claude Code with the `opus` model. Displayed as a highlighted "You" card with a Lead badge. Not editable (reduces misconfiguration).
-- **Agent cards** — each agent has:
-  - Name input (placeholder auto-generates from project name, e.g., `taurhaus-dev-1`)
-  - CLI tool selector (Claude, Codex, Gemini)
-  - Model selector (filtered by tool: opus/sonnet/haiku for Claude, gpt-5.3-codex/gpt-5-mini for Codex, gemini-2.5-pro/gemini-2.0-flash for Gemini)
-  - Target project selector (any loaded project)
-- **Add agent** button to add more agent cards
-- **Remove** button per agent (when more than one exists)
-- Duplicate name detection with inline error
+- quick presets such as Standard Dev Team, Full Stack Dev Team, Research + Development Team, and Review Team
+- `Browse Templates`, which opens the template catalog
+- `Start Custom`, which opens the team customizer directly
 
-### Customize options
+Quick presets are resolved through `composeTeam(...)`, so the initial draft already includes role-driven tool, model, and naming defaults.
 
-Below the roster, a "Customize..." toggle reveals:
-- **Team name** — defaults to `{project-name}-team`, editable
-- **Team description** — optional
+### Template catalog
 
-### Onboarding banner
+`TemplateBrowserPanel.svelte` is the setup catalog and has three tabs:
 
-First-time users see a dismissable info banner explaining what Mesh does. Dismissed state persists in localStorage.
+- `Roles` - inspect, create, edit, delete, import, and export role templates
+- `Presets` - inspect, create, edit, clone, and delete team presets
+- `History` - view template git-backed history and diffs
 
-### Start Team
+Role import/export details:
 
-Clicking "Start Team" submits the full configuration to the initialization pipeline. There is no separate review step — the roster builder IS the review.
+- import accepts markdown role files and preserves provenance metadata
+- supported imported formats include Claude Code, Copilot custom-agent markdown, `AGENTS.md`, and `GEMINI.md`
+- export writes current taurhaus roles back out to Claude Code or Copilot markdown
+- imported roles are visibly marked with provenance badges in the catalog
+
+### Team customizer
+
+`TeamCustomizerPanel.svelte` edits the actual team draft:
+
+- team name and description
+- lead member
+- agent members
+- project assignment per member
+- role binding per member
+
+The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and presets may resolve to Claude, Codex, or Gemini lead roles.
+
+Lead-mode rule:
+
+- Claude leads may use the existing attach-existing flow
+- Codex and Gemini leads are currently launch-new only
+
+Users can also save the current draft back into the preset catalog from the customizer.
 
 ## Initialization
 
-`MeshInitProgress.svelte` shows a 7-step progress view with per-step status tracking:
+`MeshInitProgress.svelte` still presents a 7-step streamed progress view:
 
 | Step | Label | Description |
 |------|-------|-------------|
-| `validate_configuration` | Validating configuration | Checks team name, agent tools, and project assignments |
+| `validate_configuration` | Validating configuration | Checks team name, tools, and project assignments |
 | `create_team` | Creating team | Writes team config to `~/.claude/teams/` |
-| `create_panes` | Opening terminal panes | Creates tmux panes for each agent |
-| `launch_sessions` | Launching agent sessions | Starts CLI tools in each pane |
-| `join_mesh` | Connecting agents to mesh | Registers agents with mesh protocol |
-| `start_daemons` | Starting coordination daemons | Launches file watchers for each agent inbox |
-| `send_onboarding` | Sending agent instructions | Delivers initial instructions to each agent |
+| `create_panes` | Opening terminal panes | Creates tmux panes where needed |
+| `launch_sessions` | Launching agent sessions | Starts CLI sessions |
+| `join_mesh` | Connecting agents to mesh | Registers agents with the mesh protocol |
+| `start_daemons` | Starting coordination daemons | Starts mesh sidecars where required |
+| `send_onboarding` | Sending agent instructions | Delivers onboarding to members |
 
-Each step shows a status glyph (pending/running/succeeded/failed), a human-readable label, and a description while running. An elapsed-time counter tracks total duration.
+Progress events are streamed over `coordination-step-progress` while the frontend is waiting on `coordination_initialize_team`.
 
-Progress events are streamed from the backend via the `coordination-step-progress` Tauri event channel — the frontend calls one IPC command (`coordination_initialize_team`) and receives real-time updates.
+Conflict and failure handling still includes:
 
-### Failure handling
+- retry from the beginning
+- go back to setup
+- open/disband existing team when initialization collides with a pre-existing config
 
-On failure:
-- The exact failed step is highlighted with a plain-language error
-- Succeeded steps are listed for context
-- A "What went wrong?" expandable section shows details
-- Actions: **Retry** (re-runs from the beginning), **Back** (returns to setup form)
+## Runtime view
 
-### Conflict recovery
+`MeshRuntimeView.svelte` is no longer just a polling roster. It is a live canvas plus runtime header and node detail panels.
 
-If initialization fails because the team already exists (`create_team` step), three recovery options appear:
-- **Open Existing Team** — skip initialization, switch to the runtime roster
-- **Disband Existing Team** — disband the conflicting team, then retry initialization
-- **Retry** — retry as-is
+### Runtime bar
 
-## Runtime roster
+`MeshRuntimeBar.svelte` shows:
 
-After successful initialization, the mesh tab switches to runtime mode showing `MeshRuntimeView.svelte`.
+- team name and member counts
+- runtime state summary (`active`, `degraded`, or `coldResume`)
+- primary action that flips between `Add Agent` and `Resume Team`
+- overflow actions such as disband
+- compaction reinjection audit rows for members with recent compaction events
+- optional extractor/signal diagnostics when available
 
-### Roster display
+The compaction audit surface shows the last known member, tool, session id, compaction timestamp, and delivery result (`injected`, `skipped`, `stale`, or `failed`).
 
-Each member card shows:
-- **Status badge** — Active (green, pulsing), Idle (amber), or Offline (gray)
-- **Name** — with star prefix for the team lead
-- **Tool icon** — brand SVG (Anthropic starburst, OpenAI blossom, Gemini sparkle) using `sessionToolIcon()`
-- **Metadata line** — tool name, model, target project
-- **Description** (if set)
+### Canvas and node detail
 
-### Auto-refresh
+`MeshCanvas.svelte` renders lead and agent nodes directly from explicit layout geometry. Selecting a node opens `MeshNodeDetail.svelte`, which shows:
 
-The roster polls `coordination_get_live_team_status` every 5 seconds. A manual refresh button is also available. The header shows member count, active count, idle count, and the refresh interval.
+- tool/model and project placement
+- cross-project placement details
+- role metadata (`roleName`, `focusArea`, `contextSummary`, `behaviorSummary`)
+- runtime diagnostics such as `paneId`, `sessionId`, and session state
 
-### Session status mapping
+Runtime node actions include:
 
-Backend health states map to frontend display:
+- focus pane
+- resume member
+- stop member
+- capture member as a reusable role template
+- close detail
 
-| Backend HealthState | Frontend SessionStatus | Display |
-|---|---|---|
-| Healthy | Active | Green badge, pulse animation |
-| AwaitingRead, SuspectedStuck, Rebriefed, Suppressed | Idle | Amber badge |
-| SessionDead | Offline | Gray badge |
+### Resume flows
 
-### Available actions
+Resume is now a first-class runtime action:
 
-**Per-member actions:**
-- **Focus** — jump to the agent's tmux pane (only shown if `pane_id` exists)
-- **Re-onboard** — re-send onboarding instructions via `coordination_reonboard` (non-lead members only). Shows brief "Sent!" confirmation.
-- **Remove** — opens a confirmation dialog, then runs backend member-removal teardown for non-lead members.
+- `coordination_resume_team` resumes the lead first, then same-project and cross-project members
+- `coordination_resume_member` resumes a single selected member
+- runtime UI shows live resume progress and the latest per-member resume result
 
-**Team actions (header):**
-- **+ Agent** — opens the hot-add form
-- **Disband team** — via overflow menu (⋯), with confirmation dialog
+This is the main recovery path for `coldResume` and `degraded` teams after sessions stop or the app reopens against persisted team state.
 
-## Removing agents from existing teams
+### Hot-add and removal
 
-From the runtime roster, clicking **Remove** on a non-lead member opens a danger confirmation dialog. Confirming calls `coordination_remove_member(teamName, memberName)`.
+Hot-add uses a slide-over form rather than a separate page. The form supports:
 
-Backend removal returns `RemoveAgentReport` with:
+- optional role selection from the role catalog
+- per-field unlock when a role pre-fills tool/model metadata
+- project assignment per new member
 
-- `removed` status
-- per-step outcomes (`steps`)
-- non-fatal cleanup diagnostics (`warnings`)
+Removal remains guarded:
 
-Typical teardown steps include:
+- non-lead members only
+- confirmation required
+- backend returns teardown steps and warnings
+- lead receives a removal notice when teardown completes or partially completes
 
-- daemon termination (`terminate_daemon`)
-- mesh leave (`leave_mesh`)
-- pane ownership verification (`verify_pane_ownership`)
-- pane kill when ownership check passes (`kill_pane`)
-- team config/runtime cleanup (`update_config`, `delete_runtime`)
-- removal notice delivery to team lead (`notify_lead`)
+## Team cleanup and disband
 
-Safety/consistency guards:
+Existing teams anchored to the current project can be surfaced during hydration and setup recovery. Disbanding:
 
-- Lead-removal guard: backend rejects removing the team lead.
-- Pane ownership pre-check: pane kill is skipped with warning if pane ownership does not match expected project path.
-- Team-lead notification: backend attempts to notify the lead that a member was removed (with partial-cleanup context when warnings exist).
+1. confirms intent
+2. calls `coordination_disband_team`
+3. tears down panes, daemons, and mesh membership as applicable
+4. removes persisted runtime/config state
+5. returns the tab to the setup flow
 
-## Hot-add agents
-
-From the runtime view, clicking "+ Agent" opens an inline form with:
-- Agent name
-- CLI tool selector
-- Model selector
-- Target project selector
-- Description (optional)
-
-Submission calls `coordination_add_agent`, which handles: create pane, launch CLI, mesh join, start daemon, send onboarding, and roster update. Progress is shown inline with per-step status.
-
-Project-path handling in hot-add:
-
-- The selected project from the dropdown is normalized and passed through the request as `agent.project_id`.
-- Mesh join is executed in that explicit project path context (no process-cwd/app-data fallback).
-- Roster update is idempotent: if mesh pre-created the member entry, taurhaus updates project path/metadata instead of failing on duplicate-member conflict.
-
-## Team cleanup panel
-
-When in setup mode and existing teams are discovered, a "Team Cleanup" section appears below the setup form. It allows users to review and disband teams before starting a new one.
-
-Each discovered team card shows:
-- Team name
-- Lead project path
-- "Current project" or "Different project" badge
-- Disband button (with confirmation dialog)
-
-Discovery warnings (e.g., unparseable team directories) are shown in a separate warning block.
-
-## Disband
-
-Disbanding a team:
-1. Shows a confirmation dialog with the team name
-2. Calls `coordination_disband_team`
-3. Backend tears down: stops daemons (by PID), leaves mesh, kills tmux panes
-4. Removes team config from `~/.claude/teams/`
-5. Returns to setup mode
-
-Disbanding is idempotent — if the team was already disbanded, the response indicates this.
+The disband path is idempotent and keeps attach-existing Claude leads from having their external session forcibly torn down.
 
 ## IPC commands
 
@@ -218,40 +195,40 @@ Mesh view uses these backend commands:
 
 | Command | Purpose |
 |---------|---------|
-| `check_mesh_install_status` | Detect mesh CLI installation and version |
-| `install_mesh` | Install bundled mesh binary to `~/.local/bin/` |
-| `coordination_preflight_check` | Validate prerequisites before initialization |
+| `check_mesh_install_status` | Detect bundled mesh installation/version |
+| `install_mesh` | Install bundled mesh binary |
+| `coordination_preflight_check` | Validate tool availability before initialization |
+| `coordination_get_project_mesh_snapshot` | Restore project-scoped setup/runtime state |
 | `coordination_initialize_team` | Execute full team bootstrap pipeline |
-| `coordination_add_agent` | Hot-add one agent to a running team |
-| `coordination_remove_member` | Remove one non-lead agent with teardown + diagnostics |
-| `coordination_reonboard` | Re-send onboarding to one member |
-| `coordination_get_live_team_status` | Get runtime roster with session status |
-| `coordination_list_teams` | Discover existing teams for auto-restore and cleanup |
-| `coordination_disband_team` | Disband a team and clean up resources |
-
-See [IPC command reference](../architecture/ipc-reference.md) for full signatures and return types.
+| `coordination_get_live_team_status` | Refresh live team/runtime state |
+| `coordination_get_compaction_audit` | Fetch reinjection audit entries and diagnostics |
+| `coordination_resume_team` | Resume an existing degraded or cold team |
+| `coordination_resume_member` | Resume one selected member |
+| `coordination_add_agent` | Hot-add a member to a running team |
+| `coordination_remove_member` | Remove a non-lead member with teardown diagnostics |
+| `coordination_reonboard` | Re-send onboarding to a member |
+| `coordination_disband_team` | Disband the team and clean up resources |
 
 ## Key files
 
 | File | Purpose |
 |------|---------|
-| `src/lib/components/MeshTab.svelte` | Top-level mesh tab: mode switching (setup/runtime), team discovery, cleanup panel |
-| `src/lib/components/MeshSetupView.svelte` | Team roster builder with agent cards and team config |
-| `src/lib/components/MeshRuntimeView.svelte` | Live runtime roster with status badges and member actions |
-| `src/lib/components/MeshNodeDetail.svelte` | Per-node action panel (focus, resume, re-onboard, remove) in runtime canvas |
-| `src/lib/components/MeshInitProgress.svelte` | 7-step initialization progress with failure recovery |
-| `src/lib/components/MeshAvailabilityGate.svelte` | Prerequisite checks (mesh install + preflight) |
-| `src-tauri/src/commands/coordination.rs` | Coordination IPC command handlers |
-| `src-tauri/src/commands/coordination_types.rs` | Request/response types for coordination IPC |
-| `src-tauri/src/commands/mesh.rs` | Mesh install status and bundled install commands |
-| `src-tauri/src/coordination/orchestrator.rs` | Core team lifecycle (create, disband, add/remove member) |
-| `src-tauri/src/coordination/pipelines/` | Multi-step initialize, hot-add, and resume pipeline modules |
-| `src-tauri/src/coordination/mesh_cli.rs` | Mesh binary resolution and WSL command helpers |
+| `src/lib/components/MeshTab.svelte` | Top-level mesh mode switcher and dialog host |
+| `src/lib/components/meshTabController.svelte.js` | Project snapshot hydration, runtime polling, composition, resume, and mutation controller |
+| `src/lib/components/MeshEmptyState.svelte` | Empty-state quick presets and entry actions |
+| `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing stage UI |
+| `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog, import/export, and template history |
+| `src/lib/components/TeamCustomizerPanel.svelte` | Draft editing and save-as-preset flow |
+| `src/lib/components/MeshRuntimeView.svelte` | Runtime canvas, resume progress, hot-add, and capture-role UI |
+| `src/lib/components/MeshRuntimeBar.svelte` | Runtime summary, resume actions, and compaction audit surface |
+| `src/lib/components/MeshNodeDetail.svelte` | Node detail panel for setup/runtime actions and diagnostics |
+| `src-tauri/src/commands/coordination.rs` | Coordination IPC handlers including snapshot, resume, and compaction audit |
+| `src-tauri/src/commands/mesh.rs` | Mesh install status and installer commands |
+| `src-tauri/src/coordination/orchestrator.rs` | Team lifecycle orchestration and guarded teardown |
+| `src-tauri/src/coordination/pipelines/` | Initialize and resume pipeline stages |
 
 ## Related documents
 
-- [Coordination architecture](../coordination-architecture.md) — design decisions and backend structure
-- [Team templates guide](../team-templates.md) — role/preset composition and template lifecycle
-- [IPC command reference](../architecture/ipc-reference.md) — command signatures
-- [Command center](command-center.md) — CLI tool launch and terminal management
-- [Session management](session-management.md) — session detection that feeds roster status
+- [Coordination architecture](../coordination-architecture.md) — backend design and lifecycle decisions
+- [Team templates guide](../team-templates.md) — role, preset, provenance, and composition model
+- [Session management](session-management.md) — runtime session data that feeds mesh status

@@ -4,7 +4,7 @@ Reference for taurhaus Tauri IPC commands exposed from `src-tauri/src/commands/`
 
 ## Overview
 
-The backend currently registers 80 `#[tauri::command]` functions (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
+The backend currently registers a large set of `#[tauri::command]` functions (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
 
 ## Projects commands
 
@@ -77,6 +77,7 @@ The backend currently registers 80 `#[tauri::command]` functions (with `mesh-bri
 | `navigate_to_session` | `tmuxSession: string`, `tmuxWindow: string`, `tmuxPane: string`, `openTerminal?: boolean` | `Result<(), String>` | `command_center.rs` | Focuses/navigates the desktop terminal to a target session pane. |
 | `record_session_activity` | `projectPath: string`, `cliTool: string`, `startedAt: string`, `endedAt: string`, `activeDurationMs: number`, `totalDurationMs: number` | `Result<(), String>` | `command_center.rs` | Persists measured activity stats for a completed session. |
 | `get_project_activity` | `projectPath: string` | `Result<ProjectActivityStats, String>` | `command_center.rs` | Returns aggregated activity totals for a project path. |
+| `get_foreground_project` | none | `Result<Option<string>, String>` | `command_center.rs` | Returns the project currently owning foreground tmux focus, when known. |
 
 Session update behavior:
 - Tauri runtime uses event-driven `sessions-updated` (daemon long-poll bridge) for ongoing updates.
@@ -111,6 +112,7 @@ Session update behavior:
 | `templates_get_diff` | `commitId: string` | `Result<TemplateDiff, String>` | `templates.rs` | Returns the template diff for one commit id. |
 | `templates_revert` | `request: TemplateRevertRequest` | `Result<(), String>` | `templates.rs` | Reverts a template to a selected commit state. |
 | `templates_flush_pending` | none | `Result<TemplateFlushResult, String>` | `templates.rs` | Flushes pending template actions into a commit (used by E2E and maintenance flows). |
+| `export_role_to_file` | `request: RoleExportRequest` | `Result<RoleExportResult, String>` | `templates.rs` | Exports a stored role to Claude Code or Copilot custom-agent markdown. |
 
 ## Daemon commands
 
@@ -161,10 +163,13 @@ These commands are feature-gated behind `mesh-bridged-backend` (enabled by defau
 | `coordination_initialize_team` | `request: InitializeTeamRequest` | `Result<InitializeReport, String>` | `coordination.rs` | Executes full team bootstrap (tmux, sessions, mesh onboarding). |
 | `coordination_add_agent` | `request: AddAgentRequest` | `Result<AddAgentReport, String>` | `coordination.rs` | Hot-adds one agent to an existing coordinated team. |
 | `coordination_resume_member` | `request: ResumeMemberRequest` | `Result<ResumeAgentReport, String>` | `coordination.rs` | Resumes an offline member in either continue or fresh mode. |
+| `coordination_resume_team` | `request: ResumeTeamRequest` | `Result<ResumeTeamReport, String>` | `coordination.rs` | Resumes the lead first, then same-project and cross-project members, with partial-success reporting. |
 | `coordination_reonboard` | `request: ReonboardRequest` | `Result<DeliveryResult, String>` | `coordination.rs` | Re-sends onboarding guidance to one member. |
 | `coordination_get_live_team_status` | `teamName: string` | `Result<LiveTeamStatus, String>` | `coordination.rs` | Returns runtime/live roster state (session status + pane IDs). |
+| `coordination_get_compaction_audit` | `teamName: string` | `Result<Vec<CompactionAuditEntry>, String>` | `coordination.rs` | Returns current-run compaction audit entries for the Mesh runtime panel. |
 | `coordination_preflight_check` | `request: InitializeTeamRequest` | `Result<PreflightReport, String>` | `coordination.rs` | Validates prerequisites before initialization. |
 | `coordination_get_feature_availability` | none | `Result<FeatureAvailabilityReport, String>` | `coordination.rs` | Reports mesh/tmux feature availability for UI gating. |
+| `coordination_get_project_mesh_snapshot` | `projectId: string` | `Result<ProjectMeshSnapshot, String>` | `coordination.rs` | Returns the project-scoped mesh snapshot used for runtime canvas hydration. |
 
 ## Frontend usage
 

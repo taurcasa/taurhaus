@@ -1,5 +1,7 @@
 # Compaction Reinjection Investigation
 
+> Historical note: parts of this investigation reference the removed poll-based `src-tauri/src/session_scanner/compaction.rs` path and pre-backfill runtime state. Keep it as historical incident analysis rather than current-state implementation documentation.
+
 Date: 2026-03-08
 Task: #695
 Team: `taurhaus-team`

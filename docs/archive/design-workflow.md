@@ -1,5 +1,7 @@
 # Design workflow
 
+> Archived process note. The broad design-first loop remains relevant, but this file is preserved as a snapshot of the v0.5.x workflow rather than the sole current process authority.
+
 How design-led UI work flows through the team. This process ensures visual quality meets the taurhaus bar (9/10 per category) while leveraging the UI specialist (Gemini) for design leadership.
 
 ## The problem this solves

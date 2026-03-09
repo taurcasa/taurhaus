@@ -39,7 +39,7 @@ Use a hybrid architecture with Taurhaus as the owner of:
 Tool-specific adapters own only the final injection step:
 
 - Claude Code: native hook adapter
-- Codex: session-file detector plus direct tmux submit
+- Codex: signal-log detection plus mesh inbox append
 
 Mesh is not the primary detection or delivery owner for this feature.
 
@@ -51,9 +51,9 @@ Mesh is not the primary detection or delivery owner for this feature.
 ## 3. Delivery strategy
 
 - Claude Code: inject via hook `additionalContext`
-- Codex: inject via direct tmux submission of a bounded operational card
+- Codex: inject via bounded mesh inbox delivery for the managed member
 
-Do not use mesh inbox delivery as the primary reinjection path.
+Do not use raw tmux text injection as the primary reinjection path.
 
 ## 4. Payload composition
 
@@ -102,47 +102,20 @@ It does not currently own:
 
 Putting compaction parsing into mesh would duplicate volatile tool-specific parser logic into the wrong layer.
 
-## Why mesh inbox delivery is the wrong primary transport
+## Why bounded inbox delivery is now the right Codex transport
 
-The current mesh path for non-Claude agents is:
+The current Codex reinjection path is:
 
-1. write inbox message
-2. mesh daemon injects a generic notification
-3. agent must run `mesh read`
+1. detect compaction and emit a canonical signal record
+2. resolve the managed member from config + runtime attachment
+3. append a structured `post_compaction_context` message to `teams/<team>/inboxes/<member>.json`
 
-That is good for collaboration messages.
+This is better than the original direct-tmux design because:
 
-It is the wrong hot path for post-compaction reinjection because:
-
-- it turns reinjection into a second-step pull
-- the message body is not what gets injected into the pane
-- it depends on the agent following another command immediately after compaction
-
-The whole point of this feature is to avoid relying on the agent to realize it should ask again.
-
-So phase 1 should not use mesh inbox delivery as the main reinjection mechanism.
-
-## Why a file-only approach is insufficient
-
-Writing a role card file and expecting the agent to read it later is the same failure mode as `AGENTS.md`:
-
-- the model forgets exactly when it most needs the reminder
-
-File state is useful as a source for composition.
-It is not sufficient as the delivery mechanism.
-
-## Why direct tmux submit is acceptable for Codex
-
-For Codex, the confirmed signal is an after-compaction signal, not a before-signal.
-
-That matters:
-
-- by the time Taurhaus sees `compacted`, the session is back at a stable prompt boundary
-- in the controlled observation, Codex printed `Context compacted` and returned to the prompt
-
-That makes a bounded direct prompt injection viable for Codex in a way it would not be during arbitrary mid-turn execution.
-
-This is still tool-fragile, but it is much less fragile than scraping for compaction and then relying on mesh read.
+- it avoids free-form `tmux send-keys` text injection entirely
+- it keeps delivery on the same file-backed collaboration surface Taurhaus and mesh already share
+- it preserves a durable audit trail of what was delivered
+- it avoids coupling the reinjection path to foreground process text-entry assumptions
 
 ## Current Source-of-Truth Analysis
 

@@ -17,9 +17,9 @@ User clicks file (or README loads)
   Classify by extension (frontend)
         │
         ├── Image → read_project_asset IPC → asset cache → <img> preview
-        ├── Markdown → readFile IPC → MarkdownRenderer (markdown-it + Shiki + DOMPurify)
+        ├── Markdown → readFile IPC → MarkdownRenderer (markdown-it + Shiki + DOMPurify + Mermaid)
         ├── Known binary → "Binary file" message (no IPC call)
-        ├── PDF → "Binary file" message (viewer planned for future)
+        ├── PDF → "PDF viewer coming soon" message (no IPC call)
         └── Text/Code → readFile IPC → CodeViewer (Shiki highlighting or plaintext)
 ```
 
@@ -52,6 +52,11 @@ User clicks file (or README loads)
 2. `@shikijs/markdown-it` plugin highlights fenced code blocks via Shiki
 3. `DOMPurify` sanitizes output (strips `<script>`, `onclick`, etc.)
 4. Post-render `$effect` resolves relative image `src` via `read_project_asset` + asset cache
+5. Mermaid fenced blocks are rendered to sanitized SVG after the HTML pass
+
+**Navigation**:
+- relative markdown links call back into the file viewer so cross-file README navigation stays in-app
+- external `http`, `https`, and `mailto` links open via the shell bridge
 
 **Caching**: Images within markdown are cached. The markdown text itself is not cached (fast to read, small files).
 
@@ -69,7 +74,7 @@ User clicks file (or README loads)
 
 **Extensions**: `.pdf`
 
-**Current behavior**: Classified as known binary, shows "Binary file" message.
+**Current behavior**: Classified separately from other binaries and shows "PDF viewer coming soon". No IPC file read happens yet.
 
 **Planned**: Dedicated PDF viewer component. Will likely need its own rendering approach (pdf.js or similar) and potentially its own cache strategy for rendered pages.
 
@@ -93,7 +98,12 @@ User clicks file (or README loads)
 
 **Module**: `src/lib/assetCache.js`
 
-A shared, module-level `Map<string, string>` that caches data loaded via IPC. Keyed by `${projectId}/${relativePath}`.
+A shared, module-level `Map<string, string>` keyed by `${projectId}/${relativePath}`.
+
+Current behavior:
+- only image data URIs are cached in practice
+- reads are LRU-capped to 100 entries
+- `get()` refreshes recency so recently-viewed assets stay warm
 
 ### API
 
@@ -104,6 +114,7 @@ A shared, module-level `Map<string, string>` that caches data loaded via IPC. Ke
 | `invalidate(projectId, path)` | Clear one entry (called by file watcher on change). |
 | `invalidateProject(projectId)` | Clear all entries for a project (project removed/re-registered). |
 | `clear()` | Clear entire cache (app reset). |
+| `size()` | Expose cache size for tests/diagnostics. |
 
 ### What Gets Cached
 
@@ -117,7 +128,7 @@ A shared, module-level `Map<string, string>` that caches data loaded via IPC. Ke
 
 **Current**: Session-lifetime. Cache clears on app restart.
 
-**Future (Phase 5C)**: File watcher integration. When `notify` detects a file change on disk:
+**Future**: File watcher integration. When `notify` detects a file change on disk:
 1. File watcher emits event to frontend with project ID and changed path
 2. Frontend calls `assetCache.invalidate(projectId, changedPath)`
 3. Next access triggers a fresh IPC read
@@ -137,7 +148,7 @@ To cache a new file type:
 
 ### MarkdownRenderer (`src/lib/MarkdownRenderer.svelte`)
 
-**Props**: `source` (raw markdown), `dark` (theme), `projectId` (for image resolution)
+**Props**: `source`, `dark`, `codeTheme`, `projectId`, `filePath`, `scrollToAnchor`, `onNavigate`
 
 **Pipeline**:
 ```
@@ -146,6 +157,8 @@ source → markdown-it (html: true, linkify: true)
        → DOMPurify (sanitize)
        → {@html} render
        → $effect: resolve relative <img> via asset cache / IPC
+       → $effect: render Mermaid blocks to sanitized SVG
+       → click interception: relative links route inside taurhaus, external links open via shell
 ```
 
 **Typography**: Aligned with UI type scale (not reading-optimized). Body 14px/1.5, H1 20px/600, H2 16px/600, code 13px mono. Full styles in component's `<style>` block.
@@ -154,13 +167,13 @@ source → markdown-it (html: true, linkify: true)
 
 ### CodeViewer (`src/lib/CodeViewer.svelte`)
 
-**Props**: `code` (raw text), `language` (language identifier), `dark` (theme)
+**Props**: `code`, `language`, `dark`, `codeTheme`, `scrollToLine`
 
 **Pipeline**:
 ```
 code → Shiki highlighter
-     → language loaded? → highlighted HTML
-     → language not loaded? → plaintext
+     → load language on demand when possible
+     → language unavailable or Shiki fails → plaintext
      → DOMPurify (sanitize)
      → {@html} render with CSS counter line numbers
 ```
@@ -171,7 +184,7 @@ code → Shiki highlighter
 
 **Themes**: `github-light` (light mode), `github-dark-dimmed` (dark mode).
 
-**Languages**: Full Shiki bundle (~200 languages), loaded on demand. This is a desktop app — grammars load from disk, so bundle size is irrelevant. No manual language list to maintain.
+**Languages**: Core languages are loaded eagerly, everything else is loaded on demand. Unknown or unsupported languages fall back to plaintext instead of failing the render.
 
 **Fallback**: If a language identifier isn't recognized by Shiki (extremely rare), it falls back to plaintext. The markdown-it plugin uses `defaultLanguage: 'text'` for the same graceful degradation.
 

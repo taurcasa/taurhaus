@@ -1,5 +1,7 @@
 # Delivery Guard Audit
 
+> Status update (later on 2026-03-09): the audit correctly called out `src-tauri/src/session_scanner/compaction.rs` as stale legacy logic. That module has since been removed, so references to it here are historical evidence of why the cleanup was needed, not a description of the current codebase.
+
 Task: `#754`  
 Owner: `architect`  
 Date: `2026-03-09`
@@ -30,13 +32,13 @@ This is analysis only. No code changes were made.
 Main conclusion:
 
 1. Most current guards in the active delivery path are valid for the current mechanisms.
-2. The main wrong-guard pattern is not in the active processor anymore. It survives as stale logic and stale mental model in the legacy poll-based compaction module.
+2. At audit time, the main wrong-guard pattern was not in the active processor anymore. It survived in the then-still-present legacy poll-based compaction module, which has since been removed.
 3. The clearest live bug in the audited read/write surface is not a tmux-era assumption, but an inbox corruption fallback: `MeshInboxStore::load()` treats a corrupt inbox as empty, which can hide real delivered messages and let later appends overwrite visibility.
 
 Immediate follow-up candidates:
 
 1. Fix inbox corruption handling in `MeshInboxStore::load()`.
-2. Archive/remove or loudly mark `session_scanner/compaction.rs` as legacy/inactive so its guards do not keep contaminating current reasoning.
+2. Completed later the same day: remove `session_scanner/compaction.rs` so its guards stop contaminating current reasoning.
 3. Remove or simplify dead defensive branches such as Claude hook `EmptyAdditionalContext`.
 
 ## Findings
@@ -44,7 +46,7 @@ Immediate follow-up candidates:
 | ID | Severity | Location | Guard / check | Assumption behind it | Valid now? | Recommendation |
 |---|---|---|---|---|---|---|
 | G1 | High | `src-tauri/src/coordination/stores/inbox.rs` | Corrupt inbox file loads as empty | “If inbox JSON is broken, best fallback is to act like there are no messages” | No | Modify immediately |
-| G2 | Medium | `src-tauri/src/session_scanner/compaction.rs` | Entire legacy poll-based compaction flow remains compiled | “Old scanner-integrated guard set is still a reasonable reference for current delivery” | No | Remove/archive or mark inactive |
+| G2 | Medium at audit time | `src-tauri/src/session_scanner/compaction.rs` | Entire legacy poll-based compaction flow remained compiled | “Old scanner-integrated guard set is still a reasonable reference for current delivery” | No | Resolved later by removal |
 | G3 | Low | `src-tauri/src/coordination/claude_hooks.rs` | Skip if rendered `additional_context` is empty | “Renderer may legitimately produce blank output” | No practical value | Remove or collapse into assertion/log |
 | G4 | Keep | `src-tauri/src/coordination/compaction_processor.rs` | `already_handled` idempotency skip | Same compaction event must not be delivered twice | Yes | Keep |
 | G5 | Keep | `src-tauri/src/coordination/compaction_processor.rs` | `is_stale_compaction(...)` | Old compactions should not trigger new reinjection | Yes | Keep |
@@ -322,7 +324,7 @@ The main read-path risk is also `G1`:
 ### Guards that should be removed or relaxed immediately
 
 1. `MeshInboxStore::load()` corrupt-as-empty behavior
-2. legacy `session_scanner/compaction.rs` as a compiled behavioral reference
+2. resolved later: legacy `session_scanner/compaction.rs` as a compiled behavioral reference
 3. Claude `EmptyAdditionalContext` dead branch
 
 ### Guards that should stay
@@ -343,7 +345,7 @@ The active delivery path is not broadly full of wrong tmux-era guards.
 The bigger risk is narrower:
 
 1. one real inbox-path bug hides delivered messages on corruption
-2. one legacy compaction module is still present and keeps outdated assumptions alive in the codebase
+2. one legacy compaction module was still present at audit time and was later removed
 3. a few low-value defensive branches remain and should be simplified so the active path is easier to reason about
 
 That means the right next fixes are targeted cleanup, not a broad rewrite of current active safety checks.
