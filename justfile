@@ -278,7 +278,10 @@ update-mesh-lock version protocol_version="1" schema_version="1" git_commit="":
 
 # Install daemon to ~/.local/bin/ (WSL)
 # Automatically stops a running daemon before install and restarts it after.
-install-daemon:
+install-daemon: build-daemon
+    just _install-daemon-from-build
+
+_install-daemon-from-build:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -303,14 +306,6 @@ install-daemon:
         echo "✓ Daemon stopped"
         WAS_RUNNING=true
     fi
-
-    # Ensure resource placeholder exists (Tauri build script validates it)
-    mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
-
-    # Build
-    echo "▸ Building daemon…"
-    cd src-tauri && cargo build --release --bin "$DAEMON_BIN"
-    cd ..
 
     # Install (atomic swap avoids "Text file busy" when replacing a running binary)
     mkdir -p "$INSTALL_DIR"
@@ -422,23 +417,21 @@ sync-windows:
 
 # Copy daemon binary to Tauri resources for bundling
 bundle-daemon: build-daemon
+    just _bundle-daemon-from-build
+
+_bundle-daemon-from-build:
     @echo "▸ Bundling daemon binary into src-tauri/resources/…"
     mkdir -p src-tauri/resources
     cp src-tauri/target/release/taurhaus-daemon src-tauri/resources/taurhaus-daemon
     @echo "✓ Daemon binary bundled"
 
 # Build Windows NSIS installer (syncs first, builds natively on Windows)
-# Also rebuilds the WSL daemon to keep them in sync.
-build-windows: install-daemon bundle-daemon mesh-verify-lock bundle-mesh sync-windows
-    @echo "Note: cmd.exe may print 'UNC paths are not supported'. This is harmless."
-    @echo "▸ Installing frontend dependencies on Windows…"
-    cmd.exe /c "cd /d {{win_drive}} && (bun --version >NUL 2>&1 && bun install --frozen-lockfile || %USERPROFILE%\\.bun\\bin\\bun.exe install --frozen-lockfile)"
-    @echo ""
-    @echo "▸ Building Windows NSIS installer (cargo tauri)…"
-    cmd.exe /c "cd /d {{win_drive}} && set PATH=%USERPROFILE%\\.bun\\bin;%PATH% && cargo tauri build --bundles nsis"
-    @echo ""
-    @echo "✓ Windows build complete:"
-    @ls -lh {{win_dir}}/src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || echo "  (no installer found)"
+build-windows:
+    ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"
+
+# Build Windows NSIS installer with optional sccache integration.
+build-windows-sccache:
+    TAURHAUS_WINDOWS_USE_SCCACHE=1 ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"
 
 # Run the latest Windows NSIS installer in silent mode and verify the installed exe hash.
 install-windows:
