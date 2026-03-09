@@ -51,6 +51,7 @@
   let hoverCard = $state(null) // { project, sessions, anchorEl }
   let hoverCardVisible = $state(false)
   let hoverTimeout = $state(null)
+  let sessionJumpInFlight = $state(false)
 
   function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
@@ -132,13 +133,43 @@
     return fallbackProject?.id ?? null
   }
 
+  async function navigateToSidebarSession(session, project = null, openTerminal = false) {
+    if (
+      sessionJumpInFlight
+      || !session?.tmux_session
+      || !session?.tmux_window
+      || !session?.tmux_pane
+    ) {
+      return
+    }
+
+    sessionJumpInFlight = true
+    onForegroundProjectChange(resolveSessionProjectId(session, project))
+
+    try {
+      if (openTerminal) {
+        await navigateToSession(
+          session.tmux_session,
+          session.tmux_window,
+          session.tmux_pane,
+          true,
+        )
+      } else {
+        await navigateToSession(
+          session.tmux_session,
+          session.tmux_window,
+          session.tmux_pane,
+        )
+      }
+    } finally {
+      sessionJumpInFlight = false
+    }
+  }
+
   /** Navigate to a project's CLI session in tmux. */
   function jumpToSession(e, session, project = null) {
     e.stopPropagation()
-    if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
-      onForegroundProjectChange(resolveSessionProjectId(session, project))
-      navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane)
-    }
+    void navigateToSidebarSession(session, project)
   }
 
   // --- Context menu ---
@@ -234,8 +265,7 @@
     const session = getSessionForProject(ctxMenu.project.path)
     console.log('[cmd-center] Open in Terminal:', ctxMenu.project.path, 'session:', session ? { tmux_session: session.tmux_session, tmux_window: session.tmux_window, tmux_pane: session.tmux_pane } : 'null')
     if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
-      onForegroundProjectChange(resolveSessionProjectId(session, ctxMenu.project))
-      navigateToSession(session.tmux_session, session.tmux_window, session.tmux_pane, true)
+      navigateToSidebarSession(session, ctxMenu.project, true)
         .then(() => console.log('[cmd-center] navigate OK'))
         .catch(e => console.error('[cmd-center] navigate FAILED:', e))
     } else {

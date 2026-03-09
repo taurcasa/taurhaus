@@ -282,6 +282,54 @@ describe('Sidebar component branches', () => {
     expect(navigateToSession).toHaveBeenCalledWith('team', '1', '%3')
   })
 
+  it('ignores rapid repeated standalone session clicks while navigation is in flight', async () => {
+    const projects = [makeProjects(1)[0]]
+    const onForegroundProjectChange = vi.fn()
+    let resolveNavigation
+    navigateToSession.mockReturnValue(new Promise((resolve) => {
+      resolveNavigation = resolve
+    }))
+
+    const interactiveSession = {
+      tmux_session: 'team',
+      tmux_window: '1',
+      tmux_pane: '%3',
+      cli_tool: 'codex',
+      state: 'active',
+      project_path: projects[0].path,
+    }
+
+    getSessionsForProject.mockImplementation(() => [interactiveSession])
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'session',
+        interactive: true,
+        colorClass: 'text-success-400',
+        isActive: true,
+        ariaLabel: 'Codex active',
+        icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' },
+        session: interactiveSession,
+      },
+    ]))
+
+    render(Sidebar, { props: { projects, onForegroundProjectChange } })
+
+    const indicator = await screen.findByLabelText('Codex active')
+    await fireEvent.click(indicator)
+    await fireEvent.click(indicator)
+
+    expect(navigateToSession).toHaveBeenCalledTimes(1)
+    expect(onForegroundProjectChange).toHaveBeenCalledTimes(1)
+
+    resolveNavigation(undefined)
+    await waitFor(() => {
+      expect(navigateToSession).toHaveBeenCalledTimes(1)
+    })
+
+    await fireEvent.click(indicator)
+    expect(navigateToSession).toHaveBeenCalledTimes(2)
+  })
+
   it('renders grouped team token before standalone session icons', async () => {
     const projects = [makeProjects(1)[0]]
     getSessionsForProject.mockImplementation(() => [
@@ -365,6 +413,61 @@ describe('Sidebar component branches', () => {
     await fireEvent.click(indicator)
 
     expect(navigateToSession).toHaveBeenCalledWith('mesh', '4', '%12')
+  })
+
+  it('ignores rapid repeated grouped session clicks while navigation is in flight', async () => {
+    const projects = [makeProjects(1)[0]]
+    let resolveNavigation
+    navigateToSession.mockReturnValue(new Promise((resolve) => {
+      resolveNavigation = resolve
+    }))
+
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'team',
+        layout: 'rail',
+        groupId: 'team-a',
+        count: 2,
+        tone: 'active',
+        memberTools: [
+          { tool: 'claude', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: true, colorClass: 'text-success-300' },
+          { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: false, colorClass: 'text-warning-300' },
+        ],
+        members: [
+          {
+            member_name: 'orchestrator',
+            role: 'lead',
+            tmux_session: 'mesh',
+            tmux_window: '4',
+            tmux_pane: '%12',
+          },
+          {
+            member_name: 'developer2',
+            role: 'member',
+            tmux_session: 'mesh',
+            tmux_window: '4',
+            tmux_pane: '%13',
+          },
+        ],
+        ariaLabel: 'team-a: 2 team sessions active',
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    const indicator = await screen.findByTestId('sidebar-team-indicator')
+    await fireEvent.click(indicator)
+    await fireEvent.click(indicator)
+
+    expect(navigateToSession).toHaveBeenCalledTimes(1)
+
+    resolveNavigation(undefined)
+    await waitFor(() => {
+      expect(navigateToSession).toHaveBeenCalledTimes(1)
+    })
+
+    await fireEvent.click(indicator)
+    expect(navigateToSession).toHaveBeenCalledTimes(2)
   })
 
   it('navigates grouped stack indicators to the lead tmux pane on keyboard activation', async () => {

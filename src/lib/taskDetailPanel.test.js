@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/svelte'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte'
 
 // Mock markdown rendering (MarkdownRenderer depends on shiki which needs WASM)
 vi.mock('./markdown.js', () => ({
@@ -169,18 +169,22 @@ describe('Loading state', () => {
 describe('Description section', () => {
   it('shows description via MarkdownRenderer when present', async () => {
     renderPanel()
-    expect(screen.getByTestId('detail-description')).toBeTruthy()
-    // MarkdownRenderer renders asynchronously
+    const description = screen.getByTestId('detail-description')
+    expect(description).toBeTruthy()
+    // MarkdownRenderer renders asynchronously and may still be in its loading shell
+    // when the broader suite is busy, so wait for the rendered content container first.
     await waitFor(() => {
-      expect(screen.getByText('Parse tasks from all three CLI tools')).toBeTruthy()
-    })
+      expect(within(description).getByTestId('markdown-content')).toBeTruthy()
+    }, { timeout: 3000 })
+    expect(within(description).getByText('Parse tasks from all three CLI tools')).toBeTruthy()
   })
 
   it('renders description through markdown pipeline', async () => {
     renderPanel()
+    const description = screen.getByTestId('detail-description')
     await waitFor(() => {
-      expect(screen.getByTestId('markdown-content')).toBeTruthy()
-    })
+      expect(within(description).getByTestId('markdown-content')).toBeTruthy()
+    }, { timeout: 3000 })
   })
 
   it('hides description section for sparse task', () => {
