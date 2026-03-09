@@ -83,8 +83,6 @@ vi.mock('./lib/sessionStore.svelte.js', () => ({
 }))
 
 vi.mock('./lib/projectSelection.js', () => ({
-  loadCriticalProjectSelectionData: vi.fn(),
-  loadDeferredProjectSelectionData: vi.fn(),
   loadProjectSelectionData: vi.fn(),
 }))
 
@@ -155,14 +153,7 @@ vi.mock('./lib/AddProjectModal.svelte', () => ({
 }))
 
 vi.mock('./lib/FirstRunWizard.svelte', () => ({
-  default: createMockComponent('first-run', (root, props) => {
-    const complete = document.createElement('button')
-    complete.type = 'button'
-    complete.textContent = 'Complete Wizard'
-    complete.setAttribute('data-testid', 'wizard-complete')
-    complete.onclick = () => props.onComplete?.()
-    root.appendChild(complete)
-  }),
+  default: createMockComponent('first-run', () => {}),
 }))
 
 vi.mock('./lib/components/MeshTab.svelte', () => ({
@@ -194,8 +185,7 @@ vi.mock('./lib/components/MeshTab.svelte', () => ({
 const ipc = await import('./lib/ipc.js')
 const eventApi = await import('@tauri-apps/api/event')
 const {
-  loadCriticalProjectSelectionData,
-  loadDeferredProjectSelectionData,
+  loadProjectSelectionData,
 } = await import('./lib/projectSelection.js')
 const { loadThemePreferences } = await import('./lib/shell/themePreferences.js')
 const { setProjectContext } = await import('./lib/context/ProjectContext.js')
@@ -258,13 +248,11 @@ describe('Shell mesh focus integration', () => {
       darkMode: false,
     })
 
-    loadCriticalProjectSelectionData.mockResolvedValue({
+    loadProjectSelectionData.mockResolvedValue({
       detail: { ok: true, section: 'Project details', value: { id: 'proj-1', path: '/projects/taurhaus', name: 'taurhaus' } },
+      commits: { ok: true, section: 'Recent commits', value: [] },
       latest: { ok: true, section: 'Latest session', value: null },
       sessionList: { ok: true, section: 'Session history', value: [] },
-    })
-    loadDeferredProjectSelectionData.mockResolvedValue({
-      commits: { ok: true, section: 'Recent commits', value: [] },
       readme: { ok: true, section: 'README', value: null },
       rels: { ok: true, section: 'Relationships', value: [] },
     })
@@ -375,7 +363,7 @@ describe('Shell mesh focus integration', () => {
   })
 
   it('remounts the mesh tab with the next project when switching projects', async () => {
-    loadCriticalProjectSelectionData.mockImplementation(async (projectId) => ({
+    loadProjectSelectionData.mockImplementation(async (projectId) => ({
       detail: {
         ok: true,
         section: 'Project details',
@@ -383,14 +371,12 @@ describe('Shell mesh focus integration', () => {
           ? { id: 'proj-2', path: '/projects/mesh', name: 'mesh' }
           : { id: 'proj-1', path: '/projects/taurhaus', name: 'taurhaus' },
       },
+      commits: { ok: true, section: 'Recent commits', value: [] },
       latest: { ok: true, section: 'Latest session', value: null },
       sessionList: { ok: true, section: 'Session history', value: [] },
-    }))
-    loadDeferredProjectSelectionData.mockResolvedValue({
-      commits: { ok: true, section: 'Recent commits', value: [] },
       readme: { ok: true, section: 'README', value: null },
       rels: { ok: true, section: 'Relationships', value: [] },
-    })
+    }))
 
     render(Shell)
 
@@ -461,55 +447,5 @@ describe('Shell mesh focus integration', () => {
 
     expect(meshTabMountCount).toBeGreaterThan(mountCountBeforeSwitch)
     expect(lastTextByTestId('mesh-project-path')).toBe('/projects/mesh')
-  })
-
-  it('does not schedule a second delayed project selection after wizard completion', async () => {
-    vi.useFakeTimers()
-    try {
-      ipc.isFirstRun.mockResolvedValue(true)
-
-      render(Shell)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('wizard-complete')).toBeInTheDocument()
-      })
-
-      await fireEvent.click(screen.getByTestId('wizard-complete'))
-
-      await waitFor(() => {
-        expect(ipc.listProjects).toHaveBeenCalledTimes(1)
-        expect(loadCriticalProjectSelectionData).toHaveBeenCalledTimes(1)
-        expect(loadCriticalProjectSelectionData).toHaveBeenCalledWith('proj-1', expect.any(Object), { debounceMs: 0 })
-        expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(1)
-      })
-
-      // Regression: startup used to schedule a second full selectProject after 1500 ms.
-      await vi.advanceTimersByTimeAsync(1600)
-      expect(loadCriticalProjectSelectionData).toHaveBeenCalledTimes(1)
-      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(1)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('starts deferred overview loading after the critical project switch lands', async () => {
-    loadCriticalProjectSelectionData.mockResolvedValueOnce({
-      detail: { ok: true, section: 'Project details', value: { id: 'proj-1', path: '/projects/taurhaus', name: 'taurhaus' } },
-      latest: { ok: true, section: 'Latest session', value: null },
-      sessionList: { ok: true, section: 'Session history', value: [] },
-    })
-    loadDeferredProjectSelectionData.mockResolvedValueOnce({
-      commits: { ok: true, section: 'Recent commits', value: [{ hash: 'abc123', message: 'Commit', date: '1h' }] },
-      readme: { ok: true, section: 'README', value: { path: 'README.md', content: '# Title' } },
-      rels: { ok: true, section: 'Relationships', value: [] },
-    })
-
-    render(Shell)
-
-    await waitFor(() => {
-      expect(loadCriticalProjectSelectionData).toHaveBeenCalledTimes(1)
-      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(1)
-      expect(screen.getByTestId('mock-overview')).toBeInTheDocument()
-    })
   })
 })

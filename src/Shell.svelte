@@ -32,7 +32,7 @@
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
-  import { loadCriticalProjectSelectionData, loadDeferredProjectSelectionData } from './lib/projectSelection.js'
+  import { loadProjectSelectionData } from './lib/projectSelection.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
@@ -135,7 +135,6 @@
   const sessionsLoadGuard = createAsyncGuard()
   const readmeLoadGuard = createAsyncGuard()
   const relationshipsLoadGuard = createAsyncGuard()
-  const commitsLoadGuard = createAsyncGuard()
   const selectLoadGuard = createAsyncGuard()
 
   let projectContextValue = $state({
@@ -619,18 +618,17 @@
   }
 
   async function bootstrapInitialProject(project) {
-    void selectProject(project, {
-      optimistic: true,
-      debounceMs: 0,
-    })
+    selectedProject = project
+    detailLoading = false
+    setTimeout(() => {
+      if (selectedProject?.id === project.id) {
+        void selectProject(project)
+      }
+    }, 1500)
   }
 
-  async function selectProject(project, options = {}) {
+  async function selectProject(project) {
     const projectId = project.id
-    const optimistic = options.optimistic === true
-    const debounceMs = Number.isFinite(options.debounceMs)
-      ? options.debounceMs
-      : undefined
 
     // Save position in the current project before switching away
     saveProjectPosition()
@@ -639,18 +637,18 @@
     const generation = selectLoadGuard.next()
 
     projectLoadIssues = []
-    if (optimistic) {
-      selectedProject = project
-    }
     detailLoading = true
-    const { detail, latest, sessionList } = await loadCriticalProjectSelectionData(projectId, {
+    const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
       getProject,
+      getRecentCommits,
       getLatestSession,
       listSessions,
-    }, { debounceMs })
+      getReadme,
+      getRelationships,
+    })
     if (!selectLoadGuard.isCurrent(generation)) return
-    
-    const loadIssues = [detail, latest, sessionList]
+
+    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
       .filter((result) => !result.ok)
       .map((result) => ({ section: result.section, message: result.message }))
     projectLoadIssues = loadIssues
@@ -661,11 +659,11 @@
     const nextState = buildProjectSelectionState({
       project,
       detail: detail.value,
-      commits: [],
+      commits: commits.value,
       latest: latest.value,
       sessionList: sessionList.value,
-      readme: null,
-      relationships: [],
+      readme: readme.value,
+      relationships: rels.value,
       savedPosition,
     })
 
@@ -685,36 +683,8 @@
     sessionLoading = nextState.sessionLoading
     readmeContent = nextState.readmeContent
     relationships = nextState.relationships
-    commitsLoading = true
-    relationshipsLoading = true
+    relationshipsLoading = nextState.relationshipsLoading
     filesNavTarget = nextState.filesNavTarget
-
-    queueMicrotask(async () => {
-      if (!selectLoadGuard.isCurrent(generation) || selectedProject?.id !== projectId) return
-
-      const { commits, readme, rels } = await loadDeferredProjectSelectionData(projectId, {
-        getRecentCommits,
-        getReadme,
-        getRelationships,
-      })
-      if (!selectLoadGuard.isCurrent(generation) || selectedProject?.id !== projectId) return
-
-      const deferredIssues = [commits, readme, rels]
-        .filter((result) => !result.ok)
-        .map((result) => ({ section: result.section, message: result.message }))
-      if (deferredIssues.length > 0) {
-        const mergedIssues = new Map(projectLoadIssues.map((issue) => [issue.section, issue]))
-        deferredIssues.forEach((issue) => mergedIssues.set(issue.section, issue))
-        projectLoadIssues = [...mergedIssues.values()]
-        console.warn(`[shell] project ${projectId} loaded with deferred degraded data`, deferredIssues)
-      }
-
-      recentCommits = commits.value
-      commitsLoading = false
-      readmeContent = readme.value
-      relationships = rels.value
-      relationshipsLoading = false
-    })
   }
 
   async function loadSessions(projectId) {
@@ -791,16 +761,12 @@
   }
 
   async function loadCommits(projectId, limit) {
-    const sequence = commitsLoadGuard.next()
     commitsLoading = true
     try {
-      const commits = await (showAllCommits
+      recentCommits = await (showAllCommits
         ? getAllCommits(projectId, 50)
         : getRecentCommits(projectId, limit))
-      if (!commitsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
-      recentCommits = commits || []
     } catch (error) {
-      if (!commitsLoadGuard.isCurrent(sequence) || selectedProject?.id !== projectId) return
       console.warn('[overview] failed to load commits; using empty fallback', {
         project_id: projectId,
         limit,
@@ -809,9 +775,7 @@
       })
       recentCommits = []
     } finally {
-      if (commitsLoadGuard.isCurrent(sequence) && selectedProject?.id === projectId) {
-        commitsLoading = false
-      }
+      commitsLoading = false
     }
   }
 

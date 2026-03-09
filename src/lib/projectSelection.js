@@ -3,7 +3,6 @@ import { formatUserFacingError } from './format.js'
 const PROJECT_SECTION_TIMEOUT_MS = 5000
 const PROJECT_SELECTION_DEBOUNCE_MS = 25
 let scheduledSelectionBatch = null
-let scheduledCriticalSelectionBatch = null
 
 function withTimeout(promise, timeoutMs, section) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -61,72 +60,36 @@ export async function withFallback(
 /**
  * Load Shell project sections in parallel with per-section fallbacks.
  */
-function createCriticalProjectSelectionRequests(projectId, ipc) {
+export function createProjectSelectionRequests(projectId, ipc) {
   return {
     detail: withFallback('Project details', ipc.getProject(projectId), null),
+    commits: withFallback('Recent commits', ipc.getRecentCommits(projectId, 10), []),
     latest: withFallback('Latest session', ipc.getLatestSession(projectId), null),
     sessionList: withFallback('Session history', ipc.listSessions(projectId, 10), []),
-  }
-}
-
-function createDeferredProjectSelectionRequests(projectId, ipc) {
-  return {
-    commits: withFallback('Recent commits', ipc.getRecentCommits(projectId, 10), []),
     readme: withFallback('README', ipc.getReadme(projectId), null),
     rels: withFallback('Relationships', ipc.getRelationships(projectId), []),
   }
 }
 
-export function createProjectSelectionRequests(projectId, ipc) {
-  return {
-    ...createCriticalProjectSelectionRequests(projectId, ipc),
-    ...createDeferredProjectSelectionRequests(projectId, ipc),
-  }
-}
-
-async function resolveCriticalProjectSelectionData(projectId, ipc) {
-  const requests = createCriticalProjectSelectionRequests(projectId, ipc)
-  const [detail, latest, sessionList] = await Promise.all([
+async function resolveProjectSelectionData(projectId, ipc) {
+  const requests = createProjectSelectionRequests(projectId, ipc)
+  const [detail, commits, latest, sessionList, readme, rels] = await Promise.all([
     requests.detail,
+    requests.commits,
     requests.latest,
     requests.sessionList,
-  ])
-
-  return { detail, latest, sessionList }
-}
-
-export async function loadDeferredProjectSelectionData(projectId, ipc) {
-  const requests = createDeferredProjectSelectionRequests(projectId, ipc)
-  const [commits, readme, rels] = await Promise.all([
-    requests.commits,
     requests.readme,
     requests.rels,
   ])
 
-  return { commits, readme, rels }
-}
-
-async function resolveProjectSelectionData(projectId, ipc) {
-  const [critical, deferred] = await Promise.all([
-    resolveCriticalProjectSelectionData(projectId, ipc),
-    loadDeferredProjectSelectionData(projectId, ipc),
-  ])
-  return { ...critical, ...deferred }
+  return { detail, commits, latest, sessionList, readme, rels }
 }
 
 /**
  * Load all project sections and return a resolved object.
  * Keep this helper for call sites/tests that still need an all-at-once payload.
  */
-export function loadProjectSelectionData(projectId, ipc, options = {}) {
-  const debounceMs = Number.isFinite(options.debounceMs)
-    ? Math.max(0, options.debounceMs)
-    : PROJECT_SELECTION_DEBOUNCE_MS
-
-  if (debounceMs === 0) {
-    return resolveProjectSelectionData(projectId, ipc)
-  }
-
+export function loadProjectSelectionData(projectId, ipc) {
   if (scheduledSelectionBatch?.timerId) {
     clearTimeout(scheduledSelectionBatch.timerId)
   }
@@ -150,44 +113,7 @@ export function loadProjectSelectionData(projectId, ipc, options = {}) {
         } catch (error) {
           batch.waiters.forEach((waiter) => waiter.reject(error))
         }
-      }, debounceMs),
-    }
-  })
-}
-
-export function loadCriticalProjectSelectionData(projectId, ipc, options = {}) {
-  const debounceMs = Number.isFinite(options.debounceMs)
-    ? Math.max(0, options.debounceMs)
-    : PROJECT_SELECTION_DEBOUNCE_MS
-
-  if (debounceMs === 0) {
-    return resolveCriticalProjectSelectionData(projectId, ipc)
-  }
-
-  if (scheduledCriticalSelectionBatch?.timerId) {
-    clearTimeout(scheduledCriticalSelectionBatch.timerId)
-  }
-
-  return new Promise((resolve, reject) => {
-    const waiters = scheduledCriticalSelectionBatch?.waiters ?? []
-    waiters.push({ resolve, reject })
-
-    scheduledCriticalSelectionBatch = {
-      projectId,
-      ipc,
-      waiters,
-      timerId: setTimeout(async () => {
-        const batch = scheduledCriticalSelectionBatch
-        scheduledCriticalSelectionBatch = null
-        if (!batch) return
-
-        try {
-          const result = await resolveCriticalProjectSelectionData(batch.projectId, batch.ipc)
-          batch.waiters.forEach((waiter) => waiter.resolve(result))
-        } catch (error) {
-          batch.waiters.forEach((waiter) => waiter.reject(error))
-        }
-      }, debounceMs),
+      }, PROJECT_SELECTION_DEBOUNCE_MS),
     }
   })
 }
