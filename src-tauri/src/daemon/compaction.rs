@@ -18,27 +18,13 @@ use crate::session_scanner::compaction_extractor;
 use crate::session_scanner::compaction_watcher::{
     CompactionSignalWatcher, CompactionSignalWatcherConfig,
 };
-use crate::session_scanner::RuntimeSession;
-
-const DEFAULT_SCAN_INTERVAL: Duration = Duration::from_millis(500);
 const TEAM_CONFIG_FILENAME: &str = "config.json";
 const TEAM_CONFIG_TMP_FILENAME: &str = "config.json.tmp";
 
-type SessionSupplier = dyn Fn() -> Vec<RuntimeSession> + Send + Sync + 'static;
 type SignalProcessor = dyn Fn(&crate::coordination::stores::CompactionSignalRecord) -> Result<(), String>
     + Send
     + Sync
     + 'static;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RuntimeSessionSignature {
-    project_path: String,
-    tty: String,
-    cli_tool: crate::session_scanner::cli_tool::CliTool,
-    tmux_pane: Option<String>,
-    session_id: Option<String>,
-    jsonl_path: Option<String>,
-}
 
 pub struct DaemonCompactionRuntime {
     shutdown: Arc<AtomicBool>,
@@ -53,12 +39,9 @@ impl DaemonCompactionRuntime {
         }
 
         let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
-        let supplier: Arc<SessionSupplier> =
-            Arc::new(crate::session_scanner::scan_sessions_for_runtime);
-        let runtime = Self::start_with_supplier_and_processor(
+        let runtime = Self::start_with_processor(
             teams_dir,
-            supplier,
-            DEFAULT_SCAN_INTERVAL,
+            crate::session_scanner::latest_compaction_runtime_sessions(),
             CompactionSignalWatcherConfig::default(),
             Arc::new(
                 |signal: &crate::coordination::stores::CompactionSignalRecord| {
@@ -74,15 +57,13 @@ impl DaemonCompactionRuntime {
         Ok(Some(runtime))
     }
 
-    fn start_with_supplier_and_processor(
+    fn start_with_processor(
         teams_dir: PathBuf,
-        session_supplier: Arc<SessionSupplier>,
-        scan_interval: Duration,
+        initial_sessions: Vec<crate::session_scanner::RuntimeSession>,
         watcher_config: CompactionSignalWatcherConfig,
         processor: Arc<SignalProcessor>,
     ) -> Result<Self, CoordinationError> {
         fs::create_dir_all(&teams_dir)?;
-        let initial_sessions = session_supplier();
         compaction_extractor::start_compaction_extractor_service_at(
             teams_dir.clone(),
             initial_sessions,
@@ -97,19 +78,15 @@ impl DaemonCompactionRuntime {
         let thread_shutdown = shutdown.clone();
         let thread_teams_dir = teams_dir.clone();
         let thread_watchers = watchers.clone();
-        let thread_supplier = session_supplier.clone();
         let thread_processor = processor.clone();
         let join_handle = thread::spawn(move || {
             let _topology_watcher = topology_watcher;
-            let mut last_runtime_signatures = runtime_session_signatures(&thread_supplier());
-            let mut next_session_refresh = Instant::now() + scan_interval;
             let mut next_watcher_reconcile =
                 Instant::now() + watcher_config.reconciliation_interval;
 
             while !thread_shutdown.load(Ordering::Relaxed) {
                 let mut topology_changed = false;
                 match topology_rx.recv_timeout(next_loop_wait(
-                    next_session_refresh,
                     next_watcher_reconcile,
                     watcher_config.loop_tick,
                 )) {
@@ -127,16 +104,6 @@ impl DaemonCompactionRuntime {
                 }
 
                 let now = Instant::now();
-                if now >= next_session_refresh {
-                    let sessions = thread_supplier();
-                    let runtime_signatures = runtime_session_signatures(&sessions);
-                    if runtime_signatures != last_runtime_signatures {
-                        compaction_extractor::update_active_runtime_sessions(&sessions);
-                        last_runtime_signatures = runtime_signatures;
-                    }
-                    next_session_refresh = now + scan_interval;
-                }
-
                 if topology_changed || now >= next_watcher_reconcile {
                     if let Err(error) = reconcile_team_watchers(
                         &thread_teams_dir,
@@ -175,40 +142,6 @@ impl Drop for DaemonCompactionRuntime {
 
 fn running_under_wsl() -> bool {
     cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
-}
-
-fn runtime_session_signatures(sessions: &[RuntimeSession]) -> Vec<RuntimeSessionSignature> {
-    let mut signatures = sessions
-        .iter()
-        .filter(|session| session.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex)
-        .map(|session| RuntimeSessionSignature {
-            project_path: session.project_path.clone(),
-            tty: session.tty.clone(),
-            cli_tool: session.cli_tool,
-            tmux_pane: session.tmux_pane.clone(),
-            session_id: session.session_id.clone(),
-            jsonl_path: session.jsonl_path.clone(),
-        })
-        .collect::<Vec<_>>();
-    signatures.sort_by(|left, right| {
-        (
-            &left.project_path,
-            &left.tty,
-            left.cli_tool.to_string(),
-            &left.tmux_pane,
-            &left.session_id,
-            &left.jsonl_path,
-        )
-            .cmp(&(
-                &right.project_path,
-                &right.tty,
-                right.cli_tool.to_string(),
-                &right.tmux_pane,
-                &right.session_id,
-                &right.jsonl_path,
-            ))
-    });
-    signatures
 }
 
 fn reconcile_team_watchers(
@@ -273,15 +206,10 @@ fn start_team_topology_watcher(
     Ok(watcher)
 }
 
-fn next_loop_wait(
-    next_session_refresh: Instant,
-    next_watcher_reconcile: Instant,
-    max_wait: Duration,
-) -> Duration {
+fn next_loop_wait(next_watcher_reconcile: Instant, max_wait: Duration) -> Duration {
     let now = Instant::now();
-    let until_session = next_session_refresh.saturating_duration_since(now);
     let until_reconcile = next_watcher_reconcile.saturating_duration_since(now);
-    until_session.min(until_reconcile).min(max_wait)
+    until_reconcile.min(max_wait)
 }
 
 fn is_team_topology_event(teams_dir: &Path, event: &Event) -> bool {
@@ -369,7 +297,7 @@ mod tests {
     };
     use crate::session_scanner::cli_tool::CliTool;
     use crate::session_scanner::{
-        ActivityAttribution, ActivityConfidence, SessionGroupKind, SessionState,
+        ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
     };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -493,32 +421,6 @@ mod tests {
         }
     }
 
-    fn sample_claude_session(project_path: &str) -> RuntimeSession {
-        RuntimeSession {
-            pid: 2222,
-            project_path: project_path.to_string(),
-            tty: "/dev/pts/9".to_string(),
-            args: "claude".to_string(),
-            cli_tool: CliTool::Claude,
-            tmux_session: Some("main".to_string()),
-            tmux_window: Some("2".to_string()),
-            tmux_pane: Some("%9".to_string()),
-            tmux_window_name: Some("claude".to_string()),
-            state: SessionState::Active,
-            session_id: Some("claude-session".to_string()),
-            jsonl_path: Some("/tmp/claude.jsonl".to_string()),
-            recent_io: false,
-            last_output_age_secs: Some(0),
-            activity_confidence: ActivityConfidence::High,
-            activity_attribution: ActivityAttribution::Attributed,
-            project_unattributed_active: false,
-            group_kind: SessionGroupKind::Standalone,
-            group_id: None,
-            group_label: None,
-            member_name: None,
-        }
-    }
-
     fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
@@ -531,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn daemon_runtime_delivers_codex_compaction_without_app_local_pipeline() {
+    fn daemon_compaction_runtime_bootstrap_and_watchers_deliver_codex_compaction() {
         let _guard = TEST_LOCK.lock().expect("lock");
         compaction_extractor::stop_compaction_extractor_service_for_test();
 
@@ -551,16 +453,6 @@ mod tests {
         )
         .expect("write baseline jsonl");
 
-        let sessions = Arc::new(Mutex::new(vec![sample_session(project_path, &jsonl_path)]));
-        let supplier: Arc<SessionSupplier> = {
-            let sessions = sessions.clone();
-            Arc::new(move || {
-                sessions
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .clone()
-            })
-        };
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
         runtime.set_pane_exists("%7", true);
         runtime.set_pane_dead("%7", false);
@@ -568,10 +460,9 @@ mod tests {
 
         let processor_teams_dir = teams_dir.clone();
         let processor_runtime = runtime.clone();
-        let _runtime = DaemonCompactionRuntime::start_with_supplier_and_processor(
+        let _runtime = DaemonCompactionRuntime::start_with_processor(
             teams_dir.clone(),
-            supplier,
-            Duration::from_millis(25),
+            vec![sample_session(project_path, &jsonl_path)],
             CompactionSignalWatcherConfig {
                 reconciliation_interval: Duration::from_millis(100),
                 loop_tick: Duration::from_millis(25),
@@ -624,10 +515,9 @@ mod tests {
         let member = sample_member("developer2", "/home/mstie/projects/taurhaus");
         save_team_fixture(&teams_dir, "taurhaus-team", &member);
 
-        let runtime = DaemonCompactionRuntime::start_with_supplier_and_processor(
+        let runtime = DaemonCompactionRuntime::start_with_processor(
             teams_dir.clone(),
-            Arc::new(Vec::new),
-            Duration::from_millis(25),
+            Vec::new(),
             CompactionSignalWatcherConfig {
                 reconciliation_interval: Duration::from_millis(100),
                 loop_tick: Duration::from_millis(25),
@@ -647,30 +537,6 @@ mod tests {
 
         let listed = TeamConfigStore::list(&teams_dir).expect("list teams");
         assert!(listed.contains(&"default".to_string()));
-    }
-
-    #[test]
-    fn runtime_session_signatures_track_only_codex_session_identity_fields() {
-        let first = sample_session("/tmp/project-a", Path::new("/tmp/a.jsonl"));
-        let mut second = sample_session("/tmp/project-b", Path::new("/tmp/b.jsonl"));
-        second.tty = "/dev/pts/8".to_string();
-        second.tmux_pane = Some("%8".to_string());
-        second.session_id = Some("session-2".to_string());
-
-        let mut noisy_first = first.clone();
-        noisy_first.pid = 9999;
-        noisy_first.state = SessionState::Idle;
-        noisy_first.recent_io = true;
-
-        let baseline = runtime_session_signatures(&[
-            second.clone(),
-            sample_claude_session("/tmp/project-a"),
-            first,
-        ]);
-        let noisy = runtime_session_signatures(&[noisy_first, second]);
-
-        assert_eq!(baseline, noisy);
-        assert_eq!(baseline.len(), 2);
     }
 
     #[test]
@@ -709,10 +575,9 @@ mod tests {
             &sample_member("developer2", "/home/mstie/projects/taurhaus"),
         );
 
-        let runtime = DaemonCompactionRuntime::start_with_supplier_and_processor(
+        let runtime = DaemonCompactionRuntime::start_with_processor(
             teams_dir.clone(),
-            Arc::new(Vec::new),
-            Duration::from_millis(25),
+            Vec::new(),
             CompactionSignalWatcherConfig {
                 reconciliation_interval: Duration::from_secs(5),
                 loop_tick: Duration::from_millis(25),

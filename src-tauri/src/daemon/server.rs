@@ -58,7 +58,8 @@ pub fn run(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
-    crate::daemon::session_activity::SessionActivityHub::global();
+    let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
+    let _ = session_hub.wait_for_update(0, Duration::from_millis(750));
     let _compaction_runtime = crate::daemon::compaction::DaemonCompactionRuntime::maybe_start()
         .map_err(std::io::Error::other)?;
 

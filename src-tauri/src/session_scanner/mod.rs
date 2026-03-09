@@ -1,9 +1,9 @@
 //! Session scanner — detects CLI tool sessions running in tmux.
 //!
 //! Combines three detection strategies:
-//! 1. Process scanning (ps + /proc) — find claude processes and their project paths
+//! 1. Process scanning (ps + /proc) — find supported CLI tool processes and project paths
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
-//! 3. Idle detection — check JSONL + subagent mtime to determine active vs idle
+//! 3. Idle detection — check tool-specific transcript/runtime signals to determine active vs idle
 //!
 //! State changes use bidirectional hysteresis: a transition (idle↔active)
 //! only takes effect after 2 consecutive polls agree on the new state.
@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-/// State of a Claude Code session.
+/// State of a detected CLI tool session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionState {
@@ -224,6 +224,7 @@ struct ScannerCache {
 
 static SCAN_CACHE: OnceLock<Mutex<ScannerCache>> = OnceLock::new();
 static TMUX_CHANGE_EPOCH: AtomicU64 = AtomicU64::new(0);
+static LATEST_COMPACTION_RUNTIME_SESSIONS: OnceLock<Mutex<Vec<RuntimeSession>>> = OnceLock::new();
 #[cfg(test)]
 static RUNTIME_IDLE_DETECTOR_OVERRIDE: OnceLock<
     Mutex<Option<fn(&process::ProcessInfo) -> idle::IdleResult>>,
@@ -266,7 +267,12 @@ fn detect_runtime_idle_for_process(proc: &process::ProcessInfo) -> idle::IdleRes
     idle::detect_runtime_idle(&proc.project_path, proc.pid, proc.cli_tool)
 }
 
-fn process_display_scan_compaction(runtime_sessions: &[RuntimeSession]) {
+fn publish_compaction_runtime_sessions(runtime_sessions: &[RuntimeSession]) {
+    *LATEST_COMPACTION_RUNTIME_SESSIONS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = runtime_sessions.to_vec();
+
     #[cfg(test)]
     if let Some(hook) = DISPLAY_SCAN_COMPACTION_HOOK
         .get_or_init(|| Mutex::new(None))
@@ -280,6 +286,14 @@ fn process_display_scan_compaction(runtime_sessions: &[RuntimeSession]) {
     }
 
     compaction_extractor::update_active_runtime_sessions(runtime_sessions);
+}
+
+pub fn latest_compaction_runtime_sessions() -> Vec<RuntimeSession> {
+    LATEST_COMPACTION_RUNTIME_SESSIONS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
 }
 
 fn emit_scan_completed(metrics: ScanCompletionMetrics, session_count: usize) {
@@ -341,7 +355,7 @@ fn finalize_display_scan(
     metrics: ScanCompletionMetrics,
 ) -> Vec<DisplaySession> {
     if let Some(runtime_sessions) = runtime_sessions_for_compaction {
-        process_display_scan_compaction(runtime_sessions);
+        publish_compaction_runtime_sessions(runtime_sessions);
     }
 
     let active_pids: Vec<u32> = display_sessions.iter().map(|s| s.pid).collect();
@@ -890,7 +904,7 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
     let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
     sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
 
-    compaction_extractor::update_active_runtime_sessions(&sessions);
+    publish_compaction_runtime_sessions(&sessions);
     sessions
 }
 
