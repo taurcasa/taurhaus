@@ -1,14 +1,23 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use ignore::gitignore::Gitignore;
-use notify::{Config, Event as NotifyEvent, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event as NotifyEvent, RecommendedWatcher, Watcher};
 
 use crate::daemon::protocol::{self, DaemonEvent, DaemonResponse};
-use crate::fs::watcher::{build_gitignore, classify_notify_event};
+use crate::fs::watcher::{
+    build_gitignore, classify_notify_event, reconcile_pruned_tree_watches,
+    reconcile_pruned_tree_watches_for_event,
+};
+
+#[derive(Debug)]
+pub(crate) struct DaemonWatchRegistration {
+    pub(crate) watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    pub(crate) watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
+}
 
 /// Duration to debounce git internal events pushed to clients.
 pub(crate) const WATCH_GIT_DEBOUNCE_SECS: u64 = 2;
@@ -19,7 +28,7 @@ pub(crate) fn handle_watch(
     id: &str,
     params: &serde_json::Value,
     writer: &Arc<Mutex<TcpStream>>,
-    active_watches: &mut HashMap<String, RecommendedWatcher>,
+    active_watches: &mut HashMap<String, DaemonWatchRegistration>,
     git_debounce: &Arc<Mutex<HashMap<String, Instant>>>,
     gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
 ) -> DaemonResponse {
@@ -46,20 +55,22 @@ pub(crate) fn handle_watch(
         return DaemonResponse::ok(id, protocol::WatchResult { ok: true });
     }
 
-    let writer_clone = writer.clone();
-    // Use canonical path for event matching (FSEvents on macOS delivers
-    // canonical paths, e.g. /private/var/... instead of /var/...).
-    let watch_path = watch_key.clone();
-    let debounce_clone = git_debounce.clone();
-    let gitignores_clone = gitignores.clone();
-
     {
         let gi = build_gitignore(&path);
         let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
         gis.insert(watch_key.clone(), gi);
     }
 
-    let watcher_result = RecommendedWatcher::new(
+    let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
+    let watcher_for_callback = watcher_slot.clone();
+    let watched_dirs: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+    let watched_dirs_for_callback = watched_dirs.clone();
+    let writer_clone = writer.clone();
+    let watch_path = watch_key.clone();
+    let debounce_clone = git_debounce.clone();
+    let gitignores_clone = gitignores.clone();
+
+    let mut watcher = match RecommendedWatcher::new(
         move |res: Result<NotifyEvent, notify::Error>| match res {
             Ok(event) => {
                 forward_watch_event(
@@ -67,27 +78,51 @@ pub(crate) fn handle_watch(
                     &watch_path,
                     &debounce_clone,
                     &gitignores_clone,
+                    &watcher_for_callback,
+                    &watched_dirs_for_callback,
                     event,
                 );
             }
-            Err(e) => {
-                tracing::warn!(path = %watch_path, error = %e, "file watcher error");
+            Err(error) => {
+                tracing::warn!(path = %watch_path, error = %error, "file watcher error");
             }
         },
         Config::default(),
-    );
-
-    let mut watcher = match watcher_result {
+    ) {
         Ok(w) => w,
         Err(e) => return DaemonResponse::err(id, "WATCH_ERROR", e.to_string()),
     };
 
-    if let Err(e) = watcher.watch(&path, RecursiveMode::Recursive) {
-        return DaemonResponse::err(id, "WATCH_ERROR", e.to_string());
+    let watched_dir_count = {
+        let gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
+        let gitignore = gis
+            .get(&watch_key)
+            .expect("handle_watch inserted gitignore before reconcile");
+        let mut watched_dirs_guard = watched_dirs.lock().unwrap_or_else(|e| e.into_inner());
+        if let Err(e) =
+            reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs_guard, &path, gitignore)
+        {
+            return DaemonResponse::err(id, "WATCH_ERROR", e.to_string());
+        }
+        watched_dirs_guard.len()
+    };
+    {
+        let mut slot = watcher_slot.lock().unwrap_or_else(|e| e.into_inner());
+        *slot = Some(watcher);
     }
+    active_watches.insert(
+        watch_key.clone(),
+        DaemonWatchRegistration {
+            watcher: watcher_slot,
+            watched_dirs,
+        },
+    );
 
-    tracing::info!(path = %params.path, "Started watching directory");
-    active_watches.insert(watch_key, watcher);
+    tracing::info!(
+        path = %params.path,
+        watched_dir_count,
+        "Started watching directory tree with pre-pruning"
+    );
     DaemonResponse::ok(id, protocol::WatchResult { ok: true })
 }
 
@@ -95,7 +130,7 @@ pub(crate) fn handle_watch(
 pub(crate) fn handle_unwatch(
     id: &str,
     params: &serde_json::Value,
-    active_watches: &mut HashMap<String, RecommendedWatcher>,
+    active_watches: &mut HashMap<String, DaemonWatchRegistration>,
     gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
@@ -106,8 +141,31 @@ pub(crate) fn handle_unwatch(
     let watch_key = resolve_watch_path(&params.path)
         .to_string_lossy()
         .to_string();
-    if active_watches.remove(&watch_key).is_some() {
-        tracing::info!(path = %params.path, "Stopped watching directory");
+    if let Some(registration) = active_watches.remove(&watch_key) {
+        let watched_dir_count = registration
+            .watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .len();
+        let mut watcher = registration
+            .watcher
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let watcher = watcher
+            .as_mut()
+            .expect("daemon watcher missing during unwatch");
+        let mut watched_dirs = registration
+            .watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        for watched_dir in watched_dirs.drain() {
+            let _ = watcher.unwatch(&watched_dir);
+        }
+        tracing::info!(
+            path = %params.path,
+            watched_dir_count,
+            "Stopped watching directory"
+        );
     }
     let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
     gis.remove(&watch_key);
@@ -134,8 +192,50 @@ pub(crate) fn forward_watch_event(
     project_path: &str,
     debounce: &Arc<Mutex<HashMap<String, Instant>>>,
     gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
     event: NotifyEvent,
 ) {
+    {
+        let gis = gitignores.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(gitignore) = gis.get(project_path) {
+            let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
+            let mut watched_dirs = watched_dirs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let before = watched_dirs.len();
+            if let Some(watcher) = watcher.as_mut() {
+                if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
+                    watcher,
+                    &mut watched_dirs,
+                    Path::new(project_path),
+                    gitignore,
+                    &event,
+                ) {
+                    if count != before {
+                        let reason = if event.paths.iter().any(|path| {
+                            path.file_name()
+                                .map(|name| name.to_string_lossy())
+                                .is_some_and(|name| {
+                                    name == ".gitignore" || name == ".taurhausignore"
+                                })
+                        }) {
+                            "gitignore_changed"
+                        } else {
+                            "directory_topology_changed"
+                        };
+                        tracing::info!(
+                            path = %project_path,
+                            watched_dir_count = count,
+                            reason,
+                            "Reconciled daemon watch tree"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     let project_root = Path::new(project_path);
     let classified = classify_notify_event(
         project_path,
@@ -201,6 +301,16 @@ mod tests {
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
     use std::time::Duration;
+
+    fn empty_watch_state() -> (
+        Arc<Mutex<Option<RecommendedWatcher>>>,
+        Arc<Mutex<HashSet<PathBuf>>>,
+    ) {
+        (
+            Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(HashSet::new())),
+        )
+    }
 
     fn tcp_stream_pair() -> (TcpStream, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -300,6 +410,7 @@ mod tests {
 
         let debounce = Arc::new(Mutex::new(HashMap::new()));
         let gitignores = Arc::new(Mutex::new(HashMap::new()));
+        let (watcher, watched_dirs) = empty_watch_state();
         let project_path = root.to_string_lossy().to_string();
         {
             let gi = build_gitignore(&root);
@@ -316,6 +427,8 @@ mod tests {
             &project_path,
             &debounce,
             &gitignores,
+            &watcher,
+            &watched_dirs,
             ignored_event,
         );
         assert!(
@@ -333,6 +446,8 @@ mod tests {
             &project_path,
             &debounce,
             &gitignores,
+            &watcher,
+            &watched_dirs,
             regular_event,
         );
 
@@ -360,6 +475,7 @@ mod tests {
 
         let debounce = Arc::new(Mutex::new(HashMap::new()));
         let gitignores = Arc::new(Mutex::new(HashMap::new()));
+        let (watcher, watched_dirs) = empty_watch_state();
         let project_path = root.to_string_lossy().to_string();
         {
             let gi = build_gitignore(&root);
@@ -376,6 +492,8 @@ mod tests {
             &project_path,
             &debounce,
             &gitignores,
+            &watcher,
+            &watched_dirs,
             regular_event.clone(),
         );
         assert!(
@@ -394,6 +512,8 @@ mod tests {
             &project_path,
             &debounce,
             &gitignores,
+            &watcher,
+            &watched_dirs,
             gitignore_event,
         );
         let _ = next_daemon_event(&mut reader);
@@ -403,11 +523,54 @@ mod tests {
             &project_path,
             &debounce,
             &gitignores,
+            &watcher,
+            &watched_dirs,
             regular_event,
         );
         assert!(
             next_daemon_event(&mut reader).is_none(),
             "file should be filtered after .gitignore matcher rebuild"
         );
+    }
+
+    #[test]
+    fn handle_watch_preprunes_tool_directories_from_registration() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("src/nested")).unwrap();
+        std::fs::create_dir_all(root.join("node_modules/react")).unwrap();
+        std::fs::create_dir_all(root.join("target/debug")).unwrap();
+
+        let (writer_stream, _peer_stream) = tcp_stream_pair();
+        let writer = Arc::new(Mutex::new(writer_stream));
+        let mut active_watches = HashMap::new();
+        let git_debounce = Arc::new(Mutex::new(HashMap::new()));
+        let gitignores = Arc::new(Mutex::new(HashMap::new()));
+
+        let response = handle_watch(
+            "w1",
+            &json!({ "path": root.to_string_lossy() }),
+            &writer,
+            &mut active_watches,
+            &git_debounce,
+            &gitignores,
+        );
+        assert!(response.is_ok());
+
+        let registration = active_watches
+            .values()
+            .next()
+            .expect("daemon watch registration");
+        let watched_dirs = registration
+            .watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert!(watched_dirs.contains(&root));
+        assert!(watched_dirs.contains(&root.join("src")));
+        assert!(watched_dirs.contains(&root.join("src/nested")));
+        assert!(!watched_dirs.contains(&root.join("node_modules")));
+        assert!(!watched_dirs.contains(&root.join("node_modules/react")));
+        assert!(!watched_dirs.contains(&root.join("target")));
     }
 }

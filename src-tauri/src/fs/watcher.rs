@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -9,6 +9,18 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use serde_json::{Map, Value};
 
 use crate::sentinels::PYTHON_CACHE_DIR;
+
+const PRE_PRUNED_DIR_NAMES: &[&str] = &[
+    "node_modules",
+    "target",
+    "dist",
+    ".cache",
+    ".playwright-mcp",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    PYTHON_CACHE_DIR,
+];
 
 /// Classification of a filesystem event for taurhaus purposes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +108,22 @@ pub enum EventClass {
     RegularFile,
 }
 
+#[derive(Debug)]
+pub(crate) struct TreeWatchRegistration {
+    pub root: PathBuf,
+    pub watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    pub watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum WatchRegistration {
+    Tree(TreeWatchRegistration),
+    File {
+        path: PathBuf,
+        watcher: RecommendedWatcher,
+    },
+}
+
 /// Build a `Gitignore` matcher from a project's `.gitignore` file.
 ///
 /// Returns a matcher that can test whether a path is ignored. If the
@@ -105,6 +133,183 @@ pub(crate) fn build_gitignore(project_root: &Path) -> Gitignore {
     let gitignore_path = project_root.join(".gitignore");
     let (gi, _err) = Gitignore::new(&gitignore_path);
     gi
+}
+
+fn is_pre_pruned_dir_name(name: &str) -> bool {
+    PRE_PRUNED_DIR_NAMES.contains(&name)
+}
+
+fn is_git_refs_heads_dir(relative: &Path) -> bool {
+    let components = relative
+        .iter()
+        .map(|part| part.to_string_lossy())
+        .collect::<Vec<_>>();
+    match components.as_slice() {
+        [first] => first == ".git",
+        [first, second] => first == ".git" && second == "refs",
+        [first, second, third, ..] => first == ".git" && second == "refs" && third == "heads",
+        [] => false,
+    }
+}
+
+pub(crate) fn should_watch_directory_path(
+    project_root: &Path,
+    dir_path: &Path,
+    gitignore: &Gitignore,
+) -> bool {
+    if dir_path == project_root {
+        return true;
+    }
+
+    let Ok(relative) = dir_path.strip_prefix(project_root) else {
+        return false;
+    };
+
+    if relative.as_os_str().is_empty() {
+        return true;
+    }
+
+    if relative.iter().next().is_some_and(|part| part == ".git") {
+        return is_git_refs_heads_dir(relative);
+    }
+
+    for component in relative.components() {
+        let name = component.as_os_str().to_string_lossy();
+        if is_pre_pruned_dir_name(name.as_ref()) {
+            return false;
+        }
+    }
+
+    !gitignore
+        .matched_path_or_any_parents(dir_path, true)
+        .is_ignore()
+}
+
+fn collect_recursive_watch_dirs(
+    project_root: &Path,
+    current_dir: &Path,
+    gitignore: &Gitignore,
+    dirs: &mut BTreeSet<PathBuf>,
+) {
+    let read_dir = match std::fs::read_dir(current_dir) {
+        Ok(read_dir) => read_dir,
+        Err(_) => return,
+    };
+
+    for entry in read_dir.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let child_path = entry.path();
+        if !should_watch_directory_path(project_root, &child_path, gitignore) {
+            continue;
+        }
+
+        if dirs.insert(child_path.clone()) {
+            collect_recursive_watch_dirs(project_root, &child_path, gitignore, dirs);
+        }
+    }
+}
+
+pub(crate) fn desired_watch_dirs_for_root(
+    project_root: &Path,
+    gitignore: &Gitignore,
+) -> BTreeSet<PathBuf> {
+    let mut dirs = BTreeSet::new();
+    dirs.insert(project_root.to_path_buf());
+    collect_recursive_watch_dirs(project_root, project_root, gitignore, &mut dirs);
+    dirs
+}
+
+pub(crate) fn reconcile_pruned_tree_watches(
+    watcher: &mut RecommendedWatcher,
+    watched_dirs: &mut HashSet<PathBuf>,
+    project_root: &Path,
+    gitignore: &Gitignore,
+) -> Result<usize, notify::Error> {
+    let desired_dirs = desired_watch_dirs_for_root(project_root, gitignore);
+
+    let stale_dirs = watched_dirs
+        .iter()
+        .filter(|path| !desired_dirs.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    for path in stale_dirs {
+        let _ = watcher.unwatch(&path);
+        watched_dirs.remove(&path);
+    }
+
+    for path in desired_dirs {
+        if watched_dirs.contains(&path) {
+            continue;
+        }
+        watcher.watch(&path, RecursiveMode::NonRecursive)?;
+        watched_dirs.insert(path);
+    }
+
+    Ok(watched_dirs.len())
+}
+
+pub(crate) fn reconcile_pruned_tree_watches_for_event(
+    watcher: &mut RecommendedWatcher,
+    watched_dirs: &mut HashSet<PathBuf>,
+    project_root: &Path,
+    gitignore: &Gitignore,
+    event: &Event,
+) -> Result<Option<usize>, notify::Error> {
+    match event.kind {
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
+        _ => return Ok(None),
+    }
+
+    if event.paths.iter().any(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+    }) {
+        let count = reconcile_pruned_tree_watches(watcher, watched_dirs, project_root, gitignore)?;
+        return Ok(Some(count));
+    }
+
+    let mut changed = false;
+
+    if matches!(event.kind, EventKind::Remove(_)) {
+        for path in &event.paths {
+            let removed_dirs = watched_dirs
+                .iter()
+                .filter(|watched| *watched == path || watched.starts_with(path))
+                .cloned()
+                .collect::<Vec<_>>();
+            if removed_dirs.is_empty() {
+                continue;
+            }
+            changed = true;
+            for removed in removed_dirs {
+                let _ = watcher.unwatch(&removed);
+                watched_dirs.remove(&removed);
+            }
+        }
+    } else {
+        for path in &event.paths {
+            if !path.is_dir() {
+                continue;
+            }
+            if !should_watch_directory_path(project_root, path, gitignore) {
+                continue;
+            }
+            let before = watched_dirs.len();
+            let _ = reconcile_pruned_tree_watches(watcher, watched_dirs, project_root, gitignore)?;
+            if watched_dirs.len() != before {
+                changed = true;
+            }
+        }
+    }
+
+    Ok(changed.then_some(watched_dirs.len()))
 }
 
 /// Shared classification output for a single notify event.
@@ -192,7 +397,7 @@ pub(crate) fn classify_notify_event(
 /// Manages file watchers for registered projects.
 pub struct ProjectWatcher {
     /// Map from project_id → (project_root, watcher_handle).
-    watchers: HashMap<String, (PathBuf, RecommendedWatcher)>,
+    watchers: HashMap<String, WatchRegistration>,
     /// Channel to receive classified events.
     event_tx: mpsc::Sender<WatchEvent>,
     /// Debounce state for git events per project.
@@ -204,7 +409,7 @@ pub struct ProjectWatcher {
 /// Duration to debounce git internal events (ADR-020).
 const GIT_DEBOUNCE_SECS: u64 = 2;
 
-fn emit_watch_local_registered(project_id: &str, project_root: &Path) {
+fn emit_watch_local_registered(project_id: &str, project_root: &Path, watched_dir_count: usize) {
     let mut fields = Map::new();
     fields.insert(
         "project_id".to_string(),
@@ -215,6 +420,10 @@ fn emit_watch_local_registered(project_id: &str, project_root: &Path) {
         Value::String(project_root.display().to_string()),
     );
     fields.insert("watch_mode".to_string(), Value::String("local".to_string()));
+    fields.insert(
+        "watched_dir_count".to_string(),
+        Value::Number(serde_json::Number::from(watched_dir_count as u64)),
+    );
     crate::commands::logging::emit_global(
         "info",
         "backend",
@@ -224,7 +433,7 @@ fn emit_watch_local_registered(project_id: &str, project_root: &Path) {
     );
 }
 
-fn emit_watch_local_unregistered(project_id: &str, project_root: &Path) {
+fn emit_watch_local_unregistered(project_id: &str, project_root: &Path, watched_dir_count: usize) {
     let mut fields = Map::new();
     fields.insert(
         "project_id".to_string(),
@@ -234,11 +443,44 @@ fn emit_watch_local_unregistered(project_id: &str, project_root: &Path) {
         "project_path".to_string(),
         Value::String(project_root.display().to_string()),
     );
+    fields.insert(
+        "watched_dir_count".to_string(),
+        Value::Number(serde_json::Number::from(watched_dir_count as u64)),
+    );
     crate::commands::logging::emit_global(
         "info",
         "backend",
         "watch.local.unregistered",
         Some("Local project watcher unregistered".to_string()),
+        fields,
+    );
+}
+
+fn emit_watch_local_reconciled(
+    project_id: &str,
+    project_root: &Path,
+    watched_dir_count: usize,
+    reason: &str,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert(
+        "project_path".to_string(),
+        Value::String(project_root.display().to_string()),
+    );
+    fields.insert(
+        "watched_dir_count".to_string(),
+        Value::Number(serde_json::Number::from(watched_dir_count as u64)),
+    );
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "watch.local.reconciled",
+        Some("Local project watcher reconciled".to_string()),
         fields,
     );
 }
@@ -298,11 +540,10 @@ impl ProjectWatcher {
         project_id: String,
         project_root: PathBuf,
     ) -> Result<(), notify::Error> {
-        // Build gitignore matcher for this project
+        let gitignore = build_gitignore(&project_root);
         {
-            let gi = build_gitignore(&project_root);
             let mut gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
-            gis.insert(project_id.clone(), gi);
+            gis.insert(project_id.clone(), gitignore);
         }
 
         let tx = self.event_tx.clone();
@@ -310,19 +551,56 @@ impl ProjectWatcher {
         let root = project_root.clone();
         let debounce = self.git_debounce.clone();
         let gitignores = self.gitignores.clone();
+        let watched_dirs = Arc::new(Mutex::new(HashSet::new()));
+        let watched_dirs_for_callback = watched_dirs.clone();
+        let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
+        let watcher_for_callback = watcher_slot.clone();
 
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    handle_notify_event(&tx, &pid, &root, &debounce, &gitignores, event);
+                    handle_notify_event(
+                        &tx,
+                        &pid,
+                        &root,
+                        &debounce,
+                        &gitignores,
+                        &watcher_for_callback,
+                        &watched_dirs_for_callback,
+                        event,
+                    );
                 }
             },
             Config::default().with_poll_interval(Duration::from_secs(2)),
         )?;
 
-        watcher.watch(&project_root, RecursiveMode::Recursive)?;
-        emit_watch_local_registered(&project_id, &project_root);
-        self.watchers.insert(project_id, (project_root, watcher));
+        let watched_dir_count = {
+            let mut watched_dirs_guard = watched_dirs.lock().unwrap_or_else(|e| e.into_inner());
+            let gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
+            let gitignore = gis
+                .get(&project_id)
+                .expect("watch_project inserted gitignore before reconcile");
+            reconcile_pruned_tree_watches(
+                &mut watcher,
+                &mut watched_dirs_guard,
+                &project_root,
+                gitignore,
+            )?
+        };
+        {
+            let mut slot = watcher_slot.lock().unwrap_or_else(|e| e.into_inner());
+            *slot = Some(watcher);
+        }
+
+        emit_watch_local_registered(&project_id, &project_root, watched_dir_count);
+        self.watchers.insert(
+            project_id,
+            WatchRegistration::Tree(TreeWatchRegistration {
+                root: project_root,
+                watcher: watcher_slot,
+                watched_dirs,
+            }),
+        );
         Ok(())
     }
 
@@ -369,16 +647,48 @@ impl ProjectWatcher {
         )?;
 
         watcher.watch(&file_path, RecursiveMode::NonRecursive)?;
-        emit_watch_local_registered(&project_id, &file_path);
-        self.watchers.insert(project_id, (file_path, watcher));
+        emit_watch_local_registered(&project_id, &file_path, 1);
+        self.watchers.insert(
+            project_id,
+            WatchRegistration::File {
+                path: file_path,
+                watcher,
+            },
+        );
         Ok(())
     }
 
     /// Stop watching a project.
     pub fn unwatch_project(&mut self, project_id: &str) {
-        if let Some((root, mut watcher)) = self.watchers.remove(project_id) {
-            let _ = watcher.unwatch(&root);
-            emit_watch_local_unregistered(project_id, &root);
+        if let Some(registration) = self.watchers.remove(project_id) {
+            match registration {
+                WatchRegistration::Tree(tree) => {
+                    let watched_dir_count = tree
+                        .watched_dirs
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .len();
+                    let mut watcher = tree
+                        .watcher
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    let watcher = watcher
+                        .as_mut()
+                        .expect("tree watcher missing during unwatch");
+                    let mut watched_dirs = tree
+                        .watched_dirs
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    for path in watched_dirs.drain() {
+                        let _ = watcher.unwatch(&path);
+                    }
+                    emit_watch_local_unregistered(project_id, &tree.root, watched_dir_count);
+                }
+                WatchRegistration::File { path, mut watcher } => {
+                    let _ = watcher.unwatch(&path);
+                    emit_watch_local_unregistered(project_id, &path, 1);
+                }
+            }
         }
         let mut gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
         gis.remove(project_id);
@@ -413,8 +723,21 @@ fn handle_notify_event(
     project_root: &Path,
     debounce: &Arc<Mutex<HashMap<String, Instant>>>,
     gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
     event: Event,
 ) {
+    if let Some(reason) = reconcile_watch_dirs_for_event(
+        project_id,
+        project_root,
+        gitignores,
+        watcher,
+        watched_dirs,
+        &event,
+    ) {
+        emit_watch_local_reconciled(project_id, project_root, reason.1, reason.0);
+    }
+
     let classified = classify_notify_event(
         project_id,
         project_root,
@@ -472,6 +795,45 @@ fn handle_notify_event(
     }
 }
 
+fn reconcile_watch_dirs_for_event(
+    project_id: &str,
+    project_root: &Path,
+    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
+    event: &Event,
+) -> Option<(&'static str, usize)> {
+    let gis = gitignores.lock().unwrap_or_else(|error| error.into_inner());
+    let gitignore = gis.get(project_id)?;
+    let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
+    let watcher = watcher.as_mut()?;
+    let mut watched_dirs = watched_dirs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let before = watched_dirs.len();
+    let count = reconcile_pruned_tree_watches_for_event(
+        watcher,
+        &mut watched_dirs,
+        project_root,
+        gitignore,
+        event,
+    )
+    .ok()??;
+    if count == before {
+        return None;
+    }
+    let reason = if event.paths.iter().any(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+    }) {
+        "gitignore_changed"
+    } else {
+        "directory_topology_changed"
+    };
+    Some((reason, count))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,6 +847,16 @@ mod tests {
 
     fn empty_gitignores() -> Arc<Mutex<HashMap<String, Gitignore>>> {
         Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    fn empty_tree_watch_state() -> (
+        Arc<Mutex<Option<RecommendedWatcher>>>,
+        Arc<Mutex<HashSet<PathBuf>>>,
+    ) {
+        (
+            Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(HashSet::new())),
+        )
     }
 
     fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
@@ -675,6 +1047,7 @@ mod tests {
         let debounce: Arc<Mutex<HashMap<String, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
         let (tx, rx) = mpsc::channel();
         let root = root();
+        let (watcher, watched_dirs) = empty_tree_watch_state();
 
         // Simulate two rapid git events
         let event1 = Event {
@@ -686,8 +1059,26 @@ mod tests {
         };
 
         let gis = empty_gitignores();
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event1.clone());
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event1);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event1.clone(),
+        );
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event1,
+        );
 
         // Should only receive one event (second is debounced)
         let first = rx.try_recv();
@@ -704,6 +1095,7 @@ mod tests {
         let root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
         let gis = empty_gitignores();
+        let (watcher, watched_dirs) = empty_tree_watch_state();
 
         let event = Event {
             kind: EventKind::Create(notify::event::CreateKind::File),
@@ -711,7 +1103,16 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -729,6 +1130,7 @@ mod tests {
         let root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
         let gis = empty_gitignores();
+        let (watcher, watched_dirs) = empty_tree_watch_state();
 
         let event = Event {
             kind: EventKind::Modify(notify::event::ModifyKind::Data(
@@ -738,7 +1140,16 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -756,6 +1167,7 @@ mod tests {
         let root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
         let gis = empty_gitignores();
+        let (watcher, watched_dirs) = empty_tree_watch_state();
 
         let event = Event {
             kind: EventKind::Access(notify::event::AccessKind::Read),
@@ -763,7 +1175,16 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
 
         assert!(rx.try_recv().is_err(), "Access events should be ignored");
     }
@@ -786,6 +1207,7 @@ mod tests {
 
         let (tx, rx) = mpsc::channel();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
+        let (watcher, watched_dirs) = empty_tree_watch_state();
 
         // Build gitignore matcher for project "p1"
         let gis = Arc::new(Mutex::new(HashMap::new()));
@@ -802,7 +1224,16 @@ mod tests {
             paths: vec![root.join("output/images/test.png")],
             attrs: Default::default(),
         };
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
         assert!(
             rx.try_recv().is_err(),
             "gitignored output/ file should not emit event"
@@ -816,7 +1247,16 @@ mod tests {
             paths: vec![root.join("server.log")],
             attrs: Default::default(),
         };
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
         assert!(
             rx.try_recv().is_err(),
             "gitignored *.log file should not emit event"
@@ -830,7 +1270,16 @@ mod tests {
             paths: vec![root.join("queue/data.db-wal")],
             attrs: Default::default(),
         };
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
         assert!(
             rx.try_recv().is_err(),
             "gitignored db-wal file should not emit event"
@@ -844,7 +1293,16 @@ mod tests {
             paths: vec![root.join("src/main.rs")],
             attrs: Default::default(),
         };
-        handle_notify_event(&tx, "p1", &root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p1",
+            &root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
         let received = rx.try_recv();
         assert!(
             received.is_ok(),
@@ -872,6 +1330,110 @@ mod tests {
                 "Should ignore tool directory path: {path}"
             );
         }
+    }
+
+    #[test]
+    fn desired_watch_dirs_preprunes_tool_dirs_but_keeps_git_signal_dirs() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("src/nested")).unwrap();
+        std::fs::create_dir_all(root.join("node_modules/react")).unwrap();
+        std::fs::create_dir_all(root.join("target/debug")).unwrap();
+        std::fs::create_dir_all(root.join(".git/refs/heads/feature")).unwrap();
+        std::fs::create_dir_all(root.join(".git/objects/pack")).unwrap();
+
+        let gitignore = build_gitignore(root);
+        let watched = desired_watch_dirs_for_root(root, &gitignore);
+
+        assert!(watched.contains(&root.to_path_buf()));
+        assert!(watched.contains(&root.join("src")));
+        assert!(watched.contains(&root.join("src/nested")));
+        assert!(watched.contains(&root.join(".git")));
+        assert!(watched.contains(&root.join(".git/refs")));
+        assert!(watched.contains(&root.join(".git/refs/heads")));
+        assert!(watched.contains(&root.join(".git/refs/heads/feature")));
+        assert!(!watched.contains(&root.join("node_modules")));
+        assert!(!watched.contains(&root.join("node_modules/react")));
+        assert!(!watched.contains(&root.join("target")));
+        assert!(!watched.contains(&root.join(".git/objects")));
+    }
+
+    #[test]
+    fn reconcile_pruned_tree_watches_reloads_on_gitignore_change() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("generated/cache")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join(".gitignore"), "").unwrap();
+
+        let mut watcher = RecommendedWatcher::new(
+            |_| {},
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )
+        .unwrap();
+        let mut watched_dirs = HashSet::new();
+        let gitignore = build_gitignore(&root);
+        reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs, &root, &gitignore).unwrap();
+        assert!(watched_dirs.contains(&root.join("generated")));
+
+        std::fs::write(root.join(".gitignore"), "generated/\n").unwrap();
+        let gitignore = build_gitignore(&root);
+        let event = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Any,
+            )),
+            paths: vec![root.join(".gitignore")],
+            attrs: Default::default(),
+        };
+        reconcile_pruned_tree_watches_for_event(
+            &mut watcher,
+            &mut watched_dirs,
+            &root,
+            &gitignore,
+            &event,
+        )
+        .unwrap();
+
+        assert!(!watched_dirs.contains(&root.join("generated")));
+        assert!(!watched_dirs.contains(&root.join("generated/cache")));
+        assert!(watched_dirs.contains(&root.join("src")));
+    }
+
+    #[test]
+    fn reconcile_pruned_tree_watches_skips_newly_created_ignored_dir() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+
+        let mut watcher = RecommendedWatcher::new(
+            |_| {},
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )
+        .unwrap();
+        let mut watched_dirs = HashSet::new();
+        let gitignore = build_gitignore(&root);
+        reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs, &root, &gitignore).unwrap();
+
+        std::fs::create_dir_all(root.join("node_modules/react")).unwrap();
+        let event = Event {
+            kind: EventKind::Create(notify::event::CreateKind::Folder),
+            paths: vec![root.join("node_modules")],
+            attrs: Default::default(),
+        };
+        let result = reconcile_pruned_tree_watches_for_event(
+            &mut watcher,
+            &mut watched_dirs,
+            &root,
+            &gitignore,
+            &event,
+        )
+        .unwrap();
+
+        assert!(result.is_none());
+        assert!(!watched_dirs.contains(&root.join("node_modules")));
+        assert!(!watched_dirs.contains(&root.join("node_modules/react")));
     }
 
     #[test]
@@ -926,6 +1488,7 @@ mod tests {
         let project_root = root();
         let debounce = Arc::new(Mutex::new(HashMap::new()));
         let gis = empty_gitignores();
+        let (watcher, watched_dirs) = empty_tree_watch_state();
 
         let event = Event {
             kind: EventKind::Modify(notify::event::ModifyKind::Data(
@@ -935,7 +1498,16 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(&tx, "p-drop", &project_root, &debounce, &gis, event);
+        handle_notify_event(
+            &tx,
+            "p-drop",
+            &project_root,
+            &debounce,
+            &gis,
+            &watcher,
+            &watched_dirs,
+            event,
+        );
 
         let lines = wait_for_lines(&log_path, 1);
         let dropped: serde_json::Value = serde_json::from_str(&lines[0]).expect("json");

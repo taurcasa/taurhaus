@@ -3,15 +3,13 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use ignore::gitignore::Gitignore;
-use notify::RecommendedWatcher;
-
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
-use crate::daemon::watch::{handle_unwatch, handle_watch};
+use crate::daemon::watch::{handle_unwatch, handle_watch, DaemonWatchRegistration};
 use crate::project_provider::ProjectProvider;
 use crate::task_scanner::claude_index::{
     build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
 };
+use ignore::gitignore::Gitignore;
 
 #[derive(Debug, Clone)]
 struct ProjectTaskScanCache {
@@ -26,7 +24,7 @@ pub(crate) struct ProjectTaskScanCacheState {
 }
 
 pub(crate) struct WatchRuntime {
-    pub active_watches: HashMap<String, RecommendedWatcher>,
+    pub active_watches: HashMap<String, DaemonWatchRegistration>,
     pub git_debounce: Arc<Mutex<HashMap<String, Instant>>>,
     pub gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
 }
