@@ -93,9 +93,12 @@ mod tests {
     };
     use crate::session_scanner::cli_tool::CliTool;
     use crate::session_scanner::compaction_extractor::{
-        start_compaction_extractor_service_for_test, stop_compaction_extractor_service_for_test,
+        load_compaction_extractor_diagnostics_at, start_compaction_extractor_service_for_test,
+        stop_compaction_extractor_service_for_test,
     };
-    use crate::session_scanner::compaction_watcher::CompactionSignalWatcherConfig;
+    use crate::session_scanner::compaction_watcher::{
+        load_compaction_signal_watcher_diagnostics_at, CompactionSignalWatcherConfig,
+    };
     use crate::session_scanner::{
         ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
     };
@@ -238,9 +241,33 @@ mod tests {
         panic!("condition was not met before timeout");
     }
 
+    fn wait_for_extractor_tracking(teams_dir: &Path, team_name: &str, jsonl_path: &Path) {
+        wait_until(Duration::from_secs(5), || {
+            load_compaction_extractor_diagnostics_at(teams_dir, team_name)
+                .map(|diagnostics| {
+                    diagnostics.heartbeat_at.is_some()
+                        && diagnostics.active_files.iter().any(|file| {
+                            Path::new(&file.jsonl_path) == jsonl_path && file.offset > 0
+                        })
+                })
+                .unwrap_or(false)
+        });
+    }
+
+    fn wait_for_watcher_ready(teams_dir: &Path, team_name: &str) {
+        wait_until(Duration::from_secs(5), || {
+            load_compaction_signal_watcher_diagnostics_at(teams_dir, team_name)
+                .map(|diagnostics| {
+                    diagnostics.last_reconciliation_at.is_some()
+                        || diagnostics.reconciliation_poll_count > 0
+                })
+                .unwrap_or(false)
+        });
+    }
+
     #[test]
     fn extractor_watcher_processor_pipeline_delivers_inbox_message() {
-        let _guard = TEST_LOCK.lock().expect("lock");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         stop_compaction_extractor_service_for_test();
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -294,7 +321,8 @@ mod tests {
         )
         .expect("start extractor service");
 
-        std::thread::sleep(Duration::from_millis(80));
+        wait_for_extractor_tracking(&teams_dir, team_name, &jsonl_path);
+        wait_for_watcher_ready(&teams_dir, team_name);
         std::fs::OpenOptions::new()
             .append(true)
             .open(&jsonl_path)
@@ -305,7 +333,7 @@ mod tests {
             )
             .expect("append compaction line");
 
-        wait_until(Duration::from_secs(3), || {
+        wait_until(Duration::from_secs(5), || {
             MeshInboxStore::load(&teams_dir, team_name, "developer2")
                 .map(|messages| !messages.is_empty())
                 .unwrap_or(false)
@@ -320,7 +348,7 @@ mod tests {
 
     #[test]
     fn start_team_watchers_skips_orphaned_team_dirs_without_failing() {
-        let _guard = TEST_LOCK.lock().expect("lock");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
