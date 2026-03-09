@@ -440,6 +440,28 @@ build-windows: install-daemon bundle-daemon mesh-verify-lock bundle-mesh sync-wi
     @echo "✓ Windows build complete:"
     @ls -lh {{win_dir}}/src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || echo "  (no installer found)"
 
+# Run the latest Windows NSIS installer in silent mode and verify the installed exe hash.
+install-windows:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION=$(node -p 'require("./package.json").version')
+    INSTALLER="{{win_dir}}/src-tauri/target/release/bundle/nsis/taurhaus_${VERSION}_x64-setup.exe"
+    BUILT_EXE="{{win_dir}}/src-tauri/target/release/taurhaus.exe"
+    PS_SCRIPT="$(wslpath -w "{{project}}/scripts/install-windows-silent.ps1")"
+    WIN_INSTALLER="$(wslpath -w "$INSTALLER")"
+    WIN_BUILT_EXE="$(wslpath -w "$BUILT_EXE")"
+    if [ ! -f "$INSTALLER" ]; then
+        echo "✗ Windows installer not found at $INSTALLER"
+        echo "  Run: just build-windows"
+        exit 1
+    fi
+    if [ ! -f "$BUILT_EXE" ]; then
+        echo "✗ Built Windows exe not found at $BUILT_EXE"
+        echo "  Run: just build-windows"
+        exit 1
+    fi
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -InstallerPath "$WIN_INSTALLER" -BuiltExePath "$WIN_BUILT_EXE"
+
 # ── macOS Build (via SSH to remote Mac mini) ─────────────────────────────────
 
 # Sync source to remote Mac
