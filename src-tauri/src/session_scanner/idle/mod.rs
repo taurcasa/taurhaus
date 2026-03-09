@@ -125,10 +125,6 @@ pub fn detect_runtime_idle(project_path: &str, pid: u32, tool: CliTool) -> IdleR
     }
 }
 
-pub(crate) fn invalidate_codex_runtime_attachment_cache() {
-    codex::invalidate_codex_runtime_attachment_cache();
-}
-
 /// Testable version: detect idle state for Claude using a custom projects directory.
 ///
 /// Kept for backward compatibility with existing tests.

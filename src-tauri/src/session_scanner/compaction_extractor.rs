@@ -620,7 +620,6 @@ fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir
         }
     };
 
-    let mut updated_runtime_attachment = false;
     for team_name in team_names {
         let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
             Ok(roster) => roster,
@@ -648,14 +647,8 @@ fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir
                 MemberRuntimeStore::save(teams_dir, &team_name, &member.member_name, &runtime)
             {
                 tracing::warn!(team_name = team_name, member_name = member.member_name, error = %error, "failed to persist compaction runtime jsonl path");
-            } else {
-                updated_runtime_attachment = true;
             }
         }
-    }
-
-    if updated_runtime_attachment {
-        super::idle::invalidate_codex_runtime_attachment_cache();
     }
 }
 
