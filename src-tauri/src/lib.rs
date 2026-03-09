@@ -50,6 +50,7 @@ pub mod templates;
 #[cfg(test)]
 mod test_support;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::{io, process};
 
@@ -84,6 +85,19 @@ impl ProviderState {
 
 /// Managed state: holds the file watcher so it lives for the app lifetime.
 pub struct WatcherState(pub Mutex<fs::watcher::ProjectWatcher>);
+
+/// Managed state: last known good CLI session snapshot for fast foreground/session fallbacks.
+pub struct SessionSnapshotCacheState(pub Mutex<Option<Vec<session_scanner::DisplaySession>>>);
+
+/// Managed state: cached project/settings inputs for watcher reconciliation and fast path lookup.
+pub struct ActivityWatchCacheState(pub Mutex<Option<ActivityWatchCacheSnapshot>>);
+
+#[derive(Debug, Clone)]
+pub struct ActivityWatchCacheSnapshot {
+    pub projects: Vec<models::Project>,
+    pub thresholds: models::ActivityThresholds,
+    pub project_ids_by_path: HashMap<String, String>,
+}
 
 /// Managed state: holds the tantivy search index.
 pub struct SearchState(pub Mutex<search::indexer::SearchIndex>);

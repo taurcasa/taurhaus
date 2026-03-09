@@ -4,6 +4,32 @@ use super::*;
 use crate::commands::projects::DbState;
 use crate::coordination::activity_export::enrich_sessions_with_team_membership;
 
+fn store_session_snapshot_cache(app: &tauri::AppHandle, sessions: &[DisplaySession]) {
+    let cache_state = app.state::<crate::SessionSnapshotCacheState>();
+    let mut cache_guard = cache_state.0.lock().unwrap_or_else(|error| {
+        tracing::warn!(
+            error = %error,
+            "Session snapshot cache lock poisoned while storing last known good sessions; recovering"
+        );
+        error.into_inner()
+    });
+    *cache_guard = Some(sessions.to_vec());
+}
+
+fn cached_session_snapshot(app: &tauri::AppHandle) -> Option<Vec<DisplaySession>> {
+    app.state::<crate::SessionSnapshotCacheState>()
+        .0
+        .lock()
+        .unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                "Session snapshot cache lock poisoned while loading cached sessions; recovering"
+            );
+            error.into_inner()
+        })
+        .clone()
+}
+
 pub(super) fn list_cli_sessions_impl(
     app: &tauri::AppHandle,
     db: &DbState,
@@ -39,6 +65,7 @@ pub(super) fn list_cli_sessions_impl(
                             .teams_dir(),
                         &mut sessions,
                     );
+                    store_session_snapshot_cache(app, &sessions);
                     promote_activity_from_sessions(app, db, &sessions);
                     return Ok(sessions);
                 }
@@ -48,6 +75,15 @@ pub(super) fn list_cli_sessions_impl(
                 Err(e) => {
                     tracing::warn!(error = %e, "Failed to reach daemon for session listing");
                 }
+            }
+
+            if let Some(cached) = cached_session_snapshot(app) {
+                tracing::debug!(
+                    count = cached.len(),
+                    "list_cli_sessions: using cached session snapshot after daemon failure"
+                );
+                promote_activity_from_sessions(app, db, &cached);
+                return Ok(cached);
             }
         }
     }
@@ -59,6 +95,7 @@ pub(super) fn list_cli_sessions_impl(
             .teams_dir(),
         &mut fallback,
     );
+    store_session_snapshot_cache(app, &fallback);
     promote_activity_from_sessions(app, db, &fallback);
     Ok(fallback)
 }

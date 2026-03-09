@@ -537,6 +537,8 @@ fn register_managed_state(
     app.manage(commands::templates::TemplateStoreState::new(
         setup_paths.data_dir.clone(),
     ));
+    app.manage(crate::SessionSnapshotCacheState(Mutex::new(None)));
+    app.manage(crate::ActivityWatchCacheState(Mutex::new(None)));
 
     app.manage(ProviderState {
         local: provider::local::LocalProvider,

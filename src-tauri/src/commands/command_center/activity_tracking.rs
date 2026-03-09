@@ -30,7 +30,9 @@ pub(super) fn promote_activity_from_sessions_impl(
         if session.state != crate::session_scanner::SessionState::Active {
             continue;
         }
-        active_paths.insert(normalize_project_path_key(&session.project_path));
+        active_paths.insert(crate::provider::path::normalize_project_path(
+            &session.project_path,
+        ));
     }
     if active_paths.is_empty() {
         return Ok(0);
@@ -44,7 +46,7 @@ pub(super) fn promote_activity_from_sessions_impl(
     let mut by_path = HashMap::new();
     for project in projects {
         by_path.insert(
-            normalize_project_path_key(&project.path),
+            crate::provider::path::normalize_project_path(&project.path),
             (project.id, project.activity_state),
         );
     }
