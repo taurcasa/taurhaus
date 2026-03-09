@@ -32,6 +32,21 @@ if ($EnableSccache) {
     if (-not $sccacheCommand) {
         $sccacheCommand = Get-Command sccache.exe -ErrorAction SilentlyContinue
     }
+    if (-not $sccacheCommand) {
+        $wingetPackagesDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+        if (Test-Path -LiteralPath $wingetPackagesDir) {
+            $candidate = Get-ChildItem -LiteralPath $wingetPackagesDir -Filter "Mozilla.sccache*" -Directory -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+            if ($candidate) {
+                $sccacheExe = Get-ChildItem -LiteralPath $candidate.FullName -Filter "sccache.exe" -File -Recurse -ErrorAction SilentlyContinue |
+                    Select-Object -First 1
+                if ($sccacheExe) {
+                    $sccacheCommand = [pscustomobject]@{ Source = $sccacheExe.FullName }
+                }
+            }
+        }
+    }
 
     if ($sccacheCommand) {
         $sccachePath = $sccacheCommand.Source
