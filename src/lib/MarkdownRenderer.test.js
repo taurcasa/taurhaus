@@ -14,6 +14,7 @@ function createDeferred() {
 
 vi.mock('./markdown.js', () => ({
   renderMarkdown: vi.fn(),
+  markdownHasMermaidFence: vi.fn((source) => String(source || '').includes('```mermaid')),
 }))
 
 vi.mock('./ipc.js', () => ({
@@ -48,7 +49,7 @@ vi.mock('mermaid', () => ({
   },
 }))
 
-const { renderMarkdown } = await import('./markdown.js')
+const { markdownHasMermaidFence, renderMarkdown } = await import('./markdown.js')
 const { default: DOMPurify } = await import('dompurify')
 const { openExternalUrl, readProjectAsset } = await import('./ipc.js')
 const assetCache = await import('./assetCache.js')
@@ -58,6 +59,7 @@ describe('MarkdownRenderer mermaid rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     renderMarkdown.mockResolvedValue('<p>default</p>')
+    markdownHasMermaidFence.mockImplementation((source) => String(source || '').includes('```mermaid'))
     mockMermaidRender.mockResolvedValue({ svg: '<svg class="mermaid-svg"><rect/></svg>' })
   })
 

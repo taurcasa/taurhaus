@@ -20,6 +20,8 @@
   let markdownModulePromise = null
   let renderRequestId = 0
   let imageResolveRequestId = 0
+  let lastResolvedImageSignature = ''
+  let lastMermaidSignature = ''
 
   async function getMarkdownModule() {
     if (!markdownModulePromise) {
@@ -36,6 +38,11 @@
     const theme = codeTheme
     const requestId = ++renderRequestId
     let cancelled = false
+    if (!src) {
+      html = ''
+      loading = false
+      return
+    }
     loading = true
     getMarkdownModule()
       .then(({ renderMarkdown }) => renderMarkdown(src, theme))
@@ -58,6 +65,10 @@
   // After HTML is rendered, resolve relative image src via cache or IPC
   $effect(() => {
     if (!container || !projectId || loading) return
+    if (!html.includes('<img')) return
+    const signature = `${projectId}\u0000${filePath ?? ''}\u0000${html}`
+    if (signature === lastResolvedImageSignature) return
+    lastResolvedImageSignature = signature
     const requestId = ++imageResolveRequestId
     let cancelled = false
     const images = container.querySelectorAll('img')
@@ -94,10 +105,16 @@
   // After HTML is rendered, replace Mermaid code blocks with rendered SVG.
   $effect(() => {
     if (!container || loading) return
-    const isDark = dark
+    const src = source
+    if (!src || !html.includes('language-mermaid')) return
+    const signature = html
+    if (signature === lastMermaidSignature) return
+    lastMermaidSignature = signature
     let cancelled = false
 
     ;(async () => {
+      const { markdownHasMermaidFence } = await getMarkdownModule()
+      if (!markdownHasMermaidFence(src)) return
       const mermaidBlocks = Array.from(container.querySelectorAll('pre:has(> code.language-mermaid):not([data-mermaid-processed])'))
       if (mermaidBlocks.length === 0) return
 
@@ -109,7 +126,7 @@
 
       mermaid.initialize({
         startOnLoad: false,
-        theme: isDark ? 'dark' : 'default',
+        theme: dark ? 'dark' : 'default',
       })
 
       for (const pre of mermaidBlocks) {
