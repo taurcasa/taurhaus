@@ -107,6 +107,7 @@ mod tests {
     use super::*;
     use crate::daemon::server::DaemonConfig;
     use crate::provider::local::LocalProvider;
+    use std::net::TcpStream;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -143,7 +144,7 @@ mod tests {
         let handle = std::thread::spawn(move || {
             crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
         });
-        std::thread::sleep(Duration::from_millis(100));
+        wait_for_port(port, Duration::from_secs(3));
 
         TestDaemon {
             port,
@@ -151,6 +152,17 @@ mod tests {
             _heavy_guard: heavy_guard,
             handle: Some(handle),
         }
+    }
+
+    fn wait_for_port(port: u16, timeout: Duration) {
+        let deadline = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < deadline {
+            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("daemon did not accept connections on port {port} before timeout");
     }
 
     #[test]
