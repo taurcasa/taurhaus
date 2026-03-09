@@ -19,120 +19,6 @@ use super::SetupContext;
 
 static RECONCILE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
-fn build_activity_watch_cache_snapshot(
-    projects: Vec<crate::models::Project>,
-    thresholds: ActivityThresholds,
-) -> crate::ActivityWatchCacheSnapshot {
-    let project_ids_by_path = projects
-        .iter()
-        .map(|project| {
-            (
-                crate::provider::path::normalize_project_path(&project.path),
-                project.id.clone(),
-            )
-        })
-        .collect();
-    crate::ActivityWatchCacheSnapshot {
-        projects,
-        thresholds,
-        project_ids_by_path,
-    }
-}
-
-fn load_activity_watch_cache_snapshot(
-    app: &tauri::AppHandle,
-    reason: &str,
-) -> crate::ActivityWatchCacheSnapshot {
-    let db_state = app.state::<DbState>();
-    let db_guard = match db_state.0.lock() {
-        Ok(guard) => guard,
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                reason,
-                "DB lock poisoned while reconciling activity watches; recovering"
-            );
-            error.into_inner()
-        }
-    };
-    let projects = db::queries::list_projects(&db_guard).unwrap_or_else(|error| {
-        tracing::warn!(
-            error = %error,
-            reason,
-            "Failed to list projects while reconciling activity watches"
-        );
-        Vec::new()
-    });
-    let thresholds = settings_queries::get_all_settings(&db_guard)
-        .map(|settings| settings.thresholds)
-        .unwrap_or_else(|error| {
-            tracing::warn!(
-                error = %error,
-                reason,
-                "Failed to load activity thresholds while reconciling activity watches; using defaults"
-            );
-            ActivityThresholds::default()
-        });
-
-    build_activity_watch_cache_snapshot(projects, thresholds)
-}
-
-fn activity_watch_cache_snapshot(
-    app: &tauri::AppHandle,
-    reason: &str,
-) -> crate::ActivityWatchCacheSnapshot {
-    if reason == "periodic" {
-        let cache_state = app.state::<crate::ActivityWatchCacheState>();
-        let cached = cache_state
-            .0
-            .lock()
-            .unwrap_or_else(|error| {
-                tracing::warn!(
-                    error = %error,
-                    reason,
-                    "Activity watch cache lock poisoned while loading cached snapshot; recovering"
-                );
-                error.into_inner()
-            })
-            .clone();
-        if let Some(snapshot) = cached {
-            return snapshot;
-        }
-    }
-
-    let snapshot = load_activity_watch_cache_snapshot(app, reason);
-    let cache_state = app.state::<crate::ActivityWatchCacheState>();
-    let mut cache_guard = cache_state.0.lock().unwrap_or_else(|error| {
-        tracing::warn!(
-            error = %error,
-            reason,
-            "Activity watch cache lock poisoned while storing refreshed snapshot; recovering"
-        );
-        error.into_inner()
-    });
-    *cache_guard = Some(snapshot.clone());
-    snapshot
-}
-
-pub(crate) fn cached_project_id_for_path(
-    app: &tauri::AppHandle,
-    project_path: &str,
-) -> Option<String> {
-    let project_key = crate::provider::path::normalize_project_path(project_path);
-    app.state::<crate::ActivityWatchCacheState>()
-        .0
-        .lock()
-        .unwrap_or_else(|error| {
-            tracing::warn!(
-                error = %error,
-                "Activity watch cache lock poisoned while resolving cached project id; recovering"
-            );
-            error.into_inner()
-        })
-        .as_ref()
-        .and_then(|snapshot| snapshot.project_ids_by_path.get(&project_key).cloned())
-}
-
 struct ReconcileInProgressGuard;
 
 impl Drop for ReconcileInProgressGuard {
@@ -229,14 +115,44 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     }
     let _in_progress_guard = ReconcileInProgressGuard;
 
-    let snapshot = activity_watch_cache_snapshot(app, reason);
     let (projects, thresholds, has_daemon) = {
+        let db_state = app.state::<DbState>();
+        let db_guard = match db_state.0.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "DB lock poisoned while reconciling activity watches; recovering"
+                );
+                error.into_inner()
+            }
+        };
+        let projects = db::queries::list_projects(&db_guard).unwrap_or_else(|error| {
+            tracing::warn!(
+                error = %error,
+                reason,
+                "Failed to list projects while reconciling activity watches"
+            );
+            Vec::new()
+        });
+        let thresholds = settings_queries::get_all_settings(&db_guard)
+            .map(|settings| settings.thresholds)
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Failed to load activity thresholds while reconciling activity watches; using defaults"
+                );
+                ActivityThresholds::default()
+            });
+
         let provider_state = app.state::<crate::ProviderState>();
         let has_daemon = provider_state
             .daemon
             .as_ref()
             .is_some_and(|daemon| daemon.is_connected());
-        (snapshot.projects, snapshot.thresholds, has_daemon)
+        (projects, thresholds, has_daemon)
     };
 
     let (watched, unwatched, watch_limit_hit) = {
