@@ -578,6 +578,97 @@ struct ActivityDecision {
     keep_session_metadata: bool,
 }
 
+fn detect_process_signal(proc: &process::ProcessInfo) -> (bool, bool) {
+    match proc.cli_tool {
+        CliTool::Claude => {
+            let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+            (recent_io, recent_io)
+        }
+        CliTool::Gemini => (proc_io::has_api_connections(proc.pid), false),
+        CliTool::Codex => {
+            let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+            (recent_io, recent_io)
+        }
+    }
+}
+
+fn tmux_metadata_for_tty(
+    pane_map: &HashMap<String, tmux::TmuxPane>,
+    tty: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    let tmux = pane_map.get(tty);
+    (
+        tmux.map(|t| t.session_name.clone()),
+        tmux.map(|t| t.window_index.clone()),
+        tmux.map(|t| t.pane_id.clone()),
+        tmux.map(|t| t.window_name.clone()),
+    )
+}
+
+fn build_fast_display_sessions(
+    previous_sessions: &[DisplaySession],
+    processes: Vec<process::ProcessInfo>,
+    pane_map: HashMap<String, tmux::TmuxPane>,
+) -> Option<Vec<DisplaySession>> {
+    if previous_sessions
+        .iter()
+        .any(|session| session.state != SessionState::Idle)
+    {
+        return None;
+    }
+
+    let mut previous_by_pid: HashMap<u32, &DisplaySession> = previous_sessions
+        .iter()
+        .map(|session| (session.pid, session))
+        .collect();
+    if previous_by_pid.len() != previous_sessions.len() {
+        return None;
+    }
+
+    let mut sessions = Vec::with_capacity(processes.len());
+    for proc in processes {
+        let previous = previous_by_pid.remove(&proc.pid)?;
+        if previous.project_path != proc.project_path
+            || previous.tty != proc.tty
+            || previous.cli_tool != proc.cli_tool
+        {
+            return None;
+        }
+
+        if detect_process_signal(&proc).0 {
+            return None;
+        }
+
+        let (tmux_session, tmux_window, tmux_pane, tmux_window_name) =
+            tmux_metadata_for_tty(&pane_map, &proc.tty);
+
+        let mut session = previous.clone();
+        session.project_path = proc.project_path;
+        session.tty = proc.tty;
+        session.args = proc.args;
+        session.tmux_session = tmux_session;
+        session.tmux_window = tmux_window;
+        session.tmux_pane = tmux_pane;
+        session.tmux_window_name = tmux_window_name;
+        session.recent_io = false;
+        sessions.push(session);
+    }
+
+    if !previous_by_pid.is_empty() {
+        return None;
+    }
+
+    sessions.sort_by(|a, b| b.pid.cmp(&a.pid));
+    let mut seen = std::collections::HashSet::<(String, CliTool)>::new();
+    sessions.retain(|s| seen.insert((s.tty.clone(), s.cli_tool)));
+    Some(sessions)
+}
+
 fn compute_activity_decision(
     file_active: bool,
     process_active: bool,
@@ -728,6 +819,30 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
     )
 }
 
+pub(crate) fn scan_sessions_for_display_fast(
+    previous_sessions: &[DisplaySession],
+) -> Option<Vec<DisplaySession>> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = previous_sessions;
+        return None;
+    }
+
+    let now = Instant::now();
+    let (processes, pane_map, ..) = scan_inputs_with_cache(
+        now,
+        &process::scan_process_ids_cached,
+        &process::scan_processes,
+        &tmux::list_panes,
+    );
+    let display_sessions = build_fast_display_sessions(previous_sessions, processes, pane_map)?;
+    Some(finalize_display_scan(
+        display_sessions,
+        None,
+        ScanCompletionMetrics::default(),
+    ))
+}
+
 fn classify_display_runtime_sessions_with<H>(
     processes: Vec<process::ProcessInfo>,
     pane_map: HashMap<String, tmux::TmuxPane>,
@@ -761,17 +876,7 @@ where
             // Codex: per-PID IO hysteresis always; project-level file mtime only
             //   when this is the sole Codex session for the project.
             let process_signal_started = Instant::now();
-            let (process_active, recent_io) = match proc.cli_tool {
-                CliTool::Claude => {
-                    let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
-                    (recent_io, recent_io)
-                }
-                CliTool::Gemini => (proc_io::has_api_connections(proc.pid), false),
-                CliTool::Codex => {
-                    let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
-                    (recent_io, recent_io)
-                }
-            };
+            let (process_active, recent_io) = detect_process_signal(&proc);
             process_signal_ms += process_signal_started.elapsed();
 
             // Deterministic fallback in multi-session projects:
@@ -1066,6 +1171,50 @@ mod tests {
         TEST_COMPLETED_SESSION_COUNT.store(session_count, Ordering::SeqCst);
     }
 
+    fn sample_process(pid: u32) -> process::ProcessInfo {
+        process::ProcessInfo {
+            pid,
+            project_path: "/tmp/project".to_string(),
+            tty: format!("/dev/pts/{pid}"),
+            args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
+        }
+    }
+
+    fn sample_display_session(pid: u32) -> DisplaySession {
+        DisplaySession {
+            pid,
+            project_path: "/tmp/project".to_string(),
+            tty: format!("/dev/pts/{pid}"),
+            args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
+            tmux_session: Some("main".to_string()),
+            tmux_window: Some("1".to_string()),
+            tmux_pane: Some(format!("%{pid}")),
+            tmux_window_name: Some("project".to_string()),
+            state: SessionState::Idle,
+            recent_io: false,
+            last_output_age_secs: Some(12),
+            activity_confidence: ActivityConfidence::Low,
+            activity_attribution: ActivityAttribution::None,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }
+    }
+
+    fn sample_pane(pid: u32) -> tmux::TmuxPane {
+        tmux::TmuxPane {
+            pane_id: format!("%{pid}"),
+            tty: format!("/dev/pts/{pid}"),
+            window_index: "1".to_string(),
+            window_name: "project".to_string(),
+            session_name: "main".to_string(),
+        }
+    }
+
     #[test]
     fn session_state_serializes_lowercase() {
         assert_eq!(
@@ -1147,6 +1296,30 @@ mod tests {
         assert!(json["tmux_session"].is_null());
         assert!(json.get("session_id").is_none());
         assert!(json.get("jsonl_path").is_none());
+    }
+
+    #[test]
+    fn fast_display_scan_reuses_idle_snapshot_when_identity_is_stable() {
+        let previous = vec![sample_display_session(42)];
+        let processes = vec![sample_process(42)];
+        let pane_map = HashMap::from([("/dev/pts/42".to_string(), sample_pane(42))]);
+
+        let sessions = build_fast_display_sessions(&previous, processes, pane_map)
+            .expect("stable idle session should use fast path");
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].pid, 42);
+        assert_eq!(sessions[0].state, SessionState::Idle);
+        assert_eq!(sessions[0].tmux_pane.as_deref(), Some("%42"));
+    }
+
+    #[test]
+    fn fast_display_scan_forces_full_rescan_when_pid_identity_changes() {
+        let previous = vec![sample_display_session(42)];
+        let processes = vec![sample_process(77)];
+        let pane_map = HashMap::from([("/dev/pts/77".to_string(), sample_pane(77))]);
+
+        assert!(build_fast_display_sessions(&previous, processes, pane_map).is_none());
     }
 
     #[test]

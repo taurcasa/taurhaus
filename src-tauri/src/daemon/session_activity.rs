@@ -14,8 +14,9 @@ use crate::session_scanner::SessionState;
 
 /// Scanner cadence for daemon-owned session activity tracking.
 const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_millis(500);
-const IDLE_SCAN_INTERVAL: Duration = Duration::from_millis(1500);
-const IDLE_STABLE_CYCLES_THRESHOLD: u32 = 30;
+const STEADY_IDLE_SCAN_INTERVAL: Duration = Duration::from_secs(2);
+const IDLE_STABLE_CYCLES_THRESHOLD: u32 = 4;
+const FULL_IDLE_SCAN_EVERY: u32 = 4;
 
 /// Upper bound for long-poll wait time.
 const MAX_WAIT: Duration = Duration::from_secs(30);
@@ -79,22 +80,66 @@ fn activity_changed(prev: &[DisplaySession], next: &[DisplaySession]) -> bool {
 #[derive(Debug, Default)]
 struct ScannerCadence {
     stable_idle_cycles: u32,
+    fast_idle_cycles_since_full: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionScanMode {
+    Full,
+    FastIdle,
 }
 
 impl ScannerCadence {
-    fn next_interval(&mut self, changed: bool, sessions: &[DisplaySession]) -> Duration {
+    fn current_mode(&self, initialized: bool, sessions: &[DisplaySession]) -> SessionScanMode {
+        if !initialized {
+            return SessionScanMode::Full;
+        }
+
+        let all_idle = sessions.iter().all(|s| s.state == SessionState::Idle);
+        if !all_idle || self.stable_idle_cycles < IDLE_STABLE_CYCLES_THRESHOLD {
+            return SessionScanMode::Full;
+        }
+
+        if self.fast_idle_cycles_since_full + 1 >= FULL_IDLE_SCAN_EVERY {
+            SessionScanMode::Full
+        } else {
+            SessionScanMode::FastIdle
+        }
+    }
+
+    fn record_result(&mut self, changed: bool, sessions: &[DisplaySession]) -> Duration {
         let all_idle = sessions.iter().all(|s| s.state == SessionState::Idle);
 
         if changed || !all_idle {
             self.stable_idle_cycles = 0;
+            self.fast_idle_cycles_since_full = 0;
             return ACTIVE_SCAN_INTERVAL;
         }
 
         self.stable_idle_cycles = self.stable_idle_cycles.saturating_add(1);
-        if self.stable_idle_cycles >= IDLE_STABLE_CYCLES_THRESHOLD {
-            IDLE_SCAN_INTERVAL
-        } else {
-            ACTIVE_SCAN_INTERVAL
+        if self.stable_idle_cycles < IDLE_STABLE_CYCLES_THRESHOLD {
+            self.fast_idle_cycles_since_full = 0;
+            return ACTIVE_SCAN_INTERVAL;
+        }
+
+        self.fast_idle_cycles_since_full = self.fast_idle_cycles_since_full.saturating_add(1);
+        if self.fast_idle_cycles_since_full >= FULL_IDLE_SCAN_EVERY {
+            self.fast_idle_cycles_since_full = 0;
+        }
+
+        STEADY_IDLE_SCAN_INTERVAL
+    }
+}
+
+fn scan_sessions_with_mode(
+    mode: SessionScanMode,
+    previous_sessions: &[DisplaySession],
+) -> Vec<DisplaySession> {
+    match mode {
+        SessionScanMode::Full => crate::session_scanner::scan_sessions_for_display(),
+        SessionScanMode::FastIdle => {
+            crate::session_scanner::scan_sessions_for_display_fast(previous_sessions)
+                .unwrap_or_else(crate::session_scanner::scan_sessions_for_display)
         }
     }
 }
@@ -196,11 +241,13 @@ impl SessionActivityHub {
             let mut cadence = ScannerCadence::default();
 
             loop {
-                let sessions = crate::session_scanner::scan_sessions_for_display();
-                let changed = {
+                let (initialized, previous_sessions) = {
                     let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                    !state.initialized || activity_changed(&state.sessions, &sessions)
+                    (state.initialized, state.sessions.clone())
                 };
+                let mode = cadence.current_mode(initialized, &previous_sessions);
+                let sessions = scan_sessions_with_mode(mode, &previous_sessions);
+                let changed = !initialized || activity_changed(&previous_sessions, &sessions);
                 if changed {
                     let export_stats = export_activity_snapshots_for_sessions(
                         &default_activity_export_teams_dir(),
@@ -228,7 +275,7 @@ impl SessionActivityHub {
                     state.sessions = sessions;
                 }
 
-                let interval = cadence.next_interval(changed, &state.sessions);
+                let interval = cadence.record_result(changed, &state.sessions);
                 next_tick += interval;
                 let now = Instant::now();
                 if next_tick > now {
@@ -276,19 +323,54 @@ mod tests {
         let active = vec![session_with_state(SessionState::Active)];
 
         for _ in 0..40 {
-            assert_eq!(cadence.next_interval(false, &active), ACTIVE_SCAN_INTERVAL);
+            assert_eq!(cadence.current_mode(true, &active), SessionScanMode::Full);
+            assert_eq!(cadence.record_result(false, &active), ACTIVE_SCAN_INTERVAL);
         }
     }
 
     #[test]
-    fn cadence_widens_after_stable_idle_threshold() {
+    fn cadence_enters_fast_idle_mode_after_stable_idle_threshold() {
         let mut cadence = ScannerCadence::default();
         let idle = vec![session_with_state(SessionState::Idle)];
 
-        for _ in 0..(IDLE_STABLE_CYCLES_THRESHOLD - 1) {
-            assert_eq!(cadence.next_interval(false, &idle), ACTIVE_SCAN_INTERVAL);
+        for cycle in 0..IDLE_STABLE_CYCLES_THRESHOLD {
+            assert_eq!(cadence.current_mode(true, &idle), SessionScanMode::Full);
+            let expected_interval = if cycle + 1 >= IDLE_STABLE_CYCLES_THRESHOLD {
+                STEADY_IDLE_SCAN_INTERVAL
+            } else {
+                ACTIVE_SCAN_INTERVAL
+            };
+            assert_eq!(cadence.record_result(false, &idle), expected_interval);
         }
-        assert_eq!(cadence.next_interval(false, &idle), IDLE_SCAN_INTERVAL);
+        assert_eq!(cadence.current_mode(true, &idle), SessionScanMode::FastIdle);
+        assert_eq!(
+            cadence.record_result(false, &idle),
+            STEADY_IDLE_SCAN_INTERVAL
+        );
+    }
+
+    #[test]
+    fn cadence_inserts_periodic_full_scans_while_idle() {
+        let mut cadence = ScannerCadence::default();
+        let idle = vec![session_with_state(SessionState::Idle)];
+
+        for _ in 0..IDLE_STABLE_CYCLES_THRESHOLD {
+            let _ = cadence.record_result(false, &idle);
+        }
+
+        for _ in 0..(FULL_IDLE_SCAN_EVERY - 2) {
+            assert_eq!(cadence.current_mode(true, &idle), SessionScanMode::FastIdle);
+            assert_eq!(
+                cadence.record_result(false, &idle),
+                STEADY_IDLE_SCAN_INTERVAL
+            );
+        }
+
+        assert_eq!(cadence.current_mode(true, &idle), SessionScanMode::Full);
+        assert_eq!(
+            cadence.record_result(false, &idle),
+            STEADY_IDLE_SCAN_INTERVAL
+        );
     }
 
     #[test]
@@ -296,10 +378,11 @@ mod tests {
         let mut cadence = ScannerCadence::default();
         let idle = vec![session_with_state(SessionState::Idle)];
 
-        for _ in 0..IDLE_STABLE_CYCLES_THRESHOLD {
-            let _ = cadence.next_interval(false, &idle);
+        for _ in 0..(IDLE_STABLE_CYCLES_THRESHOLD + FULL_IDLE_SCAN_EVERY) {
+            let _ = cadence.record_result(false, &idle);
         }
-        assert_eq!(cadence.next_interval(false, &idle), IDLE_SCAN_INTERVAL);
-        assert_eq!(cadence.next_interval(true, &idle), ACTIVE_SCAN_INTERVAL);
+
+        assert_eq!(cadence.record_result(true, &idle), ACTIVE_SCAN_INTERVAL);
+        assert_eq!(cadence.current_mode(true, &idle), SessionScanMode::Full);
     }
 }
