@@ -317,6 +317,7 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
 
 #[cfg(feature = "mesh-bridged-backend")]
 fn run_claude_compact_hook_cli() -> i32 {
+    let _log_state = init_coordination_cli_log_sink();
     let response = (|| -> Result<String, crate::coordination::errors::CoordinationError> {
         let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
         let hook_response = crate::coordination::claude_hooks::handle_session_start_hook_stdin(
@@ -342,4 +343,93 @@ fn run_claude_compact_hook_cli() -> i32 {
     }
 
     0
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileState> {
+    let log_path = crate::provider::platform_paths::PlatformPaths::log_path();
+    match crate::commands::logging::LogFileState::new(log_path.clone()) {
+        Ok(state) => {
+            crate::commands::logging::install_global_sink(&state);
+            Some(state)
+        }
+        Err(error) => {
+            tracing::warn!(
+                log_path = %log_path.display(),
+                error = %error,
+                "failed to initialize structured log sink for coordination CLI mode"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(all(test, feature = "mesh-bridged-backend"))]
+mod tests {
+    use super::init_coordination_cli_log_sink;
+
+    use serde_json::Value;
+    use std::fs;
+    use std::sync::{LazyLock, Mutex, MutexGuard};
+    use tempfile::TempDir;
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct EnvGuard {
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl EnvGuard {}
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            std::env::remove_var("TAURHAUS_DATA_DIR");
+        }
+    }
+
+    fn acquire_env_guard() -> EnvGuard {
+        EnvGuard {
+            _lock: ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner()),
+        }
+    }
+
+    #[test]
+    fn coordination_cli_log_sink_installs_jsonl_emitter() {
+        let _guard = acquire_env_guard();
+        let temp = TempDir::new().expect("tempdir");
+        let data_dir = temp.path().join("data");
+        fs::create_dir_all(&data_dir).expect("data dir");
+        std::env::set_var("TAURHAUS_DATA_DIR", &data_dir);
+
+        let _state = init_coordination_cli_log_sink().expect("log state");
+        crate::commands::logging::emit_global(
+            "info",
+            "coordination",
+            "test.cli_hook_logging",
+            Some("cli hook log test".to_string()),
+            Default::default(),
+        );
+
+        let log_path = data_dir.join("taurhaus.log.jsonl");
+        let mut contents = String::new();
+        for _ in 0..50 {
+            contents = fs::read_to_string(&log_path).unwrap_or_default();
+            if contents
+                .lines()
+                .any(|line| line.contains("\"event\":\"test.cli_hook_logging\""))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let entry: Value = serde_json::from_str(
+            contents
+                .lines()
+                .find(|line| line.contains("\"event\":\"test.cli_hook_logging\""))
+                .expect("one log entry written"),
+        )
+        .expect("json log");
+        assert_eq!(entry["event"], "test.cli_hook_logging");
+        assert_eq!(entry["component"], "coordination");
+    }
 }
