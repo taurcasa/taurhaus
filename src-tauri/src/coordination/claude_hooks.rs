@@ -17,6 +17,7 @@ use crate::coordination::stores::{
     record_delivery, CompactionDeliveryResult, MemberRuntimeStore, OperationalContextSnapshotStore,
     TeamConfigStore,
 };
+use crate::provider::path;
 use crate::session_scanner::cli_tool::CliTool;
 use taurhaus_lib::logging::emit_global;
 
@@ -24,6 +25,12 @@ const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const SESSION_START_HOOK_EVENT: &str = "SessionStart";
 const COMPACT_SOURCE: &str = "compact";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaudeHookRuntime {
+    Posix,
+    Windows,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -241,9 +248,14 @@ pub fn ensure_compact_hook_installed(
     let hooks_dir = claude_dir.join("hooks");
     fs::create_dir_all(&hooks_dir)?;
 
-    let script_path = hooks_dir.join(platform_hook_filename());
-    write_hook_script(&script_path, taurhaus_exe)?;
-    ensure_settings_hook_entry(&claude_dir.join(CLAUDE_SETTINGS_FILENAME), &script_path)
+    let runtime = detect_claude_hook_runtime(claude_dir);
+    let script_path = hooks_dir.join(platform_hook_filename(runtime));
+    write_hook_script(&script_path, taurhaus_exe, runtime)?;
+    ensure_settings_hook_entry(
+        &claude_dir.join(CLAUDE_SETTINGS_FILENAME),
+        &script_path,
+        runtime,
+    )
 }
 
 pub fn team_has_managed_claude_member(
@@ -475,8 +487,12 @@ fn normalize_path(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn write_hook_script(script_path: &Path, taurhaus_exe: &Path) -> Result<(), CoordinationError> {
-    let script_body = render_hook_script(taurhaus_exe);
+fn write_hook_script(
+    script_path: &Path,
+    taurhaus_exe: &Path,
+    runtime: ClaudeHookRuntime,
+) -> Result<(), CoordinationError> {
+    let script_body = render_hook_script(taurhaus_exe, runtime)?;
     fs::write(script_path, script_body.as_bytes())?;
     #[cfg(not(target_os = "windows"))]
     {
@@ -488,30 +504,30 @@ fn write_hook_script(script_path: &Path, taurhaus_exe: &Path) -> Result<(), Coor
     Ok(())
 }
 
-fn render_hook_script(taurhaus_exe: &Path) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        format!(
-            "@echo off\r\n\"{}\" --claude-compact-hook\r\n",
-            taurhaus_exe.display()
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        format!(
+fn render_hook_script(
+    taurhaus_exe: &Path,
+    runtime: ClaudeHookRuntime,
+) -> Result<String, CoordinationError> {
+    let executable = runtime_path_string(taurhaus_exe, runtime)?;
+    Ok(match runtime {
+        ClaudeHookRuntime::Windows => {
+            format!("@echo off\r\n\"{}\" --claude-compact-hook\r\n", executable)
+        }
+        ClaudeHookRuntime::Posix => format!(
             "#!/usr/bin/env bash\nset -euo pipefail\nexec {} --claude-compact-hook\n",
-            shell_quote_path(taurhaus_exe)
-        )
-    }
+            shell_quote_string(&executable)
+        ),
+    })
 }
 
 fn ensure_settings_hook_entry(
     settings_path: &Path,
     script_path: &Path,
+    runtime: ClaudeHookRuntime,
 ) -> Result<bool, CoordinationError> {
     let mut settings = load_settings_json(settings_path)?;
     let original_settings = settings.clone();
-    let command = settings_command_for_script(script_path);
+    let command = settings_command_for_script(script_path, runtime)?;
 
     let root = settings.as_object_mut().ok_or_else(|| {
         CoordinationError::StoreError(format!(
@@ -686,30 +702,69 @@ fn load_settings_json(settings_path: &Path) -> Result<Value, CoordinationError> 
     })
 }
 
-#[cfg(target_os = "windows")]
-fn platform_hook_filename() -> String {
-    format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.cmd")
+fn platform_hook_filename(runtime: ClaudeHookRuntime) -> String {
+    match runtime {
+        ClaudeHookRuntime::Windows => format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.cmd"),
+        ClaudeHookRuntime::Posix => format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.sh"),
+    }
 }
 
-#[cfg(not(target_os = "windows"))]
-fn platform_hook_filename() -> String {
-    format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.sh")
+fn settings_command_for_script(
+    script_path: &Path,
+    runtime: ClaudeHookRuntime,
+) -> Result<String, CoordinationError> {
+    let script = runtime_path_string(script_path, runtime)?;
+    Ok(match runtime {
+        ClaudeHookRuntime::Windows => format!("\"{}\"", script),
+        ClaudeHookRuntime::Posix => format!("bash {}", shell_quote_string(&script)),
+    })
 }
 
-#[cfg(target_os = "windows")]
-fn settings_command_for_script(script_path: &Path) -> String {
-    format!("\"{}\"", script_path.display())
+fn shell_quote_string(value: &str) -> String {
+    let escaped = value.replace('\'', "'\"'\"'");
+    format!("'{escaped}'")
 }
 
-#[cfg(not(target_os = "windows"))]
-fn settings_command_for_script(script_path: &Path) -> String {
-    shell_quote_path(script_path)
+fn detect_claude_hook_runtime(claude_dir: &Path) -> ClaudeHookRuntime {
+    let value = claude_dir.display().to_string();
+    if value.starts_with('/') || path::is_wsl_path(&value) {
+        return ClaudeHookRuntime::Posix;
+    }
+    if path::is_windows_drive_path(&value) {
+        return ClaudeHookRuntime::Windows;
+    }
+    ClaudeHookRuntime::Posix
 }
 
-#[cfg(not(target_os = "windows"))]
-fn shell_quote_path(path: &Path) -> String {
-    let value = path.to_string_lossy().replace('\'', "'\"'\"'");
-    format!("'{value}'")
+fn runtime_path_string(
+    path_value: &Path,
+    runtime: ClaudeHookRuntime,
+) -> Result<String, CoordinationError> {
+    let value = path_value.display().to_string();
+    match runtime {
+        ClaudeHookRuntime::Posix => {
+            if value.starts_with('/') {
+                return Ok(value);
+            }
+            path::to_linux(&value).ok_or_else(|| {
+                CoordinationError::Validation(format!(
+                    "path '{}' is not executable from a POSIX Claude runtime",
+                    path_value.display()
+                ))
+            })
+        }
+        ClaudeHookRuntime::Windows => {
+            if path::is_windows_drive_path(&value) {
+                return Ok(value);
+            }
+            path::linux_mount_to_windows(&value).ok_or_else(|| {
+                CoordinationError::Validation(format!(
+                    "path '{}' is not executable from a Windows Claude runtime",
+                    path_value.display()
+                ))
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1172,7 +1227,10 @@ mod tests {
         let installed = ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install hook");
         assert!(installed);
 
-        let script_path = tmp.path().join("hooks").join(platform_hook_filename());
+        let script_path = tmp
+            .path()
+            .join("hooks")
+            .join(platform_hook_filename(ClaudeHookRuntime::Posix));
         assert!(script_path.exists());
         let settings_raw =
             fs::read_to_string(tmp.path().join("settings.json")).expect("settings exists");
@@ -1184,10 +1242,15 @@ mod tests {
         assert_eq!(hooks.len(), 1);
         assert_eq!(hooks[0]["matcher"], "compact");
         assert_eq!(hooks[0]["hooks"][0]["type"], "command");
-        assert!(hooks[0]["hooks"][0]["command"]
-            .as_str()
-            .expect("command str")
-            .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+        assert_eq!(
+            hooks[0]["hooks"][0]["command"]
+                .as_str()
+                .expect("command str"),
+            format!(
+                "bash {}",
+                shell_quote_string(&script_path.display().to_string())
+            )
+        );
     }
 
     #[test]
@@ -1229,10 +1292,19 @@ mod tests {
             .expect("hooks array");
         assert_eq!(hooks.len(), 2);
         assert_eq!(hooks[0]["command"], "echo untouched");
-        assert!(hooks[1]["command"]
-            .as_str()
-            .expect("command")
-            .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+        assert_eq!(
+            hooks[1]["command"].as_str().expect("command"),
+            format!(
+                "bash {}",
+                shell_quote_string(
+                    &tmp.path()
+                        .join("hooks")
+                        .join(platform_hook_filename(ClaudeHookRuntime::Posix))
+                        .display()
+                        .to_string()
+                )
+            )
+        );
     }
 
     #[test]
@@ -1241,7 +1313,10 @@ mod tests {
         // direct fs::write, which risked truncation or clobbering unrelated content mid-update.
         let tmp = tempfile::tempdir().expect("tempdir");
         let settings_path = tmp.path().join("settings.json");
-        let script_path = tmp.path().join("hooks").join(platform_hook_filename());
+        let script_path = tmp
+            .path()
+            .join("hooks")
+            .join(platform_hook_filename(ClaudeHookRuntime::Posix));
         fs::create_dir_all(script_path.parent().expect("hooks dir")).expect("hooks dir");
         fs::write(
             &settings_path,
@@ -1262,7 +1337,8 @@ mod tests {
         .expect("write settings");
 
         let changed =
-            ensure_settings_hook_entry(&settings_path, &script_path).expect("update settings");
+            ensure_settings_hook_entry(&settings_path, &script_path, ClaudeHookRuntime::Posix)
+                .expect("update settings");
         assert!(changed);
 
         let updated: Value = serde_json::from_str(
@@ -1276,10 +1352,61 @@ mod tests {
             "echo stop"
         );
         assert_eq!(updated["hooks"]["SessionStart"][0]["matcher"], "compact");
-        assert!(updated["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-            .as_str()
-            .expect("command")
-            .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+        assert_eq!(
+            updated["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+                .as_str()
+                .expect("command"),
+            format!(
+                "bash {}",
+                shell_quote_string(&script_path.display().to_string())
+            )
+        );
+    }
+
+    #[test]
+    fn detect_claude_hook_runtime_treats_wsl_unc_paths_as_posix() {
+        assert_eq!(
+            detect_claude_hook_runtime(Path::new(r"\\wsl.localhost\Ubuntu\home\mstie\.claude")),
+            ClaudeHookRuntime::Posix
+        );
+    }
+
+    #[test]
+    fn runtime_path_string_converts_windows_exe_for_posix_runtime() {
+        let converted = runtime_path_string(
+            Path::new(r"C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe"),
+            ClaudeHookRuntime::Posix,
+        )
+        .expect("convert to linux path");
+        assert_eq!(
+            converted,
+            "/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe"
+        );
+    }
+
+    #[test]
+    fn settings_command_for_wsl_claude_uses_bash_and_linux_path() {
+        let command = settings_command_for_script(
+            Path::new(r"\\wsl.localhost\Ubuntu\home\mstie\.claude\hooks\taurhaus-session-start-compact.sh"),
+            ClaudeHookRuntime::Posix,
+        )
+        .expect("settings command");
+        assert_eq!(
+            command,
+            "bash '/home/mstie/.claude/hooks/taurhaus-session-start-compact.sh'"
+        );
+    }
+
+    #[test]
+    fn render_hook_script_for_posix_runtime_execs_linux_mapped_windows_exe() {
+        let script = render_hook_script(
+            Path::new(r"C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe"),
+            ClaudeHookRuntime::Posix,
+        )
+        .expect("render script");
+        assert!(script.contains(
+            "exec '/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe' --claude-compact-hook"
+        ));
     }
 
     #[test]
