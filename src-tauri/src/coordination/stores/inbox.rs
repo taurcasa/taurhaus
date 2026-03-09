@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::coordination::errors::CoordinationError;
+use taurhaus_lib::logging::emit_global;
 
 const INBOXES_DIRNAME: &str = "inboxes";
 
@@ -72,14 +74,13 @@ impl MeshInboxStore {
 
         match serde_json::from_str(&raw) {
             Ok(messages) => Ok(messages),
-            Err(err) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    error = %err,
-                    "mesh inbox file was corrupt; treating as empty during load"
-                );
-                Ok(Vec::new())
-            }
+            Err(err) => Err(handle_corrupt_inbox_file(
+                teams_dir,
+                &path,
+                team_name,
+                member_name,
+                &err.to_string(),
+            )),
         }
     }
 
@@ -126,11 +127,105 @@ fn inbox_tmp_path(teams_dir: &Path, team_name: &str, member_name: &str) -> PathB
     inboxes_dir(teams_dir, team_name).join(format!("{member_name}.json.tmp"))
 }
 
+fn inbox_corrupt_path(teams_dir: &Path, team_name: &str, member_name: &str) -> PathBuf {
+    let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+    inboxes_dir(teams_dir, team_name).join(format!("{member_name}.json.corrupt.{timestamp}"))
+}
+
+fn handle_corrupt_inbox_file(
+    teams_dir: &Path,
+    path: &Path,
+    team_name: &str,
+    member_name: &str,
+    parse_error: &str,
+) -> CoordinationError {
+    let quarantine_path = inbox_corrupt_path(teams_dir, team_name, member_name);
+
+    let quarantine_result = fs::rename(path, &quarantine_path);
+    emit_inbox_corruption_event(
+        team_name,
+        member_name,
+        path,
+        quarantine_result
+            .as_ref()
+            .ok()
+            .map(|_| quarantine_path.as_path()),
+        parse_error,
+        quarantine_result
+            .as_ref()
+            .err()
+            .map(|error| error.to_string()),
+    );
+
+    match quarantine_result {
+        Ok(()) => CoordinationError::StoreError(format!(
+            "mesh inbox for '{member_name}' in team '{team_name}' is corrupt at '{}'; quarantined to '{}': {parse_error}",
+            path.display(),
+            quarantine_path.display(),
+        )),
+        Err(rename_error) => CoordinationError::StoreError(format!(
+            "mesh inbox for '{member_name}' in team '{team_name}' is corrupt at '{}': {parse_error}; quarantine failed: {rename_error}",
+            path.display(),
+        )),
+    }
+}
+
+fn emit_inbox_corruption_event(
+    team_name: &str,
+    member_name: &str,
+    path: &Path,
+    quarantine_path: Option<&Path>,
+    parse_error: &str,
+    quarantine_error: Option<String>,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "team_name".to_string(),
+        Value::String(team_name.to_string()),
+    );
+    fields.insert(
+        "member_name".to_string(),
+        Value::String(member_name.to_string()),
+    );
+    fields.insert(
+        "path".to_string(),
+        Value::String(path.display().to_string()),
+    );
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(parse_error.to_string()),
+    );
+    if let Some(quarantine_path) = quarantine_path {
+        fields.insert(
+            "quarantine_path".to_string(),
+            Value::String(quarantine_path.display().to_string()),
+        );
+    }
+    if let Some(quarantine_error) = quarantine_error {
+        fields.insert(
+            "quarantine_error".to_string(),
+            Value::String(quarantine_error),
+        );
+    }
+    emit_global(
+        "warn",
+        "coordination",
+        "mesh.inbox.corrupt",
+        Some("Mesh inbox file is corrupt".to_string()),
+        fields,
+    );
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::{LazyLock, Mutex};
+
     use tempfile::TempDir;
 
     use super::*;
+    use taurhaus_lib::logging::{install_global_sink, LogFileState};
+
+    static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn append_and_load_round_trip() {
@@ -179,5 +274,103 @@ mod tests {
         let teams_dir = tmp.path().join("teams");
         let loaded = MeshInboxStore::load(&teams_dir, "t", "missing").expect("load inbox");
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn load_returns_error_and_quarantines_corrupt_inbox() {
+        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let inbox_dir = teams_dir.join("t").join("inboxes");
+        fs::create_dir_all(&inbox_dir).expect("inbox dir");
+        let inbox_path = inbox_dir.join("agent.json");
+        fs::write(&inbox_path, "{bad json").expect("write corrupt inbox");
+
+        let log_path = tmp.path().join("inbox.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
+
+        let error = MeshInboxStore::load(&teams_dir, "t", "agent").expect_err("corrupt inbox");
+        assert!(error.to_string().contains("is corrupt"));
+        assert!(
+            !inbox_path.exists(),
+            "corrupt inbox should be quarantined away"
+        );
+
+        let quarantine_files = inbox_dir
+            .read_dir()
+            .expect("read quarantine dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("agent.json.corrupt."))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(quarantine_files.len(), 1, "one quarantined inbox expected");
+        assert_eq!(
+            fs::read_to_string(&quarantine_files[0]).expect("read quarantine file"),
+            "{bad json"
+        );
+
+        let contents = wait_for_log_contains(&log_path, "\"event\":\"mesh.inbox.corrupt\"");
+        assert!(contents.contains("\"team_name\":\"t\""));
+        assert!(contents.contains("\"member_name\":\"agent\""));
+    }
+
+    #[test]
+    fn append_fails_closed_when_existing_inbox_is_corrupt() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let inbox_dir = teams_dir.join("t").join("inboxes");
+        fs::create_dir_all(&inbox_dir).expect("inbox dir");
+        let inbox_path = inbox_dir.join("agent.json");
+        fs::write(&inbox_path, "{bad json").expect("write corrupt inbox");
+
+        let message = MeshInboxMessage::new(
+            "taurhaus",
+            "payload".to_string(),
+            None,
+            DateTime::parse_from_rfc3339("2026-03-09T00:05:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+
+        let error = MeshInboxStore::append(&teams_dir, "t", "agent", &message)
+            .expect_err("append should fail on corrupt inbox");
+        assert!(error.to_string().contains("is corrupt"));
+        assert!(
+            !inbox_path.exists(),
+            "append must not recreate the inbox after quarantining corruption"
+        );
+        let quarantine_files = inbox_dir
+            .read_dir()
+            .expect("read quarantine dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("agent.json.corrupt."))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            quarantine_files.len(),
+            1,
+            "quarantined inbox should be preserved"
+        );
+    }
+
+    fn wait_for_log_contains(path: &Path, needle: &str) -> String {
+        for _ in 0..50 {
+            if let Ok(contents) = fs::read_to_string(path) {
+                if contents.contains(needle) {
+                    return contents;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        fs::read_to_string(path).unwrap_or_default()
     }
 }

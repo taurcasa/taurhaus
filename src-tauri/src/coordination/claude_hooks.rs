@@ -61,7 +61,6 @@ enum ClaudeHookSkipReason {
     NoManagedMemberMatch,
     MultipleManagedMembersMatched,
     MissingOperationalSnapshot,
-    EmptyAdditionalContext,
 }
 
 impl ClaudeHookSkipReason {
@@ -71,7 +70,6 @@ impl ClaudeHookSkipReason {
             Self::NoManagedMemberMatch => "no_managed_member_match",
             Self::MultipleManagedMembersMatched => "multiple_managed_members_matched",
             Self::MissingOperationalSnapshot => "missing_operational_snapshot",
-            Self::EmptyAdditionalContext => "empty_additional_context",
         }
     }
 }
@@ -199,35 +197,6 @@ pub fn handle_session_start_hook(
                 matched.member.name
             ))
         })?;
-
-    if additional_context.trim().is_empty() {
-        record_delivery(
-            &matched.team_name,
-            &matched.member.name,
-            CliTool::Claude,
-            &payload.session_id,
-            Utc::now(),
-            CompactionDeliveryResult::Skipped,
-        )
-        .map_err(|error| {
-            emit_claude_hook_failed(
-                ClaudeHookFailureStage::RecordDelivery,
-                Some(&payload),
-                Some(&matched),
-                None,
-                None,
-                None,
-                &error.to_string(),
-            );
-            error
-        })?;
-        emit_claude_hook_skipped(
-            &payload,
-            Some(&matched),
-            ClaudeHookSkipReason::EmptyAdditionalContext,
-        );
-        return Ok(ClaudeHookResponse::default());
-    }
 
     record_delivery(
         &matched.team_name,

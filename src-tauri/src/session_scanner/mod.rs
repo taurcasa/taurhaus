@@ -16,7 +16,6 @@
 //!   `RuntimeSession` via `scan_sessions_for_runtime()`.
 
 pub mod cli_tool;
-pub mod compaction;
 pub mod compaction_extractor;
 pub mod compaction_watcher;
 pub mod control;
