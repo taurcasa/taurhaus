@@ -89,6 +89,34 @@ fn load_catalog_merges_builtins_with_user_overrides() {
 }
 
 #[test]
+fn load_catalog_accepts_repo_builtins_roles_and_presets() {
+    let root = TempDir::new().expect("tempdir");
+    let app_data = root.path().join("app-data");
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_builtins_dir(app_data, builtins);
+
+    let catalog = store.load_catalog().expect("load real built-in catalog");
+
+    for role_id in [
+        "claude-design-lead",
+        "claude-product-checker",
+        "codex-product-lead",
+        "codex-vertical-slice-developer",
+    ] {
+        assert!(
+            catalog.roles.iter().any(|role| role.role_id == role_id),
+            "expected built-in role {role_id} to load"
+        );
+    }
+    assert!(
+        !catalog.presets.is_empty(),
+        "expected built-in presets to load with the role catalog"
+    );
+}
+
+#[test]
 fn write_template_file_is_atomic_and_writes_content() {
     let (_root, app_data, builtins) = setup_dirs();
     let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);

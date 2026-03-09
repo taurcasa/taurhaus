@@ -68,7 +68,7 @@ behavioral_contract:
 capabilities: []
 
 constraints:
-  min_instances: 0
+  min_instances: 1
   max_instances: 1
   requires_lead_tool: null
   allowed_project_binding: lead_project
