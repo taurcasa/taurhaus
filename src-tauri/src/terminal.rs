@@ -297,6 +297,20 @@ enum MacEmulator {
 }
 
 #[cfg(target_os = "macos")]
+fn ghostty_launch_args(tmux_session: &str) -> [&str; 8] {
+    [
+        "-a",
+        "Ghostty",
+        "--args",
+        "-e",
+        "tmux",
+        "attach-session",
+        "-t",
+        tmux_session,
+    ]
+}
+
+#[cfg(target_os = "macos")]
 impl MacEmulator {
     /// Resolve the user's emulator setting string to a concrete emulator.
     /// Falls back through auto-detect if the preferred app isn't installed.
@@ -436,8 +450,9 @@ end tell"#
                     .map_err(|e| format!("Failed to launch iTerm2: {e}"))?;
             }
             Self::Ghostty => {
-                std::process::Command::new("ghostty")
-                    .args(["-e", "tmux", "attach-session", "-t", tmux_session])
+                // Launch via LaunchServices instead of assuming a PATH shim.
+                std::process::Command::new("open")
+                    .args(ghostty_launch_args(tmux_session))
                     .spawn()
                     .map_err(|e| format!("Failed to launch Ghostty: {e}"))?;
             }
@@ -581,5 +596,23 @@ mod tests {
             custom_command: String::new(),
         });
         assert!(result.is_ok());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn ghostty_launch_uses_launchservices_with_tmux_attach_args() {
+        assert_eq!(
+            ghostty_launch_args("taurhaus"),
+            [
+                "-a",
+                "Ghostty",
+                "--args",
+                "-e",
+                "tmux",
+                "attach-session",
+                "-t",
+                "taurhaus",
+            ]
+        );
     }
 }
