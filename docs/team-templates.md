@@ -179,9 +179,11 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (14)**:
+- **Roles (18)**:
   - `claude-orchestrator`, `claude-researcher`, `claude-reviewer`
+  - `claude-product-checker`, `claude-design-lead`
   - `codex-orchestrator`, `codex-architect`, `codex-developer`, `codex-qa`
+  - `codex-product-lead`, `codex-vertical-slice-developer`
   - `gemini-orchestrator`, `gemini-ui-specialist`
   - `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, `taurhaus-designer`
 - **Presets (14)**:
