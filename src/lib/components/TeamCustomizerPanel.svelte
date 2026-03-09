@@ -42,7 +42,8 @@
   let lead = $state(null)
   let agents = $state([])
   let nextAgentId = $state(1)
-  let hydratedConfig = $state(null)
+  let hydratedConfig = $state(undefined)
+  let hydratedSelectedRoleId = $state(undefined)
 
   let showSavePresetDialog = $state(false)
   let newPresetName = $state('')
@@ -293,8 +294,10 @@
 
   $effect(() => {
     if (!open) return
-    if (teamConfig === hydratedConfig) return
+    const selectedRoleId = context?.selectedRole?.roleId ?? null
+    if (teamConfig === hydratedConfig && selectedRoleId === hydratedSelectedRoleId) return
     hydratedConfig = teamConfig
+    hydratedSelectedRoleId = selectedRoleId
     hydrateFromConfig(teamConfig)
   })
 

@@ -1711,6 +1711,57 @@ describe('MeshTab', () => {
     })
   })
 
+  it('initializes cleanly after selecting a lead role from the template browser', async () => {
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
+      expect(screen.getByTestId('role-use-lead-default')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-use-lead-default'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
+      expect(screen.getByTestId('team-customizer-lead')).toBeInTheDocument()
+    })
+
+    await fireEvent.input(screen.getByTestId('team-customizer-name-input'), {
+      target: { value: 'taurhaus-team' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'taurhaus-team',
+          lead: expect.objectContaining({
+            name: 'team-lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'lead-default',
+          }),
+        })
+      )
+    })
+  })
+
   it('reset returns setup state back to empty mode', async () => {
     render(MeshTab, {
       props: {

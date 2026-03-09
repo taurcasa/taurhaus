@@ -72,6 +72,49 @@ describe('TeamCustomizerPanel', () => {
     })
   })
 
+  it('hydrates a default lead from selected role context when opened without team config', async () => {
+    const onSave = vi.fn()
+
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: null,
+        projectPath: '/projects/taurhaus',
+        context: {
+          selectedRole: {
+            roleId: 'codex-product-lead',
+            name: 'Codex Product Lead',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+          },
+        },
+        onSave,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-lead')).toBeInTheDocument()
+      expect(screen.getByTestId('team-customizer-lead-tool-model')).toHaveTextContent('Codex')
+    })
+
+    await fireEvent.input(screen.getByTestId('team-customizer-name-input'), {
+      target: { value: 'taurhaus-team' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamName: 'taurhaus-team',
+        lead: expect.objectContaining({
+          name: 'team-lead',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          roleId: 'codex-product-lead',
+        }),
+      })
+    )
+  })
+
   it('save and reset callbacks fire', async () => {
     const onSave = vi.fn()
     const onReset = vi.fn()
