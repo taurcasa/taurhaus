@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-03-09
+
+Cross-project mesh delivery fix and UI cleanup.
+
+### Fixed
+
+- **Mesh cross-project agent delivery** — outbound messages (`mesh send`, `mesh task assign`) to agents registered in a different project now work correctly. Previously failed with "agent not found" even when the inbox file existed on disk. Mesh 0.2.7.
+
+### Changed
+
+- **Compaction diagnostics removed from UI** — the debug-level compaction reinjection audit surface has been removed from the mesh runtime view. Compaction health data remains accessible through backend logs and `just analyze-compaction`.
+- **Mesh version pin** — bumped from 0.2.6 to 0.2.7
+
 ## [0.5.7] - 2026-03-09
 
 Event-driven compaction pipeline, daemon CPU optimization, multi-CLI lead support, and role import/export. The compaction detection chain is now fully notify-based — no more polling in the middle of an event-driven architecture. Daemon steady-state CPU dropped from ~49% to ~31% of one core.
