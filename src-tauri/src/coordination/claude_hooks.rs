@@ -160,7 +160,7 @@ pub fn handle_session_start_hook(
             Utc::now(),
             CompactionDeliveryResult::Skipped,
         )
-        .map_err(|error| {
+        .inspect_err(|error| {
             emit_claude_hook_failed(
                 ClaudeHookFailureStage::RecordDelivery,
                 Some(&payload),
@@ -170,7 +170,6 @@ pub fn handle_session_start_hook(
                 None,
                 &error.to_string(),
             );
-            error
         })?;
         emit_claude_hook_skipped(
             &payload,
@@ -206,7 +205,7 @@ pub fn handle_session_start_hook(
         Utc::now(),
         CompactionDeliveryResult::Injected,
     )
-    .map_err(|error| {
+    .inspect_err(|error| {
         emit_claude_hook_failed(
             ClaudeHookFailureStage::RecordDelivery,
             Some(&payload),
@@ -216,7 +215,6 @@ pub fn handle_session_start_hook(
             None,
             &error.to_string(),
         );
-        error
     })?;
 
     emit_claude_hook_delivered(&payload, &matched, additional_context.len());

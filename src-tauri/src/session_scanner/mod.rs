@@ -225,13 +225,16 @@ struct ScannerCache {
 static SCAN_CACHE: OnceLock<Mutex<ScannerCache>> = OnceLock::new();
 static TMUX_CHANGE_EPOCH: AtomicU64 = AtomicU64::new(0);
 static LATEST_COMPACTION_RUNTIME_SESSIONS: OnceLock<Mutex<Vec<RuntimeSession>>> = OnceLock::new();
+#[allow(clippy::type_complexity)]
 #[cfg(test)]
 static RUNTIME_IDLE_DETECTOR_OVERRIDE: OnceLock<
     Mutex<Option<fn(&process::ProcessInfo) -> idle::IdleResult>>,
 > = OnceLock::new();
+#[allow(clippy::type_complexity)]
 #[cfg(test)]
 static DISPLAY_SCAN_COMPACTION_HOOK: OnceLock<Mutex<Option<fn(&[RuntimeSession])>>> =
     OnceLock::new();
+#[allow(clippy::type_complexity)]
 #[cfg(test)]
 static DISPLAY_SCAN_COMPLETED_HOOK: OnceLock<Mutex<Option<fn(usize)>>> = OnceLock::new();
 

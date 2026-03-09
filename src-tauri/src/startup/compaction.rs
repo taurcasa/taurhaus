@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::Manager;
@@ -36,7 +36,7 @@ pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> 
 }
 
 fn start_team_watchers(
-    teams_dir: &PathBuf,
+    teams_dir: &Path,
 ) -> Result<Vec<CompactionSignalWatcher>, CoordinationError> {
     let processor = Arc::new(
         |signal: &crate::coordination::stores::CompactionSignalRecord| {
@@ -61,7 +61,7 @@ fn start_team_watchers(
             }
         }
         let watcher = CompactionSignalWatcher::start_at(
-            teams_dir.clone(),
+            teams_dir,
             team_name,
             processor.clone(),
             Default::default(),
@@ -253,9 +253,7 @@ mod tests {
         let jsonl_path = tmp.path().join("session.jsonl");
         std::fs::write(
             &jsonl_path,
-            concat!(
-                "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/mstie/projects/taurhaus\"}}\n"
-            ),
+            "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/mstie/projects/taurhaus\"}}\n",
         )
         .expect("write baseline jsonl");
 

@@ -1127,7 +1127,7 @@ mod tests {
         extract_compaction_signals_for_team(
             &teams_dir,
             "taurhaus-team",
-            &[transcript.clone()],
+            std::slice::from_ref(&transcript),
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 5)
                 .single()
                 .expect("datetime"),
@@ -1141,7 +1141,7 @@ mod tests {
         extract_compaction_signals_for_team(
             &teams_dir,
             "taurhaus-team",
-            &[transcript.clone()],
+            std::slice::from_ref(&transcript),
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
                 .single()
                 .expect("datetime"),
@@ -1182,7 +1182,7 @@ mod tests {
         extract_compaction_signals_for_team(
             &teams_dir,
             "taurhaus-team",
-            &[transcript.clone()],
+            std::slice::from_ref(&transcript),
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
                 .single()
                 .expect("datetime"),
@@ -1198,7 +1198,7 @@ mod tests {
         let stats = extract_compaction_signals_for_team(
             &teams_dir,
             "taurhaus-team",
-            &[transcript.clone()],
+            std::slice::from_ref(&transcript),
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 11)
                 .single()
                 .expect("datetime"),
@@ -1257,7 +1257,7 @@ mod tests {
         extract_compaction_signals_for_team(
             &teams_dir,
             "taurhaus-team",
-            &[transcript.clone()],
+            std::slice::from_ref(&transcript),
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
                 .single()
                 .expect("datetime"),
@@ -1273,7 +1273,7 @@ mod tests {
         let first_stats = extract_compaction_signals_for_team(
             &teams_dir,
             "taurhaus-team",
-            &[transcript.clone()],
+            std::slice::from_ref(&transcript),
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 10)
                 .single()
                 .expect("datetime"),
@@ -1346,7 +1346,7 @@ mod tests {
         };
 
         extract_compaction_signals_at(
-            &[session.clone()],
+            std::slice::from_ref(&session),
             &teams_dir,
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
                 .single()
@@ -1446,8 +1446,9 @@ mod tests {
             member_name: Some("stray".to_string()),
         };
 
+        let sessions = [tracked_session.clone(), stray_session.clone()];
         extract_compaction_signals_at(
-            &[tracked_session.clone(), stray_session.clone()],
+            &sessions,
             &teams_dir,
             Utc.with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
                 .single()

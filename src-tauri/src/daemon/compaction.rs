@@ -447,9 +447,7 @@ mod tests {
         let jsonl_path = tmp.path().join("session.jsonl");
         std::fs::write(
             &jsonl_path,
-            concat!(
-                "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/mstie/projects/taurhaus\"}}\n"
-            ),
+            "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/mstie/projects/taurhaus\"}}\n",
         )
         .expect("write baseline jsonl");
 

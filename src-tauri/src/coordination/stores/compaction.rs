@@ -160,6 +160,7 @@ pub fn is_already_handled(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn record_delivery(
     team_name: &str,
     member_name: &str,
@@ -231,6 +232,7 @@ pub fn emit_compaction_detected_event(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn emit_compaction_delivery_event(
     team_name: &str,
     member_name: &str,
@@ -315,6 +317,7 @@ fn compaction_state_tmp_path(teams_dir: &Path, team_name: &str, member_name: &st
     compaction_state_dir(teams_dir, team_name).join(format!("{member_name}.json.tmp"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compaction_event_fields(
     team_name: &str,
     member_name: &str,

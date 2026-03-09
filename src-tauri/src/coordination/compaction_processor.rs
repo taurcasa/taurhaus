@@ -458,6 +458,7 @@ fn delivery_skip_reason(
     None
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_delivery_at(
     teams_dir: &Path,
     team_name: &str,
