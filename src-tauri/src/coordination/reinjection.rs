@@ -122,10 +122,105 @@ impl CompactionReinjectionService {
         serde_json::to_string_pretty(card)
     }
 
-    pub fn render_codex_inbox_payload(
+    pub fn render_codex_inbox_text(
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(card)
+        let mut lines = vec![
+            "[taurhaus] resume_work_after_compaction".to_string(),
+            "Resume your current task now using the restored context below.".to_string(),
+            "Do not stop to summarize or acknowledge this card.".to_string(),
+            "Reply only if blocked, the context is still insufficient, or the task is complete."
+                .to_string(),
+            String::new(),
+            format!("Current task: #{} — {}", card.task.id, card.task.subject),
+        ];
+
+        if !card.task.execution_mode.is_empty() {
+            lines.push(format!("Execution mode: {}", card.task.execution_mode));
+        }
+        if !card.task.validation_expectation.is_empty() {
+            lines.push(format!(
+                "Validation expectation: {}",
+                card.task.validation_expectation
+            ));
+        }
+        if let Some(role_line) = format_role_line(&card.role) {
+            lines.push(format!("Role: {role_line}"));
+        }
+        if let Some(focus_area) = card.role.focus_area.as_deref() {
+            lines.push(format!("Focus area: {focus_area}"));
+        }
+        if let Some(behavior_summary) = card.role.behavior_summary.as_deref() {
+            lines.push(format!("Behavior: {behavior_summary}"));
+        }
+        if !card.working_set.project_path.is_empty() {
+            lines.push(format!("Project: {}", card.working_set.project_path));
+        }
+
+        append_bullet_section(
+            &mut lines,
+            "Focal files",
+            &card.working_set.focal_files,
+            "Use the current task context if these are empty.",
+        );
+        append_bullet_section(
+            &mut lines,
+            "File ownership boundary",
+            &card.boundaries.file_ownership_boundary,
+            "No explicit file boundary recorded.",
+        );
+
+        if !card.boundaries.adjacent_fix_policy.is_empty() {
+            lines.push(format!(
+                "Adjacent fix policy: {}",
+                card.boundaries.adjacent_fix_policy
+            ));
+        }
+        lines.push(format!(
+            "Override allowed: {}",
+            if card.boundaries.override_allowed {
+                "yes"
+            } else {
+                "no"
+            }
+        ));
+        if let Some(active_override_reason) = card.boundaries.active_override_reason.as_deref() {
+            lines.push(format!("Active override reason: {active_override_reason}"));
+        }
+
+        lines.push(String::new());
+        lines.push(
+            "Next action: continue the current task immediately with this restored context."
+                .to_string(),
+        );
+
+        Ok(lines.join("\n"))
+    }
+}
+
+fn format_role_line(role: &OperationalReinjectionRole) -> Option<String> {
+    match (role.role_name.as_deref(), role.role_id.as_deref()) {
+        (Some(role_name), Some(role_id)) => Some(format!("{role_name} ({role_id})")),
+        (Some(role_name), None) => Some(role_name.to_string()),
+        (None, Some(role_id)) => Some(role_id.to_string()),
+        (None, None) => None,
+    }
+}
+
+fn append_bullet_section(
+    lines: &mut Vec<String>,
+    title: &str,
+    items: &[String],
+    empty_fallback: &str,
+) {
+    if items.is_empty() {
+        lines.push(format!("{title}: {empty_fallback}"));
+        return;
+    }
+
+    lines.push(format!("{title}:"));
+    for item in items {
+        lines.push(format!("- {item}"));
     }
 }
 
@@ -359,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_inbox_payload_matches_expected_snapshot() {
+    fn render_codex_inbox_text_is_imperative_resume_card() {
         let card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -368,16 +463,29 @@ mod tests {
                 .with_timezone(&Utc),
         );
 
-        let rendered = CompactionReinjectionService::render_codex_inbox_payload(&card)
-            .expect("render codex inbox text");
-        let parsed: OperationalReinjectionCard =
-            serde_json::from_str(&rendered).expect("parse rendered inbox payload");
+        let rendered =
+            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
-        assert_eq!(parsed, card);
+        assert!(rendered.contains("[taurhaus] resume_work_after_compaction"));
+        assert!(rendered.contains("Resume your current task now using the restored context below."));
+        assert!(rendered.contains("Do not stop to summarize or acknowledge this card."));
+        assert!(rendered.contains("Current task: #673"));
+        assert!(rendered.contains("Execution mode: recommend"));
+        assert!(rendered.contains("Validation expectation: report-only"));
+        assert!(rendered.contains("Role: Taurhaus Architect (taurhaus-architect)"));
+        assert!(rendered.contains("Focus area: Cross-layer diagnosis"));
+        assert!(rendered.contains("Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."));
+        assert!(rendered.contains("Project: /home/mstie/projects/taurhaus"));
+        assert!(rendered.contains("Focal files:"));
+        assert!(rendered.contains("- docs/architecture/post-compaction-reinjection.md"));
+        assert!(rendered.contains("File ownership boundary:"));
+        assert!(rendered.contains("Adjacent fix policy: no"));
+        assert!(rendered.contains("Override allowed: no"));
+        assert!(rendered.contains("Next action: continue the current task immediately with this restored context."));
     }
 
     #[test]
-    fn render_codex_inbox_payload_preserves_missing_optionals_and_override_status() {
+    fn render_codex_inbox_text_handles_sparse_cards() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -394,17 +502,22 @@ mod tests {
         card.boundaries.file_ownership_boundary.clear();
         card.boundaries.override_allowed = true;
         card.boundaries.active_override_reason = Some("lead-approved adjacent fix".to_string());
+        card.working_set.focal_files.clear();
 
-        let rendered = CompactionReinjectionService::render_codex_inbox_payload(&card)
-            .expect("render codex inbox text");
-        let parsed: OperationalReinjectionCard =
-            serde_json::from_str(&rendered).expect("parse rendered inbox payload");
+        let rendered =
+            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
-        assert_eq!(parsed, card);
+        assert!(!rendered.contains("Role:"));
+        assert!(!rendered.contains("Execution mode:"));
+        assert!(!rendered.contains("Validation expectation:"));
+        assert!(rendered.contains("Focal files: Use the current task context if these are empty."));
+        assert!(rendered.contains("File ownership boundary: No explicit file boundary recorded."));
+        assert!(rendered.contains("Override allowed: yes"));
+        assert!(rendered.contains("Active override reason: lead-approved adjacent fix"));
     }
 
     #[test]
-    fn render_codex_inbox_payload_preserves_role_id_when_role_name_is_missing() {
+    fn render_codex_inbox_text_preserves_role_id_when_role_name_is_missing() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -414,12 +527,9 @@ mod tests {
         );
         card.role.role_name = None;
 
-        let rendered = CompactionReinjectionService::render_codex_inbox_payload(&card)
-            .expect("render codex inbox text");
-        let parsed: OperationalReinjectionCard =
-            serde_json::from_str(&rendered).expect("parse rendered inbox payload");
+        let rendered =
+            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
-        assert_eq!(parsed.role.role_name, None);
-        assert_eq!(parsed.role.role_id.as_deref(), Some("taurhaus-architect"));
+        assert!(rendered.contains("Role: taurhaus-architect"));
     }
 }

@@ -239,7 +239,7 @@ fn append_codex_inbox_message(
     now: DateTime<Utc>,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
     let rendered_payload =
-        CompactionReinjectionService::render_codex_inbox_payload(card).map_err(|error| {
+        CompactionReinjectionService::render_codex_inbox_text(card).map_err(|error| {
             crate::coordination::errors::CoordinationError::StoreError(format!(
                 "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
                 member_name, team_name
