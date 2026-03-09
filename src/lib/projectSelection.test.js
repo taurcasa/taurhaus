@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createProjectSelectionRequests, loadProjectSelectionData, withFallback } from './projectSelection.js'
+import {
+  createProjectSelectionRequests,
+  loadCriticalProjectSelectionData,
+  loadDeferredProjectSelectionData,
+  loadProjectSelectionData,
+  withFallback,
+} from './projectSelection.js'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -86,6 +92,38 @@ describe('projectSelection timeouts', () => {
     expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
   })
 
+  it('coalesces rapid critical project switches so only the final critical batch starts', async () => {
+    vi.useFakeTimers()
+
+    const ipc = {
+      getProject: vi.fn((projectId) => Promise.resolve({ id: projectId })),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const first = loadCriticalProjectSelectionData('p1', ipc)
+    const second = loadCriticalProjectSelectionData('p2', ipc)
+    const third = loadCriticalProjectSelectionData('p3', ipc)
+
+    expect(ipc.getProject).not.toHaveBeenCalled()
+    expect(ipc.getLatestSession).not.toHaveBeenCalled()
+    expect(ipc.listSessions).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(26)
+    await Promise.all([first, second, third])
+
+    expect(ipc.getProject).toHaveBeenCalledTimes(1)
+    expect(ipc.getProject).toHaveBeenCalledWith('p3')
+    expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)
+    expect(ipc.listSessions).toHaveBeenCalledTimes(1)
+    expect(ipc.getRecentCommits).not.toHaveBeenCalled()
+    expect(ipc.getReadme).not.toHaveBeenCalled()
+    expect(ipc.getRelationships).not.toHaveBeenCalled()
+  })
+
   it('still starts separate IPC batches for non-rapid project switches', async () => {
     vi.useFakeTimers()
 
@@ -136,5 +174,28 @@ describe('projectSelection timeouts', () => {
     expect(ipc.getReadme).toHaveBeenCalledTimes(1)
     expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
     expect(result.detail.value).toEqual({ id: 'p1' })
+  })
+
+  it('loads deferred project sections without refetching critical data', async () => {
+    const ipc = {
+      getProject: vi.fn(() => Promise.resolve({ id: 'p1' })),
+      getRecentCommits: vi.fn(() => Promise.resolve([{ hash: 'abc123' }])),
+      getLatestSession: vi.fn(() => Promise.resolve({ id: 'latest-1' })),
+      listSessions: vi.fn(() => Promise.resolve([{ id: 's1' }])),
+      getReadme: vi.fn(() => Promise.resolve({ path: 'README.md', content: '# Hello' })),
+      getRelationships: vi.fn(() => Promise.resolve([{ id: 'rel-1' }])),
+    }
+
+    const result = await loadDeferredProjectSelectionData('p1', ipc)
+
+    expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
+    expect(ipc.getReadme).toHaveBeenCalledTimes(1)
+    expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
+    expect(ipc.getProject).not.toHaveBeenCalled()
+    expect(ipc.getLatestSession).not.toHaveBeenCalled()
+    expect(ipc.listSessions).not.toHaveBeenCalled()
+    expect(result.commits.value).toEqual([{ hash: 'abc123' }])
+    expect(result.readme.value).toEqual({ path: 'README.md', content: '# Hello' })
+    expect(result.rels.value).toEqual([{ id: 'rel-1' }])
   })
 })
