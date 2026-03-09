@@ -545,6 +545,11 @@ fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
+    state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.reconcile_team_presence_for_live_status(&team_name)
+        })
+        .map_err(map_coordination_error)?;
     let roster = get_team_roster_with_attachments(state.teams_dir(), &team_name)
         .map_err(map_coordination_error)?;
     let lead_name = roster_lead_name(&roster);

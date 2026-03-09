@@ -532,6 +532,82 @@ impl CoordinationOrchestrator {
         self.get_team_status_fast(team_name)
     }
 
+    /// Reconcile only pane-backed presence drift for live-status reads.
+    ///
+    /// This keeps UI polling on a cheap path: it updates members that have
+    /// clearly gone offline (missing/dead/shell pane) without performing the
+    /// heavier daemon discovery/restart work from full liveness reconciliation.
+    pub fn reconcile_team_presence_for_live_status(
+        &mut self,
+        team_name: &str,
+    ) -> Result<(), CoordinationError> {
+        validate_team_name(team_name)?;
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let members_by_name = config
+            .members
+            .into_iter()
+            .map(|member| (member.name.clone(), member))
+            .collect::<HashMap<_, _>>();
+        let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
+
+        for (member_name, mut runtime) in runtime_records {
+            let Some(member) = members_by_name.get(&member_name) else {
+                continue;
+            };
+
+            let offline_detected = match runtime.pane_id.as_deref() {
+                None => true,
+                Some(pane_id) => {
+                    if !self.runtime.pane_exists(pane_id)? || self.runtime.pane_is_dead(pane_id)? {
+                        true
+                    } else {
+                        self.runtime.pane_is_shell(pane_id)?
+                    }
+                }
+            };
+
+            if !offline_detected || runtime.health == HealthState::SessionDead {
+                continue;
+            }
+
+            runtime.health = HealthState::SessionDead;
+            runtime.session_id = None;
+
+            if member.cli_tool != CliTool::Claude {
+                if let Some(pid) = runtime.daemon_pid {
+                    match self.runtime.is_process_running_by_pid(pid) {
+                        Ok(true) => {
+                            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                                tracing::warn!(
+                                    team = %team_name,
+                                    member = %member_name,
+                                    pid = pid,
+                                    error = %err,
+                                    "failed to terminate stale daemon during live-status presence reconciliation"
+                                );
+                            }
+                        }
+                        Ok(false) => {}
+                        Err(err) => {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = pid,
+                                error = %err,
+                                "failed to check daemon pid during live-status presence reconciliation"
+                            );
+                        }
+                    }
+                }
+                runtime.daemon_pid = None;
+            }
+
+            MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+        }
+
+        Ok(())
+    }
+
     /// Reconcile member liveness for a team using pane + daemon state.
     ///
     /// This is a write-on-drift repair pass for explicit recovery and background
