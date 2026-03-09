@@ -4,11 +4,9 @@ import { renderMarkdown, highlightCode } from './markdown.js'
 const {
   loadedLangs,
   loadedThemes,
-  mockCreateBundledHighlighter,
-  mockHighlighterFactory,
+  mockCreateHighlighter,
   mockLoadLanguage,
   mockLoadTheme,
-  mockCreateJavaScriptRegexEngine,
 } = vi.hoisted(() => {
   const loadedLangs = new Set()
   const loadedThemes = new Set(['github-light', 'github-dark-dimmed'])
@@ -21,12 +19,9 @@ const {
     loadedThemes.add(theme)
     return Promise.resolve()
   })
-  const mockHighlighterFactory = vi.fn((opts = {}) => {
+  const mockCreateHighlighter = vi.fn((opts = {}) => {
     for (const lang of opts.langs ?? []) {
       loadedLangs.add(String(lang).toLowerCase())
-    }
-    for (const theme of opts.themes ?? []) {
-      loadedThemes.add(String(theme))
     }
     return Promise.resolve({
       getLoadedLanguages: () => [...loadedLangs],
@@ -36,35 +31,20 @@ const {
       codeToHtml: (code, options) => `<pre class="shiki" data-lang="${options?.lang ?? ''}"><code>${code}</code></pre>`,
     })
   })
-  const mockCreateBundledHighlighter = vi.fn(() => mockHighlighterFactory)
-  const mockCreateJavaScriptRegexEngine = vi.fn(() => ({}))
-  return {
-    loadedLangs,
-    loadedThemes,
-    mockCreateBundledHighlighter,
-    mockCreateJavaScriptRegexEngine,
-    mockHighlighterFactory,
-    mockLoadLanguage,
-    mockLoadTheme,
-  }
+  return { loadedLangs, loadedThemes, mockCreateHighlighter, mockLoadLanguage, mockLoadTheme }
 })
 
-vi.mock('shiki/core', () => ({
-  createBundledHighlighter: mockCreateBundledHighlighter,
+vi.mock('shiki', () => ({
+  createHighlighter: mockCreateHighlighter,
 }))
 
-vi.mock('shiki/engine/javascript', () => ({
-  createJavaScriptRegexEngine: mockCreateJavaScriptRegexEngine,
-}))
-
-vi.mock('shiki/themes', () => ({
-  bundledThemes: {},
+vi.mock('@shikijs/markdown-it/core', () => ({
+  fromHighlighter: vi.fn(() => () => {}),
 }))
 
 beforeEach(() => {
   mockLoadLanguage.mockClear()
   mockLoadTheme.mockClear()
-  mockHighlighterFactory.mockClear()
 })
 
 describe('renderMarkdown', () => {
@@ -193,49 +173,17 @@ describe('renderMarkdown', () => {
     expect(html).toContain('language-mermaid')
     // Mermaid source should remain for downstream diagram rendering.
     expect(html).toContain('flowchart TD')
-    expect(mockLoadLanguage).not.toHaveBeenCalledWith('mermaid')
-  })
-
-  it('falls back to plain markdown-it for oversized markdown documents', async () => {
-    const source = `# Title\n\n${'line\n'.repeat(2_500)}`
-    const html = await renderMarkdown(source)
-
-    expect(html).toContain('<h1>')
-    expect(html).toContain('Title')
-    expect(mockLoadLanguage).not.toHaveBeenCalled()
   })
 })
 
 describe('highlightCode', () => {
-  it('creates the bundled highlighter with a narrowed supported language registry', async () => {
+  it('initializes highlighter with core language set', async () => {
     await highlightCode('const x = 1', 'javascript')
-    const opts = mockCreateBundledHighlighter.mock.calls[0]?.[0] ?? {}
-    expect(Object.keys(opts.langs ?? {})).toEqual(
+    const opts = mockCreateHighlighter.mock.calls[0]?.[0] ?? {}
+    expect(opts.langs).toEqual(
       expect.arrayContaining([
-        'bash',
-        'css',
-        'diff',
-        'dockerfile',
-        'graphql',
-        'html',
-        'javascript',
-        'json',
-        'json5',
-        'jsonc',
-        'markdown',
-        'mdx',
-        'mermaid',
-        'powershell',
-        'python',
-        'rust',
-        'shellsession',
-        'sql',
-        'svelte',
-        'toml',
-        'tsx',
-        'typescript',
-        'xml',
-        'yaml',
+        'javascript', 'typescript', 'json', 'yaml', 'toml', 'markdown',
+        'html', 'css', 'rust', 'python', 'bash', 'svelte',
       ])
     )
   })
@@ -243,15 +191,14 @@ describe('highlightCode', () => {
   it('highlights core languages without lazy language loads', async () => {
     mockLoadLanguage.mockClear()
     const core = [
+      'javascript',
+      'typescript',
+      'rust',
+      'python',
       'bash',
       'json',
-      'javascript',
+      'yaml',
       'markdown',
-      'mermaid',
-      'python',
-      'rust',
-      'svelte',
-      'typescript',
     ]
     for (const lang of core) {
       await highlightCode('const x = 1', lang)
@@ -286,10 +233,5 @@ describe('highlightCode', () => {
   it('accepts theme ID string', async () => {
     const html = await highlightCode('let x = 1', 'rust', 'github-dark-dimmed')
     expect(html).toContain('let x = 1')
-  })
-
-  it('returns plain fallback for oversized code blocks', async () => {
-    const huge = `${'const value = 1;\n'.repeat(2_100)}`
-    expect(await highlightCode(huge, 'javascript')).toBe('')
   })
 })

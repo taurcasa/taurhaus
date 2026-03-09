@@ -50,11 +50,8 @@
     }
   })
 
-  // Only split into fallback lines when highlighted output is unavailable.
-  const lines = $derived.by(() => {
-    if (ready && highlightedHtml) return []
-    return code ? code.split('\n') : []
-  })
+  // Split code into lines for fallback display
+  const lines = $derived(code ? code.split('\n') : [])
 
   let containerEl = $state(null)
 
