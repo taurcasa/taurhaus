@@ -447,7 +447,7 @@ impl CoordinationOrchestrator {
             }
         }
 
-        let operator_name = removal_actor_identity();
+        let operator_name = self.team_daemon_operator_name(&request.team_name)?;
         let (started_team_daemon, team_daemon_warning) = match self
             .runtime
             .spawn_team_daemon(&request.team_name, &operator_name)
@@ -1259,7 +1259,17 @@ impl CoordinationOrchestrator {
     }
 
     pub(crate) fn ensure_team_daemon_running_best_effort(&self, team_name: &str) {
-        let operator_name = removal_actor_identity();
+        let operator_name = match self.team_daemon_operator_name(team_name) {
+            Ok(operator_name) => operator_name,
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    error = %err,
+                    "failed to resolve lead identity for team daemon startup"
+                );
+                return;
+            }
+        };
         match self.runtime.spawn_team_daemon(team_name, &operator_name) {
             Ok(pid) => tracing::info!(
                 team = %team_name,
@@ -1284,6 +1294,20 @@ impl CoordinationOrchestrator {
                 "failed to stop team daemon during teardown"
             );
         }
+    }
+
+    fn team_daemon_operator_name(&self, team_name: &str) -> Result<String, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .ok_or_else(|| {
+                CoordinationError::Conflict(format!(
+                    "team '{team_name}' has no configured lead for team-daemon control"
+                ))
+            })
     }
 
     /// Drain buffered audit events and clear the in-memory log.

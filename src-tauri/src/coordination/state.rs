@@ -846,7 +846,10 @@ mod tests {
         )));
         assert!(runtime.calls().iter().any(|call| matches!(
             call,
-            RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final"
+            RuntimeCall::SpawnTeamDaemon {
+                team_name,
+                operator_name,
+            } if team_name == "architecture-final" && operator_name == "team-lead"
         )));
     }
 
@@ -928,6 +931,10 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                orch.add_member(
+                    "architecture-final",
                     sample_member(
                         "existing-dev",
                         MemberRole::Agent,
@@ -981,7 +988,10 @@ mod tests {
         )));
         assert!(runtime.calls().iter().any(|call| matches!(
             call,
-            RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final"
+            RuntimeCall::SpawnTeamDaemon {
+                team_name,
+                operator_name,
+            } if team_name == "architecture-final" && operator_name == "team-lead"
         )));
     }
 
@@ -1006,6 +1016,10 @@ mod tests {
         state
             .with_orchestrator(|orch| {
                 orch.create_team("architecture-final", None)?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
                 orch.add_member(
                     "architecture-final",
                     sample_member(
@@ -1096,6 +1110,10 @@ mod tests {
         state
             .with_orchestrator(|orch| {
                 orch.create_team("architecture-final", None)?;
+                orch.add_member(
+                    "architecture-final",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
                 orch.add_member(
                     "architecture-final",
                     sample_member(

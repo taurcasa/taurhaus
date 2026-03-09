@@ -896,6 +896,13 @@ fn resume_team_lead_first_then_same_project_then_cross_project() {
         join_order,
         vec!["builder".to_string(), "reviewer".to_string()]
     );
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnTeamDaemon {
+            team_name,
+            operator_name,
+        } if team_name == "architecture-final" && operator_name == "team-lead"
+    )));
 }
 
 #[test]
@@ -1310,6 +1317,12 @@ fn add_member_then_get_status() {
     orchestrator
         .create_team(team_name, None)
         .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add should succeed");
     orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
@@ -1743,6 +1756,12 @@ fn startup_reconcile_clears_stale_daemon_pid() {
         .create_team(team_name, None)
         .expect("create should succeed");
     orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add should succeed");
+    orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
 
@@ -1815,6 +1834,12 @@ fn liveness_reconcile_marks_missing_pane_id_offline() {
     orchestrator
         .create_team(team_name, None)
         .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add should succeed");
     orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
@@ -2225,6 +2250,12 @@ fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_d
         .create_team(team_name, None)
         .expect("create should succeed");
     orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add should succeed");
+    orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
 
@@ -2259,6 +2290,13 @@ fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_d
         call,
         RuntimeCall::CheckTeamDaemonCurrentMeshBinary { team_name: recorded_team }
             if recorded_team == team_name
+    )));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnTeamDaemon {
+            team_name: recorded_team,
+            operator_name,
+        } if recorded_team == team_name && operator_name == "team-lead"
     )));
     assert!(calls.iter().any(
         |call| matches!(call, RuntimeCall::CheckPidCurrentMeshBinary { pid } if *pid == 4242)
@@ -3103,7 +3141,10 @@ fn initialize_team_ensures_team_daemon_running() {
 
     assert!(runtime.calls().iter().any(|call| matches!(
         call,
-        RuntimeCall::SpawnTeamDaemon { team_name, .. } if team_name == "architecture-final-init"
+        RuntimeCall::SpawnTeamDaemon {
+            team_name,
+            operator_name,
+        } if team_name == "architecture-final-init" && operator_name == "team-lead"
     )));
 }
 
