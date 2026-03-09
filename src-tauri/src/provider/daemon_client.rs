@@ -263,6 +263,12 @@ impl DaemonProvider {
         );
     }
 
+    /// Public disconnect hook for lifecycle management paths that need to
+    /// drop the current daemon connection before forcing a restart.
+    pub fn disconnect(&self, reason: &str) {
+        self.mark_disconnected(reason);
+    }
+
     /// Generate a unique request ID.
     fn next_id(&self) -> String {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);

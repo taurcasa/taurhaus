@@ -189,9 +189,89 @@ pub fn try_connect_daemon(
     None
 }
 
+pub enum StartupDaemonValidation {
+    Healthy,
+    RestartedStaleBinary,
+}
+
 /// Try to restart the daemon process (called by health check on disconnect).
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
     try_restart_daemon_with(distro, port, try_start_daemon)
+}
+
+pub fn validate_startup_daemon_binary(
+    provider: &DaemonProvider,
+    wsl_distro: Option<&str>,
+    port: u16,
+    log_path: &Path,
+) -> Result<StartupDaemonValidation, std::io::Error> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (provider, wsl_distro, port, log_path);
+        return Ok(StartupDaemonValidation::Healthy);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if !is_native_daemon() {
+            let _ = (provider, wsl_distro, port, log_path);
+            return Ok(StartupDaemonValidation::Healthy);
+        }
+
+        let Some(pid) = crate::platform::listening_process_on_port(port) else {
+            bwarn(
+                log_path,
+                &format!(
+                    "Could not resolve daemon PID for port {port}; skipping binary staleness check"
+                ),
+            );
+            return Ok(StartupDaemonValidation::Healthy);
+        };
+
+        let running_exe = crate::platform::process_exe(pid).ok_or_else(|| {
+            std::io::Error::other(format!(
+                "Failed to read /proc/{pid}/exe for connected daemon"
+            ))
+        })?;
+        let expected_binary = daemon_binary_path(wsl_distro.unwrap_or("native"))?;
+        let expected_path = PathBuf::from(&expected_binary);
+        if !startup_daemon_binary_is_stale(&running_exe, &expected_path) {
+            return Ok(StartupDaemonValidation::Healthy);
+        }
+        let running_exe_display = running_exe.to_string_lossy().to_string();
+
+        blog(
+            log_path,
+            &format!(
+                "Detected stale daemon binary at startup: pid={pid}, running_exe={running_exe_display}, expected_exe={expected_binary}"
+            ),
+        );
+
+        provider.disconnect("stale_startup_binary");
+        terminate_pid_gracefully(pid, log_path)?;
+        try_restart_daemon(wsl_distro.unwrap_or("native"), port)?;
+        reconnect_existing_provider_until_reachable(provider, port)?;
+
+        blog(
+            log_path,
+            "Reconnected to fresh daemon binary after stale daemon eviction",
+        );
+        Ok(StartupDaemonValidation::RestartedStaleBinary)
+    }
+}
+
+fn startup_daemon_binary_is_stale(running_exe: &Path, expected_path: &Path) -> bool {
+    let running_exe_display = running_exe.to_string_lossy();
+    if running_exe_display.ends_with(" (deleted)") {
+        return true;
+    }
+
+    running_exe
+        .canonicalize()
+        .unwrap_or_else(|_| running_exe.to_path_buf())
+        != expected_path
+            .canonicalize()
+            .unwrap_or_else(|_| expected_path.to_path_buf())
 }
 
 fn try_restart_daemon_with<F>(distro: &str, port: u16, starter: F) -> Result<(), std::io::Error>
@@ -395,6 +475,70 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
             return None;
         }
         std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+fn reconnect_existing_provider_until_reachable(
+    provider: &DaemonProvider,
+    port: u16,
+) -> Result<(), std::io::Error> {
+    let start = Instant::now();
+    loop {
+        if provider.reconnect().is_ok() {
+            return Ok(());
+        }
+        if start.elapsed() >= STARTUP_TIMEOUT {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("Timed out reconnecting daemon on port {port} after stale restart"),
+            ));
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+fn terminate_pid_gracefully(pid: u32, log_path: &Path) -> Result<(), std::io::Error> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (pid, log_path);
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        blog(log_path, &format!("Stopping stale daemon pid {pid}"));
+        let term_status = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()?;
+        if !term_status.success() && crate::platform::process_exists(pid) {
+            return Err(std::io::Error::other(format!(
+                "Failed to send SIGTERM to stale daemon pid {pid}"
+            )));
+        }
+
+        for _ in 0..20 {
+            if !crate::platform::process_exists(pid) {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        let kill_status = std::process::Command::new("kill")
+            .args(["-KILL", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()?;
+        if !kill_status.success() && crate::platform::process_exists(pid) {
+            return Err(std::io::Error::other(format!(
+                "Failed to send SIGKILL to stale daemon pid {pid}"
+            )));
+        }
+
+        Ok(())
     }
 }
 
@@ -802,6 +946,33 @@ mod tests {
                 "Should not fail on distro validation, got: {err}"
             );
         }
+    }
+
+    #[test]
+    fn startup_daemon_binary_is_stale_for_deleted_inode_and_mismatched_binary() {
+        // Regression: startup previously trusted any responding daemon on the
+        // fast path, including deleted-inode or old-binary processes.
+        let tempdir = tempfile::tempdir().unwrap();
+        let expected = tempdir.path().join("taurhaus-daemon");
+        let alternate = tempdir.path().join("taurhaus-daemon.old");
+        std::fs::write(&expected, "expected").unwrap();
+        std::fs::write(&alternate, "alternate").unwrap();
+
+        assert!(
+            !startup_daemon_binary_is_stale(&expected, &expected),
+            "matching binary path should be accepted"
+        );
+        assert!(
+            startup_daemon_binary_is_stale(&alternate, &expected),
+            "different binary path should be rejected"
+        );
+        assert!(
+            startup_daemon_binary_is_stale(
+                &PathBuf::from(format!("{} (deleted)", expected.display())),
+                &expected
+            ),
+            "deleted-inode binary should be rejected"
+        );
     }
 
     #[test]

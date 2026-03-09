@@ -3,6 +3,16 @@
 use std::fs;
 use std::path::PathBuf;
 
+/// Read the executable path of a process from `/proc/{pid}/exe`.
+pub fn process_exe(pid: u32) -> Option<PathBuf> {
+    fs::read_link(format!("/proc/{pid}/exe")).ok()
+}
+
+/// Whether a process directory still exists under `/proc`.
+pub fn process_exists(pid: u32) -> bool {
+    fs::metadata(format!("/proc/{pid}")).is_ok()
+}
+
 /// Read the working directory of a process from `/proc/{pid}/cwd`.
 pub fn process_cwd(pid: u32) -> Option<PathBuf> {
     fs::read_link(format!("/proc/{pid}/cwd")).ok()
@@ -117,6 +127,67 @@ pub fn has_established_443(pid: u32, socket_inodes: &[u64]) -> bool {
     false
 }
 
+/// Find the first process that owns a LISTEN socket on the given TCP port.
+pub fn listening_process_on_port(port: u16) -> Option<u32> {
+    let target_inodes = collect_listening_socket_inodes(port);
+    if target_inodes.is_empty() {
+        return None;
+    }
+
+    let entries = fs::read_dir("/proc").ok()?;
+    let mut pids = entries
+        .flatten()
+        .filter_map(|entry| {
+            let file_name = entry.file_name();
+            let pid = file_name.to_string_lossy().parse::<u32>().ok()?;
+            let inodes = collect_socket_inodes(pid);
+            if inodes.iter().any(|inode| target_inodes.contains(inode)) {
+                Some(pid)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    pids.sort_unstable();
+    pids.into_iter().next()
+}
+
+fn collect_listening_socket_inodes(port: u16) -> Vec<u64> {
+    let hex_port = format!("{port:04X}");
+    let mut inodes = Vec::new();
+
+    for tcp_file in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(content) = fs::read_to_string(tcp_file) else {
+            continue;
+        };
+
+        for line in content.lines().skip(1) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() < 10 {
+                continue;
+            }
+
+            // LISTEN state.
+            if fields[3] != "0A" {
+                continue;
+            }
+
+            if !fields[1].ends_with(&format!(":{hex_port}")) {
+                continue;
+            }
+
+            if let Ok(inode) = fields[9].parse::<u64>() {
+                inodes.push(inode);
+            }
+        }
+    }
+
+    inodes.sort_unstable();
+    inodes.dedup();
+    inodes
+}
+
 /// Parse a single line from /proc/net/tcp to check if it's an ESTABLISHED
 /// connection to port 443 owned by one of our socket inodes.
 fn is_established_443_line(line: &str, socket_inodes: &[u64]) -> bool {
@@ -167,6 +238,11 @@ mod tests {
     }
 
     #[test]
+    fn process_exe_returns_none_for_nonexistent_pid() {
+        assert!(process_exe(999_999_999).is_none());
+    }
+
+    #[test]
     fn process_tty_returns_none_for_nonexistent_pid() {
         assert!(process_tty(999_999_999).is_none());
     }
@@ -179,6 +255,11 @@ mod tests {
     #[test]
     fn process_rchar_returns_none_for_nonexistent_pid() {
         assert!(process_rchar(999_999_999).is_none());
+    }
+
+    #[test]
+    fn process_exists_false_for_nonexistent_pid() {
+        assert!(!process_exists(999_999_999));
     }
 
     #[test]
@@ -203,6 +284,15 @@ mod tests {
             rchar.unwrap() > 0,
             "rchar should be > 0 for a running process"
         );
+    }
+
+    #[test]
+    fn listening_process_on_port_finds_current_process_listener() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let port = listener.local_addr().expect("listener addr").port();
+
+        let pid = listening_process_on_port(port).expect("pid for listening socket");
+        assert_eq!(pid, std::process::id());
     }
 
     #[test]

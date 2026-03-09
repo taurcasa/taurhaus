@@ -375,7 +375,7 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
     );
     emit_startup_daemon_phase_started();
     let daemon_phase_started_at = Instant::now();
-    let daemon_phase = determine_daemon_phase(&conn);
+    let daemon_phase = determine_daemon_phase(&conn, &setup_paths.log_path);
     let context = build_setup_context(&setup_paths, &daemon_phase);
     emit_startup_daemon_phase_completed(
         &context,
@@ -419,9 +419,10 @@ fn initialize_database(
     Ok(db::init_db(&setup_paths.db_path)?)
 }
 
-fn determine_daemon_phase(conn: &rusqlite::Connection) -> DaemonPhase {
+fn determine_daemon_phase(conn: &rusqlite::Connection, log_path: &std::path::Path) -> DaemonPhase {
     let wsl_distro = detect_wsl_distro(conn);
-    let (daemon_provider, daemon_connected_at_startup) = connect_daemon_provider(&wsl_distro);
+    let (daemon_provider, daemon_connected_at_startup) =
+        connect_daemon_provider(&wsl_distro, log_path);
     DaemonPhase {
         wsl_distro,
         daemon_provider,
@@ -451,6 +452,7 @@ fn detect_wsl_distro(conn: &rusqlite::Connection) -> Option<String> {
 
 fn connect_daemon_provider(
     wsl_distro: &Option<String>,
+    log_path: &std::path::Path,
 ) -> (Option<provider::daemon_client::DaemonProvider>, bool) {
     if wsl_distro.is_none() {
         return (None, false);
@@ -461,6 +463,28 @@ fn connect_daemon_provider(
     let connect_started_at = Instant::now();
     match provider::daemon_client::DaemonProvider::connect(&addr) {
         Ok(provider) => {
+            match crate::daemon::launcher::validate_startup_daemon_binary(
+                &provider,
+                wsl_distro.as_deref(),
+                port,
+                log_path,
+            ) {
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "Startup daemon binary validation failed; deferring daemon readiness"
+                    );
+                    provider.disconnect("startup_binary_validation_failed");
+                    emit_startup_daemon_connect_deferred(
+                        &addr,
+                        wsl_distro.as_deref(),
+                        "daemon_binary_validation_failed",
+                        connect_started_at.elapsed().as_millis() as u64,
+                    );
+                    return (Some(provider), false);
+                }
+            }
             tracing::info!("Connected to existing daemon (fast path)");
             emit_startup_daemon_connect_succeeded(
                 &addr,
