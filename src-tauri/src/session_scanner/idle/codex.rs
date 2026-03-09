@@ -1,4 +1,7 @@
 use super::*;
+use crate::coordination::mesh_cli;
+use crate::coordination::roster::get_team_roster_with_attachments;
+use crate::coordination::stores::TeamConfigStore;
 use crate::provider::path::normalize_project_path;
 use std::collections::HashMap;
 use std::fs;
@@ -58,11 +61,39 @@ struct CodexCacheEntry {
 
 /// How long a Codex cache entry is valid before we rescan.
 const CODEX_CACHE_TTL: Duration = Duration::from_secs(30);
+const CODEX_RUNTIME_ATTACHMENT_CACHE_TTL: Duration = Duration::from_secs(5);
 
 static CODEX_PATH_CACHE: Mutex<Option<HashMap<String, CodexCacheEntry>>> = Mutex::new(None);
+static CODEX_RUNTIME_ATTACHMENT_CACHE: Mutex<Option<CodexRuntimeAttachmentCache>> =
+    Mutex::new(None);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CodexRuntimeAttachment {
+    project_path: String,
+    session_id: Option<String>,
+    jsonl_path: PathBuf,
+    last_seen_at: Option<chrono::DateTime<chrono::Utc>>,
+    attached_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone)]
+struct CodexRuntimeAttachmentCache {
+    entries_by_project: HashMap<String, Vec<CodexRuntimeAttachment>>,
+    scanned_at: SystemTime,
+}
 
 /// Core Codex idle detection — testable with custom base dir.
 pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> IdleResult {
+    let runtime_attachments = codex_runtime_attachments_for_project(project_path);
+    if runtime_attachments.len() == 1 {
+        if let Some(result) = runtime_attachments
+            .first()
+            .and_then(codex_result_from_runtime_attachment)
+        {
+            return result;
+        }
+    }
+
     // Check cache first
     {
         let guard = CODEX_PATH_CACHE.lock().unwrap_or_else(|e| e.into_inner());
@@ -111,7 +142,8 @@ pub(super) fn codex_detect_idle_for_pid(
     pid: u32,
     sessions_dir: &Path,
 ) -> IdleResult {
-    codex_detect_idle_for_pid_with(project_path, sessions_dir, &|path| {
+    let runtime_attachments = codex_runtime_attachments_for_project(project_path);
+    codex_detect_idle_for_pid_with(project_path, sessions_dir, &runtime_attachments, &|path| {
         path.to_str()
             .is_some_and(|path_str| crate::platform::process_has_open_path(pid, path_str))
     })
@@ -120,11 +152,20 @@ pub(super) fn codex_detect_idle_for_pid(
 fn codex_detect_idle_for_pid_with<F>(
     project_path: &str,
     sessions_dir: &Path,
+    runtime_attachments: &[CodexRuntimeAttachment],
     file_open_by_pid: &F,
 ) -> IdleResult
 where
     F: Fn(&Path) -> bool,
 {
+    if let Some(result) = runtime_attachments
+        .iter()
+        .filter(|attachment| file_open_by_pid(&attachment.jsonl_path))
+        .find_map(codex_result_from_runtime_attachment)
+    {
+        return result;
+    }
+
     let candidates = codex_find_sessions_for_project(project_path, sessions_dir);
     match candidates.as_slice() {
         [] => IdleResult::idle(),
@@ -135,6 +176,131 @@ where
             .map(|path| codex_result_from_file(&path))
             .unwrap_or_else(IdleResult::idle),
     }
+}
+
+fn codex_result_from_runtime_attachment(attachment: &CodexRuntimeAttachment) -> Option<IdleResult> {
+    if !attachment.jsonl_path.exists() {
+        return None;
+    }
+
+    let mut result = codex_result_from_file(&attachment.jsonl_path);
+    if result.session_id.is_none() {
+        result.session_id = attachment.session_id.clone();
+    }
+    Some(result)
+}
+
+fn codex_runtime_attachments_for_project(project_path: &str) -> Vec<CodexRuntimeAttachment> {
+    let normalized_project = normalize_project_path(project_path);
+    let now = SystemTime::now();
+
+    {
+        let guard = CODEX_RUNTIME_ATTACHMENT_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(cache) = guard.as_ref() {
+            let age = now
+                .duration_since(cache.scanned_at)
+                .unwrap_or(Duration::ZERO);
+            if age < CODEX_RUNTIME_ATTACHMENT_CACHE_TTL {
+                return cache
+                    .entries_by_project
+                    .get(&normalized_project)
+                    .cloned()
+                    .unwrap_or_default();
+            }
+        }
+    }
+
+    let entries_by_project =
+        load_codex_runtime_attachment_index(&default_codex_runtime_teams_dir());
+    let attachments = entries_by_project
+        .get(&normalized_project)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut guard = CODEX_RUNTIME_ATTACHMENT_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *guard = Some(CodexRuntimeAttachmentCache {
+        entries_by_project,
+        scanned_at: now,
+    });
+
+    attachments
+}
+
+fn load_codex_runtime_attachment_index(
+    teams_dir: &Path,
+) -> HashMap<String, Vec<CodexRuntimeAttachment>> {
+    let mut index: HashMap<String, Vec<CodexRuntimeAttachment>> = HashMap::new();
+    let team_names = match TeamConfigStore::list(teams_dir) {
+        Ok(team_names) => team_names,
+        Err(_) => return index,
+    };
+
+    for team_name in team_names {
+        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+            Ok(roster) => roster,
+            Err(_) => continue,
+        };
+
+        for member in roster
+            .into_iter()
+            .filter(|member| member.configured_cli_tool == CliTool::Codex)
+        {
+            let Some(jsonl_path) = member.jsonl_path.clone() else {
+                continue;
+            };
+            let project_path = member
+                .attached_project_path
+                .clone()
+                .unwrap_or(member.configured_project_path);
+            let key = normalize_project_path(&project_path.display().to_string());
+            index.entry(key).or_default().push(CodexRuntimeAttachment {
+                project_path: normalize_project_path(&project_path.display().to_string()),
+                session_id: member.session_id,
+                jsonl_path,
+                last_seen_at: member.last_seen_at,
+                attached_at: member.attached_at,
+            });
+        }
+    }
+
+    for attachments in index.values_mut() {
+        attachments.sort_by(|left, right| {
+            right
+                .last_seen_at
+                .or(right.attached_at)
+                .cmp(&left.last_seen_at.or(left.attached_at))
+        });
+    }
+
+    index
+}
+
+fn default_codex_runtime_teams_dir() -> PathBuf {
+    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+
+    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
+        if !path.is_empty() {
+            return PathBuf::from(path).join("teams");
+        }
+    }
+    if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
+        return path;
+    }
+    dirs::home_dir()
+        .unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"))
+        .join(".claude")
+        .join("teams")
+}
+
+pub(crate) fn invalidate_codex_runtime_attachment_cache() {
+    let mut guard = CODEX_RUNTIME_ATTACHMENT_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *guard = None;
 }
 
 /// Build an IdleResult from a Codex session file.
@@ -297,6 +463,7 @@ mod tests {
         if let Some(map) = guard.as_mut() {
             map.clear();
         }
+        invalidate_codex_runtime_attachment_cache();
     }
 
     /// Create a Codex JSONL session file with a session_meta record.
@@ -312,6 +479,16 @@ mod tests {
         writeln!(f, r#"{{"type":"response_item","payload":{{}}}}"#).unwrap();
         f.sync_all().unwrap();
         path
+    }
+
+    fn runtime_attachment(project_path: &str, jsonl_path: &Path) -> CodexRuntimeAttachment {
+        CodexRuntimeAttachment {
+            project_path: normalize_project_path(project_path),
+            session_id: Some("runtime-session".to_string()),
+            jsonl_path: jsonl_path.to_path_buf(),
+            last_seen_at: None,
+            attached_at: None,
+        }
     }
 
     #[test]
@@ -542,14 +719,16 @@ mod tests {
             project,
         );
 
-        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &|path| path == second);
+        let result =
+            codex_detect_idle_for_pid_with(project, tmp.path(), &[], &|path| path == second);
         assert_eq!(result.session_id.as_deref(), Some("second-uuid"));
         assert_eq!(
             result.jsonl_path.as_deref(),
             Some(second.to_string_lossy().as_ref())
         );
 
-        let fallback = codex_detect_idle_for_pid_with(project, tmp.path(), &|path| path == first);
+        let fallback =
+            codex_detect_idle_for_pid_with(project, tmp.path(), &[], &|path| path == first);
         assert_eq!(fallback.session_id.as_deref(), Some("first-uuid"));
         assert_eq!(
             fallback.jsonl_path.as_deref(),
@@ -580,9 +759,75 @@ mod tests {
             project,
         );
 
-        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &|_| false);
+        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &[], &|_| false);
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.session_id.is_none());
         assert!(result.jsonl_path.is_none());
+    }
+
+    #[test]
+    fn codex_detect_idle_for_pid_prefers_runtime_attachment_before_project_scan() {
+        clear_codex_cache();
+        let project = "/home/user/projects/runtime-attached";
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("runtime-attached.jsonl");
+        fs::write(
+            &jsonl_path,
+            r#"{"timestamp":"2026-02-21T16:00:00Z","type":"session_meta","payload":{"cwd":"/home/user/projects/runtime-attached","id":"runtime-id"}}
+{"type":"response_item","payload":{}}"#,
+        )
+        .unwrap();
+
+        let result = codex_detect_idle_for_pid_with(
+            project,
+            tmp.path(),
+            &[runtime_attachment(project, &jsonl_path)],
+            &|path| path == jsonl_path.as_path(),
+        );
+
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(
+            result.jsonl_path.as_deref(),
+            Some(jsonl_path.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn codex_detect_idle_for_pid_falls_back_to_project_scan_when_runtime_binding_misses() {
+        clear_codex_cache();
+        let project = "/home/user/projects/runtime-fallback";
+        let tmp = TempDir::new().unwrap();
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+        let scanned_path = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-00-00-scanned-uuid.jsonl",
+            project,
+        );
+        let stale_runtime_path = tmp.path().join("stale-runtime.jsonl");
+        fs::write(
+            &stale_runtime_path,
+            r#"{"timestamp":"2026-02-21T16:00:00Z","type":"session_meta","payload":{"cwd":"/home/user/projects/runtime-fallback","id":"stale-runtime"}}
+{"type":"response_item","payload":{}}"#,
+        )
+        .unwrap();
+
+        let result = codex_detect_idle_for_pid_with(
+            project,
+            tmp.path(),
+            &[runtime_attachment(project, &stale_runtime_path)],
+            &|_| false,
+        );
+
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(
+            result.jsonl_path.as_deref(),
+            Some(scanned_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(result.session_id.as_deref(), Some("scanned-uuid"));
     }
 }
