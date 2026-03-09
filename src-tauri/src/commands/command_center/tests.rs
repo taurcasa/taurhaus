@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::command_center::session_listing::decode_daemon_runtime_session_snapshot;
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
 use crate::coordination::activity_export::enrich_sessions_with_team_membership;
@@ -320,6 +321,48 @@ fn foreground_project_resolution_returns_none_without_attached_client() {
 }
 
 #[test]
+fn daemon_runtime_session_snapshot_uses_snapshot_method_and_returns_payload() {
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": {
+            "version": 3,
+            "display_sessions": [],
+            "runtime_sessions": [],
+            "focus": null,
+            "foreground_project_path": "/tmp/project"
+        },
+        "error": null
+    }));
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    };
+    let snapshot = daemon_runtime_session_snapshot(&provider)
+        .expect("snapshot call")
+        .expect("connected daemon snapshot");
+
+    assert_eq!(snapshot.version, 3);
+    assert_eq!(
+        snapshot.foreground_project_path.as_deref(),
+        Some("/tmp/project")
+    );
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.method,
+        protocol::method::GET_RUNTIME_SESSION_SNAPSHOT
+    );
+}
+
+#[test]
 fn daemon_session_decode_handles_missing_invalid_and_valid_payloads() {
     assert!(decode_daemon_session_list(None).unwrap().is_empty());
     assert!(
@@ -339,6 +382,84 @@ fn daemon_session_decode_handles_missing_invalid_and_valid_payloads() {
     assert_eq!(sessions[1].project_path, "/tmp/project-b");
     assert_eq!(sessions[0].group_kind, SessionGroupKind::Standalone);
     assert_eq!(sessions[1].group_kind, SessionGroupKind::Standalone);
+}
+
+#[test]
+fn daemon_runtime_session_snapshot_decode_handles_missing_invalid_and_valid_payloads() {
+    let empty = decode_daemon_runtime_session_snapshot(None).expect("missing payload defaults");
+    assert_eq!(empty.version, 0);
+    assert!(empty.display_sessions.is_empty());
+    assert!(empty.runtime_sessions.is_empty());
+    assert!(empty.focus.is_none());
+    assert!(empty.foreground_project_path.is_none());
+
+    assert!(
+        decode_daemon_runtime_session_snapshot(Some(serde_json::json!({"not": "a snapshot"})))
+            .is_err()
+    );
+
+    let payload = Some(serde_json::json!({
+        "version": 7,
+        "display_sessions": [
+            {
+                "pid": 1234,
+                "project_path": "/tmp/project-a",
+                "tty": "/dev/pts/1",
+                "args": "codex --yolo",
+                "cli_tool": "codex",
+                "tmux_session": "taurhaus",
+                "tmux_window": "1",
+                "tmux_pane": "%1",
+                "tmux_window_name": "work",
+                "state": "active"
+            }
+        ],
+        "runtime_sessions": [
+            {
+                "pid": 1234,
+                "project_path": "/tmp/project-a",
+                "tty": "/dev/pts/1",
+                "args": "codex --yolo",
+                "cli_tool": "codex",
+                "tmux_session": "taurhaus",
+                "tmux_window": "1",
+                "tmux_pane": "%1",
+                "tmux_window_name": "work",
+                "state": "active",
+                "session_id": "session-1",
+                "jsonl_path": "/tmp/project-a/.codex/session.jsonl",
+                "recent_io": true,
+                "last_output_age_secs": 1,
+                "activity_confidence": "high",
+                "activity_attribution": "attributed",
+                "project_unattributed_active": false,
+                "group_kind": "standalone",
+                "group_id": null,
+                "group_label": null,
+                "member_name": "developer1"
+            }
+        ],
+        "focus": {
+            "session": "taurhaus",
+            "window": "work",
+            "timestamp": 123
+        },
+        "foreground_project_path": "/tmp/project-a"
+    }));
+
+    let snapshot = decode_daemon_runtime_session_snapshot(payload).expect("valid snapshot");
+    assert_eq!(snapshot.version, 7);
+    assert_eq!(snapshot.display_sessions.len(), 1);
+    assert_eq!(snapshot.runtime_sessions.len(), 1);
+    assert_eq!(snapshot.focus, Some(attached_focus("taurhaus", "work")));
+    assert_eq!(
+        snapshot.foreground_project_path.as_deref(),
+        Some("/tmp/project-a")
+    );
+    assert_eq!(
+        snapshot.runtime_sessions[0].session_id.as_deref(),
+        Some("session-1")
+    );
 }
 
 #[test]

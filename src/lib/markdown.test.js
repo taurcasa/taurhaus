@@ -5,6 +5,7 @@ const {
   loadedLangs,
   loadedThemes,
   mockCreateHighlighter,
+  mockCodeToHtml,
   mockLoadLanguage,
   mockLoadTheme,
 } = vi.hoisted(() => {
@@ -19,6 +20,7 @@ const {
     loadedThemes.add(theme)
     return Promise.resolve()
   })
+  const mockCodeToHtml = vi.fn((code, options) => `<pre class="shiki" data-lang="${options?.lang ?? ''}"><code>${code}</code></pre>`)
   const mockCreateHighlighter = vi.fn((opts = {}) => {
     for (const lang of opts.langs ?? []) {
       loadedLangs.add(String(lang).toLowerCase())
@@ -28,10 +30,10 @@ const {
       getLoadedThemes: () => [...loadedThemes],
       loadLanguage: mockLoadLanguage,
       loadTheme: mockLoadTheme,
-      codeToHtml: (code, options) => `<pre class="shiki" data-lang="${options?.lang ?? ''}"><code>${code}</code></pre>`,
+      codeToHtml: mockCodeToHtml,
     })
   })
-  return { loadedLangs, loadedThemes, mockCreateHighlighter, mockLoadLanguage, mockLoadTheme }
+  return { loadedLangs, loadedThemes, mockCreateHighlighter, mockCodeToHtml, mockLoadLanguage, mockLoadTheme }
 })
 
 vi.mock('shiki', () => ({
@@ -43,6 +45,7 @@ vi.mock('@shikijs/markdown-it/core', () => ({
 }))
 
 beforeEach(() => {
+  mockCodeToHtml.mockClear()
   mockLoadLanguage.mockClear()
   mockLoadTheme.mockClear()
 })
@@ -159,6 +162,21 @@ describe('renderMarkdown', () => {
     expect(mockLoadLanguage).toHaveBeenCalledWith('powershell')
   })
 
+  it('deduplicates concurrent fenced language loads for identical markdown', async () => {
+    loadedLangs.delete('customlang-render')
+    mockLoadLanguage.mockClear()
+
+    const source = '```customlang-render\nGet-Process\n```'
+    const [first, second] = await Promise.all([
+      renderMarkdown(source),
+      renderMarkdown(source),
+    ])
+
+    expect(first).toContain('Get-Process')
+    expect(second).toContain('Get-Process')
+    expect(mockLoadLanguage).toHaveBeenCalledTimes(1)
+  })
+
   it('replaces unknown fenced languages with text', async () => {
     // brainfuck always fails to load in our mock
     const source = '```brainfuck\n+++\n```'
@@ -177,6 +195,12 @@ describe('renderMarkdown', () => {
 })
 
 describe('highlightCode', () => {
+  it('creates the highlighter once and reuses it across calls', async () => {
+    await highlightCode('const x = 1', 'javascript')
+    await highlightCode('let y = 2', 'typescript')
+    expect(mockCreateHighlighter).toHaveBeenCalledTimes(1)
+  })
+
   it('initializes highlighter with core language set', async () => {
     await highlightCode('const x = 1', 'javascript')
     const opts = mockCreateHighlighter.mock.calls[0]?.[0] ?? {}
@@ -223,11 +247,38 @@ describe('highlightCode', () => {
   })
 
   it('lazy-loads non-core languages on demand', async () => {
-    loadedLangs.delete('powershell')
+    loadedLangs.delete('customlang-highlight')
     mockLoadLanguage.mockClear()
-    const html = await highlightCode('Get-Process', 'powershell')
+    const html = await highlightCode('Get-Process', 'customlang-highlight')
     expect(html).toContain('Get-Process')
-    expect(mockLoadLanguage).toHaveBeenCalledWith('powershell')
+    expect(mockLoadLanguage).toHaveBeenCalledWith('customlang-highlight')
+  })
+
+  it('deduplicates concurrent theme loads', async () => {
+    loadedThemes.delete('midnight-dedupe')
+    mockLoadTheme.mockClear()
+
+    await Promise.all([
+      highlightCode('const a = 1', 'javascript', 'midnight-dedupe'),
+      highlightCode('const b = 2', 'typescript', 'midnight-dedupe'),
+    ])
+
+    expect(mockLoadTheme).toHaveBeenCalledTimes(1)
+    expect(mockLoadTheme).toHaveBeenCalledWith('midnight-dedupe')
+  })
+
+  it('reuses cached highlighted HTML for identical code input', async () => {
+    loadedLangs.delete('customlang-cache')
+    mockLoadLanguage.mockClear()
+    mockCodeToHtml.mockClear()
+
+    const first = await highlightCode('Get-Process', 'customlang-cache')
+    const second = await highlightCode('Get-Process', 'customlang-cache')
+
+    expect(first).toContain('Get-Process')
+    expect(second).toContain('Get-Process')
+    expect(mockLoadLanguage).toHaveBeenCalledTimes(1)
+    expect(mockCodeToHtml).toHaveBeenCalledTimes(1)
   })
 
   it('accepts theme ID string', async () => {

@@ -90,6 +90,7 @@ pub mod method {
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
+    pub const GET_RUNTIME_SESSION_SNAPSHOT: &str = "get_runtime_session_snapshot";
     pub const WAIT_SESSION_UPDATES: &str = "wait_session_updates";
     pub const LAUNCH_SESSION: &str = "launch_session";
     pub const STOP_SESSION: &str = "stop_session";
@@ -332,6 +333,16 @@ pub struct WaitSessionUpdatesResult {
     pub changed: bool,
     /// Full session snapshot for the reported version.
     pub sessions: Vec<crate::session_scanner::DisplaySession>,
+}
+
+/// `get_runtime_session_snapshot` result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RuntimeSessionSnapshotResult {
+    pub version: u64,
+    pub display_sessions: Vec<crate::session_scanner::DisplaySession>,
+    pub runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
+    pub focus: Option<crate::session_scanner::tmux::TmuxFocusState>,
+    pub foreground_project_path: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

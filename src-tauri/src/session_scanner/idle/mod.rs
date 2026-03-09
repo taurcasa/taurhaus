@@ -11,6 +11,8 @@
 
 use crate::claude_code::resolver;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::process::ProcessInfo;
+use crate::session_scanner::tmux::TmuxPane;
 use crate::session_scanner::SessionState;
 use std::collections::HashMap;
 use std::fs;
@@ -113,16 +115,28 @@ pub fn detect_idle(project_path: &str, tool: CliTool) -> IdleResult {
 /// Codex runtime correlation uses a per-PID JSONL match to avoid guessing when
 /// multiple Codex panes share one project path. Other tools still use the
 /// project-scoped resolver.
-pub fn detect_runtime_idle(project_path: &str, pid: u32, tool: CliTool) -> IdleResult {
+pub fn detect_runtime_idle(
+    project_path: &str,
+    pid: u32,
+    pane_id: Option<&str>,
+    tool: CliTool,
+) -> IdleResult {
     match tool {
         CliTool::Codex => {
             static CODEX: OnceLock<CodexResolver> = OnceLock::new();
             CODEX
                 .get_or_init(CodexResolver::new)
-                .detect_idle_for_pid(project_path, pid)
+                .detect_idle_for_pid(project_path, pid, pane_id)
         }
         _ => detect_idle(project_path, tool),
     }
+}
+
+pub(crate) fn reconcile_codex_bindings(
+    processes: &[ProcessInfo],
+    pane_map: &HashMap<String, TmuxPane>,
+) {
+    codex::reconcile_persisted_bindings(processes, pane_map);
 }
 
 /// Testable version: detect idle state for Claude using a custom projects directory.

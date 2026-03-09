@@ -25,6 +25,32 @@ describe('CodeViewer', () => {
     highlightCode.mockResolvedValue('<pre class="shiki"><code><span class="line">default</span></code></pre>')
   })
 
+  it('does not rerun highlighting when only presentation props change', async () => {
+    const view = render(CodeViewer, {
+      props: {
+        code: 'const x = 1',
+        language: 'javascript',
+        dark: false,
+      },
+    })
+
+    await waitFor(() => {
+      expect(view.container.querySelector('.code-highlighted')).toHaveTextContent('default')
+    })
+    expect(highlightCode).toHaveBeenCalledTimes(1)
+
+    await view.rerender({
+      code: 'const x = 1',
+      language: 'javascript',
+      dark: true,
+    })
+
+    await waitFor(() => {
+      expect(view.container.querySelector('.code-highlighted')).toHaveTextContent('default')
+    })
+    expect(highlightCode).toHaveBeenCalledTimes(1)
+  })
+
   it('ignores stale highlight results from older requests', async () => {
     const slow = createDeferred()
     const fast = createDeferred()

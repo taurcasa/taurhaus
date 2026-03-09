@@ -26,15 +26,25 @@ use crate::coordination::operational_context::{sync_member_snapshot, sync_team_s
 use crate::coordination::requests::{
     self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
 };
-use crate::coordination::roster::{get_team_roster_with_attachments, TeamMemberView};
+use crate::coordination::roster::{
+    get_team_roster_with_attachments, get_team_roster_with_runtime_sessions, TeamMemberView,
+};
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::TeamConfigStore;
+#[cfg(not(test))]
+use crate::daemon_api::protocol as daemon_protocol;
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
 use crate::templates::types::RoleTemplate;
+#[cfg(not(test))]
+use crate::ProviderState;
+#[cfg(test)]
+use taurhaus_lib::daemon_api::protocol as daemon_protocol;
+#[cfg(test)]
+use taurhaus_lib::ProviderState;
 
 fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     #[cfg(test)]
@@ -191,7 +201,9 @@ pub async fn coordination_get_live_team_status(
     let span = IpcCommandSpan::start("coordination_get_live_team_status");
     let result = tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<CoordinationState>();
-        coordination_get_live_team_status_impl(state.inner(), team_name).ipc()
+        let provider = app.state::<ProviderState>();
+        coordination_get_live_team_status_impl(state.inner(), Some(provider.inner()), team_name)
+            .ipc()
     })
     .await
     .unwrap_or_else(|err| {
@@ -541,10 +553,73 @@ fn maybe_ensure_claude_compact_hook_for_team<T>(
     result
 }
 
+fn daemon_runtime_session_snapshot(
+    provider: &ProviderState,
+) -> Result<Option<daemon_protocol::RuntimeSessionSnapshotResult>, String> {
+    let Some(ref daemon) = provider.daemon else {
+        return Ok(None);
+    };
+    if !daemon.is_connected() {
+        return Ok(None);
+    }
+
+    let request = daemon_protocol::DaemonRequest::new(
+        "coordination-runtime-session-snapshot",
+        daemon_protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
+        serde_json::Value::Null,
+    );
+    match daemon.send_status_request(&request) {
+        Ok(response) if response.is_ok() => {
+            let payload = response.result.unwrap_or(serde_json::Value::Null);
+            serde_json::from_value(payload)
+                .map(Some)
+                .map_err(|error| format!("Runtime session snapshot decode error: {error}"))
+        }
+        Ok(response) => {
+            tracing::warn!(
+                error = ?response.error,
+                "Daemon returned error for coordination runtime session snapshot"
+            );
+            Ok(None)
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to reach daemon for coordination runtime session snapshot"
+            );
+            Ok(None)
+        }
+    }
+}
+
 fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
+    provider: Option<&ProviderState>,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
+    if let Some(provider) = provider {
+        if let Some(snapshot) = daemon_runtime_session_snapshot(provider)? {
+            let roster = get_team_roster_with_runtime_sessions(
+                state.teams_dir(),
+                &team_name,
+                &snapshot.runtime_sessions,
+            )
+            .map_err(map_coordination_error)?;
+            let lead_name = roster_lead_name(&roster);
+            let lead_project_path = roster_lead_project_path(&roster);
+            let members = roster
+                .into_iter()
+                .map(|member| live_agent_status_from_roster(member, lead_project_path.as_deref()))
+                .collect();
+
+            return Ok(LiveTeamStatus {
+                team_name,
+                lead_name,
+                members,
+            });
+        }
+    }
+
     state
         .with_orchestrator(|orchestrator| {
             orchestrator.reconcile_team_presence_for_live_status(&team_name)
@@ -571,7 +646,7 @@ pub(crate) fn coordination_get_live_team_status_for_tests(
     state: &CoordinationState,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
-    coordination_get_live_team_status_impl(state, team_name)
+    coordination_get_live_team_status_impl(state, None, team_name)
 }
 
 fn coordination_create_team_impl(

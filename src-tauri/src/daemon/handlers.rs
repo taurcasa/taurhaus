@@ -66,6 +66,9 @@ pub(crate) fn dispatch(
             handle_scan_sessions(&request.id, &request.params, provider)
         }
         protocol::method::LIST_DISPLAY_SESSIONS => handle_list_display_sessions(&request.id),
+        protocol::method::GET_RUNTIME_SESSION_SNAPSHOT => {
+            handle_get_runtime_session_snapshot(&request.id)
+        }
         protocol::method::LIST_RUNTIME_SESSIONS => handle_list_runtime_sessions(&request.id),
         protocol::method::WAIT_SESSION_UPDATES => {
             handle_wait_session_updates(&request.id, &request.params)
@@ -324,8 +327,24 @@ pub(crate) fn handle_list_display_sessions(id: &str) -> DaemonResponse {
     DaemonResponse::ok(id, sessions)
 }
 
+pub(crate) fn handle_get_runtime_session_snapshot(id: &str) -> DaemonResponse {
+    let snapshot = crate::daemon::session_activity::SessionActivityHub::global().runtime_snapshot();
+    DaemonResponse::ok(
+        id,
+        protocol::RuntimeSessionSnapshotResult {
+            version: snapshot.version,
+            display_sessions: snapshot.display_sessions,
+            runtime_sessions: snapshot.runtime_sessions,
+            focus: snapshot.focus,
+            foreground_project_path: snapshot.foreground_project_path,
+        },
+    )
+}
+
 pub(crate) fn handle_list_runtime_sessions(id: &str) -> DaemonResponse {
-    let sessions = crate::session_scanner::scan_sessions_for_runtime();
+    let sessions = crate::daemon::session_activity::SessionActivityHub::global()
+        .runtime_snapshot()
+        .runtime_sessions;
     DaemonResponse::ok(id, sessions)
 }
 

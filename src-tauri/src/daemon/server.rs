@@ -400,6 +400,17 @@ mod tests {
         }
     }
 
+    fn wait_for_server_accepting(port: u16, timeout: std::time::Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < deadline {
+            if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
     fn start_server(config: DaemonConfig) -> TestServer {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -416,11 +427,8 @@ mod tests {
 
         // Poll until the server is accepting connections (up to 2s).
         // A fixed sleep was flaky under parallel test load.
-        for _ in 0..40 {
-            if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-                return server;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
+        if wait_for_server_accepting(port, std::time::Duration::from_secs(2)) {
+            return server;
         }
         panic!("test server on port {port} did not start within 2s");
     }
@@ -738,6 +746,8 @@ mod tests {
 
     #[test]
     fn server_idle_timeout_shuts_down() {
+        // Regression: a fixed 100ms startup sleep was not enough under load,
+        // causing occasional ConnectionRefused before the listener was ready.
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -754,8 +764,10 @@ mod tests {
         let handle =
             std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
 
-        // Wait for the server to start, then let it idle for >1s
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(
+            wait_for_server_accepting(port, std::time::Duration::from_secs(2)),
+            "idle-timeout test server on port {port} did not start within 2s"
+        );
 
         // Verify server is running (can connect)
         let _stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();

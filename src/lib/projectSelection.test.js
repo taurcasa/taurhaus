@@ -3,11 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createProjectSelectionRequests,
   loadProjectSelectionData,
+  prefetchProjectSelectionData,
+  resetProjectSelectionStateForTests,
   withFallback,
 } from './projectSelection.js'
 
 afterEach(() => {
   vi.useRealTimers()
+  resetProjectSelectionStateForTests()
 })
 
 describe('projectSelection timeouts', () => {
@@ -118,5 +121,77 @@ describe('projectSelection timeouts', () => {
     expect(ipc.listSessions).toHaveBeenCalledTimes(2)
     expect(ipc.getReadme).toHaveBeenCalledTimes(2)
     expect(ipc.getRelationships).toHaveBeenCalledTimes(2)
+  })
+
+  it('reuses a same-project in-flight batch instead of starting duplicate IPC calls', async () => {
+    vi.useFakeTimers()
+
+    function createDeferred() {
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const detail = createDeferred()
+    const ipc = {
+      getProject: vi.fn(() => detail.promise),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const first = loadProjectSelectionData('p1', ipc)
+    await vi.advanceTimersByTimeAsync(26)
+
+    const second = loadProjectSelectionData('p1', ipc)
+
+    detail.resolve({ id: 'p1' })
+    const [firstResult, secondResult] = await Promise.all([first, second])
+
+    expect(firstResult).toBe(secondResult)
+    expect(ipc.getProject).toHaveBeenCalledTimes(1)
+    expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
+    expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)
+    expect(ipc.listSessions).toHaveBeenCalledTimes(1)
+    expect(ipc.getReadme).toHaveBeenCalledTimes(1)
+    expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
+  })
+
+  it('prefetches a project batch and reuses it for the subsequent selection', async () => {
+    function createDeferred() {
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const detail = createDeferred()
+    const ipc = {
+      getProject: vi.fn(() => detail.promise),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const prefetched = prefetchProjectSelectionData('p2', ipc)
+    const selected = loadProjectSelectionData('p2', ipc)
+
+    detail.resolve({ id: 'p2' })
+    const [prefetchResult, selectedResult] = await Promise.all([prefetched, selected])
+
+    expect(prefetchResult).toBe(selectedResult)
+    expect(ipc.getProject).toHaveBeenCalledTimes(1)
+    expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
+    expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)
+    expect(ipc.listSessions).toHaveBeenCalledTimes(1)
+    expect(ipc.getReadme).toHaveBeenCalledTimes(1)
+    expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
   })
 })

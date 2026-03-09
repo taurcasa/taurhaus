@@ -11,7 +11,8 @@ use crate::coordination::stores::TeamConfigStore;
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
-    ActivityAttribution, ActivityConfidence, DisplaySession, SessionGroupKind, SessionState,
+    ActivityAttribution, ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind,
+    SessionState,
 };
 
 #[derive(Debug, Clone)]
@@ -105,6 +106,38 @@ pub(crate) fn enrich_sessions_with_team_membership(
             continue;
         };
         assign_session_memberships(sessions, &session_indices, candidates);
+    }
+}
+
+pub(crate) fn enrich_runtime_sessions_with_team_membership(
+    teams_dir: &Path,
+    sessions: &mut [RuntimeSession],
+) {
+    if sessions.is_empty() {
+        return;
+    }
+
+    let memberships = load_session_memberships(teams_dir);
+    let mut sessions_by_key: HashMap<(String, CliTool), Vec<usize>> = HashMap::new();
+
+    for (index, session) in sessions.iter_mut().enumerate() {
+        session.group_kind = SessionGroupKind::Standalone;
+        session.group_id = None;
+        session.group_label = None;
+        session.member_name = None;
+
+        let key = (
+            normalize_project_path(&session.project_path),
+            session.cli_tool,
+        );
+        sessions_by_key.entry(key).or_default().push(index);
+    }
+
+    for (key, session_indices) in sessions_by_key {
+        let Some(candidates) = memberships.get(&key) else {
+            continue;
+        };
+        assign_runtime_session_memberships(sessions, &session_indices, candidates);
     }
 }
 
@@ -274,6 +307,47 @@ fn load_session_memberships(
 
 fn assign_session_memberships(
     sessions: &mut [DisplaySession],
+    session_indices: &[usize],
+    candidates: &[SessionMembershipMetadata],
+) {
+    if session_indices.is_empty() || candidates.is_empty() {
+        return;
+    }
+
+    let mut unused_candidates = candidates.to_vec();
+    let mut assigned = HashMap::new();
+
+    for &index in session_indices {
+        let Some(tmux_pane) = sessions[index].tmux_pane.as_deref() else {
+            continue;
+        };
+        let Some(candidate_index) = unused_candidates
+            .iter()
+            .position(|candidate| candidate.pane_id.as_deref() == Some(tmux_pane))
+        else {
+            continue;
+        };
+        assigned.insert(index, unused_candidates.remove(candidate_index));
+    }
+
+    let mut fallback_candidates = unused_candidates.into_iter();
+    for &index in session_indices {
+        let metadata = assigned
+            .remove(&index)
+            .or_else(|| fallback_candidates.next());
+        let Some(metadata) = metadata else {
+            continue;
+        };
+
+        sessions[index].group_kind = SessionGroupKind::MeshTeam;
+        sessions[index].group_id = Some(metadata.group_id);
+        sessions[index].group_label = Some(metadata.group_label);
+        sessions[index].member_name = Some(metadata.member_name);
+    }
+}
+
+fn assign_runtime_session_memberships(
+    sessions: &mut [RuntimeSession],
     session_indices: &[usize],
     candidates: &[SessionMembershipMetadata],
 ) {

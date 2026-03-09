@@ -5,6 +5,16 @@ let shikiModulesPromise = null
 let markdownItCtorPromise = null
 const mdInstances = {}
 let plainMd = null
+const loadedLanguageIds = new Set()
+const loadedThemeIds = new Set(['github-light', 'github-dark-dimmed'])
+const pendingLanguageLoads = new Map()
+const pendingThemeLoads = new Map()
+const markdownRenderCache = new Map()
+const inflightMarkdownRenders = new Map()
+const codeHighlightCache = new Map()
+const inflightCodeHighlights = new Map()
+const MAX_MARKDOWN_CACHE_ENTRIES = 32
+const MAX_CODE_CACHE_ENTRIES = 64
 
 /**
  * Lazily create and cache a Shiki highlighter.
@@ -45,10 +55,52 @@ const LANG_ALIASES = {
   md: 'markdown',
 }
 
+for (const lang of CORE_LANGS) {
+  loadedLanguageIds.add(normalizeLanguageId(lang))
+}
+
 function normalizeLanguageId(lang) {
   const normalized = String(lang ?? '').trim().toLowerCase()
   if (!normalized) return 'text'
   return LANG_ALIASES[normalized] ?? normalized
+}
+
+function cacheGet(cache, key) {
+  if (!cache.has(key)) return null
+  const value = cache.get(key)
+  cache.delete(key)
+  cache.set(key, value)
+  return value
+}
+
+function cacheSet(cache, key, value, maxEntries) {
+  if (cache.has(key)) {
+    cache.delete(key)
+  }
+  cache.set(key, value)
+  while (cache.size > maxEntries) {
+    const oldestKey = cache.keys().next().value
+    cache.delete(oldestKey)
+  }
+}
+
+function getMarkdownCacheKey(source, theme) {
+  return `${theme}\u0000${source}`
+}
+
+function getCodeCacheKey(code, lang, theme) {
+  return `${theme}\u0000${normalizeLanguageId(lang)}\u0000${code}`
+}
+
+function trackInflight(map, key, factory) {
+  if (map.has(key)) return map.get(key)
+  const pending = Promise.resolve()
+    .then(factory)
+    .finally(() => {
+      map.delete(key)
+    })
+  map.set(key, pending)
+  return pending
 }
 
 async function getShikiModules() {
@@ -89,10 +141,42 @@ function getHighlighter() {
  */
 async function ensureThemeLoaded(themeId) {
   const highlighter = await getHighlighter()
-  const loaded = highlighter.getLoadedThemes()
-  if (!loaded.includes(themeId)) {
-    await highlighter.loadTheme(themeId)
+  if (loadedThemeIds.has(themeId)) return highlighter
+  if (!pendingThemeLoads.has(themeId)) {
+    pendingThemeLoads.set(
+      themeId,
+      highlighter.loadTheme(themeId).then(() => {
+        loadedThemeIds.add(themeId)
+      }).finally(() => {
+        pendingThemeLoads.delete(themeId)
+      })
+    )
   }
+  await pendingThemeLoads.get(themeId)
+  return highlighter
+}
+
+async function ensureLanguageLoaded(lang) {
+  const normalizedLang = normalizeLanguageId(lang)
+  if (loadedLanguageIds.has(normalizedLang) || normalizedLang === 'text') {
+    return normalizedLang
+  }
+
+  const highlighter = await getHighlighter()
+  if (!pendingLanguageLoads.has(normalizedLang)) {
+    pendingLanguageLoads.set(
+      normalizedLang,
+      highlighter.loadLanguage(normalizedLang).then(() => {
+        loadedLanguageIds.add(normalizedLang)
+        return normalizedLang
+      }).catch(() => null).finally(() => {
+        pendingLanguageLoads.delete(normalizedLang)
+      })
+    )
+  }
+
+  const loaded = await pendingLanguageLoads.get(normalizedLang)
+  return loaded ?? null
 }
 
 /**
@@ -160,44 +244,53 @@ async function getPlainMd() {
  */
 export async function renderMarkdown(source, theme = 'github-light') {
   if (!source) return ''
+  const cacheKey = getMarkdownCacheKey(source, theme)
+  const cached = cacheGet(markdownRenderCache, cacheKey)
+  if (cached) return cached
 
-  try {
-    // Pre-load languages referenced in fenced code blocks so the
-    // markdown-it plugin doesn't throw on unknown languages.
-    // Languages that Shiki doesn't support get replaced with 'text'.
-    source = await preloadFencedLanguages(source)
-
-    const md = await getMdInstance(theme)
-    let raw
+  return trackInflight(inflightMarkdownRenders, cacheKey, async () => {
+    let rendered
     try {
-      raw = md.render(source)
-    } catch {
-      // A language Shiki can't handle slipped through — strip all language
-      // hints and retry so the rest of the markdown still renders.
-      const safeSource = source.replace(/^```\w[\w+-]*/gm, '```text')
-      raw = md.render(safeSource)
+      // Pre-load languages referenced in fenced code blocks so the
+      // markdown-it plugin doesn't throw on unknown languages.
+      // Languages that Shiki doesn't support get replaced with 'text'.
+      const preparedSource = await preloadFencedLanguages(source)
+
+      const md = await getMdInstance(theme)
+      let raw
+      try {
+        raw = md.render(preparedSource)
+      } catch {
+        // A language Shiki can't handle slipped through — strip all language
+        // hints and retry so the rest of the markdown still renders.
+        const safeSource = preparedSource.replace(/^```\w[\w+-]*/gm, '```text')
+        raw = md.render(safeSource)
+      }
+
+      // Shiki uses inline `style` on code spans for syntax coloring — the
+      // markdown pipeline includes Shiki output, so we must allow `style`.
+      // FORBID_TAGS blocks <style> elements (CSS injection) while keeping
+      // inline style= attributes.
+      rendered = DOMPurify.sanitize(raw, {
+        ADD_TAGS: ['span'],
+        ADD_ATTR: ['class', 'style', 'target', 'rel'],
+        FORBID_TAGS: ['style'],
+      })
+    } catch (err) {
+      // Shiki pipeline failed entirely — fall back to plain markdown-it.
+      // No Shiki output here, so no inline styles needed.
+      console.warn(`[markdown] Shiki pipeline failed, using plain fallback: ${err}`)
+      const raw = (await getPlainMd()).render(source)
+      rendered = DOMPurify.sanitize(raw, {
+        ADD_TAGS: ['span'],
+        ADD_ATTR: ['class', 'target', 'rel'],
+        FORBID_TAGS: ['style'],
+      })
     }
 
-    // Shiki uses inline `style` on code spans for syntax coloring — the
-    // markdown pipeline includes Shiki output, so we must allow `style`.
-    // FORBID_TAGS blocks <style> elements (CSS injection) while keeping
-    // inline style= attributes.
-    return DOMPurify.sanitize(raw, {
-      ADD_TAGS: ['span'],
-      ADD_ATTR: ['class', 'style', 'target', 'rel'],
-      FORBID_TAGS: ['style'],
-    })
-  } catch (err) {
-    // Shiki pipeline failed entirely — fall back to plain markdown-it.
-    // No Shiki output here, so no inline styles needed.
-    console.warn(`[markdown] Shiki pipeline failed, using plain fallback: ${err}`)
-    const raw = (await getPlainMd()).render(source)
-    return DOMPurify.sanitize(raw, {
-      ADD_TAGS: ['span'],
-      ADD_ATTR: ['class', 'target', 'rel'],
-      FORBID_TAGS: ['style'],
-    })
-  }
+    cacheSet(markdownRenderCache, cacheKey, rendered, MAX_MARKDOWN_CACHE_ENTRIES)
+    return rendered
+  })
 }
 
 /**
@@ -206,27 +299,35 @@ export async function renderMarkdown(source, theme = 'github-light') {
  * with 'text' so the markdown-it plugin doesn't throw.
  */
 async function preloadFencedLanguages(source) {
-  const highlighter = await getHighlighter()
-  const loaded = new Set(highlighter.getLoadedLanguages().map(normalizeLanguageId))
-
   // Collect all unique language hints from fenced code blocks
   const langRegex = /^```(\w[\w+-]*)/gm
-  const seen = new Set()
+  const pendingLoads = new Map()
   const unknown = new Set()
   let match
   while ((match = langRegex.exec(source)) !== null) {
     const lang = match[1]
     const normalizedLang = normalizeLanguageId(lang)
-    if (seen.has(lang)) continue
-    seen.add(lang)
+    if (pendingLoads.has(lang)) continue
 
-    if (!loaded.has(normalizedLang)) {
-      try {
-        await highlighter.loadLanguage(normalizedLang)
-        loaded.add(normalizedLang)
-      } catch {
-        unknown.add(lang)
-      }
+    if (loadedLanguageIds.has(normalizedLang) || normalizedLang === 'text') {
+      pendingLoads.set(lang, Promise.resolve(normalizedLang))
+      continue
+    }
+
+    pendingLoads.set(
+      lang,
+      ensureLanguageLoaded(normalizedLang).then((loadedLang) => {
+        if (!loadedLang) unknown.add(lang)
+        return loadedLang
+      })
+    )
+  }
+
+  if (pendingLoads.size > 0) {
+    try {
+      await Promise.all(pendingLoads.values())
+    } catch {
+      // Individual loads are converted to null above; Promise.all should not reject.
     }
   }
 
@@ -248,29 +349,35 @@ async function preloadFencedLanguages(source) {
  */
 export async function highlightCode(code, lang, theme = 'github-light') {
   if (!code) return ''
+  const cacheKey = getCodeCacheKey(code, lang, theme)
+  const cached = cacheGet(codeHighlightCache, cacheKey)
+  if (cached) return cached
 
-  const highlighter = await getHighlighter()
-  await ensureThemeLoaded(theme)
+  return trackInflight(inflightCodeHighlights, cacheKey, async () => {
+    const highlighter = await ensureThemeLoaded(theme)
 
-  // Load the language on demand if not already loaded
-  const normalizedLang = normalizeLanguageId(lang)
-  const loadedLangs = new Set(highlighter.getLoadedLanguages().map(normalizeLanguageId))
-  let effectiveLang = normalizedLang || 'text'
-  if (effectiveLang && !loadedLangs.has(effectiveLang)) {
-    try {
-      await highlighter.loadLanguage(effectiveLang)
-    } catch {
-      // Language not available in Shiki — fall back to plaintext
-      effectiveLang = 'text'
+    // Load the language on demand if not already loaded
+    const normalizedLang = normalizeLanguageId(lang)
+    let effectiveLang = normalizedLang || 'text'
+    if (effectiveLang !== 'text') {
+      const loadedLang = await ensureLanguageLoaded(effectiveLang)
+      if (!loadedLang) {
+        // Language not available in Shiki — fall back to plaintext
+        effectiveLang = 'text'
+      }
     }
-  }
 
-  const html = highlighter.codeToHtml(code, { lang: effectiveLang, theme })
-  // Shiki uses inline style= for token colors — must keep `style` in ADD_ATTR.
-  // FORBID_TAGS blocks <style> elements while keeping inline style= attributes.
-  return DOMPurify.sanitize(html, {
-    ADD_TAGS: ['span'],
-    ADD_ATTR: ['class', 'style'],
-    FORBID_TAGS: ['style'],
+    const html = highlighter.codeToHtml(code, { lang: effectiveLang, theme })
+    const sanitized = DOMPurify.sanitize(html, {
+      ADD_TAGS: ['span'],
+      ADD_ATTR: ['class', 'style'],
+      FORBID_TAGS: ['style'],
+    })
+    cacheSet(codeHighlightCache, cacheKey, sanitized, MAX_CODE_CACHE_ENTRIES)
+    return sanitized
   })
+}
+
+export function markdownHasMermaidFence(source) {
+  return /^```mermaid(?:\s|$)/gim.test(String(source ?? ''))
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
@@ -84,6 +84,7 @@ vi.mock('./lib/sessionStore.svelte.js', () => ({
 
 vi.mock('./lib/projectSelection.js', () => ({
   loadProjectSelectionData: vi.fn(),
+  prefetchProjectSelectionData: vi.fn(() => Promise.resolve(null)),
 }))
 
 vi.mock('./lib/shell/themePreferences.js', () => ({
@@ -186,6 +187,7 @@ const ipc = await import('./lib/ipc.js')
 const eventApi = await import('@tauri-apps/api/event')
 const {
   loadProjectSelectionData,
+  prefetchProjectSelectionData,
 } = await import('./lib/projectSelection.js')
 const { loadThemePreferences } = await import('./lib/shell/themePreferences.js')
 const { setProjectContext } = await import('./lib/context/ProjectContext.js')
@@ -193,6 +195,10 @@ const { setProjectContext } = await import('./lib/context/ProjectContext.js')
 import Shell from './Shell.svelte'
 
 describe('Shell mesh focus integration', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     meshTabMountCount = 0
@@ -256,8 +262,21 @@ describe('Shell mesh focus integration', () => {
       readme: { ok: true, section: 'README', value: null },
       rels: { ok: true, section: 'Relationships', value: [] },
     })
+    prefetchProjectSelectionData.mockResolvedValue(null)
 
     eventApi.listen.mockResolvedValue(() => {})
+  })
+
+  it('loads the initial project once on startup without a delayed duplicate selection batch', async () => {
+    vi.useFakeTimers()
+
+    render(Shell)
+
+    await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(loadProjectSelectionData).toHaveBeenCalledTimes(1)
+      expect(loadProjectSelectionData).toHaveBeenCalledWith('proj-1', expect.any(Object))
+    })
   })
 
   it('resolves mesh pane focus to tmux coordinates, foreground project, and opens the terminal', async () => {
@@ -305,6 +324,28 @@ describe('Shell mesh focus integration', () => {
     await fireEvent.click(screen.getByTestId('sidebar-foreground-trigger'))
 
     expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
+  })
+
+  it('prefetches a hovered project without changing the visible selection', async () => {
+    render(Shell)
+
+    await waitFor(() => {
+      expect(loadProjectSelectionData).toHaveBeenCalledTimes(1)
+      expect(latestSidebarProps.actions?.onProjectHover).toEqual(expect.any(Function))
+    })
+
+    latestSidebarProps.actions.onProjectHover({
+      id: 'proj-2',
+      name: 'mesh',
+      path: '/projects/mesh',
+      activityState: 'active',
+      branch: 'main',
+      isDirty: false,
+    })
+
+    expect(prefetchProjectSelectionData).toHaveBeenCalledWith('proj-2', expect.any(Object))
+    const projectContext = setProjectContext.mock.calls.at(-1)?.[0]
+    expect(projectContext.selectedProject?.id).toBe('proj-1')
   })
 
   it('updates foreground project from tmux focus events and clears it on detach', async () => {

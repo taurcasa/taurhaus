@@ -32,6 +32,7 @@ use self::activity_tracking::{
 use self::launching::decode_daemon_launch_result;
 use self::launching::launch_cli_session_impl;
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
+pub(crate) use self::session_listing::daemon_runtime_session_snapshot;
 #[cfg(test)]
 use self::session_listing::decode_daemon_session_list;
 use self::session_listing::list_cli_sessions_impl;
@@ -174,6 +175,18 @@ pub(crate) fn get_foreground_project_impl(
     db: &DbState,
     provider: &ProviderState,
 ) -> Result<Option<String>, String> {
+    if let Some(snapshot) = daemon_runtime_session_snapshot(provider)? {
+        if let Some(mut project_path) = snapshot.foreground_project_path {
+            if !crate::daemon::launcher::is_native_daemon() && project_path.starts_with('/') {
+                if let Some(ref distro) = provider.wsl_distro {
+                    project_path = crate::provider::path::to_windows(&project_path, distro);
+                }
+            }
+            return resolve_project_id_from_path(db, &project_path);
+        }
+        return Ok(None);
+    }
+
     let data_dir = crate::startup::resolve_app_data_dir(app.clone()).map_err(|error| {
         format!("Failed to resolve app data dir for tmux focus lookup: {error}")
     })?;
@@ -183,6 +196,19 @@ pub(crate) fn get_foreground_project_impl(
 
     let sessions = list_cli_sessions_impl(app, db, provider)?;
     resolve_foreground_project_id_from_sessions(db, &focus, &sessions)
+}
+
+fn resolve_project_id_from_path(
+    db: &DbState,
+    project_path: &str,
+) -> Result<Option<String>, String> {
+    let project_key = normalize_project_path_key(project_path);
+    let conn = db.0.lock().map_err(|error| error.to_string())?;
+    let projects = crate::db::queries::list_projects(&conn).sanitize_err()?;
+    Ok(projects
+        .into_iter()
+        .find(|project| normalize_project_path_key(&project.path) == project_key)
+        .map(|project| project.id))
 }
 
 fn resolve_foreground_project_id_from_sessions(
@@ -196,13 +222,7 @@ fn resolve_foreground_project_id_from_sessions(
         return Ok(None);
     };
 
-    let project_key = normalize_project_path_key(&project_path);
-    let conn = db.0.lock().map_err(|error| error.to_string())?;
-    let projects = crate::db::queries::list_projects(&conn).sanitize_err()?;
-    Ok(projects
-        .into_iter()
-        .find(|project| normalize_project_path_key(&project.path) == project_key)
-        .map(|project| project.id))
+    resolve_project_id_from_path(db, &project_path)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

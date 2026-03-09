@@ -9,6 +9,7 @@ use crate::coordination::domain::{DeliveryLease, HealthState, Member, MemberRole
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::{RuntimeSession, SessionGroupKind, SessionState};
 use crate::templates::types::BehavioralContract;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +121,27 @@ pub fn get_team_roster_with_attachments_and_activity(
         .collect())
 }
 
+pub fn get_team_roster_with_runtime_sessions(
+    teams_dir: &Path,
+    team_name: &str,
+    runtime_sessions: &[RuntimeSession],
+) -> Result<Vec<TeamMemberView>, CoordinationError> {
+    let config = TeamConfigStore::load(teams_dir, team_name)?;
+    let runtime_by_member = best_runtime_sessions_by_member(team_name, runtime_sessions)
+        .into_iter()
+        .map(|(member_name, session)| (member_name, member_runtime_record_from_session(session)))
+        .collect::<HashMap<_, _>>();
+
+    Ok(config
+        .members
+        .into_iter()
+        .map(|member| {
+            let runtime = runtime_by_member.get(&member.name).cloned();
+            build_team_member_view(team_name, member, runtime, None)
+        })
+        .collect())
+}
+
 fn build_team_member_view(
     team_name: &str,
     member: Member,
@@ -162,6 +184,58 @@ fn build_team_member_view(
         last_seen_at: runtime.as_ref().and_then(|record| record.last_seen_at),
         activity_state,
         has_runtime_record,
+    }
+}
+
+fn best_runtime_sessions_by_member<'a>(
+    team_name: &str,
+    sessions: &'a [RuntimeSession],
+) -> HashMap<String, &'a RuntimeSession> {
+    let mut by_member: HashMap<String, &'a RuntimeSession> = HashMap::new();
+    for session in sessions {
+        if session.group_kind != SessionGroupKind::MeshTeam {
+            continue;
+        }
+        if session.group_id.as_deref() != Some(team_name) {
+            continue;
+        }
+        let Some(member_name) = session.member_name.clone() else {
+            continue;
+        };
+        match by_member.get(&member_name) {
+            Some(existing) if preferred_runtime_session(existing, session) => {}
+            _ => {
+                by_member.insert(member_name, session);
+            }
+        }
+    }
+    by_member
+}
+
+fn preferred_runtime_session(existing: &RuntimeSession, candidate: &RuntimeSession) -> bool {
+    if existing.state == SessionState::Active && candidate.state != SessionState::Active {
+        return true;
+    }
+    existing.tmux_pane.is_some() && candidate.tmux_pane.is_none()
+}
+
+fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntimeRecord {
+    MemberRuntimeRecord {
+        schema_version: 3,
+        member_name: session.member_name.clone().unwrap_or_default(),
+        cli_tool: Some(session.cli_tool),
+        project_path: Some(PathBuf::from(session.project_path.clone())),
+        pane_id: session.tmux_pane.clone(),
+        session_id: session.session_id.clone(),
+        jsonl_path: session.jsonl_path.as_ref().map(PathBuf::from),
+        daemon_pid: None,
+        health: match session.state {
+            SessionState::Active => HealthState::Healthy,
+            SessionState::Idle => HealthState::Suppressed,
+        },
+        delivery_lease: None,
+        attached_at: None,
+        last_seen_at: None,
     }
 }
 

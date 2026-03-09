@@ -7,6 +7,7 @@
   let ready = $state(false)
   let markdownModulePromise = null
   let highlightRequestId = 0
+  let lastHighlightSignature = null
 
   async function getMarkdownModule() {
     if (!markdownModulePromise) {
@@ -26,9 +27,18 @@
     const src = code
     const lang = language
     const theme = codeTheme
+    const highlightSignature = `${theme}\u0000${lang || 'text'}\u0000${src ?? ''}`
+    if (!src) {
+      lastHighlightSignature = null
+      highlightedHtml = ''
+      ready = true
+      return
+    }
+    if (highlightSignature === lastHighlightSignature) return
+
+    lastHighlightSignature = highlightSignature
     const requestId = ++highlightRequestId
     let cancelled = false
-    if (!src) { highlightedHtml = ''; ready = true; return }
 
     ready = false
     getMarkdownModule()
@@ -51,7 +61,10 @@
   })
 
   // Split code into lines for fallback display
-  const lines = $derived(code ? code.split('\n') : [])
+  const lines = $derived.by(() => {
+    if (ready && highlightedHtml) return []
+    return code ? code.split('\n') : []
+  })
 
   let containerEl = $state(null)
 

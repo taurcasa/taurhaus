@@ -1,10 +1,15 @@
 use super::*;
 use crate::provider::path::normalize_project_path;
+use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::process::ProcessInfo;
+use crate::session_scanner::tmux::TmuxPane;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 
 /// Resolves Codex CLI session files from `~/.codex/sessions/YYYY/MM/DD/`.
 ///
@@ -24,11 +29,16 @@ impl CodexResolver {
         Self { base_dir }
     }
 
-    pub fn detect_idle_for_pid(&self, project_path: &str, pid: u32) -> IdleResult {
+    pub fn detect_idle_for_pid(
+        &self,
+        project_path: &str,
+        pid: u32,
+        pane_id: Option<&str>,
+    ) -> IdleResult {
         let Some(base) = self.base_dir.as_ref() else {
             return IdleResult::idle();
         };
-        codex_detect_idle_for_pid(project_path, pid, base)
+        codex_detect_idle_for_pid(project_path, pid, pane_id, base)
     }
 }
 
@@ -48,59 +58,253 @@ impl SessionResolver for CodexResolver {
     }
 }
 
-/// Cached mapping from project path to the JSONL file that serves it.
-struct CodexCacheEntry {
-    /// The JSONL file serving this project.
-    file_path: PathBuf,
-    /// When we last scanned (to expire stale entries).
-    scanned_at: SystemTime,
+const CODEX_BINDING_STORE_VERSION: u32 = 1;
+const CODEX_BINDING_STORE_FILENAME: &str = "codex-transcript-bindings.json";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct CodexBindingRecord {
+    project_path: String,
+    pid: u32,
+    pane_id: Option<String>,
+    session_id: String,
+    jsonl_path: String,
+    resolved_at: DateTime<Utc>,
 }
 
-/// How long a Codex cache entry is valid before we rescan.
-const CODEX_CACHE_TTL: Duration = Duration::from_secs(30);
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct CodexBindingStoreFile {
+    version: u32,
+    bindings: Vec<CodexBindingRecord>,
+}
 
-static CODEX_PATH_CACHE: Mutex<Option<HashMap<String, CodexCacheEntry>>> = Mutex::new(None);
+impl Default for CodexBindingStoreFile {
+    fn default() -> Self {
+        Self {
+            version: CODEX_BINDING_STORE_VERSION,
+            bindings: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct CodexBindingStoreState {
+    loaded_path: Option<PathBuf>,
+    bindings: HashMap<String, CodexBindingRecord>,
+}
+
+#[cfg(test)]
+static CODEX_BINDING_STORE_PATH_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+static CODEX_BINDING_STORE: OnceLock<Mutex<CodexBindingStoreState>> = OnceLock::new();
+
+fn binding_store_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(path) = CODEX_BINDING_STORE_PATH_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+    {
+        return path;
+    }
+
+    PlatformPaths::app_data_root().join(CODEX_BINDING_STORE_FILENAME)
+}
+
+fn binding_key(project_path: &str, pid: u32, pane_id: Option<&str>) -> String {
+    format!(
+        "{}\n{}\n{}",
+        normalize_project_path(project_path),
+        pid,
+        pane_id.unwrap_or("")
+    )
+}
+
+fn load_binding_store_from_disk(path: &Path) -> HashMap<String, CodexBindingRecord> {
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return HashMap::new(),
+    };
+    let parsed: CodexBindingStoreFile = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "failed to parse Codex transcript binding store; starting empty"
+            );
+            return HashMap::new();
+        }
+    };
+
+    parsed
+        .bindings
+        .into_iter()
+        .map(|binding| {
+            (
+                binding_key(
+                    &binding.project_path,
+                    binding.pid,
+                    binding.pane_id.as_deref(),
+                ),
+                binding,
+            )
+        })
+        .collect()
+}
+
+fn save_binding_store_to_disk(path: &Path, bindings: &HashMap<String, CodexBindingRecord>) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if let Err(error) = fs::create_dir_all(parent) {
+        tracing::warn!(
+            path = %path.display(),
+            error = %error,
+            "failed to create Codex transcript binding store directory"
+        );
+        return;
+    }
+
+    let payload = CodexBindingStoreFile {
+        version: CODEX_BINDING_STORE_VERSION,
+        bindings: bindings.values().cloned().collect(),
+    };
+    let serialized = match serde_json::to_string_pretty(&payload) {
+        Ok(serialized) => serialized,
+        Err(error) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "failed to serialize Codex transcript binding store"
+            );
+            return;
+        }
+    };
+
+    let tmp_path = path.with_extension("json.tmp");
+    if let Err(error) = fs::write(&tmp_path, serialized).and_then(|_| fs::rename(&tmp_path, path)) {
+        let _ = fs::remove_file(&tmp_path);
+        tracing::warn!(
+            path = %path.display(),
+            error = %error,
+            "failed to persist Codex transcript binding store"
+        );
+    }
+}
+
+fn with_binding_store<R>(
+    f: impl FnOnce(&mut HashMap<String, CodexBindingRecord>, &Path) -> R,
+) -> R {
+    let path = binding_store_path();
+    let store = CODEX_BINDING_STORE.get_or_init(|| Mutex::new(CodexBindingStoreState::default()));
+    let mut guard = store.lock().unwrap_or_else(|error| error.into_inner());
+    if guard.loaded_path.as_ref() != Some(&path) {
+        guard.bindings = load_binding_store_from_disk(&path);
+        guard.loaded_path = Some(path.clone());
+    }
+    f(&mut guard.bindings, &path)
+}
+
+#[cfg(test)]
+fn set_binding_store_path_for_test(path: Option<PathBuf>) {
+    *CODEX_BINDING_STORE_PATH_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = path;
+    let store = CODEX_BINDING_STORE.get_or_init(|| Mutex::new(CodexBindingStoreState::default()));
+    let mut guard = store.lock().unwrap_or_else(|error| error.into_inner());
+    *guard = CodexBindingStoreState::default();
+}
+
+fn persist_binding(project_path: &str, pid: u32, pane_id: Option<&str>, result: &IdleResult) {
+    let (Some(session_id), Some(jsonl_path)) =
+        (result.session_id.clone(), result.jsonl_path.clone())
+    else {
+        return;
+    };
+
+    let record = CodexBindingRecord {
+        project_path: normalize_project_path(project_path),
+        pid,
+        pane_id: pane_id.map(str::to_string),
+        session_id,
+        jsonl_path,
+        resolved_at: Utc::now(),
+    };
+    let key = binding_key(project_path, pid, pane_id);
+
+    with_binding_store(|bindings, path| {
+        let changed = bindings.get(&key) != Some(&record);
+        if changed {
+            bindings.insert(key, record);
+            save_binding_store_to_disk(path, bindings);
+        }
+    });
+}
+
+fn invalidate_binding(project_path: &str, pid: u32, pane_id: Option<&str>) {
+    let key = binding_key(project_path, pid, pane_id);
+    with_binding_store(|bindings, path| {
+        if bindings.remove(&key).is_some() {
+            save_binding_store_to_disk(path, bindings);
+        }
+    });
+}
+
+fn binding_result<F>(
+    project_path: &str,
+    pid: u32,
+    pane_id: Option<&str>,
+    file_open_by_pid: &F,
+) -> Option<IdleResult>
+where
+    F: Fn(&Path) -> bool,
+{
+    let key = binding_key(project_path, pid, pane_id);
+    let record = with_binding_store(|bindings, _| bindings.get(&key).cloned())?;
+    let path = PathBuf::from(&record.jsonl_path);
+    if !path.exists() {
+        invalidate_binding(project_path, pid, pane_id);
+        return None;
+    }
+    if !file_open_by_pid(&path) {
+        invalidate_binding(project_path, pid, pane_id);
+        return None;
+    }
+
+    let result = codex_result_from_file(&path);
+    if result.session_id.as_deref() != Some(record.session_id.as_str()) {
+        invalidate_binding(project_path, pid, pane_id);
+        return None;
+    }
+    Some(result)
+}
+
+pub(super) fn reconcile_persisted_bindings(
+    processes: &[ProcessInfo],
+    pane_map: &HashMap<String, TmuxPane>,
+) {
+    let active_keys = processes
+        .iter()
+        .filter(|process| process.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex)
+        .map(|process| {
+            let pane_id = pane_map.get(&process.tty).map(|pane| pane.pane_id.as_str());
+            binding_key(&process.project_path, process.pid, pane_id)
+        })
+        .collect::<std::collections::HashSet<_>>();
+
+    with_binding_store(|bindings, path| {
+        let before = bindings.len();
+        bindings.retain(|key, _| active_keys.contains(key));
+        if bindings.len() != before {
+            save_binding_store_to_disk(path, bindings);
+        }
+    });
+}
 
 /// Core Codex idle detection — testable with custom base dir.
 pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> IdleResult {
-    // Check cache first
-    {
-        let guard = CODEX_PATH_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(map) = guard.as_ref() {
-            if let Some(entry) = map.get(project_path) {
-                let age = SystemTime::now()
-                    .duration_since(entry.scanned_at)
-                    .unwrap_or(Duration::ZERO);
-                if age < CODEX_CACHE_TTL && entry.file_path.exists() {
-                    return codex_result_from_file(&entry.file_path);
-                }
-            }
-        }
-    }
-
-    // Cache miss — scan recent date directories
-    let matching_file = codex_find_session_for_project(project_path, sessions_dir);
-
-    // Update cache (evict expired entries on each insert)
-    if let Some(ref path) = matching_file {
-        let mut guard = CODEX_PATH_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        let map = guard.get_or_insert_with(HashMap::new);
-        let now = SystemTime::now();
-        map.retain(|_, entry| {
-            now.duration_since(entry.scanned_at)
-                .unwrap_or(Duration::ZERO)
-                < CODEX_CACHE_TTL * 2
-        });
-        map.insert(
-            project_path.to_string(),
-            CodexCacheEntry {
-                file_path: path.clone(),
-                scanned_at: now,
-            },
-        );
-    }
-
-    match matching_file {
+    match codex_find_session_for_project(project_path, sessions_dir) {
         Some(path) => codex_result_from_file(&path),
         None => IdleResult::idle(),
     }
@@ -109,9 +313,10 @@ pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> Idle
 pub(super) fn codex_detect_idle_for_pid(
     project_path: &str,
     pid: u32,
+    pane_id: Option<&str>,
     sessions_dir: &Path,
 ) -> IdleResult {
-    codex_detect_idle_for_pid_with(project_path, sessions_dir, &|path| {
+    codex_detect_idle_for_pid_with(project_path, pid, pane_id, sessions_dir, &|path| {
         path.to_str()
             .is_some_and(|path_str| crate::platform::process_has_open_path(pid, path_str))
     })
@@ -119,21 +324,37 @@ pub(super) fn codex_detect_idle_for_pid(
 
 fn codex_detect_idle_for_pid_with<F>(
     project_path: &str,
+    pid: u32,
+    pane_id: Option<&str>,
     sessions_dir: &Path,
     file_open_by_pid: &F,
 ) -> IdleResult
 where
     F: Fn(&Path) -> bool,
 {
+    if let Some(result) = binding_result(project_path, pid, pane_id, file_open_by_pid) {
+        return result;
+    }
+
     let candidates = codex_find_sessions_for_project(project_path, sessions_dir);
-    match candidates.as_slice() {
-        [] => IdleResult::idle(),
-        [only] => codex_result_from_file(only),
+    let resolved = match candidates.as_slice() {
+        [] => None,
+        [only] => Some(codex_result_from_file(only)),
         _ => candidates
             .into_iter()
             .find(|path| file_open_by_pid(path))
-            .map(|path| codex_result_from_file(&path))
-            .unwrap_or_else(IdleResult::idle),
+            .map(|path| codex_result_from_file(&path)),
+    };
+
+    match resolved {
+        Some(result) => {
+            persist_binding(project_path, pid, pane_id, &result);
+            result
+        }
+        None => {
+            invalidate_binding(project_path, pid, pane_id);
+            IdleResult::idle()
+        }
     }
 }
 
@@ -285,18 +506,18 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    static CODEX_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn filetime_set_mtime(path: &Path, time: SystemTime) {
         let file = File::options().write(true).open(path).unwrap();
         file.set_modified(time).unwrap();
     }
 
-    fn clear_codex_cache() {
-        let mut guard = CODEX_PATH_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(map) = guard.as_mut() {
-            map.clear();
-        }
+    fn setup_binding_store(tmp: &TempDir) {
+        set_binding_store_path_for_test(Some(tmp.path().join("codex-bindings.json")));
     }
 
     /// Create a Codex JSONL session file with a session_meta record.
@@ -316,8 +537,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_matches_project_by_cwd() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
             .path()
@@ -339,8 +561,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_no_match_returns_idle() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
             .path()
@@ -362,9 +585,10 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_old_session_file() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let project = "/home/user/projects/old-session-test";
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
             .path()
@@ -387,8 +611,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_empty_sessions_dir() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let result = codex_detect_idle("/home/user/projects/myapp", tmp.path());
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.session_id.is_none());
@@ -396,8 +621,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_malformed_jsonl_skipped() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
             .path()
@@ -419,8 +645,9 @@ mod tests {
 
     #[test]
     fn codex_normalizes_trailing_slash_in_cwd() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
             .path()
@@ -442,8 +669,9 @@ mod tests {
 
     #[test]
     fn codex_normalizes_windows_style_project_paths() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
             .path()
@@ -464,9 +692,10 @@ mod tests {
 
     #[test]
     fn codex_finds_session_from_days_ago() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let project = "/home/user/projects/days-ago-test";
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         // Place the session file 5 days ago (within 7-day lookback window)
         let five_days_ago = chrono::Local::now().date_naive() - chrono::Duration::days(5);
         let date_dir = tmp
@@ -498,8 +727,9 @@ mod tests {
 
     #[test]
     fn codex_ignores_session_beyond_lookback_window() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         // Place session 10 days ago — beyond the 7-day window
         let ten_days_ago = chrono::Local::now().date_naive() - chrono::Duration::days(10);
         let date_dir = tmp
@@ -521,8 +751,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_for_pid_prefers_open_jsonl_when_project_has_multiple_candidates() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let project = "/home/user/projects/myapp";
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
@@ -542,14 +773,19 @@ mod tests {
             project,
         );
 
-        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &|path| path == second);
+        let result = codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+            path == second
+        });
         assert_eq!(result.session_id.as_deref(), Some("second-uuid"));
         assert_eq!(
             result.jsonl_path.as_deref(),
             Some(second.to_string_lossy().as_ref())
         );
 
-        let fallback = codex_detect_idle_for_pid_with(project, tmp.path(), &|path| path == first);
+        let fallback =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+                path == first
+            });
         assert_eq!(fallback.session_id.as_deref(), Some("first-uuid"));
         assert_eq!(
             fallback.jsonl_path.as_deref(),
@@ -559,8 +795,9 @@ mod tests {
 
     #[test]
     fn codex_detect_idle_for_pid_refuses_project_level_guess_when_candidates_conflict() {
-        clear_codex_cache();
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
         let project = "/home/user/projects/myapp";
         let today = chrono::Local::now().date_naive();
         let date_dir = tmp
@@ -580,9 +817,145 @@ mod tests {
             project,
         );
 
-        let result = codex_detect_idle_for_pid_with(project, tmp.path(), &|_| false);
+        let result =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|_| false);
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.session_id.is_none());
         assert!(result.jsonl_path.is_none());
+    }
+
+    #[test]
+    fn codex_detect_idle_for_pid_reuses_persisted_binding_for_same_attachment() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let project = "/home/user/projects/myapp";
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let jsonl_path = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-05-00-second-uuid.jsonl",
+            project,
+        );
+
+        let resolved =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+                path == jsonl_path
+            });
+        assert_eq!(resolved.session_id.as_deref(), Some("second-uuid"));
+
+        let reused = codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+            path == jsonl_path
+        });
+        assert_eq!(reused.session_id.as_deref(), Some("second-uuid"));
+        assert_eq!(
+            reused.jsonl_path.as_deref(),
+            Some(jsonl_path.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn codex_binding_is_invalidated_when_pid_changes() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let project = "/home/user/projects/myapp";
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let jsonl_path = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-05-00-second-uuid.jsonl",
+            project,
+        );
+        let initial =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+                path == jsonl_path
+            });
+        assert_eq!(initial.session_id.as_deref(), Some("second-uuid"));
+
+        let processes = vec![ProcessInfo {
+            pid: 77,
+            project_path: project.to_string(),
+            tty: "/dev/pts/1".to_string(),
+            args: "codex".to_string(),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
+        }];
+        let pane_map = HashMap::from([(
+            "/dev/pts/1".to_string(),
+            TmuxPane {
+                pane_id: "%1".to_string(),
+                tty: "/dev/pts/1".to_string(),
+                window_index: "1".to_string(),
+                window_name: "work".to_string(),
+                session_name: "taurhaus".to_string(),
+            },
+        )]);
+        reconcile_persisted_bindings(&processes, &pane_map);
+        let stale_key = binding_key(project, 42, Some("%1"));
+        let replacement_key = binding_key(project, 77, Some("%1"));
+        with_binding_store(|bindings, _| {
+            assert!(!bindings.contains_key(&stale_key));
+            assert!(!bindings.contains_key(&replacement_key));
+        });
+
+        let rebound =
+            codex_detect_idle_for_pid_with(project, 77, Some("%1"), tmp.path(), &|path| {
+                path == jsonl_path
+            });
+        assert_eq!(rebound.session_id.as_deref(), Some("second-uuid"));
+        with_binding_store(|bindings, _| {
+            assert!(bindings.contains_key(&replacement_key));
+        });
+    }
+
+    #[test]
+    fn codex_binding_is_invalidated_when_same_pid_attaches_new_transcript() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let project = "/home/user/projects/myapp";
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let first = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-00-00-first-uuid.jsonl",
+            project,
+        );
+        let second = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-05-00-second-uuid.jsonl",
+            project,
+        );
+
+        let initial =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+                path == first
+            });
+        assert_eq!(initial.session_id.as_deref(), Some("first-uuid"));
+
+        let rebound =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+                path == second
+            });
+        assert_eq!(rebound.session_id.as_deref(), Some("second-uuid"));
+        assert_eq!(
+            rebound.jsonl_path.as_deref(),
+            Some(second.to_string_lossy().as_ref())
+        );
     }
 }

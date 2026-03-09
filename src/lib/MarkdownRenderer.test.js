@@ -14,6 +14,7 @@ function createDeferred() {
 
 vi.mock('./markdown.js', () => ({
   renderMarkdown: vi.fn(),
+  markdownHasMermaidFence: vi.fn((source) => String(source ?? '').includes('```mermaid')),
 }))
 
 vi.mock('./ipc.js', () => ({
@@ -48,7 +49,7 @@ vi.mock('mermaid', () => ({
   },
 }))
 
-const { renderMarkdown } = await import('./markdown.js')
+const { markdownHasMermaidFence, renderMarkdown } = await import('./markdown.js')
 const { default: DOMPurify } = await import('dompurify')
 const { openExternalUrl, readProjectAsset } = await import('./ipc.js')
 const assetCache = await import('./assetCache.js')
@@ -58,6 +59,7 @@ describe('MarkdownRenderer mermaid rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     renderMarkdown.mockResolvedValue('<p>default</p>')
+    markdownHasMermaidFence.mockImplementation((source) => String(source ?? '').includes('```mermaid'))
     mockMermaidRender.mockResolvedValue({ svg: '<svg class="mermaid-svg"><rect/></svg>' })
   })
 
@@ -93,6 +95,23 @@ describe('MarkdownRenderer mermaid rendering', () => {
     expect(mockMermaidInitialize).not.toHaveBeenCalled()
     expect(container.querySelector('pre')).not.toHaveAttribute('data-mermaid-processed')
     expect(mockMermaidRender).not.toHaveBeenCalled()
+  })
+
+  it('does not initialize mermaid when the source has no mermaid fence', async () => {
+    renderMarkdown.mockResolvedValue('<pre><code class="language-mermaid">flowchart TD\n  A--&gt;B</code></pre>')
+    markdownHasMermaidFence.mockReturnValue(false)
+
+    const { container } = render(MarkdownRenderer, {
+      props: { source: 'plain text only' },
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('pre code')?.textContent).toContain('flowchart TD')
+    })
+
+    expect(mockMermaidInitialize).not.toHaveBeenCalled()
+    expect(mockMermaidRender).not.toHaveBeenCalled()
+    expect(container.querySelector('pre')).not.toHaveAttribute('data-mermaid-processed')
   })
 
   it('preserves original code and shows fallback when mermaid render fails', async () => {
@@ -178,6 +197,30 @@ describe('MarkdownRenderer mermaid rendering', () => {
     await waitFor(() => {
       expect(view.container.querySelector('[data-testid="markdown-content"]')).toHaveTextContent('new')
     })
+  })
+
+  it('does not rerender markdown when only asset context changes', async () => {
+    renderMarkdown.mockResolvedValue('<p><img src="logo.png" alt="logo"></p>')
+
+    const view = render(MarkdownRenderer, {
+      props: { source: '![logo](logo.png)', projectId: 'project-1', filePath: 'docs/readme.md' },
+    })
+
+    await waitFor(() => {
+      expect(view.container.querySelector('img')).toBeInTheDocument()
+    })
+    expect(renderMarkdown).toHaveBeenCalledTimes(1)
+
+    await view.rerender({
+      source: '![logo](logo.png)',
+      projectId: 'project-2',
+      filePath: 'docs/guide.md',
+    })
+
+    await waitFor(() => {
+      expect(view.container.querySelector('img')).toBeInTheDocument()
+    })
+    expect(renderMarkdown).toHaveBeenCalledTimes(1)
   })
 
   it('ignores stale image asset resolutions from older render cycles', async () => {

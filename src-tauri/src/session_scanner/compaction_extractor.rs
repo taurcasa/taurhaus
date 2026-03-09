@@ -350,7 +350,7 @@ pub fn extract_compaction_signals_at(
     teams_dir: &Path,
     emitted_at: DateTime<Utc>,
 ) {
-    sync_managed_codex_runtime_jsonl_paths(sessions, teams_dir);
+    sync_managed_codex_runtime_bindings(sessions, teams_dir);
     let transcripts = load_managed_codex_transcripts_from_runtime(teams_dir);
     let active_file_count = transcripts.len();
 
@@ -605,11 +605,11 @@ fn load_managed_codex_transcripts_from_runtime(teams_dir: &Path) -> Vec<ManagedC
     transcripts
 }
 
-fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir: &Path) {
+fn sync_managed_codex_runtime_bindings(sessions: &[RuntimeSession], teams_dir: &Path) {
     let codex_sessions = sessions
         .iter()
         .filter(|session| session.cli_tool == CliTool::Codex)
-        .filter(|session| session.jsonl_path.is_some())
+        .filter(|session| session.session_id.is_some() || session.jsonl_path.is_some())
         .cloned()
         .collect::<Vec<_>>();
     let team_names = match TeamConfigStore::list(teams_dir) {
@@ -636,17 +636,21 @@ fn sync_managed_codex_runtime_jsonl_paths(sessions: &[RuntimeSession], teams_dir
             let Some(mut runtime) = member.runtime_record() else {
                 continue;
             };
-            let matched_jsonl_path = select_runtime_session_for_member(&runtime, &codex_sessions)
+            let matched_session = select_runtime_session_for_member(&runtime, &codex_sessions);
+            let matched_session_id = matched_session.and_then(|session| session.session_id.clone());
+            let matched_jsonl_path = matched_session
                 .and_then(|session| session.jsonl_path.as_deref())
                 .map(PathBuf::from);
-            if runtime.jsonl_path == matched_jsonl_path {
+            if runtime.session_id == matched_session_id && runtime.jsonl_path == matched_jsonl_path
+            {
                 continue;
             }
+            runtime.session_id = matched_session_id;
             runtime.jsonl_path = matched_jsonl_path;
             if let Err(error) =
                 MemberRuntimeStore::save(teams_dir, &team_name, &member.member_name, &runtime)
             {
-                tracing::warn!(team_name = team_name, member_name = member.member_name, error = %error, "failed to persist compaction runtime jsonl path");
+                tracing::warn!(team_name = team_name, member_name = member.member_name, error = %error, "failed to persist compaction runtime binding");
             }
         }
     }

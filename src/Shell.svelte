@@ -32,7 +32,7 @@
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
-  import { loadProjectSelectionData } from './lib/projectSelection.js'
+  import { loadProjectSelectionData, prefetchProjectSelectionData } from './lib/projectSelection.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
@@ -56,8 +56,6 @@
   let showWizard = $state(false)
   let wizardChecked = $state(false)
   let startupViewportSyncAttempted = false
-  let useWizardBootstrapSelection = false
-
   // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
   let daemonStatusDismissTimer = $state(null)
@@ -280,7 +278,6 @@
 
   function handleWizardComplete() {
     showWizard = false
-    useWizardBootstrapSelection = true
     loadProjects()
     loadCodeThemeFromSettings()
     loadDaemonStatus({ allowInitial: false })
@@ -585,12 +582,7 @@
       // Auto-select first project if none selected
       if (!selectedProject && projects.length > 0) {
         const firstProject = projects[0]
-        if (useWizardBootstrapSelection) {
-          useWizardBootstrapSelection = false
-          void bootstrapInitialProject(firstProject)
-        } else {
-          void selectProject(firstProject)
-        }
+        void bootstrapInitialProject(firstProject)
       }
       // Git status now comes from cached columns in list_projects (no extra IPC calls).
       // The cache is refreshed by the file watcher and startup reseed.
@@ -618,13 +610,19 @@
   }
 
   async function bootstrapInitialProject(project) {
-    selectedProject = project
-    detailLoading = false
-    setTimeout(() => {
-      if (selectedProject?.id === project.id) {
-        void selectProject(project)
-      }
-    }, 1500)
+    await selectProject(project)
+  }
+
+  function prefetchProjectSelection(project) {
+    if (!project?.id || project.id === selectedProject?.id) return
+    void prefetchProjectSelectionData(project.id, {
+      getProject,
+      getRecentCommits,
+      getLatestSession,
+      listSessions,
+      getReadme,
+      getRelationships,
+    })
   }
 
   async function selectProject(project) {
@@ -1148,6 +1146,9 @@
         daemonStatus={daemonStatus}
         {settingsOpen}
         {dark}
+        actions={{
+          onProjectHover: prefetchProjectSelection,
+        }}
     />
 
     <!-- ═══ MAIN PANEL ═══ -->

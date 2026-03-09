@@ -256,6 +256,13 @@ fn json_number_u64(value: u64) -> Value {
 }
 
 fn detect_runtime_idle_for_process(proc: &process::ProcessInfo) -> idle::IdleResult {
+    detect_runtime_idle_for_process_with_pane(proc, None)
+}
+
+fn detect_runtime_idle_for_process_with_pane(
+    proc: &process::ProcessInfo,
+    pane_id: Option<&str>,
+) -> idle::IdleResult {
     #[cfg(test)]
     if let Some(detector) = RUNTIME_IDLE_DETECTOR_OVERRIDE
         .get_or_init(|| Mutex::new(None))
@@ -267,7 +274,7 @@ fn detect_runtime_idle_for_process(proc: &process::ProcessInfo) -> idle::IdleRes
         return detector(proc);
     }
 
-    idle::detect_runtime_idle(&proc.project_path, proc.pid, proc.cli_tool)
+    idle::detect_runtime_idle(&proc.project_path, proc.pid, pane_id, proc.cli_tool)
 }
 
 fn publish_compaction_runtime_sessions(runtime_sessions: &[RuntimeSession]) {
@@ -659,14 +666,24 @@ fn compute_activity_decision(
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
 pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
+    scan_sessions_for_authoritative_snapshot().0
+}
+
+/// Scan once and return both the UI-safe display view and the full runtime view.
+///
+/// This is the authoritative combined scan used by daemon-side snapshot
+/// production so consumers do not repeat process/tmux classification work.
+pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<RuntimeSession>) {
     #[cfg(target_os = "windows")]
     if let Some(display_sessions) = scan_display_sessions_via_daemon() {
         let runtime_sessions = scan_runtime_sessions_via_daemon();
-        return finalize_display_scan(
+        let runtime_sessions = runtime_sessions.unwrap_or_default();
+        let display_sessions = finalize_display_scan(
             display_sessions,
-            runtime_sessions.as_deref(),
+            Some(&runtime_sessions),
             ScanCompletionMetrics::default(),
         );
+        return (display_sessions, runtime_sessions);
     }
 
     let scan_started = Instant::now();
@@ -684,6 +701,7 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
             .entry((proc.project_path.clone(), proc.cli_tool))
             .or_default() += 1;
     }
+    idle::reconcile_codex_bindings(&processes, &pane_map);
 
     let classify_started = Instant::now();
     let (sessions, idle_ms, process_signal_ms, ownership_ms) =
@@ -709,11 +727,15 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
         sessions = sessions.len(),
         "session_scanner metrics"
     );
-    let display_sessions: Vec<DisplaySession> =
-        sessions.iter().cloned().map(DisplaySession::from).collect();
-    finalize_display_scan(
+    let runtime_sessions = sessions;
+    let display_sessions: Vec<DisplaySession> = runtime_sessions
+        .iter()
+        .cloned()
+        .map(DisplaySession::from)
+        .collect();
+    let display_sessions = finalize_display_scan(
         display_sessions,
-        Some(&sessions),
+        Some(&runtime_sessions),
         ScanCompletionMetrics {
             process_scan_ms,
             tmux_ms,
@@ -725,7 +747,8 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
             ownership_ms: ownership_ms.as_millis() as u64,
             total_ms,
         },
-    )
+    );
+    (display_sessions, runtime_sessions)
 }
 
 fn classify_display_runtime_sessions_with<H>(
@@ -747,7 +770,13 @@ where
             let tmux = pane_map.get(&proc.tty);
 
             let idle_started = Instant::now();
-            let idle_result = idle_detector(&proc);
+            let idle_result = match proc.cli_tool {
+                CliTool::Codex => detect_runtime_idle_for_process_with_pane(
+                    &proc,
+                    tmux.map(|pane| pane.pane_id.as_str()),
+                ),
+                _ => idle_detector(&proc),
+            };
             idle_ms += idle_started.elapsed();
             let file_active = idle_result.state == SessionState::Active;
             let sessions_for_tool_in_project = sessions_per_project_tool
@@ -870,12 +899,16 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
         &process::scan_processes,
         &tmux::list_panes,
     );
+    idle::reconcile_codex_bindings(&processes, &pane_map);
 
     let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
-            let idle_result = detect_runtime_idle_for_process(&proc);
+            let idle_result = detect_runtime_idle_for_process_with_pane(
+                &proc,
+                tmux.map(|pane| pane.pane_id.as_str()),
+            );
 
             RuntimeSession {
                 pid: proc.pid,
@@ -924,6 +957,7 @@ where
 {
     let processes = process_scanner();
     let pane_map = tmux_lister();
+    idle::reconcile_codex_bindings(&processes, &pane_map);
 
     let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
@@ -976,12 +1010,16 @@ where
 {
     let processes = process_scanner();
     let pane_map = tmux_lister();
+    idle::reconcile_codex_bindings(&processes, &pane_map);
 
     let mut sessions: Vec<RuntimeSession> = processes
         .into_iter()
         .map(|proc| {
             let tmux = pane_map.get(&proc.tty);
-            let idle_result = detect_runtime_idle_for_process(&proc);
+            let idle_result = detect_runtime_idle_for_process_with_pane(
+                &proc,
+                tmux.map(|pane| pane.pane_id.as_str()),
+            );
 
             RuntimeSession {
                 pid: proc.pid,

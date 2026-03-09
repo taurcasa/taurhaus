@@ -6,11 +6,13 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 
 use crate::coordination::activity_export::{
-    default_activity_export_teams_dir, export_activity_snapshots_for_sessions,
+    default_activity_export_teams_dir, enrich_runtime_sessions_with_team_membership,
+    enrich_sessions_with_team_membership, export_activity_snapshots_for_sessions,
 };
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::DisplaySession;
+use crate::session_scanner::tmux::{self, TmuxFocusState};
 use crate::session_scanner::SessionState;
+use crate::session_scanner::{DisplaySession, RuntimeSession};
 
 /// Scanner cadence for daemon-owned session activity tracking.
 const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_millis(500);
@@ -27,6 +29,15 @@ pub struct SessionSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeSessionSnapshot {
+    pub version: u64,
+    pub display_sessions: Vec<DisplaySession>,
+    pub runtime_sessions: Vec<RuntimeSession>,
+    pub focus: Option<TmuxFocusState>,
+    pub foreground_project_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionUpdate {
     pub changed: bool,
     pub snapshot: SessionSnapshot,
@@ -36,7 +47,10 @@ pub struct SessionUpdate {
 struct HubState {
     initialized: bool,
     version: u64,
-    sessions: Vec<DisplaySession>,
+    display_sessions: Vec<DisplaySession>,
+    runtime_sessions: Vec<RuntimeSession>,
+    focus: Option<TmuxFocusState>,
+    foreground_project_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +148,19 @@ impl SessionActivityHub {
         let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
         SessionSnapshot {
             version: guard.version,
-            sessions: guard.sessions.clone(),
+            sessions: guard.display_sessions.clone(),
+        }
+    }
+
+    /// Get the latest authoritative display/runtime snapshot immediately.
+    pub fn runtime_snapshot(&self) -> RuntimeSessionSnapshot {
+        let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        RuntimeSessionSnapshot {
+            version: guard.version,
+            display_sessions: guard.display_sessions.clone(),
+            runtime_sessions: guard.runtime_sessions.clone(),
+            focus: guard.focus.clone(),
+            foreground_project_path: guard.foreground_project_path.clone(),
         }
     }
 
@@ -151,7 +177,7 @@ impl SessionActivityHub {
                 changed: true,
                 snapshot: SessionSnapshot {
                     version: guard.version,
-                    sessions: guard.sessions.clone(),
+                    sessions: guard.display_sessions.clone(),
                 },
             };
         }
@@ -161,7 +187,7 @@ impl SessionActivityHub {
                 changed: false,
                 snapshot: SessionSnapshot {
                     version: guard.version,
-                    sessions: guard.sessions.clone(),
+                    sessions: guard.display_sessions.clone(),
                 },
             };
         }
@@ -176,7 +202,7 @@ impl SessionActivityHub {
             changed,
             snapshot: SessionSnapshot {
                 version: guard.version,
-                sessions: guard.sessions.clone(),
+                sessions: guard.display_sessions.clone(),
             },
         }
     }
@@ -196,15 +222,26 @@ impl SessionActivityHub {
             let mut cadence = ScannerCadence::default();
 
             loop {
-                let sessions = crate::session_scanner::scan_sessions_for_display();
+                let (mut display_sessions, mut runtime_sessions) =
+                    crate::session_scanner::scan_sessions_for_authoritative_snapshot();
+                let teams_dir = default_activity_export_teams_dir();
+                enrich_sessions_with_team_membership(&teams_dir, &mut display_sessions);
+                enrich_runtime_sessions_with_team_membership(&teams_dir, &mut runtime_sessions);
+                let focus = tmux::read_focus_state(
+                    &crate::provider::platform_paths::PlatformPaths::app_data_root(),
+                );
+                let foreground_project_path = focus
+                    .as_ref()
+                    .and_then(|focus| tmux::resolve_focus_project_path(focus, &display_sessions));
                 let changed = {
                     let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                    !state.initialized || activity_changed(&state.sessions, &sessions)
+                    !state.initialized
+                        || activity_changed(&state.display_sessions, &display_sessions)
                 };
                 if changed {
                     let export_stats = export_activity_snapshots_for_sessions(
-                        &default_activity_export_teams_dir(),
-                        &sessions,
+                        &teams_dir,
+                        &display_sessions,
                         Utc::now(),
                     );
                     if export_stats.write_failures > 0 {
@@ -219,16 +256,22 @@ impl SessionActivityHub {
 
                 let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 if changed {
-                    state.sessions = sessions;
+                    state.display_sessions = display_sessions;
+                    state.runtime_sessions = runtime_sessions;
+                    state.focus = focus;
+                    state.foreground_project_path = foreground_project_path;
                     state.version = state.version.saturating_add(1);
                     state.initialized = true;
                     hub.changed_cv.notify_all();
                 } else {
                     // Keep latest metadata without generating a new version/event.
-                    state.sessions = sessions;
+                    state.display_sessions = display_sessions;
+                    state.runtime_sessions = runtime_sessions;
+                    state.focus = focus;
+                    state.foreground_project_path = foreground_project_path;
                 }
 
-                let interval = cadence.next_interval(changed, &state.sessions);
+                let interval = cadence.next_interval(changed, &state.display_sessions);
                 next_tick += interval;
                 let now = Instant::now();
                 if next_tick > now {

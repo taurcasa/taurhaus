@@ -20,6 +20,9 @@
   let markdownModulePromise = null
   let renderRequestId = 0
   let imageResolveRequestId = 0
+  let lastRenderSignature = null
+  let lastResolvedImageSignature = null
+  let lastMermaidSignature = null
 
   async function getMarkdownModule() {
     if (!markdownModulePromise) {
@@ -34,6 +37,18 @@
   $effect(() => {
     const src = source
     const theme = codeTheme
+    const renderSignature = `${theme}\u0000${src ?? ''}`
+    if (!src) {
+      lastRenderSignature = renderSignature
+      html = ''
+      loading = false
+      lastResolvedImageSignature = null
+      lastMermaidSignature = null
+      return
+    }
+    if (renderSignature === lastRenderSignature) return
+
+    lastRenderSignature = renderSignature
     const requestId = ++renderRequestId
     let cancelled = false
     loading = true
@@ -58,6 +73,15 @@
   // After HTML is rendered, resolve relative image src via cache or IPC
   $effect(() => {
     if (!container || !projectId || loading) return
+    if (!html.includes('<img')) {
+      lastResolvedImageSignature = null
+      return
+    }
+
+    const imageSignature = `${projectId}\u0000${filePath ?? ''}\u0000${html}`
+    if (imageSignature === lastResolvedImageSignature) return
+
+    lastResolvedImageSignature = imageSignature
     const requestId = ++imageResolveRequestId
     let cancelled = false
     const images = container.querySelectorAll('img')
@@ -93,11 +117,27 @@
 
   // After HTML is rendered, replace Mermaid code blocks with rendered SVG.
   $effect(() => {
-    if (!container || loading) return
+    const src = source
+    if (!container || loading || !src) return
+    if (!html.includes('language-mermaid')) {
+      lastMermaidSignature = null
+      return
+    }
+
     const isDark = dark
+    const mermaidSignature = `${isDark ? 'dark' : 'default'}\u0000${html}`
+    if (mermaidSignature === lastMermaidSignature) return
+
     let cancelled = false
 
     ;(async () => {
+      const { markdownHasMermaidFence } = await getMarkdownModule()
+      if (!markdownHasMermaidFence(src)) {
+        lastMermaidSignature = null
+        return
+      }
+
+      lastMermaidSignature = mermaidSignature
       const mermaidBlocks = Array.from(container.querySelectorAll('pre:has(> code.language-mermaid):not([data-mermaid-processed])'))
       if (mermaidBlocks.length === 0) return
 

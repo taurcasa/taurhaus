@@ -191,6 +191,11 @@
     projectContext?.selectProject?.(project)
   }
 
+  function handleProjectMouseEnter(project, sessions, el) {
+    actions?.onProjectHover?.(project)
+    showHoverCard(project, sessions, el)
+  }
+
   function handleOpenManageProjects() {
     actions?.onAddProject?.()
     sessionContext?.openManageProjects?.()
@@ -449,7 +454,7 @@
         clearTimeout(hoverTimeout)
         openContextMenu(event, project)
       }}
-      onProjectMouseEnter={showHoverCard}
+      onProjectMouseEnter={handleProjectMouseEnter}
       onProjectMouseLeave={hideHoverCard}
       onSessionJump={jumpToSession}
       onRetry={handleRetry}

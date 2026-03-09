@@ -3,6 +3,7 @@ import { formatUserFacingError } from './format.js'
 const PROJECT_SECTION_TIMEOUT_MS = 5000
 const PROJECT_SELECTION_DEBOUNCE_MS = 25
 let scheduledSelectionBatch = null
+const inflightSelectionRequests = new Map()
 
 function withTimeout(promise, timeoutMs, section) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -85,11 +86,27 @@ async function resolveProjectSelectionData(projectId, ipc) {
   return { detail, commits, latest, sessionList, readme, rels }
 }
 
+function startProjectSelectionDataLoad(projectId, ipc) {
+  if (inflightSelectionRequests.has(projectId)) {
+    return inflightSelectionRequests.get(projectId)
+  }
+
+  const request = resolveProjectSelectionData(projectId, ipc).finally(() => {
+    inflightSelectionRequests.delete(projectId)
+  })
+  inflightSelectionRequests.set(projectId, request)
+  return request
+}
+
 /**
  * Load all project sections and return a resolved object.
  * Keep this helper for call sites/tests that still need an all-at-once payload.
  */
 export function loadProjectSelectionData(projectId, ipc) {
+  if (inflightSelectionRequests.has(projectId)) {
+    return inflightSelectionRequests.get(projectId)
+  }
+
   if (scheduledSelectionBatch?.timerId) {
     clearTimeout(scheduledSelectionBatch.timerId)
   }
@@ -108,7 +125,7 @@ export function loadProjectSelectionData(projectId, ipc) {
         if (!batch) return
 
         try {
-          const result = await resolveProjectSelectionData(batch.projectId, batch.ipc)
+          const result = await startProjectSelectionDataLoad(batch.projectId, batch.ipc)
           batch.waiters.forEach((waiter) => waiter.resolve(result))
         } catch (error) {
           batch.waiters.forEach((waiter) => waiter.reject(error))
@@ -116,4 +133,21 @@ export function loadProjectSelectionData(projectId, ipc) {
       }, PROJECT_SELECTION_DEBOUNCE_MS),
     }
   })
+}
+
+/**
+ * Speculatively start a full project-selection batch so a subsequent click can
+ * reuse the in-flight result without changing visible completeness.
+ */
+export function prefetchProjectSelectionData(projectId, ipc) {
+  if (!projectId) return Promise.resolve(null)
+  return startProjectSelectionDataLoad(projectId, ipc)
+}
+
+export function resetProjectSelectionStateForTests() {
+  if (scheduledSelectionBatch?.timerId) {
+    clearTimeout(scheduledSelectionBatch.timerId)
+  }
+  scheduledSelectionBatch = null
+  inflightSelectionRequests.clear()
 }
