@@ -153,12 +153,6 @@ struct TeamExtractionStats {
     emitted_signal_count: usize,
 }
 
-pub fn extract_compaction_signals(sessions: &[RuntimeSession]) {
-    let teams_dir =
-        crate::coordination::stores::compaction_signal::default_compaction_signal_teams_dir();
-    extract_compaction_signals_at(sessions, &teams_dir, Utc::now());
-}
-
 pub fn start_compaction_extractor_service_at(
     teams_dir: impl Into<PathBuf>,
     initial_sessions: Vec<RuntimeSession>,

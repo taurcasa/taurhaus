@@ -18,9 +18,9 @@ pub struct ProcessInfo {
     pub cli_tool: CliTool,
 }
 
-/// Scan for claude processes by running `ps` and reading `/proc`.
+/// Scan supported CLI tool processes by running `ps` and reading `/proc`.
 ///
-/// Returns one `ProcessInfo` per detected claude process. Gracefully
+/// Returns one `ProcessInfo` per detected tool process. Gracefully
 /// skips processes that disappear between the `ps` call and `/proc` reads.
 pub fn scan_processes() -> Vec<ProcessInfo> {
     let ps_output = match run_ps() {

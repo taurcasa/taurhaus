@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tauri::Manager;
 
@@ -12,8 +12,9 @@ use crate::session_scanner::compaction_extractor;
 use crate::session_scanner::compaction_watcher::CompactionSignalWatcher;
 use crate::session_scanner::scan_sessions_for_runtime;
 
-#[allow(dead_code)]
-pub struct CompactionWatcherState(pub Mutex<Vec<CompactionSignalWatcher>>);
+pub struct CompactionWatcherState {
+    _watchers: Vec<CompactionSignalWatcher>,
+}
 
 pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> {
     if cfg!(target_os = "windows") {
@@ -28,7 +29,9 @@ pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> 
     )?;
 
     let watchers = start_team_watchers(&teams_dir)?;
-    app.manage(CompactionWatcherState(Mutex::new(watchers)));
+    app.manage(CompactionWatcherState {
+        _watchers: watchers,
+    });
     Ok(())
 }
 
@@ -74,6 +77,7 @@ mod tests {
 
     use std::io::Write;
     use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
     use chrono::{DateTime, Utc};

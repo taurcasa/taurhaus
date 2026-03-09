@@ -474,14 +474,18 @@ mod tests {
         assert!(rendered.contains("Validation expectation: report-only"));
         assert!(rendered.contains("Role: Taurhaus Architect (taurhaus-architect)"));
         assert!(rendered.contains("Focus area: Cross-layer diagnosis"));
-        assert!(rendered.contains("Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."));
+        assert!(rendered.contains(
+            "Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
+        ));
         assert!(rendered.contains("Project: /home/mstie/projects/taurhaus"));
         assert!(rendered.contains("Focal files:"));
         assert!(rendered.contains("- docs/architecture/post-compaction-reinjection.md"));
         assert!(rendered.contains("File ownership boundary:"));
         assert!(rendered.contains("Adjacent fix policy: no"));
         assert!(rendered.contains("Override allowed: no"));
-        assert!(rendered.contains("Next action: continue the current task immediately with this restored context."));
+        assert!(rendered.contains(
+            "Next action: continue the current task immediately with this restored context."
+        ));
     }
 
     #[test]
