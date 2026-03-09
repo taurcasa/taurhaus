@@ -77,10 +77,13 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
                         },
                     );
                 } else {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
                     let provider_state = app.state::<ProviderState>();
                     if let Some(ref daemon) = provider_state.daemon {
-                        if daemon.reconnect().is_ok() {
+                        if crate::daemon::launcher::reconnect_existing_provider_until_reachable(
+                            daemon, port,
+                        )
+                        .is_ok()
+                        {
                             tracing::info!("Background bootstrap: daemon connected");
                             daemon_lifecycle::respawn_daemon_watches(&app);
                             emit_frontend_event(
@@ -134,7 +137,7 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
                                     fields.insert(
                                         "error.message".to_string(),
                                         Value::String(
-                                            "daemon reconnect failed after bootstrap start"
+                                            "daemon did not become reachable after bootstrap start"
                                                 .to_string(),
                                         ),
                                     );

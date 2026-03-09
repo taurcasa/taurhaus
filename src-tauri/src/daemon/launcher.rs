@@ -478,7 +478,7 @@ fn poll_until_reachable(port: u16, timeout: Duration) -> Option<DaemonProvider> 
     }
 }
 
-fn reconnect_existing_provider_until_reachable(
+pub(crate) fn reconnect_existing_provider_until_reachable(
     provider: &DaemonProvider,
     port: u16,
 ) -> Result<(), std::io::Error> {
@@ -851,6 +851,31 @@ mod tests {
             start.elapsed() >= Duration::from_secs(1),
             "Should wait full timeout"
         );
+    }
+
+    #[test]
+    fn reconnect_existing_provider_until_reachable_succeeds_when_daemon_starts() {
+        let port = reserve_free_port();
+        let provider = DaemonProvider::new_disconnected(&format!("127.0.0.1:{port}"));
+
+        let daemon = spawn_test_daemon(port, Duration::from_millis(300));
+        let start = Instant::now();
+        let result = reconnect_existing_provider_until_reachable(&provider, port);
+
+        assert!(
+            result.is_ok(),
+            "Should reconnect once the delayed daemon becomes reachable"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "Readiness reconnect should not wait for an unnecessary fixed delay"
+        );
+        assert!(
+            provider.is_connected(),
+            "Provider should be marked connected"
+        );
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
