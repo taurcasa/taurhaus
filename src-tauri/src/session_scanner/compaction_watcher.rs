@@ -320,11 +320,27 @@ impl CompactionSignalWatcher {
         )?);
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let join_handle = thread::spawn(move || {
-            if let Err(error) = run_watcher_loop(core, thread_shutdown, config) {
+            if let Err(error) = run_watcher_loop(core, thread_shutdown, config, ready_tx) {
                 tracing::warn!(error = %error, "compaction signal watcher loop exited with error");
             }
         });
+
+        match ready_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => return Err(CoordinationError::StoreError(error)),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                return Err(CoordinationError::StoreError(
+                    "compaction signal watcher did not become ready before timeout".to_string(),
+                ));
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(CoordinationError::StoreError(
+                    "compaction signal watcher exited before signaling readiness".to_string(),
+                ));
+            }
+        }
 
         Ok(Self {
             shutdown,
@@ -346,6 +362,7 @@ fn run_watcher_loop<P: CompactionSignalProcessor + ?Sized>(
     core: Arc<CompactionSignalWatcherCore<P>>,
     shutdown: Arc<AtomicBool>,
     config: CompactionSignalWatcherConfig,
+    ready_tx: mpsc::SyncSender<Result<(), String>>,
 ) -> Result<(), CoordinationError> {
     let signal_path = core.signal_path();
     let signal_dir = core.signal_dir();
@@ -365,6 +382,7 @@ fn run_watcher_loop<P: CompactionSignalProcessor + ?Sized>(
         .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
     let mut file_watch_active = try_watch_signal_file(&mut watcher, &signal_path);
     core.process_available_signals(true)?;
+    let _ = ready_tx.send(Ok(()));
     let mut last_reconcile = Instant::now();
 
     while !shutdown.load(Ordering::Relaxed) {
@@ -615,7 +633,6 @@ mod tests {
             },
         )
         .expect("start watcher");
-        thread::sleep(Duration::from_millis(150));
 
         CompactionSignalLog::append(tmp.path(), "taurhaus-team", &sample_signal())
             .expect("append signal");
