@@ -309,6 +309,7 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
   }
 
   return {
+    description: String(preset?.description ?? ''),
     lead,
     agents,
     presetId: preset?.presetId ?? '',
@@ -406,6 +407,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     )
 
   return {
+    description: String(status?.description ?? ''),
     lead,
     agents,
     presetId: '',
@@ -463,6 +465,7 @@ export function composeConfigFromPayload(payload, projectPath = '') {
   )
 
   return {
+    description: String(payload?.description ?? ''),
     lead,
     agents,
     presetId: '',
@@ -487,7 +490,7 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
   if (isPresetInitialization) {
     return {
       teamName: teamName.trim() || inferTeamName(projectPath),
-      teamDescription: null,
+      teamDescription: String(config?.description ?? '').trim() || null,
       leadMode: 'launch_new',
       presetId: String(config?.presetId ?? '').trim(),
       lead: {
@@ -525,7 +528,7 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
 
   return {
     teamName: teamName.trim() || inferTeamName(projectPath),
-    teamDescription: null,
+    teamDescription: String(config?.description ?? '').trim() || null,
     leadMode: 'launch_new',
     lead: {
       name: lead?.name ?? 'team-lead',

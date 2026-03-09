@@ -199,31 +199,30 @@
       {dark}
       {projectPath}
       teamConfig={controller.teamConfig}
-      selectedNode={controller.selectedNode}
-      selectedNodeId={controller.selectedNodeId}
       teamName={resolvedTeamName}
-      canInitialize={controller.canInitialize}
       initProgress={controller.initProgress}
       quickPresets={controller.quickPresets}
+      roleTemplates={controller.roleTemplates}
       {availableProjects}
-      slideOver={controller.slideOver}
-      slideOverContext={controller.slideOverContext}
       onGateReady={controller.ensureGateReady}
-      onSelectPreset={controller.handlePresetSelect}
-      onBrowseTemplates={controller.openTemplates}
+      onApplyPreset={controller.handlePresetSelect}
+      onBrowseCatalog={controller.openTemplates}
       onStartCustom={controller.handleStartCustom}
-      onNodeClick={controller.toggleNode}
-      onOpenCustomizer={controller.openCustomizer}
-      onRemoveSetupNode={controller.removeSelectedSetupNode}
-      onCloseNode={controller.clearSelectedNode}
+      onTeamNameChange={controller.handleTeamNameChange}
+      onDescriptionChange={controller.handleTeamDescriptionChange}
+      onAssignLeadRole={controller.handleAssignLeadRole}
+      onClearLead={controller.handleClearLead}
+      onAppendAgentRole={controller.handleAppendAgentRole}
+      onUpdateLead={controller.handleUpdateLead}
+      onUpdateAgent={controller.handleUpdateAgent}
+      onRemoveAgent={controller.handleRemoveBuilderAgent}
+      onReorderAgent={controller.handleReorderBuilderAgent}
+      onMoveAgentToEnd={controller.handleMoveBuilderAgentToEnd}
       onInitialize={controller.handleInitialize}
       onReset={controller.handleReset}
+      onSavePreset={controller.handleSaveBuilderPreset}
       onInitializeBack={controller.setInitializingBack}
       onInitializeSuccess={controller.handleInitializeSuccess}
-      onCloseSlideOver={controller.closeSlideOver}
-      onSelectPresetFromBrowser={controller.handlePresetSelect}
-      onSelectRoleFromBrowser={controller.openRoleFromBrowser}
-      onTeamSave={controller.handleTeamSave}
     />
   {/if}
 

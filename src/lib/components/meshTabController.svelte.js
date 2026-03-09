@@ -9,11 +9,20 @@ import {
   coordinationResumeTeam,
   coordinationResumeMember,
   getTeamPreset,
+  listTeamPresets,
   listRoleTemplates,
+  upsertTeamPreset,
   upsertRoleTemplate,
 } from '../ipc.js'
 import { clearMeshCache, getMeshCache, setMeshCache } from '../meshCache.svelte.js'
-import { defaultModelForTool, normalizeTool } from '../meshDefaults.js'
+import {
+  applyNamePattern,
+  defaultModelForTool,
+  normalizeTool,
+  resolveDefaultNamePattern,
+  resolveRoleModel,
+  resolveRoleTool,
+} from '../meshDefaults.js'
 import { normalizeProjectOption } from '../projectOptions.js'
 import {
   buildCapturedRoleTemplate,
@@ -96,6 +105,9 @@ export function createMeshTabController({
   let availabilityMessage = $state('')
   let roleTemplates = $state([])
   let loadingRoles = $state(false)
+  let availablePresets = $state(quickPresets)
+  let loadingPresets = $state(false)
+  let presetsLoaded = $state(false)
   let captureRoleDialog = $state(null)
   let teamRuntimeState = $state('none')
   let teamResumeProgress = $state(null)
@@ -673,6 +685,106 @@ export function createMeshTabController({
     slideOverContext = null
   }
 
+  function emptyBuilderConfig() {
+    return {
+      description: '',
+      lead: null,
+      agents: [],
+      presetId: '',
+      presetName: '',
+      initializationMode: 'custom',
+      composition: null,
+    }
+  }
+
+  function ensureBuilderConfig() {
+    if (teamConfig) return teamConfig
+    teamConfig = emptyBuilderConfig()
+    return teamConfig
+  }
+
+  function normalizeRoleKind(role) {
+    return String(role?.kind ?? '').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
+  }
+
+  function resolveBuilderRole(roleId) {
+    return roleTemplates.find((entry) => entry.roleId === roleId) ?? null
+  }
+
+  function slugifyMemberName(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'member'
+  }
+
+  function builderProjectName(projectPath) {
+    const normalized = String(projectPath || '').split('/').filter(Boolean)
+    return normalized.at(-1) || 'project'
+  }
+
+  function nextAgentNameForRole(role, projectPath) {
+    const currentAgents = Array.isArray(teamConfig?.agents) ? teamConfig.agents : []
+    const existingNames = new Set(currentAgents.map((agent) => String(agent.name ?? '').trim()))
+    const defaultPattern = resolveDefaultNamePattern(role) ?? `${role.roleId || slugifyMemberName(role?.name)}-{n}`
+    const projectName = builderProjectName(projectPath)
+    let index = 1
+    while (index < 100) {
+      const candidate = applyNamePattern(defaultPattern, index, projectName)
+      const name = candidate || `${role.roleId || slugifyMemberName(role?.name)}-${index}`
+      if (!existingNames.has(name)) return name
+      index += 1
+    }
+    return `${role.roleId || slugifyMemberName(role?.name)}-${Date.now()}`
+  }
+
+  function leadFromRole(role, projectPath) {
+    const tool = resolveRoleTool(role, 'claude')
+    const model = resolveRoleModel(role, tool)
+    return createLead({
+      id: 'lead',
+      name: 'team-lead',
+      tool,
+      model,
+      status: 'offline',
+      projectId: projectPath,
+      roleId: role?.roleId ?? null,
+      roleName: role?.name ?? null,
+      focusArea: role?.focusArea ?? role?.focus_area ?? null,
+      contextSummary: role?.contextSummary ?? role?.context_summary ?? null,
+      behaviorSummary: role?.behaviorSummary ?? role?.behavior_summary ?? null,
+      instructions: role?.instructions ?? null,
+      behavioralContract: role?.behavioralContract ?? role?.behavioral_contract ?? null,
+      capabilities: Array.isArray(role?.capabilities) ? role.capabilities : null,
+      description: role?.instructions ?? role?.name ?? 'Team lead',
+    }, projectPath)
+  }
+
+  function agentFromRole(role, projectPath) {
+    const tool = resolveRoleTool(role, 'codex')
+    const model = resolveRoleModel(role, tool)
+    const name = nextAgentNameForRole(role, projectPath)
+    return createAgent((teamConfig?.agents ?? []).length, {
+      id: name,
+      name,
+      tool,
+      model,
+      status: 'offline',
+      projectId: projectPath,
+      roleId: role?.roleId ?? null,
+      roleName: role?.name ?? null,
+      focusArea: role?.focusArea ?? role?.focus_area ?? null,
+      contextSummary: role?.contextSummary ?? role?.context_summary ?? null,
+      behaviorSummary: role?.behaviorSummary ?? role?.behavior_summary ?? null,
+      instructions: role?.instructions ?? null,
+      behavioralContract: role?.behavioralContract ?? role?.behavioral_contract ?? null,
+      capabilities: Array.isArray(role?.capabilities) ? role.capabilities : null,
+      description: role?.instructions ?? role?.name ?? null,
+    }, projectPath)
+  }
+
   async function handlePresetSelect(preset) {
     invalidateDiscovery()
     const sequence = ++presetSelectionSequence
@@ -717,20 +829,169 @@ export function createMeshTabController({
   function handleStartCustom() {
     invalidateDiscovery()
     const projectPath = getProjectPath()
-    teamConfig = {
-      lead: createLead({ id: 'lead', name: 'team-lead', tool: 'claude', status: 'offline' }, projectPath),
-      agents: [
-        createAgent(0, { id: 'agent-1', name: 'agent-1', tool: 'codex', status: 'offline' }, projectPath),
-      ],
-      presetId: '',
-      presetName: '',
-      composition: null,
-    }
+    teamConfig = emptyBuilderConfig()
     teamName = inferTeamName(projectPath)
     selectedNodeId = null
     mode = 'setup'
     closeSlideOver()
     runtimeMessage = ''
+  }
+
+  function handleTeamNameChange(value) {
+    if (mode === 'empty') invalidateDiscovery()
+    teamName = String(value ?? '')
+    if (mode === 'empty') mode = 'setup'
+  }
+
+  function handleTeamDescriptionChange(value) {
+    if (mode === 'empty') invalidateDiscovery()
+    const next = ensureBuilderConfig()
+    teamConfig = {
+      ...next,
+      description: String(value ?? ''),
+    }
+    if (mode === 'empty') mode = 'setup'
+  }
+
+  function handleAssignLeadRole(roleId) {
+    if (mode === 'empty') invalidateDiscovery()
+    const role = resolveBuilderRole(roleId)
+    if (!role || normalizeRoleKind(role) !== 'lead') return
+    const projectPath = getProjectPath()
+    const next = ensureBuilderConfig()
+    teamConfig = {
+      ...next,
+      lead: leadFromRole(role, projectPath),
+    }
+    if (!teamName.trim()) teamName = inferTeamName(projectPath)
+    mode = 'setup'
+    runtimeMessage = ''
+  }
+
+  function handleClearLead() {
+    const next = ensureBuilderConfig()
+    teamConfig = {
+      ...next,
+      lead: null,
+    }
+  }
+
+  function handleAppendAgentRole(roleId) {
+    if (mode === 'empty') invalidateDiscovery()
+    const role = resolveBuilderRole(roleId)
+    if (!role || normalizeRoleKind(role) === 'lead') return
+    const projectPath = getProjectPath()
+    const next = ensureBuilderConfig()
+    teamConfig = {
+      ...next,
+      agents: [...(next.agents ?? []), agentFromRole(role, projectPath)],
+    }
+    if (!teamName.trim()) teamName = inferTeamName(projectPath)
+    mode = 'setup'
+  }
+
+  function handleUpdateLead(payload) {
+    const next = ensureBuilderConfig()
+    if (!next.lead) return
+    teamConfig = {
+      ...next,
+      lead: {
+        ...next.lead,
+        ...payload,
+      },
+    }
+  }
+
+  function handleUpdateAgent(agentId, payload) {
+    const next = ensureBuilderConfig()
+    teamConfig = {
+      ...next,
+      agents: (next.agents ?? []).map((agent) => (
+        agent.id === agentId
+          ? { ...agent, ...payload }
+          : agent
+      )),
+    }
+  }
+
+  function handleRemoveBuilderAgent(agentId) {
+    const next = ensureBuilderConfig()
+    teamConfig = {
+      ...next,
+      agents: (next.agents ?? []).filter((agent) => agent.id !== agentId),
+    }
+    if (selectedNodeId === agentId) selectedNodeId = null
+  }
+
+  function handleReorderBuilderAgent(sourceId, targetId) {
+    if (!sourceId || !targetId || sourceId === targetId) return
+    const next = ensureBuilderConfig()
+    const currentAgents = [...(next.agents ?? [])]
+    const sourceIndex = currentAgents.findIndex((agent) => agent.id === sourceId)
+    const targetIndex = currentAgents.findIndex((agent) => agent.id === targetId)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    const [moved] = currentAgents.splice(sourceIndex, 1)
+    currentAgents.splice(targetIndex, 0, moved)
+    teamConfig = {
+      ...next,
+      agents: currentAgents,
+    }
+  }
+
+  function handleMoveBuilderAgentToEnd(sourceId) {
+    if (!sourceId) return
+    const next = ensureBuilderConfig()
+    const currentAgents = [...(next.agents ?? [])]
+    const sourceIndex = currentAgents.findIndex((agent) => agent.id === sourceId)
+    if (sourceIndex < 0 || sourceIndex === currentAgents.length - 1) return
+    const [moved] = currentAgents.splice(sourceIndex, 1)
+    currentAgents.push(moved)
+    teamConfig = {
+      ...next,
+      agents: currentAgents,
+    }
+  }
+
+  async function handleSaveBuilderPreset() {
+    const next = teamConfig
+    const safeTeamName = String(teamName ?? '').trim()
+    if (!next?.lead?.roleId || !safeTeamName) return
+
+    try {
+      await upsertTeamPreset({
+        schema: {
+          kind: 'team_preset',
+          version: 1,
+        },
+        presetId: safeTeamName
+          .toLowerCase()
+          .replace(/[^a-z0-9\s_-]+/g, '')
+          .replace(/[\s_]+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '') || 'custom-preset',
+        name: safeTeamName,
+        description: String(next.description ?? '').trim() || 'Custom team preset',
+        version: '1.0.0',
+        leadRoleId: next.lead.roleId,
+        agentSlots: (next.agents ?? []).map((agent) => ({
+          roleId: agent.roleId || null,
+          count: 1,
+          projectBinding: 'lead_project',
+          projectId: null,
+          overrides: null,
+        })),
+        defaults: {
+          teamNamePattern: '{project}-team',
+          tmuxLayout: 'tiled',
+        },
+      })
+      runtimeMessage = 'Preset saved to catalog.'
+      errorMessage = ''
+      presetsLoaded = false
+      void loadTeamPresets()
+    } catch (error) {
+      errorMessage = error?.message || 'Failed to save preset.'
+    }
   }
 
   function handleInitialize() {
@@ -812,6 +1073,40 @@ export function createMeshTabController({
       console.error('Failed to load role templates:', error)
     } finally {
       loadingRoles = false
+    }
+  }
+
+  function mergePresetCatalog(fetchedPresets = []) {
+    const merged = new Map()
+    for (const preset of quickPresets) {
+      const presetId = String(preset?.presetId ?? '').trim()
+      if (!presetId) continue
+      merged.set(presetId, preset)
+    }
+    for (const preset of fetchedPresets) {
+      const presetId = String(preset?.presetId ?? preset?.preset_id ?? '').trim()
+      if (!presetId) continue
+      const base = merged.get(presetId) ?? {}
+      merged.set(presetId, {
+        ...base,
+        ...preset,
+        presetId,
+      })
+    }
+    return [...merged.values()]
+  }
+
+  async function loadTeamPresets() {
+    loadingPresets = true
+    try {
+      const fetchedPresets = await listTeamPresets()
+      availablePresets = mergePresetCatalog(Array.isArray(fetchedPresets) ? fetchedPresets : [])
+    } catch (error) {
+      console.error('Failed to load team presets:', error)
+      availablePresets = quickPresets
+    } finally {
+      presetsLoaded = true
+      loadingPresets = false
     }
   }
 
@@ -1042,6 +1337,7 @@ export function createMeshTabController({
 
   function handleReset() {
     teamConfig = null
+    teamName = inferTeamName(getProjectPath())
     selectedNodeId = null
     initProgress = null
     mode = 'empty'
@@ -1051,9 +1347,9 @@ export function createMeshTabController({
   }
 
   function openCustomizer() {
-    if (!teamConfig) return
-    slideOver = 'customizer'
-    slideOverContext = { ...slideOverContext }
+    if (!teamConfig) {
+      handleStartCustom()
+    }
   }
 
   function toggleNode(nodeId) {
@@ -1074,13 +1370,22 @@ export function createMeshTabController({
   }
 
   function openTemplates() {
-    slideOver = 'templates'
-    slideOverContext = null
+    if (roleTemplates.length === 0 && !loadingRoles) {
+      void loadRoleTemplates()
+    }
+    if (!presetsLoaded && !loadingPresets) {
+      void loadTeamPresets()
+    }
   }
 
   function openRoleFromBrowser(role) {
-    slideOver = 'customizer'
-    slideOverContext = { selectedRole: role }
+    const roleId = role?.roleId ?? ''
+    if (!roleId) return
+    if (normalizeRoleKind(role) === 'lead') {
+      handleAssignLeadRole(roleId)
+      return
+    }
+    handleAppendAgentRole(roleId)
   }
 
   function requestDisband() {
@@ -1156,6 +1461,21 @@ export function createMeshTabController({
       clearRuntimeTeamRefresh({ dropInFlight: true })
       ensureHydrated(projectPath, { isVisible, backgroundWorkEnabled })
     })
+  })
+
+  $effect(() => {
+    if (mode !== 'empty' && mode !== 'setup') return
+    if (!teamName.trim()) {
+      teamName = inferTeamName(getProjectPath())
+    }
+    if (loadingRoles || roleTemplates.length > 0) return
+    void loadRoleTemplates()
+  })
+
+  $effect(() => {
+    if (mode !== 'empty' && mode !== 'setup') return
+    if (loadingPresets || presetsLoaded) return
+    void loadTeamPresets()
   })
 
   $effect(() => {
@@ -1261,7 +1581,9 @@ export function createMeshTabController({
   })
 
   return {
-    quickPresets,
+    get quickPresets() {
+      return availablePresets
+    },
     get mode() {
       return mode
     },
@@ -1332,6 +1654,17 @@ export function createMeshTabController({
     closeSlideOver,
     handlePresetSelect,
     handleStartCustom,
+    handleTeamNameChange,
+    handleTeamDescriptionChange,
+    handleAssignLeadRole,
+    handleClearLead,
+    handleAppendAgentRole,
+    handleUpdateLead,
+    handleUpdateAgent,
+    handleRemoveBuilderAgent,
+    handleReorderBuilderAgent,
+    handleMoveBuilderAgentToEnd,
+    handleSaveBuilderPreset,
     handleInitialize,
     handleInitializeSuccess,
     handleTeamSave,

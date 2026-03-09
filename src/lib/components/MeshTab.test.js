@@ -1588,7 +1588,9 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('mesh-canvas')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-catalog')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-roster')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-lead-empty')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-action-bar')).toBeInTheDocument()
   })
 
@@ -1619,6 +1621,10 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
+    })
 
     await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
 
@@ -1639,7 +1645,7 @@ describe('MeshTab', () => {
     })
   })
 
-  it('opens and closes template, customizer, and add-agent slideovers', async () => {
+  it('keeps setup composition inline while runtime slideovers still open and close', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     const runtimeView = render(MeshTab, {
@@ -1687,31 +1693,21 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
+    const catalogSearch = screen.getByTestId('mesh-builder-role-search')
     await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
-    await waitFor(() => {
-      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getAllByTestId('slideover-close').at(-1))
-    await waitFor(() => {
-      expect(screen.queryByTestId('template-browser-panel')).not.toBeInTheDocument()
-    })
+    expect(catalogSearch).toHaveFocus()
+    expect(screen.queryByTestId('template-browser-panel')).not.toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
-
-    await fireEvent.click(screen.getByTestId('mesh-action-customize'))
-    await waitFor(() => {
-      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getAllByTestId('slideover-close').at(-1))
-    await waitFor(() => {
-      expect(screen.queryByTestId('team-customizer-panel')).not.toBeInTheDocument()
-    })
+    expect(screen.getByTestId('mesh-builder-catalog')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-roster')).toBeInTheDocument()
+    expect(screen.queryByTestId('team-customizer-panel')).not.toBeInTheDocument()
   })
 
-  it('initializes cleanly after selecting a lead role from the template browser', async () => {
+  it('initializes cleanly after selecting a lead role from the inline catalog', async () => {
     render(MeshTab, {
       props: {
         dark: false,
@@ -1722,27 +1718,18 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
-
-    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
     await waitFor(() => {
-      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
-      expect(screen.getByTestId('role-use-lead-default')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-role-lead-default')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('role-use-lead-default'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
-      expect(screen.getByTestId('team-customizer-lead')).toBeInTheDocument()
-    })
-
-    await fireEvent.input(screen.getByTestId('team-customizer-name-input'), {
-      target: { value: 'taurhaus-team' },
-    })
-    await fireEvent.click(screen.getByTestId('team-customizer-save'))
-
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
+    })
+
+    await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
+      target: { value: 'taurhaus-team' },
     })
 
     await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
@@ -1842,6 +1829,8 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
+    listRoleTemplates.mockReset()
+    listRoleTemplates.mockReturnValueOnce(rolesLoad.promise)
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
@@ -1849,8 +1838,10 @@ describe('MeshTab', () => {
     })
 
     const roleSelect = screen.getByTestId('mesh-add-agent-role-select')
-    expect(roleSelect).toBeDisabled()
-    expect(screen.getByRole('option', { name: 'Loading roles...' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(roleSelect).toBeDisabled()
+      expect(screen.getByRole('option', { name: 'Loading roles...' })).toBeInTheDocument()
+    })
 
     rolesLoad.resolve([
       { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
@@ -1864,6 +1855,11 @@ describe('MeshTab', () => {
 
   it('preserves selected role metadata when hot-adding a runtime agent', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
+
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+    listRoleTemplates.mockReset()
     listRoleTemplates.mockResolvedValueOnce([
       {
         roleId: 'codex-architect',
@@ -1877,10 +1873,6 @@ describe('MeshTab', () => {
         instructions: 'Own structural review',
       },
     ])
-
-    await renderRuntime({
-      availableProjects: [{ id: 'proj-core', name: 'Core' }],
-    })
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
@@ -2024,7 +2016,6 @@ describe('MeshTab', () => {
       )
     })
 
-    expect(listRoleTemplates).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -2096,16 +2087,10 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
     await waitFor(() => {
-      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
+      expect(screen.getByTestId(`mesh-template-preset-${presetId}`)).toBeInTheDocument()
     })
-    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
-    await waitFor(() => {
-      expect(screen.getByTestId('template-preset-list')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId(`template-browser-preset-${presetId}`))
+    await fireEvent.click(screen.getByTestId(`mesh-template-preset-${presetId}`))
 
     await waitFor(() => {
       expect(composeTeam).toHaveBeenCalledWith(
@@ -2287,7 +2272,6 @@ describe('MeshTab', () => {
       && agent.roleName === null
       && agent.instructions === null
     ))).toBe(true)
-    expect(listRoleTemplates).not.toHaveBeenCalled()
   })
 
   it('matches teams when lead project path uses windows drive notation', async () => {
@@ -2551,30 +2535,14 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
-
-    expect(screen.getAllByTestId('mesh-node-agent')).toHaveLength(1)
-    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-agent-default'))
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-edit')).toBeInTheDocument()
-      expect(screen.getByTestId('mesh-node-detail-remove')).toBeInTheDocument()
+      expect(screen.getAllByTestId('mesh-node-agent')).toHaveLength(1)
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
-    await waitFor(() => {
-      expect(screen.getByTestId('team-customizer-panel')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getAllByTestId('slideover-close').at(-1))
-    await waitFor(() => {
-      expect(screen.queryByTestId('team-customizer-panel')).not.toBeInTheDocument()
-    })
-
-    if (!screen.queryByTestId('mesh-node-detail-remove')) {
-      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
-    }
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-remove')).toBeInTheDocument()
-    })
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-remove'))
+    const agentMarker = screen.getByTestId('mesh-node-agent')
+    await fireEvent.click(within(agentMarker).getByRole('button', { name: 'x' }))
     await waitFor(() => {
       expect(screen.queryAllByTestId('mesh-node-agent')).toHaveLength(0)
     })
@@ -2648,6 +2616,12 @@ describe('MeshTab', () => {
   })
 
   it('supports add-agent role picker locking/unlocking and shows submit errors', async () => {
+    coordinationAddAgent.mockRejectedValueOnce(new Error('add failed'))
+
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+    listRoleTemplates.mockReset()
     listRoleTemplates.mockResolvedValueOnce([
       {
         roleId: 'runtime-agent',
@@ -2658,15 +2632,13 @@ describe('MeshTab', () => {
         instructions: '',
       },
     ])
-    coordinationAddAgent.mockRejectedValueOnce(new Error('add failed'))
-
-    await renderRuntime({
-      availableProjects: [{ id: 'proj-core', name: 'Core' }],
-    })
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-select')).not.toBeDisabled()
     })
 
     await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
