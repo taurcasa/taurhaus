@@ -197,22 +197,27 @@ impl SessionActivityHub {
 
             loop {
                 let sessions = crate::session_scanner::scan_sessions_for_display();
-                let export_stats = export_activity_snapshots_for_sessions(
-                    &default_activity_export_teams_dir(),
-                    &sessions,
-                    Utc::now(),
-                );
-                if export_stats.write_failures > 0 {
-                    tracing::warn!(
-                        teams_exported = export_stats.teams_exported,
-                        members_written = export_stats.members_written,
-                        write_failures = export_stats.write_failures,
-                        "activity snapshot export completed with write failures"
+                let changed = {
+                    let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    !state.initialized || activity_changed(&state.sessions, &sessions)
+                };
+                if changed {
+                    let export_stats = export_activity_snapshots_for_sessions(
+                        &default_activity_export_teams_dir(),
+                        &sessions,
+                        Utc::now(),
                     );
+                    if export_stats.write_failures > 0 {
+                        tracing::warn!(
+                            teams_exported = export_stats.teams_exported,
+                            members_written = export_stats.members_written,
+                            write_failures = export_stats.write_failures,
+                            "activity snapshot export completed with write failures"
+                        );
+                    }
                 }
-                let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
 
-                let changed = !state.initialized || activity_changed(&state.sessions, &sessions);
+                let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 if changed {
                     state.sessions = sessions;
                     state.version = state.version.saturating_add(1);

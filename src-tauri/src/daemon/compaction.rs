@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::coordination::compaction_processor::{
     CompactionSignalProcessOutcome, CompactionSignalProcessor,
@@ -23,6 +23,16 @@ type SignalProcessor = dyn Fn(&crate::coordination::stores::CompactionSignalReco
     + Send
     + Sync
     + 'static;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RuntimeSessionSignature {
+    project_path: String,
+    tty: String,
+    cli_tool: crate::session_scanner::cli_tool::CliTool,
+    tmux_pane: Option<String>,
+    session_id: Option<String>,
+    jsonl_path: Option<String>,
+}
 
 pub struct DaemonCompactionRuntime {
     shutdown: Arc<AtomicBool>,
@@ -81,16 +91,29 @@ impl DaemonCompactionRuntime {
         let thread_supplier = session_supplier.clone();
         let thread_processor = processor.clone();
         let join_handle = thread::spawn(move || {
+            let mut last_runtime_signatures = runtime_session_signatures(&thread_supplier());
+            let mut next_watcher_reconcile =
+                Instant::now() + watcher_config.reconciliation_interval;
+
             while !thread_shutdown.load(Ordering::Relaxed) {
                 let sessions = thread_supplier();
-                compaction_extractor::update_active_runtime_sessions(&sessions);
-                if let Err(error) = reconcile_team_watchers(
-                    &thread_teams_dir,
-                    &thread_watchers,
-                    watcher_config,
-                    thread_processor.clone(),
-                ) {
-                    tracing::warn!(error = %error, "daemon compaction watcher reconcile failed");
+                let runtime_signatures = runtime_session_signatures(&sessions);
+                if runtime_signatures != last_runtime_signatures {
+                    compaction_extractor::update_active_runtime_sessions(&sessions);
+                    last_runtime_signatures = runtime_signatures;
+                }
+
+                let now = Instant::now();
+                if now >= next_watcher_reconcile {
+                    if let Err(error) = reconcile_team_watchers(
+                        &thread_teams_dir,
+                        &thread_watchers,
+                        watcher_config,
+                        thread_processor.clone(),
+                    ) {
+                        tracing::warn!(error = %error, "daemon compaction watcher reconcile failed");
+                    }
+                    next_watcher_reconcile = now + watcher_config.reconciliation_interval;
                 }
                 thread::sleep(scan_interval);
             }
@@ -122,6 +145,40 @@ fn running_under_wsl() -> bool {
     cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
 }
 
+fn runtime_session_signatures(sessions: &[RuntimeSession]) -> Vec<RuntimeSessionSignature> {
+    let mut signatures = sessions
+        .iter()
+        .filter(|session| session.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex)
+        .map(|session| RuntimeSessionSignature {
+            project_path: session.project_path.clone(),
+            tty: session.tty.clone(),
+            cli_tool: session.cli_tool,
+            tmux_pane: session.tmux_pane.clone(),
+            session_id: session.session_id.clone(),
+            jsonl_path: session.jsonl_path.clone(),
+        })
+        .collect::<Vec<_>>();
+    signatures.sort_by(|left, right| {
+        (
+            &left.project_path,
+            &left.tty,
+            left.cli_tool.to_string(),
+            &left.tmux_pane,
+            &left.session_id,
+            &left.jsonl_path,
+        )
+            .cmp(&(
+                &right.project_path,
+                &right.tty,
+                right.cli_tool.to_string(),
+                &right.tmux_pane,
+                &right.session_id,
+                &right.jsonl_path,
+            ))
+    });
+    signatures
+}
+
 fn reconcile_team_watchers(
     teams_dir: &Path,
     watchers: &Arc<Mutex<HashMap<String, CompactionSignalWatcher>>>,
@@ -129,25 +186,10 @@ fn reconcile_team_watchers(
     processor: Arc<SignalProcessor>,
 ) -> Result<(), CoordinationError> {
     let mut guard = watchers.lock().unwrap_or_else(|error| error.into_inner());
-    let mut desired = HashMap::new();
-    for team_name in TeamConfigStore::list(teams_dir)? {
-        match team_has_managed_codex_member(teams_dir, &team_name) {
-            Ok(true) => {
-                desired.insert(team_name, ());
-            }
-            Ok(false) => {}
-            Err(error) => {
-                tracing::warn!(
-                    team_name,
-                    error = %error,
-                    "skipping compaction watcher startup for team without valid config"
-                );
-            }
-        }
-    }
+    let desired = desired_watcher_teams(teams_dir)?;
 
-    guard.retain(|team_name, _| desired.contains_key(team_name));
-    for team_name in desired.into_keys() {
+    guard.retain(|team_name, _| desired.contains(team_name));
+    for team_name in desired {
         if guard.contains_key(&team_name) {
             continue;
         }
@@ -169,6 +211,26 @@ fn reconcile_team_watchers(
     }
 
     Ok(())
+}
+
+fn desired_watcher_teams(teams_dir: &Path) -> Result<BTreeSet<String>, CoordinationError> {
+    let mut desired = BTreeSet::new();
+    for team_name in TeamConfigStore::list(teams_dir)? {
+        match team_has_managed_codex_member(teams_dir, &team_name) {
+            Ok(true) => {
+                desired.insert(team_name);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(
+                    team_name,
+                    error = %error,
+                    "skipping compaction watcher startup for team without valid config"
+                );
+            }
+        }
+    }
+    Ok(desired)
 }
 
 fn team_has_managed_codex_member(
@@ -327,6 +389,32 @@ mod tests {
         }
     }
 
+    fn sample_claude_session(project_path: &str) -> RuntimeSession {
+        RuntimeSession {
+            pid: 2222,
+            project_path: project_path.to_string(),
+            tty: "/dev/pts/9".to_string(),
+            args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
+            tmux_session: Some("main".to_string()),
+            tmux_window: Some("2".to_string()),
+            tmux_pane: Some("%9".to_string()),
+            tmux_window_name: Some("claude".to_string()),
+            state: SessionState::Active,
+            session_id: Some("claude-session".to_string()),
+            jsonl_path: Some("/tmp/claude.jsonl".to_string()),
+            recent_io: false,
+            last_output_age_secs: Some(0),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }
+    }
+
     fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
@@ -455,5 +543,52 @@ mod tests {
 
         let listed = TeamConfigStore::list(&teams_dir).expect("list teams");
         assert!(listed.contains(&"default".to_string()));
+    }
+
+    #[test]
+    fn runtime_session_signatures_track_only_codex_session_identity_fields() {
+        let first = sample_session("/tmp/project-a", Path::new("/tmp/a.jsonl"));
+        let mut second = sample_session("/tmp/project-b", Path::new("/tmp/b.jsonl"));
+        second.tty = "/dev/pts/8".to_string();
+        second.tmux_pane = Some("%8".to_string());
+        second.session_id = Some("session-2".to_string());
+
+        let mut noisy_first = first.clone();
+        noisy_first.pid = 9999;
+        noisy_first.state = SessionState::Idle;
+        noisy_first.recent_io = true;
+
+        let baseline = runtime_session_signatures(&[
+            second.clone(),
+            sample_claude_session("/tmp/project-a"),
+            first,
+        ]);
+        let noisy = runtime_session_signatures(&[noisy_first, second]);
+
+        assert_eq!(baseline, noisy);
+        assert_eq!(baseline.len(), 2);
+    }
+
+    #[test]
+    fn desired_watcher_teams_only_includes_teams_with_managed_codex_members() {
+        let _guard = TEST_LOCK.lock().expect("lock");
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        save_team_fixture(
+            &teams_dir,
+            "codex-team",
+            &sample_member("developer2", "/home/mstie/projects/taurhaus"),
+        );
+
+        let claude_member = Member {
+            cli_tool: CliTool::Claude,
+            ..sample_member("reviewer", "/home/mstie/projects/taurhaus")
+        };
+        save_team_fixture(&teams_dir, "claude-team", &claude_member);
+
+        let desired = desired_watcher_teams(&teams_dir).expect("load watcher teams");
+        assert!(desired.contains("codex-team"));
+        assert!(!desired.contains("claude-team"));
     }
 }
