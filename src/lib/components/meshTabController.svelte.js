@@ -12,7 +12,7 @@ import {
   listRoleTemplates,
   upsertRoleTemplate,
 } from '../ipc.js'
-import { getMeshCache, setMeshCache } from '../meshCache.svelte.js'
+import { clearMeshCache, getMeshCache, setMeshCache } from '../meshCache.svelte.js'
 import { defaultModelForTool, normalizeTool } from '../meshDefaults.js'
 import { normalizeProjectOption } from '../projectOptions.js'
 import {
@@ -972,7 +972,10 @@ export function createMeshTabController({
 
     if (action.kind === 'disband') {
       try {
+        const projectPath = getProjectPath()
         const result = await coordinationDisbandTeam(teamName)
+        invalidateDiscovery()
+        clearMeshCache(projectPath)
         onDisband(result)
         runtimeMessage = result?.alreadyDisbanded
           ? 'Team was already disbanded.'
@@ -980,6 +983,7 @@ export function createMeshTabController({
         mode = 'empty'
         selectedNodeId = null
         teamConfig = null
+        teamRuntimeState = 'none'
       } catch (error) {
         errorMessage = error?.message || 'Failed to disband team.'
       }

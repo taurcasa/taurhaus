@@ -2311,6 +2311,61 @@ describe('MeshTab', () => {
     })
   })
 
+  it('invalidates cached runtime state after disband so tab re-entry stays empty', async () => {
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+
+    const runtimeView = render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-more-toggle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-disband')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    })
+
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
+      meshAvailable: true,
+      tmuxAvailable: true,
+      teamName: null,
+      teamStatus: null,
+      warnings: [],
+    }))
+
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+    expect(getMeshCache('/projects/taurhaus')).toBeNull()
+
+    runtimeView.unmount()
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+    expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledTimes(1)
+  })
+
   it('removes selected runtime agent after confirm', async () => {
     await renderRuntime()
 
