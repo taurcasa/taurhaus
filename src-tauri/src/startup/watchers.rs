@@ -27,6 +27,14 @@ impl Drop for ReconcileInProgressGuard {
     }
 }
 
+fn should_watch_locally(project_path: &str, has_daemon: bool, defer_wsl_to_daemon: bool) -> bool {
+    if provider::path::is_wsl_path(project_path) {
+        return !has_daemon && !defer_wsl_to_daemon;
+    }
+
+    true
+}
+
 pub(crate) fn initialize(
     app: &mut tauri::App,
     context: &SetupContext,
@@ -115,7 +123,7 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     }
     let _in_progress_guard = ReconcileInProgressGuard;
 
-    let (projects, thresholds, has_daemon) = {
+    let (projects, thresholds, has_daemon, defer_wsl_to_daemon) = {
         let db_state = app.state::<DbState>();
         let db_guard = match db_state.0.lock() {
             Ok(guard) => guard,
@@ -152,7 +160,9 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
             .daemon
             .as_ref()
             .is_some_and(|daemon| daemon.is_connected());
-        (projects, thresholds, has_daemon)
+        let defer_wsl_to_daemon =
+            provider_state.wsl_distro.is_some() && !crate::daemon::launcher::is_native_daemon();
+        (projects, thresholds, has_daemon, defer_wsl_to_daemon)
     };
 
     let (watched, unwatched, watch_limit_hit) = {
@@ -181,7 +191,7 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
         let mut watch_limit_hit = false;
 
         for (project_id, target) in &by_id {
-            if has_daemon && provider::path::is_wsl_path(&target.project_path) {
+            if !should_watch_locally(&target.project_path, has_daemon, defer_wsl_to_daemon) {
                 continue;
             }
 
@@ -252,6 +262,47 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
              File changes in those projects won't be detected. {}",
             platform::watch_limit_help()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_watch_locally;
+
+    #[test]
+    fn local_watch_skips_wsl_paths_when_daemon_is_connected() {
+        assert!(!should_watch_locally(
+            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn local_watch_skips_wsl_paths_while_waiting_for_wsl_daemon() {
+        assert!(!should_watch_locally(
+            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn local_watch_allows_wsl_paths_only_when_no_daemon_path_exists() {
+        assert!(should_watch_locally(
+            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn local_watch_allows_normal_local_projects() {
+        assert!(should_watch_locally(
+            r"C:\Users\mstie\projects\taurhaus",
+            false,
+            true
+        ));
     }
 }
 
