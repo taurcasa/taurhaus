@@ -625,7 +625,7 @@ mod tests {
         let handle = std::thread::spawn(move || {
             crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
         });
-        std::thread::sleep(Duration::from_millis(100));
+        wait_for_port(port, Duration::from_secs(3));
         TestDaemon {
             port,
             shutdown,
@@ -645,6 +645,17 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         drop(listener);
         start_daemon_on_port(port)
+    }
+
+    fn wait_for_port(port: u16, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("daemon did not accept connections on port {port} before timeout");
     }
 
     fn read_lines(path: &Path) -> Vec<String> {
