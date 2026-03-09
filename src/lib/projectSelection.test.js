@@ -115,4 +115,26 @@ describe('projectSelection timeouts', () => {
     expect(ipc.getReadme).toHaveBeenCalledTimes(2)
     expect(ipc.getRelationships).toHaveBeenCalledTimes(2)
   })
+
+  it('starts the IPC batch immediately when debounce is overridden to zero', async () => {
+    const ipc = {
+      getProject: vi.fn((projectId) => Promise.resolve({ id: projectId })),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const result = await loadProjectSelectionData('p1', ipc, { debounceMs: 0 })
+
+    expect(ipc.getProject).toHaveBeenCalledTimes(1)
+    expect(ipc.getProject).toHaveBeenCalledWith('p1')
+    expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
+    expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)
+    expect(ipc.listSessions).toHaveBeenCalledTimes(1)
+    expect(ipc.getReadme).toHaveBeenCalledTimes(1)
+    expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
+    expect(result.detail.value).toEqual({ id: 'p1' })
+  })
 })

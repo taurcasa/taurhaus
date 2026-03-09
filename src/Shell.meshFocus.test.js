@@ -153,7 +153,14 @@ vi.mock('./lib/AddProjectModal.svelte', () => ({
 }))
 
 vi.mock('./lib/FirstRunWizard.svelte', () => ({
-  default: createMockComponent('first-run', () => {}),
+  default: createMockComponent('first-run', (root, props) => {
+    const complete = document.createElement('button')
+    complete.type = 'button'
+    complete.textContent = 'Complete Wizard'
+    complete.setAttribute('data-testid', 'wizard-complete')
+    complete.onclick = () => props.onComplete?.()
+    root.appendChild(complete)
+  }),
 }))
 
 vi.mock('./lib/components/MeshTab.svelte', () => ({
@@ -445,5 +452,32 @@ describe('Shell mesh focus integration', () => {
 
     expect(meshTabMountCount).toBeGreaterThan(mountCountBeforeSwitch)
     expect(lastTextByTestId('mesh-project-path')).toBe('/projects/mesh')
+  })
+
+  it('does not schedule a second delayed project selection after wizard completion', async () => {
+    vi.useFakeTimers()
+    try {
+      ipc.isFirstRun.mockResolvedValue(true)
+
+      render(Shell)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('wizard-complete')).toBeInTheDocument()
+      })
+
+      await fireEvent.click(screen.getByTestId('wizard-complete'))
+
+      await waitFor(() => {
+        expect(ipc.listProjects).toHaveBeenCalledTimes(1)
+        expect(loadProjectSelectionData).toHaveBeenCalledTimes(1)
+        expect(loadProjectSelectionData).toHaveBeenCalledWith('proj-1', expect.any(Object), { debounceMs: 0 })
+      })
+
+      // Regression: startup used to schedule a second full selectProject after 1500 ms.
+      await vi.advanceTimersByTimeAsync(1600)
+      expect(loadProjectSelectionData).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
