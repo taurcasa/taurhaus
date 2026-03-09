@@ -1,6 +1,12 @@
 # Data model
 
-Three storage layers serve different purposes: SQLite for structured metadata, tantivy for full-text search, and the filesystem as the source of truth for content.
+This document covers the detailed SQLite schema, search index, and content-storage model.
+
+For the full current storage architecture, including live coordination state under `~/.claude/teams/`, runtime attachment records, operational snapshots, compaction signal logs, and ownership boundaries, see [data-architecture.md](./data-architecture.md).
+
+Three core app storage layers serve different purposes: SQLite for structured app metadata, tantivy for full-text search, and the filesystem as the source of truth for content.
+
+That summary is intentionally scoped to the app data plane. It does not describe the separate coordination/runtime state plane under `~/.claude/teams/`; that is covered in [data-architecture.md](./data-architecture.md).
 
 ![Data Model](../images/data-model.jpg)
 
@@ -169,14 +175,19 @@ Persistent MmapDirectory-backed index stored in `app_data_dir()/search_index/`. 
 
 ## Coordination storage
 
-Multi-agent team state is stored on the filesystem, not in SQLite:
+Multi-agent team state is stored on the filesystem, not in SQLite.
 
-| Path | Purpose |
+This document only keeps the short reminder here:
+
+| Path family | Purpose |
 |------|---------|
-| `~/.claude/teams/<team>/config.json` | Team definition (members, lead, creation time) |
-| `~/.claude/teams/<team>/runtime/<member>.json` | Per-member runtime state (daemon PID, health, pane ID) |
+| `~/.claude/teams/<team>/config.json` | Authoritative logical team roster |
+| `~/.claude/teams/<team>/runtime/<member>.json` | Authoritative current member attachment |
+| `~/.claude/teams/<team>/inboxes/` | Shared file-based delivery queue |
+| `~/.claude/teams/<team>/state/operational/` | Derived per-member operational context snapshots |
+| `~/.claude/teams/<team>/state/compaction/` | Derived compaction idempotency, signal, and watcher state |
 
-Team discovery at startup scans `~/.claude/teams/` for existing team directories. Disbanding a team removes its directory entirely.
+For the full ownership model, lifecycle, and data-flow explanation, see [data-architecture.md](./data-architecture.md).
 
 ## Filesystem
 
