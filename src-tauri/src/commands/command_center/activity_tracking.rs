@@ -27,7 +27,9 @@ pub(super) fn promote_activity_from_sessions_impl(
 ) -> Result<usize, String> {
     let mut active_paths = HashSet::new();
     for session in sessions {
-        if session.state != crate::session_scanner::SessionState::Active {
+        if session.state != crate::session_scanner::SessionState::Active
+            && !session.project_unattributed_active
+        {
             continue;
         }
         active_paths.insert(normalize_project_path_key(&session.project_path));

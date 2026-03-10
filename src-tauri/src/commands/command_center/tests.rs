@@ -279,6 +279,21 @@ fn promote_activity_from_sessions_touches_dormant_project_once() {
 }
 
 #[test]
+fn promote_activity_from_sessions_touches_project_for_unattributed_activity() {
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let mut session = active_session_for("/tmp/project");
+    session.state = SessionState::Idle;
+    session.project_unattributed_active = true;
+    session.activity_attribution = crate::session_scanner::ActivityAttribution::Unattributed;
+    session.activity_confidence = crate::session_scanner::ActivityConfidence::Low;
+
+    let promoted =
+        promote_activity_from_sessions_impl(&db, &[session]).expect("promote unattributed");
+
+    assert_eq!(promoted, 1);
+}
+
+#[test]
 fn foreground_project_resolution_maps_focus_to_registered_project() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     let sessions = vec![active_session_for("/tmp/project")];
