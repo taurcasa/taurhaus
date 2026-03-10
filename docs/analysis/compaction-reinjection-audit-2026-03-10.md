@@ -296,3 +296,53 @@ End-to-end hook bridge latency: about `241ms`.
 - **Codex actual surfacing/consumption:** proven in at least one live end-to-end trace, but not yet durably observable from current telemetry in the recent window
 - **Claude hook delivery:** working
 - **Overall:** the pipeline is real and functional, but still not reliable enough to call fully solved
+
+## Last-Hour 2ksim-team Focus
+
+Window used for this addendum:
+
+- analysis run at `2026-03-10T14:52:37+01:00`
+- effective window: roughly the previous 1 hour
+
+Result for the last hour only:
+
+- detected: `2`
+- injected: `0`
+- skipped: `2`
+- stale: `0`
+- failed: `0`
+- delivery rate: `0%`
+
+All last-hour detections belong to the same member:
+
+- `2ksim-team/team-lead`
+  - `2026-03-10T13:16:16.300Z` detected -> `2026-03-10T13:16:16.307Z` skipped
+  - `2026-03-10T13:41:26.958Z` detected -> `2026-03-10T13:41:26.969Z` skipped
+
+Signal evidence for those events exists in the live signal journal:
+
+- `2026-03-10T13:16:16.297472419Z` `signal_id=44d876cc-3081-470c-b492-ce697f71778a` `signal_kind=context_compacted`
+- `2026-03-10T13:41:26.940504326Z` `signal_id=050808ef-81a2-4e17-b92a-51a9ecef8d8f` `signal_kind=compacted`
+
+Manual trace conclusion:
+
+- this hour does **not** look like a broken transport path
+- it looks like the processor intentionally declined delivery because there was no active resumable task context for `2ksim-team/team-lead`
+
+Supporting evidence:
+
+- live operational snapshot for `2ksim-team/team-lead` now contains an empty task:
+  - `task.id = ""`
+  - `task.subject = ""`
+  - `task.status = ""`
+- the team-lead inbox contains `0` `post_compaction_context` cards
+- runtime attachment is otherwise healthy:
+  - `pane_id=%277`
+  - `session_id=019cd78e-1cfd-71b3-8c55-13b7ac4c670f`
+  - `health=healthy`
+
+So the narrow one-hour view changes the interpretation materially:
+
+- the recent 2ksim-team misses are concentrated in one member
+- they are skips, not stale or failed transport
+- the most likely reason is **no active task to resume**, not signal loss, watcher failure, or inbox delivery breakage
