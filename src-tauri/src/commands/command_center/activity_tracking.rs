@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::{Duration, Utc};
+
 use super::*;
 
 pub(super) fn promote_activity_from_sessions(
@@ -26,15 +28,16 @@ pub(super) fn promote_activity_from_sessions_impl(
     sessions: &[DisplaySession],
 ) -> Result<usize, String> {
     let mut active_paths = HashSet::new();
+    let mut unattributed_paths = HashSet::new();
     for session in sessions {
-        if session.state != crate::session_scanner::SessionState::Active
-            && !session.project_unattributed_active
-        {
-            continue;
+        let normalized_path = normalize_project_path_key(&session.project_path);
+        if session.state == crate::session_scanner::SessionState::Active {
+            active_paths.insert(normalized_path);
+        } else if session.project_unattributed_active {
+            unattributed_paths.insert(normalized_path);
         }
-        active_paths.insert(normalize_project_path_key(&session.project_path));
     }
-    if active_paths.is_empty() {
+    if active_paths.is_empty() && unattributed_paths.is_empty() {
         return Ok(0);
     }
 
@@ -43,6 +46,8 @@ pub(super) fn promote_activity_from_sessions_impl(
     let projects =
         crate::services::project::list_projects(&conn, &settings.thresholds).sanitize_err()?;
 
+    let now = Utc::now();
+    let recent_floor = (now - Duration::days(settings.thresholds.active_days.max(1))).to_rfc3339();
     let mut by_path = HashMap::new();
     for project in projects {
         by_path.insert(
@@ -52,14 +57,42 @@ pub(super) fn promote_activity_from_sessions_impl(
     }
 
     let mut promoted = 0usize;
-    for path in active_paths {
-        let Some((project_id, state)) = by_path.get(&path) else {
+    for path in &active_paths {
+        let Some((project_id, state)) = by_path.get(path) else {
             continue;
         };
         if *state == crate::models::ActivityState::Active {
             continue;
         }
         crate::services::project::touch_activity(&conn, project_id).sanitize_err()?;
+        promoted += 1;
+    }
+
+    for path in unattributed_paths {
+        if active_paths.contains(&path) {
+            continue;
+        }
+
+        let Some((project_id, state)) = by_path.get(&path) else {
+            continue;
+        };
+        if matches!(
+            state,
+            crate::models::ActivityState::Active | crate::models::ActivityState::Recent
+        ) {
+            continue;
+        }
+
+        crate::db::queries::update_project(
+            &conn,
+            project_id,
+            None,
+            None,
+            None,
+            Some(Some(recent_floor.as_str())),
+            None,
+        )
+        .sanitize_err()?;
         promoted += 1;
     }
 

@@ -291,6 +291,48 @@ fn promote_activity_from_sessions_touches_project_for_unattributed_activity() {
         promote_activity_from_sessions_impl(&db, &[session]).expect("promote unattributed");
 
     assert_eq!(promoted, 1);
+
+    let conn = db.0.lock().expect("lock db");
+    let thresholds = crate::models::ActivityThresholds::default();
+    let detail = crate::services::project::get_project(&conn, "p1", &thresholds)
+        .expect("fetch project after unattributed promote");
+    assert_eq!(detail.activity_state, crate::models::ActivityState::Recent);
+}
+
+#[test]
+fn promote_activity_from_sessions_does_not_overpromote_recent_project_for_unattributed_activity() {
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("lock db");
+        let recent_ts = (chrono::Utc::now() - chrono::Duration::days(10)).to_rfc3339();
+        crate::db::queries::update_project(
+            &conn,
+            "p1",
+            None,
+            None,
+            None,
+            Some(Some(recent_ts.as_str())),
+            None,
+        )
+        .expect("seed recent activity");
+    }
+
+    let mut session = active_session_for("/tmp/project");
+    session.state = SessionState::Idle;
+    session.project_unattributed_active = true;
+    session.activity_attribution = crate::session_scanner::ActivityAttribution::Unattributed;
+    session.activity_confidence = crate::session_scanner::ActivityConfidence::Low;
+
+    let promoted =
+        promote_activity_from_sessions_impl(&db, &[session]).expect("promote unattributed");
+
+    assert_eq!(promoted, 0);
+
+    let conn = db.0.lock().expect("lock db");
+    let thresholds = crate::models::ActivityThresholds::default();
+    let detail =
+        crate::services::project::get_project(&conn, "p1", &thresholds).expect("fetch project");
+    assert_eq!(detail.activity_state, crate::models::ActivityState::Recent);
 }
 
 #[test]
