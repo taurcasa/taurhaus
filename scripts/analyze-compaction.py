@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 
 DEFAULT_TEAMS_DIR = Path.home() / ".claude" / "teams"
@@ -148,6 +148,10 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_HOOKS_DIR,
         help=f"Claude hooks directory (default: {DEFAULT_HOOKS_DIR})",
+    )
+    parser.add_argument(
+        "--manual-run-id",
+        help="Analyze one explicit manual compaction trigger run recorded under state/compaction/manual-runs.",
     )
     return parser.parse_args()
 
@@ -435,6 +439,100 @@ def load_json_file(path: Path) -> Optional[dict]:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def find_manual_run(teams_dir: Path, run_id: str, team_filter: Optional[str]) -> Optional[Dict[str, Any]]:
+    for team_dir in iter_team_dirs(teams_dir, team_filter):
+        candidate = team_dir / "state" / "compaction" / "manual-runs" / f"{run_id}.json"
+        payload = load_json_file(candidate)
+        if isinstance(payload, dict):
+            payload["_path"] = str(candidate)
+            payload["_team_name"] = team_dir.name
+            return payload
+    if team_filter:
+        return None
+    for team_dir in iter_team_dirs(teams_dir, None):
+        candidate = team_dir / "state" / "compaction" / "manual-runs" / f"{run_id}.json"
+        payload = load_json_file(candidate)
+        if isinstance(payload, dict):
+            payload["_path"] = str(candidate)
+            payload["_team_name"] = team_dir.name
+            return payload
+    return None
+
+
+def find_manual_run_protocol_events(
+    protocol_state: ProtocolTelemetryState,
+    team_name: str,
+    member_name: str,
+    since: datetime,
+) -> Tuple[List[dict], List[dict]]:
+    wake_events = [
+        event
+        for event in protocol_state.wake_events
+        if event.get("team_name") == team_name
+        and event.get("member_name") == member_name
+        and telemetry_record_in_window(event, since)
+    ]
+    surfaced_events = [
+        event
+        for event in protocol_state.surfaced_events
+        if event.get("team_name") == team_name
+        and event.get("member_name") == member_name
+        and telemetry_record_in_window(event, since)
+    ]
+    return wake_events, surfaced_events
+
+
+def find_manual_run_debug_line(debug_log_path: Optional[str], since: datetime, needle: str) -> Optional[str]:
+    if not debug_log_path:
+        return None
+    path = Path(debug_log_path)
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            matched = None
+            for raw in handle:
+                line = raw.rstrip("\n")
+                if len(line) < 24:
+                    continue
+                try:
+                    event_ts = parse_iso_timestamp(line[:24])
+                except ValueError:
+                    continue
+                if event_ts < since:
+                    continue
+                if needle in line:
+                    matched = line
+            return matched
+    except OSError:
+        return None
+
+
+def find_manual_run_codex_boundary(jsonl_path: Optional[str], since: datetime) -> Optional[dict]:
+    if not jsonl_path:
+        return None
+    path = Path(jsonl_path)
+    if not path.exists():
+        return None
+    boundary = None
+    for _, _, _, payload in iter_jsonl_records([path]):
+        timestamp = payload.get("timestamp")
+        if not isinstance(timestamp, str):
+            continue
+        try:
+            event_ts = parse_iso_timestamp(timestamp)
+        except ValueError:
+            continue
+        if event_ts < since:
+            continue
+        record_type = payload.get("type")
+        nested_payload = payload.get("payload")
+        nested_type = nested_payload.get("type") if isinstance(nested_payload, dict) else None
+        if record_type == "compacted" or nested_type == "context_compacted":
+            boundary = payload
+    return boundary
 
 
 def inspect_signal_log_file(
@@ -793,7 +891,21 @@ def print_protocol_telemetry(protocol_state: ProtocolTelemetryState) -> None:
 
 def main() -> int:
     args = parse_args()
+    manual_run = find_manual_run(args.teams_dir, args.manual_run_id, args.team) if args.manual_run_id else None
+    if args.manual_run_id and manual_run is None:
+        print(f"FAIL: manual run '{args.manual_run_id}' not found under {args.teams_dir}", file=sys.stderr)
+        return 1
+
+    if manual_run and not args.team and isinstance(manual_run.get("team_name"), str):
+        args.team = manual_run["team_name"]
+
     since, _, window_desc = resolve_window(args)
+    if manual_run and since is None:
+        triggered_at = manual_run.get("triggered_at")
+        if isinstance(triggered_at, str):
+            since = parse_iso_timestamp(triggered_at)
+            window_desc = f"manual run {manual_run.get('run_id')} since {triggered_at}"
+
     resolved_log_path, log_candidates, log_warnings = resolve_log_selection(args.log)
     log_files = discover_log_files(resolved_log_path)
     existing_files = [path for path in log_files if path.exists()]
@@ -894,6 +1006,7 @@ def main() -> int:
     hook_status = analyze_hook_installation(args.claude_settings, args.hooks_dir)
     wake_stage_counts = Counter(str(event.get("stage", "unknown")) for event in protocol_state.wake_events)
     surfaced_count = len(protocol_state.surfaced_events)
+    manual_run_report: Optional[Dict[str, Any]] = None
 
     detected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.detected")
     injected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.injected")
@@ -977,6 +1090,53 @@ def main() -> int:
             hook_health = ("unknown", "Claude compact hook installed, but no hook fire evidence in selected window")
     else:
         hook_health = ("fail", "Claude compact hook is not installed in current settings")
+
+    if manual_run:
+        run_team = str(manual_run.get("team_name") or "")
+        run_member = str(manual_run.get("member_name") or "")
+        run_session_id = manual_run.get("session_id")
+        triggered_at = manual_run.get("triggered_at")
+        run_since = parse_iso_timestamp(triggered_at) if isinstance(triggered_at, str) else since or datetime.min.replace(tzinfo=timezone.utc)
+        run_events = [
+            event
+            for event in state.compaction_events
+            if event.get("team_name") == run_team
+            and event.get("member_name") == run_member
+            and (not isinstance(run_session_id, str) or event.get("session_id") == run_session_id)
+            and record_in_window(event, run_since)
+        ]
+        wake_events, surfaced_events = find_manual_run_protocol_events(protocol_state, run_team, run_member, run_since)
+        report: Dict[str, Any] = {
+            "run_id": manual_run.get("run_id"),
+            "tool": manual_run.get("tool"),
+            "team_name": run_team,
+            "member_name": run_member,
+            "session_id": run_session_id,
+            "pane_id": manual_run.get("pane_id"),
+            "trigger_command": manual_run.get("trigger_command"),
+            "trigger_mode": manual_run.get("trigger_mode"),
+            "triggered_at": triggered_at,
+            "metadata_path": manual_run.get("_path"),
+            "detected_event": next((event for event in run_events if event.get("event") == "compaction.detected"), None),
+            "terminal_event": next((event for event in run_events if event.get("event") in TERMINAL_COMPACTION_EVENTS), None),
+            "wake_event": wake_events[-1] if wake_events else None,
+            "surfaced_event": surfaced_events[-1] if surfaced_events else None,
+        }
+        if manual_run.get("tool") == "claude":
+            report["precompact_line"] = find_manual_run_debug_line(
+                manual_run.get("debug_log_path"), run_since, "Getting matching hook commands for PreCompact with query: manual"
+            )
+            report["sessionstart_line"] = find_manual_run_debug_line(
+                manual_run.get("debug_log_path"), run_since, "Getting matching hook commands for SessionStart with query: compact"
+            )
+            report["hook_success_line"] = find_manual_run_debug_line(
+                manual_run.get("debug_log_path"), run_since, "Hook SessionStart:compact (SessionStart) success"
+            )
+        elif manual_run.get("tool") == "codex":
+            report["boundary_record"] = find_manual_run_codex_boundary(
+                manual_run.get("jsonl_path"), run_since
+            )
+        manual_run_report = report
 
     print("Compaction Reinjection Analysis")
     print("==============================")
@@ -1236,6 +1396,56 @@ def main() -> int:
 
     print_compaction_diagnostics(compaction_diagnostics)
     print_protocol_telemetry(protocol_state)
+
+    if manual_run_report is not None:
+        print_section("Manual Trigger Run")
+        print_kv("Run id", manual_run_report.get("run_id"))
+        print_kv("Tool", manual_run_report.get("tool"))
+        print_kv(
+            "Target",
+            f"{manual_run_report.get('team_name')}/{manual_run_report.get('member_name')}",
+        )
+        print_kv("Pane", manual_run_report.get("pane_id") or "n/a")
+        print_kv("Session id", manual_run_report.get("session_id") or "n/a")
+        print_kv("Triggered at", manual_run_report.get("triggered_at") or "n/a")
+        print_kv("Trigger mode", manual_run_report.get("trigger_mode") or "n/a")
+        print_kv("Trigger command", manual_run_report.get("trigger_command") or "n/a")
+        print_kv("Metadata path", manual_run_report.get("metadata_path") or "n/a")
+
+        if manual_run_report.get("tool") == "claude":
+            precompact_seen = manual_run_report.get("precompact_line") is not None
+            sessionstart_seen = manual_run_report.get("sessionstart_line") is not None
+            hook_success_seen = manual_run_report.get("hook_success_line") is not None
+            print_kv("Claude PreCompact seen", precompact_seen)
+            print_kv("Claude SessionStart(compact) seen", sessionstart_seen)
+            print_kv("Claude hook success seen", hook_success_seen)
+            if manual_run_report.get("precompact_line"):
+                print(f"  precompact: {manual_run_report['precompact_line']}")
+            if manual_run_report.get("sessionstart_line"):
+                print(f"  sessionstart: {manual_run_report['sessionstart_line']}")
+            if manual_run_report.get("hook_success_line"):
+                print(f"  success: {manual_run_report['hook_success_line']}")
+        elif manual_run_report.get("tool") == "codex":
+            boundary_record = manual_run_report.get("boundary_record")
+            boundary_kind = None
+            if isinstance(boundary_record, dict):
+                boundary_kind = boundary_record.get("type")
+                if boundary_kind is None and isinstance(boundary_record.get("payload"), dict):
+                    boundary_kind = boundary_record["payload"].get("type")
+            print_kv("Codex boundary seen", boundary_record is not None)
+            print_kv("Codex boundary kind", boundary_kind or "n/a")
+
+        detected_event = manual_run_report.get("detected_event")
+        terminal_event = manual_run_report.get("terminal_event")
+        wake_event = manual_run_report.get("wake_event")
+        surfaced_event = manual_run_report.get("surfaced_event")
+        print_kv("Detected event seen", detected_event is not None)
+        print_kv(
+            "Terminal event",
+            terminal_event.get("event") if isinstance(terminal_event, dict) else "n/a",
+        )
+        print_kv("Wake stage", wake_event.get("stage") if isinstance(wake_event, dict) else "n/a")
+        print_kv("Surfaced by mesh read", surfaced_event is not None)
 
     print_section("Claude Hook")
     print_kv("Settings file", args.claude_settings)

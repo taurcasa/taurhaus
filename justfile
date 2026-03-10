@@ -80,6 +80,31 @@ metrics:
 analyze-compaction *ARGS:
     python3 scripts/analyze-compaction.py {{ARGS}}
 
+# Trigger a real managed Claude compaction and verify the hook + delivery path.
+test-compaction-claude TEAM MEMBER *ARGS:
+    python3 scripts/test-compaction-claude.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}
+
+# Trigger a real managed Codex compaction and verify transcript + delivery path.
+test-compaction-codex TEAM MEMBER *ARGS:
+    python3 scripts/test-compaction-codex.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}
+
+# Generic compaction test entry point by tool.
+test-compaction TOOL TEAM MEMBER *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{TOOL}}" in
+        claude)
+            python3 scripts/test-compaction-claude.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}
+            ;;
+        codex)
+            python3 scripts/test-compaction-codex.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}
+            ;;
+        *)
+            echo "Unsupported tool '{{TOOL}}' (expected: claude or codex)" >&2
+            exit 1
+            ;;
+    esac
+
 # Run the unified resource monitor (live table by default).
 # Example: just monitor --samples 1 --interval 1
 monitor *ARGS:
