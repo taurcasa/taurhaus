@@ -426,6 +426,62 @@ fn initialize_pipeline_persists_claude_agent_session_id() {
 }
 
 #[test]
+fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: Some("Review pipeline".to_string()),
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        agents: vec![
+            setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+            setup_config("reviewer", "claude", "claude-opus-4-6", "/tmp/reviewer"),
+        ],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+
+    let config = TeamConfigStore::load(tmp.path(), "architecture-final").expect("team config");
+    assert_eq!(config.members.len(), 3);
+    assert!(config
+        .members
+        .iter()
+        .any(|member| member.name == "team-lead"));
+    assert!(config.members.iter().any(|member| member.name == "builder"));
+    assert!(config
+        .members
+        .iter()
+        .any(|member| member.name == "reviewer"));
+
+    let lead_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead").expect("runtime");
+    assert_eq!(lead_runtime.cli_tool, Some(CliTool::Codex));
+    assert_eq!(
+        lead_runtime.project_path.as_deref(),
+        Some(std::path::Path::new("/tmp/lead"))
+    );
+
+    let reviewer_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "reviewer").expect("runtime");
+    assert_eq!(reviewer_runtime.cli_tool, Some(CliTool::Claude));
+    assert_eq!(
+        reviewer_runtime.project_path.as_deref(),
+        Some(std::path::Path::new("/tmp/reviewer"))
+    );
+}
+
+#[test]
 fn load_resume_member_state_preserves_role_template_context() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

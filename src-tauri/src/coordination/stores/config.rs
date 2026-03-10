@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, TimeZone, Utc};
@@ -242,7 +243,7 @@ impl TeamConfigStore {
                     ))
                 })?;
 
-        if let Err(err) = fs::write(&tmp_path, &payload) {
+        if let Err(err) = write_file_synced(&tmp_path, &payload) {
             return Err(CoordinationError::Io(err));
         }
 
@@ -253,7 +254,7 @@ impl TeamConfigStore {
                     target = %target_path.display(),
                     "atomic rename is unsupported for this Windows path; falling back to direct write"
                 );
-                if let Err(write_err) = fs::write(&target_path, &payload) {
+                if let Err(write_err) = write_file_synced(&target_path, &payload) {
                     let _ = fs::remove_file(&tmp_path);
                     return Err(CoordinationError::Io(write_err));
                 }
@@ -354,6 +355,13 @@ impl TeamConfigStore {
 
 fn mesh_agent_id(team_name: &str, member_name: &str) -> String {
     format!("{member_name}@{team_name}")
+}
+
+fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
+    let mut file = fs::File::create(path)?;
+    file.write_all(payload.as_bytes())?;
+    file.sync_all()?;
+    Ok(())
 }
 
 fn mesh_compatible_wire(

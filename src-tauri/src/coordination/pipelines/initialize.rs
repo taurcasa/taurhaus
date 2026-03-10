@@ -2,6 +2,8 @@ use super::*;
 
 use chrono::Utc;
 
+use crate::coordination::audit::{AuditEvent, MemberAddedEvent};
+use crate::coordination::backend::BackendKind;
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -9,7 +11,7 @@ use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     DeliveryRequest, InitializeReport, InitializeTeamRequest, LeadMode, OperatorNoticeDelivery,
 };
-use crate::coordination::stores::MemberRuntimeStore;
+use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 use crate::coordination::validation::{validate_non_empty, validate_team_name};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -88,7 +90,30 @@ impl CoordinationOrchestrator {
                 ));
             }
         };
-        if let Err(err) = self.add_member(&request.team_name, lead_member) {
+        let agent_members = match request
+            .agents
+            .iter()
+            .map(|agent| member_from_agent_setup(agent, MemberRole::Agent))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(members) => members,
+            Err(err) => {
+                self.cleanup_initialize_failure(&request.team_name);
+                return Ok(failed_initialize_report(
+                    &request.team_name,
+                    "add_lead",
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                ));
+            }
+        };
+        if let Err(err) = self.seed_initialize_roster(
+            &request.team_name,
+            request.team_description.clone(),
+            lead_member,
+            &agent_members,
+        ) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -264,7 +289,6 @@ impl CoordinationOrchestrator {
 
         for agent in &request.agents {
             let member = member_from_agent_setup(agent, MemberRole::Agent)?;
-            self.add_member(&request.team_name, member.clone())?;
             let pane_id = self
                 .runtime
                 .create_aitx_pane(&agent.project_id, tmux_layout)?;
@@ -280,6 +304,64 @@ impl CoordinationOrchestrator {
             runtime.health = HealthState::Healthy;
             MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &member.name, &runtime)?;
         }
+        Ok(())
+    }
+
+    fn seed_initialize_roster(
+        &mut self,
+        team_name: &str,
+        team_description: Option<String>,
+        lead_member: crate::coordination::domain::Member,
+        agent_members: &[crate::coordination::domain::Member],
+    ) -> Result<(), CoordinationError> {
+        let created_at = Utc::now();
+        let mut members = Vec::with_capacity(1 + agent_members.len());
+        members.push(lead_member);
+        members.extend(agent_members.iter().cloned());
+
+        TeamConfigStore::save(
+            &self.teams_dir,
+            team_name,
+            &TeamConfig {
+                schema_version: 1,
+                name: team_name.to_string(),
+                description: team_description,
+                created_at,
+                members: members.clone(),
+            },
+        )?;
+
+        for member in members {
+            MemberRuntimeStore::save(
+                &self.teams_dir,
+                team_name,
+                &member.name,
+                &crate::coordination::stores::MemberRuntimeRecord {
+                    schema_version: 3,
+                    member_name: member.name.clone(),
+                    cli_tool: Some(member.cli_tool),
+                    project_path: Some(member.project_path.clone()),
+                    pane_id: None,
+                    session_id: None,
+                    jsonl_path: None,
+                    daemon_pid: None,
+                    health: HealthState::SessionDead,
+                    delivery_lease: None,
+                    attached_at: None,
+                    last_seen_at: None,
+                },
+            )?;
+
+            self.audit_log
+                .push(AuditEvent::MemberAdded(MemberAddedEvent {
+                    team_name: team_name.to_string(),
+                    member_name: member.name,
+                    role: member.role,
+                    backend: backend_kind_for_member_tool(member.cli_tool),
+                    added_at: created_at,
+                }));
+        }
+
         Ok(())
     }
 
@@ -446,5 +528,12 @@ impl CoordinationOrchestrator {
             }))?;
         }
         Ok(())
+    }
+}
+
+fn backend_kind_for_member_tool(tool: CliTool) -> BackendKind {
+    match tool {
+        CliTool::Claude => BackendKind::ClaudeNative,
+        CliTool::Codex | CliTool::Gemini => BackendKind::MeshBridged,
     }
 }
