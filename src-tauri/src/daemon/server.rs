@@ -1,6 +1,6 @@
 use std::io::{BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -16,6 +16,7 @@ pub const DEFAULT_PORT: u16 = 17233;
 /// memory allocation from malicious or misbehaving clients.
 const MAX_REQUEST_LINE_LEN: usize = 1_048_576;
 static DROPPED_PUSH_EVENT_COUNT: AtomicU64 = AtomicU64::new(0);
+static ACTIVE_CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Configuration for the daemon server.
 pub struct DaemonConfig {
@@ -87,8 +88,35 @@ pub fn run(
     let start_time = Instant::now();
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
     let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
+    let watch_registry =
+        crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
 
     tracing::info!(port = config.port, "daemon listening");
+    crate::inotify_diagnostics::emit_daemon_telemetry_with_counts(
+        "startup",
+        Some(ACTIVE_CONNECTION_COUNT.load(Ordering::Relaxed) as u64),
+        Some(watch_registry.physical_watch_registration_count() as u64),
+        Some(watch_registry.logical_subscription_count() as u64),
+    );
+
+    let telemetry_shutdown = shutdown.clone();
+    let telemetry_registry = watch_registry.clone();
+    let telemetry_handle = std::thread::spawn(move || {
+        while !telemetry_shutdown.load(Ordering::Relaxed) {
+            crate::inotify_diagnostics::emit_daemon_telemetry_with_counts(
+                "periodic",
+                Some(ACTIVE_CONNECTION_COUNT.load(Ordering::Relaxed) as u64),
+                Some(telemetry_registry.physical_watch_registration_count() as u64),
+                Some(telemetry_registry.logical_subscription_count() as u64),
+            );
+            for _ in 0..60 {
+                if telemetry_shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+    });
 
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
@@ -104,7 +132,18 @@ pub fn run(
                 let activity = last_activity.clone();
                 let token = auth_token.clone();
                 let provider = provider.clone();
+                let watch_registry = watch_registry.clone();
+                ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 std::thread::spawn(move || {
+                    struct ActiveConnectionGuard;
+
+                    impl Drop for ActiveConnectionGuard {
+                        fn drop(&mut self) {
+                            ACTIVE_CONNECTION_COUNT.fetch_sub(1, Ordering::Relaxed);
+                        }
+                    }
+
+                    let _active_connection_guard = ActiveConnectionGuard;
                     if let Err(e) = handle_connection(
                         stream,
                         start,
@@ -112,6 +151,7 @@ pub fn run(
                         &activity,
                         token.as_deref(),
                         provider,
+                        watch_registry,
                     ) {
                         tracing::warn!(error = %e, "connection handler error");
                     }
@@ -134,6 +174,7 @@ pub fn run(
         }
     }
 
+    let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())
 }
@@ -238,6 +279,7 @@ fn handle_connection(
     last_activity: &AtomicU64,
     auth_token: Option<&str>,
     provider: Arc<dyn ProjectProvider>,
+    watch_registry: Arc<crate::daemon::watch::SharedDaemonWatchRegistry>,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(1)))?;
@@ -245,7 +287,7 @@ fn handle_connection(
     let mut reader = BufReader::new(stream.try_clone()?);
     let writer = Arc::new(Mutex::new(stream));
     let project_task_scan_cache = crate::daemon::handlers::ProjectTaskScanCacheState::default();
-    let mut watch_runtime = crate::daemon::handlers::WatchRuntime::new();
+    let mut watch_runtime = crate::daemon::watch::WatchRuntime::new(watch_registry);
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -317,7 +359,7 @@ fn handle_connection(
     }
 
     // Drop watches before writer — stops watcher callbacks before closing stream
-    watch_runtime.active_watches.clear();
+    watch_runtime.clear();
     Ok(())
 }
 

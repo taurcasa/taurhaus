@@ -246,6 +246,23 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
         (watched, unwatched, watch_limit_hit)
     };
 
+    let logical_watch_subscriptions = {
+        let watcher_state = app.state::<WatcherState>();
+        let watcher_guard = match watcher_state.0.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Watcher lock poisoned while collecting inotify telemetry; recovering"
+                );
+                error.into_inner()
+            }
+        };
+        watcher_guard.watched_projects().len()
+    };
+    crate::inotify_diagnostics::emit_app_telemetry(reason, logical_watch_subscriptions);
+
     if watched > 0 || unwatched > 0 {
         tracing::info!(
             watched,

@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use ignore::gitignore::Gitignore;
@@ -9,14 +10,204 @@ use notify::{Config, Event as NotifyEvent, RecommendedWatcher, Watcher};
 
 use crate::daemon::protocol::{self, DaemonEvent, DaemonResponse};
 use crate::fs::watcher::{
-    build_gitignore, classify_notify_event, reconcile_pruned_tree_watches,
-    reconcile_pruned_tree_watches_for_event,
+    build_gitignore, classify_notify_event_with_state, reconcile_pruned_tree_watches,
+    reconcile_pruned_tree_watches_for_event, ClassifiedNotifyEvent,
 };
 
 #[derive(Debug)]
 pub(crate) struct DaemonWatchRegistration {
-    pub(crate) watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
-    pub(crate) watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
+    pub(crate) path: PathBuf,
+    pub(crate) watched_dirs: HashSet<PathBuf>,
+    pub(crate) gitignore: Gitignore,
+    pub(crate) last_git_event_at: Option<Instant>,
+    pub(crate) subscribers: HashMap<u64, Arc<Mutex<TcpStream>>>,
+}
+
+#[derive(Debug, Default)]
+struct SharedWatchState {
+    registrations: HashMap<String, DaemonWatchRegistration>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SharedDaemonWatchRegistry {
+    watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    state: Arc<Mutex<SharedWatchState>>,
+    next_connection_id: AtomicU64,
+}
+
+impl SharedDaemonWatchRegistry {
+    pub(crate) fn new() -> notify::Result<Arc<Self>> {
+        let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
+        let state = Arc::new(Mutex::new(SharedWatchState::default()));
+        let watcher_for_callback = watcher_slot.clone();
+        let state_for_callback = state.clone();
+
+        let watcher = RecommendedWatcher::new(
+            move |res: Result<NotifyEvent, notify::Error>| match res {
+                Ok(event) => {
+                    forward_shared_watch_event(&state_for_callback, &watcher_for_callback, event);
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "shared file watcher error");
+                }
+            },
+            Config::default(),
+        )?;
+
+        {
+            let mut slot = watcher_slot
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            *slot = Some(watcher);
+        }
+
+        Ok(Arc::new(Self {
+            watcher: watcher_slot,
+            state,
+            next_connection_id: AtomicU64::new(1),
+        }))
+    }
+
+    pub(crate) fn allocate_connection_id(&self) -> u64 {
+        self.next_connection_id.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub(crate) fn physical_watch_registration_count(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .registrations
+            .len()
+    }
+
+    pub(crate) fn logical_subscription_count(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .registrations
+            .values()
+            .map(|registration| registration.subscribers.len())
+            .sum()
+    }
+
+    fn add_subscription(
+        &self,
+        connection_id: u64,
+        watch_key: &str,
+        path: &Path,
+        writer: &Arc<Mutex<TcpStream>>,
+    ) -> notify::Result<usize> {
+        let mut watcher = self
+            .watcher
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let watcher = watcher
+            .as_mut()
+            .expect("shared daemon watcher missing during watch registration");
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+
+        if let Some(registration) = state.registrations.get_mut(watch_key) {
+            registration
+                .subscribers
+                .insert(connection_id, writer.clone());
+            return Ok(registration.watched_dirs.len());
+        }
+
+        let gitignore = build_gitignore(path);
+        let mut watched_dirs = HashSet::new();
+        reconcile_pruned_tree_watches(watcher, &mut watched_dirs, path, &gitignore)?;
+        let watched_dir_count = watched_dirs.len();
+        state.registrations.insert(
+            watch_key.to_string(),
+            DaemonWatchRegistration {
+                path: path.to_path_buf(),
+                watched_dirs,
+                gitignore,
+                last_git_event_at: None,
+                subscribers: HashMap::from([(connection_id, writer.clone())]),
+            },
+        );
+        Ok(watched_dir_count)
+    }
+
+    fn remove_subscription(&self, connection_id: u64, watch_key: &str) -> Option<usize> {
+        let mut watcher = self
+            .watcher
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let watcher = watcher
+            .as_mut()
+            .expect("shared daemon watcher missing during unwatch");
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let registration = state.registrations.get_mut(watch_key)?;
+        registration.subscribers.remove(&connection_id);
+        if !registration.subscribers.is_empty() {
+            return Some(registration.watched_dirs.len());
+        }
+
+        let watched_dir_count = registration.watched_dirs.len();
+        let watched_dirs: Vec<PathBuf> = registration.watched_dirs.drain().collect();
+        for watched_dir in watched_dirs {
+            let _ = watcher.unwatch(&watched_dir);
+        }
+        state.registrations.remove(watch_key);
+        Some(watched_dir_count)
+    }
+
+    #[cfg(test)]
+    fn registration_count(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .registrations
+            .len()
+    }
+
+    #[cfg(test)]
+    fn subscriber_count(&self, watch_key: &str) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .registrations
+            .get(watch_key)
+            .map(|registration| registration.subscribers.len())
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    fn watched_dirs(&self, watch_key: &str) -> Option<HashSet<PathBuf>> {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .registrations
+            .get(watch_key)
+            .map(|registration| registration.watched_dirs.clone())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WatchRuntime {
+    pub(crate) connection_id: u64,
+    pub(crate) subscriptions: HashSet<String>,
+    pub(crate) registry: Arc<SharedDaemonWatchRegistry>,
+}
+
+impl WatchRuntime {
+    pub(crate) fn new(registry: Arc<SharedDaemonWatchRegistry>) -> Self {
+        Self {
+            connection_id: registry.allocate_connection_id(),
+            subscriptions: HashSet::new(),
+            registry,
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        let subscriptions: Vec<String> = self.subscriptions.drain().collect();
+        for watch_key in subscriptions {
+            self.registry
+                .remove_subscription(self.connection_id, &watch_key);
+        }
+    }
 }
 
 /// Duration to debounce git internal events pushed to clients.
@@ -28,9 +219,7 @@ pub(crate) fn handle_watch(
     id: &str,
     params: &serde_json::Value,
     writer: &Arc<Mutex<TcpStream>>,
-    active_watches: &mut HashMap<String, DaemonWatchRegistration>,
-    git_debounce: &Arc<Mutex<HashMap<String, Instant>>>,
-    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watch_runtime: &mut WatchRuntime,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -45,87 +234,29 @@ pub(crate) fn handle_watch(
             format!("Path does not exist or is not a directory: {}", params.path),
         );
     }
-    // Canonicalize the path to resolve symlinks (critical on macOS where
-    // /var → /private/var; FSEvents watches the canonical path).
     let path = resolve_watch_path(&params.path);
     let watch_key = path.to_string_lossy().to_string();
 
-    // Already watching this path?
-    if active_watches.contains_key(&watch_key) {
+    if watch_runtime.subscriptions.contains(&watch_key) {
         return DaemonResponse::ok(id, protocol::WatchResult { ok: true });
     }
 
-    {
-        let gi = build_gitignore(&path);
-        let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-        gis.insert(watch_key.clone(), gi);
-    }
-
-    let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
-    let watcher_for_callback: Weak<Mutex<Option<RecommendedWatcher>>> =
-        Arc::downgrade(&watcher_slot);
-    let watched_dirs: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
-    let watched_dirs_for_callback = watched_dirs.clone();
-    let writer_clone = writer.clone();
-    let watch_path = watch_key.clone();
-    let debounce_clone = git_debounce.clone();
-    let gitignores_clone = gitignores.clone();
-
-    let mut watcher = match RecommendedWatcher::new(
-        move |res: Result<NotifyEvent, notify::Error>| match res {
-            Ok(event) => {
-                let Some(watcher) = watcher_for_callback.upgrade() else {
-                    return;
-                };
-                forward_watch_event(
-                    &writer_clone,
-                    &watch_path,
-                    &debounce_clone,
-                    &gitignores_clone,
-                    &watcher,
-                    &watched_dirs_for_callback,
-                    event,
-                );
-            }
-            Err(error) => {
-                tracing::warn!(path = %watch_path, error = %error, "file watcher error");
-            }
-        },
-        Config::default(),
+    let watched_dir_count = match watch_runtime.registry.add_subscription(
+        watch_runtime.connection_id,
+        &watch_key,
+        &path,
+        writer,
     ) {
-        Ok(w) => w,
-        Err(e) => return DaemonResponse::err(id, "WATCH_ERROR", e.to_string()),
+        Ok(watched_dir_count) => watched_dir_count,
+        Err(error) => return DaemonResponse::err(id, "WATCH_ERROR", error.to_string()),
     };
-
-    let watched_dir_count = {
-        let gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-        let gitignore = gis
-            .get(&watch_key)
-            .expect("handle_watch inserted gitignore before reconcile");
-        let mut watched_dirs_guard = watched_dirs.lock().unwrap_or_else(|e| e.into_inner());
-        if let Err(e) =
-            reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs_guard, &path, gitignore)
-        {
-            return DaemonResponse::err(id, "WATCH_ERROR", e.to_string());
-        }
-        watched_dirs_guard.len()
-    };
-    {
-        let mut slot = watcher_slot.lock().unwrap_or_else(|e| e.into_inner());
-        *slot = Some(watcher);
-    }
-    active_watches.insert(
-        watch_key.clone(),
-        DaemonWatchRegistration {
-            watcher: watcher_slot,
-            watched_dirs,
-        },
-    );
+    watch_runtime.subscriptions.insert(watch_key.clone());
 
     tracing::info!(
         path = %params.path,
         watched_dir_count,
-        "Started watching directory tree with pre-pruning"
+        connection_id = watch_runtime.connection_id,
+        "Started or reused shared daemon watch registration"
     );
     DaemonResponse::ok(id, protocol::WatchResult { ok: true })
 }
@@ -134,8 +265,7 @@ pub(crate) fn handle_watch(
 pub(crate) fn handle_unwatch(
     id: &str,
     params: &serde_json::Value,
-    active_watches: &mut HashMap<String, DaemonWatchRegistration>,
-    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watch_runtime: &mut WatchRuntime,
 ) -> DaemonResponse {
     let params: protocol::PathParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
@@ -145,40 +275,74 @@ pub(crate) fn handle_unwatch(
     let watch_key = resolve_watch_path(&params.path)
         .to_string_lossy()
         .to_string();
-    if let Some(registration) = active_watches.remove(&watch_key) {
-        let watched_dir_count = registration
-            .watched_dirs
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .len();
-        let mut watcher = registration
-            .watcher
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let watcher = watcher
-            .as_mut()
-            .expect("daemon watcher missing during unwatch");
-        let mut watched_dirs = registration
-            .watched_dirs
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        for watched_dir in watched_dirs.drain() {
-            let _ = watcher.unwatch(&watched_dir);
+    if watch_runtime.subscriptions.remove(&watch_key) {
+        if let Some(watched_dir_count) = watch_runtime
+            .registry
+            .remove_subscription(watch_runtime.connection_id, &watch_key)
+        {
+            tracing::info!(
+                path = %params.path,
+                watched_dir_count,
+                connection_id = watch_runtime.connection_id,
+                "Removed shared daemon watch subscription"
+            );
         }
-        tracing::info!(
-            path = %params.path,
-            watched_dir_count,
-            "Stopped watching directory"
-        );
     }
-    let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-    gis.remove(&watch_key);
     DaemonResponse::ok(id, protocol::WatchResult { ok: true })
 }
 
 fn resolve_watch_path(path: &str) -> PathBuf {
     let path = PathBuf::from(path);
     path.canonicalize().unwrap_or(path)
+}
+
+fn event_matches_registration(event: &NotifyEvent, root: &Path) -> bool {
+    event.paths.iter().any(|path| path.starts_with(root))
+}
+
+fn collect_daemon_events(
+    project_path: &str,
+    project_root: &Path,
+    classified: ClassifiedNotifyEvent,
+) -> Vec<DaemonEvent> {
+    let mut events = Vec::new();
+
+    if classified.emit_git_changed {
+        events.push(DaemonEvent::new(
+            protocol::event::GIT_CHANGED,
+            protocol::GitChangedData {
+                path: project_path.to_string(),
+            },
+        ));
+    }
+
+    for path in classified.session_files {
+        events.push(DaemonEvent::new(
+            protocol::event::SESSION_FILE_CREATED,
+            protocol::SessionFileCreatedData {
+                path: project_path.to_string(),
+                file: relative_to(&path, project_root),
+            },
+        ));
+    }
+
+    let regular_files: Vec<String> = classified
+        .regular_files
+        .iter()
+        .map(|path| relative_to(path, project_root))
+        .collect();
+
+    if !regular_files.is_empty() {
+        events.push(DaemonEvent::new(
+            protocol::event::FILE_CHANGED,
+            protocol::FileChangedData {
+                path: project_path.to_string(),
+                files: regular_files,
+            },
+        ));
+    }
+
+    events
 }
 
 /// Convert an absolute file path to a project-relative string.
@@ -201,98 +365,143 @@ pub(crate) fn forward_watch_event(
     event: NotifyEvent,
 ) {
     {
-        let gis = gitignores.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(gitignore) = gis.get(project_path) {
-            let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
-            let mut watched_dirs = watched_dirs
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            let before = watched_dirs.len();
-            if let Some(watcher) = watcher.as_mut() {
-                if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
-                    watcher,
-                    &mut watched_dirs,
-                    Path::new(project_path),
-                    gitignore,
-                    &event,
-                ) {
-                    if count != before {
-                        let reason = if event.paths.iter().any(|path| {
-                            path.file_name()
-                                .map(|name| name.to_string_lossy())
-                                .is_some_and(|name| {
-                                    name == ".gitignore" || name == ".taurhausignore"
-                                })
-                        }) {
-                            "gitignore_changed"
-                        } else {
-                            "directory_topology_changed"
-                        };
-                        tracing::info!(
-                            path = %project_path,
-                            watched_dir_count = count,
-                            reason,
-                            "Reconciled daemon watch tree"
-                        );
-                    }
+        let project_root = Path::new(project_path);
+        let mut gitignores = gitignores.lock().unwrap_or_else(|error| error.into_inner());
+        let Some(gitignore) = gitignores.get_mut(project_path) else {
+            return;
+        };
+        let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
+        let mut watched_dirs = watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let before = watched_dirs.len();
+        if let Some(watcher) = watcher.as_mut() {
+            if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
+                watcher,
+                &mut watched_dirs,
+                project_root,
+                gitignore,
+                &event,
+            ) {
+                if count != before {
+                    let reason = if event.paths.iter().any(|path| {
+                        path.file_name()
+                            .map(|name| name.to_string_lossy())
+                            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+                    }) {
+                        "gitignore_changed"
+                    } else {
+                        "directory_topology_changed"
+                    };
+                    tracing::info!(
+                        path = %project_path,
+                        watched_dir_count = count,
+                        reason,
+                        "Reconciled daemon watch tree"
+                    );
                 }
             }
         }
     }
 
     let project_root = Path::new(project_path);
-    let classified = classify_notify_event(
-        project_path,
+    let mut debounce = debounce.lock().unwrap_or_else(|error| error.into_inner());
+    let mut gitignores = gitignores.lock().unwrap_or_else(|error| error.into_inner());
+    let Some(gitignore) = gitignores.get_mut(project_path) else {
+        return;
+    };
+    let mut last_git_event_at = debounce.get(project_path).copied();
+    let classified = classify_notify_event_with_state(
         project_root,
         WATCH_GIT_DEBOUNCE_SECS,
-        debounce,
-        gitignores,
+        &mut last_git_event_at,
+        gitignore,
         &event,
         true,
     );
-
-    if classified.emit_git_changed {
-        crate::daemon::server::push_event(
-            writer,
-            &DaemonEvent::new(
-                protocol::event::GIT_CHANGED,
-                protocol::GitChangedData {
-                    path: project_path.to_string(),
-                },
-            ),
-        );
+    match last_git_event_at {
+        Some(last_git_event_at) => {
+            debounce.insert(project_path.to_string(), last_git_event_at);
+        }
+        None => {
+            debounce.remove(project_path);
+        }
     }
 
-    for path in classified.session_files {
-        crate::daemon::server::push_event(
-            writer,
-            &DaemonEvent::new(
-                protocol::event::SESSION_FILE_CREATED,
-                protocol::SessionFileCreatedData {
-                    path: project_path.to_string(),
-                    file: relative_to(&path, project_root),
-                },
-            ),
-        );
+    for daemon_event in collect_daemon_events(project_path, project_root, classified) {
+        crate::daemon::server::push_event(writer, &daemon_event);
     }
+}
 
-    let regular_files: Vec<String> = classified
-        .regular_files
-        .iter()
-        .map(|path| relative_to(path, project_root))
-        .collect();
+fn forward_shared_watch_event(
+    state: &Arc<Mutex<SharedWatchState>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    event: NotifyEvent,
+) {
+    let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
+    let Some(watcher) = watcher.as_mut() else {
+        return;
+    };
+    let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
+    let mut deliveries: Vec<(Vec<Arc<Mutex<TcpStream>>>, Vec<DaemonEvent>)> = Vec::new();
 
-    if !regular_files.is_empty() {
-        crate::daemon::server::push_event(
-            writer,
-            &DaemonEvent::new(
-                protocol::event::FILE_CHANGED,
-                protocol::FileChangedData {
-                    path: project_path.to_string(),
-                    files: regular_files,
-                },
-            ),
+    for (watch_key, registration) in state.registrations.iter_mut() {
+        if !event_matches_registration(&event, &registration.path) {
+            continue;
+        }
+
+        let before = registration.watched_dirs.len();
+        if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
+            watcher,
+            &mut registration.watched_dirs,
+            &registration.path,
+            &registration.gitignore,
+            &event,
+        ) {
+            if count != before {
+                let reason = if event.paths.iter().any(|path| {
+                    path.file_name()
+                        .map(|name| name.to_string_lossy())
+                        .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+                }) {
+                    "gitignore_changed"
+                } else {
+                    "directory_topology_changed"
+                };
+                tracing::info!(
+                    path = %watch_key,
+                    watched_dir_count = count,
+                    reason,
+                    "Reconciled shared daemon watch tree"
+                );
+            }
+        }
+
+        let classified = classify_notify_event_with_state(
+            &registration.path,
+            WATCH_GIT_DEBOUNCE_SECS,
+            &mut registration.last_git_event_at,
+            &mut registration.gitignore,
+            &event,
+            true,
         );
+        let daemon_events = collect_daemon_events(watch_key, &registration.path, classified);
+        if daemon_events.is_empty() {
+            continue;
+        }
+
+        let subscribers = registration.subscribers.values().cloned().collect();
+        deliveries.push((subscribers, daemon_events));
+    }
+    drop(state);
+    drop(watcher);
+
+    for (subscribers, daemon_events) in deliveries {
+        for subscriber in subscribers {
+            for daemon_event in &daemon_events {
+                crate::daemon::server::push_event(&subscriber, daemon_event);
+            }
+        }
     }
 }
 
@@ -353,48 +562,72 @@ mod tests {
 
         let (writer_stream, _peer_stream) = tcp_stream_pair();
         let writer = Arc::new(Mutex::new(writer_stream));
-        let mut active_watches = HashMap::new();
-        let git_debounce = Arc::new(Mutex::new(HashMap::new()));
-        let gitignores = Arc::new(Mutex::new(HashMap::new()));
+        let registry = SharedDaemonWatchRegistry::new().unwrap();
+        let mut watch_runtime = WatchRuntime::new(registry.clone());
 
         let resp1 = handle_watch(
             "w1",
             &json!({ "path": watched.to_string_lossy() }),
             &writer,
-            &mut active_watches,
-            &git_debounce,
-            &gitignores,
+            &mut watch_runtime,
         );
         assert!(resp1.is_ok());
-        assert_eq!(active_watches.len(), 1);
+        assert_eq!(registry.registration_count(), 1);
 
         let resp2 = handle_watch(
             "w2",
             &json!({ "path": alias.to_string_lossy() }),
             &writer,
-            &mut active_watches,
-            &git_debounce,
-            &gitignores,
+            &mut watch_runtime,
         );
         assert!(resp2.is_ok());
-        assert_eq!(active_watches.len(), 1);
+        assert_eq!(registry.registration_count(), 1);
 
         let canonical = watched
             .canonicalize()
             .unwrap()
             .to_string_lossy()
             .to_string();
-        assert!(active_watches.contains_key(&canonical));
+        assert_eq!(registry.subscriber_count(&canonical), 1);
 
         let unwatch_resp = handle_unwatch(
             "u1",
             &json!({ "path": alias.to_string_lossy() }),
-            &mut active_watches,
-            &gitignores,
+            &mut watch_runtime,
         );
         assert!(unwatch_resp.is_ok());
-        assert!(active_watches.is_empty());
-        assert!(gitignores.lock().unwrap().is_empty());
+        assert_eq!(registry.registration_count(), 0);
+    }
+
+    #[test]
+    fn shared_registry_keeps_watch_until_last_subscriber_drops() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+
+        let (writer_stream_a, _peer_stream_a) = tcp_stream_pair();
+        let writer_a = Arc::new(Mutex::new(writer_stream_a));
+        let (writer_stream_b, _peer_stream_b) = tcp_stream_pair();
+        let writer_b = Arc::new(Mutex::new(writer_stream_b));
+        let registry = SharedDaemonWatchRegistry::new().unwrap();
+        let mut runtime_a = WatchRuntime::new(registry.clone());
+        let mut runtime_b = WatchRuntime::new(registry.clone());
+
+        let watch_params = json!({ "path": root.to_string_lossy() });
+        assert!(handle_watch("w1", &watch_params, &writer_a, &mut runtime_a).is_ok());
+        assert!(handle_watch("w2", &watch_params, &writer_b, &mut runtime_b).is_ok());
+
+        let watch_key = root.canonicalize().unwrap().to_string_lossy().to_string();
+        assert_eq!(registry.registration_count(), 1);
+        assert_eq!(registry.subscriber_count(&watch_key), 2);
+
+        assert!(handle_unwatch("u1", &watch_params, &mut runtime_a).is_ok());
+        assert_eq!(registry.registration_count(), 1);
+        assert_eq!(registry.subscriber_count(&watch_key), 1);
+
+        runtime_b.clear();
+        assert_eq!(registry.registration_count(), 0);
     }
 
     #[test]
@@ -550,28 +783,20 @@ mod tests {
 
         let (writer_stream, _peer_stream) = tcp_stream_pair();
         let writer = Arc::new(Mutex::new(writer_stream));
-        let mut active_watches = HashMap::new();
-        let git_debounce = Arc::new(Mutex::new(HashMap::new()));
-        let gitignores = Arc::new(Mutex::new(HashMap::new()));
+        let registry = SharedDaemonWatchRegistry::new().unwrap();
+        let mut watch_runtime = WatchRuntime::new(registry.clone());
 
         let response = handle_watch(
             "w1",
             &json!({ "path": root.to_string_lossy() }),
             &writer,
-            &mut active_watches,
-            &git_debounce,
-            &gitignores,
+            &mut watch_runtime,
         );
         assert!(response.is_ok());
 
-        let registration = active_watches
-            .values()
-            .next()
+        let watched_dirs = registry
+            .watched_dirs(&root.canonicalize().unwrap().to_string_lossy())
             .expect("daemon watch registration");
-        let watched_dirs = registration
-            .watched_dirs
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
         assert!(watched_dirs.contains(&root));
         assert!(watched_dirs.contains(&root.join("src")));
         assert!(watched_dirs.contains(&root.join("src/nested")));

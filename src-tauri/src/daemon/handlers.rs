@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::daemon::protocol::{self, DaemonRequest, DaemonResponse};
-use crate::daemon::watch::{handle_unwatch, handle_watch, DaemonWatchRegistration};
+use crate::daemon::watch::{handle_unwatch, handle_watch, WatchRuntime};
 use crate::project_provider::ProjectProvider;
 use crate::task_scanner::claude_index::{
     build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
 };
-use ignore::gitignore::Gitignore;
 
 #[derive(Debug, Clone)]
 struct ProjectTaskScanCache {
@@ -21,22 +19,6 @@ struct ProjectTaskScanCache {
 #[derive(Debug, Default)]
 pub(crate) struct ProjectTaskScanCacheState {
     cache: Mutex<Option<ProjectTaskScanCache>>,
-}
-
-pub(crate) struct WatchRuntime {
-    pub active_watches: HashMap<String, DaemonWatchRegistration>,
-    pub git_debounce: Arc<Mutex<HashMap<String, Instant>>>,
-    pub gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
-}
-
-impl WatchRuntime {
-    pub(crate) fn new() -> Self {
-        Self {
-            active_watches: HashMap::new(),
-            git_debounce: Arc::new(Mutex::new(HashMap::new())),
-            gitignores: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
 }
 
 /// Dispatch a request to the appropriate handler.
@@ -88,20 +70,10 @@ pub(crate) fn dispatch(
         protocol::method::GIT_COMMIT_DIFF => {
             handle_git_commit_diff(&request.id, &request.params, provider)
         }
-        protocol::method::WATCH => handle_watch(
-            &request.id,
-            &request.params,
-            writer,
-            &mut watch_runtime.active_watches,
-            &watch_runtime.git_debounce,
-            &watch_runtime.gitignores,
-        ),
-        protocol::method::UNWATCH => handle_unwatch(
-            &request.id,
-            &request.params,
-            &mut watch_runtime.active_watches,
-            &watch_runtime.gitignores,
-        ),
+        protocol::method::WATCH => {
+            handle_watch(&request.id, &request.params, writer, watch_runtime)
+        }
+        protocol::method::UNWATCH => handle_unwatch(&request.id, &request.params, watch_runtime),
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
