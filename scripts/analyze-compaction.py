@@ -86,16 +86,38 @@ class AnalyzerState:
         self.hook_log_examples = []
 
 
+@dataclass(frozen=True)
+class LogCandidate:
+    path: Path
+    source: str
+    mtime: float
+    size: int
+
+
+@dataclass
+class ProtocolTelemetryState:
+    total_lines: int = 0
+    parsed_lines: int = 0
+    invalid_lines: int = 0
+    wake_events: List[dict] = None  # type: ignore[assignment]
+    surfaced_events: List[dict] = None  # type: ignore[assignment]
+    files: List[Path] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.wake_events = []
+        self.surfaced_events = []
+        self.files = []
+
+
 def parse_args() -> argparse.Namespace:
-    default_log_path = resolve_default_log_path()
     parser = argparse.ArgumentParser(
         description="Analyze compaction reinjection pipeline health from taurhaus JSONL logs."
     )
     parser.add_argument(
         "--log",
         type=Path,
-        default=default_log_path,
-        help=f"Path to current taurhaus.log.jsonl (default: {default_log_path})",
+        default=None,
+        help="Path to current taurhaus.log.jsonl (default: auto-detect latest active log root).",
     )
     parser.add_argument(
         "--team",
@@ -130,10 +152,24 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_default_log_path() -> Path:
+def classify_log_source(path: Path) -> str:
+    path_str = str(path)
+    if path_str.startswith("/mnt/") and "AppData/Roaming/com.taurhaus.dev" in path_str:
+        return "windows-roaming-via-wsl"
+    if "Library/Application Support/com.taurhaus.dev" in path_str:
+        return "macos-app-support"
+    return "wsl-local"
+
+
+def discover_default_log_candidates() -> List[LogCandidate]:
     override = os.environ.get("TAURHAUS_DATA_DIR")
     if override:
-        return Path(override) / "taurhaus.log.jsonl"
+        path = Path(override) / "taurhaus.log.jsonl"
+        try:
+            stat = path.stat()
+            return [LogCandidate(path=path, source="override", mtime=stat.st_mtime, size=stat.st_size)]
+        except FileNotFoundError:
+            return [LogCandidate(path=path, source="override", mtime=0.0, size=0)]
 
     candidates = [
         Path.home() / ".local" / "share" / "com.taurhaus.dev" / "taurhaus.log.jsonl",
@@ -144,28 +180,68 @@ def resolve_default_log_path() -> Path:
         Path("/mnt/c/Users").glob("*/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl")
     )
     candidates.extend(windows_candidates)
-
-    selected = select_best_log_candidate(candidates)
-    if selected is not None:
-        return selected
-
-    return candidates[0]
-
-
-def select_best_log_candidate(candidates: Iterable[Path]) -> Optional[Path]:
-    existing: List[Tuple[float, int, str, Path]] = []
+    resolved: List[LogCandidate] = []
     for candidate in candidates:
         try:
             stat = candidate.stat()
         except FileNotFoundError:
+            resolved.append(
+                LogCandidate(
+                    path=candidate,
+                    source=classify_log_source(candidate),
+                    mtime=0.0,
+                    size=0,
+                )
+            )
             continue
-        existing.append((stat.st_mtime, stat.st_size, str(candidate), candidate))
+        resolved.append(
+            LogCandidate(
+                path=candidate,
+                source=classify_log_source(candidate),
+                mtime=stat.st_mtime,
+                size=stat.st_size,
+            )
+        )
+    return resolved
+
+
+def select_best_log_candidate(candidates: Iterable[LogCandidate]) -> Optional[LogCandidate]:
+    existing: List[LogCandidate] = []
+    for candidate in candidates:
+        if candidate.mtime <= 0:
+            continue
+        existing.append(candidate)
 
     if not existing:
         return None
 
-    existing.sort(reverse=True)
-    return existing[0][3]
+    existing.sort(key=lambda candidate: (candidate.mtime, candidate.size, str(candidate.path)), reverse=True)
+    return existing[0]
+
+
+def resolve_log_selection(explicit_log: Optional[Path]) -> Tuple[Path, List[LogCandidate], List[str]]:
+    if explicit_log is not None:
+        return explicit_log, [], []
+
+    candidates = discover_default_log_candidates()
+    selected = select_best_log_candidate(candidates)
+    warnings: List[str] = []
+    existing = [candidate for candidate in candidates if candidate.mtime > 0]
+    sources = sorted({candidate.source for candidate in existing})
+    if len(sources) > 1:
+        rendered = ", ".join(
+            f"{candidate.source}:{candidate.path}"
+            for candidate in sorted(existing, key=lambda candidate: candidate.mtime, reverse=True)
+        )
+        warnings.append(
+            "mixed log roots detected; auto-selection may pick a different active run than expected "
+            f"({rendered})"
+        )
+
+    if selected is not None:
+        return selected.path, candidates, warnings
+
+    return candidates[0].path, candidates, warnings
 
 
 def parse_iso_timestamp(value: str) -> datetime:
@@ -232,10 +308,39 @@ def iter_jsonl_records(files: Iterable[Path]) -> Iterator[Tuple[Path, int, str, 
                 yield path, line_no, line, payload
 
 
+def iter_telemetry_records(path: Path) -> Iterator[Tuple[int, str, dict]]:
+    if not path.exists():
+        return
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_no, raw in enumerate(handle, start=1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                yield line_no, line, {"__invalid_json__": True}
+                continue
+            yield line_no, line, payload
+
+
 def record_in_window(payload: dict, since: Optional[datetime]) -> bool:
     if since is None:
         return True
     ts_value = payload.get("ts")
+    if not isinstance(ts_value, str):
+        return False
+    try:
+        event_ts = parse_iso_timestamp(ts_value)
+    except ValueError:
+        return False
+    return event_ts >= since
+
+
+def telemetry_record_in_window(payload: dict, since: Optional[datetime]) -> bool:
+    if since is None:
+        return True
+    ts_value = payload.get("timestamp")
     if not isinstance(ts_value, str):
         return False
     try:
@@ -438,6 +543,35 @@ def analyze_compaction_diagnostics(
     return diagnostics
 
 
+def analyze_protocol_telemetry(
+    teams_dir: Path,
+    team_filter: Optional[str],
+    since: Optional[datetime],
+) -> ProtocolTelemetryState:
+    state = ProtocolTelemetryState()
+
+    for team_dir in iter_team_dirs(teams_dir, team_filter):
+        telemetry_path = team_dir / "state" / "protocol_telemetry.jsonl"
+        if not telemetry_path.exists():
+            continue
+        state.files.append(telemetry_path)
+        for line_no, _, payload in iter_telemetry_records(telemetry_path):
+            state.total_lines += 1
+            if payload.get("__invalid_json__"):
+                state.invalid_lines += 1
+                continue
+            state.parsed_lines += 1
+            if not telemetry_record_in_window(payload, since):
+                continue
+            metric = payload.get("metric")
+            if metric == "wake_delivery":
+                state.wake_events.append(payload)
+            elif metric == "compaction_read_surfaced":
+                state.surfaced_events.append(payload)
+
+    return state
+
+
 def analyze_runtime_session_health(
     teams_dir: Path, team_filter: Optional[str]
 ) -> Tuple[Counter, Dict[str, List[str]], List[Tuple[str, str, Optional[str]]]]:
@@ -626,17 +760,50 @@ def print_compaction_diagnostics(diagnostics_by_team: Dict[str, Dict[str, object
             )
 
 
+def print_protocol_telemetry(protocol_state: ProtocolTelemetryState) -> None:
+    print_section("Mesh Protocol Telemetry")
+    if not protocol_state.files:
+        print("No protocol telemetry journals found.")
+        return
+
+    print_kv("Telemetry files", ", ".join(str(path) for path in protocol_state.files))
+    print_kv("Parsed telemetry lines", f"{protocol_state.parsed_lines}/{protocol_state.total_lines}")
+    if protocol_state.invalid_lines:
+        print_kv("Invalid telemetry lines", protocol_state.invalid_lines)
+
+    wake_by_stage = Counter(
+        str(event.get("stage", "unknown")) for event in protocol_state.wake_events
+    )
+    print_kv("Wake events", len(protocol_state.wake_events))
+    if wake_by_stage:
+        print_kv(
+            "Wake stages",
+            ", ".join(f"{stage}={count}" for stage, count in sorted(wake_by_stage.items())),
+        )
+
+    print_kv("Compaction read surfaced", len(protocol_state.surfaced_events))
+    if protocol_state.surfaced_events:
+        recent = protocol_state.surfaced_events[-3:]
+        for payload in recent:
+            print(
+                f"  surfaced: {payload.get('team_name')}/{payload.get('member_name')} "
+                f"messages={payload.get('message_count')} ids={payload.get('message_ids')}"
+            )
+
+
 def main() -> int:
     args = parse_args()
     since, _, window_desc = resolve_window(args)
-    log_files = discover_log_files(args.log)
+    resolved_log_path, log_candidates, log_warnings = resolve_log_selection(args.log)
+    log_files = discover_log_files(resolved_log_path)
     existing_files = [path for path in log_files if path.exists()]
 
     if not existing_files:
-        print(f"FAIL: no log files found for {args.log}", file=sys.stderr)
+        print(f"FAIL: no log files found for {resolved_log_path}", file=sys.stderr)
         return 1
 
     state = AnalyzerState()
+    protocol_state = analyze_protocol_telemetry(args.teams_dir, args.team, since)
     detected_at: Dict[CompactionKey, datetime] = {}
     terminal_latencies_ms: List[float] = []
     injected_latencies_ms: List[float] = []
@@ -725,6 +892,8 @@ def main() -> int:
     )
     compaction_diagnostics = analyze_compaction_diagnostics(args.teams_dir, args.team)
     hook_status = analyze_hook_installation(args.claude_settings, args.hooks_dir)
+    wake_stage_counts = Counter(str(event.get("stage", "unknown")) for event in protocol_state.wake_events)
+    surfaced_count = len(protocol_state.surfaced_events)
 
     detected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.detected")
     injected_count = sum(1 for event in state.compaction_events if event.get("event") == "compaction.injected")
@@ -743,11 +912,24 @@ def main() -> int:
     if not state.compaction_events:
         compaction_health = ("warn", "no compaction events found in selected window")
     elif detected_count > 0 and injected_count == 0:
-        compaction_health = ("warn", "compactions detected but none injected")
+        compaction_health = ("warn", "compactions detected but none reached transport delivery")
     elif failed_count > 0:
         compaction_health = ("warn", f"{failed_count} failed compaction deliveries observed")
     else:
-        compaction_health = ("ok", "compaction events present with no failures in window")
+        compaction_health = ("ok", "compaction events reached terminal transport outcomes in window")
+
+    if injected_count == 0:
+        consumption_health = ("unknown", "no transport-delivered compactions in selected window")
+    elif surfaced_count > 0:
+        consumption_health = (
+            "ok",
+            f"{surfaced_count} compaction card surfacing event(s) captured by mesh read telemetry",
+        )
+    else:
+        consumption_health = (
+            "warn",
+            "transport delivery exists, but no mesh-read surfacing evidence is present in the selected window",
+        )
 
     if not latest_scanner_counts:
         scanner_health = ("unknown", "no session scanner events in selected window")
@@ -800,7 +982,18 @@ def main() -> int:
     print("==============================")
     print_kv("Window", window_desc)
     print_kv("Team filter", args.team or "all teams")
-    print_kv("Selected log", args.log)
+    print_kv("Selected log", resolved_log_path)
+    if log_candidates:
+        print_kv(
+            "Log candidates",
+            ", ".join(
+                f"{candidate.source}:{candidate.path}"
+                for candidate in sorted(log_candidates, key=lambda candidate: (candidate.mtime, candidate.size), reverse=True)
+                if candidate.mtime > 0
+            ) or "none found",
+        )
+    for warning in log_warnings:
+        print_kv("Log selection warning", warning)
     print_kv("Log files", ", ".join(path.name for path in existing_files))
     print_kv("Parsed lines", f"{state.parsed_lines}/{state.total_lines}")
     if state.invalid_lines:
@@ -809,6 +1002,7 @@ def main() -> int:
     print_section("Health Signals")
     for name, (level, message) in (
         ("Compaction pipeline", compaction_health),
+        ("Agent consumption evidence", consumption_health),
         ("Scanner health", scanner_health),
         ("Runtime session_id health", runtime_health),
         ("Claude hook status", hook_health),
@@ -866,26 +1060,55 @@ def main() -> int:
     checkpoint_status(
         cp5_level,
         "CP5",
-        "Delivery reached a terminal outcome",
+        "Delivery reached a terminal transport outcome",
         "grep 'compaction.injected\\|compaction.skipped\\|compaction.stale\\|compaction.failed' <taurhaus.log.jsonl>",
         "one of injected/skipped/stale/failed exists for the detected compaction",
         "compaction.detected exists but no terminal delivery event follows",
     )
 
-    cp6_level = runtime_health[0]
+    if injected_count == 0:
+        cp6_level = "unknown"
+    elif wake_stage_counts["tmux_injected"] > 0:
+        cp6_level = "ok"
+    elif wake_stage_counts["tmux_failed"] > 0:
+        cp6_level = "fail"
+    elif protocol_state.files:
+        cp6_level = "warn"
+    else:
+        cp6_level = "unknown"
     checkpoint_status(
         cp6_level,
         "CP6",
+        "Mesh wake prompt transport happened",
+        "python3 scripts/analyze-compaction.py --team <team> --last 30m",
+        "wake_delivery telemetry shows tmux_injected for the member after transport delivery",
+        "transport delivery exists, but there is no tmux_injected evidence or there are tmux_failed events instead",
+    )
+
+    cp7_level = consumption_health[0]
+    checkpoint_status(
+        cp7_level,
+        "CP7",
+        "Compaction card was surfaced by mesh read",
+        "python3 scripts/analyze-compaction.py --team <team> --last 30m",
+        "compaction_read_surfaced telemetry exists for the target member",
+        "transport delivery exists, but no surfaced telemetry has been recorded",
+    )
+
+    cp8_level = runtime_health[0]
+    checkpoint_status(
+        cp8_level,
+        "CP8",
         "Runtime member records can support exact session resolution",
         "python3 scripts/analyze-compaction.py --team <team> --last 30m",
         "runtime session_id health shows managed members with populated session_id values",
         "runtime session_id health is partial or empty, causing ambiguous or skipped resolution",
     )
 
-    cp7_level = hook_health[0]
+    cp9_level = hook_health[0]
     checkpoint_status(
-        cp7_level,
-        "CP7",
+        cp9_level,
+        "CP9",
         "Claude compact hook bridge is installed",
         "python3 scripts/analyze-compaction.py --team <team> --last 30m",
         "Claude hook status is installed and optionally shows hook fire evidence",
@@ -894,12 +1117,26 @@ def main() -> int:
 
     print_section("Compaction Outcomes")
     print_kv("Detected", detected_count)
-    print_kv("Injected", injected_count)
+    print_kv("Transport delivered (compaction.injected)", injected_count)
     print_kv("Skipped", skipped_count)
     print_kv("Stale", stale_count)
     print_kv("Failed", failed_count)
+    print_kv("Wake prompt observed", wake_stage_counts["observed"])
+    print_kv("Wake prompt suppressed", wake_stage_counts["suppressed"])
+    print_kv("Wake prompt tmux injected", wake_stage_counts["tmux_injected"])
+    print_kv("Wake prompt tmux failed", wake_stage_counts["tmux_failed"])
+    print_kv("Compaction cards surfaced", surfaced_count)
     success_rate = (injected_count / detected_count * 100.0) if detected_count else None
-    print_kv("Injected / detected ratio", f"{success_rate:.1f}%" if success_rate is not None else "n/a")
+    print_kv("Transport delivered / detected ratio", f"{success_rate:.1f}%" if success_rate is not None else "n/a")
+    surfaced_rate = (surfaced_count / injected_count * 100.0) if injected_count else None
+    print_kv(
+        "Surfaced / transport-delivered ratio",
+        f"{surfaced_rate:.1f}%" if surfaced_rate is not None else "n/a",
+    )
+    print_kv(
+        "Consumption semantics",
+        "compaction.injected proves transport delivery only; agent consumption is evidenced separately by compaction_read_surfaced",
+    )
     if delivery_reason_presence["without_reason"]:
         print_kv(
             "Delivery reasons",
@@ -933,7 +1170,7 @@ def main() -> int:
         for tool in tools:
             print(
                 f"{tool}: detected={compaction_by_tool[(tool, 'compaction.detected')]} "
-                f"injected={outcome_by_tool[(tool, 'compaction.injected')]} "
+                f"transport_delivered={outcome_by_tool[(tool, 'compaction.injected')]} "
                 f"skipped={outcome_by_tool[(tool, 'compaction.skipped')]} "
                 f"stale={outcome_by_tool[(tool, 'compaction.stale')]} "
                 f"failed={outcome_by_tool[(tool, 'compaction.failed')]}"
@@ -947,7 +1184,7 @@ def main() -> int:
         for member in members:
             print(
                 f"{member}: detected={compaction_by_member[(member, 'compaction.detected')]} "
-                f"injected={outcome_by_member[(member, 'compaction.injected')]} "
+                f"transport_delivered={outcome_by_member[(member, 'compaction.injected')]} "
                 f"skipped={outcome_by_member[(member, 'compaction.skipped')]} "
                 f"stale={outcome_by_member[(member, 'compaction.stale')]} "
                 f"failed={outcome_by_member[(member, 'compaction.failed')]}"
@@ -998,6 +1235,7 @@ def main() -> int:
             print(f"{tool}: {with_sid}/{members_total} runtime members with session_id")
 
     print_compaction_diagnostics(compaction_diagnostics)
+    print_protocol_telemetry(protocol_state)
 
     print_section("Claude Hook")
     print_kv("Settings file", args.claude_settings)

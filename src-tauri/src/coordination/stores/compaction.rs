@@ -135,6 +135,38 @@ impl MemberCompactionStore {
         results.sort_by(|left, right| left.0.cmp(&right.0));
         Ok(results)
     }
+
+    pub fn delete(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name)?;
+        delete_state_file(teams_dir, team_name, member_name)
+    }
+}
+
+fn delete_state_file(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Result<(), CoordinationError> {
+    let path = compaction_state_path(teams_dir, team_name, member_name);
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(CoordinationError::Io(err)),
+    }
+}
+
+impl MemberCompactionStore {
+    pub(crate) fn delete_without_lock(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        delete_state_file(teams_dir, team_name, member_name)
+    }
 }
 
 pub fn is_already_handled(
@@ -197,6 +229,28 @@ pub fn record_delivery(
 
 pub fn is_stale_compaction(detected_at: DateTime<Utc>, now: DateTime<Utc>) -> bool {
     now.signed_duration_since(detected_at) > TimeDelta::seconds(COMPACTION_FRESHNESS_WINDOW_SECS)
+}
+
+pub fn prune_state_if_session_mismatch(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    active_session_id: Option<&str>,
+) -> Result<bool, CoordinationError> {
+    let Some(active_session_id) = active_session_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(false);
+    };
+
+    let Some(state) = MemberCompactionStore::load(teams_dir, team_name, member_name)? else {
+        return Ok(false);
+    };
+
+    if state.last_session_id == active_session_id {
+        return Ok(false);
+    }
+
+    MemberCompactionStore::delete_without_lock(teams_dir, team_name, member_name)?;
+    Ok(true)
 }
 
 pub fn emit_compaction_detected_event(
@@ -599,6 +653,50 @@ mod tests {
             "session-1",
             timestamp("2026-03-08T14:30:01Z"),
         ));
+    }
+
+    #[test]
+    fn prune_state_if_session_mismatch_removes_old_state() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        MemberCompactionStore::save(tmp.path(), "taurhaus-team", "architect", &sample_state())
+            .expect("save state");
+
+        let pruned = prune_state_if_session_mismatch(
+            tmp.path(),
+            "taurhaus-team",
+            "architect",
+            Some("session-2"),
+        )
+        .expect("prune mismatch");
+
+        assert!(pruned);
+        assert!(
+            MemberCompactionStore::load(tmp.path(), "taurhaus-team", "architect")
+                .expect("load state")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn prune_state_if_session_mismatch_keeps_matching_state() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        MemberCompactionStore::save(tmp.path(), "taurhaus-team", "architect", &sample_state())
+            .expect("save state");
+
+        let pruned = prune_state_if_session_mismatch(
+            tmp.path(),
+            "taurhaus-team",
+            "architect",
+            Some("session-1"),
+        )
+        .expect("prune mismatch");
+
+        assert!(!pruned);
+        assert!(
+            MemberCompactionStore::load(tmp.path(), "taurhaus-team", "architect")
+                .expect("load state")
+                .is_some()
+        );
     }
 
     #[test]

@@ -7,6 +7,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::compaction::prune_state_if_session_mismatch;
 use crate::coordination::domain::{DeliveryLease, HealthState};
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
@@ -82,6 +83,13 @@ impl MemberRuntimeStore {
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
         }
+
+        prune_state_if_session_mismatch(
+            teams_dir,
+            team_name,
+            member_name,
+            normalized.session_id.as_deref(),
+        )?;
 
         Ok(())
     }
@@ -316,6 +324,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::coordination::stores::{
+        CompactionDeliveryResult, MemberCompactionState, MemberCompactionStore,
+    };
 
     fn ts(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -452,6 +463,39 @@ mod tests {
         assert!(
             runtime_record_path(teams_dir, team_name, "fresh-agent").exists(),
             "fresh file should remain"
+        );
+    }
+
+    #[test]
+    fn save_prunes_compaction_state_when_session_id_changes() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "architect";
+
+        MemberCompactionStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &MemberCompactionState {
+                version: 1,
+                member_name: member_name.to_string(),
+                last_session_id: "sess-123".to_string(),
+                last_compaction_timestamp: ts("2026-03-10T09:00:00Z"),
+                last_delivery_result: CompactionDeliveryResult::Skipped,
+            },
+        )
+        .expect("save compaction state");
+
+        let mut record = sample_record(member_name);
+        record.session_id = Some("session-123".to_string());
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &record).expect("save runtime");
+
+        assert!(
+            MemberCompactionStore::load(teams_dir, team_name, member_name)
+                .expect("load compaction state")
+                .is_none(),
+            "mismatched compaction state should be pruned when runtime session changes"
         );
     }
 
