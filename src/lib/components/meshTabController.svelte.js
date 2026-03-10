@@ -29,7 +29,6 @@ import {
   buildInitializationRequest,
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
-  composeConfigFromPayload,
   contractHasRules,
   createAgent,
   createLead,
@@ -1044,14 +1043,6 @@ export function createMeshTabController({
     }
   }
 
-  function handleTeamSave(payload) {
-    teamConfig = composeConfigFromPayload(payload, getProjectPath())
-    if (!teamName.trim()) teamName = inferTeamName(getProjectPath())
-    selectedNodeId = null
-    mode = 'setup'
-    closeSlideOver()
-  }
-
   function openAddAgentPanel() {
     if (isResumingTeam) return
     const projectPath = getProjectPath()
@@ -1394,26 +1385,11 @@ export function createMeshTabController({
     closeSlideOver()
   }
 
-  function openCustomizer() {
-    if (!teamConfig) {
-      handleStartCustom()
-    }
-  }
-
   function toggleNode(nodeId) {
     selectedNodeId = String(selectedNodeId) === String(nodeId) ? null : String(nodeId)
   }
 
   function clearSelectedNode() {
-    selectedNodeId = null
-  }
-
-  function removeSelectedSetupNode() {
-    if (selectedNode?.role !== 'agent') return
-    teamConfig = {
-      ...teamConfig,
-      agents: (teamConfig?.agents ?? []).filter((entry) => entry.id !== selectedNode.id),
-    }
     selectedNodeId = null
   }
 
@@ -1424,16 +1400,6 @@ export function createMeshTabController({
     if (!presetsLoaded && !loadingPresets) {
       void loadTeamPresets()
     }
-  }
-
-  function openRoleFromBrowser(role) {
-    const roleId = role?.roleId ?? ''
-    if (!roleId) return
-    if (normalizeRoleKind(role) === 'lead') {
-      handleAssignLeadRole(roleId)
-      return
-    }
-    handleAppendAgentRole(roleId)
   }
 
   function requestDisband() {
@@ -1715,7 +1681,6 @@ export function createMeshTabController({
     handleSaveBuilderPreset,
     handleInitialize,
     handleInitializeSuccess,
-    handleTeamSave,
     openAddAgentPanel,
     handleRoleChange,
     toggleAddAgentLock,
@@ -1733,12 +1698,9 @@ export function createMeshTabController({
     stopSelected,
     focusSelectedPane,
     handleReset,
-    openCustomizer,
     toggleNode,
     clearSelectedNode,
-    removeSelectedSetupNode,
     openTemplates,
-    openRoleFromBrowser,
     requestDisband,
     cancelConfirm,
     dismissError: () => {
