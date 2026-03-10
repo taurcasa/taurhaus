@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::templates::types::{
     validate_agent_slot_common, AgentSlot, BehavioralContract, ProjectBinding, RoleKind,
-    RoleTemplate, SlotOverrides,
+    RoleTemplate, RuntimeCompactSummary, SlotOverrides,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -37,6 +37,7 @@ pub struct ResolvedMember {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub behavioral_contract: BehavioralContract,
     pub capabilities: Vec<String>,
     pub project_binding: ProjectBinding,
@@ -65,6 +66,7 @@ struct ResolvedFields {
     focus_area: Option<String>,
     context_summary: Option<String>,
     behavior_summary: Option<String>,
+    runtime_compact_summary: Option<RuntimeCompactSummary>,
     behavioral_contract: BehavioralContract,
     capabilities: Vec<String>,
 }
@@ -218,6 +220,7 @@ pub fn compose_team(
                 focus_area: fields.focus_area,
                 context_summary: fields.context_summary,
                 behavior_summary: fields.behavior_summary,
+                runtime_compact_summary: fields.runtime_compact_summary,
                 behavioral_contract: fields.behavioral_contract,
                 capabilities: fields.capabilities,
                 project_binding: ProjectBinding::LeadProject,
@@ -276,6 +279,7 @@ pub fn compose_team(
                 focus_area: fields.focus_area,
                 context_summary: fields.context_summary,
                 behavior_summary: fields.behavior_summary,
+                runtime_compact_summary: fields.runtime_compact_summary,
                 behavioral_contract: fields.behavioral_contract,
                 capabilities: fields.capabilities,
                 project_binding: slot.project_binding,
@@ -341,6 +345,7 @@ fn resolve_fields(
         focus_area: role.focus_area.clone(),
         context_summary: role.context_summary.clone(),
         behavior_summary: role.behavior_summary.clone(),
+        runtime_compact_summary: role.runtime_compact_summary.clone(),
         behavioral_contract: role.behavioral_contract.clone(),
         capabilities: role.capabilities.clone(),
     };
@@ -380,6 +385,9 @@ fn apply_overrides(resolved: &mut ResolvedFields, overrides: &SlotOverrides) {
     }
     if let Some(behavior_summary) = overrides.behavior_summary.as_deref() {
         resolved.behavior_summary = Some(behavior_summary.to_string());
+    }
+    if let Some(runtime_compact_summary) = overrides.runtime_compact_summary.as_ref() {
+        resolved.runtime_compact_summary = Some(runtime_compact_summary.clone());
     }
 
     if let Some(contract_append) = overrides.behavioral_contract_append.as_ref() {
@@ -627,6 +635,7 @@ mod tests {
                     focus_area: None,
                     context_summary: None,
                     behavior_summary: None,
+                    runtime_compact_summary: None,
                     behavioral_contract_append: None,
                 }),
             },
@@ -643,6 +652,7 @@ mod tests {
                     focus_area: None,
                     context_summary: None,
                     behavior_summary: None,
+                    runtime_compact_summary: None,
                     behavioral_contract_append: None,
                 }),
             },
@@ -687,6 +697,7 @@ mod tests {
                 focus_area: Some("Slot focus".to_string()),
                 context_summary: Some("Slot context".to_string()),
                 behavior_summary: Some("Slot behavior".to_string()),
+                runtime_compact_summary: None,
                 behavioral_contract_append: None,
             }),
         }];
@@ -707,6 +718,7 @@ mod tests {
                         focus_area: Some("Instance focus".to_string()),
                         context_summary: Some("Instance context".to_string()),
                         behavior_summary: Some("Instance behavior".to_string()),
+                        runtime_compact_summary: None,
                         behavioral_contract_append: None,
                     },
                 }],

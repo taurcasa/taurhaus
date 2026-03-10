@@ -593,6 +593,7 @@ impl CoordinationOrchestrator {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            runtime_compact_summary: None,
             instructions: member.instructions.clone(),
             behavioral_contract: member.behavioral_contract.clone(),
             capabilities: member.capabilities.clone(),

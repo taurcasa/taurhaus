@@ -706,6 +706,7 @@ fn coordination_add_member_impl(
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,
@@ -1120,6 +1121,9 @@ fn apply_resolved_member_defaults(
     {
         agent.behavior_summary = member.behavior_summary.clone();
     }
+    if agent.runtime_compact_summary.is_none() {
+        agent.runtime_compact_summary = member.runtime_compact_summary.clone();
+    }
     if agent
         .instructions
         .as_deref()
@@ -1162,6 +1166,7 @@ fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
             .map(str::trim)
             .unwrap_or("")
             .is_empty()
+        || agent.runtime_compact_summary.is_none()
         || agent
             .instructions
             .as_deref()
@@ -1208,6 +1213,9 @@ fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplat
         .is_empty()
     {
         agent.behavior_summary = role.behavior_summary.clone();
+    }
+    if agent.runtime_compact_summary.is_none() {
+        agent.runtime_compact_summary = role.runtime_compact_summary.clone();
     }
     if agent
         .instructions
@@ -1274,6 +1282,7 @@ fn map_agent_setup_to_contract(agent: &AgentSetupConfig) -> contracts::AgentSetu
         focus_area: agent.focus_area.clone(),
         context_summary: agent.context_summary.clone(),
         behavior_summary: agent.behavior_summary.clone(),
+        runtime_compact_summary: agent.runtime_compact_summary.clone(),
         instructions: agent.instructions.clone(),
         behavioral_contract: agent.behavioral_contract.clone(),
         capabilities: agent.capabilities.clone(),

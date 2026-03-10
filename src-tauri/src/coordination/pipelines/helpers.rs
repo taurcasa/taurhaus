@@ -307,6 +307,7 @@ pub(super) fn agent_has_role_context(agent: &AgentSetupConfig) -> bool {
         .filter(|value| !value.is_empty())
         .is_some()
         || agent_instructions(agent).is_some()
+        || agent.runtime_compact_summary.is_some()
         || agent
             .behavioral_contract
             .as_ref()
@@ -332,6 +333,7 @@ pub(super) fn member_has_role_context(member: &Member) -> bool {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .is_some()
+        || member.runtime_compact_summary.is_some()
         || member
             .behavioral_contract
             .as_ref()
@@ -358,6 +360,7 @@ pub(super) fn member_from_agent_setup(
         focus_area: setup.focus_area.clone(),
         context_summary: setup.context_summary.clone(),
         behavior_summary: setup.behavior_summary.clone(),
+        runtime_compact_summary: setup.runtime_compact_summary.clone(),
         instructions: setup
             .instructions
             .clone()

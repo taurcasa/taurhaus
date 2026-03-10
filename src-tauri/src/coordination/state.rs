@@ -356,6 +356,7 @@ mod tests {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            runtime_compact_summary: None,
             instructions: None,
             behavioral_contract: None,
             capabilities: None,

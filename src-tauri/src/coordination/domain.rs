@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::session_scanner::cli_tool::CliTool;
-use crate::templates::types::BehavioralContract;
+use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
 /// Managed team configuration document.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +27,7 @@ pub struct Member {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub instructions: Option<String>,
     pub behavioral_contract: Option<BehavioralContract>,
     pub capabilities: Option<Vec<String>>,
@@ -111,6 +112,7 @@ mod tests {
             focus_area: Some("Code review".to_string()),
             context_summary: Some("Keeps review context available.".to_string()),
             behavior_summary: Some("Finds concrete issues and escalates ambiguity.".to_string()),
+            runtime_compact_summary: None,
             instructions: Some("Review architecture tasks".to_string()),
             behavioral_contract: Some(BehavioralContract {
                 communication: vec!["share concise updates".to_string()],

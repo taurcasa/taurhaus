@@ -16,7 +16,7 @@ use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::templates::types::BehavioralContract;
+use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
@@ -71,6 +71,11 @@ struct MeshCompatibleMemberWire {
     context_summary: Option<String>,
     #[serde(rename = "behaviorSummary", skip_serializing_if = "Option::is_none")]
     behavior_summary: Option<String>,
+    #[serde(
+        rename = "runtimeCompactSummary",
+        skip_serializing_if = "Option::is_none"
+    )]
+    runtime_compact_summary: Option<RuntimeCompactSummary>,
     instructions: Option<String>,
     #[serde(rename = "behavioralContract", skip_serializing_if = "Option::is_none")]
     behavioral_contract: Option<BehavioralContract>,
@@ -146,6 +151,8 @@ struct MeshMemberWire {
     context_summary: Option<String>,
     #[serde(default, alias = "behaviorSummary")]
     behavior_summary: Option<String>,
+    #[serde(default, alias = "runtimeCompactSummary")]
+    runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(default, alias = "behavioralContract")]
     behavioral_contract: Option<BehavioralContract>,
     #[serde(default)]
@@ -181,6 +188,8 @@ struct NativeMemberWire {
     context_summary: Option<String>,
     #[serde(default)]
     behavior_summary: Option<String>,
+    #[serde(default)]
+    runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(default)]
     instructions: Option<String>,
     #[serde(default)]
@@ -450,6 +459,7 @@ fn mesh_compatible_wire(
                 focus_area: member.focus_area.clone(),
                 context_summary: member.context_summary.clone(),
                 behavior_summary: member.behavior_summary.clone(),
+                runtime_compact_summary: member.runtime_compact_summary.clone(),
                 instructions: member.instructions.clone(),
                 behavioral_contract: member.behavioral_contract.clone(),
                 capabilities: member.capabilities.clone(),
@@ -607,6 +617,7 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         focus_area: member.focus_area,
         context_summary: member.context_summary,
         behavior_summary: member.behavior_summary,
+        runtime_compact_summary: member.runtime_compact_summary,
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
         capabilities: member.capabilities,
@@ -635,6 +646,7 @@ fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, Coordinat
         focus_area: member.focus_area,
         context_summary: member.context_summary,
         behavior_summary: member.behavior_summary,
+        runtime_compact_summary: member.runtime_compact_summary,
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
         capabilities: member.capabilities,
@@ -700,6 +712,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: Some("Own orchestration".to_string()),
                 behavioral_contract: None,
                 capabilities: None,
@@ -723,6 +736,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: Some("Implement safely".to_string()),
                 behavioral_contract: Some(BehavioralContract {
                     communication: vec!["share updates".to_string()],
@@ -1334,6 +1348,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,

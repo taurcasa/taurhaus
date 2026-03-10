@@ -377,6 +377,7 @@ fn build_imported_role(
             focus_area: None,
             context_summary,
             behavior_summary: None,
+            runtime_compact_summary: None,
             behavioral_contract: default_import_behavioral_contract(),
             capabilities,
             provenance: Some(provenance.clone()),
@@ -857,6 +858,7 @@ mod tests {
             focus_area: Some("Architecture review".to_string()),
             context_summary: Some("Remembers why the architecture looks this way.".to_string()),
             behavior_summary: Some("Escalates direction questions quickly.".to_string()),
+            runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["Share interim findings.".to_string()],
                 execution: vec!["Verify assumptions in code.".to_string()],

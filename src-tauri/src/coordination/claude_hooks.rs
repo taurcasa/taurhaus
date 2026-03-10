@@ -914,6 +914,7 @@ mod tests {
             focus_area: Some("Cross-layer diagnosis".to_string()),
             context_summary: Some("Keeps context warm.".to_string()),
             behavior_summary: Some("Stay concrete.".to_string()),
+            runtime_compact_summary: None,
             instructions: Some("Inspect architecture".to_string()),
             behavioral_contract: None,
             capabilities: None,

@@ -80,6 +80,110 @@ impl BehavioralContract {
     }
 }
 
+const RUNTIME_COMPACT_SUMMARY_MIN_WORDS: usize = 90;
+const RUNTIME_COMPACT_SUMMARY_MAX_WORDS: usize = 160;
+const RUNTIME_COMPACT_ROLE_PURPOSE_MAX_WORDS: usize = 24;
+const RUNTIME_COMPACT_MAX_BULLETS: usize = 4;
+const RUNTIME_COMPACT_MAX_ITEM_WORDS: usize = 18;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeCompactSummary {
+    #[serde(alias = "role_purpose")]
+    pub role_purpose: String,
+    #[serde(default, alias = "keep_doing")]
+    pub keep_doing: Vec<String>,
+    #[serde(default, alias = "workflow_sequence")]
+    pub workflow_sequence: Vec<String>,
+    #[serde(default)]
+    pub avoid: Vec<String>,
+    #[serde(default, alias = "escalate_when")]
+    pub escalate_when: Vec<String>,
+}
+
+impl RuntimeCompactSummary {
+    fn validate(&self, field_prefix: &str, errors: &mut Vec<String>) {
+        validate_non_empty(
+            &format!("{field_prefix}.role_purpose"),
+            &self.role_purpose,
+            errors,
+        );
+        validate_string_list(
+            &format!("{field_prefix}.keep_doing"),
+            &self.keep_doing,
+            errors,
+        );
+        validate_string_list(
+            &format!("{field_prefix}.workflow_sequence"),
+            &self.workflow_sequence,
+            errors,
+        );
+        validate_string_list(&format!("{field_prefix}.avoid"), &self.avoid, errors);
+        validate_string_list(
+            &format!("{field_prefix}.escalate_when"),
+            &self.escalate_when,
+            errors,
+        );
+
+        validate_summary_list_limit(
+            &format!("{field_prefix}.keep_doing"),
+            &self.keep_doing,
+            errors,
+        );
+        validate_summary_list_limit(
+            &format!("{field_prefix}.workflow_sequence"),
+            &self.workflow_sequence,
+            errors,
+        );
+        validate_summary_list_limit(&format!("{field_prefix}.avoid"), &self.avoid, errors);
+        validate_summary_list_limit(
+            &format!("{field_prefix}.escalate_when"),
+            &self.escalate_when,
+            errors,
+        );
+
+        let role_purpose_words = count_words(&self.role_purpose);
+        if role_purpose_words > RUNTIME_COMPACT_ROLE_PURPOSE_MAX_WORDS {
+            errors.push(format!(
+                "{field_prefix}.role_purpose must be <= {RUNTIME_COMPACT_ROLE_PURPOSE_MAX_WORDS} words, found {role_purpose_words}"
+            ));
+        }
+
+        let total_words = self.total_word_count();
+        if !(RUNTIME_COMPACT_SUMMARY_MIN_WORDS..=RUNTIME_COMPACT_SUMMARY_MAX_WORDS)
+            .contains(&total_words)
+        {
+            errors.push(format!(
+                "{field_prefix} must be between {RUNTIME_COMPACT_SUMMARY_MIN_WORDS} and {RUNTIME_COMPACT_SUMMARY_MAX_WORDS} words, found {total_words}"
+            ));
+        }
+    }
+
+    pub fn total_word_count(&self) -> usize {
+        count_words(&self.role_purpose)
+            + self
+                .keep_doing
+                .iter()
+                .map(|item| count_words(item))
+                .sum::<usize>()
+            + self
+                .workflow_sequence
+                .iter()
+                .map(|item| count_words(item))
+                .sum::<usize>()
+            + self
+                .avoid
+                .iter()
+                .map(|item| count_words(item))
+                .sum::<usize>()
+            + self
+                .escalate_when
+                .iter()
+                .map(|item| count_words(item))
+                .sum::<usize>()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleConstraints {
@@ -113,6 +217,12 @@ pub struct RoleTemplate {
     pub context_summary: Option<String>,
     #[serde(default, alias = "behavior_summary")]
     pub behavior_summary: Option<String>,
+    #[serde(
+        default,
+        alias = "runtime_compact_summary",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(alias = "behavioral_contract")]
     pub behavioral_contract: BehavioralContract,
     #[serde(default)]
@@ -157,6 +267,9 @@ impl RoleTemplate {
         }
         if let Some(behavior_summary) = self.behavior_summary.as_deref() {
             validate_non_empty("behavior_summary", behavior_summary, &mut errors);
+        }
+        if let Some(runtime_compact_summary) = self.runtime_compact_summary.as_ref() {
+            runtime_compact_summary.validate("runtime_compact_summary", &mut errors);
         }
 
         if self.behavioral_contract.is_empty() {
@@ -238,6 +351,8 @@ pub struct SlotOverrides {
     pub context_summary: Option<String>,
     #[serde(default, alias = "behavior_summary")]
     pub behavior_summary: Option<String>,
+    #[serde(default, alias = "runtime_compact_summary")]
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(alias = "behavioral_contract_append")]
     pub behavioral_contract_append: Option<BehavioralContract>,
 }
@@ -284,6 +399,10 @@ impl SlotOverrides {
                 behavior_summary,
                 errors,
             );
+        }
+        if let Some(runtime_compact_summary) = self.runtime_compact_summary.as_ref() {
+            runtime_compact_summary
+                .validate(&format!("{field_prefix}.runtime_compact_summary"), errors);
         }
         if let Some(contract) = self.behavioral_contract_append.as_ref() {
             contract.validate(
@@ -649,6 +768,28 @@ fn validate_non_empty(field: &str, value: &str, errors: &mut Vec<String>) {
     }
 }
 
+fn validate_summary_list_limit(field: &str, items: &[String], errors: &mut Vec<String>) {
+    if items.len() > RUNTIME_COMPACT_MAX_BULLETS {
+        errors.push(format!(
+            "{field} must have at most {RUNTIME_COMPACT_MAX_BULLETS} bullets, found {}",
+            items.len()
+        ));
+    }
+
+    for (index, item) in items.iter().enumerate() {
+        let words = count_words(item);
+        if words > RUNTIME_COMPACT_MAX_ITEM_WORDS {
+            errors.push(format!(
+                "{field}[{index}] must be <= {RUNTIME_COMPACT_MAX_ITEM_WORDS} words, found {words}"
+            ));
+        }
+    }
+}
+
+fn count_words(value: &str) -> usize {
+    value.split_whitespace().count()
+}
+
 fn validate_string_list(field: &str, values: &[String], errors: &mut Vec<String>) {
     let mut seen = HashSet::new();
     for value in values {
@@ -720,6 +861,25 @@ mod tests {
             behavior_summary: Some(
                 "Implements assigned work and escalates structural uncertainty.".to_string(),
             ),
+            runtime_compact_summary: Some(RuntimeCompactSummary {
+                role_purpose: "Implement scoped changes with validation-first discipline and explicit ownership boundaries.".to_string(),
+                keep_doing: vec![
+                    "Stay inside the assignment contract and preserve exact task scope.".to_string(),
+                    "Use the named validation lane and keep regression coverage when behavior broke.".to_string(),
+                ],
+                workflow_sequence: vec![
+                    "Confirm the active task, owned files, and validation expectation before editing.".to_string(),
+                    "Implement the smallest scoped change that fixes the real issue.".to_string(),
+                    "Run the promised validation and report exact outcomes plus residual risk.".to_string(),
+                ],
+                avoid: vec![
+                    "Do not refactor adjacent systems or redesign another role's surface opportunistically.".to_string(),
+                    "Do not stop at confidence when runtime verification is part of the assignment.".to_string(),
+                ],
+                escalate_when: vec![
+                    "Escalate overlap, architecture drift, or blockers beyond the narrow override rule immediately.".to_string(),
+                ],
+            }),
             behavioral_contract: BehavioralContract {
                 communication: vec!["post updates".to_string()],
                 execution: vec!["deliver tests".to_string()],
@@ -760,6 +920,7 @@ mod tests {
                     focus_area: Some("Custom implementation lane".to_string()),
                     context_summary: Some("Custom context summary".to_string()),
                     behavior_summary: Some("Custom behavior summary".to_string()),
+                    runtime_compact_summary: None,
                     behavioral_contract_append: Some(BehavioralContract {
                         communication: vec!["sync daily".to_string()],
                         execution: vec!["ship incrementally".to_string()],
@@ -894,6 +1055,13 @@ mod tests {
                 "role '{}' should define behavior_summary",
                 role.role_id
             );
+            if role.role_id.starts_with("taurhaus-") {
+                assert!(
+                    role.runtime_compact_summary.is_some(),
+                    "role '{}' should define runtime_compact_summary",
+                    role.role_id
+                );
+            }
         }
     }
 
@@ -1021,6 +1189,7 @@ mod tests {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["a".to_string()],
                 execution: vec!["b".to_string()],
@@ -1053,6 +1222,7 @@ mod tests {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["a".to_string()],
                 execution: vec!["b".to_string()],
@@ -1092,6 +1262,7 @@ mod tests {
                         focus_area: None,
                         context_summary: None,
                         behavior_summary: None,
+                        runtime_compact_summary: None,
                         behavioral_contract_append: None,
                     }),
                 },
@@ -1108,6 +1279,7 @@ mod tests {
                         focus_area: None,
                         context_summary: None,
                         behavior_summary: None,
+                        runtime_compact_summary: None,
                         behavioral_contract_append: None,
                     }),
                 },
@@ -1177,6 +1349,8 @@ mod tests {
         assert!(!object.contains_key("context_summary"));
         assert!(object.contains_key("behaviorSummary"));
         assert!(!object.contains_key("behavior_summary"));
+        assert!(object.contains_key("runtimeCompactSummary"));
+        assert!(!object.contains_key("runtime_compact_summary"));
 
         let defaults = object
             .get("defaults")
@@ -1316,6 +1490,13 @@ mod tests {
             round_trip.behavior_summary.as_deref(),
             Some("Implements assigned work and escalates structural uncertainty.")
         );
+        assert_eq!(
+            round_trip
+                .runtime_compact_summary
+                .as_ref()
+                .map(RuntimeCompactSummary::total_word_count),
+            Some(99)
+        );
     }
 
     #[test]
@@ -1339,6 +1520,28 @@ mod tests {
                 .as_ref()
                 .and_then(|provenance| provenance.source_path.as_deref()),
             Some(".claude/agents/sample-role.md")
+        );
+    }
+
+    #[test]
+    fn runtime_compact_summary_validation_rejects_out_of_bounds_summary() {
+        let mut role = sample_role_template();
+        role.runtime_compact_summary = Some(RuntimeCompactSummary {
+            role_purpose: "Too short.".to_string(),
+            keep_doing: vec!["Keep going.".to_string()],
+            workflow_sequence: vec!["Step.".to_string()],
+            avoid: vec!["Avoid.".to_string()],
+            escalate_when: vec!["Escalate.".to_string()],
+        });
+
+        let err = role
+            .validate()
+            .expect_err("summary under the size bound should fail validation");
+        assert!(
+            err.errors
+                .iter()
+                .any(|entry| entry.contains("runtime_compact_summary must be between")),
+            "expected runtime_compact_summary size validation error, got: {err}"
         );
     }
 }

@@ -10,7 +10,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{RuntimeSession, SessionGroupKind, SessionState};
-use crate::templates::types::BehavioralContract;
+use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TeamMemberActivityState {
@@ -29,6 +29,7 @@ pub struct TeamMemberView {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub instructions: Option<String>,
     pub behavioral_contract: Option<BehavioralContract>,
     pub capabilities: Option<Vec<String>>,
@@ -58,6 +59,7 @@ impl TeamMemberView {
             focus_area: self.focus_area.clone(),
             context_summary: self.context_summary.clone(),
             behavior_summary: self.behavior_summary.clone(),
+            runtime_compact_summary: self.runtime_compact_summary.clone(),
             instructions: self.instructions.clone(),
             behavioral_contract: self.behavioral_contract.clone(),
             capabilities: self.capabilities.clone(),
@@ -159,6 +161,7 @@ fn build_team_member_view(
         focus_area: member.focus_area,
         context_summary: member.context_summary,
         behavior_summary: member.behavior_summary,
+        runtime_compact_summary: member.runtime_compact_summary,
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
         capabilities: member.capabilities,
@@ -263,6 +266,7 @@ mod tests {
             focus_area: Some("Code review".to_string()),
             context_summary: Some("Retains review context".to_string()),
             behavior_summary: Some("Flags concrete issues".to_string()),
+            runtime_compact_summary: None,
             instructions: Some("Review current branch".to_string()),
             behavioral_contract: Some(BehavioralContract {
                 communication: vec!["be concise".to_string()],

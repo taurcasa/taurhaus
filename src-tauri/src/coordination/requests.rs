@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::{HealthState, Member};
 use crate::session_scanner::cli_tool::CliTool;
-use crate::templates::types::BehavioralContract;
+use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
 /// Launch-time policy controls for a member session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,6 +266,8 @@ pub struct AgentDefinition {
     #[serde(default)]
     pub behavior_summary: Option<String>,
     #[serde(default)]
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
+    #[serde(default)]
     pub instructions: Option<String>,
     #[serde(default)]
     pub behavioral_contract: Option<BehavioralContract>,
@@ -428,6 +430,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: Some("Focus on implementation".to_string()),
                 behavioral_contract: None,
                 capabilities: None,
@@ -478,6 +481,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,
@@ -493,6 +497,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,
@@ -520,6 +525,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
                 capabilities: None,

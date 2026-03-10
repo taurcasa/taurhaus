@@ -18,7 +18,9 @@ pub mod templates {
     }
 
     pub mod types {
-        pub use taurhaus_lib::templates::types::{BehavioralContract, RoleTemplate};
+        pub use taurhaus_lib::templates::types::{
+            BehavioralContract, RoleKind, RoleTemplate, RuntimeCompactSummary,
+        };
     }
 }
 

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::coordination::requests::{
     AgentRole, LeadMode, ResumeContextMode, SessionStatus, StepProgress, StepStatus,
 };
-use crate::templates::types::BehavioralContract;
+use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
 /// Lightweight team list entry returned to the frontend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +53,7 @@ pub struct AgentSetupConfig {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub instructions: Option<String>,
     pub behavioral_contract: Option<BehavioralContract>,
     pub capabilities: Option<Vec<String>>,

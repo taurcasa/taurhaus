@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::Member;
 use crate::coordination::stores::operational::OperationalContextSnapshot;
+use crate::templates::types::RuntimeCompactSummary;
 
 pub const OPERATIONAL_REINJECTION_CARD_VERSION: u32 = 1;
 pub const POST_COMPACTION_REASON: &str = "post_compaction";
@@ -29,7 +30,9 @@ pub struct OperationalReinjectionRole {
     pub role_id: Option<String>,
     pub role_name: Option<String>,
     pub focus_area: Option<String>,
+    pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +42,7 @@ pub struct OperationalReinjectionTask {
     pub subject: String,
     pub execution_mode: String,
     pub validation_expectation: String,
+    pub response_expectation: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,7 +95,9 @@ impl CompactionReinjectionService {
                 role_id: normalize_optional(member.role_id.as_deref()),
                 role_name: normalize_optional(member.role_name.as_deref()),
                 focus_area: normalize_optional(member.focus_area.as_deref()),
+                context_summary: normalize_optional(member.context_summary.as_deref()),
                 behavior_summary: normalize_optional(member.behavior_summary.as_deref()),
+                runtime_compact_summary: member.runtime_compact_summary.clone(),
             },
             task: OperationalReinjectionTask {
                 id: snapshot.task.id.trim().to_string(),
@@ -100,6 +106,11 @@ impl CompactionReinjectionService {
                 validation_expectation: snapshot
                     .assignment_footer
                     .validation_expectation
+                    .trim()
+                    .to_string(),
+                response_expectation: snapshot
+                    .assignment_footer
+                    .response_expectation
                     .trim()
                     .to_string(),
             },
@@ -152,14 +163,50 @@ impl CompactionReinjectionService {
                 card.task.validation_expectation
             ));
         }
+        if !card.task.response_expectation.is_empty() {
+            lines.push(format!(
+                "Response expectation: {}",
+                card.task.response_expectation
+            ));
+        }
         if let Some(role_line) = format_role_line(&card.role) {
             lines.push(format!("Role: {role_line}"));
         }
         if let Some(focus_area) = card.role.focus_area.as_deref() {
             lines.push(format!("Focus area: {focus_area}"));
         }
+        if let Some(context_summary) = card.role.context_summary.as_deref() {
+            lines.push(format!("Context summary: {context_summary}"));
+        }
         if let Some(behavior_summary) = card.role.behavior_summary.as_deref() {
             lines.push(format!("Behavior: {behavior_summary}"));
+        }
+        if let Some(summary) = card.role.runtime_compact_summary.as_ref() {
+            lines.push(format!("Role purpose: {}", summary.role_purpose));
+            append_bullet_section(
+                &mut lines,
+                "Keep doing",
+                &summary.keep_doing,
+                "No keep-doing guidance recorded.",
+            );
+            append_bullet_section(
+                &mut lines,
+                "Workflow sequence",
+                &summary.workflow_sequence,
+                "No workflow sequence recorded.",
+            );
+            append_bullet_section(
+                &mut lines,
+                "Avoid",
+                &summary.avoid,
+                "No avoid guidance recorded.",
+            );
+            append_bullet_section(
+                &mut lines,
+                "Escalate when",
+                &summary.escalate_when,
+                "No escalation guidance recorded.",
+            );
         }
         if !card.working_set.project_path.is_empty() {
             lines.push(format!("Project: {}", card.working_set.project_path));
@@ -252,6 +299,7 @@ fn normalize_list(values: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::path::PathBuf;
 
     use crate::coordination::domain::{Member, MemberRole};
@@ -260,6 +308,7 @@ mod tests {
         OperationalWorkingSetSnapshot,
     };
     use crate::session_scanner::cli_tool::CliTool;
+    use crate::templates::types::{RoleKind, RoleTemplate};
 
     fn sample_member() -> Member {
         Member {
@@ -273,6 +322,35 @@ mod tests {
                 "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
                     .to_string(),
             ),
+            runtime_compact_summary: Some(RuntimeCompactSummary {
+                role_purpose:
+                    "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
+                        .to_string(),
+                keep_doing: vec![
+                    "Tie findings to concrete code paths, runtime evidence, and real failure modes."
+                        .to_string(),
+                    "State clearly whether the current output is review, recommendation, or a narrow fix."
+                        .to_string(),
+                ],
+                workflow_sequence: vec![
+                    "Reconnect the active task, owned surface, and failing behavior before changing scope."
+                        .to_string(),
+                    "Trace the issue across frontend, backend, runtime, and mesh layers until the root cause is explicit."
+                        .to_string(),
+                    "Deliver findings or a bounded fix with exact evidence, validation, and residual risk."
+                        .to_string(),
+                ],
+                avoid: vec![
+                    "Do not drift into generic implementation work or broad refactors during an audit task."
+                        .to_string(),
+                    "Do not blur review-only, recommend-only, and implement-now modes."
+                        .to_string(),
+                ],
+                escalate_when: vec![
+                    "Escalate ownership ambiguity, direction changes, or blocked cross-role boundaries immediately."
+                        .to_string(),
+                ],
+            }),
             instructions: Some("Review architecture edges".to_string()),
             behavioral_contract: None,
             capabilities: None,
@@ -314,6 +392,38 @@ mod tests {
         }
     }
 
+    fn load_role_template(role_id: &str) -> RoleTemplate {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("templates")
+            .join("roles")
+            .join(format!("{role_id}.yaml"));
+        let raw = fs::read_to_string(&path).expect("read role template");
+        serde_norway::from_str::<RoleTemplate>(&raw)
+            .unwrap_or_else(|err| panic!("parse role template {}: {err}", path.display()))
+    }
+
+    fn member_from_role(role: &RoleTemplate) -> Member {
+        Member {
+            name: role.role_id.clone(),
+            role: match role.kind {
+                RoleKind::Lead => MemberRole::Lead,
+                RoleKind::Agent => MemberRole::Agent,
+            },
+            role_id: Some(role.role_id.clone()),
+            role_name: Some(role.name.clone()),
+            focus_area: role.focus_area.clone(),
+            context_summary: role.context_summary.clone(),
+            behavior_summary: role.behavior_summary.clone(),
+            runtime_compact_summary: role.runtime_compact_summary.clone(),
+            instructions: Some(role.instructions.clone()),
+            behavioral_contract: Some(role.behavioral_contract.clone()),
+            capabilities: Some(role.capabilities.clone()),
+            project_path: PathBuf::from("/home/mstie/projects/taurhaus"),
+            cli_tool: role.defaults.cli_tool,
+        }
+    }
+
     #[test]
     fn compose_card_uses_member_role_and_operational_snapshot() {
         let member = sample_member();
@@ -336,16 +446,19 @@ mod tests {
                     role_id: Some("taurhaus-architect".to_string()),
                     role_name: Some("Taurhaus Architect".to_string()),
                     focus_area: Some("Cross-layer diagnosis".to_string()),
+                    context_summary: Some("Keeps architecture context warm.".to_string()),
                     behavior_summary: Some(
                         "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
                             .to_string()
                     ),
+                    runtime_compact_summary: sample_member().runtime_compact_summary,
                 },
                 task: OperationalReinjectionTask {
                     id: "673".to_string(),
                     subject: "Architecture: post-compaction operational re-injection".to_string(),
                     execution_mode: "recommend".to_string(),
                     validation_expectation: "report-only".to_string(),
+                    response_expectation: "report-on-completion".to_string(),
                 },
                 boundaries: OperationalReinjectionBoundaries {
                     file_ownership_boundary: vec![
@@ -398,9 +511,12 @@ mod tests {
         assert_eq!(card.role.role_id, None);
         assert_eq!(card.role.role_name, None);
         assert_eq!(card.role.focus_area, None);
+        assert_eq!(card.role.context_summary, None);
         assert_eq!(card.role.behavior_summary, None);
+        assert!(card.role.runtime_compact_summary.is_some());
         assert_eq!(card.task.execution_mode, "");
         assert_eq!(card.task.validation_expectation, "");
+        assert_eq!(card.task.response_expectation, "report-on-completion");
         assert_eq!(
             card.boundaries.file_ownership_boundary,
             vec!["src/lib/components/MeshTab.svelte".to_string()]
@@ -434,13 +550,34 @@ mod tests {
     "role_id": "taurhaus-architect",
     "role_name": "Taurhaus Architect",
     "focus_area": "Cross-layer diagnosis",
-    "behavior_summary": "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
+    "context_summary": "Keeps architecture context warm.",
+    "behavior_summary": "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.",
+    "runtime_compact_summary": {
+      "role_purpose": "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction.",
+      "keep_doing": [
+        "Tie findings to concrete code paths, runtime evidence, and real failure modes.",
+        "State clearly whether the current output is review, recommendation, or a narrow fix."
+      ],
+      "workflow_sequence": [
+        "Reconnect the active task, owned surface, and failing behavior before changing scope.",
+        "Trace the issue across frontend, backend, runtime, and mesh layers until the root cause is explicit.",
+        "Deliver findings or a bounded fix with exact evidence, validation, and residual risk."
+      ],
+      "avoid": [
+        "Do not drift into generic implementation work or broad refactors during an audit task.",
+        "Do not blur review-only, recommend-only, and implement-now modes."
+      ],
+      "escalate_when": [
+        "Escalate ownership ambiguity, direction changes, or blocked cross-role boundaries immediately."
+      ]
+    }
   },
   "task": {
     "id": "673",
     "subject": "Architecture: post-compaction operational re-injection",
     "execution_mode": "recommend",
-    "validation_expectation": "report-only"
+    "validation_expectation": "report-only",
+    "response_expectation": "report-on-completion"
   },
   "boundaries": {
     "file_ownership_boundary": [
@@ -482,11 +619,20 @@ mod tests {
         assert!(rendered.contains("Current task: #673"));
         assert!(rendered.contains("Execution mode: recommend"));
         assert!(rendered.contains("Validation expectation: report-only"));
+        assert!(rendered.contains("Response expectation: report-on-completion"));
         assert!(rendered.contains("Role: Taurhaus Architect (taurhaus-architect)"));
         assert!(rendered.contains("Focus area: Cross-layer diagnosis"));
+        assert!(rendered.contains("Context summary: Keeps architecture context warm."));
         assert!(rendered.contains(
             "Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
         ));
+        assert!(rendered.contains(
+            "Role purpose: Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
+        ));
+        assert!(rendered.contains("Keep doing:"));
+        assert!(rendered.contains("Workflow sequence:"));
+        assert!(rendered.contains("Avoid:"));
+        assert!(rendered.contains("Escalate when:"));
         assert!(rendered.contains("Project: /home/mstie/projects/taurhaus"));
         assert!(rendered.contains("Focal files:"));
         assert!(rendered.contains("- docs/architecture/post-compaction-reinjection.md"));
@@ -510,9 +656,12 @@ mod tests {
         card.role.role_name = None;
         card.role.role_id = None;
         card.role.focus_area = None;
+        card.role.context_summary = None;
         card.role.behavior_summary = None;
+        card.role.runtime_compact_summary = None;
         card.task.execution_mode.clear();
         card.task.validation_expectation.clear();
+        card.task.response_expectation.clear();
         card.boundaries.file_ownership_boundary.clear();
         card.boundaries.override_allowed = true;
         card.boundaries.active_override_reason = Some("lead-approved adjacent fix".to_string());
@@ -524,6 +673,7 @@ mod tests {
         assert!(!rendered.contains("Role:"));
         assert!(!rendered.contains("Execution mode:"));
         assert!(!rendered.contains("Validation expectation:"));
+        assert!(!rendered.contains("Response expectation:"));
         assert!(rendered.contains("Focal files: Use the current task context if these are empty."));
         assert!(rendered.contains("File ownership boundary: No explicit file boundary recorded."));
         assert!(rendered.contains("Override allowed: yes"));
@@ -545,6 +695,57 @@ mod tests {
             CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
         assert!(rendered.contains("Role: taurhaus-architect"));
+    }
+
+    #[test]
+    fn representative_taurhaus_roles_render_materially_different_compaction_cards() {
+        let snapshot = sample_snapshot();
+        let generated_at = DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+
+        let developer_role = load_role_template("taurhaus-developer");
+        let architect_role = load_role_template("taurhaus-architect");
+        let lead_role = load_role_template("taurhaus-lead-codex");
+
+        let developer_rendered = CompactionReinjectionService::render_codex_inbox_text(
+            &CompactionReinjectionService::compose_at(
+                &member_from_role(&developer_role),
+                &snapshot,
+                generated_at,
+            ),
+        )
+        .expect("render developer");
+        let architect_rendered = CompactionReinjectionService::render_codex_inbox_text(
+            &CompactionReinjectionService::compose_at(
+                &member_from_role(&architect_role),
+                &snapshot,
+                generated_at,
+            ),
+        )
+        .expect("render architect");
+        let lead_rendered = CompactionReinjectionService::render_codex_inbox_text(
+            &CompactionReinjectionService::compose_at(
+                &member_from_role(&lead_role),
+                &snapshot,
+                generated_at,
+            ),
+        )
+        .expect("render lead");
+
+        assert_ne!(developer_rendered, architect_rendered);
+        assert_ne!(developer_rendered, lead_rendered);
+        assert_ne!(architect_rendered, lead_rendered);
+
+        assert!(developer_rendered.contains(
+            "Role purpose: Keep scoped implementation and validation discipline intact after compaction."
+        ));
+        assert!(architect_rendered.contains(
+            "Role purpose: Preserve cross-layer diagnosis and boundary clarity after compaction."
+        ));
+        assert!(lead_rendered.contains(
+            "Role purpose: Preserve explicit task protocol and routing discipline after compaction."
+        ));
     }
 
     #[test]

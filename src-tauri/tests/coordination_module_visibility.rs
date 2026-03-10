@@ -26,6 +26,7 @@ fn coordination_modules_are_visible_from_crate_root() {
         focus_area: None,
         context_summary: None,
         behavior_summary: None,
+        runtime_compact_summary: None,
         instructions: None,
         behavioral_contract: None,
         capabilities: None,

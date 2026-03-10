@@ -533,6 +533,7 @@ mod tests {
                 "Keeps role portability constraints in working memory.".to_string(),
             ),
             behavior_summary: Some("Writes clean exports and flags lossy conversions.".to_string()),
+            runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["Post concise progress updates.".to_string()],
                 execution: vec!["Validate generated output.".to_string()],

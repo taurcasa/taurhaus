@@ -583,6 +583,7 @@ mod tests {
             focus_area: Some("Keep task execution aligned".to_string()),
             context_summary: Some("Maintains project context".to_string()),
             behavior_summary: Some("Stay concrete and report blockers".to_string()),
+            runtime_compact_summary: None,
             instructions: Some("Implement assigned work".to_string()),
             behavioral_contract: None,
             capabilities: None,
