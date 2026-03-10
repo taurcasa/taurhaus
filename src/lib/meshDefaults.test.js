@@ -50,6 +50,7 @@ describe('meshDefaults', () => {
     expect(resolveRoleTool(role, 'codex')).toBe('gemini')
     expect(resolveRoleTool({}, 'codex')).toBe('codex')
     expect(resolveRoleModel({ model: 'gemini-2.5-pro' }, 'gemini')).toBe('gemini-2.5-pro')
+    expect(resolveRoleModel({ model: '' }, 'gemini')).toBe('gemini-3.1-pro')
     expect(resolveRoleModel({}, 'codex')).toBe('gpt-5.4 high')
   })
 

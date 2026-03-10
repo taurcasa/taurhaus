@@ -1,7 +1,8 @@
 <script>
-  import { defaultModelForTool, modelsForTool } from '../meshDefaults.js'
+  import { defaultModelForTool, modelsForTool, normalizeTool } from '../meshDefaults.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
+  import { getToolIcon, getToolName } from '../toolLogos.js'
   import MeshCanvas from './MeshCanvas.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MeshRuntimeBar from './MeshRuntimeBar.svelte'
@@ -84,6 +85,134 @@
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
       .filter((project) => project.id)
   )
+  let roleSearchQuery = $state('')
+  let activeRoleToolFilter = $state('all')
+  let activeRoleKindFilter = $state('agent')
+  let addAgentWasOpen = $state(false)
+
+  const normalizedRoleTemplates = $derived.by(() =>
+    (roleTemplates ?? [])
+      .filter((role) => role && (role.roleId || role.role_id || role.name))
+      .map((role) => {
+        const tool = normalizeTool(role.cliTool ?? role.cli_tool ?? 'codex')
+        return {
+          ...role,
+          roleId: String(role.roleId ?? role.role_id ?? ''),
+          name: String(role.name ?? role.roleId ?? role.role_id ?? 'Unnamed role'),
+          kind: String(role.kind ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent',
+          cliTool: tool,
+          model: String(role.model ?? role.defaults?.model ?? defaultModelForTool(tool)),
+          summary: String(
+            role.behaviorSummary ??
+            role.behavior_summary ??
+            role.contextSummary ??
+            role.context_summary ??
+            role.instructions ??
+            ''
+          ).trim(),
+        }
+      })
+  )
+  const filteredRoleTemplates = $derived.by(() => {
+    const query = roleSearchQuery.trim().toLowerCase()
+    return normalizedRoleTemplates.filter((role) => {
+      if (activeRoleToolFilter !== 'all' && role.cliTool !== activeRoleToolFilter) return false
+      if (activeRoleKindFilter !== 'all' && role.kind !== activeRoleKindFilter) return false
+      if (!query) return true
+      return (
+        role.name.toLowerCase().includes(query) ||
+        role.roleId.toLowerCase().includes(query) ||
+        role.cliTool.toLowerCase().includes(query) ||
+        role.model.toLowerCase().includes(query)
+      )
+    })
+  })
+  const visibleLeadRoleTemplates = $derived(filteredRoleTemplates.filter((role) => role.kind === 'lead'))
+  const visibleAgentRoleTemplates = $derived(filteredRoleTemplates.filter((role) => role.kind === 'agent'))
+  const visibleRoleCount = $derived(filteredRoleTemplates.length)
+  const roleToolCounts = $derived.by(() => ({
+    all: normalizedRoleTemplates.length,
+    claude: normalizedRoleTemplates.filter((role) => role.cliTool === 'claude').length,
+    codex: normalizedRoleTemplates.filter((role) => role.cliTool === 'codex').length,
+    gemini: normalizedRoleTemplates.filter((role) => role.cliTool === 'gemini').length,
+  }))
+  const roleKindCounts = $derived.by(() => ({
+    all: normalizedRoleTemplates.length,
+    lead: normalizedRoleTemplates.filter((role) => role.kind === 'lead').length,
+    agent: normalizedRoleTemplates.filter((role) => role.kind === 'agent').length,
+  }))
+  const selectedRuntimeRole = $derived.by(() => {
+    const roleId = String(addAgentDraft?.roleId ?? '').trim()
+    if (!roleId) return null
+    return normalizedRoleTemplates.find((role) => role.roleId === roleId) ?? null
+  })
+
+  function filterButtonTone(active) {
+    if (active) {
+      return dark
+        ? 'border-brand-400/50 bg-brand-500/18 text-zinc-100 shadow-[0_0_0_1px_rgba(45,212,191,0.14)]'
+        : 'border-brand-400/60 bg-brand-50 text-brand-900 shadow-[0_0_0_1px_rgba(15,118,110,0.08)]'
+    }
+    return dark
+      ? 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
+      : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+  }
+
+  function roleMedallionTone(tool) {
+    switch (tool) {
+      case 'claude':
+        return dark
+          ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
+          : 'border-amber-300/70 bg-amber-50 text-amber-800'
+      case 'gemini':
+        return dark
+          ? 'border-sky-400/35 bg-sky-500/12 text-sky-200'
+          : 'border-sky-300/70 bg-sky-50 text-sky-800'
+      default:
+        return dark
+          ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
+          : 'border-emerald-300/70 bg-emerald-50 text-emerald-800'
+    }
+  }
+
+  function roleChipTone(role) {
+    if (role.kind === 'lead') {
+      return dark
+        ? 'border-danger-400/35 bg-danger-500/10 text-danger-200'
+        : 'border-danger-300/70 bg-danger-50 text-danger-800'
+    }
+    return dark
+      ? 'border-white/[0.08] bg-white/[0.05] text-zinc-300'
+      : 'border-zinc-200 bg-zinc-50 text-zinc-700'
+  }
+
+  function runtimeRoleCardTone(role) {
+    if (selectedRuntimeRole?.roleId === role.roleId) {
+      return dark
+        ? 'border-brand-400/50 bg-brand-500/10 shadow-[0_0_0_1px_rgba(45,212,191,0.14)]'
+        : 'border-brand-400/60 bg-brand-50 shadow-[0_0_0_1px_rgba(15,118,110,0.08)]'
+    }
+    return dark
+      ? 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.05]'
+      : 'border-zinc-200 bg-white hover:bg-zinc-50'
+  }
+
+  function toggleRoleToolFilter(tool) {
+    activeRoleToolFilter = activeRoleToolFilter === tool ? 'all' : tool
+  }
+
+  function toggleRoleKindFilter(kind) {
+    activeRoleKindFilter = activeRoleKindFilter === kind ? 'all' : kind
+  }
+
+  $effect(() => {
+    if (addAgentOpen && !addAgentWasOpen) {
+      roleSearchQuery = ''
+      activeRoleToolFilter = 'all'
+      activeRoleKindFilter = 'agent'
+    }
+    addAgentWasOpen = addAgentOpen
+  })
 
   function nowMs() {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
@@ -237,38 +366,237 @@
 <SlideOver
   open={addAgentOpen}
   title="Add Agent"
-  width={420}
+  width={560}
   {dark}
   onClose={onCloseAddAgent}
 >
   {#snippet children()}
     <section class="space-y-5 animate-in fade-in slide-in-from-bottom-1 duration-200" data-testid="mesh-add-agent-form">
-      <p class="text-sm {t.textMuted} px-1">Hot-add one member to <span class="font-medium {t.textSecondary}">{teamName}</span>.</p>
+      <p class="text-sm {t.textMuted} px-1">
+        Pick an agent role from the catalog, keep the live mesh in view, and hot-add one member to
+        <span class="font-medium {t.textSecondary}">{teamName}</span>.
+      </p>
 
-      <div class="space-y-2 p-3 rounded-xl border transition-all {dark ? 'bg-brand-500/[0.03] border-brand-500/20 border-l-2 border-l-brand-500' : 'bg-brand-50/50 border-brand-200 border-l-2 border-l-brand-500'}">
-        <label for="mesh-add-agent-role-select-input" class="block text-[10px] font-bold uppercase tracking-wide text-brand-500">Pick from Role (Optional)</label>
-        <div class="relative">
-          <select
-            id="mesh-add-agent-role-select-input"
-            class="h-10 w-full rounded-lg border px-3 pr-8 text-sm transition-all outline-none appearance-none {fieldTone} {selectScheme}"
-            value={addAgentDraft?.roleId ?? ''}
-            onchange={(event) => onAddAgentRoleChange(event.currentTarget.value)}
-            disabled={addAgentDraft?.submitting || loadingRoles}
-            data-testid="mesh-add-agent-role-select"
-          >
-            {#if loadingRoles}
-              <option value="">Loading roles...</option>
-            {:else}
-              <option value="">Manual configuration</option>
-              {#each roleTemplates as role}
-                <option value={role.roleId}>{role.name}</option>
-              {/each}
-            {/if}
-          </select>
-          <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-brand-500/60">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>
+      <div class="space-y-3 rounded-xl border p-3 transition-all {dark ? 'bg-brand-500/[0.03] border-brand-500/20 border-l-2 border-l-brand-500' : 'bg-brand-50/50 border-brand-200 border-l-2 border-l-brand-500'}">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-500">Role Catalog</p>
+            <p class="mt-1 text-xs {t.textMuted}">
+              Use the same role catalog filters as the builder. Lead roles stay visible for reference but cannot be hot-added here.
+            </p>
+          </div>
+          {#if addAgentDraft?.roleId}
+            <button
+              type="button"
+              class="shrink-0 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] {dark ? 'border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]' : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'}"
+              onclick={() => onAddAgentRoleChange('')}
+              disabled={addAgentDraft?.submitting}
+              data-testid="mesh-add-agent-clear-role"
+            >
+              Clear
+            </button>
+          {/if}
+        </div>
+
+        <label class="block">
+          <span class="sr-only">Search runtime add-agent roles</span>
+          <input
+            class="h-10 w-full rounded-xl border px-3 text-sm outline-none {fieldTone}"
+            placeholder="Search roles by name, id, or tool"
+            value={roleSearchQuery}
+            oninput={(event) => {
+              roleSearchQuery = event.currentTarget.value
+            }}
+            data-testid="mesh-add-agent-role-search"
+          />
+        </label>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Quick Filters</p>
+            <span class="text-[10px] {t.textMuted}">{visibleRoleCount} visible</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[11px] font-semibold transition {filterButtonTone(activeRoleToolFilter === 'all')}"
+              type="button"
+              onclick={() => {
+                activeRoleToolFilter = 'all'
+              }}
+              data-testid="mesh-add-agent-filter-tool-all"
+            >
+              <span>All tools</span>
+              <span class="text-[10px] {t.textMuted}">{roleToolCounts.all}</span>
+            </button>
+            {#each ['claude', 'codex', 'gemini'] as tool}
+              <button
+                class="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[11px] font-semibold transition {filterButtonTone(activeRoleToolFilter === tool)}"
+                type="button"
+                onclick={() => toggleRoleToolFilter(tool)}
+                data-testid={`mesh-add-agent-filter-tool-${tool}`}
+              >
+                <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border {roleMedallionTone(tool)}">
+                  <svg class="h-3 w-3" viewBox={getToolIcon(tool, 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
+                    <path d={getToolIcon(tool, 'sidebarSmall').path}></path>
+                  </svg>
+                </span>
+                <span>{getToolName(tool)}</span>
+                <span class="text-[10px] {t.textMuted}">{roleToolCounts[tool]}</span>
+              </button>
+            {/each}
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition {filterButtonTone(activeRoleKindFilter === 'all')}"
+              type="button"
+              onclick={() => {
+                activeRoleKindFilter = 'all'
+              }}
+              data-testid="mesh-add-agent-filter-kind-all"
+            >
+              All roles
+              <span class="text-[10px] normal-case tracking-normal {t.textMuted}">{roleKindCounts.all}</span>
+            </button>
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition {filterButtonTone(activeRoleKindFilter === 'agent')}"
+              type="button"
+              onclick={() => toggleRoleKindFilter('agent')}
+              data-testid="mesh-add-agent-filter-kind-agent"
+            >
+              Agent
+              <span class="text-[10px] normal-case tracking-normal {t.textMuted}">{roleKindCounts.agent}</span>
+            </button>
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition {filterButtonTone(activeRoleKindFilter === 'lead')}"
+              type="button"
+              onclick={() => toggleRoleKindFilter('lead')}
+              data-testid="mesh-add-agent-filter-kind-lead"
+            >
+              Lead
+              <span class="text-[10px] normal-case tracking-normal {t.textMuted}">{roleKindCounts.lead}</span>
+            </button>
           </div>
         </div>
+
+        {#if loadingRoles}
+          <div class="rounded-[18px] border border-dashed p-5 text-center {dark ? 'border-white/[0.08] bg-white/[0.03]' : 'border-zinc-200 bg-white/80'}" data-testid="mesh-add-agent-role-loading">
+            <p class="text-[12px] font-semibold {t.textPrimary}">Loading role catalog...</p>
+            <p class="mt-1 text-[11px] {t.textSecondary}">Fetching the latest role templates for this runtime add.</p>
+          </div>
+        {:else if visibleRoleCount === 0}
+          <div class="rounded-[18px] border border-dashed p-5 text-center {dark ? 'border-white/[0.08] bg-white/[0.03]' : 'border-zinc-200 bg-white/80'}" data-testid="mesh-add-agent-empty-results">
+            <p class="text-[12px] font-semibold {t.textPrimary}">No roles match these filters</p>
+            <p class="mt-1 text-[11px] {t.textSecondary}">Clear a tool or kind filter, or widen the search query.</p>
+          </div>
+        {:else}
+          <div class="max-h-[320px] space-y-3 overflow-y-auto pr-1" data-testid="mesh-add-agent-role-catalog">
+            {#if activeRoleKindFilter !== 'agent' && visibleLeadRoleTemplates.length > 0}
+              <section data-testid="mesh-add-agent-role-section-leads">
+                <div class="mb-2 flex items-center justify-between">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Leads</p>
+                  <span class="text-[10px] {t.textMuted}">{visibleLeadRoleTemplates.length}</span>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  {#each visibleLeadRoleTemplates as role (role.roleId)}
+                    <button
+                      class="relative flex min-h-[108px] flex-col gap-2 overflow-hidden rounded-[18px] border p-2.5 text-left opacity-75 transition {runtimeRoleCardTone(role)}"
+                      type="button"
+                      disabled
+                      aria-disabled="true"
+                      data-testid={`mesh-add-agent-role-card-${role.roleId}`}
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
+                          <svg class="h-4 w-4" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                            <path d={getToolIcon(role.cliTool).path}></path>
+                          </svg>
+                        </span>
+                        <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                          Lead only
+                        </span>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
+                        <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                          {getToolName(role.cliTool)} · {role.model}
+                        </p>
+                        <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
+                          {role.summary || 'Direction-setting lead role.'}
+                        </p>
+                        <p class="mt-2 text-[10px] font-medium text-danger-500">
+                          Lead roles can’t be hot-added through Add Agent.
+                        </p>
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+
+            {#if activeRoleKindFilter !== 'lead' && visibleAgentRoleTemplates.length > 0}
+              <section data-testid="mesh-add-agent-role-section-agents">
+                <div class="mb-2 flex items-center justify-between">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Agents</p>
+                  <span class="text-[10px] {t.textMuted}">{visibleAgentRoleTemplates.length}</span>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  {#each visibleAgentRoleTemplates as role (role.roleId)}
+                    <button
+                      class="relative flex min-h-[108px] flex-col gap-2 overflow-hidden rounded-[18px] border p-2.5 text-left transition {runtimeRoleCardTone(role)}"
+                      type="button"
+                      onclick={() => onAddAgentRoleChange(role.roleId)}
+                      disabled={addAgentDraft?.submitting}
+                      aria-pressed={selectedRuntimeRole?.roleId === role.roleId}
+                      data-testid={`mesh-add-agent-role-card-${role.roleId}`}
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
+                          <svg class="h-4 w-4" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                            <path d={getToolIcon(role.cliTool).path}></path>
+                          </svg>
+                        </span>
+                        <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                          Agent
+                        </span>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
+                        <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                          {getToolName(role.cliTool)} · {role.model}
+                        </p>
+                        <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
+                          {role.summary || 'Execution-focused specialist role.'}
+                        </p>
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+          </div>
+        {/if}
+
+        {#if selectedRuntimeRole}
+          <div class="rounded-xl border p-3 {dark ? 'border-brand-400/30 bg-brand-500/8' : 'border-brand-200 bg-white/80'}" data-testid="mesh-add-agent-selected-role">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-500">Selected Role</p>
+                <p class="mt-1 truncate text-sm font-semibold {t.textPrimary}">{selectedRuntimeRole.name}</p>
+                <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                  {getToolName(selectedRuntimeRole.cliTool)} · {selectedRuntimeRole.model}
+                </p>
+              </div>
+              <span class="rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(selectedRuntimeRole)}">
+                {selectedRuntimeRole.kind}
+              </span>
+            </div>
+            {#if selectedRuntimeRole.summary}
+              <p class="mt-2 text-[11px] leading-5 {t.textSecondary}">
+                {selectedRuntimeRole.summary}
+              </p>
+            {/if}
+          </div>
+        {/if}
       </div>
 
       <div class="space-y-4">

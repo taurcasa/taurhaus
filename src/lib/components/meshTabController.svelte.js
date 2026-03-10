@@ -152,6 +152,7 @@ export function createMeshTabController({
     const draft = addAgentDraft
     if (!draft || draft.submitting) return false
     return (
+      String(draft.roleId || '').trim().length > 0 &&
       String(draft.name || '').trim().length > 0 &&
       String(draft.tool || '').trim().length > 0 &&
       String(draft.model || '').trim().length > 0 &&
@@ -708,6 +709,19 @@ export function createMeshTabController({
     return String(role?.kind ?? '').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
   }
 
+  function normalizeRoleTemplate(role) {
+    if (!role || typeof role !== 'object') return null
+    return {
+      ...role,
+      roleId: String(role.roleId ?? role.role_id ?? '').trim(),
+      cliTool: role.cliTool ?? role.cli_tool ?? role.defaults?.cliTool ?? role.defaults?.cli_tool ?? null,
+      model: role.model ?? role.defaults?.model ?? null,
+      focusArea: role.focusArea ?? role.focus_area ?? '',
+      contextSummary: role.contextSummary ?? role.context_summary ?? '',
+      behaviorSummary: role.behaviorSummary ?? role.behavior_summary ?? '',
+    }
+  }
+
   function resolveBuilderRole(roleId) {
     return roleTemplates.find((entry) => entry.roleId === roleId) ?? null
   }
@@ -1067,10 +1081,39 @@ export function createMeshTabController({
     void loadRoleTemplates()
   }
 
+  function buildRuntimeAgentName(role, projectId) {
+    const normalizedProjectId = String(projectId || '').trim() || getProjectPath()
+    const projectName = projectNameFromPath(normalizedProjectId)
+    const pattern =
+      resolveDefaultNamePattern(role) ||
+      `${String(role?.roleId || role?.name || 'agent').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}-{n}`
+    const existingNames = new Set(
+      [teamConfig?.lead?.name, ...(teamConfig?.agents ?? []).map((agent) => agent?.name)]
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean)
+    )
+
+    let index = 1
+    while (index < 100) {
+      const candidate = applyNamePattern(pattern, index, projectName)
+      const fallback = `${slugifyRoleId(String(role?.roleId || role?.name || 'agent'))}-${index}`
+      const nextName = String(candidate || fallback).trim()
+      if (nextName && !existingNames.has(nextName)) {
+        return nextName
+      }
+      index += 1
+    }
+
+    return `${slugifyRoleId(String(role?.roleId || role?.name || 'agent'))}-${Date.now()}`
+  }
+
   async function loadRoleTemplates() {
     loadingRoles = true
     try {
-      roleTemplates = await listRoleTemplates()
+      const loaded = await listRoleTemplates()
+      roleTemplates = Array.isArray(loaded)
+        ? loaded.map((role) => normalizeRoleTemplate(role)).filter(Boolean)
+        : []
     } catch (error) {
       console.error('Failed to load role templates:', error)
     } finally {
@@ -1131,18 +1174,21 @@ export function createMeshTabController({
 
     const role = roleTemplates.find((entry) => entry.roleId === selectedRoleId)
     if (!role) return
+    const tool = resolveRoleTool(role, 'codex')
+    const model = resolveRoleModel(role, tool)
     const instructions = role.instructions || ''
     slideOverContext = {
       ...draft,
       roleId: selectedRoleId,
       roleName: role.name || '',
-      tool: normalizeTool(role.cliTool),
-      model: role.model || defaultModelForTool(role.cliTool),
+      name: buildRuntimeAgentName(role, draft.projectId),
+      tool,
+      model,
       description: instructions,
       instructions,
-      focusArea: role.focusArea || '',
-      contextSummary: role.contextSummary || '',
-      behaviorSummary: role.behaviorSummary || '',
+      focusArea: role.focusArea || role.focus_area || '',
+      contextSummary: role.contextSummary || role.context_summary || '',
+      behaviorSummary: role.behaviorSummary || role.behavior_summary || '',
       isLocked: true,
     }
   }

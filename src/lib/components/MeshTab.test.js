@@ -1844,6 +1844,10 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-default')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-agent-default'))
 
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'backend-dev' },
@@ -1889,21 +1893,17 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
-
-    const roleSelect = screen.getByTestId('mesh-add-agent-role-select')
     await waitFor(() => {
-      expect(roleSelect).toBeDisabled()
-      expect(screen.getByRole('option', { name: 'Loading roles...' })).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-add-agent-role-loading')).toBeInTheDocument()
     })
 
     rolesLoad.resolve([
-      { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
+      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.4 high' },
     ])
 
     await waitFor(() => {
-      expect(roleSelect).not.toBeDisabled()
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-default')).toBeInTheDocument()
     })
-    expect(screen.getByRole('option', { name: 'Manual configuration' })).toBeInTheDocument()
   })
 
   it('preserves selected role metadata when hot-adding a runtime agent', async () => {
@@ -1932,12 +1932,10 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-add-agent-role-select')).not.toBeDisabled()
+      expect(screen.getByTestId('mesh-add-agent-role-card-codex-architect')).toBeInTheDocument()
     })
 
-    await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
-      target: { value: 'codex-architect' },
-    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-codex-architect'))
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'review-architect' },
     })
@@ -2691,12 +2689,10 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-add-agent-role-select')).not.toBeDisabled()
+      expect(screen.getByTestId('mesh-add-agent-role-card-runtime-agent')).toBeInTheDocument()
     })
 
-    await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
-      target: { value: 'runtime-agent' },
-    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-runtime-agent'))
     expect(screen.getByTestId('mesh-add-agent-tool-select')).toHaveValue('gemini')
     expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('gemini-3.1-pro')
 
@@ -2705,10 +2701,6 @@ describe('MeshTab', () => {
       target: { value: 'claude' },
     })
     expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('opus')
-
-    await fireEvent.change(screen.getByTestId('mesh-add-agent-role-select'), {
-      target: { value: '' },
-    })
 
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'runtime-dev' },
@@ -2721,6 +2713,56 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-error')).toHaveTextContent('add failed')
     })
+  })
+
+  it('filters the runtime add-agent role catalog by tool and kind', async () => {
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+    listRoleTemplates.mockReset()
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'lead-claude',
+        name: 'Lead Claude',
+        kind: 'lead',
+        cliTool: 'claude',
+        model: 'opus',
+        instructions: 'Lead coordination',
+      },
+      {
+        roleId: 'agent-codex',
+        name: 'Agent Codex',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        instructions: 'Codex implementation',
+      },
+      {
+        roleId: 'agent-gemini',
+        name: 'Agent Gemini',
+        kind: 'agent',
+        cliTool: 'gemini',
+        model: 'gemini-3.1-pro',
+        instructions: 'Gemini analysis',
+      },
+    ])
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-codex')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-gemini')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-filter-tool-codex'))
+    expect(screen.getByTestId('mesh-add-agent-role-card-agent-codex')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-add-agent-role-card-agent-gemini')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-filter-tool-codex'))
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-filter-kind-lead'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-lead-claude')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('mesh-add-agent-role-card-lead-claude')).toBeDisabled()
   })
 
   it('shows capture-role save error for runtime node with array behavioral contract', async () => {

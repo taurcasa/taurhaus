@@ -51,7 +51,8 @@ export function resolveRoleTool(roleTemplate, fallbackTool = 'codex') {
 }
 
 export function resolveRoleModel(roleTemplate, tool) {
-  return String(roleTemplate?.model ?? roleTemplate?.defaults?.model ?? defaultModelForTool(tool))
+  const model = String(roleTemplate?.model ?? roleTemplate?.defaults?.model ?? '').trim()
+  return model || defaultModelForTool(tool)
 }
 
 export function uniquifyMemberName(name, seenNames) {

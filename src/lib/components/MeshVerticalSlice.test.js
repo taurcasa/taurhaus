@@ -290,11 +290,18 @@ describe('Mesh vertical slice smoke', () => {
     })
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-default')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-agent-default'))
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'backend-dev' },
     })
     await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), {
       target: { value: 'proj-api' },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-submit')).toBeEnabled()
     })
     await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
 

@@ -294,6 +294,10 @@ describe('Mesh flow smoke', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-default')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-agent-default'))
 
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'backend-dev' },
