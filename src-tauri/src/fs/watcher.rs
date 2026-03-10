@@ -111,17 +111,13 @@ pub enum EventClass {
 #[derive(Debug)]
 pub(crate) struct TreeWatchRegistration {
     pub root: PathBuf,
-    pub watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
     pub watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
 }
 
 #[derive(Debug)]
 pub(crate) enum WatchRegistration {
     Tree(TreeWatchRegistration),
-    File {
-        path: PathBuf,
-        watcher: RecommendedWatcher,
-    },
+    File { path: PathBuf },
 }
 
 #[derive(Clone)]
@@ -133,6 +129,7 @@ struct NotifyEventContext {
     gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
     watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
     watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
+    watch_refcounts: Option<Arc<Mutex<HashMap<PathBuf, usize>>>>,
 }
 
 /// Build a `Gitignore` matcher from a project's `.gitignore` file.
@@ -265,6 +262,49 @@ pub(crate) fn reconcile_pruned_tree_watches(
     Ok(watched_dirs.len())
 }
 
+fn reconcile_shared_pruned_tree_watches(
+    watcher: &mut RecommendedWatcher,
+    shared_refcounts: &mut HashMap<PathBuf, usize>,
+    watched_dirs: &mut HashSet<PathBuf>,
+    project_root: &Path,
+    gitignore: &Gitignore,
+) -> Result<usize, notify::Error> {
+    let desired_dirs = desired_watch_dirs_for_root(project_root, gitignore);
+
+    let stale_dirs = watched_dirs
+        .iter()
+        .filter(|path| !desired_dirs.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    for path in stale_dirs {
+        if let Some(refcount) = shared_refcounts.get_mut(&path) {
+            if *refcount <= 1 {
+                shared_refcounts.remove(&path);
+                let _ = watcher.unwatch(&path);
+            } else {
+                *refcount -= 1;
+            }
+        }
+        watched_dirs.remove(&path);
+    }
+
+    for path in desired_dirs {
+        if watched_dirs.contains(&path) {
+            continue;
+        }
+        match shared_refcounts.get_mut(&path) {
+            Some(refcount) => *refcount += 1,
+            None => {
+                watcher.watch(&path, RecursiveMode::NonRecursive)?;
+                shared_refcounts.insert(path.clone(), 1);
+            }
+        }
+        watched_dirs.insert(path);
+    }
+
+    Ok(watched_dirs.len())
+}
+
 pub(crate) fn reconcile_pruned_tree_watches_for_event(
     watcher: &mut RecommendedWatcher,
     watched_dirs: &mut HashSet<PathBuf>,
@@ -314,6 +354,84 @@ pub(crate) fn reconcile_pruned_tree_watches_for_event(
             }
             let before = watched_dirs.len();
             let _ = reconcile_pruned_tree_watches(watcher, watched_dirs, project_root, gitignore)?;
+            if watched_dirs.len() != before {
+                changed = true;
+            }
+        }
+    }
+
+    Ok(changed.then_some(watched_dirs.len()))
+}
+
+fn reconcile_shared_pruned_tree_watches_for_event(
+    watcher: &mut RecommendedWatcher,
+    shared_refcounts: &mut HashMap<PathBuf, usize>,
+    watched_dirs: &mut HashSet<PathBuf>,
+    project_root: &Path,
+    gitignore: &Gitignore,
+    event: &Event,
+) -> Result<Option<usize>, notify::Error> {
+    match event.kind {
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
+        _ => return Ok(None),
+    }
+
+    if event.paths.iter().any(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+    }) {
+        let count = reconcile_shared_pruned_tree_watches(
+            watcher,
+            shared_refcounts,
+            watched_dirs,
+            project_root,
+            gitignore,
+        )?;
+        return Ok(Some(count));
+    }
+
+    let mut changed = false;
+
+    if matches!(event.kind, EventKind::Remove(_)) {
+        for path in &event.paths {
+            let removed_dirs = watched_dirs
+                .iter()
+                .filter(|watched| *watched == path || watched.starts_with(path))
+                .cloned()
+                .collect::<Vec<_>>();
+            if removed_dirs.is_empty() {
+                continue;
+            }
+            changed = true;
+            for removed in removed_dirs {
+                if let Some(refcount) = shared_refcounts.get_mut(&removed) {
+                    if *refcount <= 1 {
+                        shared_refcounts.remove(&removed);
+                        let _ = watcher.unwatch(&removed);
+                    } else {
+                        *refcount -= 1;
+                    }
+                }
+                watched_dirs.remove(&removed);
+            }
+        }
+    } else {
+        for path in &event.paths {
+            if !path.is_dir() {
+                continue;
+            }
+            if !should_watch_directory_path(project_root, path, gitignore) {
+                continue;
+            }
+            let before = watched_dirs.len();
+            let _ = reconcile_shared_pruned_tree_watches(
+                watcher,
+                shared_refcounts,
+                watched_dirs,
+                project_root,
+                gitignore,
+            )?;
             if watched_dirs.len() != before {
                 changed = true;
             }
@@ -440,14 +558,20 @@ pub(crate) fn classify_notify_event_with_state(
 
 /// Manages file watchers for registered projects.
 pub struct ProjectWatcher {
-    /// Map from project_id → (project_root, watcher_handle).
-    watchers: HashMap<String, WatchRegistration>,
+    /// Map from project_id → watch registration metadata.
+    watchers: Arc<Mutex<HashMap<String, WatchRegistration>>>,
     /// Channel to receive classified events.
     event_tx: mpsc::Sender<WatchEvent>,
-    /// Debounce state for git events per project.
-    git_debounce: Arc<Mutex<HashMap<String, Instant>>>,
     /// Per-project gitignore matchers, rebuilt when .gitignore changes.
     gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
+    /// Shared watcher for all local project tree watches.
+    tree_watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    /// Shared watcher for singleton local file watches.
+    file_watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    /// Refcounts for tree directories watched through the shared tree watcher.
+    tree_watch_refcounts: Arc<Mutex<HashMap<PathBuf, usize>>>,
+    /// Refcounts for exact singleton file paths watched through the shared file watcher.
+    file_watch_refcounts: Arc<Mutex<HashMap<PathBuf, usize>>>,
 }
 
 /// Duration to debounce git internal events (ADR-020).
@@ -563,16 +687,177 @@ fn send_watch_event(
     }
 }
 
+fn matching_tree_notify_contexts(
+    registrations: &Arc<Mutex<HashMap<String, WatchRegistration>>>,
+    tx: &mpsc::Sender<WatchEvent>,
+    debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    watch_refcounts: &Arc<Mutex<HashMap<PathBuf, usize>>>,
+    event: &Event,
+) -> Vec<NotifyEventContext> {
+    let registrations = registrations
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    registrations
+        .iter()
+        .filter_map(|(project_id, registration)| {
+            let WatchRegistration::Tree(tree) = registration else {
+                return None;
+            };
+            if !event.paths.iter().any(|path| path.starts_with(&tree.root)) {
+                return None;
+            }
+            Some(NotifyEventContext {
+                tx: tx.clone(),
+                project_id: project_id.clone(),
+                project_root: tree.root.clone(),
+                debounce: debounce.clone(),
+                gitignores: gitignores.clone(),
+                watcher: watcher.clone(),
+                watched_dirs: tree.watched_dirs.clone(),
+                watch_refcounts: Some(watch_refcounts.clone()),
+            })
+        })
+        .collect()
+}
+
+fn handle_shared_tree_notify_event(
+    registrations: &Arc<Mutex<HashMap<String, WatchRegistration>>>,
+    tx: &mpsc::Sender<WatchEvent>,
+    debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    watch_refcounts: &Arc<Mutex<HashMap<PathBuf, usize>>>,
+    event: Event,
+) {
+    let contexts = matching_tree_notify_contexts(
+        registrations,
+        tx,
+        debounce,
+        gitignores,
+        watcher,
+        watch_refcounts,
+        &event,
+    );
+    for context in contexts {
+        handle_notify_event(&context, event.clone());
+    }
+}
+
+fn handle_shared_file_notify_event(
+    registrations: &Arc<Mutex<HashMap<String, WatchRegistration>>>,
+    tx: &mpsc::Sender<WatchEvent>,
+    event: Event,
+) {
+    match event.kind {
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
+        _ => return,
+    }
+
+    let registrations = registrations
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    for (project_id, registration) in registrations.iter() {
+        let WatchRegistration::File { path } = registration else {
+            continue;
+        };
+        let matched_paths: Vec<PathBuf> = event
+            .paths
+            .iter()
+            .filter(|event_path| *event_path == path)
+            .cloned()
+            .collect();
+        if matched_paths.is_empty() {
+            continue;
+        }
+        send_watch_event(
+            tx,
+            WatchEvent::FileChanged {
+                project_id: project_id.clone(),
+                paths: matched_paths,
+            },
+            project_id,
+            "file_changed",
+        );
+    }
+}
+
 impl ProjectWatcher {
     /// Create a new ProjectWatcher. Returns the watcher and a receiver for events.
     pub fn new() -> (Self, mpsc::Receiver<WatchEvent>) {
         let (tx, rx) = mpsc::channel();
+        let registrations = Arc::new(Mutex::new(HashMap::new()));
+        let git_debounce = Arc::new(Mutex::new(HashMap::new()));
+        let gitignores = Arc::new(Mutex::new(HashMap::new()));
+        let tree_watch_refcounts = Arc::new(Mutex::new(HashMap::new()));
+        let file_watch_refcounts = Arc::new(Mutex::new(HashMap::new()));
+
+        let tree_watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
+        let tree_watcher_for_callback: Weak<Mutex<Option<RecommendedWatcher>>> =
+            Arc::downgrade(&tree_watcher_slot);
+        let registrations_for_tree = registrations.clone();
+        let tx_for_tree = tx.clone();
+        let debounce_for_tree = git_debounce.clone();
+        let gitignores_for_tree = gitignores.clone();
+        let tree_refcounts_for_callback = tree_watch_refcounts.clone();
+        let tree_watcher = RecommendedWatcher::new(
+            move |res: Result<Event, notify::Error>| {
+                let Ok(event) = res else {
+                    return;
+                };
+                let Some(tree_watcher) = tree_watcher_for_callback.upgrade() else {
+                    return;
+                };
+                handle_shared_tree_notify_event(
+                    &registrations_for_tree,
+                    &tx_for_tree,
+                    &debounce_for_tree,
+                    &gitignores_for_tree,
+                    &tree_watcher,
+                    &tree_refcounts_for_callback,
+                    event,
+                );
+            },
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )
+        .expect("shared tree watcher should initialize");
+        {
+            let mut slot = tree_watcher_slot
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            *slot = Some(tree_watcher);
+        }
+
+        let file_watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
+        let registrations_for_file = registrations.clone();
+        let tx_for_file = tx.clone();
+        let file_watcher = RecommendedWatcher::new(
+            move |res: Result<Event, notify::Error>| {
+                let Ok(event) = res else {
+                    return;
+                };
+                handle_shared_file_notify_event(&registrations_for_file, &tx_for_file, event);
+            },
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )
+        .expect("shared file watcher should initialize");
+        {
+            let mut slot = file_watcher_slot
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            *slot = Some(file_watcher);
+        }
+
         (
             Self {
-                watchers: HashMap::new(),
+                watchers: registrations,
                 event_tx: tx,
-                git_debounce: Arc::new(Mutex::new(HashMap::new())),
-                gitignores: Arc::new(Mutex::new(HashMap::new())),
+                gitignores,
+                tree_watcher: tree_watcher_slot,
+                file_watcher: file_watcher_slot,
+                tree_watch_refcounts,
+                file_watch_refcounts,
             },
             rx,
         )
@@ -584,71 +869,53 @@ impl ProjectWatcher {
         project_id: String,
         project_root: PathBuf,
     ) -> Result<(), notify::Error> {
+        self.unwatch_project(&project_id);
+
         let gitignore = build_gitignore(&project_root);
         {
             let mut gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
             gis.insert(project_id.clone(), gitignore);
         }
 
-        let tx = self.event_tx.clone();
-        let pid = project_id.clone();
-        let root = project_root.clone();
-        let debounce = self.git_debounce.clone();
-        let gitignores = self.gitignores.clone();
         let watched_dirs = Arc::new(Mutex::new(HashSet::new()));
-        let watched_dirs_for_callback = watched_dirs.clone();
-        let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
-        let watcher_for_callback: Weak<Mutex<Option<RecommendedWatcher>>> =
-            Arc::downgrade(&watcher_slot);
-
-        let mut watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    let Some(watcher) = watcher_for_callback.upgrade() else {
-                        return;
-                    };
-                    let context = NotifyEventContext {
-                        tx: tx.clone(),
-                        project_id: pid.clone(),
-                        project_root: root.clone(),
-                        debounce: debounce.clone(),
-                        gitignores: gitignores.clone(),
-                        watcher,
-                        watched_dirs: watched_dirs_for_callback.clone(),
-                    };
-                    handle_notify_event(&context, event);
-                }
-            },
-            Config::default().with_poll_interval(Duration::from_secs(2)),
-        )?;
 
         let watched_dir_count = {
             let mut watched_dirs_guard = watched_dirs.lock().unwrap_or_else(|e| e.into_inner());
+            let mut refcounts = self
+                .tree_watch_refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let mut watcher = self
+                .tree_watcher
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let watcher = watcher
+                .as_mut()
+                .expect("shared tree watcher missing during watch registration");
             let gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
             let gitignore = gis
                 .get(&project_id)
                 .expect("watch_project inserted gitignore before reconcile");
-            reconcile_pruned_tree_watches(
-                &mut watcher,
+            reconcile_shared_pruned_tree_watches(
+                watcher,
+                &mut refcounts,
                 &mut watched_dirs_guard,
                 &project_root,
                 gitignore,
             )?
         };
-        {
-            let mut slot = watcher_slot.lock().unwrap_or_else(|e| e.into_inner());
-            *slot = Some(watcher);
-        }
 
         emit_watch_local_registered(&project_id, &project_root, watched_dir_count);
-        self.watchers.insert(
-            project_id,
-            WatchRegistration::Tree(TreeWatchRegistration {
-                root: project_root,
-                watcher: watcher_slot,
-                watched_dirs,
-            }),
-        );
+        self.watchers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(
+                project_id,
+                WatchRegistration::Tree(TreeWatchRegistration {
+                    root: project_root,
+                    watched_dirs,
+                }),
+            );
         Ok(())
     }
 
@@ -658,57 +925,45 @@ impl ProjectWatcher {
         project_id: String,
         file_path: PathBuf,
     ) -> Result<(), notify::Error> {
-        let tx = self.event_tx.clone();
-        let pid = project_id.clone();
-        let target = file_path.clone();
+        self.unwatch_project(&project_id);
 
-        let mut watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| {
-                let Ok(event) = res else {
-                    return;
-                };
-                match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
-                    _ => return,
+        {
+            let mut refcounts = self
+                .file_watch_refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let mut watcher = self
+                .file_watcher
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let watcher = watcher
+                .as_mut()
+                .expect("shared file watcher missing during watch registration");
+            match refcounts.get_mut(&file_path) {
+                Some(refcount) => *refcount += 1,
+                None => {
+                    watcher.watch(&file_path, RecursiveMode::NonRecursive)?;
+                    refcounts.insert(file_path.clone(), 1);
                 }
+            }
+        }
 
-                let matched_paths: Vec<PathBuf> = event
-                    .paths
-                    .into_iter()
-                    .filter(|path| path == &target)
-                    .collect();
-                if matched_paths.is_empty() {
-                    return;
-                }
-
-                send_watch_event(
-                    &tx,
-                    WatchEvent::FileChanged {
-                        project_id: pid.clone(),
-                        paths: matched_paths,
-                    },
-                    &pid,
-                    "file_changed",
-                );
-            },
-            Config::default().with_poll_interval(Duration::from_secs(2)),
-        )?;
-
-        watcher.watch(&file_path, RecursiveMode::NonRecursive)?;
         emit_watch_local_registered(&project_id, &file_path, 1);
-        self.watchers.insert(
-            project_id,
-            WatchRegistration::File {
-                path: file_path,
-                watcher,
-            },
-        );
+        self.watchers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(project_id, WatchRegistration::File { path: file_path });
         Ok(())
     }
 
     /// Stop watching a project.
     pub fn unwatch_project(&mut self, project_id: &str) {
-        if let Some(registration) = self.watchers.remove(project_id) {
+        let registration = self
+            .watchers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(project_id);
+        if let Some(registration) = registration {
             match registration {
                 WatchRegistration::Tree(tree) => {
                     let watched_dir_count = tree
@@ -716,24 +971,53 @@ impl ProjectWatcher {
                         .lock()
                         .unwrap_or_else(|error| error.into_inner())
                         .len();
-                    let mut watcher = tree
-                        .watcher
+                    let mut watcher = self
+                        .tree_watcher
                         .lock()
                         .unwrap_or_else(|error| error.into_inner());
                     let watcher = watcher
                         .as_mut()
-                        .expect("tree watcher missing during unwatch");
+                        .expect("shared tree watcher missing during unwatch");
+                    let mut refcounts = self
+                        .tree_watch_refcounts
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
                     let mut watched_dirs = tree
                         .watched_dirs
                         .lock()
                         .unwrap_or_else(|error| error.into_inner());
                     for path in watched_dirs.drain() {
-                        let _ = watcher.unwatch(&path);
+                        if let Some(refcount) = refcounts.get_mut(&path) {
+                            if *refcount <= 1 {
+                                refcounts.remove(&path);
+                                let _ = watcher.unwatch(&path);
+                            } else {
+                                *refcount -= 1;
+                            }
+                        }
                     }
                     emit_watch_local_unregistered(project_id, &tree.root, watched_dir_count);
                 }
-                WatchRegistration::File { path, mut watcher } => {
-                    let _ = watcher.unwatch(&path);
+                WatchRegistration::File { path } => {
+                    let mut watcher = self
+                        .file_watcher
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    let watcher = watcher
+                        .as_mut()
+                        .expect("shared file watcher missing during unwatch");
+                    let mut refcounts = self
+                        .file_watch_refcounts
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    if let Some(refcount) = refcounts.get_mut(&path) {
+                        if *refcount <= 1 {
+                            refcounts.remove(&path);
+                            let _ = watcher.unwatch(&path);
+                        } else {
+                            *refcount -= 1;
+                        }
+                    }
                     emit_watch_local_unregistered(project_id, &path, 1);
                 }
             }
@@ -744,7 +1028,13 @@ impl ProjectWatcher {
 
     /// Stop all watchers.
     pub fn unwatch_all(&mut self) {
-        let ids: Vec<String> = self.watchers.keys().cloned().collect();
+        let ids: Vec<String> = self
+            .watchers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .keys()
+            .cloned()
+            .collect();
         for id in ids {
             self.unwatch_project(&id);
         }
@@ -752,7 +1042,12 @@ impl ProjectWatcher {
 
     /// Get the list of currently watched project IDs.
     pub fn watched_projects(&self) -> Vec<String> {
-        self.watchers.keys().cloned().collect()
+        self.watchers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// Get a clone of the event sender.
@@ -772,6 +1067,7 @@ fn handle_notify_event(context: &NotifyEventContext, event: Event) {
         &context.gitignores,
         &context.watcher,
         &context.watched_dirs,
+        context.watch_refcounts.as_ref(),
         &event,
     ) {
         emit_watch_local_reconciled(
@@ -845,6 +1141,7 @@ fn reconcile_watch_dirs_for_event(
     gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
     watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
     watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
+    watch_refcounts: Option<&Arc<Mutex<HashMap<PathBuf, usize>>>>,
     event: &Event,
 ) -> Option<(&'static str, usize)> {
     let gis = gitignores.lock().unwrap_or_else(|error| error.into_inner());
@@ -855,14 +1152,27 @@ fn reconcile_watch_dirs_for_event(
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     let before = watched_dirs.len();
-    let count = reconcile_pruned_tree_watches_for_event(
-        watcher,
-        &mut watched_dirs,
-        project_root,
-        gitignore,
-        event,
-    )
-    .ok()??;
+    let count = if let Some(refcounts) = watch_refcounts {
+        let mut refcounts = refcounts.lock().unwrap_or_else(|error| error.into_inner());
+        reconcile_shared_pruned_tree_watches_for_event(
+            watcher,
+            &mut refcounts,
+            &mut watched_dirs,
+            project_root,
+            gitignore,
+            event,
+        )
+        .ok()??
+    } else {
+        reconcile_pruned_tree_watches_for_event(
+            watcher,
+            &mut watched_dirs,
+            project_root,
+            gitignore,
+            event,
+        )
+        .ok()??
+    };
     if count == before {
         return None;
     }
@@ -922,6 +1232,7 @@ mod tests {
             gitignores: gitignores.clone(),
             watcher: watcher.clone(),
             watched_dirs: watched_dirs.clone(),
+            watch_refcounts: None,
         }
     }
 
@@ -1104,6 +1415,48 @@ mod tests {
 
         watcher.unwatch_all();
         assert!(watcher.watched_projects().is_empty());
+    }
+
+    #[test]
+    fn shared_tree_watcher_keeps_refcount_until_last_project_unwatches() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let (mut watcher, _rx) = ProjectWatcher::new();
+
+        watcher
+            .watch_project("p1".to_string(), root.clone())
+            .expect("watch first project");
+        watcher
+            .watch_project("p2".to_string(), root.clone())
+            .expect("watch second project");
+
+        {
+            let refcounts = watcher
+                .tree_watch_refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert_eq!(refcounts.get(&root), Some(&2));
+            assert_eq!(refcounts.get(&root.join("src")), Some(&2));
+        }
+
+        watcher.unwatch_project("p1");
+        {
+            let refcounts = watcher
+                .tree_watch_refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert_eq!(refcounts.get(&root), Some(&1));
+            assert_eq!(refcounts.get(&root.join("src")), Some(&1));
+        }
+
+        watcher.unwatch_project("p2");
+        assert!(watcher
+            .tree_watch_refcounts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_empty());
     }
 
     // --- Debounce logic test ---
