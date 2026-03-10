@@ -68,6 +68,7 @@ enum ClaudeHookSkipReason {
     NoManagedMemberMatch,
     MultipleManagedMembersMatched,
     MissingOperationalSnapshot,
+    NoResumableTaskContext,
 }
 
 impl ClaudeHookSkipReason {
@@ -77,6 +78,7 @@ impl ClaudeHookSkipReason {
             Self::NoManagedMemberMatch => "no_managed_member_match",
             Self::MultipleManagedMembersMatched => "multiple_managed_members_matched",
             Self::MissingOperationalSnapshot => "missing_operational_snapshot",
+            Self::NoResumableTaskContext => "no_resumable_task_context",
         }
     }
 }
@@ -185,6 +187,34 @@ pub fn handle_session_start_hook(
         );
         return Ok(ClaudeHookResponse::default());
     };
+
+    if !CompactionReinjectionService::snapshot_has_resumable_task(&snapshot) {
+        record_delivery(
+            &matched.team_name,
+            &matched.member.name,
+            CliTool::Claude,
+            &payload.session_id,
+            Utc::now(),
+            CompactionDeliveryResult::Skipped,
+        )
+        .inspect_err(|error| {
+            emit_claude_hook_failed(
+                ClaudeHookFailureStage::RecordDelivery,
+                Some(&payload),
+                Some(&matched),
+                None,
+                None,
+                None,
+                &error.to_string(),
+            );
+        })?;
+        emit_claude_hook_skipped(
+            &payload,
+            Some(&matched),
+            ClaudeHookSkipReason::NoResumableTaskContext,
+        );
+        return Ok(ClaudeHookResponse::default());
+    }
 
     let card = CompactionReinjectionService::compose(&matched.member, &snapshot);
     let additional_context = CompactionReinjectionService::render_claude_additional_context(&card)
@@ -1131,6 +1161,46 @@ mod tests {
         let contents =
             wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.skipped\"");
         assert!(contents.contains("\"skip_reason\":\"missing_operational_snapshot\""));
+    }
+
+    #[test]
+    fn compact_hook_skips_when_snapshot_task_is_completed() {
+        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let log_path = tmp.path().join("claude-hook.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
+
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = sample_member(&project);
+        write_team_fixture(tmp.path(), "taurhaus-team", &member, "sess-123");
+        write_snapshot_fixture(tmp.path(), "taurhaus-team", &member.name);
+
+        let mut snapshot =
+            OperationalContextSnapshotStore::load(tmp.path(), "taurhaus-team", &member.name)
+                .expect("load snapshot")
+                .expect("snapshot exists");
+        snapshot.task.status = "completed".to_string();
+        OperationalContextSnapshotStore::save(tmp.path(), &snapshot).expect("save snapshot");
+
+        let response = handle_session_start_hook(
+            &json!({
+                "hookEventName": "SessionStart",
+                "sessionId": "sess-123",
+                "source": "compact",
+                "cwd": project,
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("hook should succeed");
+
+        assert_eq!(response, ClaudeHookResponse::default());
+
+        let contents =
+            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.skipped\"");
+        assert!(contents.contains("\"skip_reason\":\"no_resumable_task_context\""));
     }
 
     #[test]

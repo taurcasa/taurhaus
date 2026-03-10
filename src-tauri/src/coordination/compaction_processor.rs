@@ -23,6 +23,7 @@ use crate::session_scanner::cli_tool::CliTool;
 
 const SKIP_REASON_ALREADY_HANDLED: &str = "already_handled";
 const SKIP_REASON_MEMBER_NOT_ATTACHED: &str = "member_not_attached";
+const SKIP_REASON_NO_RESUMABLE_TASK_CONTEXT: &str = "no_resumable_task_context";
 
 const FAIL_REASON_RECORD_STALE_DELIVERY_FAILED: &str = "record_stale_delivery_failed";
 const FAIL_REASON_RECORD_SKIPPED_DELIVERY_FAILED: &str = "record_skipped_delivery_failed";
@@ -164,6 +165,29 @@ impl CompactionSignalProcessor {
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Skipped,
                 Some(skip_reason),
+                None,
+            ) {
+                return CompactionSignalProcessOutcome::Failed {
+                    team_name: resolved.team_name,
+                    member_name: resolved.member_name,
+                    error_message: format!("{FAIL_REASON_RECORD_SKIPPED_DELIVERY_FAILED}: {error}"),
+                };
+            }
+            return CompactionSignalProcessOutcome::Skipped {
+                team_name: resolved.team_name,
+                member_name: resolved.member_name,
+            };
+        }
+
+        if !CompactionReinjectionService::snapshot_has_resumable_task(&resolved.snapshot) {
+            if let Err(error) = record_delivery_at(
+                teams_dir,
+                &resolved.team_name,
+                &resolved.member_name,
+                &signal.session_id,
+                signal.transcript_timestamp,
+                CompactionDeliveryResult::Skipped,
+                Some(SKIP_REASON_NO_RESUMABLE_TASK_CONTEXT),
                 None,
             ) {
                 return CompactionSignalProcessOutcome::Failed {
@@ -924,6 +948,59 @@ mod tests {
                 team_name: "taurhaus-team".to_string(),
                 member_name: "developer2".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn process_signal_skips_when_snapshot_task_is_completed() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let project_path = "/home/mstie/projects/taurhaus";
+        let member = sample_member("developer2", project_path);
+        save_team_fixture(
+            &teams_dir,
+            "taurhaus-team",
+            &member,
+            Some("session-1"),
+            Some("%7"),
+        );
+        let mut snapshot = sample_snapshot("taurhaus-team", "developer2", project_path);
+        snapshot.task.status = "completed".to_string();
+        OperationalContextSnapshotStore::save(&teams_dir, &snapshot).expect("save snapshot");
+
+        let jsonl_path = tmp.path().join("session.jsonl");
+        std::fs::write(&jsonl_path, "{\"line\":1}\n").expect("jsonl");
+        let signal = sample_signal(project_path, &jsonl_path, "session-1", "%7");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%7", true);
+        runtime.set_pane_dead("%7", false);
+
+        let outcome = CompactionSignalProcessor::process_signal_at(
+            &signal,
+            &teams_dir,
+            &runtime,
+            timestamp("2026-03-08T13:46:42Z"),
+        );
+
+        assert_eq!(
+            outcome,
+            CompactionSignalProcessOutcome::Skipped {
+                team_name: "taurhaus-team".to_string(),
+                member_name: "developer2".to_string(),
+            }
+        );
+
+        let inbox =
+            MeshInboxStore::load(&teams_dir, "taurhaus-team", "developer2").expect("load inbox");
+        assert!(inbox.is_empty());
+
+        let state = MemberCompactionStore::load(&teams_dir, "taurhaus-team", "developer2")
+            .expect("load compaction state")
+            .expect("state exists");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Skipped
         );
     }
 }

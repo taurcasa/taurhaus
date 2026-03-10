@@ -475,7 +475,9 @@ mod tests {
             CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
         assert!(rendered.contains("[taurhaus] restored_working_context_after_compaction"));
-        assert!(rendered.contains("Continue the active assignment using the restored context below."));
+        assert!(
+            rendered.contains("Continue the active assignment using the restored context below.")
+        );
         assert!(rendered.contains("Do not stop to summarize or acknowledge this card."));
         assert!(rendered.contains("Current task: #673"));
         assert!(rendered.contains("Execution mode: recommend"));
@@ -549,19 +551,29 @@ mod tests {
     fn snapshot_has_resumable_task_requires_active_task_status_and_identity() {
         let mut snapshot = sample_snapshot();
 
-        assert!(CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+        assert!(CompactionReinjectionService::snapshot_has_resumable_task(
+            &snapshot
+        ));
 
         snapshot.task.status = "pending".to_string();
-        assert!(CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+        assert!(CompactionReinjectionService::snapshot_has_resumable_task(
+            &snapshot
+        ));
 
         snapshot.task.status = "completed".to_string();
-        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(
+            &snapshot
+        ));
 
         snapshot.task.status = "deleted".to_string();
-        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(
+            &snapshot
+        ));
 
         snapshot.task.status = "in_progress".to_string();
         snapshot.task.id.clear();
-        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(
+            &snapshot
+        ));
     }
 }
