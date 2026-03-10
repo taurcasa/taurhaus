@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-03-10
+
+Inotify resource management overhaul and Windows task tracking fix. This release eliminates the architectural causes of inotify instance exhaustion on WSL2/Linux and restores task visibility on Windows.
+
+### Added
+
+- **Inotify instance telemetry** — the daemon and app backend now emit structured `inotify.telemetry`, `inotify.capacity.warning` (>=75%), and `inotify.capacity.error` (>=90%) diagnostics to the JSONL log, covering per-process instance/watch counts and system-wide usage.
+- **Enhanced resource monitoring** — `scripts/resource-monitor.py` now tracks per-process inotify instance counts alongside watch counts, plus system-wide instance/watch limits and usage percentages.
+- **Compaction testing harnesses** — added `scripts/test-compaction-claude.py` and `scripts/test-compaction-codex.py` for operator-driven end-to-end compaction verification, plus `scripts/compaction_test_lib.py` shared utilities.
+
+### Fixed
+
+- **Windows task tracking** — Claude task scanning and watcher registration used `dirs::home_dir()` instead of the canonical `PlatformPaths` API, causing Windows builds to watch the wrong Claude root and never ingest task updates. All call sites now use the platform-aware path authority.
+- **Member daemon lifecycle** — re-adding a team member no longer inherits stale daemon PIDs from a previous session. PID validation now checks process identity (pane, team, member) before accepting a pidfile. Member removal now discovers daemon PIDs from the pidfile as a fallback when the runtime record has degraded.
+- **Clippy and test gate stability** — removed dead code, fixed a no-op `drop` on a reference in the shared watch registry, resolved test hangs in watcher refcount cleanup, and hardened the E2E onboarding harness with proper mesh binary identity.
+
+### Performance
+
+- **Global shared daemon watch registry** — replaced per-connection `WatchRuntime` with a daemon-global shared registry. One physical `RecommendedWatcher` serves all subscriber connections with reference-counted path subscriptions. Eliminates the primary source of inotify instance multiplication (observed: 66 instances reduced to ~21 expected).
+- **Single-owner daemon watch listener** — startup bootstrap and reconcile paths no longer race to create duplicate daemon listener connections. One owned watch-lifecycle thread applies plan diffs in place instead of tearing down and recreating listeners.
+- **Shared local watcher pools** — `ProjectWatcher` now uses two shared `RecommendedWatcher` pools (one for project trees, one for singleton files) instead of one watcher per project/file, reducing app-side inotify instance usage on Linux/macOS.
+
 ## [0.5.9] - 2026-03-10
 
 Performance, compaction reliability, and mesh team setup release. This version focuses on removing unnecessary work from long-running background paths, tightening compaction reinjection across Claude and Codex, and replacing the old mesh setup flow with a faster drag-and-drop builder.
