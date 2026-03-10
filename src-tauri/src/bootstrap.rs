@@ -254,7 +254,7 @@ struct TaskStatusSignature {
 
 static TASK_SCAN_CYCLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-fn next_task_scan_cycle_id() -> u64 {
+pub(crate) fn next_task_scan_cycle_id() -> u64 {
     TASK_SCAN_CYCLE_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 

@@ -24,6 +24,24 @@ pub struct PersistedTask {
     pub archived_reason: Option<String>,
 }
 
+/// A persisted archived session summary row, used to keep History loads off the
+/// transcript/git enrichment path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PersistedArchivedSessionSummary {
+    pub project_path: String,
+    pub session_key: String,
+    pub session_id: Option<String>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub commit_count: usize,
+    pub file_count: usize,
+    pub sources: Vec<String>,
+    pub last_archived_at: Option<String>,
+    pub enrichment_warnings: Vec<String>,
+    pub updated_at: String,
+}
+
 fn decode_json_string_list(
     raw: &str,
     field: &str,
@@ -47,6 +65,10 @@ fn decode_json_string_list(
             Vec::new()
         }
     }
+}
+
+fn encode_json_string_list(values: &[String]) -> String {
+    serde_json::to_string(values).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Upsert a task — insert or update if the composite key already exists.
@@ -440,6 +462,105 @@ pub fn get_archived_tasks_for_project(
     Ok(tasks)
 }
 
+pub fn archived_session_key(session_id: Option<&str>) -> String {
+    session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("<ungrouped>")
+        .to_string()
+}
+
+pub fn get_archived_session_summaries_for_project(
+    conn: &Connection,
+    project_path: &str,
+) -> Result<Vec<PersistedArchivedSessionSummary>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT project_path, session_key, session_id, started_at, ended_at, duration_ms,
+                commit_count, file_count, sources_json, last_archived_at, enrichment_warnings, updated_at
+         FROM archived_task_session_summaries
+         WHERE project_path = ?1
+         ORDER BY last_archived_at DESC, ended_at DESC, session_key",
+    )?;
+
+    let rows = stmt.query_map([project_path], |row| {
+        let project_path: String = row.get(0)?;
+        let session_key: String = row.get(1)?;
+        let sources_json: String = row.get(8)?;
+        let warnings_json: String = row.get(10)?;
+        Ok(PersistedArchivedSessionSummary {
+            project_path: project_path.clone(),
+            session_key: session_key.clone(),
+            session_id: row.get(2)?,
+            started_at: row.get(3)?,
+            ended_at: row.get(4)?,
+            duration_ms: row.get(5)?,
+            commit_count: row.get(6)?,
+            file_count: row.get(7)?,
+            sources: decode_json_string_list(
+                &sources_json,
+                "sources_json",
+                &project_path,
+                "history_cache",
+                &session_key,
+                &session_key,
+            ),
+            last_archived_at: row.get(9)?,
+            enrichment_warnings: decode_json_string_list(
+                &warnings_json,
+                "enrichment_warnings",
+                &project_path,
+                "history_cache",
+                &session_key,
+                &session_key,
+            ),
+            updated_at: row.get(11)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+}
+
+pub fn replace_archived_session_summaries_for_project(
+    conn: &Connection,
+    project_path: &str,
+    summaries: &[PersistedArchivedSessionSummary],
+) -> Result<(), rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM archived_task_session_summaries WHERE project_path = ?1",
+        [project_path],
+    )?;
+
+    if !summaries.is_empty() {
+        let mut stmt = tx.prepare(
+            "INSERT INTO archived_task_session_summaries (
+                project_path, session_key, session_id, started_at, ended_at, duration_ms,
+                commit_count, file_count, sources_json, last_archived_at, enrichment_warnings, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        )?;
+
+        for summary in summaries {
+            stmt.execute(params![
+                summary.project_path,
+                summary.session_key,
+                summary.session_id,
+                summary.started_at,
+                summary.ended_at,
+                summary.duration_ms,
+                summary.commit_count,
+                summary.file_count,
+                encode_json_string_list(&summary.sources),
+                summary.last_archived_at,
+                encode_json_string_list(&summary.enrichment_warnings),
+                summary.updated_at,
+            ])?;
+        }
+    }
+
+    tx.commit()
+}
+
 /// Delete all tasks for a project from a specific source.
 /// Useful when re-importing from a source that replaces all tasks (e.g., Codex update_plan).
 pub fn delete_tasks_for_source(
@@ -491,6 +612,26 @@ mod tests {
 
     fn default_source_key(source: &str) -> String {
         format!("{source}-default")
+    }
+
+    fn make_summary(
+        session_key: &str,
+        session_id: Option<&str>,
+    ) -> PersistedArchivedSessionSummary {
+        PersistedArchivedSessionSummary {
+            project_path: "/projects/foo".to_string(),
+            session_key: session_key.to_string(),
+            session_id: session_id.map(ToString::to_string),
+            started_at: Some("2026-03-01T10:00:00Z".to_string()),
+            ended_at: Some("2026-03-01T11:00:00Z".to_string()),
+            duration_ms: Some(3_600_000),
+            commit_count: 2,
+            file_count: 5,
+            sources: vec!["claude".to_string(), "codex".to_string()],
+            last_archived_at: Some("2026-03-01T11:00:00Z".to_string()),
+            enrichment_warnings: vec!["fallback".to_string()],
+            updated_at: "2026-03-01T11:05:00Z".to_string(),
+        }
     }
 
     fn explain_plan_details(conn: &Connection, sql: &str, project_path: &str) -> Vec<String> {
@@ -643,6 +784,45 @@ mod tests {
         )
         .unwrap();
         assert_eq!(archived, None);
+    }
+
+    #[test]
+    fn archived_session_summary_round_trips() {
+        let (mut conn, _tmp) = test_db();
+        let summary = make_summary("session-1", Some("session-1"));
+
+        replace_archived_session_summaries_for_project(
+            &mut conn,
+            "/projects/foo",
+            std::slice::from_ref(&summary),
+        )
+        .unwrap();
+
+        let loaded = get_archived_session_summaries_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(loaded, vec![summary]);
+    }
+
+    #[test]
+    fn replacing_archived_session_summaries_clears_old_rows() {
+        let (mut conn, _tmp) = test_db();
+        let first = make_summary("session-1", Some("session-1"));
+        let second = make_summary("session-2", Some("session-2"));
+
+        replace_archived_session_summaries_for_project(
+            &mut conn,
+            "/projects/foo",
+            &[first.clone(), second.clone()],
+        )
+        .unwrap();
+        replace_archived_session_summaries_for_project(
+            &mut conn,
+            "/projects/foo",
+            std::slice::from_ref(&second),
+        )
+        .unwrap();
+
+        let loaded = get_archived_session_summaries_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(loaded, vec![second]);
     }
 
     #[test]

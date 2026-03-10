@@ -2,9 +2,12 @@
 //!
 //! Business logic lives in `services::task_query` and `services::task_sync`.
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::Duration;
 use std::time::Instant;
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
@@ -14,16 +17,56 @@ use crate::services::task_query;
 use crate::services::task_sync::TaskScanGenerationState;
 use crate::ProviderState;
 
+const TASK_REFRESH_COOLDOWN: Duration = Duration::from_secs(3);
+const ARCHIVED_REFRESH_COOLDOWN: Duration = Duration::from_secs(15);
+
+#[derive(Debug, Clone, Copy)]
+struct RefreshSlot {
+    in_progress: bool,
+    last_started_at: Instant,
+}
+
+#[derive(Default)]
+pub struct TaskQueryRefreshState {
+    task_refreshes: Mutex<HashMap<String, RefreshSlot>>,
+    archived_refreshes: Mutex<HashMap<String, RefreshSlot>>,
+}
+
+impl TaskQueryRefreshState {
+    fn try_begin_task_refresh(&self, project_key: &str) -> bool {
+        try_begin_refresh(&self.task_refreshes, project_key, TASK_REFRESH_COOLDOWN)
+    }
+
+    fn finish_task_refresh(&self, project_key: &str) {
+        finish_refresh(&self.task_refreshes, project_key);
+    }
+
+    fn try_begin_archived_refresh(&self, project_key: &str) -> bool {
+        try_begin_refresh(
+            &self.archived_refreshes,
+            project_key,
+            ARCHIVED_REFRESH_COOLDOWN,
+        )
+    }
+
+    fn finish_archived_refresh(&self, project_key: &str) {
+        finish_refresh(&self.archived_refreshes, project_key);
+    }
+}
+
 #[tauri::command]
 pub fn get_project_tasks(
+    app: AppHandle,
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
     generation_state: State<'_, TaskScanGenerationState>,
+    refresh_state: State<'_, TaskQueryRefreshState>,
     project_id: String,
 ) -> IpcResult<crate::task_scanner::TaskResult> {
     let span = IpcCommandSpan::start("get_project_tasks");
     let project_path =
         resolve_project_path(db.inner(), &project_id, Some(&span)).ipc_cmd("get_project_tasks")?;
+    let refresh_project_path = project_path.clone();
     let result = get_project_tasks_impl(
         db.inner(),
         providers.inner(),
@@ -31,6 +74,14 @@ pub fn get_project_tasks(
         project_path,
     );
     span.finish_result(&result);
+    if result.is_ok() {
+        schedule_project_task_refresh(
+            &app,
+            refresh_state.inner(),
+            project_id,
+            refresh_project_path,
+        );
+    }
     result
 }
 
@@ -52,16 +103,29 @@ pub fn get_task_detail(
 
 #[tauri::command]
 pub fn get_archived_sessions(
+    app: AppHandle,
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
+    refresh_state: State<'_, TaskQueryRefreshState>,
     project_id: String,
 ) -> IpcResult<crate::task_scanner::ArchivedSessionsResult> {
     let span = IpcCommandSpan::start("get_archived_sessions");
     let project_path = resolve_project_path(db.inner(), &project_id, Some(&span))
         .ipc_cmd("get_archived_sessions")?;
-    let result = get_archived_sessions_impl(db.inner(), providers.inner(), project_path);
-    span.finish_result(&result);
-    result
+    let result = get_archived_sessions_impl(db.inner(), providers.inner(), project_path.clone());
+    let response = result.map(|query| {
+        if query.cache_status != task_query::ArchivedSessionCacheStatus::Fresh {
+            schedule_archived_session_refresh(
+                &app,
+                refresh_state.inner(),
+                project_id.clone(),
+                project_path.clone(),
+            );
+        }
+        query.result
+    });
+    span.finish_result(&response);
+    response
 }
 
 #[tauri::command]
@@ -152,8 +216,184 @@ fn get_archived_sessions_impl(
     db: &DbState,
     providers: &ProviderState,
     project_path: String,
-) -> IpcResult<crate::task_scanner::ArchivedSessionsResult> {
+) -> IpcResult<task_query::ArchivedSessionsQueryResult> {
     task_query::get_archived_sessions(db, providers, project_path).ipc_cmd("get_archived_sessions")
+}
+
+fn try_begin_refresh(
+    refreshes: &Mutex<HashMap<String, RefreshSlot>>,
+    project_key: &str,
+    cooldown: Duration,
+) -> bool {
+    let mut guard = refreshes.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(slot) = guard.get(project_key) {
+        if slot.in_progress || slot.last_started_at.elapsed() < cooldown {
+            return false;
+        }
+    }
+    guard.insert(
+        project_key.to_string(),
+        RefreshSlot {
+            in_progress: true,
+            last_started_at: Instant::now(),
+        },
+    );
+    true
+}
+
+fn finish_refresh(refreshes: &Mutex<HashMap<String, RefreshSlot>>, project_key: &str) {
+    let mut guard = refreshes.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(slot) = guard.get_mut(project_key) {
+        slot.in_progress = false;
+        slot.last_started_at = Instant::now();
+    }
+}
+
+fn schedule_project_task_refresh(
+    app: &AppHandle,
+    refresh_state: &TaskQueryRefreshState,
+    project_id: String,
+    project_path: String,
+) {
+    let project_key = crate::provider::path::normalize_project_path(&project_path);
+    if !refresh_state.try_begin_task_refresh(&project_key) {
+        return;
+    }
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let refresh_state = app_handle.state::<TaskQueryRefreshState>();
+        let providers = app_handle.state::<ProviderState>();
+        let generation_state = app_handle.state::<TaskScanGenerationState>();
+        let db = app_handle.state::<DbState>();
+        let project_key = crate::provider::path::normalize_project_path(&project_path);
+
+        let refresh_result = (|| -> Result<Option<usize>, String> {
+            let scan_generation = crate::bootstrap::next_task_scan_cycle_id();
+            let scan_result = crate::services::task_sync::scan_tasks_from_files(
+                providers.inner(),
+                &project_path,
+                Some(scan_generation),
+                None,
+                None,
+            );
+
+            let (before_sig, after_sig) = {
+                let conn = db.0.lock().map_err(|e| format!("{e}"))?;
+                let before = crate::db::task_queries::get_tasks_for_project(&conn, &project_key)
+                    .sanitize_err()?;
+                crate::services::task_sync::persist_task_scan_with_generation(
+                    &conn,
+                    &project_key,
+                    &scan_result,
+                    generation_state.inner(),
+                    scan_generation,
+                );
+                let after = crate::db::task_queries::get_tasks_for_project(&conn, &project_key)
+                    .sanitize_err()?;
+                let after_len = after.len();
+                (task_signature(&before), (task_signature(&after), after_len))
+            };
+
+            if before_sig != after_sig.0 {
+                Ok(Some(after_sig.1))
+            } else {
+                Ok(None)
+            }
+        })();
+
+        match refresh_result {
+            Ok(Some(task_count)) => {
+                let _ = app_handle.emit(
+                    "project-tasks-changed",
+                    serde_json::json!({
+                        "project_id": project_id,
+                        "task_count": task_count,
+                    }),
+                );
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    project_id = %project_id,
+                    project_path = %project_path,
+                    error = %error,
+                    "background project task refresh failed"
+                );
+            }
+        }
+
+        refresh_state.finish_task_refresh(&project_key);
+    });
+}
+
+fn schedule_archived_session_refresh(
+    app: &AppHandle,
+    refresh_state: &TaskQueryRefreshState,
+    project_id: String,
+    project_path: String,
+) {
+    let project_key = crate::provider::path::normalize_project_path(&project_path);
+    if !refresh_state.try_begin_archived_refresh(&project_key) {
+        return;
+    }
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let refresh_state = app_handle.state::<TaskQueryRefreshState>();
+        let db = app_handle.state::<DbState>();
+        let providers = app_handle.state::<ProviderState>();
+        let project_key = crate::provider::path::normalize_project_path(&project_path);
+
+        let refresh_result = crate::services::task_query::rebuild_archived_session_summaries(
+            db.inner(),
+            providers.inner(),
+            project_path.clone(),
+        );
+
+        match refresh_result {
+            Ok(_) => {
+                let task_count = {
+                    let conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
+                    crate::db::task_queries::get_tasks_for_project(&conn, &project_key)
+                        .map(|tasks| tasks.len())
+                        .unwrap_or(0)
+                };
+                let _ = app_handle.emit(
+                    "project-tasks-changed",
+                    serde_json::json!({
+                        "project_id": project_id,
+                        "task_count": task_count,
+                    }),
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    project_id = %project_id,
+                    project_path = %project_path,
+                    error = %error,
+                    "background archived session summary refresh failed"
+                );
+            }
+        }
+
+        refresh_state.finish_archived_refresh(&project_key);
+    });
+}
+
+fn task_signature(tasks: &[crate::db::task_queries::PersistedTask]) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for task in tasks {
+        task.source.hash(&mut hasher);
+        task.source_key.hash(&mut hasher);
+        task.source_task_id.hash(&mut hasher);
+        task.status.hash(&mut hasher);
+        task.updated_at.hash(&mut hasher);
+        task.archived_at.hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 fn get_commit_files_impl(

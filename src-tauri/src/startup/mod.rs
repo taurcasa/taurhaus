@@ -534,6 +534,7 @@ fn register_managed_state(
 ) {
     app.manage(DbState(Mutex::new(conn)));
     app.manage(services::task_sync::TaskScanGenerationState::default());
+    app.manage(crate::commands::tasks::TaskQueryRefreshState::default());
     app.manage(commands::templates::TemplateStoreState::new(
         setup_paths.data_dir.clone(),
     ));

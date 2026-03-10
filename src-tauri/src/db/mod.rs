@@ -49,6 +49,7 @@ mod tests {
         assert_eq!(
             tables,
             vec![
+                "archived_task_session_summaries",
                 "projects",
                 "relationships",
                 "session_activity",
@@ -71,7 +72,7 @@ mod tests {
         let count: i64 = conn2
             .query_row("SELECT COUNT(*) FROM _migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 10);
+        assert_eq!(count, 11);
     }
 
     #[test]
