@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
 
@@ -25,13 +26,9 @@ pub struct ClaudeSourceIndex {
 
 /// Build Claude source index using default user directories and live sessions.
 pub fn build_claude_source_index() -> ClaudeSourceIndex {
-    let Some(home) = dirs::home_dir() else {
-        return ClaudeSourceIndex::default();
-    };
-
-    let tasks_base = home.join(".claude").join("tasks");
-    let projects_base = home.join(".claude").join("projects");
-    let teams_base = home.join(".claude").join("teams");
+    let tasks_base = PlatformPaths::claude_dir().join("tasks");
+    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
+    let teams_base = PlatformPaths::teams_dir();
     let live_sessions = crate::session_scanner::scan_sessions_for_runtime();
 
     build_claude_source_index_in(&live_sessions, &tasks_base, &projects_base, &teams_base)
@@ -41,13 +38,9 @@ pub fn build_claude_source_index() -> ClaudeSourceIndex {
 pub fn build_claude_source_index_with_live_sessions(
     live_sessions: &[RuntimeSession],
 ) -> ClaudeSourceIndex {
-    let Some(home) = dirs::home_dir() else {
-        return ClaudeSourceIndex::default();
-    };
-
-    let tasks_base = home.join(".claude").join("tasks");
-    let projects_base = home.join(".claude").join("projects");
-    let teams_base = home.join(".claude").join("teams");
+    let tasks_base = PlatformPaths::claude_dir().join("tasks");
+    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
+    let teams_base = PlatformPaths::teams_dir();
 
     build_claude_source_index_in(live_sessions, &tasks_base, &projects_base, &teams_base)
 }

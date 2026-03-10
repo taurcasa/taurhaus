@@ -10,6 +10,7 @@
 //! 3. Classify each directory via the source index and keep only those that map
 //!    to the requested project path.
 
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::{build_claude_source_index_in, ClaudeSourceIndex};
@@ -71,12 +72,9 @@ struct RawClaudeTask {
 
 /// Get tasks for a project from Claude Code's task storage.
 pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
-    let Some(home) = dirs::home_dir() else {
-        return ScanOutcome::Unavailable("Could not resolve home directory".to_string());
-    };
-    let tasks_base = home.join(".claude").join("tasks");
-    let projects_base = home.join(".claude").join("projects");
-    let teams_base = home.join(".claude").join("teams");
+    let tasks_base = PlatformPaths::claude_dir().join("tasks");
+    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
+    let teams_base = PlatformPaths::teams_dir();
 
     get_tasks_in(
         project_path,
@@ -93,12 +91,9 @@ pub fn get_tasks_with_index(
     sessions: &[&RuntimeSession],
     prebuilt_index: Option<&ClaudeSourceIndex>,
 ) -> ScanOutcome {
-    let Some(home) = dirs::home_dir() else {
-        return ScanOutcome::Unavailable("Could not resolve home directory".to_string());
-    };
-    let tasks_base = home.join(".claude").join("tasks");
-    let projects_base = home.join(".claude").join("projects");
-    let teams_base = home.join(".claude").join("teams");
+    let tasks_base = PlatformPaths::claude_dir().join("tasks");
+    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
+    let teams_base = PlatformPaths::teams_dir();
 
     get_tasks_in_with_index(
         project_path,

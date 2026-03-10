@@ -682,10 +682,8 @@ pub(crate) fn resolve_app_data_dir(
 }
 
 pub(crate) fn resolve_claude_tasks_dir() -> Option<PathBuf> {
-    if let Some(path) = env_path_override(CLAUDE_DIR_OVERRIDE_ENV) {
-        return Some(path.join("tasks"));
-    }
-    dirs::home_dir().map(|home| home.join(".claude").join("tasks"))
+    let _ = env_path_override(CLAUDE_DIR_OVERRIDE_ENV);
+    Some(crate::provider::platform_paths::PlatformPaths::claude_dir().join("tasks"))
 }
 
 #[cfg(test)]
@@ -792,5 +790,11 @@ mod tests {
                     && value["event"] != "startup.phase.failed"),
             "legacy generic startup phase events must not be emitted"
         );
+    }
+
+    #[test]
+    fn resolve_claude_tasks_dir_uses_platform_paths() {
+        let expected = crate::provider::platform_paths::PlatformPaths::claude_dir().join("tasks");
+        assert_eq!(resolve_claude_tasks_dir(), Some(expected));
     }
 }
