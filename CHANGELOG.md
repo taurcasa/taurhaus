@@ -6,6 +6,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-03-10
+
+Performance, compaction reliability, and mesh team setup release. This version focuses on removing unnecessary work from long-running background paths, tightening compaction reinjection across Claude and Codex, and replacing the old mesh setup flow with a faster drag-and-drop builder.
+
+### Added
+
+- **Drag-and-drop mesh team builder** — Mesh setup now uses a persistent role catalog and roster builder instead of the older linear setup flow. Roles can be composed inline, reordered visually, and reused for runtime add-agent.
+- **Compact role catalog filters** — the mesh builder now includes tool and role-kind filters so large role catalogs stay navigable in a narrow side-panel layout.
+- **Four new built-in role templates** — added design lead, product checker, product lead, and vertical slice developer templates.
+- **Windows silent install recipe** — added a verified silent installer path for native Windows installs.
+
+### Fixed
+
+- **Claude compact hook payload parsing** — the SessionStart compact hook bridge now accepts the current snake_case Claude payload format while remaining backward-compatible with legacy camelCase fields.
+- **Claude hook stdout isolation** — standalone compact-hook invocations no longer contaminate normal app stdout paths.
+- **Runtime session liveness refresh** — stale session attachment metadata is refreshed more reliably during compaction-related recovery paths.
+- **Compaction delivery diagnostics** — Claude/Codex compaction failures and skips now record clearer reasons, making reinjection failures easier to debug in production.
+- **Team initialization readback race** — backend team config writes now retry readback visibility before initialize continues, fixing intermittent `config.json not found` failures.
+- **Stale initialize request reuse** — Mesh no longer reuses an old init request after disband/remount, which previously revived or replayed stale setup state.
+- **Configured lead startup for mesh team-daemon** — the mesh team-daemon now starts the configured lead correctly instead of falling back to the wrong member.
+- **Standalone Claude compaction event logging** — compact-hook activity is now logged correctly even when invoked outside the main app lifecycle.
+- **Project activity detection** — unattributed shared-project activity now promotes project recency correctly without over-promoting everything to fully active.
+- **Windows install verification** — NSIS installs are now verified against the patched payload hash rather than the raw build hash.
+- **Watcher callback stability** — watcher ownership/callback lifecycle issues that caused instability in the full quality gate were corrected.
+- **Built-in role validation drift** — backend template count and validation expectations were brought back in sync with the shipped role set.
+
+### Performance
+
+- **Inotify watch pre-pruning** — watcher registration now skips ignored directories up front, cutting watch count dramatically and reducing daemon overhead.
+- **Startup optimization** — daemon reconnect and watcher startup paths rely on readiness polling/handshakes instead of fixed sleeps.
+- **Render caching** — markdown/render-heavy views avoid unnecessary rerender work, improving perceived responsiveness during project inspection.
+- **Project-switch dedupe** — redundant startup and project-switch selection work was removed so only the final intended load path runs.
+- **Authoritative runtime snapshot** — live consumers now share a single daemon-owned runtime session snapshot instead of rebuilding overlapping views from separate scans.
+
+### Changed
+
+- **Mesh builder flow** — the old setup flow code was removed in favor of the persistent builder and role-catalog-driven composition path.
+- **Mesh version pin** — bumped from 0.2.7 to 0.2.10.
+- **Windows build pipeline** — build recipes now auto-detect `sccache`, emit better instrumentation, and avoid duplicate daemon compilation during Windows builds.
+
+### macOS
+
+- **Ghostty launch on macOS** — terminal launch now goes through LaunchServices so Ghostty opens reliably on the Mac build.
+
 ## [0.5.8] - 2026-03-09
 
 Cross-project mesh delivery fix and UI cleanup.
