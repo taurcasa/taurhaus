@@ -28,6 +28,9 @@ struct SharedWatchState {
     registrations: HashMap<String, DaemonWatchRegistration>,
 }
 
+type SubscriberWriter = Arc<Mutex<TcpStream>>;
+type SharedWatchDelivery = (Vec<SubscriberWriter>, Vec<DaemonEvent>);
+
 #[derive(Debug)]
 pub(crate) struct SharedDaemonWatchRegistry {
     watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
@@ -354,147 +357,71 @@ pub(crate) fn relative_to(path: &Path, root: &Path) -> String {
         .unwrap_or_else(|_| path.to_string_lossy().to_string())
 }
 
-/// Classify a notify event and push the appropriate DaemonEvent to the client.
-pub(crate) fn forward_watch_event(
-    writer: &Arc<Mutex<TcpStream>>,
-    project_path: &str,
-    debounce: &Arc<Mutex<HashMap<String, Instant>>>,
-    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
-    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
-    watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
-    event: NotifyEvent,
-) {
-    {
-        let project_root = Path::new(project_path);
-        let mut gitignores = gitignores.lock().unwrap_or_else(|error| error.into_inner());
-        let Some(gitignore) = gitignores.get_mut(project_path) else {
-            return;
-        };
-        let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
-        let mut watched_dirs = watched_dirs
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let before = watched_dirs.len();
-        if let Some(watcher) = watcher.as_mut() {
-            if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
-                watcher,
-                &mut watched_dirs,
-                project_root,
-                gitignore,
-                &event,
-            ) {
-                if count != before {
-                    let reason = if event.paths.iter().any(|path| {
-                        path.file_name()
-                            .map(|name| name.to_string_lossy())
-                            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
-                    }) {
-                        "gitignore_changed"
-                    } else {
-                        "directory_topology_changed"
-                    };
-                    tracing::info!(
-                        path = %project_path,
-                        watched_dir_count = count,
-                        reason,
-                        "Reconciled daemon watch tree"
-                    );
-                }
-            }
-        }
-    }
-
-    let project_root = Path::new(project_path);
-    let mut debounce = debounce.lock().unwrap_or_else(|error| error.into_inner());
-    let mut gitignores = gitignores.lock().unwrap_or_else(|error| error.into_inner());
-    let Some(gitignore) = gitignores.get_mut(project_path) else {
-        return;
-    };
-    let mut last_git_event_at = debounce.get(project_path).copied();
-    let classified = classify_notify_event_with_state(
-        project_root,
-        WATCH_GIT_DEBOUNCE_SECS,
-        &mut last_git_event_at,
-        gitignore,
-        &event,
-        true,
-    );
-    match last_git_event_at {
-        Some(last_git_event_at) => {
-            debounce.insert(project_path.to_string(), last_git_event_at);
-        }
-        None => {
-            debounce.remove(project_path);
-        }
-    }
-
-    for daemon_event in collect_daemon_events(project_path, project_root, classified) {
-        crate::daemon::server::push_event(writer, &daemon_event);
-    }
-}
-
 fn forward_shared_watch_event(
     state: &Arc<Mutex<SharedWatchState>>,
     watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
     event: NotifyEvent,
 ) {
-    let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
-    let Some(watcher) = watcher.as_mut() else {
-        return;
-    };
-    let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
-    let mut deliveries: Vec<(Vec<Arc<Mutex<TcpStream>>>, Vec<DaemonEvent>)> = Vec::new();
+    let deliveries: Vec<SharedWatchDelivery> = {
+        let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
+        let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
+        let mut deliveries = Vec::new();
 
-    for (watch_key, registration) in state.registrations.iter_mut() {
-        if !event_matches_registration(&event, &registration.path) {
-            continue;
-        }
-
-        let before = registration.watched_dirs.len();
-        if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
-            watcher,
-            &mut registration.watched_dirs,
-            &registration.path,
-            &registration.gitignore,
-            &event,
-        ) {
-            if count != before {
-                let reason = if event.paths.iter().any(|path| {
-                    path.file_name()
-                        .map(|name| name.to_string_lossy())
-                        .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
-                }) {
-                    "gitignore_changed"
-                } else {
-                    "directory_topology_changed"
-                };
-                tracing::info!(
-                    path = %watch_key,
-                    watched_dir_count = count,
-                    reason,
-                    "Reconciled shared daemon watch tree"
-                );
+        for (watch_key, registration) in state.registrations.iter_mut() {
+            if !event_matches_registration(&event, &registration.path) {
+                continue;
             }
+
+            if let Some(watcher) = watcher.as_mut() {
+                let before = registration.watched_dirs.len();
+                if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
+                    watcher,
+                    &mut registration.watched_dirs,
+                    &registration.path,
+                    &registration.gitignore,
+                    &event,
+                ) {
+                    if count != before {
+                        let reason = if event.paths.iter().any(|path| {
+                            path.file_name()
+                                .map(|name| name.to_string_lossy())
+                                .is_some_and(|name| {
+                                    name == ".gitignore" || name == ".taurhausignore"
+                                })
+                        }) {
+                            "gitignore_changed"
+                        } else {
+                            "directory_topology_changed"
+                        };
+                        tracing::info!(
+                            path = %watch_key,
+                            watched_dir_count = count,
+                            reason,
+                            "Reconciled shared daemon watch tree"
+                        );
+                    }
+                }
+            }
+
+            let classified = classify_notify_event_with_state(
+                &registration.path,
+                WATCH_GIT_DEBOUNCE_SECS,
+                &mut registration.last_git_event_at,
+                &mut registration.gitignore,
+                &event,
+                true,
+            );
+            let daemon_events = collect_daemon_events(watch_key, &registration.path, classified);
+            if daemon_events.is_empty() {
+                continue;
+            }
+
+            let subscribers = registration.subscribers.values().cloned().collect();
+            deliveries.push((subscribers, daemon_events));
         }
 
-        let classified = classify_notify_event_with_state(
-            &registration.path,
-            WATCH_GIT_DEBOUNCE_SECS,
-            &mut registration.last_git_event_at,
-            &mut registration.gitignore,
-            &event,
-            true,
-        );
-        let daemon_events = collect_daemon_events(watch_key, &registration.path, classified);
-        if daemon_events.is_empty() {
-            continue;
-        }
-
-        let subscribers = registration.subscribers.values().cloned().collect();
-        deliveries.push((subscribers, daemon_events));
-    }
-    drop(state);
-    drop(watcher);
+        deliveries
+    };
 
     for (subscribers, daemon_events) in deliveries {
         for subscriber in subscribers {
@@ -515,16 +442,29 @@ mod tests {
     use std::net::TcpListener;
     use std::time::Duration;
 
-    type TestWatchState = (
+    type SharedWatchTestState = (
         Arc<Mutex<Option<RecommendedWatcher>>>,
-        Arc<Mutex<HashSet<PathBuf>>>,
+        Arc<Mutex<SharedWatchState>>,
+        String,
     );
 
-    fn empty_watch_state() -> TestWatchState {
-        (
-            Arc::new(Mutex::new(None)),
-            Arc::new(Mutex::new(HashSet::new())),
-        )
+    fn test_shared_watch_state(
+        root: &Path,
+        writer: &Arc<Mutex<TcpStream>>,
+    ) -> SharedWatchTestState {
+        let watch_key = root.to_string_lossy().to_string();
+        let registration = DaemonWatchRegistration {
+            path: root.to_path_buf(),
+            watched_dirs: HashSet::new(),
+            gitignore: build_gitignore(root),
+            last_git_event_at: None,
+            subscribers: HashMap::from([(1, writer.clone())]),
+        };
+        let state = Arc::new(Mutex::new(SharedWatchState {
+            registrations: HashMap::from([(watch_key.clone(), registration)]),
+        }));
+        let watcher = Arc::new(Mutex::new(None));
+        (watcher, state, watch_key)
     }
 
     fn tcp_stream_pair() -> (TcpStream, TcpStream) {
@@ -631,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn forward_watch_event_filters_gitignored_files() {
+    fn forward_shared_watch_event_filters_gitignored_files() {
         let dir = tempfile::TempDir::new().unwrap();
         let root = dir.path().to_path_buf();
         std::fs::write(root.join(".gitignore"), "output/\n*.log\n").unwrap();
@@ -647,29 +587,14 @@ mod tests {
         let writer = Arc::new(Mutex::new(writer_stream));
         let mut reader = BufReader::new(peer_stream);
 
-        let debounce = Arc::new(Mutex::new(HashMap::new()));
-        let gitignores = Arc::new(Mutex::new(HashMap::new()));
-        let (watcher, watched_dirs) = empty_watch_state();
-        let project_path = root.to_string_lossy().to_string();
-        {
-            let gi = build_gitignore(&root);
-            gitignores.lock().unwrap().insert(project_path.clone(), gi);
-        }
+        let (watcher, state, project_path) = test_shared_watch_state(&root, &writer);
 
         let ignored_event = NotifyEvent {
             kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
             paths: vec![root.join("output/images/test.png")],
             attrs: Default::default(),
         };
-        forward_watch_event(
-            &writer,
-            &project_path,
-            &debounce,
-            &gitignores,
-            &watcher,
-            &watched_dirs,
-            ignored_event,
-        );
+        forward_shared_watch_event(&state, &watcher, ignored_event);
         assert!(
             next_daemon_event(&mut reader).is_none(),
             "gitignored files should not emit daemon file_changed events"
@@ -680,15 +605,7 @@ mod tests {
             paths: vec![root.join("src/main.rs")],
             attrs: Default::default(),
         };
-        forward_watch_event(
-            &writer,
-            &project_path,
-            &debounce,
-            &gitignores,
-            &watcher,
-            &watched_dirs,
-            regular_event,
-        );
+        forward_shared_watch_event(&state, &watcher, regular_event);
 
         let event = next_daemon_event(&mut reader).expect("expected daemon event for src/main.rs");
         assert_eq!(event.event, protocol::event::FILE_CHANGED);
@@ -698,7 +615,7 @@ mod tests {
     }
 
     #[test]
-    fn gitignore_change_rebuilds_matcher_for_future_events() {
+    fn shared_watch_gitignore_change_rebuilds_matcher_for_future_events() {
         let dir = tempfile::TempDir::new().unwrap();
         let root = dir.path().to_path_buf();
         std::fs::write(root.join(".gitignore"), "").unwrap();
@@ -712,29 +629,14 @@ mod tests {
         let writer = Arc::new(Mutex::new(writer_stream));
         let mut reader = BufReader::new(peer_stream);
 
-        let debounce = Arc::new(Mutex::new(HashMap::new()));
-        let gitignores = Arc::new(Mutex::new(HashMap::new()));
-        let (watcher, watched_dirs) = empty_watch_state();
-        let project_path = root.to_string_lossy().to_string();
-        {
-            let gi = build_gitignore(&root);
-            gitignores.lock().unwrap().insert(project_path.clone(), gi);
-        }
+        let (watcher, state, _project_path) = test_shared_watch_state(&root, &writer);
 
         let regular_event = NotifyEvent {
             kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
             paths: vec![root.join("generated/output.txt")],
             attrs: Default::default(),
         };
-        forward_watch_event(
-            &writer,
-            &project_path,
-            &debounce,
-            &gitignores,
-            &watcher,
-            &watched_dirs,
-            regular_event.clone(),
-        );
+        forward_shared_watch_event(&state, &watcher, regular_event.clone());
         assert!(
             next_daemon_event(&mut reader).is_some(),
             "file should emit before .gitignore is updated"
@@ -746,26 +648,10 @@ mod tests {
             paths: vec![root.join(".gitignore")],
             attrs: Default::default(),
         };
-        forward_watch_event(
-            &writer,
-            &project_path,
-            &debounce,
-            &gitignores,
-            &watcher,
-            &watched_dirs,
-            gitignore_event,
-        );
+        forward_shared_watch_event(&state, &watcher, gitignore_event);
         let _ = next_daemon_event(&mut reader);
 
-        forward_watch_event(
-            &writer,
-            &project_path,
-            &debounce,
-            &gitignores,
-            &watcher,
-            &watched_dirs,
-            regular_event,
-        );
+        forward_shared_watch_event(&state, &watcher, regular_event);
         assert!(
             next_daemon_event(&mut reader).is_none(),
             "file should be filtered after .gitignore matcher rebuild"

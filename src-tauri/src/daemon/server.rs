@@ -174,6 +174,7 @@ pub fn run(
         }
     }
 
+    shutdown.store(true, Ordering::Relaxed);
     let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())

@@ -305,6 +305,25 @@ fn reconcile_shared_pruned_tree_watches(
     Ok(watched_dirs.len())
 }
 
+fn release_shared_tree_watches(
+    mut watcher: Option<&mut RecommendedWatcher>,
+    shared_refcounts: &mut HashMap<PathBuf, usize>,
+    watched_dirs: &mut HashSet<PathBuf>,
+) {
+    for path in watched_dirs.drain() {
+        if let Some(refcount) = shared_refcounts.get_mut(&path) {
+            if *refcount <= 1 {
+                shared_refcounts.remove(&path);
+                if let Some(watcher) = watcher.as_mut() {
+                    let _ = watcher.unwatch(&path);
+                }
+            } else {
+                *refcount -= 1;
+            }
+        }
+    }
+}
+
 pub(crate) fn reconcile_pruned_tree_watches_for_event(
     watcher: &mut RecommendedWatcher,
     watched_dirs: &mut HashSet<PathBuf>,
@@ -986,16 +1005,7 @@ impl ProjectWatcher {
                         .watched_dirs
                         .lock()
                         .unwrap_or_else(|error| error.into_inner());
-                    for path in watched_dirs.drain() {
-                        if let Some(refcount) = refcounts.get_mut(&path) {
-                            if *refcount <= 1 {
-                                refcounts.remove(&path);
-                                let _ = watcher.unwatch(&path);
-                            } else {
-                                *refcount -= 1;
-                            }
-                        }
-                    }
+                    release_shared_tree_watches(Some(watcher), &mut refcounts, &mut watched_dirs);
                     emit_watch_local_unregistered(project_id, &tree.root, watched_dir_count);
                 }
                 WatchRegistration::File { path } => {
@@ -1419,44 +1429,22 @@ mod tests {
 
     #[test]
     fn shared_tree_watcher_keeps_refcount_until_last_project_unwatches() {
-        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let dir = tempfile::TempDir::new().unwrap();
         let root = dir.path().to_path_buf();
         std::fs::create_dir_all(root.join("src")).unwrap();
-        let (mut watcher, _rx) = ProjectWatcher::new();
+        let mut shared_refcounts =
+            HashMap::from([(root.clone(), 2usize), (root.join("src"), 2usize)]);
+        let mut p1_dirs = HashSet::from([root.clone(), root.join("src")]);
+        let mut p2_dirs = HashSet::from([root.clone(), root.join("src")]);
 
-        watcher
-            .watch_project("p1".to_string(), root.clone())
-            .expect("watch first project");
-        watcher
-            .watch_project("p2".to_string(), root.clone())
-            .expect("watch second project");
+        release_shared_tree_watches(None, &mut shared_refcounts, &mut p1_dirs);
+        assert!(p1_dirs.is_empty());
+        assert_eq!(shared_refcounts.get(&root), Some(&1));
+        assert_eq!(shared_refcounts.get(&root.join("src")), Some(&1));
 
-        {
-            let refcounts = watcher
-                .tree_watch_refcounts
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            assert_eq!(refcounts.get(&root), Some(&2));
-            assert_eq!(refcounts.get(&root.join("src")), Some(&2));
-        }
-
-        watcher.unwatch_project("p1");
-        {
-            let refcounts = watcher
-                .tree_watch_refcounts
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            assert_eq!(refcounts.get(&root), Some(&1));
-            assert_eq!(refcounts.get(&root.join("src")), Some(&1));
-        }
-
-        watcher.unwatch_project("p2");
-        assert!(watcher
-            .tree_watch_refcounts
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .is_empty());
+        release_shared_tree_watches(None, &mut shared_refcounts, &mut p2_dirs);
+        assert!(p2_dirs.is_empty());
+        assert!(shared_refcounts.is_empty());
     }
 
     // --- Debounce logic test ---

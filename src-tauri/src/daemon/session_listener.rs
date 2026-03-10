@@ -105,71 +105,22 @@ impl DaemonSessionListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::server::DaemonConfig;
-    use crate::provider::local::LocalProvider;
-    use std::net::TcpStream;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-
-    struct TestDaemon {
-        port: u16,
-        shutdown: Arc<AtomicBool>,
-        _heavy_guard: crate::test_support::HeavyTestGuard,
-        handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
-    }
-
-    impl Drop for TestDaemon {
-        fn drop(&mut self) {
-            self.shutdown.store(true, Ordering::Relaxed);
-            if let Some(handle) = self.handle.take() {
-                let _ = handle.join();
-            }
-        }
-    }
-
-    fn start_daemon() -> TestDaemon {
-        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
-        let config = DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        };
-        let shutdown_clone = shutdown.clone();
-        let handle = std::thread::spawn(move || {
-            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
-        });
-        wait_for_port(port, Duration::from_secs(3));
-
-        TestDaemon {
-            port,
-            shutdown,
-            _heavy_guard: heavy_guard,
-            handle: Some(handle),
-        }
-    }
-
-    fn wait_for_port(port: u16, timeout: Duration) {
-        let deadline = std::time::Instant::now() + timeout;
-        while std::time::Instant::now() < deadline {
-            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        panic!("daemon did not accept connections on port {port} before timeout");
-    }
+    use std::net::TcpListener;
 
     #[test]
     fn session_listener_connect_enables_tcp_nodelay() {
-        let daemon = start_daemon();
-        let listener = DaemonSessionListener::connect(&format!("127.0.0.1:{}", daemon.port))
-            .expect("connect session listener");
+        let server = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = server.local_addr().expect("test listener addr");
+        let accept_thread = std::thread::spawn(move || {
+            let (_stream, _) = server.accept().expect("accept session listener");
+            std::thread::sleep(Duration::from_millis(100));
+        });
+
+        let listener =
+            DaemonSessionListener::connect(&addr.to_string()).expect("connect session listener");
         assert!(listener.stream.nodelay().unwrap());
+
+        drop(listener);
+        accept_thread.join().expect("join accept thread");
     }
 }

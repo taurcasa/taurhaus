@@ -6,6 +6,7 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::process::Command;
 use std::sync::Arc;
 
 use tempfile::TempDir;
@@ -56,6 +57,24 @@ fn write_executable_script(path: &Path, body: &str) {
     let mut perms = fs::metadata(path).expect("metadata").permissions();
     perms.set_mode(0o755);
     fs::set_permissions(path, perms).expect("chmod +x");
+}
+
+fn compile_executable_c(path: &Path, source: &str) {
+    let source_path = path.with_extension("c");
+    fs::write(&source_path, source).expect("write c source");
+    let output = Command::new("cc")
+        .arg(&source_path)
+        .arg("-O2")
+        .arg("-o")
+        .arg(path)
+        .output()
+        .expect("compile c helper");
+    assert!(
+        output.status.success(),
+        "cc failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn make_request(
@@ -175,42 +194,98 @@ exit 0
     );
     write_executable_script(&fake_bin.join("tmux"), &tmux_script);
 
-    let mesh_script = format!(
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "mesh:$*" >> "{log}"
-if [[ "${{1:-}}" == "daemon" ]]; then
-  claude_dir=""
-  team=""
-  name=""
-  while [[ "$#" -gt 0 ]]; do
-    case "${{1:-}}" in
-      --claude-dir)
-        claude_dir="${{2:-}}"
-        shift 2
-        ;;
-      --team)
-        team="${{2:-}}"
-        shift 2
-        ;;
-      --name)
-        name="${{2:-}}"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-  mkdir -p "$claude_dir/teams/$team/daemons"
-  sh -c 'sleep 30' >/dev/null 2>&1 &
-  printf '%s\n' "$!" > "$claude_dir/teams/$team/daemons/$name.pid"
-fi
-exit 0
+    let mesh_source = format!(
+        r#"#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static void append_log(int argc, char **argv) {{
+    FILE *log = fopen("{log}", "a");
+    if (!log) {{
+        return;
+    }}
+    fputs("mesh:", log);
+    for (int i = 1; i < argc; i++) {{
+        if (i > 1) {{
+            fputc(' ', log);
+        }}
+        fputs(argv[i], log);
+    }}
+    fputc('\n', log);
+    fclose(log);
+}}
+
+static void mkdir_p(const char *path) {{
+    char buffer[PATH_MAX];
+    size_t len = strlen(path);
+    if (len >= sizeof(buffer)) {{
+        abort();
+    }}
+    memcpy(buffer, path, len + 1);
+    for (char *cursor = buffer + 1; *cursor; cursor++) {{
+        if (*cursor == '/') {{
+            *cursor = '\0';
+            if (mkdir(buffer, 0777) != 0 && errno != EEXIST) {{
+                abort();
+            }}
+            *cursor = '/';
+        }}
+    }}
+    if (mkdir(buffer, 0777) != 0 && errno != EEXIST) {{
+        abort();
+    }}
+}}
+
+static const char *flag_value(int argc, char **argv, const char *flag) {{
+    for (int i = 1; i + 1 < argc; i++) {{
+        if (strcmp(argv[i], flag) == 0) {{
+            return argv[i + 1];
+        }}
+    }}
+    return "";
+}}
+
+int main(int argc, char **argv) {{
+    append_log(argc, argv);
+    if (argc > 1 && strcmp(argv[1], "daemon") == 0) {{
+        const char *claude_dir = flag_value(argc, argv, "--claude-dir");
+        const char *team = flag_value(argc, argv, "--team");
+        const char *name = flag_value(argc, argv, "--name");
+        char daemon_dir[PATH_MAX];
+        char pid_path[PATH_MAX];
+        snprintf(daemon_dir, sizeof(daemon_dir), "%s/teams/%s/daemons", claude_dir, team);
+        snprintf(pid_path, sizeof(pid_path), "%s/%s.pid", daemon_dir, name);
+        mkdir_p(daemon_dir);
+
+        pid_t child = fork();
+        if (child == 0) {{
+            sleep(30);
+            _exit(0);
+        }}
+        if (child < 0) {{
+            return 1;
+        }}
+
+        FILE *pid_file = fopen(pid_path, "w");
+        if (!pid_file) {{
+            return 1;
+        }}
+        fprintf(pid_file, "%d\n", child);
+        fclose(pid_file);
+        return 0;
+    }}
+    return 0;
+}}
 "#,
         log = log_path.display()
     );
-    write_executable_script(&fake_mesh_bin.join("mesh"), &mesh_script);
+    compile_executable_c(&fake_mesh_bin.join("mesh"), &mesh_source);
 
     let original_path = std::env::var("PATH").unwrap_or_default();
     let path_with_fakes = if original_path.is_empty() {
