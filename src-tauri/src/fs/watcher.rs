@@ -350,6 +350,42 @@ pub(crate) fn classify_notify_event(
     event: &Event,
     include_gitignore_in_regular_files: bool,
 ) -> ClassifiedNotifyEvent {
+    let mut debounce_state = debounce.lock().unwrap_or_else(|e| e.into_inner());
+    let mut gitignore_state = gitignores.lock().unwrap_or_else(|e| e.into_inner());
+    let mut last_git_event_at = debounce_state.get(watch_key).copied();
+    let gitignore = gitignore_state
+        .entry(watch_key.to_string())
+        .or_insert_with(|| build_gitignore(project_root));
+
+    let classified = classify_notify_event_with_state(
+        project_root,
+        debounce_window_secs,
+        &mut last_git_event_at,
+        gitignore,
+        event,
+        include_gitignore_in_regular_files,
+    );
+
+    match last_git_event_at {
+        Some(last_git_event_at) => {
+            debounce_state.insert(watch_key.to_string(), last_git_event_at);
+        }
+        None => {
+            debounce_state.remove(watch_key);
+        }
+    }
+
+    classified
+}
+
+pub(crate) fn classify_notify_event_with_state(
+    project_root: &Path,
+    debounce_window_secs: u64,
+    last_git_event_at: &mut Option<Instant>,
+    gitignore: &mut Gitignore,
+    event: &Event,
+    include_gitignore_in_regular_files: bool,
+) -> ClassifiedNotifyEvent {
     match event.kind {
         EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
         _ => return ClassifiedNotifyEvent::default(),
@@ -364,14 +400,13 @@ pub(crate) fn classify_notify_event(
 
         match class {
             EventClass::GitInternal => {
-                let mut state = debounce.lock().unwrap_or_else(|e| e.into_inner());
                 let now = Instant::now();
-                let should_emit = state.get(watch_key).is_none_or(|last| {
-                    now.duration_since(*last) >= Duration::from_secs(debounce_window_secs)
+                let should_emit = last_git_event_at.is_none_or(|last| {
+                    now.duration_since(last) >= Duration::from_secs(debounce_window_secs)
                 });
 
                 if should_emit {
-                    state.insert(watch_key.to_string(), now);
+                    *last_git_event_at = Some(now);
                     classified.emit_git_changed = true;
                 }
             }
@@ -381,21 +416,19 @@ pub(crate) fn classify_notify_event(
                 }
             }
             EventClass::GitignoreChange => {
-                let gi = build_gitignore(project_root);
-                let mut gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-                gis.insert(watch_key.to_string(), gi);
+                *gitignore = build_gitignore(project_root);
                 classified.gitignore_changed = true;
                 if include_gitignore_in_regular_files {
                     classified.regular_files.push(path.clone());
                 }
             }
             EventClass::RegularFile => {
-                let gis = gitignores.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(gi) = gis.get(watch_key) {
-                    let is_dir = path.is_dir();
-                    if gi.matched_path_or_any_parents(path, is_dir).is_ignore() {
-                        continue;
-                    }
+                let is_dir = path.is_dir();
+                if gitignore
+                    .matched_path_or_any_parents(path, is_dir)
+                    .is_ignore()
+                {
+                    continue;
                 }
                 classified.regular_files.push(path.clone());
             }

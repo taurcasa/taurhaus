@@ -6,11 +6,21 @@
 
 use std::path::PathBuf;
 
+use super::{InotifyProcessStats, InotifyUserStats};
+
 pub fn process_cwd(_pid: u32) -> Option<PathBuf> {
     None
 }
 
 pub fn process_tty(_pid: u32) -> Option<String> {
+    None
+}
+
+pub fn process_inotify_stats(_pid: u32) -> Option<InotifyProcessStats> {
+    None
+}
+
+pub fn current_user_inotify_stats() -> Option<InotifyUserStats> {
     None
 }
 

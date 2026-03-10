@@ -3,6 +3,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use super::{InotifyProcessStats, InotifyUserStats};
+
 /// Read the executable path of a process from `/proc/{pid}/exe`.
 pub fn process_exe(pid: u32) -> Option<PathBuf> {
     fs::read_link(format!("/proc/{pid}/exe")).ok()
@@ -11,6 +13,80 @@ pub fn process_exe(pid: u32) -> Option<PathBuf> {
 /// Whether a process directory still exists under `/proc`.
 pub fn process_exists(pid: u32) -> bool {
     fs::metadata(format!("/proc/{pid}")).is_ok()
+}
+
+/// Read inotify instance and watch-descriptor counts from `/proc/{pid}`.
+pub fn process_inotify_stats(pid: u32) -> Option<InotifyProcessStats> {
+    let fd_dir = format!("/proc/{pid}/fd");
+    let fdinfo_dir = format!("/proc/{pid}/fdinfo");
+    let entries = fs::read_dir(&fd_dir).ok()?;
+
+    let mut inotify_fds = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(target) = fs::read_link(entry.path()) else {
+            continue;
+        };
+        if target.to_string_lossy() == "anon_inode:inotify" {
+            inotify_fds.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+
+    let mut watch_count = 0u64;
+    for fd_name in &inotify_fds {
+        let Ok(content) = fs::read_to_string(format!("{fdinfo_dir}/{fd_name}")) else {
+            continue;
+        };
+        watch_count += content
+            .lines()
+            .filter(|line| line.starts_with("inotify wd:"))
+            .count() as u64;
+    }
+
+    Some(InotifyProcessStats {
+        instance_count: inotify_fds.len() as u64,
+        watch_count,
+    })
+}
+
+/// Read inotify instance totals for the current Unix user.
+pub fn current_user_inotify_stats() -> Option<InotifyUserStats> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let user_uid = fs::metadata("/proc/self").ok()?.uid();
+    let entries = fs::read_dir("/proc").ok()?;
+    let mut instance_count = 0u64;
+
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        if file_name.to_string_lossy().parse::<u32>().is_err() {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.uid() != user_uid {
+            continue;
+        }
+        let Ok(pid) = file_name.to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        if let Some(stats) = process_inotify_stats(pid) {
+            instance_count += stats.instance_count;
+        }
+    }
+
+    let instance_limit = fs::read_to_string("/proc/sys/fs/inotify/max_user_instances")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok());
+    let instance_pct = instance_limit
+        .filter(|limit| *limit > 0)
+        .map(|limit| (instance_count as f64 / limit as f64) * 100.0);
+
+    Some(InotifyUserStats {
+        instance_count,
+        instance_limit,
+        instance_pct,
+    })
 }
 
 /// Read the working directory of a process from `/proc/{pid}/cwd`.
@@ -260,6 +336,23 @@ mod tests {
     #[test]
     fn process_exists_false_for_nonexistent_pid() {
         assert!(!process_exists(999_999_999));
+    }
+
+    #[test]
+    fn process_inotify_stats_works_for_self() {
+        let stats = process_inotify_stats(std::process::id()).expect("self inotify stats");
+        assert!(stats.instance_count <= 4096);
+        assert!(stats.watch_count <= 1_000_000);
+    }
+
+    #[test]
+    fn current_user_inotify_stats_reads_limit() {
+        let stats = current_user_inotify_stats().expect("current user inotify stats");
+        assert!(stats.instance_count <= 100_000);
+        assert!(
+            stats.instance_limit.is_none_or(|limit| limit > 0),
+            "if present, inotify instance limit should be positive"
+        );
     }
 
     #[test]

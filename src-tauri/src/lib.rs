@@ -11,6 +11,7 @@ mod daemon_lifecycle;
 pub mod db;
 pub mod errors;
 mod event_processor;
+mod inotify_diagnostics;
 pub mod models;
 mod sentinels;
 pub mod services;

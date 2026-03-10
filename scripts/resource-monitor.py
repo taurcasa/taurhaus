@@ -16,7 +16,9 @@ Monitors:
   - Windows: taurhaus.exe (queried via powershell.exe/pwsh.exe)
 
 CSV columns:
-  timestamp,process_name,pid,cpu_pct,rss_mb,threads,open_fds,inotify_watches,handles
+  timestamp,process_name,pid,cpu_pct,rss_mb,threads,open_fds,inotify_instances,inotify_watches,
+  system_inotify_instances,system_inotify_instance_limit,system_inotify_instance_pct,
+  system_inotify_watches,system_inotify_watch_limit,system_inotify_watch_pct,handles
 """
 
 from __future__ import annotations
@@ -43,7 +45,14 @@ CSV_HEADERS = [
     "rss_mb",
     "threads",
     "open_fds",
+    "inotify_instances",
     "inotify_watches",
+    "system_inotify_instances",
+    "system_inotify_instance_limit",
+    "system_inotify_instance_pct",
+    "system_inotify_watches",
+    "system_inotify_watch_limit",
+    "system_inotify_watch_pct",
     "handles",
 ]
 
@@ -57,8 +66,25 @@ class SampleRow:
     rss_mb: float
     threads: Optional[int]
     open_fds: Optional[int]
+    inotify_instances: Optional[int]
     inotify_watches: Optional[int]
+    system_inotify_instances: Optional[int]
+    system_inotify_instance_limit: Optional[int]
+    system_inotify_instance_pct: Optional[float]
+    system_inotify_watches: Optional[int]
+    system_inotify_watch_limit: Optional[int]
+    system_inotify_watch_pct: Optional[float]
     handles: Optional[int]
+
+
+@dataclass
+class InotifyUsage:
+    instances: Optional[int]
+    instance_limit: Optional[int]
+    instance_pct: Optional[float]
+    watches: Optional[int]
+    watch_limit: Optional[int]
+    watch_pct: Optional[float]
 
 
 @dataclass
@@ -141,35 +167,103 @@ def parse_proc_stat(pid: int) -> Optional[Tuple[int, int, int]]:
     return utime + stime, threads, rss_pages
 
 
-def count_open_fds(pid: int) -> Optional[int]:
+def read_int_file(path: Path) -> Optional[int]:
+    raw = safe_read_text(path)
+    if raw is None:
+        return None
     try:
-        with os.scandir(f"/proc/{pid}/fd") as entries:
-            return sum(1 for _ in entries)
-    except OSError:
+        return int(raw.strip())
+    except ValueError:
         return None
 
 
-def count_inotify_watches(pid: int) -> Optional[int]:
+def read_process_inotify_stats(pid: int) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+    fd_path = Path(f"/proc/{pid}/fd")
     fdinfo_path = Path(f"/proc/{pid}/fdinfo")
-    if not fdinfo_path.is_dir():
-        return None
+    if not fd_path.is_dir():
+        return None, None, None
 
-    total = 0
+    open_fds = 0
+    inotify_fds: List[str] = []
+
     try:
-        for entry in fdinfo_path.iterdir():
-            if not entry.is_file():
-                continue
-            try:
-                with entry.open("r", encoding="utf-8", errors="replace") as handle:
-                    for line in handle:
-                        if line.startswith("inotify wd:"):
-                            total += 1
-            except OSError:
-                continue
+        with os.scandir(fd_path) as entries:
+            for entry in entries:
+                open_fds += 1
+                try:
+                    target = os.readlink(entry.path)
+                except OSError:
+                    continue
+                if target == "anon_inode:inotify":
+                    inotify_fds.append(entry.name)
     except OSError:
-        return None
+        return None, None, None
 
-    return total
+    if not inotify_fds or not fdinfo_path.is_dir():
+        return open_fds, len(inotify_fds), 0
+
+    watch_count = 0
+    for fd_name in inotify_fds:
+        try:
+            with (fdinfo_path / fd_name).open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if line.startswith("inotify wd:"):
+                        watch_count += 1
+        except OSError:
+            continue
+
+    return open_fds, len(inotify_fds), watch_count
+
+
+def current_user_proc_dirs() -> List[Path]:
+    user_uid = os.getuid()
+    try:
+        proc_entries = [entry for entry in Path("/proc").iterdir() if entry.name.isdigit()]
+    except OSError:
+        return []
+
+    user_entries: List[Path] = []
+    for entry in proc_entries:
+        try:
+            if entry.stat().st_uid == user_uid:
+                user_entries.append(entry)
+        except OSError:
+            continue
+
+    return user_entries
+
+
+def percent_used(used: Optional[int], limit: Optional[int]) -> Optional[float]:
+    if used is None or limit is None or limit <= 0:
+        return None
+    return round((used / limit) * 100.0, 2)
+
+
+def collect_system_inotify_usage() -> InotifyUsage:
+    instance_limit = read_int_file(Path("/proc/sys/fs/inotify/max_user_instances"))
+    watch_limit = read_int_file(Path("/proc/sys/fs/inotify/max_user_watches"))
+    total_instances = 0
+    total_watches = 0
+    saw_process = False
+
+    for proc_dir in current_user_proc_dirs():
+        _, process_instances, process_watches = read_process_inotify_stats(int(proc_dir.name))
+        if process_instances is None or process_watches is None:
+            continue
+        saw_process = True
+        total_instances += process_instances
+        total_watches += process_watches
+
+    instances = total_instances if saw_process else 0
+    watches = total_watches if saw_process else 0
+    return InotifyUsage(
+        instances=instances,
+        instance_limit=instance_limit,
+        instance_pct=percent_used(instances, instance_limit),
+        watches=watches,
+        watch_limit=watch_limit,
+        watch_pct=percent_used(watches, watch_limit),
+    )
 
 
 def discover_wsl_targets() -> List[Tuple[str, int]]:
@@ -214,7 +308,9 @@ def choose_windows_shell() -> Optional[str]:
     return None
 
 
-def query_windows_rows(powershell_bin: Optional[str], state: CpuState) -> List[SampleRow]:
+def query_windows_rows(
+    powershell_bin: Optional[str], state: CpuState, system_inotify: InotifyUsage
+) -> List[SampleRow]:
     if not powershell_bin:
         return []
 
@@ -284,7 +380,14 @@ if ($rows) { $rows | ConvertTo-Csv -NoTypeInformation }
                     rss_mb=rss_mb,
                     threads=threads,
                     open_fds=None,
+                    inotify_instances=None,
                     inotify_watches=None,
+                    system_inotify_instances=system_inotify.instances,
+                    system_inotify_instance_limit=system_inotify.instance_limit,
+                    system_inotify_instance_pct=system_inotify.instance_pct,
+                    system_inotify_watches=system_inotify.watches,
+                    system_inotify_watch_limit=system_inotify.watch_limit,
+                    system_inotify_watch_pct=system_inotify.watch_pct,
                     handles=handles,
                 )
             )
@@ -320,7 +423,7 @@ def cpu_pct_from_delta(
     return round(pct, 2)
 
 
-def collect_wsl_rows(state: CpuState) -> List[SampleRow]:
+def collect_wsl_rows(state: CpuState, system_inotify: InotifyUsage) -> List[SampleRow]:
     timestamp = now_timestamp()
     cpu_total_now = read_total_cpu_ticks()
     targets = discover_wsl_targets()
@@ -337,6 +440,7 @@ def collect_wsl_rows(state: CpuState) -> List[SampleRow]:
 
         rss_mb = (rss_pages * PAGE_SIZE) / BYTES_PER_MB
         cpu_pct = cpu_pct_from_delta(process_name, pid, proc_ticks, cpu_total_now, state)
+        open_fds, inotify_instances, inotify_watches = read_process_inotify_stats(pid)
 
         rows.append(
             SampleRow(
@@ -346,8 +450,15 @@ def collect_wsl_rows(state: CpuState) -> List[SampleRow]:
                 cpu_pct=cpu_pct,
                 rss_mb=round(rss_mb, 2),
                 threads=threads,
-                open_fds=count_open_fds(pid),
-                inotify_watches=count_inotify_watches(pid),
+                open_fds=open_fds,
+                inotify_instances=inotify_instances,
+                inotify_watches=inotify_watches,
+                system_inotify_instances=system_inotify.instances,
+                system_inotify_instance_limit=system_inotify.instance_limit,
+                system_inotify_instance_pct=system_inotify.instance_pct,
+                system_inotify_watches=system_inotify.watches,
+                system_inotify_watch_limit=system_inotify.watch_limit,
+                system_inotify_watch_pct=system_inotify.watch_pct,
                 handles=None,
             )
         )
@@ -359,8 +470,9 @@ def collect_wsl_rows(state: CpuState) -> List[SampleRow]:
 
 
 def collect_sample(state: CpuState, powershell_bin: Optional[str]) -> List[SampleRow]:
-    rows = collect_wsl_rows(state)
-    rows.extend(query_windows_rows(powershell_bin, state))
+    system_inotify = collect_system_inotify_usage()
+    rows = collect_wsl_rows(state, system_inotify)
+    rows.extend(query_windows_rows(powershell_bin, state, system_inotify))
     rows.sort(key=lambda row: (row.process_name, row.pid))
     return rows
 
@@ -390,7 +502,24 @@ def row_to_dict(row: SampleRow) -> Dict[str, object]:
         "rss_mb": f"{row.rss_mb:.2f}",
         "threads": "" if row.threads is None else row.threads,
         "open_fds": "" if row.open_fds is None else row.open_fds,
+        "inotify_instances": "" if row.inotify_instances is None else row.inotify_instances,
         "inotify_watches": "" if row.inotify_watches is None else row.inotify_watches,
+        "system_inotify_instances": (
+            "" if row.system_inotify_instances is None else row.system_inotify_instances
+        ),
+        "system_inotify_instance_limit": (
+            "" if row.system_inotify_instance_limit is None else row.system_inotify_instance_limit
+        ),
+        "system_inotify_instance_pct": (
+            "" if row.system_inotify_instance_pct is None else f"{row.system_inotify_instance_pct:.2f}"
+        ),
+        "system_inotify_watches": "" if row.system_inotify_watches is None else row.system_inotify_watches,
+        "system_inotify_watch_limit": (
+            "" if row.system_inotify_watch_limit is None else row.system_inotify_watch_limit
+        ),
+        "system_inotify_watch_pct": (
+            "" if row.system_inotify_watch_pct is None else f"{row.system_inotify_watch_pct:.2f}"
+        ),
         "handles": "" if row.handles is None else row.handles,
     }
 
@@ -406,23 +535,53 @@ def render_live(rows: List[SampleRow], interval: float, powershell_bin: Optional
         return
 
     print(
-        f"{'process':<18} {'pid':>7} {'cpu%':>8} {'rss_mb':>10} {'threads':>8} {'fds':>8} {'inotify':>10} {'handles':>9}"
+        f"{'process':<18} {'pid':>7} {'cpu%':>8} {'rss_mb':>10} {'threads':>8} {'fds':>8} {'inst':>8} {'watches':>10} {'handles':>9}"
     )
-    print("-" * 86)
+    print("-" * 96)
 
     for row in rows:
         cpu = "-" if row.cpu_pct is None else f"{row.cpu_pct:>7.2f}"
         fds = "-" if row.open_fds is None else str(row.open_fds)
-        inotify = "-" if row.inotify_watches is None else str(row.inotify_watches)
+        inotify_instances = "-" if row.inotify_instances is None else str(row.inotify_instances)
+        inotify_watches = "-" if row.inotify_watches is None else str(row.inotify_watches)
         handles = "-" if row.handles is None else str(row.handles)
         threads = "-" if row.threads is None else str(row.threads)
         print(
-            f"{row.process_name:<18} {row.pid:>7} {cpu:>8} {row.rss_mb:>10.2f} {threads:>8} {fds:>8} {inotify:>10} {handles:>9}"
+            f"{row.process_name:<18} {row.pid:>7} {cpu:>8} {row.rss_mb:>10.2f} {threads:>8} {fds:>8} {inotify_instances:>8} {inotify_watches:>10} {handles:>9}"
         )
 
     print()
+    system_inotify = rows[0]
+    if system_inotify.system_inotify_instances is not None:
+        instance_limit = (
+            "?"
+            if system_inotify.system_inotify_instance_limit is None
+            else str(system_inotify.system_inotify_instance_limit)
+        )
+        instance_pct = (
+            "-"
+            if system_inotify.system_inotify_instance_pct is None
+            else f"{system_inotify.system_inotify_instance_pct:.2f}%"
+        )
+        watch_limit = (
+            "?"
+            if system_inotify.system_inotify_watch_limit is None
+            else str(system_inotify.system_inotify_watch_limit)
+        )
+        watch_pct = (
+            "-"
+            if system_inotify.system_inotify_watch_pct is None
+            else f"{system_inotify.system_inotify_watch_pct:.2f}%"
+        )
+        print(
+            "System inotify (current user): "
+            f"instances {system_inotify.system_inotify_instances}/{instance_limit} ({instance_pct}), "
+            f"watches {system_inotify.system_inotify_watches}/{watch_limit} ({watch_pct})"
+        )
+        print()
     print("Notes:")
     print("- Windows RSS is the WorkingSet64 value from Get-Process.")
+    print("- System inotify totals are for the current WSL user across all visible /proc processes.")
     if not powershell_bin:
         print("- Windows metrics unavailable (powershell.exe/pwsh.exe not found in PATH).")
 

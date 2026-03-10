@@ -346,3 +346,32 @@ The real root cause is architectural:
 3. the app can create duplicate listener connections during startup/reconcile windows from [watchers.rs:46](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs#L46) and [daemon_lifecycle.rs:176](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L176)
 
 That combination multiplies inotify instances silently. The current live `66` daemon instances are the result.
+
+## Runtime telemetry signals
+
+The runtime now emits structured `inotify.*` diagnostics to `taurhaus.log.jsonl` so instance exhaustion is visible before failure.
+
+- `inotify.telemetry`
+  - emitted by the daemon at startup and on a periodic cadence
+  - emitted by the app backend on local watch reconcile cycles when Linux inotify stats are observable
+  - key fields:
+    - `process_local_inotify_instances`
+    - `process_local_inotify_watch_descriptors`
+    - `daemon_listener_connections`
+    - `physical_watch_registrations`
+    - `logical_watch_subscriptions`
+    - `system_user_inotify_instances`
+    - `system_user_inotify_instance_limit`
+    - `system_user_inotify_instance_pct`
+
+- `inotify.capacity.warning`
+  - emitted when `system_user_inotify_instance_pct >= 75`
+
+- `inotify.capacity.error`
+  - emitted when `system_user_inotify_instance_pct >= 90`
+
+Operator interpretation:
+
+- If `process_local_inotify_instances` is high but `logical_watch_subscriptions` is low, the process is burning instances on fixed watcher infrastructure or duplicated physical watchers rather than on legitimate subscriptions.
+- If `daemon_listener_connections` is much larger than expected and `logical_watch_subscriptions` is close to `physical_watch_registrations`, suspect duplicate client connections rather than a single inflated watch tree.
+- If `system_user_inotify_instance_pct` crosses the warning/error thresholds while app-local counts stay low, the daemon or other user processes are the likely offender rather than the app backend.
