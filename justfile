@@ -429,10 +429,6 @@ _bundle-daemon-from-build:
 build-windows:
     ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"
 
-# Build Windows release binary without NSIS packaging (fast validation path).
-build-windows-fast:
-    TAURHAUS_WINDOWS_NO_BUNDLE=1 ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"
-
 # Build Windows NSIS installer with optional sccache integration.
 build-windows-sccache:
     TAURHAUS_WINDOWS_USE_SCCACHE=1 ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"

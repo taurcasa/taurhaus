@@ -2,9 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ProjectDir,
 
-    [switch]$EnableSccache,
-
-    [switch]$NoBundle
+    [switch]$EnableSccache
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,11 +73,7 @@ try {
     $start = Get-Date
     Write-Host "[windows_cargo_tauri_build] starting..."
     $env:PATH = $bunBinDir + ";" + $env:PATH
-    if ($NoBundle) {
-        cargo tauri build --no-bundle
-    } else {
-        cargo tauri build --bundles nsis
-    }
+    cargo tauri build --bundles nsis
     $elapsed = (Get-Date) - $start
     $steps.Add([pscustomobject]@{ Name = "windows_cargo_tauri_build"; Seconds = [Math]::Round($elapsed.TotalSeconds, 2) })
 }

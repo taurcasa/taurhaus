@@ -4,7 +4,6 @@ set -euo pipefail
 PROJECT_ROOT="${1:?usage: build-windows.sh <project-root> <windows-build-dir>}"
 WINDOWS_BUILD_DIR="${2:?usage: build-windows.sh <project-root> <windows-build-dir>}"
 USE_SCCACHE="${TAURHAUS_WINDOWS_USE_SCCACHE:-0}"
-NO_BUNDLE="${TAURHAUS_WINDOWS_NO_BUNDLE:-0}"
 
 cd "$PROJECT_ROOT"
 
@@ -37,17 +36,9 @@ PS_SCRIPT="$(wslpath -w "$PROJECT_ROOT/scripts/build-windows.ps1")"
 WIN_PROJECT_DIR="$(wslpath -w "$WINDOWS_BUILD_DIR")"
 
 if [ "$USE_SCCACHE" = "1" ]; then
-    if [ "$NO_BUNDLE" = "1" ]; then
-        run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR" -NoBundle -EnableSccache
-    else
-        run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR" -EnableSccache
-    fi
+    run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR" -EnableSccache
 else
-    if [ "$NO_BUNDLE" = "1" ]; then
-        run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR" -NoBundle
-    else
-        run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR"
-    fi
+    run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR"
 fi
 
 echo
@@ -58,15 +49,4 @@ done
 
 echo
 echo "✓ Windows build complete:"
-if [ "$NO_BUNDLE" = "1" ]; then
-    if [ -f "$WINDOWS_BUILD_DIR/src-tauri/target/release/taurhaus.exe" ]; then
-        ls -lh "$WINDOWS_BUILD_DIR/src-tauri/target/release/taurhaus.exe"
-    else
-        echo "  (no release exe found)"
-    fi
-else
-    ls -lh "$WINDOWS_BUILD_DIR"/src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || echo "  (no installer found)"
-    if [ -f "$WINDOWS_BUILD_DIR/src-tauri/target/release/taurhaus.exe" ]; then
-        ls -lh "$WINDOWS_BUILD_DIR/src-tauri/target/release/taurhaus.exe"
-    fi
-fi
+ls -lh "$WINDOWS_BUILD_DIR"/src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || echo "  (no installer found)"
