@@ -11,17 +11,25 @@ use crate::commands::projects::DbState;
 use crate::db::queries;
 use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::services::task_query;
+use crate::services::task_sync::TaskScanGenerationState;
 use crate::ProviderState;
 
 #[tauri::command]
 pub fn get_project_tasks(
     db: State<'_, DbState>,
+    providers: State<'_, ProviderState>,
+    generation_state: State<'_, TaskScanGenerationState>,
     project_id: String,
 ) -> IpcResult<crate::task_scanner::TaskResult> {
     let span = IpcCommandSpan::start("get_project_tasks");
     let project_path =
         resolve_project_path(db.inner(), &project_id, Some(&span)).ipc_cmd("get_project_tasks")?;
-    let result = get_project_tasks_impl(db.inner(), project_path);
+    let result = get_project_tasks_impl(
+        db.inner(),
+        providers.inner(),
+        generation_state.inner(),
+        project_path,
+    );
     span.finish_result(&result);
     result
 }
@@ -121,9 +129,12 @@ fn resolve_project_path(
 
 fn get_project_tasks_impl(
     db: &DbState,
+    providers: &ProviderState,
+    generation_state: &TaskScanGenerationState,
     project_path: String,
 ) -> IpcResult<crate::task_scanner::TaskResult> {
-    task_query::get_project_tasks(db, project_path).ipc_cmd("get_project_tasks")
+    task_query::get_or_refresh_project_tasks(db, providers, generation_state, project_path)
+        .ipc_cmd("get_project_tasks")
 }
 
 fn get_task_detail_impl(
@@ -243,9 +254,16 @@ mod tests {
         insert_project(&db, "proj-demo", "/projects/demo");
         insert_task(&db, "/projects/demo", "session-a", "1");
         insert_task(&db, "/projects/demo", "session-b", "2");
+        let providers = local_provider_state();
+        let generation_state = TaskScanGenerationState::default();
 
-        let result =
-            get_project_tasks_impl(&db, "/projects/demo".to_string()).expect("project tasks");
+        let result = get_project_tasks_impl(
+            &db,
+            &providers,
+            &generation_state,
+            "/projects/demo".to_string(),
+        )
+        .expect("project tasks");
         assert_eq!(result.tasks.len(), 2);
         assert_eq!(result.tasks[0].source_key, "session-a");
         assert_eq!(result.tasks[1].source_key, "session-b");
@@ -290,9 +308,16 @@ mod tests {
             let _guard = db.0.lock().expect("lock");
             panic!("poison lock");
         }));
+        let providers = local_provider_state();
+        let generation_state = TaskScanGenerationState::default();
 
-        let err = get_project_tasks_impl(&db, "/projects/demo".to_string())
-            .expect_err("poisoned lock should fail");
+        let err = get_project_tasks_impl(
+            &db,
+            &providers,
+            &generation_state,
+            "/projects/demo".to_string(),
+        )
+        .expect_err("poisoned lock should fail");
         assert_eq!(err.code, IpcErrorCode::InternalError);
         assert_eq!(err.command.as_deref(), Some("get_project_tasks"));
         assert!(err.message.to_lowercase().contains("poison"));

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use crate::commands::projects::DbState;
 use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
+use crate::services::task_sync::TaskScanGenerationState;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::ProviderState;
 
@@ -29,6 +30,46 @@ pub fn get_project_tasks(
         errors: vec![],
         source_outcomes: vec![],
     })
+}
+
+pub fn get_or_refresh_project_tasks(
+    db: &DbState,
+    providers: &ProviderState,
+    generation_state: &TaskScanGenerationState,
+    project_path: String,
+) -> IpcResult<crate::task_scanner::TaskResult> {
+    let initial = get_project_tasks(db, project_path.clone())?;
+    if !initial.tasks.is_empty() {
+        return Ok(initial);
+    }
+
+    tracing::info!(
+        project_path,
+        "Task query returned no persisted tasks; running on-demand recovery scan"
+    );
+
+    let scan_result = crate::services::task_sync::scan_tasks_from_files(
+        providers,
+        &project_path,
+        None,
+        None,
+        None,
+    );
+    let normalized_path = crate::provider::path::normalize_project_path(&project_path);
+    let recovery_generation = chrono::Utc::now().timestamp_millis().max(0) as u64;
+
+    {
+        let conn = db.0.lock().map_err(|e| format!("{e}"))?;
+        crate::services::task_sync::persist_task_scan_with_generation(
+            &conn,
+            &normalized_path,
+            &scan_result,
+            generation_state,
+            recovery_generation,
+        );
+    }
+
+    get_project_tasks(db, project_path)
 }
 
 /// Get enriched detail for a single task: full data + session info + commits + files changed.
@@ -446,6 +487,12 @@ fn unique_sources(tasks: &[crate::task_scanner::UnifiedTask]) -> Vec<String> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::fs;
+    use std::io::Write;
+    use std::sync::{LazyLock, Mutex};
+    use tempfile::{NamedTempFile, TempDir};
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn make_archived_task(
         source: &str,
@@ -527,5 +574,110 @@ mod tests {
         );
 
         assert!(warnings.is_empty());
+    }
+
+    fn test_db_state() -> (DbState, NamedTempFile) {
+        let tmp = NamedTempFile::new().expect("temp db");
+        let conn = crate::db::init_db(tmp.path()).expect("init db");
+        (DbState(Mutex::new(conn)), tmp)
+    }
+
+    fn insert_project(db: &DbState, project_id: &str, project_path: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let project = crate::models::Project {
+            id: project_id.to_string(),
+            name: format!("project-{project_id}"),
+            path: project_path.to_string(),
+            description: None,
+            last_activity_at: None,
+            hero_preference: None,
+            created_at: now.clone(),
+            updated_at: now,
+            cached_branch: None,
+            cached_is_dirty: None,
+        };
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::insert_project(&conn, &project).expect("insert project");
+    }
+
+    fn local_provider_state() -> ProviderState {
+        ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: None,
+            wsl_distro: None,
+        }
+    }
+
+    fn write_file(path: &std::path::Path, contents: &str) {
+        let mut file = fs::File::create(path).expect("create file");
+        file.write_all(contents.as_bytes()).expect("write file");
+        file.sync_all().expect("sync file");
+    }
+
+    #[test]
+    fn get_or_refresh_project_tasks_recovers_from_empty_db_for_windows_unc_project() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp = TempDir::new().expect("tempdir");
+        let claude_dir = temp.path().join("claude");
+        let tasks_dir = claude_dir.join("tasks").join("taurhaus-team");
+        let teams_dir = claude_dir.join("teams").join("taurhaus-team");
+        fs::create_dir_all(&tasks_dir).expect("create tasks dir");
+        fs::create_dir_all(&teams_dir).expect("create teams dir");
+
+        write_file(
+            &tasks_dir.join("909.json"),
+            r#"{
+                "id":"909",
+                "subject":"Investigate task tracking",
+                "activeForm":"Investigating task tracking",
+                "status":"in_progress",
+                "blocks":[],
+                "blockedBy":[],
+                "owner":"developer3"
+            }"#,
+        );
+        write_file(
+            &teams_dir.join("config.json"),
+            r#"{
+                "members":[
+                    {
+                        "projectPath":"/home/mstie/projects/taurhaus"
+                    }
+                ]
+            }"#,
+        );
+
+        std::env::set_var("TAURHAUS_CLAUDE_DIR", &claude_dir);
+
+        let (db, _tmp) = test_db_state();
+        insert_project(
+            &db,
+            "proj-taurhaus",
+            r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus",
+        );
+        let providers = local_provider_state();
+        let generation_state = TaskScanGenerationState::default();
+
+        let result = get_or_refresh_project_tasks(
+            &db,
+            &providers,
+            &generation_state,
+            r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus".to_string(),
+        )
+        .expect("recovered task query");
+
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+
+        assert_eq!(result.tasks.len(), 1);
+        assert_eq!(result.tasks[0].id, "909");
+        assert_eq!(result.tasks[0].source_key, "taurhaus-team");
+
+        let persisted = get_project_tasks(
+            &db,
+            r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus".to_string(),
+        )
+        .expect("persisted task query");
+        assert_eq!(persisted.tasks.len(), 1);
+        assert_eq!(persisted.tasks[0].id, "909");
     }
 }
