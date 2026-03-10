@@ -1625,6 +1625,72 @@ fn remove_member_discovers_and_terminates_daemon_when_runtime_pid_is_missing() {
 }
 
 #[test]
+fn remove_member_discovers_and_terminates_daemon_from_pidfile_when_runtime_attachment_is_missing() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let fake = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), fake, runtime.clone());
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            Member {
+                name: "team-lead".to_string(),
+                role: MemberRole::Lead,
+                role_id: None,
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                instructions: Some("lead".to_string()),
+                behavioral_contract: None,
+                capabilities: None,
+                project_path: PathBuf::from("/tmp/lead"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut runtime_record =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime exists");
+    runtime_record.pane_id = None;
+    runtime_record.daemon_pid = None;
+    runtime_record.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime_record)
+        .expect("runtime saved");
+    runtime.set_member_daemon_pid_match(team_name, member_name, Some(5555));
+
+    let report = orchestrator
+        .remove_member(team_name, member_name, Some("cleanup".to_string()))
+        .expect("remove should succeed");
+
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "clear_daemon_pid_file" && step.success));
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::FindDaemonByMember {
+            team_name: recorded_team,
+            member_name: recorded_member
+        } if recorded_team == team_name && recorded_member == member_name
+    )));
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 5555)));
+}
+
+#[test]
 fn remove_member_rejects_lead_removal() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);

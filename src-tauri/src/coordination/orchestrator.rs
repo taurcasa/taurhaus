@@ -1043,6 +1043,28 @@ impl CoordinationOrchestrator {
         if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
             daemon_pids.push(pid);
         }
+        match self
+            .runtime
+            .find_existing_mesh_daemon_pid_by_member(team_name, member_name)
+        {
+            Ok(Some(pid)) => daemon_pids.push(pid),
+            Ok(None) => {}
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    error = %err,
+                    "failed to discover mesh daemon from member pid file during teardown"
+                );
+                diagnostics.steps.push(step_failed(
+                    "discover_daemon_pidfile",
+                    format!("failed to discover daemon pid file state: {err}"),
+                ));
+                diagnostics
+                    .warnings
+                    .push(format!("failed to discover daemon pid file state: {err}"));
+            }
+        }
         if let Some(pane_id) = pane_id {
             match self
                 .runtime

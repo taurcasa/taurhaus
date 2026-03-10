@@ -90,6 +90,13 @@ pub trait CoordinationRuntime: Send + Sync {
     ) -> Result<Vec<u32>, CoordinationError> {
         Ok(Vec::new())
     }
+    fn find_existing_mesh_daemon_pid_by_member(
+        &self,
+        _team_name: &str,
+        _member_name: &str,
+    ) -> Result<Option<u32>, CoordinationError> {
+        Ok(None)
+    }
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -341,7 +348,13 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
                 "unable to resolve mesh daemon pid path; falling back to launcher pid"
             );
         }
-        spawn_command_and_resolve_daemon_pid(&invocation, daemon_pid_path.as_deref())
+        spawn_mesh_daemon_command_and_resolve_pid(
+            &invocation,
+            daemon_pid_path.as_deref(),
+            pane_id,
+            team_name,
+            member_name,
+        )
     }
 
     fn spawn_team_daemon(
@@ -428,6 +441,17 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         member_name: &str,
     ) -> Result<Vec<u32>, CoordinationError> {
         find_existing_mesh_daemon_pids_system(pane_id, team_name, member_name)
+    }
+
+    fn find_existing_mesh_daemon_pid_by_member(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Option<u32>, CoordinationError> {
+        let Some(pid_path) = resolve_mesh_daemon_pid_path(team_name, member_name) else {
+            return Ok(None);
+        };
+        validated_mesh_daemon_pid_file_by_member(&pid_path, team_name, member_name)
     }
 
     fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
@@ -628,6 +652,10 @@ pub enum RuntimeCall {
         team_name: String,
         member_name: String,
     },
+    FindDaemonByMember {
+        team_name: String,
+        member_name: String,
+    },
     CheckPaneOwnership {
         pane_id: String,
         project_id: String,
@@ -680,6 +708,7 @@ pub struct RecordingCoordinationRuntime {
     pid_current_mesh_binary: Mutex<HashMap<u32, bool>>,
     team_daemon_current_mesh_binary: Mutex<HashMap<String, bool>>,
     daemon_matches: Mutex<HashMap<(String, String, String), Vec<u32>>>,
+    member_daemon_pid_matches: Mutex<HashMap<(String, String), Option<u32>>>,
     detected_runtime_sessions: Mutex<HashMap<(String, CliTool), DetectedRuntimeSession>>,
     pane_counter: AtomicUsize,
     pid_counter: AtomicU32,
@@ -763,6 +792,17 @@ impl RecordingCoordinationRuntime {
                 ),
                 pids.to_vec(),
             );
+        }
+    }
+
+    pub fn set_member_daemon_pid_match(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        pid: Option<u32>,
+    ) {
+        if let Ok(mut map) = self.member_daemon_pid_matches.lock() {
+            map.insert((team_name.to_string(), member_name.to_string()), pid);
         }
     }
 
@@ -910,6 +950,24 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             .unwrap_or_default())
     }
 
+    fn find_existing_mesh_daemon_pid_by_member(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Option<u32>, CoordinationError> {
+        self.push_call(RuntimeCall::FindDaemonByMember {
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+        });
+        let key = (team_name.to_string(), member_name.to_string());
+        Ok(self
+            .member_daemon_pid_matches
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&key).cloned())
+            .flatten())
+    }
+
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -1052,16 +1110,19 @@ fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
     mesh_cli::mesh_command_invocation(args)
 }
 
-fn spawn_command_and_resolve_daemon_pid(
+fn spawn_mesh_daemon_command_and_resolve_pid(
     invocation: &CommandInvocation,
     daemon_pid_path: Option<&Path>,
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
 ) -> Result<u32, CoordinationError> {
     let mut child = spawn_system_command(invocation)?;
     let Some(daemon_pid_path) = daemon_pid_path else {
         return Ok(child.id());
     };
 
-    match wait_for_daemon_pid_file(daemon_pid_path) {
+    match wait_for_mesh_daemon_pid_file(daemon_pid_path, pane_id, team_name, member_name) {
         Ok(pid) => Ok(pid),
         Err(err) => {
             let launcher_status = child
@@ -1078,24 +1139,35 @@ fn spawn_command_and_resolve_daemon_pid(
     }
 }
 
-fn wait_for_daemon_pid_file(daemon_pid_path: &Path) -> Result<u32, CoordinationError> {
-    wait_for_daemon_pid_file_with_retries(
+fn wait_for_mesh_daemon_pid_file(
+    daemon_pid_path: &Path,
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
+) -> Result<u32, CoordinationError> {
+    wait_for_mesh_daemon_pid_file_with_retries(
         daemon_pid_path,
+        pane_id,
+        team_name,
+        member_name,
         DAEMON_START_ATTEMPTS,
         DAEMON_START_INTERVAL,
     )
 }
 
-fn wait_for_daemon_pid_file_with_retries(
+fn wait_for_mesh_daemon_pid_file_with_retries(
     daemon_pid_path: &Path,
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
     attempts: usize,
     interval: Duration,
 ) -> Result<u32, CoordinationError> {
     for attempt in 0..attempts {
-        if let Some(pid) = read_pid_file(daemon_pid_path) {
-            if is_process_running_by_pid_system(pid)? {
-                return Ok(pid);
-            }
+        if let Some(pid) =
+            validated_mesh_daemon_pid_file(daemon_pid_path, pane_id, team_name, member_name)?
+        {
+            return Ok(pid);
         }
         if attempt + 1 < attempts {
             thread::sleep(interval);
@@ -1103,7 +1175,7 @@ fn wait_for_daemon_pid_file_with_retries(
     }
 
     Err(CoordinationError::Backend(format!(
-        "timed out waiting for live daemon pid at {}",
+        "timed out waiting for valid mesh daemon pid at {}",
         daemon_pid_path.display()
     )))
 }
@@ -1162,6 +1234,41 @@ fn validated_team_daemon_pid_file(
         return Ok(None);
     }
     if require_current_binary && !process_uses_current_mesh_binary(pid)? {
+        return Ok(None);
+    }
+    Ok(Some(pid))
+}
+
+fn validated_mesh_daemon_pid_file(
+    pid_path: &Path,
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
+) -> Result<Option<u32>, CoordinationError> {
+    let Some(pid) = read_pid_file(pid_path) else {
+        return Ok(None);
+    };
+    if !is_process_running_by_pid_system(pid)? {
+        return Ok(None);
+    }
+    if !process_matches_mesh_daemon(pid, pane_id, team_name, member_name)? {
+        return Ok(None);
+    }
+    Ok(Some(pid))
+}
+
+fn validated_mesh_daemon_pid_file_by_member(
+    pid_path: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Result<Option<u32>, CoordinationError> {
+    let Some(pid) = read_pid_file(pid_path) else {
+        return Ok(None);
+    };
+    if !is_process_running_by_pid_system(pid)? {
+        return Ok(None);
+    }
+    if !process_matches_mesh_daemon_member(pid, team_name, member_name)? {
         return Ok(None);
     }
     Ok(Some(pid))
@@ -1301,6 +1408,24 @@ fn process_matches_mesh_daemon(
     ))
 }
 
+fn process_matches_mesh_daemon_member(
+    pid: u32,
+    team_name: &str,
+    member_name: &str,
+) -> Result<bool, CoordinationError> {
+    if !process_uses_current_mesh_binary(pid)? {
+        return Ok(false);
+    }
+    let Some(args) = read_process_cmdline_args(pid)? else {
+        return Ok(false);
+    };
+    Ok(command_matches_mesh_daemon_member(
+        &args,
+        team_name,
+        member_name,
+    ))
+}
+
 fn command_matches_mesh_daemon(
     args: &[String],
     pane_id: &str,
@@ -1312,6 +1437,13 @@ fn command_matches_mesh_daemon(
     }
     args.iter().any(|arg| arg == "daemon")
         && command_has_flag_value(args, "--pane", pane_id)
+        && command_has_flag_value(args, "--team", team_name)
+        && command_has_flag_value(args, "--name", member_name)
+}
+
+fn command_matches_mesh_daemon_member(args: &[String], team_name: &str, member_name: &str) -> bool {
+    command_matches_mesh_binary(args)
+        && args.iter().any(|arg| arg == "daemon")
         && command_has_flag_value(args, "--team", team_name)
         && command_has_flag_value(args, "--name", member_name)
 }
@@ -2184,17 +2316,24 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     #[test]
-    fn wait_for_daemon_pid_file_with_retries_rejects_stale_pid() {
+    fn wait_for_mesh_daemon_pid_file_with_retries_rejects_stale_pid() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let pid_path = dir.path().join("agent.pid");
         std::fs::write(&pid_path, "0\n").expect("write pid");
 
-        let err = wait_for_daemon_pid_file_with_retries(&pid_path, 1, Duration::ZERO)
-            .expect_err("stale pid should be rejected");
+        let err = wait_for_mesh_daemon_pid_file_with_retries(
+            &pid_path,
+            "%9",
+            "alpha",
+            "agent",
+            1,
+            Duration::ZERO,
+        )
+        .expect_err("stale pid should be rejected");
 
         assert!(err
             .to_string()
-            .contains("timed out waiting for live daemon pid"));
+            .contains("timed out waiting for valid mesh daemon pid"));
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -2265,6 +2404,96 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     #[test]
+    fn wait_for_mesh_daemon_pid_file_with_retries_rejects_non_matching_live_pid() {
+        let _guard = acquire_env_test_guard();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let pid_path = dir.path().join("agent.pid");
+        let install_dir = dir.path().join(".local").join("bin");
+        std::fs::create_dir_all(&install_dir).expect("install dir");
+        let mesh_path = dir.path().join("mesh");
+        std::os::unix::fs::symlink("/bin/sh", &mesh_path).expect("symlink mesh");
+        std::os::unix::fs::symlink(&mesh_path, install_dir.join("mesh")).expect("install mesh");
+
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", dir.path());
+
+        let mut child = std::process::Command::new(&mesh_path)
+            .args([
+                "-c", "sleep 5", "mesh", "daemon", "--pane", "%old", "--team", "alpha", "--name",
+                "agent",
+            ])
+            .spawn()
+            .expect("spawn");
+        std::fs::write(&pid_path, format!("{}\n", child.id())).expect("write pid");
+
+        let err = wait_for_mesh_daemon_pid_file_with_retries(
+            &pid_path,
+            "%new",
+            "alpha",
+            "agent",
+            1,
+            Duration::ZERO,
+        )
+        .expect_err("wrong pane daemon should be rejected");
+
+        assert!(err
+            .to_string()
+            .contains("timed out waiting for valid mesh daemon pid"));
+        let _ = child.kill();
+        let _ = child.wait();
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn wait_for_mesh_daemon_pid_file_with_retries_accepts_matching_pid() {
+        let _guard = acquire_env_test_guard();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let pid_path = dir.path().join("agent.pid");
+        let install_dir = dir.path().join(".local").join("bin");
+        std::fs::create_dir_all(&install_dir).expect("install dir");
+        let mesh_path = dir.path().join("mesh");
+        std::os::unix::fs::symlink("/bin/sh", &mesh_path).expect("symlink mesh");
+        std::os::unix::fs::symlink(&mesh_path, install_dir.join("mesh")).expect("install mesh");
+
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", dir.path());
+
+        let mut child = std::process::Command::new(&mesh_path)
+            .args([
+                "-c", "sleep 5", "mesh", "daemon", "--pane", "%9", "--team", "alpha", "--name",
+                "agent",
+            ])
+            .spawn()
+            .expect("spawn");
+        std::fs::write(&pid_path, format!("{}\n", child.id())).expect("write pid");
+
+        let pid = wait_for_mesh_daemon_pid_file_with_retries(
+            &pid_path,
+            "%9",
+            "alpha",
+            "agent",
+            1,
+            Duration::ZERO,
+        )
+        .expect("matching mesh daemon should be accepted");
+
+        assert_eq!(pid, child.id());
+        let _ = child.kill();
+        let _ = child.wait();
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
     fn process_uses_current_mesh_binary_detects_replaced_install() {
         let _guard = acquire_env_test_guard();
         let temp_home = tempfile::TempDir::new().expect("tempdir");
@@ -2312,43 +2541,6 @@ mod tests {
         } else {
             std::env::remove_var("HOME");
         }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn spawn_command_and_resolve_daemon_pid_returns_pid_file_process() {
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        let script_path = dir.path().join("spawn-daemon.sh");
-        let pid_path = dir.path().join("agent.pid");
-
-        std::fs::write(
-            &script_path,
-            "#!/bin/sh\nsleep 5 &\nprintf '%s\\n' \"$!\" > \"$1\"\n",
-        )
-        .expect("write script");
-
-        let invocation = CommandInvocation {
-            program: "sh".to_string(),
-            args: vec![
-                script_path.to_string_lossy().to_string(),
-                pid_path.to_string_lossy().to_string(),
-            ],
-        };
-
-        let pid = spawn_command_and_resolve_daemon_pid(&invocation, Some(&pid_path))
-            .expect("resolve daemon pid");
-        let recorded_pid = std::fs::read_to_string(&pid_path)
-            .expect("read pid")
-            .trim()
-            .parse::<u32>()
-            .expect("parse pid");
-
-        assert_eq!(pid, recorded_pid);
-        assert!(is_process_running_by_pid_system(pid).expect("pid should be running"));
-
-        let _ = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status();
     }
 
     #[test]
