@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,8 @@ use crate::templates::types::BehavioralContract;
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
+const CONFIG_READBACK_ATTEMPTS: usize = 6;
+const CONFIG_READBACK_DELAY: Duration = Duration::from_millis(25);
 
 fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
@@ -259,14 +263,14 @@ impl TeamConfigStore {
                     return Err(CoordinationError::Io(write_err));
                 }
                 let _ = fs::remove_file(&tmp_path);
-                return Ok(());
+                return ensure_saved_config_visible(teams_dir, team_name, &target_path, &payload);
             }
             // Best-effort cleanup for failed atomic swap.
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
         }
 
-        Ok(())
+        ensure_saved_config_visible(teams_dir, team_name, &target_path, &payload)
     }
 
     /// List team names by scanning direct child directories under `teams_dir`.
@@ -362,6 +366,56 @@ fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
     file.write_all(payload.as_bytes())?;
     file.sync_all()?;
     Ok(())
+}
+
+fn ensure_saved_config_visible(
+    teams_dir: &Path,
+    team_name: &str,
+    target_path: &Path,
+    payload: &str,
+) -> Result<(), CoordinationError> {
+    ensure_config_visible_with_retry(
+        CONFIG_READBACK_ATTEMPTS,
+        CONFIG_READBACK_DELAY,
+        || TeamConfigStore::load(teams_dir, team_name).map(|_| ()),
+        || write_file_synced(target_path, payload).map_err(CoordinationError::Io),
+    )
+}
+
+fn ensure_config_visible_with_retry<ReadBack, Rewrite>(
+    attempts: usize,
+    delay: Duration,
+    mut read_back: ReadBack,
+    mut rewrite_target: Rewrite,
+) -> Result<(), CoordinationError>
+where
+    ReadBack: FnMut() -> Result<(), CoordinationError>,
+    Rewrite: FnMut() -> Result<(), CoordinationError>,
+{
+    let total_attempts = attempts.max(1);
+    let mut rewrote_target = false;
+    let mut last_error = None;
+
+    for attempt in 0..total_attempts {
+        match read_back() {
+            Ok(()) => return Ok(()),
+            Err(CoordinationError::NotFound(message)) => {
+                last_error = Some(CoordinationError::NotFound(message));
+                if !rewrote_target {
+                    rewrite_target()?;
+                    rewrote_target = true;
+                }
+                if attempt + 1 < total_attempts && !delay.is_zero() {
+                    thread::sleep(delay);
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        CoordinationError::StoreError("team config did not become visible after save".to_string())
+    }))
 }
 
 fn mesh_compatible_wire(
@@ -894,6 +948,56 @@ mod tests {
 
         let loaded = TeamConfigStore::load(teams_dir, team_name).expect("load after double save");
         assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn config_visibility_retry_recovers_after_initial_not_found() {
+        let mut attempts = 0;
+        let mut rewrites = 0;
+
+        let result = ensure_config_visible_with_retry(
+            3,
+            Duration::ZERO,
+            || {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(CoordinationError::NotFound("not visible yet".to_string()))
+                } else {
+                    Ok(())
+                }
+            },
+            || {
+                rewrites += 1;
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(rewrites, 1);
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn config_visibility_retry_returns_not_found_when_visibility_never_recovers() {
+        let mut rewrites = 0;
+
+        let result = ensure_config_visible_with_retry(
+            2,
+            Duration::ZERO,
+            || Err(CoordinationError::NotFound("still missing".to_string())),
+            || {
+                rewrites += 1;
+                Ok(())
+            },
+        );
+
+        match result {
+            Err(CoordinationError::NotFound(message)) => {
+                assert!(message.contains("still missing"));
+            }
+            other => panic!("expected not found, got {other:?}"),
+        }
+        assert_eq!(rewrites, 1);
     }
 
     #[test]
