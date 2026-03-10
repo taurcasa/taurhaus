@@ -52,19 +52,22 @@ The tab moves through five modes:
 
 When no team exists for the current project, Mesh opens in the empty/setup path instead of a fixed roster form.
 
-### Empty state
+### Primary setup surface
 
-`MeshEmptyState.svelte` offers three entry points:
+`MeshTeamBuilder.svelte` is now the primary setup surface inside `MeshSetupView.svelte`. It offers:
 
 - quick presets such as Standard Dev Team, Full Stack Dev Team, Research + Development Team, and Review Team
-- `Browse Templates`, which opens the template catalog
-- `Start Custom`, which opens the team customizer directly
+- searchable role filters by tool and kind
+- drag-and-drop lead and agent composition
+- inline editing for team name, description, member names, tool/model defaults, and project binding
+- `Browse catalog`, which opens the advanced template catalog
+- reset, initialize, and save-as-preset actions
 
 Quick presets are resolved through `composeTeam(...)`, so the initial draft already includes role-driven tool, model, and naming defaults.
 
-### Template catalog
+### Advanced template catalog
 
-`TemplateBrowserPanel.svelte` is the setup catalog and has three tabs:
+`TemplateBrowserPanel.svelte` remains the advanced catalog and has three tabs:
 
 - `Roles` - inspect, create, edit, delete, import, and export role templates
 - `Presets` - inspect, create, edit, clone, and delete team presets
@@ -94,7 +97,7 @@ Lead-mode rule:
 - Claude leads may use the existing attach-existing flow
 - Codex and Gemini leads are currently launch-new only
 
-Users can also save the current draft back into the preset catalog from the customizer.
+Users can still save the current draft back into the preset catalog from the advanced customizer flow.
 
 ## Initialization
 
@@ -215,10 +218,10 @@ Mesh view uses these backend commands:
 |------|---------|
 | `src/lib/components/MeshTab.svelte` | Top-level mesh mode switcher and dialog host |
 | `src/lib/components/meshTabController.svelte.js` | Project snapshot hydration, runtime polling, composition, resume, and mutation controller |
-| `src/lib/components/MeshEmptyState.svelte` | Empty-state quick presets and entry actions |
 | `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing stage UI |
+| `src/lib/components/MeshTeamBuilder.svelte` | Primary quick-preset, filter, and drag/drop setup surface |
 | `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog, import/export, and template history |
-| `src/lib/components/TeamCustomizerPanel.svelte` | Draft editing and save-as-preset flow |
+| `src/lib/components/TeamCustomizerPanel.svelte` | Advanced draft editing and save-as-preset flow |
 | `src/lib/components/MeshRuntimeView.svelte` | Runtime canvas, resume progress, hot-add, and capture-role UI |
 | `src/lib/components/MeshRuntimeBar.svelte` | Runtime summary, resume actions, and compaction audit surface |
 | `src/lib/components/MeshNodeDetail.svelte` | Node detail panel for setup/runtime actions and diagnostics |

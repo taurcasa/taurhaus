@@ -107,7 +107,7 @@ Key boundary facts:
 | Runtime session source for compaction | same local scan cycle | daemon `LIST_RUNTIME_SESSIONS` RPC | Windows needs an explicit runtime metadata fetch |
 | Transcript metadata availability | directly present in local `RuntimeSession` | absent from display view, present only in runtime view | using the wrong view breaks compaction |
 | Where display updates are cached | app memory | daemon hub snapshot/versioned state | Windows can appear healthy at UI level while runtime metadata is wrong |
-| Where compaction watcher actually runs | app process | app process | Windows still depends on app-side compaction processing after daemon proxying |
+| Where compaction extractor/watcher/processor run | app process | daemon process | Windows compaction now stays daemon-owned after the runtime-session proxy boundary |
 
 ## Detailed Integration Boundaries
 
@@ -117,15 +117,15 @@ Implementation:
 - Codex writes either:
   - `{"type":"compacted", ...}`
   - or `{"type":"event_msg", "payload":{"type":"context_compacted"}}`
-- parser lives in `parse_codex_compaction_record()`
+- parsing and paired-boundary normalization live in `read_appended_compaction_boundaries(...)`
 
 Key file:
-- `src-tauri/src/session_scanner/compaction.rs`
+- `src-tauri/src/session_scanner/compaction_extractor.rs`
 
 ### B2. Session scanner discovers runtime transcript metadata
 
 Implementation:
-- local/native path: `scan_sessions_for_display()` creates `RuntimeSession` values and preserves `session_id` + `jsonl_path` until the `DisplaySession` boundary
+- local/native path: the scan cycle publishes `RuntimeSession` values through `publish_compaction_runtime_sessions(...)` before stripping them to the display-safe view
 - Windows path: runtime metadata must come from `LIST_RUNTIME_SESSIONS`, not `LIST_DISPLAY_SESSIONS`
 
 Key files:
@@ -136,7 +136,7 @@ Key files:
 ### B3. Display scan finalization triggers compaction watcher
 
 Implementation:
-- `finalize_display_scan()` calls `process_display_scan_compaction(runtime_sessions)` when runtime sessions are available
+- `finalize_display_scan()` calls `publish_compaction_runtime_sessions(runtime_sessions)` when runtime sessions are available
 - this is the boundary that was bypassed by the Windows early-return bug
 
 Key file:
@@ -145,22 +145,22 @@ Key file:
 ### B4. Compaction lines are read incrementally
 
 Implementation:
-- watcher tracks per-JSONL offsets
+- extractor tracks per-JSONL offsets
 - reads only appended committed lines
 - skips partial trailing lines until complete
 
 Key functions:
-- `track_read_start()`
-- `read_appended_lines()`
-- `set_tracked_offset()`
+- `read_appended_compaction_boundaries()`
+- `extract_compaction_boundary()`
+- `normalize_cross_pass_pair()`
 
 Key file:
-- `src-tauri/src/session_scanner/compaction.rs`
+- `src-tauri/src/session_scanner/compaction_extractor.rs`
 
 ### B5. Parsed compaction event resolves to a managed member
 
 Implementation:
-- `resolve_managed_codex_session()` matches by:
+- `resolve_managed_codex_signal()` matches by:
   - normalized project path
   - runtime `session_id`
   - runtime `pane_id`
@@ -168,7 +168,7 @@ Implementation:
 - `compaction.detected` is only emitted after this resolution succeeds
 
 Key file:
-- `src-tauri/src/session_scanner/compaction.rs`
+- `src-tauri/src/coordination/compaction_processor.rs`
 
 ### B6. Operational reinjection payload is composed
 
@@ -183,8 +183,7 @@ Key file:
 ### B7. Delivery attempt reaches terminal outcome
 
 Codex path:
-- queue pending delivery
-- validate staleness, current attachment, runtime match, prompt boundary, live Codex pane
+- validate current attachment, runtime match, prompt boundary, live Codex pane, and resumable task context
 - append message to `MeshInboxStore`
 - persist delivery result
 
@@ -196,7 +195,7 @@ Claude path:
 - persists delivery result
 
 Key files:
-- `src-tauri/src/session_scanner/compaction.rs`
+- `src-tauri/src/coordination/compaction_processor.rs`
 - `src-tauri/src/coordination/claude_hooks.rs`
 
 ### B8. Delivery bookkeeping and audit logging are persisted
@@ -340,7 +339,7 @@ What this proves:
 
 Verify:
 ```bash
-jq . ~/.claude/teams/<team>/state/compaction/<member>.json
+jq . ~/.claude/teams/<team>/state/compaction/members/<member>.json
 jq . ~/.claude/teams/<team>/inboxes/<member>.json | tail
 ```
 

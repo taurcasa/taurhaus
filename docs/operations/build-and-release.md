@@ -11,7 +11,7 @@ Build and release operations are standardized in `justfile`. Use `just` recipes 
 Core rules:
 
 - Do not run ad-hoc cross-compilation for Windows or macOS from WSL/Linux.
-- Build artifacts on their native target platforms (Windows via `cmd.exe`, macOS via remote Mac SSH).
+- Build artifacts on their native target platforms (Windows via WSL -> native PowerShell/build tools, macOS via remote Mac SSH).
 - Use `just release` to publish; do not create/edit GitHub releases manually.
 
 ## Prerequisites
@@ -23,7 +23,7 @@ Core rules:
 | Bun | Frontend install/build pipeline on local, Windows, and macOS hosts. |
 | Tauri CLI | App bundling through the supported `just` recipes. |
 | `rsync` + `ssh` | Remote sync/build on macOS host. |
-| Windows `cmd.exe` interop from WSL | Native Windows NSIS build from synced workspace. |
+| Windows shell interop from WSL | Native Windows NSIS build from the synced workspace. |
 | `gh` CLI (authenticated) | `just release` creates GitHub releases and uploads artifacts. |
 | macOS `codesign` + `lipo` (on remote Mac) | Daemon signing and universal binary assembly. |
 
@@ -47,6 +47,8 @@ Project-specific environment assumptions from `justfile`:
 | `just install-daemon` | Install/update the daemon in `~/.local/bin/`. |
 | `just build-mesh` | Build the mesh CLI from the local mesh workspace. |
 | `just install-mesh` | Install/update mesh in `~/.local/bin/`. |
+| `just build-windows-sccache` | Run the native Windows NSIS build with optional Windows-side `sccache` auto-detection enabled. |
+| `just install-windows` | Run the latest Windows NSIS installer silently and verify the installed exe hash against the built payload. |
 | `just analyze-compaction --team <team> --last <window>` | Analyze recent compaction detection/reinjection events from current and rotated logs. |
 | `just capture-readme-screenshots` | Export the curated README screenshot set. |
 
@@ -78,12 +80,13 @@ just build-windows
 
 Pipeline summary:
 
-1. `install-daemon` (WSL daemon binary rebuilt/installed).
-2. `bundle-daemon` (copies daemon binary into `src-tauri/resources/`).
-3. `mesh-verify-lock` + `bundle-mesh` (verifies the pinned mesh build and copies binary/version/manifest into `src-tauri/resources/`).
-4. `sync-windows` (rsync to `D:\taurhaus_build`).
-5. `cmd.exe /c "cd /d D:\taurhaus_build && bun install --frozen-lockfile"` (with `%USERPROFILE%\.bun\bin\bun.exe` fallback from WSL).
-6. `cmd.exe /c "cd /d D:\taurhaus_build && set PATH=%USERPROFILE%\.bun\bin;%PATH% && cargo tauri build --bundles nsis"`.
+1. `build-daemon` rebuilds the WSL daemon.
+2. `_install-daemon-from-build` refreshes the installed WSL daemon in `~/.local/bin/`.
+3. `_bundle-daemon-from-build` copies the daemon binary into `src-tauri/resources/`.
+4. `mesh-verify-lock` + `bundle-mesh` verify the pinned mesh build and copy binary/version/manifest into `src-tauri/resources/`.
+5. `sync-windows` mirrors the workspace to `D:\taurhaus_build` while preserving Windows `target/`, `node_modules/`, and `dist/`.
+6. `scripts/build-windows.sh` invokes `scripts/build-windows.ps1` via `powershell.exe -File`.
+7. `build-windows.ps1` runs Windows-native `bun install --frozen-lockfile` and `cargo tauri build --bundles nsis`, then prints a per-step timing summary. `just build-windows-sccache` enables the same path with Windows-side `sccache` auto-detection.
 
 Expected artifact location:
 
@@ -91,8 +94,9 @@ Expected artifact location:
 
 Troubleshooting:
 
-- `UNC paths are not supported`: informational from `cmd.exe` in this workflow; safe to ignore.
+- `UNC paths are not supported`: occasionally printed by the Windows-side shell/toolchain during WSL interop; safe to ignore.
 - `Access is denied` during `.exe` output: the app is still running on Windows. Close it and rebuild.
+- To install the latest built Windows package silently and verify the installed binary really matches the build payload, run `just install-windows`.
 - Do not use `cargo xwin` or `--target x86_64-pc-windows-msvc` from WSL for release builds.
 
 ### macOS build (arm64 on remote Mac)

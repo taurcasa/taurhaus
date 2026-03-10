@@ -164,7 +164,9 @@ Agent/team workflow rule:
 
 | Recipe | What it does |
 |--------|-------------|
-| `just build-windows` | Syncs to `D:\taurhaus_build`, builds NSIS installer natively on Windows via `cmd.exe`. |
+| `just build-windows` | Syncs to `D:\taurhaus_build`, then runs the measured native Windows NSIS build via a PowerShell wrapper. |
+| `just build-windows-sccache` | Same as `just build-windows`, but enables Windows-side `sccache` auto-detection for the native build. |
+| `just install-windows` | Runs the latest Windows NSIS installer silently and verifies the installed exe hash against the built payload. |
 | `just build-macos` | Syncs via rsync to Mac Mini, builds `.app` + `.dmg` natively via SSH. |
 | `just build-macos-universal` | Universal macOS binary (arm64 + x86_64) on remote Mac. |
 | `just sync-macos` | Sync source to remote Mac Mini. |
@@ -186,7 +188,7 @@ Always use the `just` recipes for releases. Never manually create GitHub release
 
 The `release` recipe enforces: must be on `main`, working tree must be clean, tag must not already exist. Never replace assets on an existing release — if a fix is needed, bump the version and release again.
 
-**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`cmd.exe`). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and native Windows cargo build.
+**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`powershell.exe -File` into the synced Windows workspace). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and native Windows cargo build.
 
 **macOS**: The macOS app is built **natively on a Mac Mini** (Scaleway, arm64) via SSH. We do NOT cross-compile from Linux. The `just build-macos` recipe handles everything — rsync sync, Bun install, daemon build + codesign, and `cargo tauri build`. The Mac's PATH requires a login shell (`zsh -ilc`) for bun/cargo/homebrew.
 
@@ -207,7 +209,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
-- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`) while preserving the existing initialize payload contract.
+- **Team templates**: Git-backed role/preset storage + `MeshTeamBuilder`-driven setup flow (quick presets, role filters, drag-and-drop roster editing) with advanced catalog/history in `TemplateBrowserPanel`, while preserving the existing initialize payload contract.
 - **Windows Mesh behavior**: Background `wsl`/mesh/tmux launches intentionally suppress console windows, and Mesh runtime/project matching relies on normalized Windows, WSL UNC, and Linux path forms rather than raw string equality.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
@@ -226,12 +228,14 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/HoverCard.svelte` | Sidebar hover preview focused on current activity, latest change, and relationship cues. |
 | `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
 | `src/lib/components/meshTabController.svelte.js` | Controller state/actions for `MeshTab.svelte`. |
+| `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing shell that hosts the primary team-builder surface. |
+| `src/lib/components/MeshTeamBuilder.svelte` | Primary team setup UI with quick presets, role filters, drag-and-drop roster composition, and inline validation. |
 | `src/lib/components/MeshCanvas.svelte` | Runtime node canvas that consumes `meshLayout.js` output. |
 | `src/lib/components/meshLayout.js` | Pure mesh canvas layout engine for node boxes and explicit connection routes. |
 | `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer fed by explicit control points from `meshLayout.js`. |
-| `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog and composition entry |
+| `src/lib/components/TemplateBrowserPanel.svelte` | Advanced role/preset catalog, import/export, history, and diff entry points. |
 | `src/lib/components/templateBrowserController.svelte.js` | Controller state/actions for template browsing/composition. |
-| `src/lib/components/TeamCustomizerPanel.svelte` | Team composition editor/validator before initialize |
+| `src/lib/components/TeamCustomizerPanel.svelte` | Advanced preset/draft editor used from the template catalog flow. |
 | `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
 | `src/lib/components/templateHistoryController.svelte.js` | Controller state/actions for template history/diff/revert. |
 | `src-tauri/src/startup/` | App bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`). |
@@ -241,11 +245,15 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/project_provider.rs` | Active project resolution/provider utilities. |
 | `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, team roots, daemon binary, log path, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
+| `src-tauri/src/coordination/claude_hooks.rs` | Claude `SessionStart(source=compact)` bridge, runtime-aware hook installation, and standalone hook logging. |
 | `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
 | `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |
 | `src-tauri/src/session_scanner/compaction_watcher.rs` | Signal-log watcher that feeds compaction processing. |
 | `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
+| `scripts/build-windows.sh` | WSL-side Windows build orchestrator with measured step output. |
+| `scripts/build-windows.ps1` | Native Windows build runner for `bun install` + `cargo tauri build --bundles nsis`, with optional `sccache`. |
+| `scripts/install-windows-silent.ps1` | Silent Windows installer runner with NSIS payload hash verification. |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/architecture/data-architecture.md` | Authoritative map of live coordination stores, ownership boundaries, and derived state. |

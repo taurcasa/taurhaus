@@ -30,9 +30,13 @@ Lead roles are no longer Claude-only. Built-in and user presets can now target:
 - `codex` lead roles
 - `gemini` lead roles
 
-The template flow is:
+The current setup flow is:
 
-`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView` -> `coordination_initialize_team`
+`MeshSetupView` -> `MeshTeamBuilder` (primary surface) -> `coordination_initialize_team`
+
+Advanced catalog/history/edit flows still exist through:
+
+`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`
 
 Manual setup remains available via **Blank slate**.
 
@@ -113,11 +117,18 @@ In Mesh setup, use **Start from template**:
 3. **Build custom team** to compose from role templates
 4. **Blank slate** to fall back to manual roster editing
 
-After composition, the roster is still editable in `MeshSetupView` for names, tools, models, project binding, and descriptions.
+`MeshTeamBuilder` is now the default setup surface. It combines:
+
+- quick presets
+- searchable role catalog filters (`tool` + `kind`)
+- drag-and-drop lead / agent composition
+- inline roster editing for names, tools, models, project binding, and descriptions
+
+`Browse catalog` still opens the advanced template catalog for import/export/history work, and preset editing/saving can still flow through the advanced customizer panel when needed.
 
 ## Composition And Validation
 
-`TeamCustomizerPanel` resolves roster members and runs live checks:
+The setup flow runs live checks while composing the roster:
 
 - single-lead validation
 - name-collision detection
@@ -150,7 +161,7 @@ Imported roles persist provenance metadata:
 - import timestamp
 - `non_roundtrippable_fields` for lossy conversions
 
-The catalog UI surfaces that provenance so imported roles are visibly different from native Taurhaus roles.
+The catalog UI surfaces that provenance so imported roles are visibly different from native Taurhaus roles, including in the filtered role catalog shown by `MeshTeamBuilder`.
 
 ## Template Sources
 

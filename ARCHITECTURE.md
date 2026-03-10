@@ -56,6 +56,8 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `src/lib/SessionHistory.svelte` | Session timeline with handoff summaries |
 | `src/lib/HoverCard.svelte` | Decision-oriented project hover preview with live status, latest change, and relationship cue |
 | `src/lib/components/MeshTab.svelte` | Mesh View orchestration surface (gate/setup/init/runtime states) |
+| `src/lib/components/MeshSetupView.svelte` | Setup shell that hosts the primary team-builder and init-progress states |
+| `src/lib/components/MeshTeamBuilder.svelte` | Primary setup surface with quick presets, role filters, and drag/drop roster composition |
 | `src/lib/components/MeshCanvas.svelte` | Mesh runtime canvas that renders node/detail UI from layout-engine output |
 | `src/lib/components/meshLayout.js` | Pure mesh layout engine for node boxes and explicit connection routes |
 | `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer for explicit control-point geometry |
@@ -178,7 +180,7 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Mesh daemon hot-swap**: mesh installs are version-aware. Member daemon reconciliation checks executable identity and automatically replaces drifted daemons; bounded background self-heal does the same for drifted team-daemons, so normal upgrades do not require a manual `team-daemon stop/start/restart-all` cycle.
 - **Runtime responsiveness**: Mesh steady-state polling stays on the fast snapshot path, and the frontend suspends hidden-tab refresh work, which avoids switch-away stalls and reduces Windows popup latency during runtime navigation.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude. Codex/Gemini leads currently validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
-- **Compaction reinjection**: Codex compaction now runs through an event-driven path: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox. Claude uses a `SessionStart(source=compact)` hook bridge that returns `hookSpecificOutput.additionalContext`.
+- **Compaction reinjection**: Codex compaction now runs through an event-driven path: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox only when the operational snapshot still has resumable task context. Claude uses a `SessionStart(source=compact)` hook bridge that installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, returns `hookSpecificOutput.additionalContext`, and logs standalone hook execution into the canonical JSONL sink.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model. `MeshRuntimeBar` is also the shipped cold-restart/degraded recovery surface for team resume.
 
@@ -192,7 +194,7 @@ The template system provides reusable role templates and team presets, with comp
 - **Storage roots**: template files live under the resolved app-data directory (`app_data_dir()/templates` by default, or `<TAURHAUS_DATA_DIR>/templates` when overridden).
 - **Git-backed state**: template writes are committed through `TemplateStore`, enabling history (`templates_get_history`), diff (`templates_get_diff`), and forward revert (`templates_revert`).
 - **Composition engine**: `templates::composition::compose_team` resolves lead and agent slots into a concrete roster, returning `warnings` and `validation_errors`.
-- **Frontend pipeline**: `TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView` -> `coordination_initialize_team` (initialize payload shape remains unchanged).
+- **Frontend pipeline**: `MeshSetupView` hosts `MeshTeamBuilder` as the primary setup surface (quick presets, role filters, drag/drop roster editing), while `TemplateBrowserPanel` and `TeamCustomizerPanel` remain the advanced catalog/history/edit flows. All of them still resolve into the same `InitializeTeamRequest` shape consumed by `coordination_initialize_team`.
 - **Operational visibility**: storage mode, dirty state, and pending actions are exposed via `templates_get_storage_status`; manual flush is available via `templates_flush_pending`.
 - **Role model**: roles are context-steering lanes, not capability labels. The key persisted fields are `focus_area`, `context_summary`, and `behavior_summary`, which steer what context a role keeps accumulating and where it should act independently versus escalate.
 - **Lead tool support**: built-in and user templates can define lead roles for Claude, Codex, or Gemini. Frontend preset/customizer flows preserve the selected lead tool/model all the way into `coordination_initialize_team`; they do not silently backfill Claude defaults.
@@ -252,6 +254,7 @@ Result: one `project-files-changed` Tauri event per edit instead of 5–8. The f
 - **Git range queries**: range traversal uses a single-pass algorithm in `git/commits.rs` (covered by `single_pass_range_matches_dual_pass_output`), reducing duplicated revwalk work.
 - **Search indexing**: file updates are batch-committed in `search/indexer.rs` (`update_file_batch_commits_once_for_multiple_files`) to avoid per-file commit overhead.
 - **Session scanner CPU**: activity detection uses hysteresis and cadence widening (`session_scanner/proc_io.rs`, `daemon/session_activity.rs`) to reduce false active spikes and idle-loop churn.
+- **Watcher registration**: ignored directories are pre-pruned before inotify registration (`fs/watcher.rs`, `startup/watchers.rs`), which cuts watch count and avoids wasted startup/watch work for directories we would immediately ignore anyway.
 
 ### Daemon Protocol
 
@@ -321,7 +324,9 @@ All builds use `just` recipes. Both Windows and macOS builds happen natively on 
 
 ```bash
 just dev              # Tauri dev mode (hot-reload)
-just build-windows    # Sync to D:\, bun install, cargo build natively via cmd.exe
+just build-windows    # Sync to D:\, then run the native Windows NSIS build via PowerShell
+just build-windows-sccache # Same as build-windows, but with Windows-side sccache auto-detection
+just install-windows  # Silent-install the latest Windows NSIS build and verify installed exe hash
 just build-macos      # Sync to Mac Mini, build ARM DMG via SSH
 just build-macos-universal # Build universal macOS app via SSH
 just check-quick      # Fast iteration gate: fmt + cargo check --tests + frontend typecheck/tests

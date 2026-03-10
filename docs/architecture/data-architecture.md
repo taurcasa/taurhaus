@@ -1,6 +1,6 @@
 # Data Architecture
 
-This document is the authoritative data architecture reference for Taurhaus as of `v0.5.6+`.
+This document is the authoritative data architecture reference for Taurhaus as of `v0.5.8+`.
 
 It complements [data-model.md](./data-model.md), which still covers the SQLite schema and search index in detail, but does not fully describe the live coordination/runtime filesystem model that Taurhaus now depends on.
 
@@ -53,7 +53,7 @@ All of the following are rooted under:
 | Member runtime | `teams/<team>/runtime/<member>.json` | JSON | Taurhaus | Taurhaus, mesh read-only | Authoritative current attachment | Pane, session id, transcript path, `cli_tool`, `project_path`, daemon pid, health |
 | Mesh inbox | `teams/<team>/inboxes/<member>.json` | JSON array | Taurhaus, mesh | Taurhaus, mesh daemons/agents | Authoritative message queue for file-based delivery | Shared protocol surface |
 | Operational snapshot | `teams/<team>/state/operational/<member>.json` | JSON | Taurhaus | Taurhaus reinjection/delivery | Derived contextual snapshot | Current task, assignment footer, working set, override state |
-| Member compaction state | `teams/<team>/state/compaction/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
+| Member compaction state | `teams/<team>/state/compaction/members/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
 | Compaction signal log | `teams/<team>/state/compaction/signals/codex-compaction-signals.jsonl` | JSONL | Taurhaus extractor | Taurhaus watcher/processor/diagnostics | Derived canonical signal stream | Normalized Codex compaction records |
 | Compaction extractor state | `teams/<team>/state/compaction/extractor-state.json` | JSON | Taurhaus extractor | Taurhaus diagnostics | Derived processing checkpoint | Tracked transcript offsets + last error by file |
 | Compaction watcher state | `teams/<team>/state/compaction/signal-watcher-state.json` | JSON | Taurhaus watcher | Taurhaus diagnostics | Derived processing checkpoint | Last consumed offset + recovery stats |
@@ -83,7 +83,7 @@ Current implementation answers common questions from different stores:
 | Which session/transcript is member `Y` attached to right now? | `teams/<team>/runtime/<member>.json` |
 | Which tool/project does member `Y` currently attach to? | `teams/<team>/runtime/<member>.json` |
 | What message queue should member `Y` read? | `teams/<team>/inboxes/<member>.json` |
-| What was the last handled compaction for member `Y`? | `teams/<team>/state/compaction/<member>.json` |
+| What was the last handled compaction for member `Y`? | `teams/<team>/state/compaction/members/<member>.json` |
 | What compaction signals have been emitted but not yet consumed? | signal log + watcher offset under `state/compaction/` |
 | What is the current task/working set used for post-compaction reinjection? | `teams/<team>/state/operational/<member>.json` |
 | What files/commits/tasks belong to a registered project? | SQLite + search index + filesystem/tool sources |
@@ -221,7 +221,7 @@ Key point:
 ```text
 operational snapshot + role/config metadata + runtime attachment
   -> build reinjection card
-  -> Claude hook path or Codex tmux/inbox path
+  -> Claude `SessionStart(source=compact)` hook path or Codex mesh inbox + wake path
   -> record terminal delivery result
 ```
 

@@ -24,6 +24,7 @@ This document captures the shipped/active coordination subsystem architecture in
 - Taurhaus now owns a broader operational context layer under `~/.claude/teams/{team}/state/`, including per-member operational snapshots, canonical Codex compaction signal logs, and per-member compaction delivery state.
 - The historical `state/activity/` export from `coordination/stall_detector.rs` is no longer the main reinjection context path.
 - Codex compaction reinjection is no longer poll-based. The shipped path is extractor -> watcher -> processor -> mesh inbox append.
+- Claude compaction reinjection is hook-based and now installs runtime-appropriate wrappers (`.sh` for WSL/Linux Claude runtimes, `.cmd` for native Windows Claude runtimes), normalizes current hook payload variants, and logs standalone hook execution into the canonical JSONL sink.
 
 ## Design Decision Log
 
@@ -317,7 +318,9 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Delivery guards based on stale deferred state were removed. The processor now checks only current managed-member attachment and pane liveness before delivery.
 - Idempotency is recorded in `MemberCompactionStore` by `session_id` + compaction timestamp.
 - Stale compaction records are persisted as `Stale` results instead of being injected late.
+- Delivery is suppressed when the operational snapshot no longer contains a resumable task (for example, the last task was already `completed` or `deleted`), so finished work does not generate stale resume cards.
 - Mesh inbox corruption now fails closed: corrupt inbox files are quarantined and logged as `mesh.inbox.corrupt`, and append/load return an error instead of silently treating corruption as empty.
+- Claude hook delivery uses the same resumable-task guard and emits `compaction.claude_hook.received/resolved/delivered/failed` events for transport diagnostics.
 
 **End-to-end path**:
 1. `RuntimeSession` discovery identifies active managed Codex transcripts.
@@ -347,14 +350,15 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 **Decision**: Template-driven team setup remains an adapter layer above coordination initialization, not a second orchestration path.
 
 - Backend template IPC (`templates_*`) handles role/preset storage, composition, history, diff, and revert.
-- Frontend template flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`) resolves to the same `InitializeTeamRequest` shape used by manual setup.
+- Frontend template flow now centers on `MeshTeamBuilder` inside `MeshSetupView`, while `TemplateBrowserPanel` and `TeamCustomizerPanel` remain advanced catalog/history/edit surfaces. All of them still resolve to the same `InitializeTeamRequest` shape used by manual setup.
 - Coordination runtime continues to start teams only through `coordination_initialize_team` / `templates_apply_composition` (which forwards into the same initialize pipeline).
 
 **Integration points**:
 - `src-tauri/src/templates/storage/`: git-backed template persistence and pending-action state
 - `src-tauri/src/templates/composition.rs`: deterministic roster composition + validation
 - `src-tauri/src/commands/templates.rs`: template command surface (`templates_get_history`, `templates_get_diff`, `templates_revert`, etc.)
-- `src/lib/components/MeshSetupView.svelte`: template-first + blank-slate UX bridge into initialize payload
+- `src/lib/components/MeshSetupView.svelte`: setup shell that hosts `MeshTeamBuilder` and the init-progress/runtime handoff
+- `src/lib/components/MeshTeamBuilder.svelte`: primary quick-preset, filter, and drag/drop team builder
 
 **Rationale**: This preserves one runtime lifecycle for team launch/resume/remove while enabling reusable template authoring and auditability through git-backed history.
 
