@@ -200,6 +200,7 @@ fn latest_owned_task(
     let task = tasks
         .into_iter()
         .filter(|task| task.owner.as_deref() == Some(member_name))
+        .filter(|task| is_resumable_task_status(&task.status))
         .max_by(|left, right| {
             task_priority(left)
                 .cmp(&task_priority(right))
@@ -220,9 +221,12 @@ fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
     match task.status.as_str() {
         "in_progress" => 3,
         "pending" => 2,
-        "completed" => 1,
         _ => 0,
     }
+}
+
+fn is_resumable_task_status(status: &str) -> bool {
+    matches!(status.trim(), "pending" | "in_progress")
 }
 
 #[cfg(test)]
@@ -311,6 +315,54 @@ mod tests {
         assert_eq!(snapshot.task.id, "42");
         assert_eq!(snapshot.task.subject, "Fix regression");
         assert_eq!(snapshot.task.status, "in_progress");
+        assert_eq!(snapshot.working_set.project_path, "proj-web");
+    }
+
+    #[test]
+    fn sync_member_snapshot_clears_completed_task_when_no_resumable_task_exists() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &taurhaus_lib::db::task_queries::PersistedTask {
+                project_path: "proj-web".to_string(),
+                source: "claude".to_string(),
+                source_key: "session-1".to_string(),
+                source_task_id: "42".to_string(),
+                subject: "Document completed change".to_string(),
+                description: None,
+                active_form: None,
+                status: "completed".to_string(),
+                blocks: vec![],
+                blocked_by: vec![],
+                owner: Some("frontend-dev".to_string()),
+                session_id: None,
+                first_seen_at: "2026-03-08T12:00:00Z".to_string(),
+                state_changed_at: Some("2026-03-08T12:00:00Z".to_string()),
+                updated_at: "2026-03-08T12:00:00Z".to_string(),
+                archived_at: None,
+                last_status: Some("completed".to_string()),
+                archived_reason: None,
+            },
+        )
+        .expect("upsert task");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert!(snapshot.task.id.is_empty());
+        assert!(snapshot.task.subject.is_empty());
+        assert!(snapshot.task.status.is_empty());
         assert_eq!(snapshot.working_set.project_path, "proj-web");
     }
 

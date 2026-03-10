@@ -61,6 +61,14 @@ pub struct OperationalReinjectionWorkingSet {
 pub struct CompactionReinjectionService;
 
 impl CompactionReinjectionService {
+    pub fn snapshot_has_resumable_task(snapshot: &OperationalContextSnapshot) -> bool {
+        let status = snapshot.task.status.trim();
+        let has_task_identity =
+            !snapshot.task.id.trim().is_empty() && !snapshot.task.subject.trim().is_empty();
+
+        has_task_identity && matches!(status, "pending" | "in_progress")
+    }
+
     pub fn compose(
         member: &Member,
         snapshot: &OperationalContextSnapshot,
@@ -126,8 +134,8 @@ impl CompactionReinjectionService {
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
         let mut lines = vec![
-            "[taurhaus] resume_work_after_compaction".to_string(),
-            "Resume your current task now using the restored context below.".to_string(),
+            "[taurhaus] restored_working_context_after_compaction".to_string(),
+            "Continue the active assignment using the restored context below.".to_string(),
             "Do not stop to summarize or acknowledge this card.".to_string(),
             "Reply only if blocked, the context is still insufficient, or the task is complete."
                 .to_string(),
@@ -466,8 +474,8 @@ mod tests {
         let rendered =
             CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
-        assert!(rendered.contains("[taurhaus] resume_work_after_compaction"));
-        assert!(rendered.contains("Resume your current task now using the restored context below."));
+        assert!(rendered.contains("[taurhaus] restored_working_context_after_compaction"));
+        assert!(rendered.contains("Continue the active assignment using the restored context below."));
         assert!(rendered.contains("Do not stop to summarize or acknowledge this card."));
         assert!(rendered.contains("Current task: #673"));
         assert!(rendered.contains("Execution mode: recommend"));
@@ -535,5 +543,25 @@ mod tests {
             CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
 
         assert!(rendered.contains("Role: taurhaus-architect"));
+    }
+
+    #[test]
+    fn snapshot_has_resumable_task_requires_active_task_status_and_identity() {
+        let mut snapshot = sample_snapshot();
+
+        assert!(CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+
+        snapshot.task.status = "pending".to_string();
+        assert!(CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+
+        snapshot.task.status = "completed".to_string();
+        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+
+        snapshot.task.status = "deleted".to_string();
+        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
+
+        snapshot.task.status = "in_progress".to_string();
+        snapshot.task.id.clear();
+        assert!(!CompactionReinjectionService::snapshot_has_resumable_task(&snapshot));
     }
 }

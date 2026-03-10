@@ -1,3 +1,7 @@
+<script module>
+  const startedInitializeRequests = new WeakSet()
+</script>
+
 <script>
   import {
     coordinationDisbandTeam,
@@ -224,6 +228,8 @@
 
   $effect(() => {
     if (!request) return
+    if (startedInitializeRequests.has(request)) return
+    startedInitializeRequests.add(request)
     void runInitialization(request)
   })
 

@@ -282,4 +282,41 @@ describe('MeshInitProgress', () => {
     })
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
+
+  it('does not auto-run the same request again after remount', async () => {
+    coordinationInitializeTeam.mockResolvedValueOnce({
+      teamName: 'arch-team',
+      failedStep: null,
+      retryable: false,
+      message: 'ok',
+      steps: [{ step: 'create_team', status: 'succeeded', message: 'ok' }],
+    })
+
+    const request = { teamName: 'arch-team' }
+    const first = render(MeshInitProgress, {
+      props: {
+        dark: false,
+        request,
+      },
+    })
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('mesh-init-success')).toBeInTheDocument()
+    })
+
+    first.unmount()
+
+    render(MeshInitProgress, {
+      props: {
+        dark: false,
+        request,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-progress')).toBeInTheDocument()
+    })
+    expect(coordinationInitializeTeam).toHaveBeenCalledTimes(1)
+  })
 })

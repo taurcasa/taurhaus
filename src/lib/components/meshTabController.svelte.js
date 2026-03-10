@@ -1004,10 +1004,12 @@ export function createMeshTabController({
 
   async function handleInitializeSuccess(result) {
     const projectPath = getProjectPath()
+    const completedRequest = initProgress
     const nextTeamName =
-      (result?.teamName ?? result?.team_name ?? initProgress?.teamName ?? initProgress?.team_name ?? teamName) ||
+      (result?.teamName ?? result?.team_name ?? completedRequest?.teamName ?? completedRequest?.team_name ?? teamName) ||
       inferTeamName(projectPath)
     teamName = nextTeamName
+    initProgress = null
     runtimeMessage = result?.openedExisting ? 'Opened existing team.' : 'Team initialized successfully.'
     mode = 'runtime'
     selectedNodeId = null
@@ -1700,6 +1702,7 @@ export function createMeshTabController({
       runtimeMessage = ''
     },
     setInitializingBack: () => {
+      initProgress = null
       mode = 'setup'
     },
   }
