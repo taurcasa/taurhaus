@@ -346,3 +346,93 @@ So the narrow one-hour view changes the interpretation materially:
 - the recent 2ksim-team misses are concentrated in one member
 - they are skips, not stale or failed transport
 - the most likely reason is **no active task to resume**, not signal loss, watcher failure, or inbox delivery breakage
+
+## Codex Compaction Frequency Cross-Check
+
+This section treats the raw Codex transcript JSONL as ground truth and collapses each adjacent `compacted` + `context_compacted` pair into a single compaction boundary.
+
+Window used for this cross-check:
+
+- analysis run at `2026-03-10T15:03+01:00`
+- effective window: roughly the previous 2 hours
+
+### Ground-truth compaction boundaries from Codex transcripts
+
+#### 2ksim-team
+
+Tracked Codex transcript files in the extractor watched set:
+
+- `rollout-2026-03-10T12-42-20-019cd78e-1cfd-71b3-8c55-13b7ac4c670f.jsonl`
+- `rollout-2026-03-10T13-47-31-019cd7c9-c8b0-7350-8b3d-74b8615b1029.jsonl`
+
+Real compaction boundaries found in raw transcripts: `4`
+
+- `2026-03-10T12:26:56.339Z`
+- `2026-03-10T12:43:37.682Z`
+- `2026-03-10T13:16:16.296Z`
+- `2026-03-10T13:41:26.936Z`
+
+Taurhaus signal matches: `4/4`
+
+- no missed transcript compactions
+- no duplicate signals in this team/window
+
+Important implication for the earlier one-hour follow-up:
+
+- the last-hour count of `2` detections was not undercounting a hidden larger compaction volume
+- the transcript ground truth also shows only `2` real compaction boundaries in that last-hour slice (`13:16` and `13:41`)
+
+#### taurhaus-team
+
+Tracked Codex transcript files in the extractor watched set:
+
+- `rollout-2026-03-05T12-56-33-019cbddb-5527-77a0-a457-7908cf7d790b.jsonl`
+- `rollout-2026-03-05T16-46-39-019cbead-fb7d-7e83-a3b0-361407c6b336.jsonl`
+- `rollout-2026-03-07T20-14-19-019cc9b8-d432-7691-84c0-c1217fe37e11.jsonl`
+- `rollout-2026-03-07T20-15-25-019cc9b9-d6ba-7371-ae5f-dbcc6276cc94.jsonl`
+- `rollout-2026-03-08T17-35-53-019cce4e-23ec-7051-a0e7-30c756dae113.jsonl`
+
+Real compaction boundaries found in raw transcripts: `4`
+
+- `2026-03-10T12:15:08.132Z`
+- `2026-03-10T12:27:59.732Z`
+- `2026-03-10T12:39:12.545Z`
+- `2026-03-10T13:37:23.261Z`
+
+Taurhaus signal matches: `4/4`
+
+- no missed transcript compactions
+- one duplicate signal on the `2026-03-10T12:39:12.545Z` boundary
+  - two `context_compacted` signals were emitted for the same transcript boundary
+
+### Detection-rate conclusion
+
+At the boundary level, Taurhaus detection rate in the last ~2 hours is:
+
+- `2ksim-team`: `4/4 detected`, `0 missed`
+- `taurhaus-team`: `4/4 detected`, `0 missed`, with `1` duplicate signal
+
+So the current production issue is **not** “Codex compacted but Taurhaus failed to detect it”. In this sample, transcript-ground-truth detection is complete.
+
+The real remaining issues stay downstream of detection:
+
+- transport outcomes can still be `skipped` or `stale`
+- one boundary can still produce duplicate signals
+- delivery/consumption reliability is weaker than detection reliability
+
+### Was Taurhaus running continuously?
+
+The app/scanner/extractor were not a single uninterrupted `run_id` for the whole 2-hour window.
+
+Observed scan/extractor run spans:
+
+- `run_5a56ca84a60640c8a9c0f248b6a1f2c6`: `12:03:01Z` -> `12:32:04Z`
+- `run_0da2285151e7411a97db286cbc927864`: `12:37:16Z` -> `12:40:25Z`
+- `run_7e42cb865a90468eb6542527fe087b43`: `12:46:02Z` -> `14:03:09Z`
+
+There are therefore run-id discontinuities inside the 2-hour window, even though explicit `startup.phase.*` events were not present in the sampled logs.
+
+Important result:
+
+- despite those run-id changes, the transcript cross-check still found `0` missed compaction boundaries in this 2-hour sample
+- so the observed restarts/discontinuities did not cause detection loss for the compactions traced here
