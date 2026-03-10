@@ -1359,7 +1359,7 @@ fn get_team_status_fast_returns_disk_snapshot_without_runtime_calls() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.daemon_pid = Some(4242);
     record.pane_id = Some("%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
@@ -1392,7 +1392,7 @@ fn get_team_status_fast_matches_existing_status_path_before_reconciliation() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
 
     let fast = orchestrator
@@ -1857,7 +1857,7 @@ fn liveness_reconcile_marks_missing_pane_id_offline() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.pane_id = None;
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
 
@@ -1895,7 +1895,7 @@ fn liveness_reconcile_marks_missing_pane_target_offline() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.pane_id = Some("%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
 
@@ -1937,7 +1937,7 @@ fn liveness_reconcile_marks_dead_pane_offline() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.pane_id = Some("%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
 
@@ -2016,7 +2016,7 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.daemon_pid = Some(4242);
     record.pane_id = Some("%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
@@ -2048,6 +2048,69 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
             RuntimeCall::TerminatePid { .. } | RuntimeCall::SpawnDaemon { .. }
         )),
         "healthy member should not trigger daemon restart/cleanup"
+    );
+}
+
+#[test]
+fn liveness_reconcile_refreshes_stale_claude_session_metadata_on_live_pane() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "claude-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Claude))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.pane_id = Some("%9".to_string());
+    record.session_id = Some("stale-session".to_string());
+    record.jsonl_path = Some(PathBuf::from("/tmp/stale-session.jsonl"));
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_detected_runtime_session(
+        "%9",
+        CliTool::Claude,
+        Some("fresh-session"),
+        Some("/tmp/fresh-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::Healthy);
+    assert_eq!(updated.session_id.as_deref(), Some("fresh-session"));
+    assert_eq!(
+        updated.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/fresh-session.jsonl"))
+    );
+    assert!(
+        updated.last_seen_at.is_some(),
+        "healthy refresh should stamp last_seen_at"
+    );
+    let calls = runtime.calls();
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::DetectSessionId { pane_id, cli_tool }
+            if pane_id == "%9" && *cli_tool == CliTool::Claude
+    )));
+    assert!(
+        !calls.iter().any(|call| matches!(
+            call,
+            RuntimeCall::CheckPid { .. }
+                | RuntimeCall::TerminatePid { .. }
+                | RuntimeCall::SpawnDaemon { .. }
+        )),
+        "Claude live-pane refresh should not touch mesh daemon lifecycle"
     );
 }
 
@@ -2182,7 +2245,7 @@ fn liveness_reconcile_restarts_stale_non_running_daemon_for_live_pane() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::Healthy);
-    assert_eq!(updated.session_id, Some("session-123".to_string()));
+    assert_eq!(updated.session_id, Some("session-%9".to_string()));
     assert_eq!(updated.daemon_pid, Some(10000));
     let calls = runtime.calls();
     assert!(calls
@@ -2215,7 +2278,7 @@ fn liveness_reconcile_restarts_running_daemon_when_binary_has_drifted() {
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.daemon_pid = Some(4242);
     record.pane_id = Some("%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
@@ -2232,7 +2295,7 @@ fn liveness_reconcile_restarts_running_daemon_when_binary_has_drifted() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::Healthy);
-    assert_eq!(updated.session_id, Some("session-123".to_string()));
+    assert_eq!(updated.session_id, Some("session-%9".to_string()));
     assert_eq!(updated.daemon_pid, Some(10000));
 
     let calls = runtime.calls();
@@ -2272,7 +2335,7 @@ fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_d
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
-    record.session_id = Some("session-123".to_string());
+    record.session_id = Some("session-%9".to_string());
     record.daemon_pid = Some(4242);
     record.pane_id = Some("%9".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
@@ -2365,7 +2428,7 @@ fn liveness_reconcile_adopts_existing_daemon_when_runtime_pid_is_missing() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::Healthy);
-    assert_eq!(updated.session_id, Some("session-123".to_string()));
+    assert_eq!(updated.session_id, Some("session-%9".to_string()));
     assert_eq!(updated.daemon_pid, Some(5555));
     let calls = runtime.calls();
     assert!(calls.iter().any(|call| matches!(
@@ -2663,7 +2726,7 @@ fn liveness_reconcile_updates_only_drifted_members() {
     let mut healthy =
         MemberRuntimeStore::load(tmp.path(), team_name, healthy_member).expect("load");
     healthy.health = HealthState::Healthy;
-    healthy.session_id = Some("session-healthy".to_string());
+    healthy.session_id = Some("session-%11".to_string());
     healthy.daemon_pid = Some(9999);
     healthy.pane_id = Some("%11".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, healthy_member, &healthy)

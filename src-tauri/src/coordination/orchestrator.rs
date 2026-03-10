@@ -853,26 +853,32 @@ impl CoordinationOrchestrator {
                 }
             }
 
-            if (runtime.session_id.is_none() || runtime.jsonl_path.is_none())
-                && matches!(member.cli_tool, CliTool::Claude | CliTool::Codex)
-            {
+            if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
                 if let Some(pane_id) = runtime.pane_id.as_deref() {
                     match self
                         .runtime
                         .detect_runtime_session(pane_id, member.cli_tool)
                     {
                         Ok(detected) => {
-                            if runtime.session_id.is_none() {
-                                if let Some(session_id) = detected.session_id {
-                                    runtime.session_id = Some(session_id);
-                                    runtime_changed = true;
-                                }
-                            }
-                            if runtime.jsonl_path.is_none() {
-                                if let Some(jsonl_path) = detected.jsonl_path {
-                                    runtime.jsonl_path = Some(jsonl_path);
-                                    runtime_changed = true;
-                                }
+                            let next_session_id =
+                                if detected.session_id.is_some() || runtime.session_id.is_none() {
+                                    detected.session_id
+                                } else {
+                                    runtime.session_id.clone()
+                                };
+                            let session_id_changed = next_session_id != runtime.session_id;
+                            let next_jsonl_path = if session_id_changed
+                                || detected.jsonl_path.is_some()
+                                || runtime.jsonl_path.is_none()
+                            {
+                                detected.jsonl_path
+                            } else {
+                                runtime.jsonl_path.clone()
+                            };
+                            if session_id_changed || next_jsonl_path != runtime.jsonl_path {
+                                runtime.session_id = next_session_id;
+                                runtime.jsonl_path = next_jsonl_path;
+                                runtime_changed = true;
                             }
                         }
                         Err(err) => {

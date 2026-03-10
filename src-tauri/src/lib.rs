@@ -289,7 +289,10 @@ pub fn run() {
     let env_filter = EnvFilter::builder()
         .with_default_directive(default_directive.into())
         .from_env_lossy();
-    tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_writer(io::stderr)
+        .init();
 
     #[cfg(target_os = "macos")]
     inherit_macos_shell_env();
@@ -333,16 +336,30 @@ fn run_claude_compact_hook_cli() -> i32 {
 
     match response {
         Ok(payload) => {
-            println!("{payload}");
+            if let Err(error) = write_claude_compact_hook_stdout(io::stdout(), &payload) {
+                crate::coordination::claude_hooks::emit_claude_hook_cli_failed(&error.to_string());
+                tracing::warn!(error = %error, "failed to write Claude compact hook response to stdout");
+                return 1;
+            }
         }
         Err(err) => {
             crate::coordination::claude_hooks::emit_claude_hook_cli_failed(&err.to_string());
             tracing::warn!(error = %err, "Claude compact hook bridge failed");
-            println!("{{}}");
+            if let Err(write_error) = write_claude_compact_hook_stdout(io::stdout(), "{}") {
+                tracing::warn!(error = %write_error, "failed to write Claude compact hook fallback response to stdout");
+                return 1;
+            }
         }
     }
 
     0
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn write_claude_compact_hook_stdout<W: io::Write>(mut stdout: W, payload: &str) -> io::Result<()> {
+    stdout.write_all(payload.as_bytes())?;
+    stdout.write_all(b"\n")?;
+    stdout.flush()
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -366,7 +383,7 @@ fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileS
 
 #[cfg(all(test, feature = "mesh-bridged-backend"))]
 mod tests {
-    use super::init_coordination_cli_log_sink;
+    use super::{init_coordination_cli_log_sink, write_claude_compact_hook_stdout};
 
     use serde_json::Value;
     use std::fs;
@@ -431,5 +448,18 @@ mod tests {
         .expect("json log");
         assert_eq!(entry["event"], "test.cli_hook_logging");
         assert_eq!(entry["component"], "coordination");
+    }
+
+    #[test]
+    fn claude_compact_hook_stdout_writer_emits_only_json_payload() {
+        let mut stdout = Vec::new();
+
+        write_claude_compact_hook_stdout(&mut stdout, "{\"hookSpecificOutput\":null}")
+            .expect("stdout write should succeed");
+
+        assert_eq!(
+            String::from_utf8(stdout).expect("utf8"),
+            "{\"hookSpecificOutput\":null}\n"
+        );
     }
 }

@@ -33,13 +33,22 @@ enum ClaudeHookRuntime {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ClaudeSessionStartHookInput {
+    #[serde(alias = "hookEventName")]
     hook_event_name: String,
+    #[serde(alias = "sessionId")]
     session_id: String,
     source: String,
     #[serde(default)]
     cwd: Option<PathBuf>,
+    #[serde(default, alias = "transcriptPath")]
+    transcript_path: Option<PathBuf>,
+    #[serde(default, alias = "permissionMode")]
+    permission_mode: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    agent_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
@@ -129,6 +138,7 @@ pub fn handle_session_start_hook(
     teams_dir: &Path,
 ) -> Result<ClaudeHookResponse, CoordinationError> {
     let payload: ClaudeSessionStartHookInput = serde_json::from_str(raw).map_err(|err| {
+        emit_claude_hook_parse_payload_debug(raw, &err.to_string());
         emit_claude_hook_failed(
             ClaudeHookFailureStage::ParsePayload,
             None,
@@ -461,6 +471,27 @@ fn emit_claude_hook_failed(
     );
 }
 
+fn emit_claude_hook_parse_payload_debug(raw: &str, error_message: &str) {
+    let mut fields = Map::new();
+    fields.insert(
+        "tool".to_string(),
+        Value::String(CliTool::Claude.to_string()),
+    );
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    fields.insert("raw_payload".to_string(), Value::String(raw.to_string()));
+    fields.insert("raw_bytes".to_string(), Value::from(raw.len() as u64));
+    emit_global(
+        "debug",
+        "coordination",
+        "compaction.claude_hook.parse_payload_debug",
+        Some("Claude compact hook payload parse failed".to_string()),
+        fields,
+    );
+}
+
 fn base_claude_hook_fields(
     payload: Option<&ClaudeSessionStartHookInput>,
     matched: Option<&HookMemberMatch>,
@@ -478,6 +509,18 @@ fn base_claude_hook_fields(
         fields.insert("source".to_string(), Value::String(payload.source.clone()));
         insert_optional_string(&mut fields, "session_id", Some(payload.session_id.clone()));
         insert_optional_string(&mut fields, "cwd", payload.cwd.as_deref().map(path_display));
+        insert_optional_string(
+            &mut fields,
+            "transcript_path",
+            payload.transcript_path.as_deref().map(path_display),
+        );
+        insert_optional_string(
+            &mut fields,
+            "permission_mode",
+            payload.permission_mode.clone(),
+        );
+        insert_optional_string(&mut fields, "model", payload.model.clone());
+        insert_optional_string(&mut fields, "agent_type", payload.agent_type.clone());
     }
     if let Some(matched) = matched {
         insert_optional_string(&mut fields, "team_name", Some(matched.team_name.clone()));
@@ -956,7 +999,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_hook_returns_additional_context_for_matching_member() {
+    fn compact_hook_returns_additional_context_for_legacy_camel_case_payload() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project dir");
@@ -989,9 +1032,53 @@ mod tests {
     }
 
     #[test]
-    fn compact_hook_emits_received_resolved_and_delivered_events() {
-        let _log_guard = LOG_LOCK.lock().expect("log lock");
+    fn compact_hook_returns_additional_context_for_current_snake_case_payload() {
+        // Regression: Claude Code now sends snake_case SessionStart hook input with
+        // transcript_path / permission_mode / model fields, so the bridge must not
+        // require the old camelCase hookEventName/sessionId shape.
         let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let transcript_path = project
+            .join(".claude")
+            .join("transcripts")
+            .join("sess-123.jsonl");
+        fs::create_dir_all(transcript_path.parent().expect("transcript dir")).expect("mkdirs");
+        let member = sample_member(&project);
+        write_team_fixture(tmp.path(), "taurhaus-team", &member, "sess-123");
+        write_snapshot_fixture(tmp.path(), "taurhaus-team", &member.name);
+
+        let response = handle_session_start_hook(
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "sess-123",
+                "source": "compact",
+                "cwd": project,
+                "transcript_path": transcript_path,
+                "permission_mode": "default",
+                "model": "claude-opus-4-1",
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("current payload should succeed");
+
+        let output = response
+            .hook_specific_output
+            .expect("hook should inject additional context");
+        assert_eq!(output.hook_event_name, "SessionStart");
+        assert!(output
+            .additional_context
+            .contains("\"reason\": \"post_compaction\""));
+    }
+
+    #[test]
+    fn compact_hook_emits_received_resolved_and_delivered_events() {
+        let guard = acquire_env_test_guard();
+        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        guard.set_override(&claude_dir);
         let log_path = tmp.path().join("claude-hook.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&log_state);
@@ -1135,8 +1222,11 @@ mod tests {
 
     #[test]
     fn compact_hook_skips_when_snapshot_missing() {
-        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let guard = acquire_env_test_guard();
+        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        guard.set_override(&claude_dir);
         let log_path = tmp.path().join("claude-hook.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&log_state);
@@ -1165,8 +1255,11 @@ mod tests {
 
     #[test]
     fn compact_hook_skips_when_snapshot_task_is_completed() {
-        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let guard = acquire_env_test_guard();
+        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        guard.set_override(&claude_dir);
         let log_path = tmp.path().join("claude-hook.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&log_state);
@@ -1205,8 +1298,11 @@ mod tests {
 
     #[test]
     fn compact_hook_logs_parse_failures() {
-        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let guard = acquire_env_test_guard();
+        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        guard.set_override(&claude_dir);
         let log_path = tmp.path().join("claude-hook.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&log_state);
@@ -1219,6 +1315,8 @@ mod tests {
         let contents =
             wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.failed\"");
         assert!(contents.contains("\"failure_stage\":\"parse_payload\""));
+        assert!(contents.contains("\"event\":\"compaction.claude_hook.parse_payload_debug\""));
+        assert!(contents.contains("\"raw_payload\":\"{\""));
     }
 
     #[test]
