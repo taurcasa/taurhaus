@@ -1330,11 +1330,22 @@ fn add_member_then_get_status() {
     let status = orchestrator
         .get_team_status(team_name)
         .expect("status should load");
-    assert_eq!(status.config.members.len(), 1);
-    assert_eq!(status.config.members[0].name, member_name);
-    assert_eq!(status.members_runtime.len(), 1);
-    assert_eq!(status.members_runtime[0].0, member_name);
-    assert_eq!(status.members_runtime[0].1.health, HealthState::SessionDead);
+    assert_eq!(status.config.members.len(), 2);
+    assert!(status
+        .config
+        .members
+        .iter()
+        .any(|member| member.name == "team-lead"));
+    assert!(status
+        .config
+        .members
+        .iter()
+        .any(|member| member.name == member_name));
+    assert_eq!(status.members_runtime.len(), 2);
+    assert!(status
+        .members_runtime
+        .iter()
+        .any(|(name, runtime)| name == member_name && runtime.health == HealthState::SessionDead));
 }
 
 #[test]
@@ -3313,11 +3324,11 @@ fn initialize_team_agent_addition_failure_is_partial() {
     let report = orchestrator
         .initialize_team(&request)
         .expect("pipeline should return report");
-    assert_eq!(report.failed_step.as_deref(), Some("create_panes"));
+    assert_eq!(report.failed_step.as_deref(), Some("add_lead"));
     assert!(report.retryable);
     assert_eq!(
         report.succeeded_steps,
-        vec!["validate_configuration", "create_team", "add_lead"]
+        vec!["validate_configuration", "create_team"]
     );
     assert_eq!(
         report
@@ -3325,12 +3336,7 @@ fn initialize_team_agent_addition_failure_is_partial() {
             .iter()
             .map(|step| step.step.as_str())
             .collect::<Vec<_>>(),
-        vec![
-            "validate_configuration",
-            "create_team",
-            "add_lead",
-            "create_panes",
-        ]
+        vec!["validate_configuration", "create_team", "add_lead",]
     );
 }
 

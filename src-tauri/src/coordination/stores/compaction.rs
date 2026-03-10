@@ -237,7 +237,10 @@ pub fn prune_state_if_session_mismatch(
     member_name: &str,
     active_session_id: Option<&str>,
 ) -> Result<bool, CoordinationError> {
-    let Some(active_session_id) = active_session_id.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(active_session_id) = active_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(false);
     };
 
