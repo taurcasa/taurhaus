@@ -17,10 +17,7 @@ function normalizeStatus(status) {
 }
 
 export function inferTeamName(path) {
-  const segments = normalizeSharedProjectPath(path)
-    .split('/')
-    .filter(Boolean)
-  const project = segments.at(-1) || 'project'
+  const project = projectNameFromPath(path)
   return `${project}-team`
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
@@ -52,7 +49,7 @@ function normalizeLeadPath(team) {
   return team?.leadProjectPath ?? team?.lead_project_path ?? null
 }
 
-function normalizePatternProjectName(path) {
+export function projectNameFromPath(path) {
   const normalized = normalizeProjectPath(path)
   const segments = normalized.split('/').filter(Boolean)
   return segments.at(-1) || 'project'
@@ -252,7 +249,7 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
       )
     )
   } else if (agentSlots.length > 0) {
-    const projectName = normalizePatternProjectName(projectPath)
+    const projectName = projectNameFromPath(projectPath)
     let agentIndex = 0
     agents = agentSlots.flatMap((slot) => {
       const count = Math.max(0, Number(slot?.count ?? 0))

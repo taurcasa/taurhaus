@@ -1749,6 +1749,59 @@ describe('MeshTab', () => {
     })
   })
 
+  it('normalizes WSL UNC project paths before generating patterned agent names', async () => {
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'lead-default',
+        name: 'Lead',
+        kind: 'lead',
+        cliTool: 'claude',
+        model: 'opus',
+      },
+      {
+        roleId: 'design-specialist',
+        name: 'Design Specialist',
+        kind: 'agent',
+        cliTool: 'claude',
+        model: 'claude-opus-4.5',
+        defaultNamePattern: 'design-{project}-{n}',
+      },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\mstie\\projects\\2ksim',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-builder-role-lead-default')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-role-design-specialist')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-design-specialist'))
+
+    await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
+      target: { value: '2ksim-team' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: '2ksim-team',
+          agents: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'design-2ksim-1',
+            }),
+          ]),
+        })
+      )
+    })
+  })
+
   it('reset returns setup state back to empty mode', async () => {
     render(MeshTab, {
       props: {

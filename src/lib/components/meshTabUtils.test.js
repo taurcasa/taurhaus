@@ -5,9 +5,16 @@ import {
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
   deriveCrossProjectMeta,
+  projectNameFromPath,
 } from './meshTabUtils.js'
 
 describe('meshTabUtils cross-project metadata', () => {
+  it('extracts a stable project basename from WSL UNC paths', () => {
+    expect(projectNameFromPath('\\\\wsl.localhost\\Ubuntu\\home\\mstie\\projects\\2ksim')).toBe(
+      '2ksim'
+    )
+  })
+
   it('derives cross-project metadata from explicit camelCase fields', () => {
     expect(
       deriveCrossProjectMeta(

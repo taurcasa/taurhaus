@@ -34,6 +34,7 @@ import {
   createAgent,
   createLead,
   inferTeamName,
+  projectNameFromPath,
   normalizeBehavioralContract,
   slugifyRoleId,
 } from './meshTabUtils.js'
@@ -721,8 +722,7 @@ export function createMeshTabController({
   }
 
   function builderProjectName(projectPath) {
-    const normalized = String(projectPath || '').split('/').filter(Boolean)
-    return normalized.at(-1) || 'project'
+    return projectNameFromPath(projectPath)
   }
 
   function nextAgentNameForRole(role, projectPath) {

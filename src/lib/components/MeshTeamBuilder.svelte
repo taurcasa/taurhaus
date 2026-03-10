@@ -14,6 +14,7 @@
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
+  import { projectNameFromPath } from './meshTabUtils.js'
 
   let {
     dark = false,
@@ -173,10 +174,9 @@
   }
 
   function rosterProjectName() {
-    const segments = String(availableProjectOptions[0]?.id ?? normalizedTeam?.lead?.projectId ?? '')
-      .split('/')
-      .filter(Boolean)
-    return segments.at(-1) || 'project'
+    return projectNameFromPath(
+      availableProjectOptions[0]?.id ?? normalizedTeam?.lead?.projectId ?? ''
+    )
   }
 
   function nextInstanceName(role) {
