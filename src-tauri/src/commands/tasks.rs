@@ -345,28 +345,49 @@ fn schedule_archived_session_refresh(
         let providers = app_handle.state::<ProviderState>();
         let project_key = crate::provider::path::normalize_project_path(&project_path);
 
-        let refresh_result = crate::services::task_query::rebuild_archived_session_summaries(
-            db.inner(),
-            providers.inner(),
-            project_path.clone(),
-        );
+        let refresh_result = (|| -> Result<bool, String> {
+            let before_signature = {
+                let conn = db.0.lock().map_err(|e| format!("{e}"))?;
+                let summaries =
+                    crate::db::task_queries::get_archived_session_summaries_for_project(
+                        &conn,
+                        &project_key,
+                    )
+                    .sanitize_err()?;
+                archived_session_signature(&summaries)
+            };
+
+            crate::services::task_query::rebuild_archived_session_summaries(
+                db.inner(),
+                providers.inner(),
+                project_path.clone(),
+            )
+            .map_err(|error| error.to_string())?;
+
+            let after_signature = {
+                let conn = db.0.lock().map_err(|e| format!("{e}"))?;
+                let summaries =
+                    crate::db::task_queries::get_archived_session_summaries_for_project(
+                        &conn,
+                        &project_key,
+                    )
+                    .sanitize_err()?;
+                archived_session_signature(&summaries)
+            };
+
+            Ok(before_signature != after_signature)
+        })();
 
         match refresh_result {
-            Ok(_) => {
-                let task_count = {
-                    let conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
-                    crate::db::task_queries::get_tasks_for_project(&conn, &project_key)
-                        .map(|tasks| tasks.len())
-                        .unwrap_or(0)
-                };
+            Ok(true) => {
                 let _ = app_handle.emit(
-                    "project-tasks-changed",
+                    "project-task-history-changed",
                     serde_json::json!({
                         "project_id": project_id,
-                        "task_count": task_count,
                     }),
                 );
             }
+            Ok(false) => {}
             Err(error) => {
                 tracing::warn!(
                     project_id = %project_id,
@@ -392,6 +413,27 @@ fn task_signature(tasks: &[crate::db::task_queries::PersistedTask]) -> u64 {
         task.status.hash(&mut hasher);
         task.updated_at.hash(&mut hasher);
         task.archived_at.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn archived_session_signature(
+    summaries: &[crate::db::task_queries::PersistedArchivedSessionSummary],
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for summary in summaries {
+        summary.session_key.hash(&mut hasher);
+        summary.session_id.hash(&mut hasher);
+        summary.started_at.hash(&mut hasher);
+        summary.ended_at.hash(&mut hasher);
+        summary.duration_ms.hash(&mut hasher);
+        summary.commit_count.hash(&mut hasher);
+        summary.file_count.hash(&mut hasher);
+        summary.sources.hash(&mut hasher);
+        summary.last_archived_at.hash(&mut hasher);
+        summary.enrichment_warnings.hash(&mut hasher);
     }
     hasher.finish()
 }

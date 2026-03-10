@@ -123,15 +123,17 @@
     return rel ? `Archived: ${reason} · ${rel}` : `Archived: ${reason}`
   }
 
-  async function fetchData(cancelledRef) {
+  async function fetchData(cancelledRef, { background = false } = {}) {
     try {
       const projectRef = projectId || projectPath
+      const showLoading = !background || sessions.length === 0
+      if (showLoading) loading = true
       const result = await getArchivedSessions(projectRef)
       if (cancelledRef.cancelled) return
       sessions = result.sessions || []
       dataErrors = result.errors || []
       expandedData = new Map()
-      loading = false
+      if (showLoading) loading = false
     } catch (e) {
       if (cancelledRef.cancelled) return
       dataErrors = [e.message || 'Failed to load session history']
@@ -144,26 +146,30 @@
     if (!projectPath || !isActive) return
     const cancelledRef = { cancelled: false }
     let destroyed = false
-    let unlisten = null
+    let unlisteners = []
     loading = true
-    fetchData(cancelledRef)
+    fetchData(cancelledRef, { background: false })
 
     const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (isTauriEnv) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         if (destroyed) return
-        listen('project-tasks-changed', (event) => {
+        const maybeRefresh = (event) => {
           const eventProjectId = event?.payload?.project_id ?? null
           const projectMatches = !projectId || !eventProjectId || eventProjectId === projectId
           if (!destroyed && document.visibilityState !== 'hidden' && projectMatches) {
-            fetchData(cancelledRef)
+            fetchData(cancelledRef, { background: true })
           }
-        }).then(fn => {
+        }
+        Promise.all([
+          listen('project-tasks-changed', maybeRefresh),
+          listen('project-task-history-changed', maybeRefresh),
+        ]).then((fns) => {
           if (destroyed) {
-            fn()
+            fns.forEach((fn) => fn())
             return
           }
-          unlisten = fn
+          unlisteners = fns
         })
       })
     }
@@ -171,10 +177,8 @@
     return () => {
       destroyed = true
       cancelledRef.cancelled = true
-      if (unlisten) {
-        unlisten()
-        unlisten = null
-      }
+      unlisteners.forEach((fn) => fn())
+      unlisteners = []
     }
   })
 </script>

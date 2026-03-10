@@ -100,7 +100,18 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
                 WHEN tasks.status != excluded.status THEN excluded.updated_at
                 ELSE tasks.state_changed_at
             END,
-            updated_at = excluded.updated_at,
+            updated_at = CASE
+                WHEN tasks.subject != excluded.subject
+                  OR tasks.description IS NOT excluded.description
+                  OR tasks.active_form IS NOT excluded.active_form
+                  OR tasks.status != excluded.status
+                  OR tasks.blocks != excluded.blocks
+                  OR tasks.blocked_by != excluded.blocked_by
+                  OR tasks.owner IS NOT excluded.owner
+                  OR tasks.session_id IS NOT excluded.session_id
+                THEN excluded.updated_at
+                ELSE tasks.updated_at
+            END,
             archived_at = NULL,
             last_status = excluded.status,
             archived_reason = NULL",
@@ -1086,6 +1097,28 @@ mod tests {
             Some("2026-02-22T10:10:00Z")
         );
         assert_eq!(tasks[0].last_status.as_deref(), Some("completed"));
+    }
+
+    #[test]
+    fn upsert_preserves_updated_at_when_material_fields_do_not_change() {
+        let (conn, _tmp) = test_db();
+
+        let mut task = make_task("claude", "1", "Task", "pending");
+        task.updated_at = "2026-02-22T10:00:00Z".to_string();
+        upsert_task(&conn, &task).unwrap();
+
+        task.updated_at = "2026-02-22T10:05:00Z".to_string();
+        upsert_task(&conn, &task).unwrap();
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks[0].updated_at, "2026-02-22T10:00:00Z");
+
+        task.subject = "Task renamed".to_string();
+        task.updated_at = "2026-02-22T10:10:00Z".to_string();
+        upsert_task(&conn, &task).unwrap();
+
+        let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(tasks[0].updated_at, "2026-02-22T10:10:00Z");
     }
 
     #[test]

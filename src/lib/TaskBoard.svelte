@@ -114,7 +114,7 @@
     let interval = null
 
     // Initial fetch only when tab is visible to avoid hidden background churn
-    if (isActive) fetchTasks()
+    if (isActive) fetchTasks({ background: false })
 
     // Event-driven updates in Tauri mode
     const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -124,7 +124,9 @@
         listen('project-tasks-changed', (event) => {
           const eventProjectId = event?.payload?.project_id ?? null
           const projectMatches = !projectId || !eventProjectId || eventProjectId === projectId
-          if (!destroyed && !document.hidden && isActive && projectMatches) fetchTasks()
+          if (!destroyed && !document.hidden && isActive && projectMatches) {
+            fetchTasks({ background: true })
+          }
         }).then(fn => {
           if (destroyed) {
             fn()
@@ -136,15 +138,16 @@
     } else {
       // Vite-only mode — poll for mock data
       interval = setInterval(() => {
-        if (!document.hidden && isActive) fetchTasks()
+        if (!document.hidden && isActive) fetchTasks({ background: true })
       }, 5000)
     }
 
-    async function fetchTasks() {
+    async function fetchTasks({ background = false } = {}) {
       const fetchSequence = taskListFetchGuard.next()
       const expectedProjectPath = projectPath
       const expectedProjectRef = projectRef
-      loading = true
+      const showLoading = !background || tasks.length === 0
+      if (showLoading) loading = true
       try {
         const result = await getProjectTasks(expectedProjectRef)
         if (
@@ -157,7 +160,7 @@
         }
         tasks = result.tasks || []
         errors = result.errors || []
-        loading = false
+        if (showLoading) loading = false
       } catch (e) {
         if (
           destroyed
@@ -168,7 +171,7 @@
           return
         }
         errors = [['fetch', e.message || 'Failed to load tasks']]
-        loading = false
+        if (showLoading) loading = false
       }
     }
 

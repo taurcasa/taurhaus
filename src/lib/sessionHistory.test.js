@@ -8,15 +8,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/svelte'
 
-const { eventListenMock, emitProjectTasksChanged } = vi.hoisted(() => {
-  let handler = null
+const { eventListenMock, emitProjectTasksChanged, emitProjectTaskHistoryChanged } = vi.hoisted(() => {
+  /** @type {{ event: string, handler: (event: any) => void }[]} */
+  let handlers = []
   return {
-    eventListenMock: vi.fn(async (_event, cb) => {
-      handler = cb
-      return () => {}
+    eventListenMock: vi.fn(async (event, cb) => {
+      handlers.push({ event, handler: cb })
+      return () => {
+        handlers = handlers.filter((entry) => entry.handler !== cb)
+      }
     }),
     emitProjectTasksChanged: (payload) => {
-      if (handler) handler({ payload })
+      handlers
+        .filter((entry) => entry.event === 'project-tasks-changed')
+        .forEach((entry) => entry.handler({ payload }))
+    },
+    emitProjectTaskHistoryChanged: (payload) => {
+      handlers
+        .filter((entry) => entry.event === 'project-task-history-changed')
+        .forEach((entry) => entry.handler({ payload }))
     },
   }
 })
@@ -341,6 +351,37 @@ describe('SessionHistory component', () => {
     emitProjectTasksChanged({ project_id: 'proj-1' })
     await waitFor(() => {
       expect(getArchivedSessions).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('re-fetches archived sessions on project-task-history-changed without showing the loading skeleton again', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    let resolveRefresh
+    const refreshPromise = new Promise((resolve) => {
+      resolveRefresh = resolve
+    })
+    getArchivedSessions
+      .mockResolvedValueOnce({ sessions: [makeSession()], errors: [] })
+      .mockReturnValueOnce(refreshPromise)
+
+    render(SessionHistory, { props: { projectPath: '/test', projectId: 'proj-1', isActive: true, dark: false } })
+    await waitFor(() => {
+      expect(screen.getByText('2 tasks')).toBeTruthy()
+      expect(eventListenMock).toHaveBeenCalled()
+    })
+
+    emitProjectTaskHistoryChanged({ project_id: 'proj-1' })
+    await waitFor(() => {
+      expect(getArchivedSessions).toHaveBeenCalledTimes(2)
+    })
+
+    expect(screen.queryByTestId('history-loading')).toBeNull()
+    expect(screen.getByText('2 tasks')).toBeTruthy()
+
+    resolveRefresh({ sessions: [makeSession({ commit_count: 9 })], errors: [] })
+
+    await waitFor(() => {
+      expect(screen.getByText('9 commits')).toBeTruthy()
     })
   })
 

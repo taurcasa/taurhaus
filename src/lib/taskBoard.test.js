@@ -9,6 +9,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/svelte'
 import { groupTasksByStatus, statusBadgeClass, statusLabel } from './taskHelpers.js'
 
+const { eventListenMock, emitProjectTasksChanged } = vi.hoisted(() => {
+  /** @type {{ event: string, handler: (event: any) => void }[]} */
+  let handlers = []
+  return {
+    eventListenMock: vi.fn(async (event, cb) => {
+      handlers.push({ event, handler: cb })
+      return () => {
+        handlers = handlers.filter((entry) => entry.handler !== cb)
+      }
+    }),
+    emitProjectTasksChanged: (payload) => {
+      handlers
+        .filter((entry) => entry.event === 'project-tasks-changed')
+        .forEach((entry) => entry.handler({ payload }))
+    },
+  }
+})
+
 // Mock markdown rendering (MarkdownRenderer depends on shiki/WASM)
 vi.mock('./markdown.js', () => ({
   renderMarkdown: vi.fn((source) => Promise.resolve(
@@ -86,6 +104,9 @@ vi.mock('./ipc.js', () => ({
   getTaskDetail: vi.fn(),
   getArchivedSessions: vi.fn(),
 }))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: eventListenMock,
+}))
 
 // Import the mocks after vi.mock so we can control return values
 const { getProjectTasks, getTaskDetail, getArchivedSessions } = await import('./ipc.js')
@@ -134,6 +155,7 @@ import TaskBoard from './TaskBoard.svelte'
 describe('TaskBoard component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete window.__TAURI_INTERNALS__
   })
 
   it('shows loading skeleton before data arrives', () => {
@@ -190,6 +212,41 @@ describe('TaskBoard component', () => {
     await waitFor(() => {
       expect(screen.getByText('Project B task')).toBeTruthy()
       expect(screen.queryByText('Project A task')).toBeNull()
+    })
+  })
+
+  it('keeps rendered tasks visible during background refresh triggered by task-change event', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    const deferred = createDeferred()
+    getProjectTasks
+      .mockResolvedValueOnce({
+        tasks: [makeTask({ id: '1', subject: 'Initial task', status: 'pending' })],
+        errors: [],
+      })
+      .mockReturnValueOnce(deferred.promise)
+
+    render(TaskBoard, { props: { projectPath: '/test', projectId: 'proj-1', dark: false } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Initial task')).toBeTruthy()
+      expect(eventListenMock).toHaveBeenCalled()
+    })
+
+    emitProjectTasksChanged({ project_id: 'proj-1' })
+    await waitFor(() => {
+      expect(getProjectTasks).toHaveBeenCalledTimes(2)
+    })
+
+    expect(screen.queryByTestId('tasks-loading')).toBeNull()
+    expect(screen.getByText('Initial task')).toBeTruthy()
+
+    deferred.resolve({
+      tasks: [makeTask({ id: '2', subject: 'Refreshed task', status: 'pending' })],
+      errors: [],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Refreshed task')).toBeTruthy()
     })
   })
 
