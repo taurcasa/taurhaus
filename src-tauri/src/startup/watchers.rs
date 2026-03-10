@@ -265,47 +265,6 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::should_watch_locally;
-
-    #[test]
-    fn local_watch_skips_wsl_paths_when_daemon_is_connected() {
-        assert!(!should_watch_locally(
-            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
-            true,
-            true
-        ));
-    }
-
-    #[test]
-    fn local_watch_skips_wsl_paths_while_waiting_for_wsl_daemon() {
-        assert!(!should_watch_locally(
-            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
-            false,
-            true
-        ));
-    }
-
-    #[test]
-    fn local_watch_allows_wsl_paths_only_when_no_daemon_path_exists() {
-        assert!(should_watch_locally(
-            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
-            false,
-            false
-        ));
-    }
-
-    #[test]
-    fn local_watch_allows_normal_local_projects() {
-        assert!(should_watch_locally(
-            r"C:\Users\mstie\projects\taurhaus",
-            false,
-            true
-        ));
-    }
-}
-
 fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
     let watcher_state = app.state::<WatcherState>();
     let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
@@ -374,5 +333,46 @@ fn ensure_tmux_focus_watch(app: &tauri::App, data_dir: &std::path::Path) {
             path = %focus_path.display(),
             "Watching tmux focus file"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_watch_locally;
+
+    #[test]
+    fn local_watch_skips_wsl_paths_when_daemon_is_connected() {
+        assert!(!should_watch_locally(
+            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn local_watch_skips_wsl_paths_while_waiting_for_wsl_daemon() {
+        assert!(!should_watch_locally(
+            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn local_watch_allows_wsl_paths_only_when_no_daemon_path_exists() {
+        assert!(should_watch_locally(
+            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn local_watch_allows_normal_local_projects() {
+        assert!(should_watch_locally(
+            r"C:\Users\mstie\projects\taurhaus",
+            false,
+            true
+        ));
     }
 }

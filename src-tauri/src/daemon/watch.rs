@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Instant;
 
 use ignore::gitignore::Gitignore;
@@ -62,7 +62,8 @@ pub(crate) fn handle_watch(
     }
 
     let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
-    let watcher_for_callback = watcher_slot.clone();
+    let watcher_for_callback: Weak<Mutex<Option<RecommendedWatcher>>> =
+        Arc::downgrade(&watcher_slot);
     let watched_dirs: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
     let watched_dirs_for_callback = watched_dirs.clone();
     let writer_clone = writer.clone();
@@ -73,12 +74,15 @@ pub(crate) fn handle_watch(
     let mut watcher = match RecommendedWatcher::new(
         move |res: Result<NotifyEvent, notify::Error>| match res {
             Ok(event) => {
+                let Some(watcher) = watcher_for_callback.upgrade() else {
+                    return;
+                };
                 forward_watch_event(
                     &writer_clone,
                     &watch_path,
                     &debounce_clone,
                     &gitignores_clone,
-                    &watcher_for_callback,
+                    &watcher,
                     &watched_dirs_for_callback,
                     event,
                 );
@@ -302,10 +306,12 @@ mod tests {
     use std::net::TcpListener;
     use std::time::Duration;
 
-    fn empty_watch_state() -> (
+    type TestWatchState = (
         Arc<Mutex<Option<RecommendedWatcher>>>,
         Arc<Mutex<HashSet<PathBuf>>>,
-    ) {
+    );
+
+    fn empty_watch_state() -> TestWatchState {
         (
             Arc::new(Mutex::new(None)),
             Arc::new(Mutex::new(HashSet::new())),

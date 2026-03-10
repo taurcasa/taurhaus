@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use ignore::gitignore::Gitignore;
@@ -122,6 +122,17 @@ pub(crate) enum WatchRegistration {
         path: PathBuf,
         watcher: RecommendedWatcher,
     },
+}
+
+#[derive(Clone)]
+struct NotifyEventContext {
+    tx: mpsc::Sender<WatchEvent>,
+    project_id: String,
+    project_root: PathBuf,
+    debounce: Arc<Mutex<HashMap<String, Instant>>>,
+    gitignores: Arc<Mutex<HashMap<String, Gitignore>>>,
+    watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
 }
 
 /// Build a `Gitignore` matcher from a project's `.gitignore` file.
@@ -554,21 +565,25 @@ impl ProjectWatcher {
         let watched_dirs = Arc::new(Mutex::new(HashSet::new()));
         let watched_dirs_for_callback = watched_dirs.clone();
         let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
-        let watcher_for_callback = watcher_slot.clone();
+        let watcher_for_callback: Weak<Mutex<Option<RecommendedWatcher>>> =
+            Arc::downgrade(&watcher_slot);
 
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    handle_notify_event(
-                        &tx,
-                        &pid,
-                        &root,
-                        &debounce,
-                        &gitignores,
-                        &watcher_for_callback,
-                        &watched_dirs_for_callback,
-                        event,
-                    );
+                    let Some(watcher) = watcher_for_callback.upgrade() else {
+                        return;
+                    };
+                    let context = NotifyEventContext {
+                        tx: tx.clone(),
+                        project_id: pid.clone(),
+                        project_root: root.clone(),
+                        debounce: debounce.clone(),
+                        gitignores: gitignores.clone(),
+                        watcher,
+                        watched_dirs: watched_dirs_for_callback.clone(),
+                    };
+                    handle_notify_event(&context, event);
                 }
             },
             Config::default().with_poll_interval(Duration::from_secs(2)),
@@ -717,79 +732,75 @@ impl ProjectWatcher {
 }
 
 /// Process a single notify event and emit classified WatchEvents.
-fn handle_notify_event(
-    tx: &mpsc::Sender<WatchEvent>,
-    project_id: &str,
-    project_root: &Path,
-    debounce: &Arc<Mutex<HashMap<String, Instant>>>,
-    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
-    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
-    watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
-    event: Event,
-) {
+fn handle_notify_event(context: &NotifyEventContext, event: Event) {
     if let Some(reason) = reconcile_watch_dirs_for_event(
-        project_id,
-        project_root,
-        gitignores,
-        watcher,
-        watched_dirs,
+        &context.project_id,
+        &context.project_root,
+        &context.gitignores,
+        &context.watcher,
+        &context.watched_dirs,
         &event,
     ) {
-        emit_watch_local_reconciled(project_id, project_root, reason.1, reason.0);
+        emit_watch_local_reconciled(
+            &context.project_id,
+            &context.project_root,
+            reason.1,
+            reason.0,
+        );
     }
 
     let classified = classify_notify_event(
-        project_id,
-        project_root,
+        &context.project_id,
+        &context.project_root,
         GIT_DEBOUNCE_SECS,
-        debounce,
-        gitignores,
+        &context.debounce,
+        &context.gitignores,
         &event,
         false,
     );
 
     if classified.emit_git_changed {
         send_watch_event(
-            tx,
+            &context.tx,
             WatchEvent::GitChanged {
-                project_id: project_id.to_string(),
+                project_id: context.project_id.clone(),
             },
-            project_id,
+            &context.project_id,
             "git_changed",
         );
     }
 
     for path in classified.session_files {
         send_watch_event(
-            tx,
+            &context.tx,
             WatchEvent::SessionFileCreated {
-                project_id: project_id.to_string(),
+                project_id: context.project_id.clone(),
                 path,
             },
-            project_id,
+            &context.project_id,
             "session_file_created",
         );
     }
 
     if classified.gitignore_changed {
         send_watch_event(
-            tx,
+            &context.tx,
             WatchEvent::GitignoreChanged {
-                project_id: project_id.to_string(),
+                project_id: context.project_id.clone(),
             },
-            project_id,
+            &context.project_id,
             "gitignore_changed",
         );
     }
 
     if !classified.regular_files.is_empty() {
         send_watch_event(
-            tx,
+            &context.tx,
             WatchEvent::FileChanged {
-                project_id: project_id.to_string(),
+                project_id: context.project_id.clone(),
                 paths: classified.regular_files,
             },
-            project_id,
+            &context.project_id,
             "file_changed",
         );
     }
@@ -841,6 +852,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
+    type TestWatchState = (
+        Arc<Mutex<Option<RecommendedWatcher>>>,
+        Arc<Mutex<HashSet<PathBuf>>>,
+    );
+
     fn root() -> PathBuf {
         PathBuf::from("/home/user/projects/taurhaus")
     }
@@ -849,14 +865,31 @@ mod tests {
         Arc::new(Mutex::new(HashMap::new()))
     }
 
-    fn empty_tree_watch_state() -> (
-        Arc<Mutex<Option<RecommendedWatcher>>>,
-        Arc<Mutex<HashSet<PathBuf>>>,
-    ) {
+    fn empty_tree_watch_state() -> TestWatchState {
         (
             Arc::new(Mutex::new(None)),
             Arc::new(Mutex::new(HashSet::new())),
         )
+    }
+
+    fn test_notify_context(
+        tx: &mpsc::Sender<WatchEvent>,
+        project_id: &str,
+        project_root: &Path,
+        debounce: &Arc<Mutex<HashMap<String, Instant>>>,
+        gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
+        watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+        watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
+    ) -> NotifyEventContext {
+        NotifyEventContext {
+            tx: tx.clone(),
+            project_id: project_id.to_string(),
+            project_root: project_root.to_path_buf(),
+            debounce: debounce.clone(),
+            gitignores: gitignores.clone(),
+            watcher: watcher.clone(),
+            watched_dirs: watched_dirs.clone(),
+        }
     }
 
     fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
@@ -1059,26 +1092,10 @@ mod tests {
         };
 
         let gis = empty_gitignores();
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event1.clone(),
-        );
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event1,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event1.clone());
+        handle_notify_event(&context, event1);
 
         // Should only receive one event (second is debounced)
         let first = rx.try_recv();
@@ -1103,16 +1120,9 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -1140,16 +1150,9 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -1175,16 +1178,9 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
 
         assert!(rx.try_recv().is_err(), "Access events should be ignored");
     }
@@ -1224,16 +1220,9 @@ mod tests {
             paths: vec![root.join("output/images/test.png")],
             attrs: Default::default(),
         };
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
         assert!(
             rx.try_recv().is_err(),
             "gitignored output/ file should not emit event"
@@ -1247,16 +1236,9 @@ mod tests {
             paths: vec![root.join("server.log")],
             attrs: Default::default(),
         };
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
         assert!(
             rx.try_recv().is_err(),
             "gitignored *.log file should not emit event"
@@ -1270,16 +1252,9 @@ mod tests {
             paths: vec![root.join("queue/data.db-wal")],
             attrs: Default::default(),
         };
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
         assert!(
             rx.try_recv().is_err(),
             "gitignored db-wal file should not emit event"
@@ -1293,16 +1268,9 @@ mod tests {
             paths: vec![root.join("src/main.rs")],
             attrs: Default::default(),
         };
-        handle_notify_event(
-            &tx,
-            "p1",
-            &root,
-            &debounce,
-            &gis,
-            &watcher,
-            &watched_dirs,
-            event,
-        );
+        let context =
+            test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
+        handle_notify_event(&context, event);
         let received = rx.try_recv();
         assert!(
             received.is_ok(),
@@ -1498,7 +1466,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        handle_notify_event(
+        let context = test_notify_context(
             &tx,
             "p-drop",
             &project_root,
@@ -1506,8 +1474,8 @@ mod tests {
             &gis,
             &watcher,
             &watched_dirs,
-            event,
         );
+        handle_notify_event(&context, event);
 
         let lines = wait_for_lines(&log_path, 1);
         let dropped: serde_json::Value = serde_json::from_str(&lines[0]).expect("json");
