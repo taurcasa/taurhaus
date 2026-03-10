@@ -297,6 +297,164 @@ End-to-end hook bridge latency: about `241ms`.
 - **Claude hook delivery:** working
 - **Overall:** the pipeline is real and functional, but still not reliable enough to call fully solved
 
+## Claude Code Compaction Reinjection Audit
+
+This section narrows the audit to the Claude-only `SessionStart(source=compact)` hook path.
+
+### Hook installation state
+
+Current hook configuration is present and points to the Linux/WSL wrapper:
+
+- `~/.claude/settings.json`
+  - `matcher: "compact"`
+  - `command: bash '/home/mstie/.claude/hooks/taurhaus-session-start-compact.sh'`
+- wrapper files present:
+  - `~/.claude/hooks/taurhaus-session-start-compact.sh`
+  - `~/.claude/hooks/taurhaus-session-start-compact.cmd`
+
+So the current production issue is **not** missing hook registration.
+
+### Live Claude-side firing evidence
+
+Claude's own filesystem evidence shows real recent compact hooks firing.
+
+#### taurhaus-team / team-lead
+
+Claude debug log:
+
+- `2026-03-09T20:23:31.673Z` `Getting matching hook commands for SessionStart with query: compact`
+- `2026-03-09T20:23:31.935Z` `Hook SessionStart:compact (SessionStart) success`
+- `2026-03-09T23:03:13.694Z` `Getting matching hook commands for SessionStart with query: compact`
+- `2026-03-09T23:03:13.884Z` `Hook SessionStart:compact (SessionStart) success`
+- `2026-03-10T13:07:05.838Z` `Getting matching hook commands for SessionStart with query: compact`
+- `2026-03-10T13:07:06.076Z` `Hook SessionStart:compact (SessionStart) success`
+
+Matching session file evidence:
+
+- `~/.claude/projects/-home-mstie-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
+  - `2026-03-09T20:23:31.674Z` hook progress
+  - `2026-03-09T20:23:31.936Z` `compact_boundary`
+  - `2026-03-09T23:03:13.695Z` hook progress
+  - `2026-03-09T23:03:13.884Z` `compact_boundary`
+  - `2026-03-10T13:07:05.839Z` hook progress
+  - `2026-03-10T13:07:06.077Z` `compact_boundary`
+
+#### 2ksim-team / design-2ksim
+
+Session file:
+
+- `~/.claude/projects/-home-mstie-projects-2ksim/63f01756-fb15-4ba7-9d26-fb6cdf39f614.jsonl`
+  - `2026-03-10T13:57:19.457Z` hook progress
+  - `2026-03-10T13:57:19.670Z` `compact_boundary`
+
+#### 2ksim-team / product-check-1
+
+Session file:
+
+- `~/.claude/projects/-home-mstie-projects-2ksim/40b23d64-5b86-4eae-ac97-0f98d3ef3b87.jsonl`
+  - `2026-03-10T13:47:26.864Z` hook progress
+  - `2026-03-10T13:47:27.088Z` `compact_boundary`
+
+Conclusion:
+
+- recent Claude compactions are definitely happening
+- the compact hook is definitely being launched by Claude
+- the problem is downstream of hook launch
+
+### Taurhaus bridge reception and delivery
+
+The Windows app log proves two earlier successful hook deliveries for `taurhaus-team/team-lead`:
+
+- `2026-03-09T20:58:00.079Z` `compaction.claude_hook.received`
+- `2026-03-09T20:58:00.165Z` `compaction.claude_hook.resolved`
+- `2026-03-09T20:58:00.320Z` `compaction.injected`
+- `2026-03-09T20:58:00.320Z` `compaction.claude_hook.delivered`
+
+and again:
+
+- `2026-03-09T20:58:11.761Z` `compaction.claude_hook.received`
+- `2026-03-09T20:58:11.826Z` `compaction.claude_hook.resolved`
+- `2026-03-09T20:58:11.991Z` `compaction.injected`
+- `2026-03-09T20:58:11.991Z` `compaction.claude_hook.delivered`
+
+So the bridge can work end-to-end.
+
+### Current live failure mode
+
+More recent app-log evidence shows the bridge failing during payload parsing:
+
+- `2026-03-09T23:03:13.868Z` `compaction.claude_hook.failed`
+- `2026-03-10T13:07:06.062Z` `compaction.claude_hook.failed`
+- `2026-03-10T13:47:27.072Z` `compaction.claude_hook.failed`
+- `2026-03-10T13:57:19.652Z` `compaction.claude_hook.failed`
+
+All four failures share the same signature:
+
+- `failure_stage: parse_payload`
+- `error.message: missing field 'hookEventName'`
+
+This materially changes the earlier conclusion.
+
+What Claude's debug log calls `Hook SessionStart:compact ... success` means:
+
+- the external hook command executed successfully from Claude's perspective
+
+It does **not** mean:
+
+- Taurhaus parsed the payload successfully
+- Taurhaus resolved the member
+- Taurhaus returned usable `additionalContext`
+
+For the recent failing cases, Claude launched the hook correctly, but Taurhaus failed inside the bridge before `received -> resolved -> delivered` could complete.
+
+### 2ksim-specific attachment gap
+
+There is a second real issue in `2ksim-team`: stale Claude runtime attachment.
+
+Current runtime records still point both Claude members at the old March 8 session:
+
+- `~/.claude/teams/2ksim-team/runtime/design-2ksim.json`
+  - `session_id: 3eccf69f-cfaf-49e0-a666-8f4932545abe`
+- `~/.claude/teams/2ksim-team/runtime/product-check-1.json`
+  - `session_id: 3eccf69f-cfaf-49e0-a666-8f4932545abe`
+
+But the actual live Claude sessions producing today's compactions are:
+
+- `design-2ksim`
+  - `session_id: 63f01756-fb15-4ba7-9d26-fb6cdf39f614`
+- `product-check-1`
+  - `session_id: 40b23d64-5b86-4eae-ac97-0f98d3ef3b87`
+
+So for `2ksim-team`, even after the parse bug is fixed, Claude member resolution is still structurally at risk until runtime attachment is updated to the current session IDs.
+
+### Claude reliability vs Codex reliability
+
+Compared with Codex:
+
+- Codex currently has stronger production observability end-to-end
+- Claude currently has a cleaner native transport concept, but a more fragile bridge boundary
+
+Current Claude-state summary:
+
+- hook installed: **yes**
+- hook launched by Claude: **yes**
+- known-good historical Taurhaus delivery: **yes**
+- recent production hook fires delivered successfully: **no clear evidence**
+- recent production hook fires failing in Taurhaus parse stage: **yes**
+- `2ksim-team` runtime attachment current for Claude members: **no**
+
+### Claude-path conclusion
+
+The correct current conclusion is not "Claude is healthy."
+
+It is:
+
+- the Claude compact hook mechanism is firing
+- Taurhaus has proven it can deliver Claude compaction context
+- but the **current live Claude path is only partially healthy**
+- recent hook invocations are failing at Taurhaus payload parsing
+- and `2ksim-team` also has stale Claude runtime attachment that would weaken member resolution even after parsing is repaired
+
 ## Last-Hour 2ksim-team Focus
 
 Window used for this addendum:
