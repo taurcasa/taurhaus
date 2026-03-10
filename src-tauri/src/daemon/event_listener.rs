@@ -163,6 +163,84 @@ impl DaemonEventListener {
         Ok(())
     }
 
+    pub fn unwatch(&mut self, linux_path: &str) -> Result<(), AppError> {
+        let id = format!("eu{}", self.next_id);
+        self.next_id += 1;
+        let handshake_timeout = watch_handshake_timeout();
+
+        let request = DaemonRequest::new(
+            &id,
+            protocol::method::UNWATCH,
+            protocol::PathParams {
+                path: linux_path.to_string(),
+            },
+        )
+        .with_auth(self.auth_token.clone());
+
+        let json = serde_json::to_string(&request)
+            .map_err(|e| AppError::InvalidPath(format!("Serialize unwatch request failed: {e}")))?;
+        self.stream
+            .write_all(json.as_bytes())
+            .map_err(AppError::Io)?;
+        self.stream.write_all(b"\n").map_err(AppError::Io)?;
+        self.stream.flush().map_err(AppError::Io)?;
+        self.stream
+            .set_read_timeout(Some(handshake_timeout))
+            .map_err(|error| {
+                AppError::Io(std::io::Error::new(
+                    error.kind(),
+                    format!("Set unwatch handshake timeout failed for path {linux_path}: {error}"),
+                ))
+            })?;
+
+        let mut line = String::new();
+        let response: DaemonResponse = loop {
+            line.clear();
+            self.reader.read_line(&mut line).map_err(|error| {
+                AppError::Io(std::io::Error::new(
+                    error.kind(),
+                    format!(
+                        "Read unwatch response failed for path {linux_path} within {}s: {error}",
+                        handshake_timeout.as_secs()
+                    ),
+                ))
+            })?;
+            match serde_json::from_str::<DaemonMessage>(line.trim()) {
+                Ok(DaemonMessage::Response(r)) => break r,
+                Ok(DaemonMessage::Event(event)) => self.handle_event(event),
+                Err(e) => {
+                    return Err(AppError::InvalidPath(format!(
+                        "Parse unwatch response failed: {e}"
+                    )));
+                }
+            }
+        };
+        self.stream.set_read_timeout(None).map_err(|error| {
+            AppError::Io(std::io::Error::new(
+                error.kind(),
+                format!("Reset unwatch handshake timeout failed for {linux_path}: {error}"),
+            ))
+        })?;
+
+        if !response.is_ok() {
+            return Err(AppError::InvalidPath(format!(
+                "Daemon unwatch failed: {}",
+                response
+                    .error
+                    .map(|e| e.message)
+                    .unwrap_or_else(|| "unknown".into())
+            )));
+        }
+
+        let canonical = std::path::Path::new(linux_path)
+            .canonicalize()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| linux_path.to_string());
+        self.path_to_project.remove(&canonical);
+        tracing::info!(linux_path, "Daemon watch unregistered");
+        Ok(())
+    }
+
     /// Run the event loop. Blocks until the connection drops.
     ///
     /// Call this on a background thread after all `watch()` calls are done.
@@ -174,6 +252,41 @@ impl DaemonEventListener {
     /// Run the event loop until the connection drops or `stop_signal` is set.
     pub fn run_until_stopped(self, stop_signal: Arc<AtomicBool>) {
         self.run_inner(Some(stop_signal));
+    }
+
+    pub fn pump_once(&mut self, timeout: Duration) -> Result<bool, AppError> {
+        self.stream
+            .set_read_timeout(Some(timeout))
+            .map_err(|error| {
+                AppError::Io(std::io::Error::new(
+                    error.kind(),
+                    format!("Failed to set daemon event listener timeout: {error}"),
+                ))
+            })?;
+
+        let mut line = String::new();
+        let outcome = match self.reader.read_line(&mut line) {
+            Ok(0) => Ok(false),
+            Ok(_) => {
+                self.handle_line(&line);
+                Ok(true)
+            }
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                Ok(true)
+            }
+            Err(error) => Err(AppError::Io(error)),
+        };
+
+        self.stream.set_read_timeout(None).map_err(|error| {
+            AppError::Io(std::io::Error::new(
+                error.kind(),
+                format!("Failed to clear daemon event listener timeout: {error}"),
+            ))
+        })?;
+        outcome
     }
 
     fn run_inner(mut self, stop_signal: Option<Arc<AtomicBool>>) {

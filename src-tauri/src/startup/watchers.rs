@@ -40,54 +40,7 @@ pub(crate) fn initialize(
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (watcher, rx) = crate::fs::watcher::ProjectWatcher::new();
-    let event_tx = watcher.event_sender();
     app.manage(WatcherState(Mutex::new(watcher)));
-
-    if context.daemon_connected_at_startup {
-        if let Some(daemon_addr) = context.daemon_addr.clone() {
-            let distro = context.wsl_distro.clone();
-            let event_tx_clone = event_tx.clone();
-            let db_state = app.state::<DbState>();
-            let db_projects_guard = db_state.0.lock().unwrap_or_else(|error| {
-                tracing::warn!(
-                    error = %error,
-                    "DB lock poisoned while collecting projects for daemon watch bootstrap; recovering"
-                );
-                error.into_inner()
-            });
-            let db_projects =
-                db::queries::list_projects(&db_projects_guard).unwrap_or_else(|error| {
-                    tracing::warn!(
-                        error = %error,
-                        "Failed to list projects for daemon watch bootstrap"
-                    );
-                    Vec::new()
-                });
-            let thresholds = settings_queries::get_all_settings(&db_projects_guard)
-                .map(|settings| settings.thresholds)
-                .unwrap_or_else(|error| {
-                    tracing::warn!(
-                        error = %error,
-                        "Failed to load activity thresholds for daemon watch bootstrap; using defaults"
-                    );
-                    ActivityThresholds::default()
-                });
-
-            std::thread::spawn(move || {
-                daemon_lifecycle::start_daemon_watches(
-                    daemon_addr,
-                    event_tx_clone,
-                    distro,
-                    db_projects,
-                    thresholds,
-                );
-            });
-        } else {
-            tracing::warn!(
-                "Daemon reported as connected at startup but daemon address was missing; skipping daemon watch bootstrap"
-            );
-        }
-    }
 
     let handle = app.handle().clone();
     std::thread::spawn(move || {

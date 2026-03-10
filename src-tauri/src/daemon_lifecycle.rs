@@ -1,5 +1,6 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::collections::HashMap;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
 
 use tauri::{AppHandle, Emitter, Manager};
@@ -56,7 +57,7 @@ fn normalize_sessions_for_frontend(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct DaemonWatchTarget {
     project_id: String,
     project_name: String,
@@ -77,13 +78,25 @@ impl DaemonWatchPlan {
 
 #[derive(Default)]
 struct DaemonWatchRuntime {
-    plan: Option<DaemonWatchPlan>,
-    stop_signal: Option<Arc<AtomicBool>>,
-    listener_thread: Option<JoinHandle<()>>,
+    command_tx: Option<Sender<DaemonWatchCommand>>,
+    owner_thread: Option<JoinHandle<()>>,
 }
 
 static DAEMON_WATCH_RUNTIME: LazyLock<Mutex<DaemonWatchRuntime>> =
     LazyLock::new(|| Mutex::new(DaemonWatchRuntime::default()));
+
+#[derive(Debug)]
+enum DaemonWatchCommand {
+    ApplyPlan {
+        daemon_addr: String,
+        event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
+        desired_plan: DaemonWatchPlan,
+        reason: String,
+    },
+    Shutdown {
+        reason: String,
+    },
+}
 
 fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde_json::Value) {
     if let Err(error) = app.emit(event_name, payload) {
@@ -146,8 +159,235 @@ fn build_daemon_watch_plan(
     build_daemon_watch_plan_at(projects, thresholds, chrono::Utc::now())
 }
 
+fn watch_targets_by_path(targets: &[DaemonWatchTarget]) -> HashMap<String, DaemonWatchTarget> {
+    targets
+        .iter()
+        .cloned()
+        .map(|target| (target.linux_path.clone(), target))
+        .collect()
+}
+
+fn apply_plan_to_listener(
+    listener: &mut daemon::event_listener::DaemonEventListener,
+    active_plan: &mut DaemonWatchPlan,
+    desired_plan: &DaemonWatchPlan,
+    reason: &str,
+) -> Result<(), crate::errors::AppError> {
+    let active_targets = watch_targets_by_path(&active_plan.project_targets);
+    let desired_targets = watch_targets_by_path(&desired_plan.project_targets);
+
+    for (linux_path, active_target) in &active_targets {
+        let should_keep = desired_targets
+            .get(linux_path)
+            .is_some_and(|desired_target| desired_target == active_target);
+        if should_keep {
+            continue;
+        }
+        listener.unwatch(linux_path)?;
+        tracing::info!(
+            project = active_target.project_name,
+            reason,
+            "Removed daemon watch subscription"
+        );
+    }
+
+    if active_plan.claude_tasks_dir != desired_plan.claude_tasks_dir {
+        if let Some(claude_tasks_dir) = active_plan.claude_tasks_dir.as_ref() {
+            listener.unwatch(claude_tasks_dir)?;
+            tracing::info!(
+                path = %claude_tasks_dir,
+                reason,
+                "Stopped watching Claude tasks directory (daemon)"
+            );
+        }
+    }
+
+    let mut next_project_targets = Vec::new();
+    for target in &desired_plan.project_targets {
+        let already_active = active_targets
+            .get(&target.linux_path)
+            .is_some_and(|active_target| active_target == target);
+        if !already_active {
+            listener.watch(&target.project_id, &target.linux_path)?;
+            tracing::info!(
+                project = target.project_name,
+                reason,
+                "Registered daemon watch"
+            );
+        }
+        next_project_targets.push(target.clone());
+    }
+
+    let mut next_claude_tasks_dir = None;
+    if let Some(claude_tasks_dir) = desired_plan.claude_tasks_dir.as_ref() {
+        if active_plan.claude_tasks_dir.as_ref() != Some(claude_tasks_dir) {
+            listener.watch(CLAUDE_TASKS_PROJECT_ID, claude_tasks_dir)?;
+            tracing::info!(
+                path = %claude_tasks_dir,
+                reason,
+                "Watching Claude tasks directory (daemon)"
+            );
+        }
+        next_claude_tasks_dir = Some(claude_tasks_dir.clone());
+    }
+
+    *active_plan = DaemonWatchPlan {
+        project_targets: next_project_targets,
+        claude_tasks_dir: next_claude_tasks_dir,
+    };
+
+    Ok(())
+}
+
+fn handle_daemon_watch_command(
+    command: DaemonWatchCommand,
+    listener: &mut Option<daemon::event_listener::DaemonEventListener>,
+    active_plan: &mut DaemonWatchPlan,
+    current_addr: &mut Option<String>,
+) -> bool {
+    match command {
+        DaemonWatchCommand::Shutdown { reason } => {
+            tracing::info!(reason, "Shutting down daemon watch owner");
+            false
+        }
+        DaemonWatchCommand::ApplyPlan {
+            daemon_addr,
+            event_tx,
+            desired_plan,
+            reason,
+        } => {
+            if desired_plan.is_empty() {
+                *listener = None;
+                *active_plan = DaemonWatchPlan::default();
+                *current_addr = None;
+                return true;
+            }
+
+            let reconnect_needed =
+                listener.is_none() || current_addr.as_deref() != Some(daemon_addr.as_str());
+            if reconnect_needed {
+                *listener = match daemon::event_listener::DaemonEventListener::connect(
+                    &daemon_addr,
+                    event_tx,
+                ) {
+                    Ok(listener) => Some(listener),
+                    Err(error) => {
+                        tracing::warn!(
+                            error = %error,
+                            reason,
+                            "Failed to connect daemon event listener for watch owner"
+                        );
+                        *active_plan = DaemonWatchPlan::default();
+                        *current_addr = None;
+                        None
+                    }
+                };
+
+                if listener.is_some() {
+                    *current_addr = Some(daemon_addr);
+                }
+            }
+
+            let Some(listener_ref) = listener.as_mut() else {
+                return true;
+            };
+            if let Err(error) =
+                apply_plan_to_listener(listener_ref, active_plan, &desired_plan, &reason)
+            {
+                tracing::warn!(
+                    error = %error,
+                    reason,
+                    "Failed to apply daemon watch plan; dropping listener state"
+                );
+                *listener = None;
+                *active_plan = DaemonWatchPlan::default();
+                *current_addr = None;
+            }
+            true
+        }
+    }
+}
+
+fn daemon_watch_owner_loop(rx: Receiver<DaemonWatchCommand>) {
+    let mut listener: Option<daemon::event_listener::DaemonEventListener> = None;
+    let mut active_plan = DaemonWatchPlan::default();
+    let mut current_addr: Option<String> = None;
+
+    loop {
+        while let Ok(command) = rx.try_recv() {
+            if !handle_daemon_watch_command(
+                command,
+                &mut listener,
+                &mut active_plan,
+                &mut current_addr,
+            ) {
+                return;
+            }
+        }
+
+        if listener.is_none() {
+            match rx.recv() {
+                Ok(command) => {
+                    if !handle_daemon_watch_command(
+                        command,
+                        &mut listener,
+                        &mut active_plan,
+                        &mut current_addr,
+                    ) {
+                        return;
+                    }
+                }
+                Err(_) => return,
+            }
+            continue;
+        }
+
+        match listener
+            .as_mut()
+            .expect("listener must exist when owner loop pumps")
+            .pump_once(std::time::Duration::from_millis(250))
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!("Daemon watch owner lost event listener connection");
+                listener = None;
+                active_plan = DaemonWatchPlan::default();
+                current_addr = None;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Daemon watch owner poll failed; dropping listener state"
+                );
+                listener = None;
+                active_plan = DaemonWatchPlan::default();
+                current_addr = None;
+            }
+        }
+    }
+}
+
+fn ensure_daemon_watch_owner() -> Sender<DaemonWatchCommand> {
+    let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
+        tracing::warn!(
+            error = %error,
+            "Daemon watch runtime lock poisoned while ensuring owner; recovering"
+        );
+        error.into_inner()
+    });
+    if let Some(sender) = runtime.command_tx.as_ref() {
+        return sender.clone();
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let owner_thread = std::thread::spawn(move || daemon_watch_owner_loop(rx));
+    runtime.command_tx = Some(tx.clone());
+    runtime.owner_thread = Some(owner_thread);
+    tx
+}
+
 fn stop_daemon_watch_runtime(reason: &str) {
-    let (stop_signal, listener_thread) = {
+    let (command_tx, owner_thread) = {
         let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
             tracing::warn!(
                 error = %error,
@@ -156,19 +396,17 @@ fn stop_daemon_watch_runtime(reason: &str) {
             );
             error.into_inner()
         });
-        runtime.plan = None;
-        (runtime.stop_signal.take(), runtime.listener_thread.take())
+        (runtime.command_tx.take(), runtime.owner_thread.take())
     };
 
-    if let Some(signal) = stop_signal {
-        signal.store(true, Ordering::Relaxed);
+    if let Some(command_tx) = command_tx {
+        let _ = command_tx.send(DaemonWatchCommand::Shutdown {
+            reason: reason.to_string(),
+        });
     }
-    if let Some(listener_thread) = listener_thread {
-        if listener_thread.join().is_err() {
-            tracing::warn!(
-                reason,
-                "daemon watch listener thread panicked while stopping"
-            );
+    if let Some(owner_thread) = owner_thread {
+        if owner_thread.join().is_err() {
+            tracing::warn!(reason, "daemon watch owner thread panicked while stopping");
         }
     }
 }
@@ -176,137 +414,16 @@ fn stop_daemon_watch_runtime(reason: &str) {
 fn apply_daemon_watch_plan(
     daemon_addr: String,
     event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
-    wsl_distro: Option<String>,
     desired_plan: DaemonWatchPlan,
     reason: &str,
-    force_restart: bool,
 ) {
-    let unchanged = {
-        let runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
-            tracing::warn!(
-                error = %error,
-                reason,
-                "Daemon watch runtime lock poisoned while checking watch plan; recovering"
-            );
-            error.into_inner()
-        });
-        !force_restart
-            && runtime
-                .plan
-                .as_ref()
-                .is_some_and(|current| current == &desired_plan)
-    };
-    if unchanged {
-        return;
-    }
-
-    stop_daemon_watch_runtime(reason);
-
-    if desired_plan.is_empty() {
-        return;
-    }
-
-    let mut listener =
-        match daemon::event_listener::DaemonEventListener::connect(&daemon_addr, event_tx) {
-            Ok(listener) => listener,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    reason,
-                    "Failed to connect daemon event listener for reconciliation"
-                );
-                return;
-            }
-        };
-
-    let mut watched_project_count = 0usize;
-    for target in &desired_plan.project_targets {
-        if let Err(error) = listener.watch(&target.project_id, &target.linux_path) {
-            tracing::warn!(
-                project = target.project_name,
-                error = %error,
-                reason,
-                "Failed to register daemon watch"
-            );
-        } else {
-            watched_project_count += 1;
-        }
-    }
-
-    if let Some(claude_tasks_dir) = desired_plan.claude_tasks_dir.as_ref() {
-        if let Err(error) = listener.watch(CLAUDE_TASKS_PROJECT_ID, claude_tasks_dir) {
-            tracing::debug!(
-                error = %error,
-                path = %claude_tasks_dir,
-                reason,
-                "Could not watch Claude tasks directory (daemon)"
-            );
-        } else {
-            tracing::info!(
-                path = %claude_tasks_dir,
-                reason,
-                "Watching Claude tasks directory (daemon)"
-            );
-        }
-    }
-
-    if watched_project_count == 0 && desired_plan.claude_tasks_dir.is_none() {
-        return;
-    }
-
-    let stop_signal = Arc::new(AtomicBool::new(false));
-    {
-        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
-            tracing::warn!(
-                error = %error,
-                reason,
-                "Daemon watch runtime lock poisoned while storing watch plan; recovering"
-            );
-            error.into_inner()
-        });
-        runtime.plan = Some(desired_plan.clone());
-        runtime.stop_signal = Some(stop_signal.clone());
-    }
-
-    tracing::info!(
-        watched = watched_project_count,
-        reason,
-        distro = ?wsl_distro,
-        "Daemon watching WSL projects"
-    );
-
-    let listener_thread = std::thread::spawn(move || {
-        listener.run_until_stopped(stop_signal.clone());
-
-        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
-            tracing::warn!(
-                error = %error,
-                "Daemon watch runtime lock poisoned while clearing exited listener; recovering"
-            );
-            error.into_inner()
-        });
-        if runtime
-            .stop_signal
-            .as_ref()
-            .is_some_and(|current| Arc::ptr_eq(current, &stop_signal))
-        {
-            runtime.plan = None;
-            runtime.stop_signal = None;
-            runtime.listener_thread = None;
-        }
+    let command_tx = ensure_daemon_watch_owner();
+    let _ = command_tx.send(DaemonWatchCommand::ApplyPlan {
+        daemon_addr,
+        event_tx,
+        desired_plan,
+        reason: reason.to_string(),
     });
-
-    {
-        let mut runtime = DAEMON_WATCH_RUNTIME.lock().unwrap_or_else(|error| {
-            tracing::warn!(
-                error = %error,
-                reason,
-                "Daemon watch runtime lock poisoned while storing listener handle; recovering"
-            );
-            error.into_inner()
-        });
-        runtime.listener_thread = Some(listener_thread);
-    }
 }
 
 pub(crate) fn reconcile_daemon_activity_watches(
@@ -315,7 +432,7 @@ pub(crate) fn reconcile_daemon_activity_watches(
     thresholds: &models::ActivityThresholds,
     reason: &str,
 ) {
-    let (daemon_addr, distro) = {
+    let daemon_addr = {
         let provider_state = app.state::<ProviderState>();
         let Some(ref daemon) = provider_state.daemon else {
             stop_daemon_watch_runtime(reason);
@@ -325,7 +442,7 @@ pub(crate) fn reconcile_daemon_activity_watches(
             stop_daemon_watch_runtime(reason);
             return;
         }
-        (daemon.addr().to_string(), provider_state.wsl_distro.clone())
+        daemon.addr().to_string()
     };
 
     let event_tx = {
@@ -345,55 +462,14 @@ pub(crate) fn reconcile_daemon_activity_watches(
     };
 
     let desired_plan = build_daemon_watch_plan(projects, thresholds);
-    apply_daemon_watch_plan(daemon_addr, event_tx, distro, desired_plan, reason, false);
-}
-
-/// Start daemon event listener for WSL projects.
-///
-/// Opens a dedicated TCP connection to the daemon, sends `watch` commands for
-/// currently active/recent WSL projects, then spawns the listener event loop.
-/// Events are forwarded to the shared watcher channel, where
-/// `process_watch_events` handles them identically to local watcher events.
-///
-/// On macOS/Linux (native daemon), this is a no-op — all project paths are local
-/// and the local watcher handles them. The function still runs for consistency
-/// but registers zero watches and exits immediately.
-pub(crate) fn start_daemon_watches(
-    daemon_addr: String,
-    event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
-    wsl_distro: Option<String>,
-    projects: Vec<models::Project>,
-    thresholds: models::ActivityThresholds,
-) {
-    let plan = build_daemon_watch_plan(&projects, &thresholds);
-    apply_daemon_watch_plan(daemon_addr, event_tx, wsl_distro, plan, "bootstrap", true);
+    apply_daemon_watch_plan(daemon_addr, event_tx, desired_plan, reason);
 }
 
 /// Re-register all daemon watches after a reconnection.
 ///
-/// Spawns a new `start_daemon_watches` thread using current project list from DB.
-/// The old event listener thread has already exited (daemon connection was lost),
-/// so this creates a fresh TCP connection for the event stream.
+/// Recomputes the desired watch plan and applies it through the single daemon
+/// watch owner. The old event listener state will reconnect in place.
 pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
-    let provider_state = app.state::<ProviderState>();
-    let Some(ref daemon) = provider_state.daemon else {
-        return;
-    };
-    let daemon_addr = daemon.addr().to_string();
-    let distro = provider_state.wsl_distro.clone();
-
-    let watcher_state = app.state::<WatcherState>();
-    let event_tx = match watcher_state.0.lock() {
-        Ok(w) => w.event_sender(),
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "Failed to respawn daemon watches: watcher lock poisoned"
-            );
-            return;
-        }
-    };
-
     let db_state = app.state::<commands::projects::DbState>();
     let projects = match db_state.0.lock() {
         Ok(conn) => {
@@ -434,9 +510,7 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
         "Re-registering daemon watches after reconnection"
     );
 
-    std::thread::spawn(move || {
-        start_daemon_watches(daemon_addr, event_tx, distro, projects, thresholds);
-    });
+    reconcile_daemon_activity_watches(app, &projects, &thresholds, "reconnect");
 
     // Also re-scan sessions that may have been missed while disconnected
     {
