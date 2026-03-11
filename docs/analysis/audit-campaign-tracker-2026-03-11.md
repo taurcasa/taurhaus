@@ -304,7 +304,7 @@ After both audit reports are delivered:
 | #1161 | architect-1 | in_progress | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
 | #1162 | architect-1 | pending | Rerun X3 close signoff after durable path correction |
 | #1163 | dev-1 | completed | Refresh X3 review packet and handoff bundle to durable review path |
-| #1164 | dev-3 | in_progress | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
+| #1164 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
 
 ## Stopped backlog items
 
