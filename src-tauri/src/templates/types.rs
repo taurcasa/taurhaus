@@ -1495,7 +1495,7 @@ mod tests {
                 .runtime_compact_summary
                 .as_ref()
                 .map(RuntimeCompactSummary::total_word_count),
-            Some(99)
+            Some(100)
         );
     }
 

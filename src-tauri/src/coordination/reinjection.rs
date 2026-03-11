@@ -511,7 +511,10 @@ mod tests {
         assert_eq!(card.role.role_id, None);
         assert_eq!(card.role.role_name, None);
         assert_eq!(card.role.focus_area, None);
-        assert_eq!(card.role.context_summary, None);
+        assert_eq!(
+            card.role.context_summary,
+            Some("Keeps architecture context warm.".to_string())
+        );
         assert_eq!(card.role.behavior_summary, None);
         assert!(card.role.runtime_compact_summary.is_some());
         assert_eq!(card.task.execution_mode, "");
@@ -553,12 +556,12 @@ mod tests {
     "context_summary": "Keeps architecture context warm.",
     "behavior_summary": "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.",
     "runtime_compact_summary": {
-      "role_purpose": "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction.",
-      "keep_doing": [
+      "rolePurpose": "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction.",
+      "keepDoing": [
         "Tie findings to concrete code paths, runtime evidence, and real failure modes.",
         "State clearly whether the current output is review, recommendation, or a narrow fix."
       ],
-      "workflow_sequence": [
+      "workflowSequence": [
         "Reconnect the active task, owned surface, and failing behavior before changing scope.",
         "Trace the issue across frontend, backend, runtime, and mesh layers until the root cause is explicit.",
         "Deliver findings or a bounded fix with exact evidence, validation, and residual risk."
@@ -567,7 +570,7 @@ mod tests {
         "Do not drift into generic implementation work or broad refactors during an audit task.",
         "Do not blur review-only, recommend-only, and implement-now modes."
       ],
-      "escalate_when": [
+      "escalateWhen": [
         "Escalate ownership ambiguity, direction changes, or blocked cross-role boundaries immediately."
       ]
     }
