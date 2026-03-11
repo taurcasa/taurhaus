@@ -206,9 +206,14 @@ impl WatchRuntime {
 
     pub(crate) fn clear(&mut self) {
         let subscriptions: Vec<String> = self.subscriptions.drain().collect();
+        let mut removed_any = false;
         for watch_key in subscriptions {
             self.registry
                 .remove_subscription(self.connection_id, &watch_key);
+            removed_any = true;
+        }
+        if removed_any {
+            crate::daemon::server::mark_daemon_watch_telemetry_dirty();
         }
     }
 }
@@ -254,6 +259,7 @@ pub(crate) fn handle_watch(
         Err(error) => return DaemonResponse::err(id, "WATCH_ERROR", error.to_string()),
     };
     watch_runtime.subscriptions.insert(watch_key.clone());
+    crate::daemon::server::mark_daemon_watch_telemetry_dirty();
 
     tracing::info!(
         path = %params.path,
@@ -283,6 +289,7 @@ pub(crate) fn handle_unwatch(
             .registry
             .remove_subscription(watch_runtime.connection_id, &watch_key)
         {
+            crate::daemon::server::mark_daemon_watch_telemetry_dirty();
             tracing::info!(
                 path = %params.path,
                 watched_dir_count,
@@ -382,6 +389,7 @@ fn forward_shared_watch_event(
                     &event,
                 ) {
                     if count != before {
+                        crate::daemon::server::mark_daemon_watch_telemetry_dirty();
                         let reason = if event.paths.iter().any(|path| {
                             path.file_name()
                                 .map(|name| name.to_string_lossy())

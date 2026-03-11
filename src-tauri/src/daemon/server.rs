@@ -17,6 +17,8 @@ pub const DEFAULT_PORT: u16 = 17233;
 const MAX_REQUEST_LINE_LEN: usize = 1_048_576;
 static DROPPED_PUSH_EVENT_COUNT: AtomicU64 = AtomicU64::new(0);
 static ACTIVE_CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+static WATCH_TELEMETRY_DIRTY: AtomicBool = AtomicBool::new(true);
+const TELEMETRY_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Configuration for the daemon server.
 pub struct DaemonConfig {
@@ -51,6 +53,26 @@ fn epoch_secs() -> u64 {
 
 fn configure_accepted_stream(stream: &TcpStream) -> std::io::Result<()> {
     stream.set_nodelay(true)
+}
+
+pub(crate) fn active_connection_count() -> u64 {
+    ACTIVE_CONNECTION_COUNT.load(Ordering::Relaxed) as u64
+}
+
+pub(crate) fn mark_daemon_watch_telemetry_dirty() {
+    WATCH_TELEMETRY_DIRTY.store(true, Ordering::Relaxed);
+}
+
+fn emit_daemon_watch_telemetry(
+    reason: &str,
+    watch_registry: &crate::daemon::watch::SharedDaemonWatchRegistry,
+) {
+    crate::inotify_diagnostics::emit_daemon_telemetry_with_counts(
+        reason,
+        Some(active_connection_count()),
+        Some(watch_registry.physical_watch_registration_count() as u64),
+        Some(watch_registry.logical_subscription_count() as u64),
+    );
 }
 
 /// Run the daemon server. Blocks until `shutdown` is set to true or idle timeout elapses.
@@ -92,29 +114,25 @@ pub fn run(
         crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
 
     tracing::info!(port = config.port, "daemon listening");
-    crate::inotify_diagnostics::emit_daemon_telemetry_with_counts(
-        "startup",
-        Some(ACTIVE_CONNECTION_COUNT.load(Ordering::Relaxed) as u64),
-        Some(watch_registry.physical_watch_registration_count() as u64),
-        Some(watch_registry.logical_subscription_count() as u64),
-    );
+    emit_daemon_watch_telemetry("startup", &watch_registry);
 
     let telemetry_shutdown = shutdown.clone();
     let telemetry_registry = watch_registry.clone();
     let telemetry_handle = std::thread::spawn(move || {
+        let mut last_heartbeat = Instant::now();
         while !telemetry_shutdown.load(Ordering::Relaxed) {
-            crate::inotify_diagnostics::emit_daemon_telemetry_with_counts(
-                "periodic",
-                Some(ACTIVE_CONNECTION_COUNT.load(Ordering::Relaxed) as u64),
-                Some(telemetry_registry.physical_watch_registration_count() as u64),
-                Some(telemetry_registry.logical_subscription_count() as u64),
-            );
-            for _ in 0..60 {
-                if telemetry_shutdown.load(Ordering::Relaxed) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_secs(1));
+            let dirty = WATCH_TELEMETRY_DIRTY.swap(false, Ordering::Relaxed);
+            let heartbeat_due = last_heartbeat.elapsed() >= TELEMETRY_HEARTBEAT_INTERVAL;
+
+            if dirty {
+                emit_daemon_watch_telemetry("state_changed", &telemetry_registry);
+                last_heartbeat = Instant::now();
+            } else if heartbeat_due {
+                emit_daemon_watch_telemetry("periodic", &telemetry_registry);
+                last_heartbeat = Instant::now();
             }
+
+            std::thread::sleep(Duration::from_secs(1));
         }
     });
 
@@ -134,12 +152,14 @@ pub fn run(
                 let provider = provider.clone();
                 let watch_registry = watch_registry.clone();
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
+                mark_daemon_watch_telemetry_dirty();
                 std::thread::spawn(move || {
                     struct ActiveConnectionGuard;
 
                     impl Drop for ActiveConnectionGuard {
                         fn drop(&mut self) {
                             ACTIVE_CONNECTION_COUNT.fetch_sub(1, Ordering::Relaxed);
+                            mark_daemon_watch_telemetry_dirty();
                         }
                     }
 
@@ -424,8 +444,13 @@ fn log_dropped_push_event(event: &DaemonEvent, stage: &str, error: Option<&str>)
 mod tests {
     use super::*;
     use crate::provider::local::LocalProvider;
+    use serde_json::Value;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
+    use std::path::Path;
+    use std::sync::LazyLock;
+
+    static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     struct TestServer {
         port: u16,
@@ -505,6 +530,26 @@ mod tests {
         serde_json::from_str(&line).unwrap()
     }
 
+    fn wait_for_log_match<F>(path: &Path, predicate: F) -> Option<Value>
+    where
+        F: Fn(&Value) -> bool,
+    {
+        for _ in 0..100 {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                for line in contents.lines() {
+                    let Ok(value) = serde_json::from_str::<Value>(line) else {
+                        continue;
+                    };
+                    if predicate(&value) {
+                        return Some(value);
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        None
+    }
+
     #[test]
     fn configure_accepted_stream_enables_tcp_nodelay() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -542,6 +587,7 @@ mod tests {
 
     #[test]
     fn server_start_eagerly_emits_session_scan_cycles() {
+        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let log_dir = tempfile::TempDir::new().expect("tempdir");
         let log_path = log_dir.path().join("taurhaus.log.jsonl");
         let log_state =
@@ -567,6 +613,68 @@ mod tests {
             observed,
             "daemon should emit session_scanner.scan.completed without waiting for a client request"
         );
+    }
+
+    #[test]
+    fn server_emits_state_changed_inotify_telemetry_after_watch_registration() {
+        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let log_dir = tempfile::TempDir::new().expect("tempdir");
+        let log_path = log_dir.path().join("taurhaus.log.jsonl");
+        let log_state =
+            crate::commands::logging::LogFileState::new(log_path.clone()).expect("log state");
+        crate::commands::logging::install_global_sink(&log_state);
+
+        let project_dir = tempfile::TempDir::new().expect("project tempdir");
+        let watched = project_dir.path().join("watched");
+        std::fs::create_dir_all(&watched).expect("watched dir");
+
+        let server = start_test_server();
+        let port = server.port;
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).expect("connect");
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .expect("set read timeout");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
+
+        let response = send_request(
+            &mut stream,
+            &mut reader,
+            &DaemonRequest::new(
+                "watch-1",
+                protocol::method::WATCH,
+                protocol::PathParams {
+                    path: watched.to_string_lossy().to_string(),
+                },
+            ),
+        );
+        assert!(response.is_ok(), "watch response: {response:?}");
+
+        let telemetry = wait_for_log_match(&log_path, |value| {
+            value.get("event") == Some(&Value::String("inotify.telemetry".to_string()))
+                && value.get("reason") == Some(&Value::String("state_changed".to_string()))
+                && value
+                    .get("logical_watch_subscriptions")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    > 0
+                && value
+                    .get("physical_watch_registrations")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    > 0
+        });
+
+        server.shutdown.store(true, Ordering::Relaxed);
+
+        let telemetry = telemetry.unwrap_or_else(|| {
+            panic!(
+                "timed out waiting for state_changed inotify telemetry in {}",
+                log_path.display()
+            )
+        });
+        assert_eq!(telemetry["component"], "daemon");
+        assert_eq!(telemetry["reason"], "state_changed");
     }
 
     #[test]
