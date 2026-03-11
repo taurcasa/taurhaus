@@ -249,8 +249,8 @@ After both audit reports are delivered:
 | #1106 | mesh-architect | in_progress | Define the phase-two verified-archived-close retention verification-to-outcome handoff contract |
 | #1107 | dev-2 | in_progress | Implement thin phase-two verified-archived-close discrepancy routing helpers |
 | #1108 | dev-3 | in_progress | Implement bounded phase-two verified-archived-close retention verification fixtures and smoke wrapper |
-| #1109 | architect-1 | in_progress | Define the phase-two verified-archived-close retention outcome matrix |
-| #1106 | mesh-architect | in_progress | Define the phase-two verified-archived-close retention verification-to-outcome handoff contract |
+| #1109 | architect-1 | completed | Define the phase-two verified-archived-close retention outcome matrix |
+| #1110 | architect-1 | in_progress | Define the phase-two retained-verified-archived-close confirmation checklist |
 
 ## Stopped backlog items
 
@@ -446,5 +446,5 @@ After both audit reports are delivered:
 - `#1106` is active. `mesh-architect` is now freezing the bounded handoff from retention verification into retention outcome classification so downstream retention decisions begin only from one canonical verified package.
 - `#1107` is active. `dev-2` is now implementing the thin verified-archived-close discrepancy routing helpers so archived-artifact repair versus owning-lane reopen can be handed off deterministically through one bounded routing packet.
 - `#1108` is active. `dev-3` is now adding bounded retention-verification fixtures and a smoke wrapper so a canonical recorded archived-close package can be rerun deterministically through the retention verification lane.
-- `#1109` is active. `architect-1` is now defining the bounded retention outcome vocabulary so a canonical recorded archived-close package can be classified mechanically into retained verified archived close, retained-artifact repair, or owning-lane reopen.
-- `#1106` is active. `mesh-architect` is now freezing the bounded handoff from retention verification into retention outcome classification so downstream retention decisions begin only from one canonical verified package.
+- `#1109` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-verified-archived-close-retention-outcome-matrix-2026-03-11.md` and committed it as `edf20dd`. The matrix freezes the bounded retention outcome vocabulary into `retained_verified_archived_close`, `return_to_retained_artifact_repair`, or `reopen_owning_lane`.
+- `#1110` is active. `architect-1` is now turning the verified-archived-close retention outcome matrix into the exact bounded confirmation path so a retained archived-close state is confirmed only from one canonical retention-verification package.
