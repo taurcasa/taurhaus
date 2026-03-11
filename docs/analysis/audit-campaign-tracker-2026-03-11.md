@@ -312,7 +312,8 @@ After both audit reports are delivered:
 | #1169 | mesh-architect | completed | Plan the first implementation slice for mesh-native guardrails |
 | #1170 | dev-1 | in_progress | Implement the first mesh-native guardrails slice now that the X4 overlap is cleared |
 | #1171 | dev-3 | completed | Implement the immediate phase-two scaffolding reduction slice |
-| #1172 | architect-1 | in_progress | Execute the post-X3 retained doc collapse |
+| #1172 | architect-1 | completed | Execute the post-X3 retained doc collapse |
+| #1173 | architect-1 | in_progress | Assess readiness for the post-X4 proof-surface collapse |
 
 ### Phase-two naming freeze
 
@@ -335,7 +336,8 @@ After both audit reports are delivered:
 - `#1169` is the implementation bridge from guardrail policy into actual Mesh behavior so the rules do not remain docs-only.
 - `#1170` is now active because X4 (`#990`) completed; Mesh still shows a stale `blockedBy: [990]` field, but queue status and direct instruction are authoritative here.
 - `#1171` completed the safe immediate cleanup slice: the retained-state core doc, implementation guide, and generic retained-cycle replacement targets now exist without deleting active proof surfaces.
-- `#1172` is the next live cleanup step on the free architect lane: collapse post-X3 retained micro-doc sprawl, but stop immediately if any active X4 packet, handoff, or recipe still depends on a targeted doc.
+- `#1172` completed cleanly: the eligible retained and verified-archived-close micro-doc families were archived, the retained-state core absorbed the live role of the retained outcome package contract and vocabulary reconciliation, and the live retained/verified doc surface is now down to 26 docs.
+- `#1173` is the next bounded architect lane: verify whether the post-X4 proof-surface collapse can open now, or identify the exact remaining proof surfaces that must stay live.
 
 ## Stopped backlog items
 
