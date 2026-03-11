@@ -306,7 +306,8 @@ After both audit reports are delivered:
 | #1163 | dev-1 | completed | Refresh X3 review packet and handoff bundle to durable review path |
 | #1164 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
 | #1165 | mesh-architect | completed | Normalize phase-two retained-state naming and freeze concise canonical names across tasks, docs, tests, and just recipes |
-| #1166 | mesh-architect | in_progress | Reduce phase-two scaffolding to a lean retained-state core |
+| #1166 | mesh-architect | completed | Reduce phase-two scaffolding to a lean retained-state core |
+| #1167 | mesh-architect | in_progress | Design mesh-native orchestration guardrails for WIP limits, critical-path checks, and scaffold expiry |
 
 ### Phase-two naming freeze
 
@@ -324,6 +325,7 @@ After both audit reports are delivered:
 - Architect lanes prioritize unblock and signoff work over creating additional adjacent planning artifacts.
 - Before assigning work, prefer simplification over parallelization when the new task targets the same narrow area.
 - Naming normalization is mandatory before continuing any retained-state ladder work.
+- `#1166` now provides the reduction baseline: merge or delete micro handoff/checklist docs, per-cycle smoke wrappers, and per-cycle `just` aliases once the still-active X3/X4 surfaces are stable enough to consolidate safely.
 
 ## Stopped backlog items
 
