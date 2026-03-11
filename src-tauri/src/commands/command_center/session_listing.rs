@@ -14,6 +14,13 @@ pub(super) fn list_cli_sessions_impl(
         return Ok(sessions);
     }
 
+    if provider.daemon.is_some() {
+        tracing::debug!(
+            "list_cli_sessions: daemon unavailable, using cached snapshot or empty set"
+        );
+        return Ok(Vec::new());
+    }
+
     let mut fallback = crate::session_scanner::scan_sessions_for_display();
     tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
     enrich_sessions_with_team_membership(
@@ -31,10 +38,47 @@ pub(crate) fn daemon_runtime_session_snapshot(
     let Some(ref daemon) = provider.daemon else {
         return Ok(None);
     };
-    if !daemon.is_connected() {
-        return Ok(None);
+
+    if !daemon.is_connected() && !daemon.try_reconnect() {
+        return Ok(crate::session_snapshot_cache::load());
     }
 
+    match request_daemon_runtime_session_snapshot(daemon) {
+        Ok(Some(snapshot)) => {
+            crate::session_snapshot_cache::store(&snapshot);
+            Ok(Some(snapshot))
+        }
+        Ok(None) => Ok(crate::session_snapshot_cache::load()),
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to reach daemon for runtime session snapshot; attempting inline reconnect"
+            );
+            if daemon.try_reconnect() {
+                match request_daemon_runtime_session_snapshot(daemon) {
+                    Ok(Some(snapshot)) => {
+                        crate::session_snapshot_cache::store(&snapshot);
+                        Ok(Some(snapshot))
+                    }
+                    Ok(None) => Ok(crate::session_snapshot_cache::load()),
+                    Err(retry_error) => {
+                        tracing::warn!(
+                            error = %retry_error,
+                            "Inline reconnect succeeded but runtime session snapshot retry failed"
+                        );
+                        Ok(crate::session_snapshot_cache::load())
+                    }
+                }
+            } else {
+                Ok(crate::session_snapshot_cache::load())
+            }
+        }
+    }
+}
+
+fn request_daemon_runtime_session_snapshot(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+) -> Result<Option<protocol::RuntimeSessionSnapshotResult>, String> {
     let request = protocol::DaemonRequest::new(
         "runtime-session-snapshot",
         protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
@@ -51,10 +95,7 @@ pub(crate) fn daemon_runtime_session_snapshot(
             );
             Ok(None)
         }
-        Err(error) => {
-            tracing::warn!(error = %error, "Failed to reach daemon for runtime session snapshot");
-            Ok(None)
-        }
+        Err(error) => Err(error.to_string()),
     }
 }
 

@@ -187,6 +187,10 @@ pub(crate) fn get_foreground_project_impl(
         return Ok(None);
     }
 
+    if provider.daemon.is_some() {
+        return Ok(None);
+    }
+
     let data_dir = crate::startup::resolve_app_data_dir(app.clone()).map_err(|error| {
         format!("Failed to resolve app data dir for tmux focus lookup: {error}")
     })?;

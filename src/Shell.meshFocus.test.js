@@ -74,6 +74,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 }))
 
 vi.mock('./lib/sessionStore.svelte.js', () => ({
+  DEFAULT_TAURI_POLL_INTERVAL_MS: 5000,
   getSessionForProject: vi.fn(() => null),
   getSessions: vi.fn(() => mockSessionMap),
   applyDaemonSessionUpdate: vi.fn(),

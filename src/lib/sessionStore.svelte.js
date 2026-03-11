@@ -24,6 +24,7 @@ import { listClaudeSessions, listProjects, recordSessionActivity } from './ipc.j
 import { normalizeProjectPath } from './pathUtils.js'
 
 const POLL_INTERVAL_MS = 500
+const DEFAULT_TAURI_POLL_INTERVAL_MS = 5000
 
 /** @type {Map<string, object[]>} Reactive map of project_path → ClaudeSession[] */
 let sessions = $state(new Map())
@@ -33,6 +34,7 @@ let running = false
 
 /** Timer handle for the scheduled next poll (for cleanup on stop). */
 let timerId = null
+let activePollIntervalMs = POLL_INTERVAL_MS
 
 /**
  * In-memory activity trackers keyed by PID.
@@ -231,29 +233,36 @@ async function pollLoop() {
   if (!running) return
   await poll()
   if (running) {
-    timerId = setTimeout(pollLoop, POLL_INTERVAL_MS)
+    timerId = setTimeout(pollLoop, activePollIntervalMs)
   }
 }
 
 /** Start polling for CLI tool sessions. Idempotent — calling twice is safe. */
-export function startPolling() {
+export function startPolling(options = {}) {
   if (running) return
+  activePollIntervalMs = options.intervalMs ?? POLL_INTERVAL_MS
   running = true
   pollLoop()
 }
 
 /** Stop polling and clean up. */
-export function stopPolling() {
+export function stopPolling(options = {}) {
+  const flushActivity = options.flushActivity ?? true
   running = false
   if (timerId !== null) {
     clearTimeout(timerId)
     timerId = null
+  }
+  if (!flushActivity) {
+    return Promise.resolve([])
   }
   const flushes = flushTrackedActivity(trackers.values())
   trackers.clear()
   projectIdByPath.clear()
   return Promise.allSettled(flushes)
 }
+
+export { DEFAULT_TAURI_POLL_INTERVAL_MS }
 
 /**
  * Apply sessions received from daemon `sessions-updated` events.

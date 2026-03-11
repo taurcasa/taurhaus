@@ -674,44 +674,48 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                 recovering = true;
             }
 
-            // Try reconnecting to existing daemon first
-            if daemon.reconnect().is_ok() {
-                tracing::info!("Reconnected to daemon");
-                consecutive_failures = 0;
-                restart_attempts = 0;
-                ever_connected = true;
-                handle_daemon_recovered(&app);
-                recovering = false;
-                continue;
-            }
-
-            // Try restarting daemon process
-            restart_attempts += 1;
-            tracing::info!(
-                attempt = restart_attempts,
-                max = MAX_RESTART_ATTEMPTS,
-                "Attempting daemon restart"
-            );
-
             let distro = provider_state.wsl_distro.as_deref();
             let port = daemon::server::DEFAULT_PORT;
-
-            if let Some(d) = distro {
-                if daemon::launcher::try_restart_daemon(d, port).is_ok() {
-                    std::thread::sleep(Duration::from_secs(2));
-                    if daemon.reconnect().is_ok() {
-                        tracing::info!("Reconnected after daemon restart");
-                        consecutive_failures = 0;
-                        restart_attempts = 0;
-                        ever_connected = true;
-                        handle_daemon_recovered(&app);
-                        recovering = false;
-                        continue;
-                    }
+            match recover_daemon_connection(
+                || {
+                    daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
+                        .is_ok()
+                },
+                || {
+                    let Some(distro) = distro else {
+                        return false;
+                    };
+                    restart_attempts += 1;
+                    tracing::info!(
+                        attempt = restart_attempts,
+                        max = MAX_RESTART_ATTEMPTS,
+                        "Attempting daemon restart after sustained reconnect failure"
+                    );
+                    daemon::launcher::try_restart_daemon(distro, port).is_ok()
+                },
+            ) {
+                DaemonRecoveryResult::Reconnected => {
+                    tracing::info!("Reconnected to existing daemon");
+                    consecutive_failures = 0;
+                    restart_attempts = 0;
+                    ever_connected = true;
+                    handle_daemon_recovered(&app);
+                    recovering = false;
+                    continue;
+                }
+                DaemonRecoveryResult::RestartedAndReconnected => {
+                    tracing::info!("Reconnected after daemon restart");
+                    consecutive_failures = 0;
+                    restart_attempts = 0;
+                    ever_connected = true;
+                    handle_daemon_recovered(&app);
+                    recovering = false;
+                    continue;
+                }
+                DaemonRecoveryResult::Failed => {
+                    tracing::warn!(attempt = restart_attempts, "Daemon recovery attempt failed");
                 }
             }
-
-            tracing::warn!(attempt = restart_attempts, "Daemon restart attempt failed");
         }
     }
 }
@@ -728,6 +732,32 @@ fn daemon_health_check_interval(
     } else {
         normal_interval
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DaemonRecoveryResult {
+    Reconnected,
+    RestartedAndReconnected,
+    Failed,
+}
+
+fn recover_daemon_connection<R, S>(
+    mut reconnect_until_reachable: R,
+    mut restart_daemon: S,
+) -> DaemonRecoveryResult
+where
+    R: FnMut() -> bool,
+    S: FnMut() -> bool,
+{
+    if reconnect_until_reachable() {
+        return DaemonRecoveryResult::Reconnected;
+    }
+
+    if restart_daemon() && reconnect_until_reachable() {
+        return DaemonRecoveryResult::RestartedAndReconnected;
+    }
+
+    DaemonRecoveryResult::Failed
 }
 
 fn handle_daemon_recovered(app: &AppHandle) {
@@ -792,6 +822,8 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                         continue;
                     }
                 };
+
+            emit_current_session_snapshot(&app, &mut since_version);
 
             loop {
                 let still_connected = {
@@ -858,6 +890,51 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
             std::thread::sleep(RETRY_DELAY);
         }
     });
+}
+
+fn emit_current_session_snapshot(app: &AppHandle, since_version: &mut u64) {
+    let provider_state = app.state::<ProviderState>();
+    let Some(snapshot) =
+        crate::commands::command_center::daemon_runtime_session_snapshot(&provider_state)
+            .unwrap_or_else(|error| {
+                tracing::debug!(
+                    error = %error,
+                    "session updates bridge failed to fetch current snapshot after reconnect"
+                );
+                None
+            })
+    else {
+        return;
+    };
+
+    let mut sessions = snapshot.display_sessions;
+    let session_count = sessions.len();
+    let distro = provider_state.wsl_distro.clone();
+    normalize_sessions_for_frontend(
+        &mut sessions,
+        distro.as_deref(),
+        crate::daemon::launcher::is_native_daemon(),
+    );
+    crate::coordination::activity_export::enrich_sessions_with_team_membership(
+        app.state::<crate::coordination::state::CoordinationState>()
+            .teams_dir(),
+        &mut sessions,
+    );
+
+    *since_version = snapshot.version;
+    emit_frontend_event(
+        app,
+        "sessions-updated",
+        serde_json::json!({
+            "version": snapshot.version,
+            "sessions": sessions,
+        }),
+    );
+    tracing::debug!(
+        version = snapshot.version,
+        session_count = session_count,
+        "session updates bridge emitted current snapshot after connect"
+    );
 }
 
 #[cfg(test)]

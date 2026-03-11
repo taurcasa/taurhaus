@@ -1,6 +1,6 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
-  import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend } from './lib/sessionStore.svelte.js'
+  import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
   import { normalizeProjectPath } from './lib/pathUtils.js'
@@ -478,8 +478,10 @@
     return setupSessionPollingLifecycle({
       isTauri: isTauri(),
       sessionBridgeLive,
-      startPolling: startSessionPolling,
-      stopPolling: stopSessionPolling,
+      startPolling: () => startSessionPolling({
+        intervalMs: isTauri() ? DEFAULT_TAURI_POLL_INTERVAL_MS : undefined,
+      }),
+      stopPolling: () => stopSessionPolling({ flushActivity: false }),
       doc: document,
     })
   })

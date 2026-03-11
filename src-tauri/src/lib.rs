@@ -15,6 +15,7 @@ mod inotify_diagnostics;
 pub mod models;
 mod sentinels;
 pub mod services;
+mod session_snapshot_cache;
 mod startup;
 mod watch_targets;
 
