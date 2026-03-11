@@ -239,10 +239,12 @@ After both audit reports are delivered:
 | #1096 | architect-1 | completed | Define the phase-two closed-state audit archived-close discrepancy routing checklist |
 | #1097 | mesh-architect | completed | Define the phase-two closed-state audit archival-to-archived-close-verification handoff contract |
 | #1098 | architect-1 | completed | Define the phase-two closed-state audit archived-close outcome matrix |
-| #1099 | mesh-architect | in_progress | Define the phase-two closed-state audit archived-close verification-to-outcome handoff contract |
+| #1099 | mesh-architect | completed | Define the phase-two closed-state audit archived-close verification-to-outcome handoff contract |
 | #1100 | architect-1 | completed | Define the phase-two closed-state audit archived-close confirmation checklist |
-| #1101 | architect-1 | in_progress | Define the phase-two verified-archived-close recording checklist |
+| #1101 | architect-1 | completed | Define the phase-two verified-archived-close recording checklist |
 | #1102 | dev-3 | in_progress | Implement bounded phase-two closed-state audit archived-close verification fixtures and smoke wrapper |
+| #1103 | architect-1 | in_progress | Define the phase-two verified-archived-close discrepancy routing checklist |
+| #1104 | mesh-architect | in_progress | Define the phase-two verified-archived-close recording-to-retention handoff contract |
 
 ## Stopped backlog items
 
@@ -428,7 +430,9 @@ After both audit reports are delivered:
 - `#1096` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-archived-close-discrepancy-routing-checklist-2026-03-11.md` and committed it as `f13148a`. The checklist freezes the routing path when archived-close verification fails, including the archived-artifact-repair versus owning-lane reopen boundary and one bounded routing packet.
 - `#1097` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-archival-to-archived-close-verification-handoff-2026-03-11.md`. The contract freezes the strict handoff from archival into archived-close verification, including one canonical archived retained package, one canonical final-close record, and aligned retained state covering the same packet and downstream evidence.
 - `#1098` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-archived-close-outcome-matrix-2026-03-11.md` and committed it as `fef60de`. The matrix freezes the bounded archived-close outcome vocabulary into `verified_archived_close`, `return_to_archived_close_artifact_repair`, or `reopen_owning_lane`.
-- `#1099` is active. `mesh-architect` is now freezing the bounded handoff from archived-close verification into archived-close outcome classification so outcome decisions start only from one canonical archived verification package.
+- `#1099` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-archived-close-verification-to-outcome-handoff-2026-03-11.md`. The contract freezes the exact handoff from archived-close verification into outcome classification, including the verified path via one bounded `archived_close_verified` record and the discrepancy-routing path when verification fails.
 - `#1100` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-archived-close-confirmation-checklist-2026-03-11.md` and committed it as `e72cb32`. The checklist defines the exact confirmation path for a clean archived retained terminal state and records verified archived close only if the archived state still maps mechanically to `verified_archived_close`.
-- `#1101` is active. `architect-1` is now turning the archived-close confirmation path into the exact bounded recording path for a `verified_archived_close` state.
+- `#1101` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-verified-archived-close-recording-checklist-2026-03-11.md` and committed it as `725f0c9`. The checklist turns the archived-close confirmation path into the exact recording path for a `verified_archived_close` state with canonical anchors and no shadow-truth surface.
 - `#1102` is active. `dev-3` is now adding bounded archived-close verification fixtures and a smoke wrapper so an archived retained terminal state can be rerun deterministically through the verification lane.
+- `#1103` is active. `architect-1` is now defining the exact routing path when verified-archived-close recording fails so archived-retained-artifact gaps, anchor drift, or mixed-context states are handled mechanically.
+- `#1104` is active. `mesh-architect` is now freezing the bounded handoff from verified-archived-close recording into retained-state stewardship so downstream retention or later audit work starts only from one canonical recorded archived-close package.
