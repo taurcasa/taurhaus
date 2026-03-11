@@ -320,7 +320,7 @@ After both audit reports are delivered:
 | #1177 | dev-1 | completed | Checkpoint the live X3 documentation packet as a docs-only Mesh commit |
 | #1178 | architect-1 | completed | Assess whether legacy retained wrappers and aliases can now be deleted safely |
 | #1179 | dev-2 | completed | Cut the generic retained-cycle recipe and live notes over to the new matrix proof path |
-| #1180 | dev-3 | in_progress | Delete legacy retained wrappers and aliases |
+| #1180 | dev-3 | completed | Delete legacy retained wrappers and aliases |
 
 ### Phase-two naming freeze
 
@@ -351,7 +351,7 @@ After both audit reports are delivered:
 - `#1177` closed the remaining X3 packaging gap: the three live X3 documentation files are now committed together in Mesh as docs-only checkpoint `7d7abec`, so X3 is both live in product code and cleanly documented in the live repo.
 - `#1178` came back as a narrow `NO`: wrapper and alias deletion is not ready yet because the generic retained-cycle recipe still dispatches to legacy wrappers, the 9 legacy `just` aliases are still live operator surfaces, and 9 live fixture notes still point at those aliases/wrappers.
 - `#1179` completed the recipe and note cutover: the generic retained-cycle command now runs the matrix proof path directly, and the 9 live retained fixture notes now point at that real path instead of the legacy wrapper layer.
-- `#1180` is the next cleanup cut: delete the 9 legacy retained wrapper smoke tests and the 9 legacy `just` aliases together now that they are no longer the live operator path.
+- `#1180` completed the wrapper and alias deletion cleanly: the 9 legacy retained wrapper smoke tests and the 9 matching legacy `just` aliases are gone, the live retained operator path is now just `phase-two-retention-cycle-smoke <cycle> <stage>` plus the generic matrix smoke entrypoint, and the remaining live notes were updated so they no longer point at deleted names.
 
 ## Stopped backlog items
 
