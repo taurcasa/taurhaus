@@ -315,7 +315,7 @@ After both audit reports are delivered:
 | #1172 | architect-1 | completed | Execute the post-X3 retained doc collapse |
 | #1173 | architect-1 | completed | Assess readiness for the post-X4 proof-surface collapse |
 | #1174 | dev-3 | completed | Merge retained-cycle proof helpers into the generic retained-cycle support layer |
-| #1175 | dev-1 | in_progress | Integrate the approved X3 `_links` adapter from the review branch into the live Mesh worktree |
+| #1175 | dev-1 | completed | Confirm the approved X3 `_links` adapter is present in the live Mesh worktree and materialize the missing live docs |
 | #1176 | dev-2 | in_progress | Switch retained matrix proofs off legacy wrappers so the new generic proof layer is the real source of truth |
 
 ### Phase-two naming freeze
@@ -342,7 +342,7 @@ After both audit reports are delivered:
 - `#1172` completed cleanly: the eligible retained and verified-archived-close micro-doc families were archived, the retained-state core absorbed the live role of the retained outcome package contract and vocabulary reconciliation, and the live retained/verified doc surface is now down to 26 docs.
 - `#1173` came back as a narrow proof-surface `NO`, not an X4 runtime blocker: the merged retained-cycle support layer does not exist yet, the matrix smokes still only assert legacy wrapper existence, the generic retained-cycle recipe still dispatches to legacy wrappers, and the legacy proof surface must remain live until those are replaced.
 - `#1174` completed the first safe post-X4 cleanup cut: the 14 cycle-specific proof helpers were merged into generic retained-cycle support tests, redundant repeated assertions were dropped, and only behaviorally distinct checks were preserved while wrappers and aliases remain live for now.
-- `#1175` is now the top product-priority lane: the approved X3 adapter currently exists only on `review/x3-close-candidate-2026-03-11` and is not contained in the live `/home/mstie/projects/mesh` worktree `HEAD`. This task brings the reviewed X3 adapter into the real product branch/worktree and reruns the bounded X3 proof set there.
+- `#1175` closed an important ambiguity: the approved X3 adapter code was already present in the live Mesh worktree with no content diff from the reviewed `link_mailbox` implementation. The only missing part of the approved package was the live doc packet, which is now materialized in the live tree, and the bounded X3 proof set reran green there.
 - `#1176` is the next necessary cleanup cut: make the three matrix smoke tests prove real retained-cycle behavior directly, so the legacy wrappers stop being the only proof anchor and can later be deleted safely.
 
 ## Stopped backlog items
