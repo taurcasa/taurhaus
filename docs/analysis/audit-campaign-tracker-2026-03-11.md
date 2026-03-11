@@ -319,7 +319,8 @@ After both audit reports are delivered:
 | #1176 | dev-2 | completed | Switch retained matrix proofs off legacy wrappers so the new generic proof layer is the real source of truth |
 | #1177 | dev-1 | completed | Checkpoint the live X3 documentation packet as a docs-only Mesh commit |
 | #1178 | architect-1 | completed | Assess whether legacy retained wrappers and aliases can now be deleted safely |
-| #1179 | dev-2 | in_progress | Cut the generic retained-cycle recipe and live notes over to the new matrix proof path |
+| #1179 | dev-2 | completed | Cut the generic retained-cycle recipe and live notes over to the new matrix proof path |
+| #1180 | dev-3 | in_progress | Delete legacy retained wrappers and aliases |
 
 ### Phase-two naming freeze
 
@@ -349,7 +350,8 @@ After both audit reports are delivered:
 - `#1176` completed the next necessary cleanup cut: the three retained matrix smoke tests now prove real retained-cycle behavior directly through the merged helper layer instead of only asserting legacy wrapper existence.
 - `#1177` closed the remaining X3 packaging gap: the three live X3 documentation files are now committed together in Mesh as docs-only checkpoint `7d7abec`, so X3 is both live in product code and cleanly documented in the live repo.
 - `#1178` came back as a narrow `NO`: wrapper and alias deletion is not ready yet because the generic retained-cycle recipe still dispatches to legacy wrappers, the 9 legacy `just` aliases are still live operator surfaces, and 9 live fixture notes still point at those aliases/wrappers.
-- `#1179` is the exact next cut that clears those blockers: rewrite the generic retained-cycle recipe to use the matrix proof path directly, and update the 9 live retained fixture notes to point at that path so the legacy aliases and wrapper tests can be deleted together afterward.
+- `#1179` completed the recipe and note cutover: the generic retained-cycle command now runs the matrix proof path directly, and the 9 live retained fixture notes now point at that real path instead of the legacy wrapper layer.
+- `#1180` is the next cleanup cut: delete the 9 legacy retained wrapper smoke tests and the 9 legacy `just` aliases together now that they are no longer the live operator path.
 
 ## Stopped backlog items
 
