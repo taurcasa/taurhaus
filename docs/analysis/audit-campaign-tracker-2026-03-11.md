@@ -142,7 +142,8 @@ After both audit reports are delivered:
 | #999 | architect-1 | completed | Turn the X4 first slice into a concrete execution checklist |
 | #1000 | architect-1 | in_progress | Define the X1 close gate and the X1 to X3 freeze handoff |
 | #1001 | dev-3 | completed | Draft the adapter-driven X3 close-proof matrix |
-| #1002 | dev-3 | in_progress | Extend the lane-boundary checker with current-worktree conflict reporting |
+| #1002 | dev-3 | completed | Extend the lane-boundary checker with current-worktree conflict reporting |
+| #1003 | dev-3 | in_progress | Produce a current phase-two packaging-risk report and checkpoint order |
 
 ## Stopped backlog items
 
@@ -231,4 +232,5 @@ After both audit reports are delivered:
 - `#999` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x4-first-slice-execution-checklist-2026-03-11.md` and committed it as `7c9711c`. The checklist turns the approved X4 first slice into an execution-ready sequence with exact entry gates, allowed files, runtime steps, required X4-A1 through X4-A5 acceptance coverage, verification commands, and stop conditions if the slice drifts into CLI, read/ack bridge, or transport-schema work.
 - `#1000` is active. `architect-1` is now defining the exact X1 close gate and the X1-to-X3 freeze handoff so the communication core can freeze cleanly against X2 and hand a stable contract to the X3 transport lane.
 - `#1001` is complete. `dev-3` wrote `/home/mstie/projects/mesh/docs/analysis/x3-close-proof-matrix-2026-03-11.md`, converting the approved X3 close gate into one concrete proof bar with scenario IDs `X3-P1..X3-P9`, required evidence and pass conditions, named test inventory, an X3-owned telemetry checklist limited to observed/replay-guard/conflict metrics, explicit fences that keep X4/X5 behavior out of X3 close, and the exact X4 handoff package expected at close.
-- `#1002` is active. `dev-3` is now extending the lane-boundary checker with current-worktree conflict reporting so active X1-X6 lanes can get a more actionable live summary before checkpointing or packaging.
+- `#1002` is complete. `dev-3` extended `/home/mstie/projects/mesh/scripts/phase_two_lane_boundary_check.py` with `--current-worktree` mode, added `just phase-two-boundaries-worktree`, and documented the extension in `/home/mstie/projects/mesh/docs/analysis/phase-two-lane-boundary-checker-extension-2026-03-11.md`. The checker now groups protected dirty files by owning lane, reports exclusive versus serial-shared hotspots, surfaces ignored paths, and emits a packaging-risk summary (`low`/`medium`/`high`) with exit codes `0/1/2`.
+- `#1003` is active. `dev-3` is now using the new current-worktree boundary report to produce one concrete packaging-risk report and recommended checkpoint order for the live X1/X3/shared phase-two communication lanes.
