@@ -301,8 +301,8 @@ After both audit reports are delivered:
 | #1156 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close recording helpers |
 | #1157 | architect-1 | completed | Define the phase-two retained-retained-retained-retained-verified-archived-close retention verification checklist |
 | #1160 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close retention verification helpers |
-| #1161 | architect-1 | in_progress | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
-| #1162 | architect-1 | pending | Rerun X3 close signoff after durable path correction |
+| #1161 | architect-1 | pending | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
+| #1162 | architect-1 | in_progress | Rerun X3 close signoff after durable path correction |
 | #1163 | dev-1 | completed | Refresh X3 review packet and handoff bundle to durable review path |
 | #1164 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
 | #1165 | mesh-architect | completed | Normalize phase-two retained-state naming and freeze concise canonical names across tasks, docs, tests, and just recipes |
@@ -313,6 +313,7 @@ After both audit reports are delivered:
 - Recursive `retained-retained-retained...` naming drift is now frozen behind `#1165`.
 - Do not create new tasks, docs, test files, statuses, or `just` recipes that extend the repeated-retained ladder until the normalization mapping lands.
 - `#1165` completed with a canonical `retention-cycle` naming scheme, and downstream lanes are now expected to resume on those canonical names only.
+- `#1161` is paused again so `architect-1` can focus on the real critical path first: the X3 signoff rerun in `#1162`.
 
 ## Stopped backlog items
 
