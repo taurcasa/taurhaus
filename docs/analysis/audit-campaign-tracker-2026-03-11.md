@@ -127,7 +127,7 @@ After both audit reports are delivered:
 | #984 | mesh-architect | completed | Run the final milestone-one sign-off review on the extracted clean candidate with architect-1 co-approval |
 | #985 | architect-1 | completed | Materialize the signed-off milestone-one candidate as a durable review branch or worktree with exact landing steps |
 | #986 | mesh-architect | completed | EPIC X1: implement the cross-team communication contract and capability model |
-| #987 | dev-1 | in_progress | EPIC X3: implement the `_links` lead-mailbox adapter |
+| #987 | dev-1 | completed | EPIC X3: implement the `_links` lead-mailbox adapter |
 | #988 | dev-2 | completed | EPIC X2: implement canonical external-message storage and replay |
 | #989 | dev-3 | completed | EPIC X6: build communication acceptance, telemetry, and hardening harness |
 | #990 | dev-2 | pending | EPIC X4: implement the team-daemon relay into local inboxes |
