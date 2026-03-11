@@ -130,7 +130,7 @@ After both audit reports are delivered:
 | #987 | dev-1 | completed | EPIC X3: implement the `_links` lead-mailbox adapter |
 | #988 | dev-2 | completed | EPIC X2: implement canonical external-message storage and replay |
 | #989 | dev-3 | completed | EPIC X6: build communication acceptance, telemetry, and hardening harness |
-| #990 | dev-2 | pending | EPIC X4: implement the team-daemon relay into local inboxes |
+| #990 | dev-2 | in_progress | EPIC X4: implement the team-daemon relay into local inboxes |
 | #991 | architect-1 | completed | EPIC X5: implement narrow xteam operator commands and policy gates |
 | #992 | architect-1 | completed | Define the phase-two communication convergence contract and cut order across X1-X6 |
 | #993 | dev-3 | completed | Extend the X6 harness toward message-storage and mailbox-adapter convergence |
@@ -302,7 +302,7 @@ After both audit reports are delivered:
 | #1157 | architect-1 | completed | Define the phase-two retained-retained-retained-retained-verified-archived-close retention verification checklist |
 | #1160 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close retention verification helpers |
 | #1161 | architect-1 | pending | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
-| #1162 | architect-1 | in_progress | Rerun X3 close signoff after durable path correction |
+| #1162 | architect-1 | completed | Rerun X3 close signoff after durable path correction |
 | #1163 | dev-1 | completed | Refresh X3 review packet and handoff bundle to durable review path |
 | #1164 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
 | #1165 | mesh-architect | completed | Normalize phase-two retained-state naming and freeze concise canonical names across tasks, docs, tests, and just recipes |
@@ -314,6 +314,16 @@ After both audit reports are delivered:
 - Do not create new tasks, docs, test files, statuses, or `just` recipes that extend the repeated-retained ladder until the normalization mapping lands.
 - `#1165` completed with a canonical `retention-cycle` naming scheme, and downstream lanes are now expected to resume on those canonical names only.
 - `#1161` is paused again so `architect-1` can focus on the real critical path first: the X3 signoff rerun in `#1162`.
+
+### Execution guardrails
+
+- Hard WIP limit: one active task per person unless the current task is explicitly blocked.
+- Critical-path filter: only open a new task if it lands runtime code, lands essential verification for current code, or removes a blocker on the next implementation step.
+- No scaffold fan-out: do not create a checklist, handoff, wrapper, or matrix task unless it clearly replaces an existing artifact or unlocks immediate implementation.
+- Scaffold expiry is mandatory: every new orchestration artifact must have a keep, merge, archive, or delete decision once its downstream lane is unblocked.
+- Architect lanes prioritize unblock and signoff work over creating additional adjacent planning artifacts.
+- Before assigning work, prefer simplification over parallelization when the new task targets the same narrow area.
+- Naming normalization is mandatory before continuing any retained-state ladder work.
 
 ## Stopped backlog items
 
