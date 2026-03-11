@@ -2,7 +2,7 @@ use tauri::{Emitter, Manager, State};
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
-use crate::daemon::protocol::{self, PingResult, PROTOCOL_VERSION};
+use crate::daemon::protocol::PROTOCOL_VERSION;
 use crate::daemon::server::DEFAULT_PORT;
 use crate::models::{DaemonInstallStatus, DaemonStatus, OperationResult};
 use crate::ProviderState;
@@ -32,65 +32,31 @@ pub fn get_platform() -> String {
 #[tauri::command]
 pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonStatus, String> {
     let span = IpcCommandSpan::start("get_daemon_status");
-    let port = DEFAULT_PORT;
-
-    let Some(ref daemon) = provider.daemon else {
-        let result = Ok(DaemonStatus {
-            status: "not_configured".to_string(),
-            version: None,
-            protocol_version: 0,
-            expected_protocol_version: PROTOCOL_VERSION,
-            uptime_secs: None,
-            port,
-            wsl_distro: provider.wsl_distro.clone(),
-        });
-        span.finish_result(&result);
-        return result;
-    };
-
-    if !daemon.is_connected() {
-        let result = Ok(DaemonStatus {
-            status: "disconnected".to_string(),
-            version: None,
-            protocol_version: 0,
-            expected_protocol_version: PROTOCOL_VERSION,
-            uptime_secs: None,
-            port,
-            wsl_distro: provider.wsl_distro.clone(),
-        });
-        span.finish_result(&result);
-        return result;
-    }
-
-    // Try a ping to get version and uptime
-    let id = "status-ping";
-    let request = protocol::DaemonRequest::ping(id);
-    let result = match daemon.send_status_request(&request) {
-        Ok(response) if response.is_ok() => {
-            let ping: Option<PingResult> =
-                response.result.and_then(|v| serde_json::from_value(v).ok());
-            Ok(DaemonStatus {
-                status: "connected".to_string(),
-                version: ping.as_ref().map(|p| p.version.clone()),
-                protocol_version: ping.as_ref().map(|p| p.protocol_version).unwrap_or(0),
-                expected_protocol_version: PROTOCOL_VERSION,
-                uptime_secs: ping.as_ref().map(|p| p.uptime_secs),
-                port,
-                wsl_distro: provider.wsl_distro.clone(),
-            })
-        }
-        _ => Ok(DaemonStatus {
-            status: "disconnected".to_string(),
-            version: None,
-            protocol_version: 0,
-            expected_protocol_version: PROTOCOL_VERSION,
-            uptime_secs: None,
-            port,
-            wsl_distro: provider.wsl_distro.clone(),
-        }),
-    };
+    // This command is used by splash startup and should never queue behind a
+    // long-running shared daemon RPC such as git reseed or runtime snapshot.
+    // Report connection state from the provider immediately; richer ping-based
+    // metadata can be fetched on non-critical paths if we ever need it.
+    let result = Ok(daemon_status_snapshot(&provider));
     span.finish_result(&result);
     result
+}
+
+fn daemon_status_snapshot(provider: &ProviderState) -> DaemonStatus {
+    let status = match provider.daemon.as_ref() {
+        None => "not_configured",
+        Some(daemon) if daemon.is_connected() => "connected",
+        Some(_) => "disconnected",
+    };
+
+    DaemonStatus {
+        status: status.to_string(),
+        version: None,
+        protocol_version: 0,
+        expected_protocol_version: PROTOCOL_VERSION,
+        uptime_secs: None,
+        port: DEFAULT_PORT,
+        wsl_distro: provider.wsl_distro.clone(),
+    }
 }
 
 /// Manually start the daemon process.
@@ -623,6 +589,8 @@ fn semver_less_than(a: &str, b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
+    use std::time::{Duration, Instant};
 
     fn canonical_linux_path(path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy();
@@ -745,5 +713,38 @@ mod tests {
         assert!(script.contains("kill -KILL"));
         assert!(script.contains("mv -f \"$temp_path\" \"$target_path\""));
         assert!(script.contains("\"$target_path\" --version"));
+    }
+
+    #[test]
+    fn daemon_status_snapshot_returns_connected_without_waiting_for_daemon_ping() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("local addr");
+        let accept_thread = std::thread::spawn(move || {
+            let _stream = listener.accept().expect("accept client");
+            std::thread::sleep(Duration::from_secs(2));
+        });
+
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&addr.to_string())
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: Some("Ubuntu".to_string()),
+        };
+
+        let started = Instant::now();
+        let status = daemon_status_snapshot(&provider);
+        let elapsed = started.elapsed();
+
+        assert_eq!(status.status, "connected");
+        assert_eq!(status.wsl_distro.as_deref(), Some("Ubuntu"));
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "status snapshot should not wait on daemon I/O; took {elapsed:?}"
+        );
+
+        drop(provider);
+        accept_thread.join().expect("accept thread joined");
     }
 }
