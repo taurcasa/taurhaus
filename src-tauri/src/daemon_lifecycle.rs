@@ -6,6 +6,7 @@ use std::thread::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
 use crate::session_scanner::DisplaySession;
 use crate::{
@@ -32,7 +33,18 @@ fn derive_wsl_home_from_projects(projects: &[models::Project]) -> Option<String>
         .find_map(|linux_path| extract_wsl_home(&linux_path))
 }
 
+fn prefer_local_claude_tasks_watch_for_host(is_windows_host: bool, tasks_dir_exists: bool) -> bool {
+    is_windows_host && tasks_dir_exists
+}
+
+fn prefer_local_claude_tasks_watch(tasks_dir_exists: bool) -> bool {
+    prefer_local_claude_tasks_watch_for_host(cfg!(target_os = "windows"), tasks_dir_exists)
+}
+
 fn claude_tasks_watch_dir(projects: &[models::Project]) -> Option<String> {
+    if prefer_local_claude_tasks_watch(PlatformPaths::claude_dir().join("tasks").is_dir()) {
+        return None;
+    }
     derive_wsl_home_from_projects(projects).map(|home| format!("{home}/.claude/tasks"))
 }
 
@@ -1129,5 +1141,78 @@ mod tests {
             daemon_health_check_interval(true, true, false, normal, fast),
             normal
         );
+    }
+
+    #[test]
+    fn recover_daemon_connection_does_not_restart_when_reconnect_succeeds() {
+        let mut reconnect_calls = 0;
+        let mut restart_calls = 0;
+
+        let result = recover_daemon_connection(
+            || {
+                reconnect_calls += 1;
+                true
+            },
+            || {
+                restart_calls += 1;
+                true
+            },
+        );
+
+        assert_eq!(result, DaemonRecoveryResult::Reconnected);
+        assert_eq!(reconnect_calls, 1);
+        assert_eq!(restart_calls, 0);
+    }
+
+    #[test]
+    fn recover_daemon_connection_retries_after_restart() {
+        let mut reconnect_calls = 0;
+        let mut restart_calls = 0;
+
+        let result = recover_daemon_connection(
+            || {
+                reconnect_calls += 1;
+                reconnect_calls >= 2
+            },
+            || {
+                restart_calls += 1;
+                true
+            },
+        );
+
+        assert_eq!(result, DaemonRecoveryResult::RestartedAndReconnected);
+        assert_eq!(reconnect_calls, 2);
+        assert_eq!(restart_calls, 1);
+    }
+
+    #[test]
+    fn recover_daemon_connection_reports_failure_when_restart_does_not_help() {
+        let mut reconnect_calls = 0;
+        let mut restart_calls = 0;
+
+        let result = recover_daemon_connection(
+            || {
+                reconnect_calls += 1;
+                false
+            },
+            || {
+                restart_calls += 1;
+                true
+            },
+        );
+
+        assert_eq!(result, DaemonRecoveryResult::Failed);
+        assert_eq!(reconnect_calls, 2);
+        assert_eq!(restart_calls, 1);
+    }
+
+    #[test]
+    fn local_claude_tasks_watch_is_preferred_when_windows_path_is_accessible() {
+        assert!(prefer_local_claude_tasks_watch_for_host(true, true));
+    }
+
+    #[test]
+    fn daemon_claude_tasks_watch_remains_enabled_without_local_windows_path() {
+        assert!(!prefer_local_claude_tasks_watch_for_host(true, false));
     }
 }

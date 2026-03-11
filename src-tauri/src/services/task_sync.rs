@@ -335,44 +335,38 @@ pub(crate) fn scan_tasks_from_files(
     cached_sessions: Option<&[RuntimeSession]>,
     cached_claude_index: Option<&crate::task_scanner::claude_index::ClaudeSourceIndex>,
 ) -> crate::task_scanner::TaskResult {
-    if let Some(ref daemon) = provider.daemon {
-        if !daemon.is_connected() {
-            daemon.try_reconnect();
-        }
+    if let Some(daemon) = daemon_for_task_scan(provider, project_path) {
+        let linux_path = crate::provider::path::to_linux(project_path)
+            .unwrap_or_else(|| project_path.to_string());
 
-        if daemon.is_connected() {
-            let linux_path = crate::provider::path::to_linux(project_path)
-                .unwrap_or_else(|| project_path.to_string());
-
-            let id = "scan-project-tasks";
-            let request = crate::daemon::protocol::DaemonRequest::new(
-                id,
-                crate::daemon::protocol::method::GET_PROJECT_TASKS,
-                crate::daemon::protocol::ProjectTasksParams {
-                    path: linux_path,
-                    scan_cycle_id,
-                },
-            );
-            match daemon.send_status_request(&request) {
-                Ok(response) if response.is_ok() => {
-                    if let Some(result_payload) = response.result {
-                        match serde_json::from_value(result_payload) {
-                            Ok(result) => return result,
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    "Failed to deserialize task scan from daemon"
-                                );
-                            }
+        let id = "scan-project-tasks";
+        let request = crate::daemon::protocol::DaemonRequest::new(
+            id,
+            crate::daemon::protocol::method::GET_PROJECT_TASKS,
+            crate::daemon::protocol::ProjectTasksParams {
+                path: linux_path,
+                scan_cycle_id,
+            },
+        );
+        match daemon.send_status_request(&request) {
+            Ok(response) if response.is_ok() => {
+                if let Some(result_payload) = response.result {
+                    match serde_json::from_value(result_payload) {
+                        Ok(result) => return result,
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "Failed to deserialize task scan from daemon"
+                            );
                         }
                     }
                 }
-                Ok(response) => {
-                    tracing::warn!(error = ?response.error, "Daemon task scan failed");
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Daemon request failed for task scan");
-                }
+            }
+            Ok(response) => {
+                tracing::warn!(error = ?response.error, "Daemon task scan failed");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Daemon request failed for task scan");
             }
         }
     }
@@ -392,10 +386,29 @@ pub(crate) fn scan_tasks_from_files(
     )
 }
 
+fn daemon_for_task_scan<'a>(
+    provider: &'a ProviderState,
+    project_path: &str,
+) -> Option<&'a crate::provider::daemon_client::DaemonProvider> {
+    if !crate::provider::path::is_wsl_path(project_path) {
+        return None;
+    }
+
+    let daemon = provider.daemon.as_ref()?;
+    if !daemon.is_connected() {
+        daemon.try_reconnect();
+    }
+
+    daemon.is_connected().then_some(daemon)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Utc;
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::Duration;
     use tempfile::{NamedTempFile, TempDir};
 
     use crate::coordination::domain::{Member, MemberRole};
@@ -530,5 +543,31 @@ mod tests {
         assert_eq!(snapshot.task.id, "675");
         assert_eq!(snapshot.task.subject, "Wire snapshot updates");
         assert_eq!(snapshot.task.status, "in_progress");
+    }
+
+    #[test]
+    fn daemon_task_scan_is_skipped_for_local_paths_even_when_daemon_is_connected() {
+        // Regression: task query recovery for #910/#918 started invoking task
+        // scans on view load. A daemon-first task scan here stacked 5s status
+        // timeouts on Windows for local-accessible paths and froze the app (#919).
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let accept_thread = thread::spawn(move || {
+            let _accepted = listener.accept().expect("accept connection");
+            thread::sleep(Duration::from_millis(25));
+        });
+        let daemon = crate::provider::daemon_client::DaemonProvider::connect(&addr.to_string())
+            .expect("connect daemon");
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(daemon),
+            wsl_distro: Some("Ubuntu".to_string()),
+        };
+
+        assert!(daemon_for_task_scan(&provider, r"\\wsl.localhost\Ubuntu\home\me\repo").is_some());
+        assert!(daemon_for_task_scan(&provider, "/home/me/repo").is_none());
+        assert!(daemon_for_task_scan(&provider, r"C:\Users\me\repo").is_none());
+
+        accept_thread.join().expect("accept thread joined");
     }
 }

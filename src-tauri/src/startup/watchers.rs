@@ -35,6 +35,14 @@ fn should_watch_locally(project_path: &str, has_daemon: bool, defer_wsl_to_daemo
     true
 }
 
+fn should_watch_claude_tasks_locally(
+    has_daemon: bool,
+    native_daemon: bool,
+    prefer_local_when_daemon_connected: bool,
+) -> bool {
+    !has_daemon || native_daemon || prefer_local_when_daemon_connected
+}
+
 pub(crate) fn initialize(
     app: &mut tauri::App,
     context: &SetupContext,
@@ -244,23 +252,28 @@ fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
         );
         error.into_inner()
     });
-    if !has_daemon || crate::daemon::launcher::is_native_daemon() {
-        if let Some(tasks_dir) = super::resolve_claude_tasks_dir() {
-            if tasks_dir.is_dir() {
-                if let Err(error) = watcher_guard
-                    .watch_project(CLAUDE_TASKS_PROJECT_ID.to_string(), tasks_dir.clone())
-                {
-                    tracing::debug!(
-                        error = %error,
-                        path = %tasks_dir.display(),
-                        "Could not watch Claude tasks directory"
-                    );
-                } else {
-                    tracing::info!(
-                        path = %tasks_dir.display(),
-                        "Watching Claude tasks directory (local)"
-                    );
-                }
+    if let Some(tasks_dir) = super::resolve_claude_tasks_dir() {
+        let prefer_local_when_daemon_connected = cfg!(target_os = "windows") && tasks_dir.is_dir();
+        if tasks_dir.is_dir()
+            && should_watch_claude_tasks_locally(
+                has_daemon,
+                crate::daemon::launcher::is_native_daemon(),
+                prefer_local_when_daemon_connected,
+            )
+        {
+            if let Err(error) =
+                watcher_guard.watch_project(CLAUDE_TASKS_PROJECT_ID.to_string(), tasks_dir.clone())
+            {
+                tracing::debug!(
+                    error = %error,
+                    path = %tasks_dir.display(),
+                    "Could not watch Claude tasks directory"
+                );
+            } else {
+                tracing::info!(
+                    path = %tasks_dir.display(),
+                    "Watching Claude tasks directory (local)"
+                );
             }
         }
     }
@@ -308,6 +321,7 @@ fn ensure_tmux_focus_watch(app: &tauri::App, data_dir: &std::path::Path) {
 
 #[cfg(test)]
 mod tests {
+    use super::should_watch_claude_tasks_locally;
     use super::should_watch_locally;
 
     #[test]
@@ -344,5 +358,15 @@ mod tests {
             false,
             true
         ));
+    }
+
+    #[test]
+    fn claude_tasks_local_watch_prefers_windows_accessible_path_even_with_daemon() {
+        assert!(should_watch_claude_tasks_locally(true, false, true));
+    }
+
+    #[test]
+    fn claude_tasks_local_watch_skips_non_native_daemon_when_no_windows_fallback() {
+        assert!(!should_watch_claude_tasks_locally(true, false, false));
     }
 }
