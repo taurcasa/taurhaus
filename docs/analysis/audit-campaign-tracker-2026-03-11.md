@@ -219,11 +219,16 @@ After both audit reports are delivered:
 | #1076 | dev-3 | completed | Implement bounded phase-two final signoff closure fixtures and smoke wrapper |
 | #1077 | dev-2 | in_progress | Implement thin phase-two closed-state archival helpers |
 | #1078 | architect-1 | completed | Define the phase-two closed-state audit retrieval checklist |
-| #1079 | mesh-architect | in_progress | Define the phase-two closed-state audit retrieval result schema contract |
+| #1079 | mesh-architect | completed | Define the phase-two closed-state audit retrieval result schema contract |
 | #1080 | architect-1 | completed | Define the phase-two closed-state audit review checklist |
-| #1081 | dev-2 | in_progress | Implement thin phase-two closed-state audit retrieval helpers |
-| #1082 | dev-3 | in_progress | Implement bounded phase-two closed-state audit retrieval fixtures and smoke wrapper |
-| #1083 | architect-1 | in_progress | Define the phase-two closed-state audit discrepancy routing checklist |
+| #1081 | dev-2 | completed | Implement bounded phase-two closed-state audit retrieval fixtures and smoke wrapper |
+| #1082 | dev-3 | in_progress | Implement thin phase-two closed-state audit retrieval helpers |
+| #1083 | architect-1 | completed | Define the phase-two closed-state audit discrepancy routing checklist |
+| #1084 | architect-1 | completed | Define the phase-two closed-state audit outcome matrix |
+| #1085 | mesh-architect | completed | Define the phase-two closed-state audit retrieval-to-review handoff contract |
+| #1086 | dev-2 | in_progress | Implement thin phase-two closed-state audit discrepancy routing helpers |
+| #1087 | architect-1 | in_progress | Define the phase-two closed-state audit confirmation checklist |
+| #1088 | mesh-architect | in_progress | Define the phase-two closed-state audit review-to-outcome handoff contract |
 
 ## Stopped backlog items
 
@@ -389,8 +394,13 @@ After both audit reports are delivered:
 - `#1076` is complete. `dev-3` added bounded checked-in closure fixtures and the smoke lane in `/home/mstie/projects/mesh/tests/phase_two_final_signoff_closure_smoke.rs`, added `just phase-two-final-signoff-closure-smoke`, and wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-final-signoff-closure-fixtures-2026-03-11.md`. Reported verification passed with the smoke lane, helper test, and `just` wrapper.
 - `#1077` is complete. `dev-2` landed commit `f6a3e39` and wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-archival-implementation-2026-03-11.md`. The thin archival helpers in `tests/support/mod.rs` now materialize canonical archive paths, archived retained-artifact reference lists, and archived closed-state markers with focused support coverage in `tests/closed_state_archival_support.rs`.
 - `#1078` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-retrieval-checklist-2026-03-11.md` and committed it as `f339352`. The checklist freezes the mechanical retrieval path from the canonical terminal decision through the retained packet, checker chain, runbook, and retained evidence, and fails immediately on shadow summaries, missing anchors, provenance drift, or mixed live-branch context.
-- `#1079` is active. `mesh-architect` is now freezing the shared machine-readable result schema for the closed-state audit retrieval path so later retrieval tooling and review helpers emit one consistent bounded output shape.
+- `#1079` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-retrieval-result-schema-2026-03-11.md`. The document freezes one bounded retrieval result envelope with canonical retained-artifact refs, provenance anchors, reroute history, retrieval-scoped failure payloads, and strict stop conditions.
 - `#1080` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-review-checklist-2026-03-11.md` and committed it as `73499e4`. The checklist turns retrieval and verification into the exact reviewer path over one retained terminal state, including completeness checks, provenance comparison, decision-trace review, reroute preservation, and immediate failure on shadow summaries, missing retained artifacts, provenance drift, or mixed live-branch context.
-- `#1081` is active. `dev-2` is now implementing the thin closed-state audit retrieval helpers so retained artifacts and provenance anchors can be loaded deterministically without ad hoc lookup logic.
-- `#1082` is active. `dev-3` is now adding bounded checked-in fixtures and a smoke wrapper around the closed-state audit retrieval helpers so the retrieval path can be rerun deterministically once the helper implementation is present.
-- `#1083` is active. `architect-1` is now defining the exact discrepancy-routing path for closed-state audits so retained-artifact gaps, provenance drift, mixed live-branch context, and reroute-preserving non-`GO` evidence are handled mechanically instead of by reviewer improvisation.
+- `#1081` is complete. `dev-2` landed commit `8c798e8`. The deliverable path for `#1081` was the bounded retrieval fixture and smoke-wrapper lane, and the task-id mapping was swapped during creation; `dev-2` completed the fixture lane and also landed the retrieval helper/docs surface in the same bounded slice.
+- `#1082` is active. In Mesh, `#1082` is the helper lane, not the fixture lane. `dev-3` was asked to compare against `8c798e8` and report whether any real helper delta remains before landing more edits so we do not duplicate work on the same audit-retrieval slice.
+- `#1083` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-discrepancy-routing-checklist-2026-03-11.md` and committed it as `482c90d`. The checklist freezes the exact routing path when audit retrieval or review fails, including the repair-versus-reopen boundary and the bounded routing packet expectations.
+- `#1084` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-outcome-matrix-2026-03-11.md` and committed it as `a66bcbc`. The matrix freezes the bounded audit outcomes `confirmed_closed_state`, `return_to_closed_state_artifact_repair`, and `reopen_owning_lane`.
+- `#1085` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-retrieval-to-review-handoff-2026-03-11.md`. The contract freezes one strict handoff from retrieval into review, with explicit entry criteria and a hard route-to-review versus route-to-discrepancy boundary.
+- `#1086` is active. `dev-2` is now implementing the thin closed-state audit discrepancy routing helpers so retained-artifact repair versus owning-lane reopen can be handed off deterministically through one bounded routing packet.
+- `#1087` is active. `architect-1` is now turning the audit outcome matrix into the exact confirmation path for a retained terminal state that audits cleanly.
+- `#1088` is active. `mesh-architect` is now freezing the bounded handoff from audit review into outcome classification so outcome decisions begin only from one canonical reviewed state.
