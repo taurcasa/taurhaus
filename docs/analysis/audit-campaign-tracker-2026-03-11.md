@@ -288,6 +288,7 @@ After both audit reports are delivered:
 | #1145 | architect-1 | completed | Define the phase-two retained-retained-retained-verified-archived-close retention outcome matrix |
 | #1146 | mesh-architect | in_progress | Define the phase-two retained-retained-retained retention outcome-to-confirmation handoff contract |
 | #1147 | architect-1 | pending | Define the phase-two retained-retained-retained-retained-verified-archived-close confirmation checklist |
+| #1148 | architect-1 | in_progress | Reconcile retained retained retained vocabulary mismatch |
 | #1143 | dev-2 | in_progress | Implement thin phase-two retained-retained-retained-verified-archived-close recording helpers |
 | #1144 | dev-3 | in_progress | Implement bounded phase-two retained-retained-retained-verified-archived-close confirmation fixtures and smoke wrapper |
 
