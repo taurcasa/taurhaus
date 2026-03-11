@@ -78,6 +78,7 @@ After both audit reports are delivered:
 | --- | --- | --- | --- |
 | #938 | architect-1 | completed | Review Mesh task-management capabilities end to end, including Mesh source code, Taurhaus integration, concrete improvement ideas, task-domain architecture, and task-to-automated-message relationships from an AI-team user-story perspective |
 | #940 | architect-1 | completed | Draft a handoff-ready Mesh communication/task-management architecture proposal with data model, user flows, gap closure plan, and architecture chart for the Mesh implementation team |
+| #943 | mesh-architect | in_progress | Review the existing Mesh communication/task draft from native Mesh perspective, assess its viability against `/home/mstie/projects/mesh`, and produce a Mesh-first architecture proposal or counterproposal |
 
 ## Stopped backlog items
 
@@ -103,4 +104,4 @@ After both audit reports are delivered:
 - `#939` is complete. `just check` now uses the safe two-lane structure, Rust integration avoids replaying lib tests, and the measured full-gate wall-clock time dropped from about `320s` to `231.82s` without reintroducing concurrent cargo contention.
 - `#940` is complete. The draft turns `#938` into a handoff-ready Mesh architecture proposal centered on a unified workflow system, authoritative workflow events plus projections, and first-class assignment/ack/progress/attention/recovery semantics.
 - `#941` is complete. Root cause was stale first-match project-team inference in backend snapshot discovery combined with stale frontend project snapshot/cache reuse after initialize/runtime mutations. The chosen fix makes persisted project->active-team mapping the canonical source of truth and forces runtime flows to rehydrate from the canonical project snapshot after initialize/add/remove/resume.
-- The active queue is now empty.
+- `mesh-architect` is now actively reviewing the Mesh communication/task architecture draft from native Mesh perspective under `#943`, with a Mesh-first viability assessment and counterproposal deliverable.
