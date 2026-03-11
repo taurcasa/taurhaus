@@ -42,6 +42,33 @@ struct DaemonPhase {
     daemon_connected_at_startup: bool,
 }
 
+#[cfg(test)]
+#[derive(Debug)]
+struct StartupOrchestrationReport {
+    daemon_watch_bootstrap: bool,
+    search_doc_count: u64,
+}
+
+#[cfg(test)]
+#[derive(Debug, thiserror::Error)]
+enum StartupOrchestrationError {
+    #[error("watchers init failed: {source}")]
+    Watchers {
+        #[source]
+        source: Box<dyn std::error::Error>,
+    },
+    #[error("compaction init failed: {source}")]
+    Compaction {
+        #[source]
+        source: Box<dyn std::error::Error>,
+    },
+    #[error("search init failed: {source}")]
+    Search {
+        #[source]
+        source: Box<dyn std::error::Error>,
+    },
+}
+
 fn emit_startup_event(level: &str, event: &str, message: &'static str, fields: Map<String, Value>) {
     commands::logging::emit_global(level, "backend", event, Some(message.to_string()), fields);
 }
@@ -454,21 +481,45 @@ fn connect_daemon_provider(
     wsl_distro: &Option<String>,
     log_path: &std::path::Path,
 ) -> (Option<provider::daemon_client::DaemonProvider>, bool) {
+    let port = crate::daemon::server::DEFAULT_PORT;
+    let addr = format!("127.0.0.1:{port}");
+    connect_daemon_provider_with(
+        wsl_distro.as_deref(),
+        log_path,
+        &addr,
+        port,
+        provider::daemon_client::DaemonProvider::connect,
+        crate::daemon::launcher::validate_startup_daemon_binary,
+    )
+}
+
+fn connect_daemon_provider_with<Connect, Validate>(
+    wsl_distro: Option<&str>,
+    log_path: &std::path::Path,
+    addr: &str,
+    port: u16,
+    connect: Connect,
+    validate: Validate,
+) -> (Option<provider::daemon_client::DaemonProvider>, bool)
+where
+    Connect:
+        FnOnce(&str) -> Result<provider::daemon_client::DaemonProvider, crate::errors::AppError>,
+    Validate: FnOnce(
+        &provider::daemon_client::DaemonProvider,
+        Option<&str>,
+        u16,
+        &std::path::Path,
+    )
+        -> Result<crate::daemon::launcher::StartupDaemonValidation, std::io::Error>,
+{
     if wsl_distro.is_none() {
         return (None, false);
     }
 
-    let port = crate::daemon::server::DEFAULT_PORT;
-    let addr = format!("127.0.0.1:{port}");
     let connect_started_at = Instant::now();
-    match provider::daemon_client::DaemonProvider::connect(&addr) {
+    match connect(addr) {
         Ok(provider) => {
-            match crate::daemon::launcher::validate_startup_daemon_binary(
-                &provider,
-                wsl_distro.as_deref(),
-                port,
-                log_path,
-            ) {
+            match validate(&provider, wsl_distro, port, log_path) {
                 Ok(_) => {}
                 Err(error) => {
                     tracing::warn!(
@@ -477,8 +528,8 @@ fn connect_daemon_provider(
                     );
                     provider.disconnect("startup_binary_validation_failed");
                     emit_startup_daemon_connect_deferred(
-                        &addr,
-                        wsl_distro.as_deref(),
+                        addr,
+                        wsl_distro,
                         "daemon_binary_validation_failed",
                         connect_started_at.elapsed().as_millis() as u64,
                     );
@@ -487,7 +538,7 @@ fn connect_daemon_provider(
             }
             tracing::info!("Connected to existing daemon (fast path)");
             emit_startup_daemon_connect_succeeded(
-                &addr,
+                addr,
                 connect_started_at.elapsed().as_millis() as u64,
             );
             (Some(provider), true)
@@ -495,14 +546,14 @@ fn connect_daemon_provider(
         Err(_) => {
             tracing::info!(addr, "Daemon not running — will start in background");
             emit_startup_daemon_connect_deferred(
-                &addr,
-                wsl_distro.as_deref(),
+                addr,
+                wsl_distro,
                 "daemon_unavailable_at_startup",
                 connect_started_at.elapsed().as_millis() as u64,
             );
             (
                 Some(provider::daemon_client::DaemonProvider::new_disconnected(
-                    &addr,
+                    addr,
                 )),
                 false,
             )
@@ -618,6 +669,98 @@ fn run_startup_orchestration(
     Ok(())
 }
 
+#[cfg(test)]
+fn run_startup_orchestration_with<
+    SpawnBootstrap,
+    StartRuntimeMonitors,
+    InitializeWatchers,
+    InitializeCompaction,
+    InitializeSearch,
+    SpawnBackgroundTasks,
+>(
+    context: &SetupContext,
+    spawn_background_bootstrap: SpawnBootstrap,
+    start_runtime_monitors: StartRuntimeMonitors,
+    initialize_watchers: InitializeWatchers,
+    initialize_compaction: InitializeCompaction,
+    initialize_search: InitializeSearch,
+    spawn_background_tasks: SpawnBackgroundTasks,
+) -> Result<StartupOrchestrationReport, StartupOrchestrationError>
+where
+    SpawnBootstrap: FnOnce(),
+    StartRuntimeMonitors: FnOnce(),
+    InitializeWatchers: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
+    InitializeCompaction: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
+    InitializeSearch: FnOnce() -> Result<u64, Box<dyn std::error::Error>>,
+    SpawnBackgroundTasks: FnOnce(),
+{
+    spawn_background_bootstrap();
+    start_runtime_monitors();
+
+    let watchers_started_at = Instant::now();
+    if let Err(source) = initialize_watchers() {
+        let mut fields = startup_base_fields();
+        fields.insert(
+            "error.code".to_string(),
+            Value::String("STARTUP_WATCHERS_INIT_FAILED".to_string()),
+        );
+        fields.insert(
+            "error.message".to_string(),
+            Value::String(source.to_string()),
+        );
+        emit_startup_event(
+            "error",
+            "startup.watchers.failed",
+            "Startup watchers initialization failed",
+            fields,
+        );
+        return Err(StartupOrchestrationError::Watchers { source });
+    }
+    emit_startup_watchers_initialized(
+        watchers_started_at.elapsed().as_millis() as u64,
+        true,
+        context.daemon_connected_at_startup && context.daemon_addr.is_some(),
+    );
+
+    initialize_compaction().map_err(|source| StartupOrchestrationError::Compaction { source })?;
+
+    let search_started_at = Instant::now();
+    let search_doc_count = match initialize_search() {
+        Ok(doc_count) => doc_count,
+        Err(source) => {
+            let mut fields = startup_base_fields();
+            fields.insert(
+                "error.code".to_string(),
+                Value::String("STARTUP_SEARCH_INIT_FAILED".to_string()),
+            );
+            fields.insert(
+                "error.message".to_string(),
+                Value::String(source.to_string()),
+            );
+            emit_startup_event(
+                "error",
+                "startup.search.failed",
+                "Startup search initialization failed",
+                fields,
+            );
+            return Err(StartupOrchestrationError::Search { source });
+        }
+    };
+    emit_startup_search_initialized(
+        context.data_dir.join("search_index"),
+        search_doc_count,
+        search_started_at.elapsed().as_millis() as u64,
+    );
+
+    spawn_background_tasks();
+
+    Ok(StartupOrchestrationReport {
+        daemon_watch_bootstrap: context.daemon_connected_at_startup
+            && context.daemon_addr.is_some(),
+        search_doc_count,
+    })
+}
+
 #[cfg(feature = "mesh-bridged-backend")]
 fn spawn_coordination_self_heal_monitor(app: tauri::AppHandle) {
     use std::time::Duration;
@@ -691,6 +834,9 @@ pub(crate) fn resolve_claude_tasks_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::commands::logging::{install_global_sink, LogFileState};
+    use crate::daemon::launcher::StartupDaemonValidation;
+    use std::cell::RefCell;
+    use std::net::TcpListener;
     use std::path::Path;
     use std::time::Duration;
 
@@ -712,6 +858,17 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         read_lines(path)
+    }
+
+    fn spawn_stub_daemon_listener() -> (String, u16, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub daemon");
+        let addr = listener.local_addr().expect("local addr");
+        let addr_string = addr.to_string();
+        let handle = std::thread::spawn(move || {
+            let _stream = listener.accept().expect("accept daemon connection");
+            std::thread::sleep(Duration::from_millis(50));
+        });
+        (addr_string, addr.port(), handle)
     }
 
     #[test]
@@ -797,5 +954,219 @@ mod tests {
     fn resolve_claude_tasks_dir_uses_platform_paths() {
         let expected = crate::provider::platform_paths::PlatformPaths::claude_dir().join("tasks");
         assert_eq!(resolve_claude_tasks_dir(), Some(expected));
+    }
+
+    #[test]
+    fn initialize_database_fails_when_db_path_is_a_directory() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("taurhaus.db");
+        std::fs::create_dir_all(&db_path).expect("create directory at db path");
+        let setup_paths = SetupPaths {
+            data_dir: temp_dir.path().join("data"),
+            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
+            db_path,
+        };
+
+        let error = initialize_database(&setup_paths).expect_err("directory db path should fail");
+
+        assert!(
+            !error.to_string().trim().is_empty(),
+            "database init failure should surface an error message"
+        );
+    }
+
+    #[test]
+    fn connect_daemon_provider_with_marks_fast_path_connected_when_connect_and_validation_succeed()
+    {
+        let (addr, port, listener_handle) = spawn_stub_daemon_listener();
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+
+        let (provider, connected_at_startup) = connect_daemon_provider_with(
+            Some("native"),
+            temp_dir.path(),
+            &addr,
+            port,
+            provider::daemon_client::DaemonProvider::connect,
+            |_, _, _, _| Ok(StartupDaemonValidation::Healthy),
+        );
+
+        let provider = provider.expect("provider");
+        assert!(connected_at_startup);
+        assert!(provider.is_connected());
+
+        listener_handle.join().expect("listener thread");
+    }
+
+    #[test]
+    fn connect_daemon_provider_with_defers_when_validation_fails_after_connect() {
+        let (addr, port, listener_handle) = spawn_stub_daemon_listener();
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+
+        let (provider, connected_at_startup) = connect_daemon_provider_with(
+            Some("native"),
+            temp_dir.path(),
+            &addr,
+            port,
+            provider::daemon_client::DaemonProvider::connect,
+            |_, _, _, _| Err(io::Error::other("stale daemon binary")),
+        );
+
+        let provider = provider.expect("provider");
+        assert!(!connected_at_startup);
+        assert!(!provider.is_connected());
+
+        listener_handle.join().expect("listener thread");
+    }
+
+    #[test]
+    fn connect_daemon_provider_with_returns_disconnected_provider_when_daemon_is_unavailable() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind free port");
+        let addr = listener.local_addr().expect("local addr");
+        let addr_string = addr.to_string();
+        let port = addr.port();
+        drop(listener);
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let (provider, connected_at_startup) = connect_daemon_provider_with(
+            Some("native"),
+            temp_dir.path(),
+            &addr_string,
+            port,
+            provider::daemon_client::DaemonProvider::connect,
+            |_, _, _, _| Ok(StartupDaemonValidation::Healthy),
+        );
+
+        let provider = provider.expect("disconnected fallback provider");
+        assert!(!connected_at_startup);
+        assert!(!provider.is_connected());
+        assert_eq!(provider.addr(), addr_string);
+    }
+
+    #[test]
+    fn run_startup_orchestration_with_reports_successful_branch_order_and_flags() {
+        let calls = RefCell::new(Vec::new());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let context = SetupContext {
+            data_dir: temp_dir.path().to_path_buf(),
+            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
+            db_path: temp_dir.path().join("taurhaus.db"),
+            wsl_distro: Some("native".to_string()),
+            daemon_addr: Some("127.0.0.1:17233".to_string()),
+            daemon_connected_at_startup: true,
+        };
+
+        let report = run_startup_orchestration_with(
+            &context,
+            || calls.borrow_mut().push("bootstrap"),
+            || calls.borrow_mut().push("monitors"),
+            || {
+                calls.borrow_mut().push("watchers");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("compaction");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("search");
+                Ok(7)
+            },
+            || calls.borrow_mut().push("tasks"),
+        )
+        .expect("orchestration succeeds");
+
+        assert_eq!(
+            calls.into_inner(),
+            vec![
+                "bootstrap",
+                "monitors",
+                "watchers",
+                "compaction",
+                "search",
+                "tasks"
+            ]
+        );
+        assert!(report.daemon_watch_bootstrap);
+        assert_eq!(report.search_doc_count, 7);
+    }
+
+    #[test]
+    fn run_startup_orchestration_with_short_circuits_after_watcher_failure() {
+        let calls = RefCell::new(Vec::new());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let context = SetupContext {
+            data_dir: temp_dir.path().to_path_buf(),
+            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
+            db_path: temp_dir.path().join("taurhaus.db"),
+            wsl_distro: None,
+            daemon_addr: None,
+            daemon_connected_at_startup: false,
+        };
+
+        let error = run_startup_orchestration_with(
+            &context,
+            || calls.borrow_mut().push("bootstrap"),
+            || calls.borrow_mut().push("monitors"),
+            || {
+                calls.borrow_mut().push("watchers");
+                Err(io::Error::other("watchers boom").into())
+            },
+            || {
+                calls.borrow_mut().push("compaction");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("search");
+                Ok(7)
+            },
+            || calls.borrow_mut().push("tasks"),
+        )
+        .expect_err("watcher init should fail");
+
+        assert!(matches!(error, StartupOrchestrationError::Watchers { .. }));
+        assert_eq!(
+            calls.into_inner(),
+            vec!["bootstrap", "monitors", "watchers"]
+        );
+    }
+
+    #[test]
+    fn run_startup_orchestration_with_short_circuits_after_search_failure() {
+        let calls = RefCell::new(Vec::new());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let context = SetupContext {
+            data_dir: temp_dir.path().to_path_buf(),
+            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
+            db_path: temp_dir.path().join("taurhaus.db"),
+            wsl_distro: Some("native".to_string()),
+            daemon_addr: Some("127.0.0.1:17233".to_string()),
+            daemon_connected_at_startup: true,
+        };
+
+        let error = run_startup_orchestration_with(
+            &context,
+            || calls.borrow_mut().push("bootstrap"),
+            || calls.borrow_mut().push("monitors"),
+            || {
+                calls.borrow_mut().push("watchers");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("compaction");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("search");
+                Err(io::Error::other("search boom").into())
+            },
+            || calls.borrow_mut().push("tasks"),
+        )
+        .expect_err("search init should fail");
+
+        assert!(matches!(error, StartupOrchestrationError::Search { .. }));
+        assert_eq!(
+            calls.into_inner(),
+            vec!["bootstrap", "monitors", "watchers", "compaction", "search"]
+        );
     }
 }
