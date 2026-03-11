@@ -267,10 +267,14 @@ After both audit reports are delivered:
 | #1124 | mesh-architect | completed | Define the phase-two retained outcome-to-confirmation handoff contract |
 | #1125 | dev-3 | completed | Implement bounded phase-two retained-verified-archived-close recording fixtures and smoke wrapper |
 | #1126 | dev-2 | completed | Implement thin phase-two retained-verified-archived-close retention verification helpers |
-| #1127 | dev-2 | in_progress | Implement thin phase-two retained-retained-verified-archived-close confirmation helpers |
-| #1128 | architect-1 | in_progress | Define the phase-two retained-retained-verified-archived-close recording checklist |
+| #1127 | dev-2 | completed | Implement thin phase-two retained-retained-verified-archived-close confirmation helpers |
+| #1128 | architect-1 | completed | Define the phase-two retained-retained-verified-archived-close recording checklist |
 | #1129 | dev-3 | in_progress | Implement bounded phase-two retained-retained-verified-archived-close confirmation fixtures and smoke wrapper |
-| #1130 | mesh-architect | in_progress | Define the phase-two retained confirmation-to-recording handoff contract |
+| #1130 | mesh-architect | completed | Define the phase-two retained confirmation-to-recording handoff contract |
+| #1131 | architect-1 | completed | Define the phase-two retained outcome package contract |
+| #1132 | mesh-architect | in_progress | Define the phase-two retained recording-to-retention-verification handoff contract |
+| #1133 | architect-1 | in_progress | Define the phase-two retained-retained-verified-archived-close retention verification checklist |
+| #1134 | dev-2 | in_progress | Implement thin phase-two retained-retained-verified-archived-close recording helpers |
 
 ## Stopped backlog items
 
