@@ -129,7 +129,7 @@ After both audit reports are delivered:
 | #986 | mesh-architect | in_progress | EPIC X1: implement the cross-team communication contract and capability model |
 | #987 | dev-1 | in_progress | EPIC X3: implement the `_links` lead-mailbox adapter |
 | #988 | dev-2 | in_progress | EPIC X2: implement canonical external-message storage and replay |
-| #989 | dev-3 | in_progress | EPIC X6: build communication acceptance, telemetry, and hardening harness |
+| #989 | dev-3 | completed | EPIC X6: build communication acceptance, telemetry, and hardening harness |
 | #990 | dev-2 | pending | EPIC X4: implement the team-daemon relay into local inboxes |
 | #991 | architect-1 | pending | EPIC X5: implement narrow xteam operator commands and policy gates |
 
@@ -207,6 +207,6 @@ After both audit reports are delivered:
 - `#986` is active. `mesh-architect` is now implementing X1, the canonical cross-team communication contract and capability model, as the first live phase-two communication slice.
 - `#987` is active. `dev-1` is now implementing X3, the `_links` lead-mailbox adapter. Their first reported step is mapping the `~/.claude/teams/_links` directory contract against the existing external adapter seam while keeping the slice bounded to ingress/egress skeleton behavior and avoiding invented assignment or progress semantics.
 - `#988` is active. `dev-2` is now implementing X2, the canonical external-message storage and replay backbone, in direct alignment with the X1 contract lane.
-- `#989` is active. `dev-3` is now implementing X6, the communication acceptance, telemetry, and hardening harness, so phase-two work lands with proof instead of optimistic assumptions.
+- `#989` is complete. `dev-3` landed the X6 scaffold slice in `/home/mstie/projects/mesh`, adding reusable cross-team acceptance fixtures in `tests/support/mod.rs`, the first executable hardening harness in `tests/external_communication_hardening_harness.rs`, external communication telemetry counters plus aggregate query coverage in `src/telemetry.rs`, and `/home/mstie/projects/mesh/docs/analysis/x6-communication-hardening-slice-2026-03-11.md`. They also cleared two branch-local compile blockers in `src/external_workflow/claude_code.rs` and a workflow test helper so verification could run. Reported validation passed for telemetry, hardening harness, workflow replay, and unsupported-operation coverage. The remaining gap stays correctly fenced: true end-to-end cross-team send/relay/rebuild still depends on X2 through X5 landing first.
 - `#990` is queued. `dev-2` owns X4, the team-daemon local relay runtime, once the X1/X2/X3 seams are stable enough to land it cleanly.
 - `#991` is queued. `architect-1` owns X5, the narrow xteam operator commands and policy gates, once the earlier communication seams are stable enough to support a bounded operator surface.
