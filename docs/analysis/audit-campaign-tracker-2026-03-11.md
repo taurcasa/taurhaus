@@ -183,6 +183,9 @@ After both audit reports are delivered:
 | #1040 | architect-1 | in_progress | Define the phase-two completion evidence manifest |
 | #1041 | mesh-architect | in_progress | Turn the phase-two final signoff packaging boundary into an extraction checklist |
 | #1042 | dev-3 | in_progress | Plan the phase-two signoff artifact capture helpers |
+| #1043 | mesh-architect | in_progress | Turn the phase-two final signoff extraction into an execution checklist |
+| #1044 | architect-1 | in_progress | Turn the phase-two completion evidence manifest into a packet assembly checklist |
+| #1045 | dev-3 | in_progress | Turn the signoff artifact capture plan into an execution checklist |
 
 ## Stopped backlog items
 
@@ -312,3 +315,6 @@ After both audit reports are delivered:
 - `#1040` is active. `architect-1` is now defining the exact evidence manifest required for final phase-two completion so the finish-line decision is made against one stable, explicit packet instead of ad hoc review.
 - `#1041` is active. `mesh-architect` is now turning the approved final phase-two signoff packaging boundary into a concrete extraction checklist so the eventual finish-line review packet can be assembled cleanly from bounded evidence only.
 - `#1042` is active. `dev-3` is now defining the exact helper and artifact-capture plan for final phase-two signoff so proof commands, telemetry snapshots, and evidence files can be gathered consistently without inventing new semantics at review time.
+- `#1043` is active. `mesh-architect` is now turning the approved final signoff extraction sequence into a concrete execution checklist so the finish-line evidence packet can be assembled mechanically from bounded lane outputs.
+- `#1044` is active. `architect-1` is now turning the approved completion evidence manifest into a concrete packet-assembly checklist so final signoff evidence can be prepared consistently without reviewer guesswork.
+- `#1045` is active. `dev-3` is now turning the approved signoff artifact capture plan into a concrete execution checklist so proof commands, telemetry snapshots, and evidence files can be gathered consistently at signoff time.
