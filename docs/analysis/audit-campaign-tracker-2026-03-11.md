@@ -307,7 +307,9 @@ After both audit reports are delivered:
 | #1164 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
 | #1165 | mesh-architect | completed | Normalize phase-two retained-state naming and freeze concise canonical names across tasks, docs, tests, and just recipes |
 | #1166 | mesh-architect | completed | Reduce phase-two scaffolding to a lean retained-state core |
-| #1167 | mesh-architect | in_progress | Design mesh-native orchestration guardrails for WIP limits, critical-path checks, and scaffold expiry |
+| #1167 | mesh-architect | completed | Design mesh-native orchestration guardrails for WIP limits, critical-path checks, and scaffold expiry |
+| #1168 | architect-1 | in_progress | Plan execution of phase-two scaffolding reduction with concrete delete, merge, archive, and keep slices |
+| #1169 | mesh-architect | in_progress | Plan the first implementation slice for mesh-native guardrails |
 
 ### Phase-two naming freeze
 
@@ -326,6 +328,8 @@ After both audit reports are delivered:
 - Before assigning work, prefer simplification over parallelization when the new task targets the same narrow area.
 - Naming normalization is mandatory before continuing any retained-state ladder work.
 - `#1166` now provides the reduction baseline: merge or delete micro handoff/checklist docs, per-cycle smoke wrappers, and per-cycle `just` aliases once the still-active X3/X4 surfaces are stable enough to consolidate safely.
+- `#1167` and `#1168` split the anti-regression work cleanly: Mesh-native guardrails to prevent future fan-out, and a concrete cleanup execution sequence to remove existing excess safely.
+- `#1169` is the implementation bridge from guardrail policy into actual Mesh behavior so the rules do not remain docs-only.
 
 ## Stopped backlog items
 
