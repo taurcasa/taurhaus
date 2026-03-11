@@ -290,10 +290,13 @@ After both audit reports are delivered:
 | #1147 | architect-1 | completed | Define the phase-two retained-retained-retained-retained-verified-archived-close confirmation checklist |
 | #1148 | architect-1 | completed | Reconcile retained retained retained vocabulary mismatch |
 | #1149 | dev-2 | completed | Implement thin phase-two retained-retained-retained-verified-archived-close retention verification helpers |
-| #1150 | architect-1 | pending | Define the phase-two retained-retained-retained-retained-verified-archived-close recording checklist |
-| #1151 | mesh-architect | in_progress | Define the phase-two retained-retained-retained-retained confirmation-to-recording handoff contract |
-| #1152 | dev-2 | pending | Implement thin phase-two retained-retained-retained-retained-verified-archived-close confirmation helpers |
-| #1153 | architect-1 | in_progress | Review X3 close delta from current checkpoints |
+| #1150 | architect-1 | in_progress | Define the phase-two retained-retained-retained-retained-verified-archived-close recording checklist |
+| #1151 | mesh-architect | completed | Define the phase-two retained-retained-retained-retained confirmation-to-recording handoff contract |
+| #1152 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close confirmation helpers |
+| #1153 | architect-1 | completed | Review X3 close delta from current checkpoints |
+| #1154 | dev-3 | in_progress | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close confirmation fixtures and smoke wrapper |
+| #1155 | mesh-architect | pending | Define the phase-two retained-retained-retained-retained recording-to-retention-verification handoff contract |
+| #1156 | dev-2 | pending | Implement thin phase-two retained-retained-retained-retained-verified-archived-close recording helpers |
 
 ## Stopped backlog items
 
