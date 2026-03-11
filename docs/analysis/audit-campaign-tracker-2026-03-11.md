@@ -229,8 +229,9 @@ After both audit reports are delivered:
 | #1086 | dev-2 | in_progress | Implement thin phase-two closed-state audit discrepancy routing helpers |
 | #1087 | architect-1 | completed | Define the phase-two closed-state audit confirmation checklist |
 | #1088 | mesh-architect | completed | Define the phase-two closed-state audit review-to-outcome handoff contract |
-| #1089 | architect-1 | in_progress | Define the phase-two closed-state audit confirmation-to-close handoff contract |
+| #1089 | architect-1 | completed | Define the phase-two closed-state audit confirmation-to-close handoff contract |
 | #1090 | mesh-architect | in_progress | Define the phase-two closed-state audit outcome-to-confirmation handoff contract |
+| #1091 | architect-1 | in_progress | Define the phase-two closed-state audit close-recording checklist |
 
 ## Stopped backlog items
 
@@ -406,5 +407,6 @@ After both audit reports are delivered:
 - `#1086` is active. `dev-2` is now implementing the thin closed-state audit discrepancy routing helpers so retained-artifact repair versus owning-lane reopen can be handed off deterministically through one bounded routing packet.
 - `#1087` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-confirmation-checklist-2026-03-11.md` and committed it as `db31671`. The checklist turns the audit outcome matrix into the exact confirmation path for a clean retained terminal state and records confirmed close only if the retained state still maps mechanically to `confirmed_closed_state`.
 - `#1088` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-review-to-outcome-handoff-2026-03-11.md`. The contract freezes one strict handoff from audit review into outcome classification, with explicit entry criteria and a hard route-to-outcome versus route-to-discrepancy boundary.
-- `#1089` is active. `architect-1` is now freezing the exact bounded handoff from confirmed audit state into final close recording so confirmed-close decisions are materialized from one canonical confirmation package.
+- `#1089` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-confirmation-to-close-handoff-2026-03-11.md` and committed it as `e2d05c0`. The contract freezes the exact handoff from a `confirmed_closed_state` audit result into final close recording, including one canonical handoff package, pass/fail entry criteria, shared retained-artifact anchors, and preserved reroute history.
 - `#1090` is active. `mesh-architect` is now freezing the bounded handoff from audit outcome classification into confirmation so confirmation starts only from one canonical outcome package.
+- `#1091` is active. `architect-1` is now turning the confirmed-close handoff into the exact bounded close-recording path for an audit-confirmed retained terminal state.
