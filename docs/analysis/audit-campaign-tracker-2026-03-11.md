@@ -232,9 +232,10 @@ After both audit reports are delivered:
 | #1089 | architect-1 | completed | Define the phase-two closed-state audit confirmation-to-close handoff contract |
 | #1090 | mesh-architect | completed | Define the phase-two closed-state audit outcome-to-confirmation handoff contract |
 | #1091 | architect-1 | completed | Define the phase-two closed-state audit close-recording checklist |
-| #1092 | dev-3 | in_progress | Add just wrapper for phase-two closed-state audit retrieval smoke lane |
+| #1092 | dev-3 | completed | Add just wrapper for phase-two closed-state audit retrieval smoke lane |
 | #1093 | mesh-architect | in_progress | Define the phase-two closed-state audit close-recording-to-archival handoff contract |
 | #1094 | architect-1 | in_progress | Define the phase-two closed-state audit archived-close verification checklist |
+| #1095 | dev-3 | in_progress | Implement bounded phase-two closed-state audit confirmation fixtures and smoke wrapper |
 
 ## Stopped backlog items
 
@@ -413,6 +414,7 @@ After both audit reports are delivered:
 - `#1089` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-confirmation-to-close-handoff-2026-03-11.md` and committed it as `e2d05c0`. The contract freezes the exact handoff from a `confirmed_closed_state` audit result into final close recording, including one canonical handoff package, pass/fail entry criteria, shared retained-artifact anchors, and preserved reroute history.
 - `#1090` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-outcome-to-confirmation-handoff-2026-03-11.md`. The contract freezes the strict handoff from outcome classification into confirmation, including the explicit route-to-confirmation versus route-away boundary.
 - `#1091` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-close-recording-checklist-2026-03-11.md` and committed it as `524d5e0`. The checklist turns the confirmation-to-close handoff into the exact close-recording path for an audit-confirmed retained terminal state.
-- `#1092` is active. `dev-3` is now adding the missing bounded `just` wrapper for the already-landed closed-state audit retrieval smoke lane so the retrieval slice is rerunnable through the standard phase-two wrapper surface.
+- `#1092` is complete. `dev-3` added the bounded `just` wrapper `phase-two-closed-state-audit-retrieval-smoke` in `justfile`, wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-closed-state-audit-retrieval-smoke-wrapper-2026-03-11.md`, and verified both the `just` wrapper and the underlying smoke test.
 - `#1093` is active. `mesh-architect` is now freezing the bounded handoff from audit close recording into archival so archived retained state is materialized only from one canonical close-recording package.
 - `#1094` is active. `architect-1` is now defining the exact archived-close verification path for an audit-confirmed retained terminal state.
+- `#1095` is active. `dev-3` is now adding bounded checked-in fixtures and a smoke wrapper around the closed-state audit confirmation path so a confirmed audited-close state can be rerun deterministically.
