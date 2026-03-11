@@ -173,7 +173,10 @@ After both audit reports are delivered:
 | #1030 | architect-1 | completed | Turn the X5 close gate and X6 handoff into a final review checklist |
 | #1031 | dev-3 | in_progress | Turn the X5 proof packaging plan into an execution checklist |
 | #1032 | mesh-architect | in_progress | Plan the X5 first-slice packaging boundary |
-| #1033 | architect-1 | in_progress | Turn the X5 opening gate from X4 into an execution checklist |
+| #1033 | architect-1 | completed | Turn the X5 opening gate from X4 into an execution checklist |
+| #1034 | mesh-architect | in_progress | Turn the X5 first-slice packaging plan into an extraction checklist |
+| #1035 | dev-3 | in_progress | Plan the phase-two final executable validation bundle |
+| #1036 | architect-1 | in_progress | Turn the X6 lane into a final review checklist |
 
 ## Stopped backlog items
 
@@ -293,4 +296,7 @@ After both audit reports are delivered:
 - `#1030` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x5-final-review-checklist-2026-03-11.md` and committed it as `8976e99`. The checklist turns the approved X5 close gate and X6 handoff guidance into one final review path with exact review steps, evidence checks, residual-risk review, no-hidden-fallback signoff questions, and explicit `GO` / `NO-GO` / `RE-SCOPE` outcomes. It requires reviewers to verify legitimate X5 entry from frozen X4 handoff, strict file-boundary discipline, explicit command module seam, explicit and early policy gates, narrow and honest send/read/reply behavior, unchanged local commands, telemetry honesty, passing `X5-A1..A8`, acceptable residuals, and an explicit X6 kickoff packet.
 - `#1031` is active. `dev-3` is now turning the approved X5 executable proof packaging into a concrete proof-run checklist so the eventual X5 operator lane can execute its bounded proof set without drifting into frozen X4 or broader communication semantics.
 - `#1032` is active. `mesh-architect` is now defining the exact packaging and review boundary for the first X5 operator slice so the command lane can land cleanly after X4 without drifting into broader communication semantics or shared hotspot expansion.
-- `#1033` is active. `architect-1` is now turning the approved X5 opening gate from the X4 handoff into a concrete execution checklist so the eventual X5 operator lane has one bounded path for opening cleanly from the frozen X4 slice.
+- `#1033` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x5-opening-execution-checklist-2026-03-11.md` and committed it as `d1d652f`. The checklist turns the approved X5 opening gate from the frozen X4 handoff into an execution lane with explicit entry checks, allowed and no-go surfaces, preflight boundary checks, ordered opening steps, required opening outputs, stop conditions, and opening assertions. It keeps X5 command-only at entry and treats any need to redefine X4 relay meaning, touch team-daemon/inbox/workflow semantics, use `tests/cli_integration.rs` as the operator matrix, or borrow X6 hardening logic as a stop condition rather than valid X5 opening work.
+- `#1034` is active. `mesh-architect` is now turning the approved X5 first-slice packaging plan into a concrete extraction checklist so the eventual X5 operator slice can be packaged cleanly without drifting into frozen X4 boundaries or shared hotspot expansion.
+- `#1035` is active. `dev-3` is now defining the exact executable validation bundle for final phase-two signoff so the eventual finish-line review has one concrete test, harness, telemetry, and evidence package across X3 through X6.
+- `#1036` is active. `architect-1` is now turning the approved X6 hardening and close guidance into one concrete final review checklist so the eventual X6 validation slice has an executable signoff path before final phase-two completion review.
