@@ -125,6 +125,13 @@ After both audit reports are delivered:
 | #982 | dev-2 | completed | Fix the projection-backed tasks default teammate-filtering regression in CLI integration tests |
 | #983 | dev-1 | completed | Fix the watched Claude ingress incremental-update regression in CLI integration tests |
 | #984 | mesh-architect | completed | Run the final milestone-one sign-off review on the extracted clean candidate with architect-1 co-approval |
+| #985 | architect-1 | in_progress | Materialize the signed-off milestone-one candidate as a durable review branch or worktree with exact landing steps |
+| #986 | mesh-architect | in_progress | EPIC X1: implement the cross-team communication contract and capability model |
+| #987 | dev-1 | in_progress | EPIC X2: implement canonical external-message storage and replay |
+| #988 | dev-2 | in_progress | EPIC X3: implement the `_links` lead-mailbox adapter |
+| #989 | dev-3 | in_progress | EPIC X6: build communication acceptance, telemetry, and hardening harness |
+| #990 | dev-2 | pending | EPIC X4: implement the team-daemon relay into local inboxes |
+| #991 | architect-1 | pending | EPIC X5: implement narrow xteam operator commands and policy gates |
 
 ## Stopped backlog items
 
@@ -196,3 +203,10 @@ After both audit reports are delivered:
 - `#982` is complete. `dev-2` landed commit `47b4b55` in `/home/mstie/projects/mesh`, fixing `tests/cli_integration.rs::tasks_default_filters_to_owner_for_teammates`. Root cause was that the `#967` cutover routed non-lead users exclusively through `assignee_inbox`, which excluded compatibility-owned but unassigned tasks created via `task update --owner`. The fix keeps projection-only reads but merges owner-matched unassigned `lead_board` entries into the non-lead default view and dedupes by task ID. Reported verification passed with `cargo test --test cli_integration tasks_default_filters_to_owner_for_teammates` and `cargo test --test cli_integration tasks_command_`.
 - `#983` is complete. `dev-1` landed commit `8f97aa2` in `/home/mstie/projects/mesh`, fixing `tests/cli_integration.rs::task_ingest_claude_watch_updates_existing_external_task_incrementally`. The fix emits a canonical `task_created` workflow event when adapter ingress creates a task, so watched incremental updates rebuild against canonical task state instead of leaving the original subject/description snapshot stale. Reported verification passed for the incremental-update test plus replay-guard and projection-rebuild related watched-ingress CLI integration coverage.
 - `#984` is complete. `mesh-architect` independently recreated the extracted candidate in `/tmp/mesh-first-live-signoff-ggjz15` from `45cda5a + 41a6878 + 2b08e81 + 8a7e7a1`, confirmed a clean worktree, reran the full five-test milestone set successfully, and updated `/home/mstie/projects/mesh/docs/analysis/greenfield-first-live-final-signoff-2026-03-11.md`. Both architect approvals are explicit. Final verdict: GO for the clean extracted candidate only, not for the current mixed `master` branch.
+- `#985` is active. `architect-1` is turning the signed-off milestone-one candidate into a durable local review branch or worktree and documenting the exact landing procedure so milestone one is not left as a temporary extraction only.
+- `#986` is active. `mesh-architect` is now implementing X1, the canonical cross-team communication contract and capability model, as the first live phase-two communication slice.
+- `#987` is active. `dev-1` is now implementing X2, the canonical external-message storage and replay backbone, in direct alignment with the X1 contract lane.
+- `#988` is active. `dev-2` is now implementing X3, the `_links` lead-mailbox adapter, on top of the approved bounded adapter direction without inventing workflow semantics from plain messages.
+- `#989` is active. `dev-3` is now implementing X6, the communication acceptance, telemetry, and hardening harness, so phase-two work lands with proof instead of optimistic assumptions.
+- `#990` is queued. `dev-2` owns X4, the team-daemon local relay runtime, once the X1/X2/X3 seams are stable enough to land it cleanly.
+- `#991` is queued. `architect-1` owns X5, the narrow xteam operator commands and policy gates, once the earlier communication seams are stable enough to support a bounded operator surface.
