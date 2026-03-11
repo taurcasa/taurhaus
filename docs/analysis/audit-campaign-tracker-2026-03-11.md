@@ -318,7 +318,8 @@ After both audit reports are delivered:
 | #1175 | dev-1 | completed | Confirm the approved X3 `_links` adapter is present in the live Mesh worktree and materialize the missing live docs |
 | #1176 | dev-2 | completed | Switch retained matrix proofs off legacy wrappers so the new generic proof layer is the real source of truth |
 | #1177 | dev-1 | completed | Checkpoint the live X3 documentation packet as a docs-only Mesh commit |
-| #1178 | architect-1 | in_progress | Assess whether legacy retained wrappers and aliases can now be deleted safely |
+| #1178 | architect-1 | completed | Assess whether legacy retained wrappers and aliases can now be deleted safely |
+| #1179 | dev-2 | in_progress | Cut the generic retained-cycle recipe and live notes over to the new matrix proof path |
 
 ### Phase-two naming freeze
 
@@ -347,7 +348,8 @@ After both audit reports are delivered:
 - `#1175` closed an important ambiguity: the approved X3 adapter code was already present in the live Mesh worktree with no content diff from the reviewed `link_mailbox` implementation. The only missing part of the approved package was the live doc packet, which is now materialized as uncommitted worktree files in Mesh, and the bounded X3 proof set reran green there.
 - `#1176` completed the next necessary cleanup cut: the three retained matrix smoke tests now prove real retained-cycle behavior directly through the merged helper layer instead of only asserting legacy wrapper existence.
 - `#1177` closed the remaining X3 packaging gap: the three live X3 documentation files are now committed together in Mesh as docs-only checkpoint `7d7abec`, so X3 is both live in product code and cleanly documented in the live repo.
-- `#1178` is the next cleanup gate: decide whether the old retained smoke wrappers, `just` aliases, and proof notes can now be deleted safely, or identify the exact remaining references that still keep them alive.
+- `#1178` came back as a narrow `NO`: wrapper and alias deletion is not ready yet because the generic retained-cycle recipe still dispatches to legacy wrappers, the 9 legacy `just` aliases are still live operator surfaces, and 9 live fixture notes still point at those aliases/wrappers.
+- `#1179` is the exact next cut that clears those blockers: rewrite the generic retained-cycle recipe to use the matrix proof path directly, and update the 9 live retained fixture notes to point at that path so the legacy aliases and wrapper tests can be deleted together afterward.
 
 ## Stopped backlog items
 
