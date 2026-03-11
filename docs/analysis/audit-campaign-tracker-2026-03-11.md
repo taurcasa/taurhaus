@@ -132,6 +132,8 @@ After both audit reports are delivered:
 | #989 | dev-3 | completed | EPIC X6: build communication acceptance, telemetry, and hardening harness |
 | #990 | dev-2 | pending | EPIC X4: implement the team-daemon relay into local inboxes |
 | #991 | architect-1 | pending | EPIC X5: implement narrow xteam operator commands and policy gates |
+| #992 | architect-1 | in_progress | Define the phase-two communication convergence contract and cut order across X1-X6 |
+| #993 | dev-3 | in_progress | Extend the X6 harness toward message-storage and mailbox-adapter convergence |
 
 ## Stopped backlog items
 
@@ -210,3 +212,5 @@ After both audit reports are delivered:
 - `#989` is complete. `dev-3` landed the X6 scaffold slice in `/home/mstie/projects/mesh`, adding reusable cross-team acceptance fixtures in `tests/support/mod.rs`, the first executable hardening harness in `tests/external_communication_hardening_harness.rs`, external communication telemetry counters plus aggregate query coverage in `src/telemetry.rs`, and `/home/mstie/projects/mesh/docs/analysis/x6-communication-hardening-slice-2026-03-11.md`. They also cleared two branch-local compile blockers in `src/external_workflow/claude_code.rs` and a workflow test helper so verification could run. Reported validation passed for telemetry, hardening harness, workflow replay, and unsupported-operation coverage. The remaining gap stays correctly fenced: true end-to-end cross-team send/relay/rebuild still depends on X2 through X5 landing first.
 - `#990` is queued. `dev-2` owns X4, the team-daemon local relay runtime, once the X1/X2/X3 seams are stable enough to land it cleanly.
 - `#991` is queued. `architect-1` owns X5, the narrow xteam operator commands and policy gates, once the earlier communication seams are stable enough to support a bounded operator surface.
+- `#992` is active. `architect-1` is now defining the concrete convergence contract and cut order across X1 through X6 so the phase-two communication lanes share one stable vocabulary, capability surface, sequencing model, and no-hidden-fallback boundary.
+- `#993` is active. `dev-3` is extending the X6 harness toward X2/X3 convergence, adding executable acceptance expectations for canonical external-message storage facts, replay behavior, and `_links` mailbox-adapter invariants without assuming relay or operator features that have not landed yet.
