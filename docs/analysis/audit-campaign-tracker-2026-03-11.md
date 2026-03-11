@@ -276,10 +276,11 @@ After both audit reports are delivered:
 | #1133 | architect-1 | completed | Define the phase-two retained-retained-verified-archived-close retention verification checklist |
 | #1134 | dev-2 | completed | Implement thin phase-two retained-retained-verified-archived-close recording helpers |
 | #1135 | architect-1 | completed | Define the phase-two retained-retained-verified-archived-close retention outcome matrix |
-| #1136 | architect-1 | in_progress | Define the phase-two retained-retained-retained-verified-archived-close confirmation checklist |
-| #1137 | mesh-architect | pending | Define the phase-two retained retention outcome-to-confirmation handoff contract |
+| #1136 | architect-1 | completed | Define the phase-two retained-retained-retained-verified-archived-close confirmation checklist |
+| #1137 | mesh-architect | in_progress | Define the phase-two retained retention outcome-to-confirmation handoff contract |
 | #1138 | dev-2 | in_progress | Implement thin phase-two retained-retained-verified-archived-close retention verification helpers |
 | #1139 | dev-3 | in_progress | Implement bounded phase-two retained-retained-verified-archived-close recording fixtures and smoke wrapper |
+| #1140 | architect-1 | pending | Define the phase-two retained-retained-retained-verified-archived-close recording checklist |
 
 ## Stopped backlog items
 
