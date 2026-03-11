@@ -139,7 +139,9 @@ After both audit reports are delivered:
 | #996 | dev-3 | in_progress | Define conflict-avoidance file boundaries for phase-two communication lanes |
 | #997 | dev-3 | completed | Implement a lightweight phase-two lane-boundary collision checker |
 | #998 | architect-1 | completed | Define the X3 close gate and handoff conditions into X4 |
-| #999 | architect-1 | in_progress | Turn the X4 first slice into a concrete execution checklist |
+| #999 | architect-1 | completed | Turn the X4 first slice into a concrete execution checklist |
+| #1000 | architect-1 | in_progress | Define the X1 close gate and the X1 to X3 freeze handoff |
+| #1001 | dev-3 | in_progress | Draft the adapter-driven X3 close-proof matrix |
 
 ## Stopped backlog items
 
@@ -225,4 +227,6 @@ After both audit reports are delivered:
 - `#996` is active. `dev-3` is now defining practical file-boundary and checkpoint guidance for the phase-two communication lanes so later X1-X6 work can land with fewer same-file collisions and less packaging churn.
 - `#997` is complete. `dev-3` implemented the lightweight phase-two lane-boundary collision checker in `/home/mstie/projects/mesh`, adding `scripts/phase_two_lane_boundary_check.py`, `just phase-two-boundaries`, `just phase-two-boundaries-lane <lane>`, and `/home/mstie/projects/mesh/docs/analysis/phase-two-lane-boundary-checker-2026-03-11.md`. The checker encodes the current X1-X6 exclusive/serial-shared boundary map, supports dirty-path or explicit-path checking, emits text/JSON output, and uses exit codes `0/1/2` for clean/warn/error.
 - `#998` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x3-close-gate-and-x4-handoff-2026-03-11.md` and committed it as `e99b591`. The X3 gate is now explicit: X3 does not close at `a359d97` alone; it must freeze the transport adapter against the X1/X2 core, include real ingest plus outbound projection on the bounded link-mailbox path, replay guard, reply lineage, explicit-only task-link handling, and the required workflow-side immutable-drift hardening as part of the transport truth boundary. X4 may open only after X3 hands off one stable package covering the frozen transport schema, canonical object-ref and mapping contract, replay-guard behavior, reply-lineage contract, structured task-link rules, and proving tests. The doc also fixes the X4 first slice: one accepted inbound message, shared allowlist check, one deduped relay into the local lead inbox, explicit external provenance metadata, and delivered-versus-deduped telemetry only.
-- `#999` is active. `architect-1` is now turning that approved X4 first slice into a concrete execution checklist and evidence package so X4 can start cleanly the moment X3 closes.
+- `#999` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x4-first-slice-execution-checklist-2026-03-11.md` and committed it as `7c9711c`. The checklist turns the approved X4 first slice into an execution-ready sequence with exact entry gates, allowed files, runtime steps, required X4-A1 through X4-A5 acceptance coverage, verification commands, and stop conditions if the slice drifts into CLI, read/ack bridge, or transport-schema work.
+- `#1000` is active. `architect-1` is now defining the exact X1 close gate and the X1-to-X3 freeze handoff so the communication core can freeze cleanly against X2 and hand a stable contract to the X3 transport lane.
+- `#1001` is active. `dev-3` is now drafting the adapter-driven X3 close-proof matrix so the X3 implementation lane can close against one explicit set of tests, telemetry assertions, and non-goals rather than a loosely interpreted gate.
