@@ -799,11 +799,11 @@ mod tests {
 
     #[test]
     fn archived_session_summary_round_trips() {
-        let (mut conn, _tmp) = test_db();
+        let (conn, _tmp) = test_db();
         let summary = make_summary("session-1", Some("session-1"));
 
         replace_archived_session_summaries_for_project(
-            &mut conn,
+            &conn,
             "/projects/foo",
             std::slice::from_ref(&summary),
         )
@@ -815,18 +815,18 @@ mod tests {
 
     #[test]
     fn replacing_archived_session_summaries_clears_old_rows() {
-        let (mut conn, _tmp) = test_db();
+        let (conn, _tmp) = test_db();
         let first = make_summary("session-1", Some("session-1"));
         let second = make_summary("session-2", Some("session-2"));
 
         replace_archived_session_summaries_for_project(
-            &mut conn,
+            &conn,
             "/projects/foo",
             &[first.clone(), second.clone()],
         )
         .unwrap();
         replace_archived_session_summaries_for_project(
-            &mut conn,
+            &conn,
             "/projects/foo",
             std::slice::from_ref(&second),
         )
