@@ -105,7 +105,8 @@ After both audit reports are delivered:
 | #962 | architect-1 | completed | Define the remaining G1/G2 contract for assignment supersession and task-created payload completeness |
 | #963 | architect-1 | completed | Plan the first live greenfield cutover target and no-hidden-fallback landing sequence |
 | #964 | dev-3 | in_progress | Implement attention cooldown and escalation persistence with acceptance coverage |
-| #965 | architect-1 | in_progress | Turn the first-live cutover plan into a concrete execution checklist for active implementation lanes |
+| #965 | architect-1 | completed | Turn the first-live cutover plan into a concrete execution checklist for active implementation lanes |
+| #966 | architect-1 | in_progress | Draft the first-live milestone verification and rollback runbook |
 
 ## Stopped backlog items
 
@@ -157,4 +158,5 @@ After both audit reports are delivered:
 - `#963` is active. `architect-1` is now choosing the first end-to-end live greenfield cutover target and sequencing its no-hidden-fallback landing order so the active implementation lanes converge on one coherent milestone instead of several partial seams.
 - `#963` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/greenfield-first-live-cutover-plan-2026-03-11.md` and committed it as `806d38f`. The recommended first true live greenfield cutover is the native Mesh assignment loop end to end: task create, assign, runtime delivery, assignee lifecycle actions, and projection-backed lead/recovery/Taurhaus visibility. The plan sequences `#948` -> `#960` -> `#961` -> `#959`, keeps the first bounded adapter/core seam after the native path is proven, and names the no-hidden-fallback checks plus the surfaces that should remain deliberately uncut over in milestone one.
 - `#964` is active. `dev-3` is now implementing attention cooldown and escalation persistence so the next high-signal remaining attention scenarios can move from acceptance-matrix theory into durable workflow-native behavior with automated coverage.
-- `#965` is active. `architect-1` is now translating the first-live cutover plan into a concrete execution checklist with cutover gates, handoffs, verification points, and stop conditions for the participating implementation lanes.
+- `#965` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/greenfield-first-live-cutover-checklist-2026-03-11.md` and committed it as `96d83cf`. The checklist turns the first-live cutover plan into direct execution gates for `#948`, `#960`, `#961`, and then `#959`, with concrete entry criteria, required outputs, owner handoffs, verification points, protected surfaces, milestone stop conditions, and a single verification walkthrough for the native Mesh assignment loop.
+- `#966` is active. `architect-1` is now converting the cutover plan and checklist into the operator-facing verification and rollback runbook for the first live greenfield milestone.
