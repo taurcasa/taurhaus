@@ -206,7 +206,9 @@ After both audit reports are delivered:
 | #1063 | mesh-architect | in_progress | Define the phase-two checker result schema contract |
 | #1064 | dev-2 | in_progress | Implement thin phase-two completion state-transition conformance checker |
 | #1065 | mesh-architect | completed | Define the phase-two checker-chain orchestration contract |
-| #1066 | dev-3 | in_progress | Implement bounded phase-two state-transition checker fixtures and smoke wrapper |
+| #1066 | dev-3 | completed | Implement bounded phase-two state-transition checker fixtures and smoke wrapper |
+| #1067 | architect-1 | in_progress | Define the phase-two reroute and owning-lane reopen routing checklist |
+| #1068 | dev-3 | in_progress | Implement bounded phase-two checker-chain fixtures and smoke wrapper |
 
 ## Stopped backlog items
 
@@ -359,5 +361,7 @@ After both audit reports are delivered:
 - `#1063` is active. `mesh-architect` is now freezing the shared machine-readable result schema expected from validator, gate-checking, and later packet-flow conformance tooling so finish-line tools emit one consistent structural output shape.
 - `#1064` is active. `dev-2` is now implementing the thin state-transition conformance checker so packet flow stays inside the frozen finish-line state vocabulary, with only bounded state, transition, and role-boundary checks.
 - `#1065` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-checker-chain-contract-2026-03-11.md`. The contract freezes one strict pre-review checker order: `completion_packet_validator -> decision_ready_gate -> packet_flow_conformance`, with exact handoff packages, pass-only downstream entry, first-failure-wins chain termination, normalized chain outcomes (`pass_to_review`, `return_to_packet_assembly`, `reopen_owning_lane`, `unreadable`), and explicit retry/reroute rules so no checker is skipped or stretched into packet repair, signoff judgment, or product semantics.
-- `#1066` is active. `dev-3` is now adding only the bounded checked-in fixtures and smoke wrapper around the thin state-transition conformance checker so that checker can be rerun deterministically once its implementation is present.
+- `#1066` is complete. `dev-3` added checked-in state-transition fixtures at `/home/mstie/projects/mesh/tests/fixtures/phase_two_state_transition_conformant.json`, `/home/mstie/projects/mesh/tests/fixtures/phase_two_state_transition_invalid.json`, and `/home/mstie/projects/mesh/tests/fixtures/phase_two_state_transition_reopen.json`, added smoke coverage in `/home/mstie/projects/mesh/tests/phase_two_completion_state_transition_check_smoke.rs`, added `just phase-two-state-transition-check-smoke`, and wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-state-transition-fixtures-2026-03-11.md`. While wiring the reopen fixture, `dev-3` also fixed one bounded checker bug so explicit reopen transitions emit `owning_lane_reopen_required` and return `reopen_owning_lane` instead of `conformant`. Reported verification passed with smoke tests, the `just` wrapper, and a direct JSON repro.
+- `#1067` is active. `architect-1` is now freezing the exact reviewer and team-lead routing steps when the checker chain or outcome matrix returns `return_to_packet_assembly` or `reopen_owning_lane`, so reroutes stay mechanical instead of becoming ad hoc coordination.
+- `#1068` is active. `dev-3` is now adding only the bounded checked-in fixtures and smoke wrapper around the strict checker chain so the validator, `decision_ready` gate, and state-transition conformance sequence can be rerun deterministically once the chain components are present.
 - `#1058` is active. `mesh-architect` is now turning the frozen packet-state model into the exact conformance checklist used to verify that assembly, validation, `decision_ready`, and decision recording follow only allowed transitions and role boundaries.
