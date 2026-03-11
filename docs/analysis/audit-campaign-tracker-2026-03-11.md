@@ -257,14 +257,16 @@ After both audit reports are delivered:
 | #1114 | mesh-architect | completed | Define the phase-two retained-verified-archived-close retention-decision-to-recording handoff contract |
 | #1115 | architect-1 | completed | Define the phase-two retained-verified-archived-close recording checklist |
 | #1116 | mesh-architect | completed | Define the phase-two retained-verified-archived-close recording-to-retention-verification handoff contract |
-| #1117 | dev-3 | in_progress | Implement bounded phase-two retained-verified-archived-close retention decision fixtures and smoke wrapper |
+| #1117 | dev-3 | completed | Implement bounded phase-two retained-verified-archived-close retention decision fixtures and smoke wrapper |
 | #1118 | dev-2 | completed | Implement thin phase-two retained-verified-archived-close retention decision helpers |
 | #1119 | architect-1 | completed | Define the phase-two retained-verified-archived-close retention verification checklist |
 | #1120 | mesh-architect | completed | Define the phase-two retained-verified-archived-close retention verification-to-outcome handoff contract |
 | #1121 | architect-1 | completed | Define the phase-two retained-verified-archived-close retention outcome matrix |
-| #1122 | dev-2 | in_progress | Implement thin phase-two retained-verified-archived-close recording helpers |
-| #1123 | architect-1 | in_progress | Define the phase-two retained-retained-verified-archived-close confirmation checklist |
+| #1122 | dev-2 | completed | Implement thin phase-two retained-verified-archived-close recording helpers |
+| #1123 | architect-1 | completed | Define the phase-two retained-retained-verified-archived-close confirmation checklist |
 | #1124 | mesh-architect | in_progress | Define the phase-two retained outcome-to-confirmation handoff contract |
+| #1125 | dev-3 | in_progress | Implement bounded phase-two retained-verified-archived-close recording fixtures and smoke wrapper |
+| #1126 | dev-2 | in_progress | Implement thin phase-two retained-verified-archived-close retention verification helpers |
 
 ## Stopped backlog items
 
