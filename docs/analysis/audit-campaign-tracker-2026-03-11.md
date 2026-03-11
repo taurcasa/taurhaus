@@ -90,9 +90,13 @@ After both audit reports are delivered:
 | --- | --- | --- | --- |
 | #948 | dev-1 | in_progress | EPIC G1: implement the canonical workflow core, command/event backbone, assignment lifecycle, and replay path in `/home/mstie/projects/mesh` |
 | #949 | dev-2 | in_progress | EPIC G2: implement the projection layer and workflow views for lead, inbox, recovery, attention, and Taurhaus-facing surfaces |
-| #950 | dev-3 | in_progress | EPIC G3: move delivery, read/ack capture, nudges, escalation, and runtime automation onto canonical workflow state |
-| #951 | mesh-architect | in_progress | EPIC G4: implement the reusable external adapter boundary plus the Claude Code task-file adapter |
-| #952 | architect-1 | in_progress | EPIC G5: cut over CLI and operator flows to the greenfield core and remove touched legacy workflow assumptions |
+| #950 | dev-3 | completed | EPIC G3: move delivery, read/ack capture, nudges, escalation, and runtime automation onto canonical workflow state |
+| #951 | mesh-architect | completed | EPIC G4: implement the reusable external adapter boundary plus the Claude Code task-file adapter |
+| #952 | architect-1 | completed | EPIC G5: cut over CLI and operator flows to the greenfield core and remove touched legacy workflow assumptions |
+| #953 | architect-1 | completed | Define the cross-epic acceptance scenario matrix and no-hidden-fallback review framework for the Mesh greenfield rollout |
+| #954 | architect-1 | in_progress | Review the landed G3/G4/G5 slices against the acceptance matrix and identify immediate contract divergence, missing seams, and no-hidden-fallback risks |
+| #955 | dev-3 | in_progress | Build executable greenfield acceptance verification scaffolding from the acceptance matrix |
+| #956 | mesh-architect | in_progress | Add adapter conformance coverage for provenance, replay guards, degraded capabilities, conflict surfacing, and Claude compatibility boundaries |
 
 ## Stopped backlog items
 
@@ -126,3 +130,10 @@ After both audit reports are delivered:
 - The greenfield execution roadmap is captured in `docs/analysis/mesh-greenfield-implementation-epics-2026-03-11.md`.
 - `#948` through `#952` are now active as the new assignment units. We are treating them as epic containers rather than microtasks so owners can work longer without orchestration churn.
 - Program rules for the greenfield rollout are now explicit: no legacy fallbacks in touched core paths, adapter-based compatibility at the edge only, preserve uncertainty instead of faking semantics, commit at stable checkpoints, and message team-lead before going idle when blocked or unclear.
+- `#952` is complete. `architect-1` landed commit `e8942b7` in `/home/mstie/projects/mesh`, added explicit operator workflow commands for assign/accept/start/progress/block/review/complete, removed the synthetic `read --unread` task-resume fallback, updated `USAGE.md`, and documented cutover/deletion status in `docs/analysis/g5-cutover-deletion-ledger-2026-03-11.md`. Residual first-class assignment IDs, dedicated recovery/attention projections, and workflow-native delivery/read/ack remain dependent on G1-G4.
+- `#953` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/greenfield-acceptance-matrix-2026-03-11.md` and committed it as `3088427`. The document gives G1-G4 a direct epic-close framework across assignment lifecycle, recovery/resume, delivery/read/ack, progress/blocked/review/complete, attention/escalation, adapter degraded-capability, and cutover/no-hidden-fallback scenarios, with explicit minimum evidence and cross-epic close-review criteria.
+- `#951` is complete. `mesh-architect` landed the G4 adapter work in `/home/mstie/projects/mesh` across commits `9e7d2c0c7cf3840056df4f70c5b004c8332f3f1a` and `0f6a7edd1815f75ce0ae89c0a1f5727abf60a7c1`, covering the reusable `ExternalWorkflowAdapter` boundary, capability model, external object mapping registry, provenance/replay guards, degraded-capability and conflict handling, and Claude Code ingress/egress/watch paths. The remaining dependency from G4 into G1 is the external observation event vocabulary / command sink needed to feed the canonical workflow core directly.
+- `#950` is complete. `dev-3` landed commit `86db1a5` in `/home/mstie/projects/mesh`, adding canonical workflow journal replay plus CLI and idle-monitor wiring for task-state, send, read, ack, nudge, escalation, and workflow-backed ack-status. Reported validation: `cargo test --quiet` passed. The only caveat is that the workflow event shape was inferred from current code because G1/G2 had not yet confirmed the contract explicitly.
+- `#954` is active. `architect-1` is reviewing the landed G3/G4/G5 slices against the new acceptance matrix to surface real contract divergence and no-hidden-fallback risks before more code accumulates.
+- `#955` is active. `dev-3` is turning the acceptance matrix into executable harness code so epic close-out can be evidenced with reusable automated scenarios.
+- `#956` is active. `mesh-architect` is extending G4 with adapter conformance coverage for provenance, replay guards, degraded capabilities, conflict surfacing, and Claude compatibility boundaries.
