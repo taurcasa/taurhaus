@@ -130,7 +130,7 @@ After both audit reports are delivered:
 | #987 | dev-1 | completed | EPIC X3: implement the `_links` lead-mailbox adapter |
 | #988 | dev-2 | completed | EPIC X2: implement canonical external-message storage and replay |
 | #989 | dev-3 | completed | EPIC X6: build communication acceptance, telemetry, and hardening harness |
-| #990 | dev-2 | in_progress | EPIC X4: implement the team-daemon relay into local inboxes |
+| #990 | dev-2 | completed | EPIC X4: implement the team-daemon relay into local inboxes |
 | #991 | architect-1 | completed | EPIC X5: implement narrow xteam operator commands and policy gates |
 | #992 | architect-1 | completed | Define the phase-two communication convergence contract and cut order across X1-X6 |
 | #993 | dev-3 | completed | Extend the X6 harness toward message-storage and mailbox-adapter convergence |
@@ -310,7 +310,7 @@ After both audit reports are delivered:
 | #1167 | mesh-architect | completed | Design mesh-native orchestration guardrails for WIP limits, critical-path checks, and scaffold expiry |
 | #1168 | architect-1 | completed | Plan execution of phase-two scaffolding reduction with concrete delete, merge, archive, and keep slices |
 | #1169 | mesh-architect | completed | Plan the first implementation slice for mesh-native guardrails |
-| #1170 | dev-1 | pending | Implement the first mesh-native guardrails slice once the active X4 overlap is safe |
+| #1170 | dev-1 | in_progress | Implement the first mesh-native guardrails slice now that the X4 overlap is cleared |
 | #1171 | dev-3 | completed | Implement the immediate phase-two scaffolding reduction slice |
 | #1172 | architect-1 | in_progress | Execute the post-X3 retained doc collapse |
 
@@ -333,7 +333,7 @@ After both audit reports are delivered:
 - `#1166` now provides the reduction baseline: merge or delete micro handoff/checklist docs, per-cycle smoke wrappers, and per-cycle `just` aliases once the still-active X3/X4 surfaces are stable enough to consolidate safely.
 - `#1167` and `#1168` split the anti-regression work cleanly: Mesh-native guardrails to prevent future fan-out, and a concrete cleanup execution sequence to remove existing excess safely.
 - `#1169` is the implementation bridge from guardrail policy into actual Mesh behavior so the rules do not remain docs-only.
-- `#1170` is deliberately queued behind active X4 because its first enforcement cut overlaps create/start/task/team-daemon surfaces; this is an intentional WIP-limit decision, not drift.
+- `#1170` is now active because X4 (`#990`) completed; Mesh still shows a stale `blockedBy: [990]` field, but queue status and direct instruction are authoritative here.
 - `#1171` completed the safe immediate cleanup slice: the retained-state core doc, implementation guide, and generic retained-cycle replacement targets now exist without deleting active proof surfaces.
 - `#1172` is the next live cleanup step on the free architect lane: collapse post-X3 retained micro-doc sprawl, but stop immediately if any active X4 packet, handoff, or recipe still depends on a targeted doc.
 
