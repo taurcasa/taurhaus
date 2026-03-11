@@ -102,7 +102,8 @@ After both audit reports are delivered:
 | #959 | mesh-architect | in_progress | Wire external adapter ingress into a live Mesh operating path using the landed G1/G4 seams |
 | #960 | dev-2 | in_progress | Wire projection-backed read surfaces into live Mesh paths without reintroducing snapshot archaeology |
 | #961 | dev-3 | in_progress | Extend the acceptance harness for the next projection- and attention-driven scenarios unlocked by the landed slices |
-| #962 | architect-1 | in_progress | Define the remaining G1/G2 contract for assignment supersession and task-created payload completeness |
+| #962 | architect-1 | completed | Define the remaining G1/G2 contract for assignment supersession and task-created payload completeness |
+| #963 | architect-1 | in_progress | Plan the first live greenfield cutover target and no-hidden-fallback landing sequence |
 
 ## Stopped backlog items
 
@@ -150,4 +151,5 @@ After both audit reports are delivered:
 - `#959` is active. `mesh-architect` is moving the adapter layer from contract-plus-conformance into a real live operating seam by wiring external observations into at least one Mesh entrypoint.
 - `#960` is active. `dev-2` is moving the persisted projections from query-capable storage into actual live consumer paths while keeping unknown fields explicit.
 - `#961` is active. `dev-3` is expanding the executable acceptance harness into the next projection- and attention-driven scenarios now unlocked by the landed slices.
-- `#962` is active. `architect-1` is defining the remaining G1/G2 contract for assignment supersession and task-created payload completeness so core and projection lanes stop guessing independently.
+- `#962` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/g1-g2-event-completeness-contract-2026-03-11.md` and committed it as `9a96fd6`. The contract now fixes the remaining G1/G2 ambiguity for assignment supersession and task-created payload completeness: `task_created` must carry canonical subject plus explicit description known/unknown state, `assignment_superseded` must link old and new assignment ids with actor/timestamp/reason, and lead/recovery/Taurhaus projections must surface incomplete canonical payloads explicitly instead of silently repairing them from snapshots or owner churn. It also defines the G1-before-G2 tightening order and rebuild/no-hidden-fallback checks.
+- `#963` is active. `architect-1` is now choosing the first end-to-end live greenfield cutover target and sequencing its no-hidden-fallback landing order so the active implementation lanes converge on one coherent milestone instead of several partial seams.
