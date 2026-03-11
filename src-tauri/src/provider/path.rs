@@ -17,6 +17,14 @@ pub fn is_wsl_path(path: &str) -> bool {
     lower.starts_with(r"\\wsl$\") || lower.starts_with(r"\\wsl.localhost\")
 }
 
+/// WSL UNC repositories are trusted only through the daemon-backed git path.
+///
+/// Local git/libgit2 access for these paths stays disabled so owner validation
+/// remains enabled for every other repository in the process.
+pub fn requires_daemon_git_trust(path: &str) -> bool {
+    is_wsl_path(path)
+}
+
 /// Convert a Windows UNC WSL path to a native Linux path.
 ///
 /// `\\wsl$\Ubuntu\home\user\projects` → `/home/user/projects`
@@ -233,6 +241,15 @@ mod tests {
     #[test]
     fn rejects_empty() {
         assert!(!is_wsl_path(""));
+    }
+
+    #[test]
+    fn requires_daemon_git_trust_for_wsl_unc_paths() {
+        assert!(requires_daemon_git_trust(r"\\wsl$\Ubuntu\home\user\repo"));
+        assert!(requires_daemon_git_trust(
+            r"\\wsl.localhost\Ubuntu\home\user\repo"
+        ));
+        assert!(!requires_daemon_git_trust(r"C:\Users\me\repo"));
     }
 
     // -- wsl_unc_to_linux --

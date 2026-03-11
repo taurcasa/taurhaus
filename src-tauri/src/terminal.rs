@@ -41,6 +41,41 @@ pub enum TerminalIntent {
     },
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn shell_escape_single_quoted(value: &str) -> String {
+    let escaped = value.replace('\'', "'\\''");
+    format!("'{escaped}'")
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn tmux_attach_command(tmux_session: &str) -> String {
+    format!(
+        "tmux attach-session -t {}",
+        shell_escape_single_quoted(tmux_session)
+    )
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn escape_for_applescript_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn applescript_tmux_attach_command(tmux_session: &str) -> String {
+    escape_for_applescript_string(&tmux_attach_command(tmux_session))
+}
+
 // ── Windows Terminal Management ──────────────────────────────────────────────
 //
 // Windows has only one real emulator choice: Windows Terminal (wt.exe).
@@ -413,6 +448,7 @@ tell application "{}" to activate"#,
     /// Launch this emulator with a tmux attach command.
     fn launch_with_tmux(self, tmux_session: &str) -> Result<(), String> {
         let already_running = self.is_running();
+        let attach_command = applescript_tmux_attach_command(tmux_session);
         tracing::info!(emulator = ?self, %tmux_session, %already_running, "Launching terminal with tmux attach");
         match self {
             Self::ITerm2 => {
@@ -425,7 +461,7 @@ tell application "{}" to activate"#,
                         r#"tell application "iTerm"
     tell current window to create tab with default profile
     tell current session of current window
-        write text "tmux attach-session -t {tmux_session}"
+        write text "{attach_command}"
     end tell
     activate
 end tell"#
@@ -439,7 +475,7 @@ end tell"#
         delay 0.1
     end repeat
     tell current session of current window
-        write text "tmux attach-session -t {tmux_session}"
+        write text "{attach_command}"
     end tell
 end tell"#
                     )
@@ -461,9 +497,9 @@ end tell"#
                     r#"tell application "Terminal"
     activate
     if (count of windows) > 0 then
-        do script "tmux attach-session -t {tmux_session}" in front window
+        do script "{attach_command}" in front window
     else
-        do script "tmux attach-session -t {tmux_session}"
+        do script "{attach_command}"
     end if
 end tell"#
                 );
@@ -614,5 +650,24 @@ mod tests {
                 "taurhaus",
             ]
         );
+    }
+
+    #[test]
+    fn tmux_attach_command_shell_escapes_session_name() {
+        assert_eq!(
+            tmux_attach_command("team'; do shell script \"pwnd\"; '"),
+            "tmux attach-session -t 'team'\\''; do shell script \"pwnd\"; '\\'''"
+        );
+    }
+
+    #[test]
+    fn applescript_tmux_attach_command_escapes_applescript_control_characters() {
+        let escaped = applescript_tmux_attach_command("bad\"\nname\\tab\tend");
+
+        assert!(escaped.contains("\\\""));
+        assert!(escaped.contains("\\n"));
+        assert!(escaped.contains("\\\\"));
+        assert!(escaped.contains("\\t"));
+        assert!(!escaped.contains('\n'));
     }
 }

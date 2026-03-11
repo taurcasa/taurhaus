@@ -225,8 +225,13 @@
 
     e.preventDefault()
 
+    if (/^http:\/\//.test(href)) {
+      console.warn(`[markdown] blocked insecure http URL: ${href}`)
+      return
+    }
+
     // External URL — open in system browser
-    if (/^https?:\/\//.test(href) || href.startsWith('mailto:')) {
+    if (/^https:\/\//.test(href) || href.startsWith('mailto:')) {
       openExternalUrl(href).catch((err) => {
         console.error(`[markdown] failed to open URL: ${href}`, err)
       })

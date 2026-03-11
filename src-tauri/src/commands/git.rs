@@ -96,6 +96,16 @@ fn resolve_normalized_remote_url(repo: &git2::Repository) -> Option<String> {
     get_remote_fetch_url(repo).and_then(|raw| normalize_remote_url(&raw))
 }
 
+fn reject_wsl_unc_remote_url_lookup(path: &str) -> Result<(), String> {
+    if crate::provider::path::requires_daemon_git_trust(path) {
+        return Err(sanitize_error(
+            "Remote URL lookup for WSL UNC repositories requires daemon-backed git access",
+        ));
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_recent_commits(
     db: State<'_, DbState>,
@@ -161,6 +171,7 @@ pub fn get_remote_url(
     let span = IpcCommandSpan::start("get_remote_url");
     let result = {
         let path = resolve_project_path(&db, &project_id)?;
+        reject_wsl_unc_remote_url_lookup(&path)?;
         let repo = git2::Repository::open(&path).map_err(|e| sanitize_error(&e.to_string()))?;
         Ok(resolve_normalized_remote_url(&repo))
     };
@@ -240,5 +251,12 @@ mod tests {
     fn resolve_normalized_remote_url_returns_none_when_repo_has_no_remotes() {
         let (_dir, repo) = init_repo();
         assert_eq!(resolve_normalized_remote_url(&repo), None);
+    }
+
+    #[test]
+    fn reject_wsl_unc_remote_url_lookup_requires_daemon_trust_path() {
+        let error = reject_wsl_unc_remote_url_lookup(r"\\wsl.localhost\Ubuntu\home\user\repo")
+            .expect_err("WSL UNC remote URL lookup should require daemon-backed git access");
+        assert!(error.contains("daemon-backed git access"));
     }
 }

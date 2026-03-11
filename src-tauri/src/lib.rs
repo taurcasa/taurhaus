@@ -1,5 +1,4 @@
-// Deny unsafe code crate-wide. The one exception (libgit2 init) lives in
-// git_init.rs with a scoped #[allow]. Any new `unsafe` block will fail compilation.
+// Deny unsafe code crate-wide. Any new `unsafe` block will fail compilation.
 #![deny(unsafe_code)]
 
 extern crate self as taurhaus_lib;
@@ -89,16 +88,6 @@ pub struct WatcherState(pub Mutex<fs::watcher::ProjectWatcher>);
 
 /// Managed state: holds the tantivy search index.
 pub struct SearchState(pub Mutex<search::indexer::SearchIndex>);
-
-/// Disable libgit2 ownership validation so repos on WSL filesystems
-/// (accessed via `\\wsl$\` UNC paths) don't get rejected as "unsafe".
-/// Safe for a desktop app where the user explicitly registers projects.
-#[allow(unsafe_code)]
-fn disable_git_owner_validation() {
-    unsafe {
-        let _ = git2::opts::set_verify_owner_validation(false);
-    }
-}
 
 #[cfg(target_os = "macos")]
 fn inherit_macos_shell_env() {
@@ -298,8 +287,6 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     inherit_macos_shell_env();
-
-    disable_git_owner_validation();
 
     #[cfg(feature = "mesh-bridged-backend")]
     if let Some(exit_code) = maybe_run_coordination_cli_mode() {

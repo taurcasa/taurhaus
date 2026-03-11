@@ -19,12 +19,24 @@ const MAX_ASSET_SIZE: u64 = 5 * 1024 * 1024;
 /// the daemon is unavailable.
 pub struct LocalProvider;
 
+fn reject_local_wsl_git(project_path: &str, operation: &str) -> Result<(), AppError> {
+    if crate::provider::path::requires_daemon_git_trust(project_path) {
+        return Err(AppError::DaemonTransport(format!(
+            "{operation} is unavailable for WSL UNC repositories without a connected daemon"
+        )));
+    }
+
+    Ok(())
+}
+
 impl ProjectProvider for LocalProvider {
     fn git_status(&self, project_path: &str) -> Result<GitStatus, AppError> {
+        reject_local_wsl_git(project_path, "git status")?;
         status::get_status(Path::new(project_path))
     }
 
     fn recent_commits(&self, project_path: &str, limit: usize) -> Result<Vec<Commit>, AppError> {
+        reject_local_wsl_git(project_path, "recent commits")?;
         commits::get_recent_commits(Path::new(project_path), limit)
     }
 
@@ -34,10 +46,12 @@ impl ProjectProvider for LocalProvider {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Commit>, AppError> {
+        reject_local_wsl_git(project_path, "commit history")?;
         commits::get_all_commits(Path::new(project_path), limit, offset)
     }
 
     fn latest_commit_time(&self, project_path: &str) -> Result<Option<DateTime<Utc>>, AppError> {
+        reject_local_wsl_git(project_path, "latest commit lookup")?;
         Ok(commits::get_latest_commit_time(Path::new(project_path)))
     }
 
@@ -48,6 +62,7 @@ impl ProjectProvider for LocalProvider {
         before: &str,
         commit_limit: Option<usize>,
     ) -> Result<GitRangeResult, AppError> {
+        reject_local_wsl_git(project_path, "commit range lookup")?;
         let path = Path::new(project_path);
         let after_dt = chrono::DateTime::parse_from_rfc3339(after)
             .map_err(|e| AppError::InvalidPath(format!("Bad 'after' timestamp: {e}")))?
@@ -59,6 +74,7 @@ impl ProjectProvider for LocalProvider {
     }
 
     fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError> {
+        reject_local_wsl_git(project_path, "commit file lookup")?;
         commits::get_commit_files(Path::new(project_path), hash)
     }
 
@@ -68,6 +84,7 @@ impl ProjectProvider for LocalProvider {
         hash: &str,
         file_path: &str,
     ) -> Result<Vec<DiffHunk>, AppError> {
+        reject_local_wsl_git(project_path, "commit diff lookup")?;
         commits::get_commit_diff(Path::new(project_path), hash, file_path)
     }
 
@@ -167,6 +184,21 @@ mod tests {
         let status = provider.git_status(path).unwrap();
         assert!(status.branch.is_some());
         assert!(!status.is_dirty);
+    }
+
+    #[test]
+    fn local_git_status_rejects_wsl_unc_paths_without_daemon() {
+        let provider = LocalProvider;
+        let error = provider
+            .git_status(r"\\wsl.localhost\Ubuntu\home\user\repo")
+            .expect_err("WSL git access should require the daemon trust path");
+
+        match error {
+            AppError::DaemonTransport(message) => {
+                assert!(message.contains("connected daemon"));
+            }
+            other => panic!("expected daemon transport error, got {other:?}"),
+        }
     }
 
     #[test]

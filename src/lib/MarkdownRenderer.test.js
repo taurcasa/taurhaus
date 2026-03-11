@@ -354,6 +354,28 @@ describe('MarkdownRenderer link navigation', () => {
     expect(onNavigate).not.toHaveBeenCalled()
   })
 
+  it('blocks insecure http links before they reach openExternalUrl', async () => {
+    const onNavigate = vi.fn()
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    renderMarkdown.mockResolvedValue('<a href="http://example.com/foo">Insecure</a>')
+
+    const { container } = render(MarkdownRenderer, {
+      props: { source: '[Insecure](http://example.com/foo)', onNavigate },
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('a')).toBeInTheDocument()
+    })
+
+    const link = container.querySelector('a')
+    const allowedDefault = link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(allowedDefault).toBe(false)
+    expect(openExternalUrl).not.toHaveBeenCalled()
+    expect(onNavigate).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith('[markdown] blocked insecure http URL: http://example.com/foo')
+  })
+
   it('opens mailto links via openExternalUrl', async () => {
     const onNavigate = vi.fn()
     renderMarkdown.mockResolvedValue('<a href="mailto:test@test.com">Email</a>')

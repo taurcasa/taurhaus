@@ -6,6 +6,8 @@ import {
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'mailto:'])
+
 function normalizeToolCommands(raw) {
   const commands = raw && typeof raw === 'object' ? raw : {}
   return {
@@ -139,8 +141,21 @@ export function updateSettings(settings) {
 }
 
 export function openExternalUrl(url) {
-  return invokeOrMock('plugin:opener|open_url', { url }, () => {
-    window.open(url, '_blank')
+  const trimmedUrl = String(url ?? '').trim()
+  let parsedUrl
+
+  try {
+    parsedUrl = new URL(trimmedUrl)
+  } catch {
+    return Promise.reject(new Error('Invalid external URL'))
+  }
+
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsedUrl.protocol)) {
+    return Promise.reject(new Error('Only HTTPS and mailto links can be opened externally.'))
+  }
+
+  return invokeOrMock('plugin:opener|open_url', { url: trimmedUrl }, () => {
+    window.open(trimmedUrl, '_blank')
   })
 }
 

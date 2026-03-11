@@ -591,6 +591,20 @@ pub struct PathValidation {
     pub is_registered: bool,
 }
 
+fn has_git_repo_marker(dir: &std::path::Path) -> bool {
+    let dot_git = dir.join(".git");
+    dot_git.is_dir() || dot_git.is_file()
+}
+
+fn detect_git_repo_for_validation(raw_path: &str, dir: &std::path::Path) -> bool {
+    if crate::provider::path::requires_daemon_git_trust(raw_path) {
+        // Keep WSL registration working without broadening process-wide git trust.
+        return has_git_repo_marker(dir);
+    }
+
+    git2::Repository::open(dir).is_ok()
+}
+
 /// Validate whether a path is a valid project directory.
 /// Checks: exists, is a git repo, already registered.
 #[tauri::command]
@@ -612,7 +626,7 @@ pub fn validate_project_path(
             });
         }
 
-        let is_git_repo = git2::Repository::open(dir).is_ok();
+        let is_git_repo = detect_git_repo_for_validation(&expanded, dir);
 
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let is_registered = queries::project_exists_at_path(&conn, &expanded).sanitize_err()?;
@@ -817,7 +831,7 @@ mod tests {
         let path = dir.path();
 
         let exists = path.is_dir();
-        let is_git_repo = git2::Repository::open(path).is_ok();
+        let is_git_repo = detect_git_repo_for_validation(path.to_str().unwrap(), path);
 
         assert!(exists);
         assert!(!is_git_repo);
@@ -838,6 +852,24 @@ mod tests {
         assert!(exists);
         assert!(is_git_repo);
         assert!(!is_registered);
+    }
+
+    #[test]
+    fn validate_wsl_git_repo_uses_filesystem_marker_instead_of_libgit2_open() {
+        let dir = temp_project_dir();
+        assert!(detect_git_repo_for_validation(
+            r"\\wsl.localhost\Ubuntu\home\user\repo",
+            dir.path()
+        ));
+    }
+
+    #[test]
+    fn validate_wsl_non_git_dir_rejects_missing_git_marker() {
+        let dir = TempDir::new().unwrap();
+        assert!(!detect_git_repo_for_validation(
+            r"\\wsl.localhost\Ubuntu\home\user\repo",
+            dir.path()
+        ));
     }
 
     // validate_project_path: registered project
