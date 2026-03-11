@@ -134,7 +134,9 @@ After both audit reports are delivered:
 | #991 | architect-1 | pending | EPIC X5: implement narrow xteam operator commands and policy gates |
 | #992 | architect-1 | completed | Define the phase-two communication convergence contract and cut order across X1-X6 |
 | #993 | dev-3 | completed | Extend the X6 harness toward message-storage and mailbox-adapter convergence |
-| #994 | dev-3 | in_progress | Draft the X4/X5 acceptance matrix and telemetry expectations |
+| #994 | dev-3 | completed | Draft the X4/X5 acceptance matrix and telemetry expectations |
+| #995 | architect-1 | in_progress | Plan milestone-one promotion and reconciliation from the durable review branch |
+| #996 | dev-3 | in_progress | Define conflict-avoidance file boundaries for phase-two communication lanes |
 
 ## Stopped backlog items
 
@@ -215,4 +217,6 @@ After both audit reports are delivered:
 - `#991` is queued. `architect-1` owns X5, the narrow xteam operator commands and policy gates, once the earlier communication seams are stable enough to support a bounded operator surface.
 - `#992` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-communication-convergence-contract-2026-03-11.md` and committed it as `61828bd`. The contract fixes the shared phase-two boundary as: X1 and X2 own the canonical communication core; X3 adapts the `_links` mailbox transport to that core; X4 owns local relay into the lead inbox; X5 owns only the narrow cross-team operator surface and policy gates; and X6 validates and hardens the bounded path without redefining semantics. It also locks the cut order as X1, then X2, then X3, then X4, then X5, then finish X6 on the live path. Important ownership note: because the shared worktree already had relevant X2 files staged, commit `61828bd` also captured the staged X2 storage slice in `src/external_workflow/mod.rs`, `src/paths.rs`, `src/workflow.rs`, and `/home/mstie/projects/mesh/docs/analysis/x2-external-message-storage-slice-2026-03-11.md`; `dev-2` is explicitly assessing whether that fully satisfies `#988` or leaves a remaining X2 delta.
 - `#993` is complete. `dev-3` extended the X6 harness toward X2/X3 convergence in `/home/mstie/projects/mesh`, adding communication-harness helpers in `tests/support/mod.rs`, two new convergence scenarios in `tests/external_communication_hardening_harness.rs`, and `/home/mstie/projects/mesh/docs/analysis/x6-harness-convergence-extension-2026-03-11.md`. Reported validation passed with `cargo test --quiet --test external_communication_hardening_harness`.
-- `#994` is active. `dev-3` is now drafting the X4/X5 acceptance matrix and telemetry expectations so the pending relay and operator lanes can start later with explicit proof obligations and non-goals instead of ad hoc test scope.
+- `#994` is complete. `dev-3` wrote `/home/mstie/projects/mesh/docs/analysis/x4-x5-acceptance-matrix-2026-03-11.md`, defining concrete scenario IDs for X4 relay runtime and X5 operator commands, per-scenario preconditions/actions/assertions, telemetry expectations against the current stable vocabulary, explicit telemetry gaps, suggested test packaging, and binding non-goals/no-hidden-fallback rules. No implementation files were touched.
+- `#995` is active. `architect-1` is now defining how the signed-off durable milestone-one candidate branch/worktree should be promoted, preserved, or reconciled against the mixed master branch without losing review integrity.
+- `#996` is active. `dev-3` is now defining practical file-boundary and checkpoint guidance for the phase-two communication lanes so later X1-X6 work can land with fewer same-file collisions and less packaging churn.
