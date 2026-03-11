@@ -110,7 +110,8 @@ After both audit reports are delivered:
 | #967 | dev-2 | in_progress | Cut over remaining high-value mesh task/operator read paths to projection-backed reads |
 | #968 | architect-1 | in_progress | Run the first-live milestone readiness review against the plan, checklist, and runbook |
 | #969 | mesh-architect | in_progress | Extend the live Claude ingress path to a replay-safe watched or incremental import mode |
-| #970 | dev-3 | in_progress | Automate the first-live native assignment-loop walkthrough from the milestone runbook |
+| #970 | dev-3 | completed | Automate the first-live native assignment-loop walkthrough from the milestone runbook |
+| #971 | dev-3 | in_progress | Add daemon/runtime wake-path acceptance coverage for the first-live milestone |
 
 ## Stopped backlog items
 
@@ -167,4 +168,5 @@ After both audit reports are delivered:
 - `#967` is active. `dev-2` is now cutting over the next high-value operator read path from raw snapshot inspection to projection-backed reads in line with the first-live milestone.
 - `#968` is active. `architect-1` is now running a concrete readiness review against the first-live plan, checklist, and runbook to produce a current go/no-go picture with named remaining blockers.
 - `#969` is active. `mesh-architect` is extending the live Claude ingress path into a replay-safe watched or incremental import mode as the next bounded adapter expansion.
-- `#970` is active. `dev-3` is now automating the first-live native assignment-loop walkthrough from the runbook as executable acceptance coverage.
+- `#970` is complete. `dev-3` landed commit `65c684e` in `/home/mstie/projects/mesh`, adding `tests/first_live_native_loop_acceptance.rs` plus harness helpers in `tests/support/mod.rs`. The automated walkthrough now covers canonical task creation payload verification, explicit assignment contract verification, canonical runtime delivery transition to delivered/unseen, explicit lifecycle prompt wording with no `task update` fallback, assignee lifecycle actions through complete, projection invalidation/rebuild, and projection-backed verification across lead board, assignee inbox, recovery bundle, Taurhaus workflow projection, and protocol history after inbox removal. Reported validation passed with `cargo test --quiet --test first_live_native_loop_acceptance` and `cargo test --quiet --test projections_integration`. Remaining blocked first-live proof is that `cmd_tasks` still lists raw task snapshots rather than projection-backed lead/assignee views, and the daemon wake path itself remains proven through dedicated daemon tests rather than this walkthrough.
+- `#971` is active. `dev-3` is now extending the first-live milestone proof to the daemon/runtime wake path so the milestone has stronger automated evidence for real runtime delivery behavior in addition to the existing native-loop walkthrough.
