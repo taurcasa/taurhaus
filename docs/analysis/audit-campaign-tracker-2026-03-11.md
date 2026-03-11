@@ -186,11 +186,14 @@ After both audit reports are delivered:
 | #1043 | mesh-architect | completed | Turn the phase-two completion evidence manifest into a packet assembly checklist |
 | #1044 | architect-1 | completed | Turn the phase-two final signoff extraction into an execution checklist |
 | #1045 | dev-3 | completed | Turn the signoff artifact capture plan into an execution checklist |
-| #1046 | dev-2 | in_progress | Implement thin phase-two signoff artifact capture scaffolding |
+| #1046 | dev-2 | completed | Implement thin phase-two signoff artifact capture scaffolding |
 | #1047 | architect-1 | completed | Define the phase-two completion decision record template |
 | #1048 | dev-3 | in_progress | Implement a thin phase-two completion packet validator |
-| #1049 | architect-1 | in_progress | Turn the phase-two completion decision record template into an execution checklist |
-| #1050 | mesh-architect | in_progress | Define the phase-two packet-to-decision handoff contract |
+| #1049 | architect-1 | completed | Turn the phase-two completion decision record template into an execution checklist |
+| #1050 | mesh-architect | completed | Define the phase-two packet-to-decision handoff contract |
+| #1051 | mesh-architect | in_progress | Define the phase-two assembled-packet to validator handoff contract |
+| #1052 | architect-1 | in_progress | Define the phase-two decision_ready gate checklist |
+| #1053 | dev-2 | in_progress | Implement thin phase-two completion packet assembly helpers |
 
 ## Stopped backlog items
 
@@ -323,8 +326,11 @@ After both audit reports are delivered:
 - `#1043` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-completion-packet-assembly-checklist-2026-03-11.md`, using only the canonical task-record deliverable path after the earlier `#1043/#1044` swap was corrected. The checklist turns the completion evidence manifest into a mechanical packet-assembly procedure with exact packet sections, required fields, ordered assembly steps, validation checks, and stop conditions.
 - `#1044` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-final-signoff-execution-checklist-2026-03-11.md` and committed it as `25ae9e1`. The checklist turns the extraction sequence into a concrete execution lane with exact assembly steps, packet order, validation checks, and mechanical failure criteria.
 - `#1045` is complete. `dev-3` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-signoff-artifact-capture-checklist-2026-03-11.md`, freezing the exact serialized capture order under `/tmp/mesh-phase-two-signoff`, helper boundaries, output validation, and the concrete artifact layout needed before final signoff.
-- `#1046` is active. `dev-2` is implementing only the thin signoff artifact-capture scaffolding around `/tmp/mesh-phase-two-signoff` so the raw evidence bundle can be gathered mechanically without reopening product semantics.
+- `#1046` is complete. `dev-2` landed commit `6fe8143` and wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-signoff-artifact-capture-implementation-2026-03-11.md`. The implementation stays thin on the allowed surfaces: deterministic artifact-root/layout helpers under `/tmp/mesh-phase-two-signoff`, manifest/checkpoint writers, raw command capture, generic raw artifact writers, raw packet file-presence/shape validation, and stable external-communication telemetry readers plus aggregate accessors. Focused coverage passed in `tests/signoff_artifact_capture_support.rs` plus telemetry unit tests.
 - `#1047` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-completion-decision-record-template-2026-03-11.md` and committed it as `29d15dd`. The template freezes the final `GO` / `NO-GO` / `RE-SCOPE` record shape and makes invalid outcomes mechanical when required fields contradict the chosen decision or blocking findings are missing.
 - `#1048` is active. `dev-3` is implementing the thin completion-packet validator so required sections, required fields, provenance presence, and explicit failure states can be checked mechanically from the frozen manifest without encoding product semantics.
-- `#1049` is active. `architect-1` is now turning the frozen decision record template into the exact execution checklist reviewers will use to record a `GO` / `NO-GO` / `RE-SCOPE` outcome against the final evidence packet.
-- `#1050` is active. `mesh-architect` is now freezing the packet-to-decision handoff contract so packet assembly, validation, and final decision recording stay mechanically separated and missing evidence is surfaced before signoff.
+- `#1049` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-completion-decision-checklist-2026-03-11.md` and committed it as `e05b026`. The checklist turns the frozen decision record template into an exact recording procedure: freeze provenance first, fill every required field in template order, enforce outcome-to-field consistency mechanically, require explicit blocking findings for `NO-GO` and `RE-SCOPE`, and stop on incomplete packets, mixed-branch-only provenance, or any need for new packet semantics.
+- `#1050` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-packet-to-decision-handoff-2026-03-11.md`. The handoff contract freezes `decision_ready` as a bounded state, keeps packet assembly and decision recording as separate roles, requires an explicit packet state before decision work can begin, and makes missing or ambiguous packet content a stop condition instead of a reviewer judgment call.
+- `#1051` is active. `mesh-architect` is now defining the exact handoff between assembled completion packets and the thin packet validator so validation inputs, outputs, and failure surfacing stay bounded before final decision recording.
+- `#1052` is active. `architect-1` is now defining the exact `decision_ready` gate that must be satisfied before the final `GO` / `NO-GO` / `RE-SCOPE` record may begin, keeping packet completeness, validator outcome, and handoff integrity mechanical.
+- `#1053` is active. `dev-2` is now implementing only the thin completion-packet assembly helpers so captured artifacts can be assembled deterministically into the frozen packet shape before validator and decision steps run.
