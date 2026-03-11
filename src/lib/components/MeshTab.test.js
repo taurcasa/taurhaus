@@ -1645,6 +1645,49 @@ describe('MeshTab', () => {
     })
   })
 
+  it('re-hydrates from the canonical project snapshot after initialize so runtime shows the active team', async () => {
+    coordinationGetProjectMeshSnapshot
+      .mockResolvedValueOnce(buildProjectMeshSnapshot({
+        teamName: null,
+        teamStatus: null,
+        warnings: [],
+      }))
+      .mockResolvedValueOnce(buildRuntimeSnapshot({
+        teamName: 'taurhaus-team',
+      }))
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
+    })
+
+    await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
+      target: { value: 'taurhaus-team' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
+    })
+    expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps setup composition inline while runtime slideovers still open and close', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 

@@ -78,6 +78,7 @@ afterAll(() => {
 
 describe('Mesh flow smoke', () => {
   let rosterMembers
+  let projectMeshSnapshotState
 
   function buildProjectMeshSnapshot(overrides = {}) {
     return {
@@ -88,6 +89,18 @@ describe('Mesh flow smoke', () => {
       teamStatus: overrides.teamStatus ?? null,
       warnings: overrides.warnings ?? [],
     }
+  }
+
+  function buildRuntimeSnapshot(teamName = 'taurhaus-team') {
+    return buildProjectMeshSnapshot({
+      teamName,
+      teamRuntimeState: 'active',
+      teamStatus: {
+        leadName: 'team-lead',
+        members: rosterMembers.map(({ model, ...member }) => member),
+      },
+      warnings: [],
+    })
   }
 
   beforeEach(() => {
@@ -112,7 +125,6 @@ describe('Mesh flow smoke', () => {
     })
 
     coordinationListTeams.mockResolvedValue([])
-    coordinationGetProjectMeshSnapshot.mockResolvedValue(buildProjectMeshSnapshot())
 
     rosterMembers = [
       {
@@ -134,6 +146,21 @@ describe('Mesh flow smoke', () => {
         paneId: '%2',
       },
     ]
+
+    projectMeshSnapshotState = { active: false }
+    coordinationGetProjectMeshSnapshot.mockImplementation(async () => {
+      if (!projectMeshSnapshotState.active) {
+        return buildProjectMeshSnapshot()
+      }
+      return buildProjectMeshSnapshot({
+        teamName: 'taurhaus-team',
+        teamRuntimeState: 'active',
+        teamStatus: {
+          leadName: 'team-lead',
+          members: rosterMembers,
+        },
+      })
+    })
 
     coordinationGetLiveTeamStatus.mockImplementation(async (teamName) => ({
       teamName,
@@ -240,6 +267,10 @@ describe('Mesh flow smoke', () => {
   })
 
   it('setup -> initialize progress -> runtime canvas -> hot-add -> disband', async () => {
+    coordinationGetProjectMeshSnapshot
+      .mockResolvedValueOnce(buildProjectMeshSnapshot())
+      .mockImplementation(async () => buildRuntimeSnapshot())
+
     const init = deferred()
     coordinationInitializeTeam.mockReturnValueOnce(init.promise)
 
@@ -284,13 +315,17 @@ describe('Mesh flow smoke', () => {
         { step: 'create_team', status: 'succeeded', message: 'ok' },
       ],
     })
+    projectMeshSnapshotState.active = true
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
       expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
     })
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Add Agent')
+    })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-form')).toBeInTheDocument()
     })
@@ -328,6 +363,7 @@ describe('Mesh flow smoke', () => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
     await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+    projectMeshSnapshotState.active = false
 
     await waitFor(() => {
       expect(coordinationDisbandTeam).toHaveBeenCalledWith('taurhaus-team')

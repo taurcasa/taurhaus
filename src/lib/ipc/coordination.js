@@ -8,6 +8,13 @@ import {
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
 import { normalizeInitializeTeamPayload } from './coordinationPayloads.js'
+import {
+  normalizeInitializeTeamResult,
+  normalizeLiveTeamStatus,
+  normalizeMemberActionReport,
+  normalizeProjectMeshSnapshot,
+  normalizeResumeTeamReport,
+} from './coordinationResponses.js'
 
 export function coordinationDisbandTeam(teamName) {
   return invokeOrMock('coordination_disband_team', { teamName }, () => ({
@@ -15,7 +22,7 @@ export function coordinationDisbandTeam(teamName) {
     disbanded: true,
     alreadyDisbanded: false,
     message: 'team disbanded',
-  }))
+  })).then((report) => normalizeInitializeTeamResult(report))
 }
 
 export function coordinationRemoveMember(teamName, memberName) {
@@ -37,13 +44,13 @@ export function coordinationInitializeTeam(request) {
   const payload = normalizeInitializeTeamPayload(request)
   return invokeOrMock('coordination_initialize_team', { request: payload }, () =>
     buildMockInitializeReport(payload?.teamName ?? '')
-  )
+  ).then((report) => normalizeInitializeTeamResult(report))
 }
 
 export function coordinationAddAgent(request) {
   return invokeOrMock('coordination_add_agent', { request }, () =>
     buildMockAddAgentReport(request)
-  )
+  ).then((report) => normalizeMemberActionReport(report))
 }
 
 export function coordinationResumeMember(teamName, memberName, contextMode = 'continue') {
@@ -62,7 +69,7 @@ export function coordinationResumeMember(teamName, memberName, contextMode = 'co
     warnings: [],
     paneId: '%2',
     reusedPane: false,
-  }))
+  })).then((report) => normalizeMemberActionReport(report))
 }
 
 export function coordinationResumeTeam(teamName, contextMode = 'continue') {
@@ -75,7 +82,7 @@ export function coordinationResumeTeam(teamName, contextMode = 'continue') {
     warnings: [],
     startedTeamDaemon: false,
     teamDaemonWarning: null,
-  }))
+  })).then((report) => normalizeResumeTeamReport(report))
 }
 
 export function coordinationPreflightCheck(request) {
@@ -89,13 +96,13 @@ export function coordinationPreflightCheck(request) {
 export function coordinationGetLiveTeamStatus(teamName) {
   return invokeOrMock('coordination_get_live_team_status', { teamName }, () =>
     buildMockLiveTeamStatus(teamName)
-  )
+  ).then((status) => normalizeLiveTeamStatus(status))
 }
 
 export function coordinationGetProjectMeshSnapshot(projectPath) {
   return invokeOrMock('coordination_get_project_mesh_snapshot', { projectPath }, () =>
     buildMockProjectMeshSnapshot(projectPath)
-  )
+  ).then((snapshot) => normalizeProjectMeshSnapshot(snapshot))
 }
 
 export function onCoordinationStepProgress(callback) {

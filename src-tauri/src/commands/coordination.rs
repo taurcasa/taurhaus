@@ -1,9 +1,15 @@
 //! Coordination IPC commands for team management (M0 surface).
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, Manager, State};
+
+#[path = "coordination/live_status.rs"]
+mod live_status;
+#[path = "coordination/request_normalization.rs"]
+mod request_normalization;
 
 pub use crate::commands::coordination_types::*;
 use crate::commands::lifecycle::IpcCommandSpan;
@@ -20,29 +26,24 @@ use crate::coordination::claude_hooks::{
     ensure_compact_hook_installed, team_has_managed_claude_member,
 };
 use crate::coordination::delivery::DeliveryRenderer;
-use crate::coordination::domain::{HealthState, Member, MemberRole};
+use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::operational_context::{sync_member_snapshot, sync_team_snapshots};
 use crate::coordination::requests::{
     self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
 };
-use crate::coordination::roster::{
-    get_team_roster_with_attachments, get_team_roster_with_runtime_sessions, TeamMemberView,
-};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::TeamConfigStore;
-#[cfg(not(test))]
-use crate::daemon_api::protocol as daemon_protocol;
+use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
-use crate::templates::storage::{TemplateStore, TemplateStoreError};
-use crate::templates::types::RoleTemplate;
 #[cfg(not(test))]
 use crate::ProviderState;
-#[cfg(test)]
-use taurhaus_lib::daemon_api::protocol as daemon_protocol;
+use live_status::coordination_get_live_team_status_impl;
+use request_normalization::{
+    hydrate_add_agent_request_role_metadata, hydrate_initialize_request_role_metadata,
+    normalize_add_agent_request_path, normalize_initialize_request_paths,
+};
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
@@ -339,8 +340,16 @@ fn coordination_initialize_team_internal(
         })
         .map(map_initialize_report_from_contract)
         .map_err(map_coordination_error)?;
-    if let Some(db) = db {
-        sync_team_snapshots_after_change(state, db, &report.team_name)
+    let team_was_created = report
+        .succeeded_steps
+        .iter()
+        .any(|step| step == "create_team");
+    if team_was_created {
+        if let Some(db) = db {
+            sync_team_snapshots_after_change(state, db, &report.team_name)
+                .map_err(map_coordination_error)?;
+        }
+        sync_active_team_projects_after_change(state, &report.team_name)
             .map_err(map_coordination_error)?;
     }
     emit_progress_events(initialize_progress_events(&report), emit);
@@ -375,6 +384,8 @@ fn coordination_add_agent_internal(
         sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
             .map_err(map_coordination_error)?;
     }
+    sync_active_team_projects_after_change(state, &report.team_name)
+        .map_err(map_coordination_error)?;
     emit_progress_events(add_agent_progress_events(&report), emit);
     Ok(report)
 }
@@ -404,6 +415,8 @@ fn coordination_resume_member_internal(
         sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
             .map_err(map_coordination_error)?;
     }
+    sync_active_team_projects_after_change(state, &report.team_name)
+        .map_err(map_coordination_error)?;
     emit_progress_events(resume_member_progress_events(&report), emit);
     Ok(report)
 }
@@ -416,7 +429,7 @@ fn coordination_resume_team_internal(
 ) -> Result<ResumeTeamReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     let contract_request = map_resume_team_request_to_contract(&request);
-    state
+    let report = state
         .with_orchestrator(|orchestrator| {
             orchestrator.resume_team_with_cli_commands_and_layout(
                 &contract_request,
@@ -425,7 +438,10 @@ fn coordination_resume_team_internal(
             )
         })
         .map(map_resume_team_report_from_contract)
-        .map_err(map_coordination_error)
+        .map_err(map_coordination_error)?;
+    sync_active_team_projects_after_change(state, &report.team_name)
+        .map_err(map_coordination_error)?;
+    Ok(report)
 }
 
 fn emit_progress_events(
@@ -530,6 +546,19 @@ fn sync_member_snapshot_after_change(
     sync_member_snapshot(state.teams_dir(), &conn, team_name, member_name)
 }
 
+fn sync_active_team_projects_after_change(
+    state: &CoordinationState,
+    team_name: &str,
+) -> Result<(), CoordinationError> {
+    let config = TeamConfigStore::load(state.teams_dir(), team_name)?;
+    let project_paths = config
+        .members
+        .iter()
+        .map(|member| member.project_path.display().to_string())
+        .collect::<Vec<_>>();
+    ActiveProjectTeamStore::sync_team(state.teams_dir(), team_name, &project_paths)
+}
+
 fn maybe_ensure_claude_compact_hook_for_team<T>(
     app: &AppHandle,
     team_name: &str,
@@ -553,102 +582,6 @@ fn maybe_ensure_claude_compact_hook_for_team<T>(
     result
 }
 
-fn daemon_runtime_session_snapshot(
-    provider: &ProviderState,
-) -> Result<Option<daemon_protocol::RuntimeSessionSnapshotResult>, String> {
-    let Some(ref daemon) = provider.daemon else {
-        return Ok(None);
-    };
-    if !daemon.is_connected() {
-        return Ok(None);
-    }
-
-    let request = daemon_protocol::DaemonRequest::new(
-        "coordination-runtime-session-snapshot",
-        daemon_protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
-        serde_json::Value::Null,
-    );
-    match daemon.send_status_request(&request) {
-        Ok(response) if response.is_ok() => {
-            let payload = response.result.unwrap_or(serde_json::Value::Null);
-            serde_json::from_value(payload)
-                .map(Some)
-                .map_err(|error| format!("Runtime session snapshot decode error: {error}"))
-        }
-        Ok(response) => {
-            tracing::warn!(
-                error = ?response.error,
-                "Daemon returned error for coordination runtime session snapshot"
-            );
-            Ok(None)
-        }
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "Failed to reach daemon for coordination runtime session snapshot"
-            );
-            Ok(None)
-        }
-    }
-}
-
-fn coordination_get_live_team_status_impl(
-    state: &CoordinationState,
-    provider: Option<&ProviderState>,
-    team_name: String,
-) -> Result<LiveTeamStatus, String> {
-    if let Some(provider) = provider {
-        if let Some(snapshot) = daemon_runtime_session_snapshot(provider)? {
-            let roster = get_team_roster_with_runtime_sessions(
-                state.teams_dir(),
-                &team_name,
-                &snapshot.runtime_sessions,
-            )
-            .map_err(map_coordination_error)?;
-            let lead_name = roster_lead_name(&roster);
-            let lead_project_path = roster_lead_project_path(&roster);
-            let members = roster
-                .into_iter()
-                .map(|member| live_agent_status_from_roster(member, lead_project_path.as_deref()))
-                .collect();
-
-            return Ok(LiveTeamStatus {
-                team_name,
-                lead_name,
-                members,
-            });
-        }
-    }
-
-    state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.reconcile_team_presence_for_live_status(&team_name)
-        })
-        .map_err(map_coordination_error)?;
-    let roster = get_team_roster_with_attachments(state.teams_dir(), &team_name)
-        .map_err(map_coordination_error)?;
-    let lead_name = roster_lead_name(&roster);
-    let lead_project_path = roster_lead_project_path(&roster);
-    let members = roster
-        .into_iter()
-        .map(|member| live_agent_status_from_roster(member, lead_project_path.as_deref()))
-        .collect();
-
-    Ok(LiveTeamStatus {
-        team_name,
-        lead_name,
-        members,
-    })
-}
-
-#[cfg(test)]
-pub(crate) fn coordination_get_live_team_status_for_tests(
-    state: &CoordinationState,
-    team_name: String,
-) -> Result<LiveTeamStatus, String> {
-    coordination_get_live_team_status_impl(state, None, team_name)
-}
-
 fn coordination_create_team_impl(
     state: &CoordinationState,
     team_name: String,
@@ -666,6 +599,8 @@ fn coordination_disband_team_impl(
     validate_non_empty("team_name", &team_name)?;
     let result = state
         .with_orchestrator(|orchestrator| orchestrator.disband_team(&team_name, None))
+        .map_err(map_coordination_error)?;
+    ActiveProjectTeamStore::clear_team(state.teams_dir(), &result.team_name)
         .map_err(map_coordination_error)?;
     let message = if result.already_disbanded {
         "team already disbanded".to_string()
@@ -730,6 +665,10 @@ fn coordination_remove_member_impl(
             orchestrator.remove_member(&team_name, &member_name, None)
         })
         .map_err(map_coordination_error)?;
+    if result.removed {
+        sync_active_team_projects_after_change(state, &result.team_name)
+            .map_err(map_coordination_error)?;
+    }
 
     let steps = result
         .steps
@@ -809,8 +748,7 @@ fn coordination_get_project_mesh_snapshot_impl(
     state: &CoordinationState,
     project_path: String,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
-    let availability = availability_check();
-    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+    live_status::coordination_get_project_mesh_snapshot_impl(state, project_path)
 }
 
 fn coordination_preflight_check_impl(
@@ -843,69 +781,34 @@ fn coordination_get_feature_availability_with_lookup<L: BinaryLookup + ?Sized>(
 }
 
 #[cfg(test)]
-fn coordination_get_project_mesh_snapshot_with_lookup<L: BinaryLookup + ?Sized>(
+pub(crate) fn coordination_get_live_team_status_for_tests(
+    state: &CoordinationState,
+    team_name: String,
+) -> Result<LiveTeamStatus, String> {
+    live_status::coordination_get_live_team_status_for_tests(state, team_name)
+}
+
+#[cfg(test)]
+pub(crate) fn coordination_get_project_mesh_snapshot_with_lookup<L: BinaryLookup + ?Sized>(
     state: &CoordinationState,
     project_path: String,
     lookup: &L,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
-    let availability = availability_check_with_lookup(lookup);
-    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+    live_status::coordination_get_project_mesh_snapshot_with_lookup(state, project_path, lookup)
 }
 
-fn coordination_get_project_mesh_snapshot_with_availability(
-    state: &CoordinationState,
-    project_path: String,
-    availability: BackendAvailabilityReport,
-) -> Result<ProjectMeshSnapshotResponse, String> {
-    validate_non_empty("project_path", &project_path)?;
-    let project_path = crate::provider::path::normalize_project_path(project_path.trim());
-    let discovery = discover_team_for_project_path(state.teams_dir(), &project_path)
-        .map_err(map_coordination_error)?;
-
-    let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
-        Some(
-            get_team_roster_with_attachments(state.teams_dir(), team_name)
-                .map(map_fast_team_snapshot)
-                .map_err(map_coordination_error)?,
-        )
-    } else {
-        None
-    };
-    let team_runtime_state = classify_team_runtime_state(team_status.as_ref());
-
-    Ok(ProjectMeshSnapshotResponse {
-        mesh_available: availability.mesh_available,
-        tmux_available: availability.tmux_available,
-        team_runtime_state,
-        team_name: discovery.team_name,
-        team_status,
-        warnings: discovery.warnings,
-    })
+#[cfg(test)]
+fn derive_cross_project_status(
+    lead_project_path: &Path,
+    member_project_path: &Path,
+) -> live_status::CrossProjectStatus {
+    live_status::derive_cross_project_status(lead_project_path, member_project_path)
 }
 
 fn validate_and_collect_preflight_agents(
     request: InitializeTeamRequest,
 ) -> Result<Vec<PreflightAgent>, String> {
-    validate_non_empty("team_name", &request.team_name)?;
-    validate_non_empty("lead.name", &request.lead.name)?;
-    validate_non_empty("lead.cli_tool", &request.lead.cli_tool)?;
-    for (idx, agent) in request.agents.iter().enumerate() {
-        validate_non_empty(&format!("agents[{idx}].name"), &agent.name)?;
-        validate_non_empty(&format!("agents[{idx}].cli_tool"), &agent.cli_tool)?;
-    }
-
-    let mut preflight_agents = Vec::with_capacity(1 + request.agents.len());
-    preflight_agents.push(PreflightAgent {
-        agent_name: request.lead.name,
-        cli_tool: request.lead.cli_tool,
-    });
-    for agent in request.agents {
-        preflight_agents.push(PreflightAgent {
-            agent_name: agent.name,
-            cli_tool: agent.cli_tool,
-        });
-    }
-    Ok(preflight_agents)
+    request_normalization::validate_and_collect_preflight_agents(request)
 }
 
 fn validate_non_empty(field: &str, value: &str) -> Result<(), String> {
@@ -926,325 +829,6 @@ fn validate_initialize_request_fields(request: &InitializeTeamRequest) -> Result
         validate_non_empty(&format!("agents[{idx}].cli_tool"), &agent.cli_tool)?;
     }
     Ok(())
-}
-
-fn normalize_initialize_request_paths(
-    db: &DbState,
-    mut request: InitializeTeamRequest,
-) -> Result<InitializeTeamRequest, String> {
-    request.lead.project_id = resolve_project_reference(db, &request.lead.project_id)?;
-    for agent in &mut request.agents {
-        agent.project_id = resolve_project_reference(db, &agent.project_id)?;
-    }
-    Ok(request)
-}
-
-fn normalize_add_agent_request_path(
-    db: &DbState,
-    mut request: AddAgentRequest,
-) -> Result<AddAgentRequest, String> {
-    request.agent.project_id = resolve_project_reference(db, &request.agent.project_id)?;
-    Ok(request)
-}
-
-fn hydrate_initialize_request_role_metadata(
-    state: &CoordinationState,
-    mut request: InitializeTeamRequest,
-) -> Result<InitializeTeamRequest, String> {
-    if let Some(preset_id) = request
-        .preset_id
-        .clone()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        hydrate_initialize_request_from_preset(state, &mut request, &preset_id)?;
-        return Ok(request);
-    }
-
-    hydrate_agent_setup_from_role_template(state, &mut request.lead)?;
-    for agent in &mut request.agents {
-        hydrate_agent_setup_from_role_template(state, agent)?;
-    }
-    Ok(request)
-}
-
-fn hydrate_initialize_request_from_preset(
-    state: &CoordinationState,
-    request: &mut InitializeTeamRequest,
-    preset_id: &str,
-) -> Result<(), String> {
-    let store = TemplateStore::new(coordination_app_data_dir(state));
-    let catalog = store.load_catalog().map_err(map_template_store_error)?;
-    let preset = catalog
-        .presets
-        .iter()
-        .find(|entry| entry.preset_id == preset_id)
-        .ok_or_else(|| sanitize_error(&format!("unknown preset_id '{preset_id}'")))?;
-    let role_names: HashMap<&str, &str> = catalog
-        .roles
-        .iter()
-        .map(|role| (role.role_id.as_str(), role.name.as_str()))
-        .collect();
-    let composition = compose_team(
-        &preset.lead_role_id,
-        &preset.agent_slots,
-        &catalog.roles,
-        &CompositionOverrides::default(),
-    );
-
-    if !composition.validation_errors.is_empty() {
-        return Err(sanitize_error(&format!(
-            "preset '{}' could not be resolved: {}",
-            preset_id,
-            composition.validation_errors.join("; ")
-        )));
-    }
-
-    let Some(resolved_lead) = composition.roster.first() else {
-        return Err(sanitize_error(&format!(
-            "preset '{}' resolved no lead member",
-            preset_id
-        )));
-    };
-
-    if composition.roster.len() != request.agents.len() + 1 {
-        return Err(sanitize_error(&format!(
-            "preset '{}' expected {} agents but initialize request provided {}",
-            preset_id,
-            composition.roster.len().saturating_sub(1),
-            request.agents.len()
-        )));
-    }
-
-    apply_resolved_member_defaults(
-        &mut request.lead,
-        resolved_lead,
-        role_names.get(resolved_lead.role_id.as_str()).copied(),
-    );
-    for (agent, resolved) in request
-        .agents
-        .iter_mut()
-        .zip(composition.roster.iter().skip(1))
-    {
-        apply_resolved_member_defaults(
-            agent,
-            resolved,
-            role_names.get(resolved.role_id.as_str()).copied(),
-        );
-    }
-
-    Ok(())
-}
-
-fn hydrate_add_agent_request_role_metadata(
-    state: &CoordinationState,
-    mut request: AddAgentRequest,
-) -> Result<AddAgentRequest, String> {
-    hydrate_agent_setup_from_role_template(state, &mut request.agent)?;
-    Ok(request)
-}
-
-fn hydrate_agent_setup_from_role_template(
-    state: &CoordinationState,
-    agent: &mut AgentSetupConfig,
-) -> Result<(), String> {
-    let Some(role_id) = agent.role_id.as_deref() else {
-        return Ok(());
-    };
-    if !agent_role_metadata_missing(agent) {
-        return Ok(());
-    }
-
-    let store = TemplateStore::new(coordination_app_data_dir(state));
-    let role = match store.get_role(role_id) {
-        Ok(record) => record.template,
-        Err(TemplateStoreError::NotFound(_)) => return Ok(()),
-        Err(err) => return Err(map_template_store_error(err)),
-    };
-    apply_role_template_defaults(agent, &role);
-    Ok(())
-}
-
-fn apply_resolved_member_defaults(
-    agent: &mut AgentSetupConfig,
-    member: &ResolvedMember,
-    role_name: Option<&str>,
-) {
-    if agent.cli_tool.trim().is_empty() {
-        agent.cli_tool = member.cli_tool.to_string();
-    }
-    if agent.model.trim().is_empty() {
-        agent.model = member.model.clone();
-    }
-    if agent
-        .role_id
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.role_id = Some(member.role_id.clone());
-    }
-    if agent
-        .role_name
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.role_name = role_name.map(str::to_string);
-    }
-    if agent
-        .focus_area
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.focus_area = member.focus_area.clone();
-    }
-    if agent
-        .context_summary
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.context_summary = member.context_summary.clone();
-    }
-    if agent
-        .behavior_summary
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.behavior_summary = member.behavior_summary.clone();
-    }
-    if agent.runtime_compact_summary.is_none() {
-        agent.runtime_compact_summary = member.runtime_compact_summary.clone();
-    }
-    if agent
-        .instructions
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.instructions = Some(member.instructions.clone());
-    }
-    if agent.behavioral_contract.is_none() {
-        agent.behavioral_contract = Some(member.behavioral_contract.clone());
-    }
-    if agent.capabilities.is_none() {
-        agent.capabilities = Some(member.capabilities.clone());
-    }
-}
-
-fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
-    agent
-        .role_name
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-        || agent
-            .focus_area
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
-        || agent
-            .context_summary
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
-        || agent
-            .behavior_summary
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
-        || agent.runtime_compact_summary.is_none()
-        || agent
-            .instructions
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
-        || agent.behavioral_contract.is_none()
-        || agent.capabilities.is_none()
-}
-
-fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplate) {
-    if agent
-        .role_name
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.role_name = Some(role.name.clone());
-    }
-    if agent
-        .focus_area
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.focus_area = role.focus_area.clone();
-    }
-    if agent
-        .context_summary
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.context_summary = role.context_summary.clone();
-    }
-    if agent
-        .behavior_summary
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.behavior_summary = role.behavior_summary.clone();
-    }
-    if agent.runtime_compact_summary.is_none() {
-        agent.runtime_compact_summary = role.runtime_compact_summary.clone();
-    }
-    if agent
-        .instructions
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
-    {
-        agent.instructions = Some(role.instructions.clone());
-    }
-    if agent.behavioral_contract.is_none() {
-        agent.behavioral_contract = Some(role.behavioral_contract.clone());
-    }
-    if agent.capabilities.is_none() {
-        agent.capabilities = Some(role.capabilities.clone());
-    }
-}
-
-fn coordination_app_data_dir(state: &CoordinationState) -> PathBuf {
-    state
-        .teams_dir()
-        .file_name()
-        .filter(|name| *name == "teams")
-        .and_then(|_| state.teams_dir().parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| state.teams_dir().clone())
-}
-
-fn map_template_store_error(err: TemplateStoreError) -> String {
-    sanitize_error(&err.to_string())
 }
 
 fn map_lead_mode_to_contract(mode: LeadMode) -> contracts::LeadMode {
@@ -1413,28 +997,6 @@ fn map_resume_team_report_from_contract(report: contracts::ResumeTeamReport) -> 
     }
 }
 
-#[cfg(not(test))]
-fn resolve_project_reference(db: &DbState, project_ref: &str) -> Result<String, String> {
-    validate_non_empty("project_id", project_ref)?;
-    let trimmed = project_ref.trim();
-
-    let project_path = {
-        let conn = db.0.lock().map_err(|err| format!("{err}"))?;
-        match crate::db::queries::get_project(&conn, trimmed).map_err(|err| format!("{err}"))? {
-            Some(project) => project.path,
-            None => trimmed.to_string(),
-        }
-    };
-
-    Ok(crate::provider::path::to_linux(&project_path).unwrap_or(project_path))
-}
-
-#[cfg(test)]
-fn resolve_project_reference(_db: &DbState, project_ref: &str) -> Result<String, String> {
-    validate_non_empty("project_id", project_ref)?;
-    Ok(project_ref.trim().to_string())
-}
-
 fn cli_tool_from_backend_kind(backend_kind: &str) -> Result<CliTool, CoordinationError> {
     CliTool::from_alias(backend_kind).map_err(|_| {
         CoordinationError::Validation(format!(
@@ -1442,250 +1004,6 @@ fn cli_tool_from_backend_kind(backend_kind: &str) -> Result<CliTool, Coordinatio
             backend_kind.trim()
         ))
     })
-}
-
-fn session_status_from_health(health: HealthState) -> SessionStatus {
-    match health {
-        HealthState::Healthy => SessionStatus::Active,
-        HealthState::AwaitingRead
-        | HealthState::SuspectedStuck
-        | HealthState::Rebriefed
-        | HealthState::Suppressed => SessionStatus::Idle,
-        HealthState::SessionDead => SessionStatus::Offline,
-    }
-}
-
-fn classify_team_runtime_state(team_status: Option<&FastTeamSnapshot>) -> TeamRuntimeState {
-    let Some(team_status) = team_status else {
-        return TeamRuntimeState::None;
-    };
-
-    let live_members = team_status
-        .members
-        .iter()
-        .filter(|member| member.session_status != SessionStatus::Offline)
-        .count();
-    let total_members = team_status.members.len();
-
-    if live_members == 0 {
-        TeamRuntimeState::ColdResume
-    } else if live_members == total_members {
-        TeamRuntimeState::Active
-    } else {
-        TeamRuntimeState::Degraded
-    }
-}
-
-#[derive(Debug, Default)]
-struct ProjectPathDiscovery {
-    team_name: Option<String>,
-    warnings: Vec<String>,
-}
-
-fn discover_team_for_project_path(
-    teams_dir: &Path,
-    project_path: &str,
-) -> Result<ProjectPathDiscovery, CoordinationError> {
-    if !teams_dir.exists() {
-        return Ok(ProjectPathDiscovery::default());
-    }
-
-    let mut team_name = None;
-    let mut warnings = Vec::new();
-    for listed_team in TeamConfigStore::list(teams_dir)? {
-        match TeamConfigStore::load(teams_dir, &listed_team) {
-            Ok(config) => {
-                if team_name.is_none()
-                    && config.members.iter().any(|member| {
-                        crate::provider::path::normalize_project_path(
-                            &member.project_path.display().to_string(),
-                        ) == project_path
-                    })
-                {
-                    team_name = Some(config.name);
-                }
-            }
-            Err(CoordinationError::NotFound(_)) => {}
-            Err(CoordinationError::StoreError(_)) => {
-                warnings.push(format!(
-                    "skipped team folder '{listed_team}' because config is missing or invalid"
-                ));
-            }
-            Err(CoordinationError::Io(err)) => {
-                warnings.push(format!(
-                    "skipped team folder '{listed_team}' due to IO error: {err}"
-                ));
-            }
-            Err(other) => {
-                warnings.push(format!(
-                    "skipped team folder '{listed_team}' due to discovery error: {other}"
-                ));
-            }
-        }
-    }
-    warnings.sort();
-
-    Ok(ProjectPathDiscovery {
-        team_name,
-        warnings,
-    })
-}
-
-fn map_fast_team_snapshot(roster: Vec<TeamMemberView>) -> FastTeamSnapshot {
-    let lead_name = roster_lead_name(&roster);
-    let lead_project_path = roster_lead_project_path(&roster);
-    let members = roster
-        .into_iter()
-        .map(|member| fast_agent_snapshot_from_roster(member, lead_project_path.as_deref()))
-        .collect();
-
-    FastTeamSnapshot { lead_name, members }
-}
-
-fn roster_lead_name(roster: &[TeamMemberView]) -> String {
-    roster
-        .iter()
-        .find(|member| member.role == MemberRole::Lead)
-        .or_else(|| roster.first())
-        .map(|member| member.member_name.clone())
-        .unwrap_or_default()
-}
-
-fn roster_lead_project_path(roster: &[TeamMemberView]) -> Option<PathBuf> {
-    roster
-        .iter()
-        .find(|member| member.role == MemberRole::Lead)
-        .or_else(|| roster.first())
-        .map(|member| member.configured_project_path.clone())
-}
-
-fn live_agent_status_from_roster(
-    member: TeamMemberView,
-    lead_project_path: Option<&Path>,
-) -> LiveAgentStatus {
-    let cross_project =
-        member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
-    LiveAgentStatus {
-        name: member.member_name,
-        role: match member.role {
-            MemberRole::Lead => AgentRole::Lead,
-            MemberRole::Agent => AgentRole::Member,
-        },
-        cli_tool: member.configured_cli_tool.to_string(),
-        model: String::new(),
-        role_id: member.role_id,
-        role_name: member.role_name,
-        focus_area: member.focus_area,
-        context_summary: member.context_summary,
-        behavior_summary: member.behavior_summary,
-        project_id: member.configured_project_path.display().to_string(),
-        is_cross_project: cross_project.is_cross_project,
-        project_label: cross_project.project_label,
-        description: member.instructions,
-        session_status: member
-            .attached_health
-            .map(session_status_from_health)
-            .unwrap_or(SessionStatus::Offline),
-        pane_id: member.pane_id,
-    }
-}
-
-fn fast_agent_snapshot_from_roster(
-    member: TeamMemberView,
-    lead_project_path: Option<&Path>,
-) -> FastAgentSnapshot {
-    let cross_project =
-        member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
-    FastAgentSnapshot {
-        name: member.member_name,
-        role: match member.role {
-            MemberRole::Lead => AgentRole::Lead,
-            MemberRole::Agent => AgentRole::Member,
-        },
-        cli_tool: member.configured_cli_tool.to_string(),
-        role_id: member.role_id,
-        role_name: member.role_name,
-        focus_area: member.focus_area,
-        context_summary: member.context_summary,
-        behavior_summary: member.behavior_summary,
-        project_id: member.configured_project_path.display().to_string(),
-        is_cross_project: cross_project.is_cross_project,
-        project_label: cross_project.project_label,
-        description: member.instructions,
-        session_status: member
-            .attached_health
-            .map(session_status_from_health)
-            .unwrap_or(SessionStatus::Offline),
-        pane_id: member.pane_id,
-    }
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct CrossProjectStatus {
-    is_cross_project: bool,
-    project_label: String,
-}
-
-fn member_cross_project_status(
-    lead_project_path: Option<&Path>,
-    member_project_path: &Path,
-) -> CrossProjectStatus {
-    lead_project_path
-        .map(|lead_project_path| {
-            derive_cross_project_status(lead_project_path, member_project_path)
-        })
-        .unwrap_or_default()
-}
-
-fn derive_cross_project_status(
-    lead_project_path: &Path,
-    member_project_path: &Path,
-) -> CrossProjectStatus {
-    let lead_project_path = canonical_project_identity(&lead_project_path.display().to_string());
-    let member_project_path =
-        canonical_project_identity(&member_project_path.display().to_string());
-    let is_cross_project = lead_project_path != member_project_path;
-    let project_label = if is_cross_project {
-        project_label_from_path(&member_project_path)
-    } else {
-        String::new()
-    };
-
-    CrossProjectStatus {
-        is_cross_project,
-        project_label,
-    }
-}
-
-fn canonical_project_identity(project_path: &str) -> String {
-    let normalized = crate::provider::path::normalize_project_path(project_path);
-    if is_windows_mount_path(&normalized) {
-        normalized.to_ascii_lowercase()
-    } else {
-        normalized
-    }
-}
-
-fn is_windows_mount_path(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    bytes.len() >= 7
-        && path.starts_with("/mnt/")
-        && bytes[5].is_ascii_alphabetic()
-        && (bytes[6] == b'/' || bytes[6] == b'\\')
-}
-
-fn project_label_from_path(project_path: &str) -> String {
-    Path::new(project_path)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(ToOwned::to_owned)
-        .or_else(|| {
-            project_path
-                .rsplit('/')
-                .find(|segment| !segment.is_empty())
-                .map(ToOwned::to_owned)
-        })
-        .unwrap_or_default()
 }
 
 fn resolve_legacy_member_project_path(

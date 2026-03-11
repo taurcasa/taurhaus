@@ -1,5 +1,6 @@
 //! Store layer for coordination data.
 
+pub mod active_project;
 pub mod compaction;
 pub mod compaction_signal;
 pub mod config;
@@ -8,6 +9,8 @@ pub mod lock;
 pub mod operational;
 pub mod runtime;
 
+#[allow(unused_imports)]
+pub use active_project::ActiveProjectTeamStore;
 #[allow(unused_imports)]
 pub use compaction::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_already_handled,

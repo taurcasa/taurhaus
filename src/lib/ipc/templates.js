@@ -14,6 +14,11 @@ import {
   normalizeRoleTemplateInput,
   normalizeTeamPresetInput,
 } from './templatePayloads.js'
+import {
+  normalizeComposeTeamResult,
+  normalizeRoleTemplateResponse,
+  normalizeTeamPresetResponse,
+} from './templateResponses.js'
 import { formatUserFacingError } from '../format.js'
 
 export async function listRoleTemplates() {
@@ -21,28 +26,14 @@ export async function listRoleTemplates() {
     MOCK_ROLE_TEMPLATES.map(roleTemplateSummary)
   )
 
-  return (templates ?? []).map((template) => {
-    const { capabilities: _capabilities, source: _source, ...rest } = template ?? {}
-
-    return {
-      ...rest,
-      roleId: template?.roleId ?? '',
-      cliTool: template?.cliTool ?? template?.defaults?.cliTool ?? null,
-      model: template?.model ?? template?.defaults?.model ?? null,
-      focusArea: template?.focusArea ?? template?.focus_area ?? '',
-      contextSummary: template?.contextSummary ?? template?.context_summary ?? '',
-      behaviorSummary: template?.behaviorSummary ?? template?.behavior_summary ?? '',
-      builtIn: String(template?.source ?? '').toLowerCase() === 'built_in' || Boolean(template?.builtIn ?? template?.built_in),
-      readOnly: Boolean(template?.readOnly),
-    }
-  })
+  return (templates ?? []).map((template) => normalizeRoleTemplateResponse(template))
 }
 
 export function getRoleTemplate(id) {
   return invokeOrMock('templates_get_role', { roleId: id }, () => {
     const template = MOCK_ROLE_TEMPLATES.find((entry) => entry.roleId === id)
     return template ? { ...template } : null
-  })
+  }).then((template) => normalizeRoleTemplateResponse(template))
 }
 
 export function upsertRoleTemplate(roleData) {
@@ -127,18 +118,13 @@ export async function listTeamPresets() {
   )
 
   return (presets ?? []).map((preset) => {
-    const { capabilities: _capabilities, source: _source, ...rest } = preset ?? {}
-    const leadRoleId = preset?.leadRoleId ?? ''
-    const agentSlots = Array.isArray(preset?.agentSlots) ? preset.agentSlots : []
+    const normalized = normalizeTeamPresetResponse(preset)
+    const agentSlots = Array.isArray(normalized?.agentSlots) ? normalized.agentSlots : []
 
     return {
-      ...rest,
-      leadRoleId,
+      ...normalized,
       roleCount: agentSlots.length,
       agentCount: agentSlots.reduce((total, slot) => total + (slot?.count ?? 0), 0),
-      tools: Array.isArray(preset?.tools) ? preset.tools : [],
-      builtIn: String(preset?.source ?? '').toLowerCase() === 'built_in' || Boolean(preset?.builtIn ?? preset?.built_in),
-      readOnly: Boolean(preset?.readOnly),
     }
   })
 }
@@ -147,7 +133,7 @@ export function getTeamPreset(id) {
   return invokeOrMock('templates_get_preset', { presetId: id }, () => {
     const preset = MOCK_TEAM_PRESETS.find((entry) => entry.presetId === id)
     return preset ? { ...preset } : null
-  })
+  }).then((preset) => normalizeTeamPresetResponse(preset))
 }
 
 export function upsertTeamPreset(presetData) {
@@ -201,7 +187,9 @@ export function composeTeam(request) {
       warnings: normalizedRequest.agentSlots.length ? [] : ['No agent slots selected; roster includes lead only.'],
       validationErrors: [],
     }
-  }).catch((error) => {
+  })
+    .then((response) => normalizeComposeTeamResult(response))
+    .catch((error) => {
     throw new Error(formatUserFacingError(error, "Couldn't prepare a team from these role selections"))
   })
 }

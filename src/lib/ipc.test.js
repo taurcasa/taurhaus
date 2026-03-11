@@ -652,6 +652,40 @@ describe('ipc module', () => {
     })
   })
 
+  describe('openExternalUrl()', () => {
+    it('opens https URLs in Tauri mode', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce(undefined)
+
+      await expect(ipc.openExternalUrl('https://example.com/docs')).resolves.toBeUndefined()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('plugin:opener|open_url', {
+        url: 'https://example.com/docs',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('opens mailto URLs in mock mode', async () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+      await expect(ipc.openExternalUrl('mailto:test@example.com')).resolves.toBeUndefined()
+
+      expect(openSpy).toHaveBeenCalledWith('mailto:test@example.com', '_blank')
+      openSpy.mockRestore()
+    })
+
+    it('rejects insecure http URLs before invoking the opener plugin', async () => {
+      window.__TAURI_INTERNALS__ = {}
+
+      await expect(ipc.openExternalUrl('http://example.com')).rejects.toThrow(
+        'Only HTTPS and mailto links can be opened externally.'
+      )
+
+      expect(tauriCore.invoke).not.toHaveBeenCalled()
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
   describe('isFirstRun()', () => {
     it('calls is_first_run command in Tauri', async () => {
       window.__TAURI_INTERNALS__ = {}
@@ -1196,6 +1230,47 @@ describe('ipc module', () => {
         builtIn: true,
       }))
     })
+
+    it('normalizes snake_case role metadata into canonical Mesh fields', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce([
+        {
+          role_id: 'codex-developer',
+          name: 'Codex Developer',
+          kind: 'agent',
+          cli_tool: 'codex',
+          focus_area: 'Scoped implementation',
+          context_summary: 'Owns code changes and tests within its scope.',
+          behavior_summary: 'Implements narrowly and escalates blockers quickly.',
+          behavioral_contract: {
+            communication: ['Report concise progress.'],
+            execution: ['Ship the assigned slice end-to-end.'],
+            escalation: ['Escalate blockers immediately.'],
+          },
+          capabilities: ['frontend'],
+        },
+      ])
+
+      const result = await ipc.listRoleTemplates()
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          roleId: 'codex-developer',
+          cliTool: 'codex',
+          focusArea: 'Scoped implementation',
+          contextSummary: 'Owns code changes and tests within its scope.',
+          behaviorSummary: 'Implements narrowly and escalates blockers quickly.',
+          behavioralContract: {
+            communication: ['Report concise progress.'],
+            execution: ['Ship the assigned slice end-to-end.'],
+            escalation: ['Escalate blockers immediately.'],
+          },
+          capabilities: ['frontend'],
+        }),
+      ])
+
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   describe('listTeamPresets()', () => {
@@ -1311,6 +1386,51 @@ describe('ipc module', () => {
 
       await expect(ipc.getRoleTemplate('missing-role')).resolves.toBeNull()
       await expect(ipc.getTeamPreset('missing-preset')).resolves.toBeNull()
+    })
+
+    it('getTeamPreset normalizes snake_case preset detail fields', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce({
+        preset_id: 'review-team',
+        name: 'Review Team',
+        lead_role_id: 'claude-reviewer',
+        agent_slots: [
+          {
+            role_id: 'codex-developer',
+            count: 2,
+            project_binding: 'lead_project',
+            project_id: null,
+          },
+        ],
+        defaults: {
+          team_name_pattern: '{project}-team',
+          tmux_layout: 'tiled',
+        },
+      })
+
+      const result = await ipc.getTeamPreset('review-team')
+
+      expect(result).toEqual(expect.objectContaining({
+        presetId: 'review-team',
+        name: 'Review Team',
+        description: '',
+        leadRoleId: 'claude-reviewer',
+        agentSlots: [
+          {
+            roleId: 'codex-developer',
+            count: 2,
+            projectBinding: 'lead_project',
+            projectId: null,
+            overrides: null,
+          },
+        ],
+        defaults: {
+          teamNamePattern: '{project}-team',
+          tmuxLayout: 'tiled',
+        },
+      }))
+
+      delete window.__TAURI_INTERNALS__
     })
   })
 
@@ -1712,6 +1832,59 @@ describe('ipc module', () => {
       await expect(ipc.composeTeam({ leadRoleId: 'lead-a' })).rejects.toThrow('compose failed')
       delete window.__TAURI_INTERNALS__
     })
+
+    it('normalizes snake_case composition roster fields from the backend', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce({
+        roster: [
+          {
+            name: 'team-lead',
+            role_id: 'claude-orchestrator',
+            role_kind: 'lead',
+            cli_tool: 'claude',
+            focus_area: 'Team orchestration',
+            context_summary: 'Carries the team plan.',
+            behavior_summary: 'Delegates and escalates blockers.',
+            behavioral_contract: {
+              communication: ['Report progress clearly.'],
+              execution: ['Keep work scoped.'],
+              escalation: ['Escalate blockers immediately.'],
+            },
+            project_binding: 'lead_project',
+            project_id: '/projects/taurhaus',
+          },
+        ],
+        warnings: [],
+        validation_errors: [],
+      })
+
+      const result = await ipc.composeTeam({ leadRoleId: 'lead-a' })
+
+      expect(result).toEqual({
+        roster: [
+          expect.objectContaining({
+            name: 'team-lead',
+            roleId: 'claude-orchestrator',
+            roleKind: 'lead',
+            cliTool: 'claude',
+            focusArea: 'Team orchestration',
+            contextSummary: 'Carries the team plan.',
+            behaviorSummary: 'Delegates and escalates blockers.',
+            behavioralContract: {
+              communication: ['Report progress clearly.'],
+              execution: ['Keep work scoped.'],
+              escalation: ['Escalate blockers immediately.'],
+            },
+            projectBinding: 'lead_project',
+            projectId: '/projects/taurhaus',
+          }),
+        ],
+        warnings: [],
+        validationErrors: [],
+      })
+
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   // -----------------------------------------------------------------------
@@ -1820,6 +1993,35 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    it('coordinationResumeTeam normalizes snake_case reports from the backend', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce({
+        team_name: 'arch',
+        resumed: true,
+        total_members: 2,
+        resumed_members: ['team-lead'],
+        failed_members: [{ member_name: 'frontend-dev', message: 'tmux missing' }],
+        warnings: ['partial'],
+        started_team_daemon: true,
+        team_daemon_warning: 'daemon restarted',
+      })
+
+      const result = await ipc.coordinationResumeTeam('arch')
+
+      expect(result).toEqual({
+        teamName: 'arch',
+        resumed: true,
+        totalMembers: 2,
+        resumedMembers: ['team-lead'],
+        failedMembers: [{ memberName: 'frontend-dev', message: 'tmux missing' }],
+        warnings: ['partial'],
+        startedTeamDaemon: true,
+        teamDaemonWarning: 'daemon restarted',
+      })
+
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('coordinationPreflightCheck calls invoke and returns deterministic mock shape', async () => {
       const request = { teamName: 'arch', lead: { name: 'lead' }, agents: [] }
       const mockModeResult = await ipc.coordinationPreflightCheck(request)
@@ -1893,6 +2095,73 @@ describe('ipc module', () => {
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_project_mesh_snapshot', {
         projectPath: '/projects/arch',
       })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationGetProjectMeshSnapshot normalizes snake_case Mesh snapshot fields', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce({
+        mesh_available: false,
+        tmux_available: true,
+        team_name: 'arch-team',
+        team_runtime_state: 'cold_resume',
+        team_status: {
+          lead_name: 'team-lead',
+          members: [
+            {
+              name: 'frontend-dev',
+              role: 'member',
+              cli_tool: 'codex',
+              model: 'gpt-5.4 high',
+              role_id: 'codex-developer',
+              role_name: 'Codex Developer',
+              focus_area: 'Scoped implementation',
+              context_summary: 'Owns code changes.',
+              behavior_summary: 'Implements narrowly.',
+              project_id: '/projects/ui',
+              is_cross_project: true,
+              project_label: 'ui',
+              description: 'Owns the UI.',
+              session_status: 'idle',
+              pane_id: '%2',
+            },
+          ],
+        },
+        warnings: ['mesh missing'],
+      })
+
+      const result = await ipc.coordinationGetProjectMeshSnapshot('/projects/arch')
+
+      expect(result).toEqual({
+        meshAvailable: false,
+        tmuxAvailable: true,
+        teamName: 'arch-team',
+        teamRuntimeState: 'coldResume',
+        teamStatus: {
+          leadName: 'team-lead',
+          members: [
+            expect.objectContaining({
+              name: 'frontend-dev',
+              role: 'member',
+              cliTool: 'codex',
+              model: 'gpt-5.4 high',
+              roleId: 'codex-developer',
+              roleName: 'Codex Developer',
+              focusArea: 'Scoped implementation',
+              contextSummary: 'Owns code changes.',
+              behaviorSummary: 'Implements narrowly.',
+              projectId: '/projects/ui',
+              isCrossProject: true,
+              projectLabel: 'ui',
+              description: 'Owns the UI.',
+              sessionStatus: 'idle',
+              paneId: '%2',
+            }),
+          ],
+        },
+        warnings: ['mesh missing'],
+      })
+
       delete window.__TAURI_INTERNALS__
     })
 

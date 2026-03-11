@@ -1402,6 +1402,44 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
 }
 
 #[test]
+fn project_mesh_snapshot_prefers_persisted_active_team_when_multiple_teams_match_project() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    let mut old_request = sample_preflight_request();
+    old_request.team_name = "towerhouse-product-team".to_string();
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        old_request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize old team");
+
+    let mut active_request = sample_preflight_request();
+    active_request.team_name = "taurhaus-team".to_string();
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        active_request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize active team");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_name.as_deref(), Some("taurhaus-team"));
+    assert!(snapshot.team_status.is_some());
+}
+
+#[test]
 fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has_role_ids() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().join("teams"));

@@ -137,13 +137,13 @@ describe('Mesh vertical slice smoke', () => {
     ]
 
     coordinationGetLiveTeamStatus.mockImplementation(async (teamName) => ({
-      team_name: teamName,
+      teamName,
       leadName: 'team-lead',
       members: rosterMembers,
     }))
     coordinationInitializeTeam.mockResolvedValue({
-      team_name: 'taurhaus-team',
-      failed_step: null,
+      teamName: 'taurhaus-team',
+      failedStep: null,
       retryable: false,
       message: 'team initialized',
       steps: [
@@ -166,24 +166,24 @@ describe('Mesh vertical slice smoke', () => {
         },
       ]
       return {
-        team_name: teamName,
-        member_name: agent.name,
-        failed_step: null,
+        teamName,
+        memberName: agent.name,
+        failedStep: null,
         message: 'agent added',
         steps: [{ step: 'update_roster', status: 'succeeded', message: 'team roster updated' }],
       }
     })
 
     coordinationDisbandTeam.mockResolvedValue({
-      team_name: 'taurhaus-team',
+      teamName: 'taurhaus-team',
       disbanded: true,
-      already_disbanded: false,
+      alreadyDisbanded: false,
       message: 'team disbanded',
     })
 
     coordinationRemoveMember.mockResolvedValue({
-      team_name: 'taurhaus-team',
-      member_name: 'frontend-dev',
+      teamName: 'taurhaus-team',
+      memberName: 'frontend-dev',
       removed: true,
       message: 'member removed',
       steps: [],
@@ -191,50 +191,50 @@ describe('Mesh vertical slice smoke', () => {
     })
 
     coordinationResumeTeam.mockResolvedValue({
-      team_name: 'taurhaus-team',
+      teamName: 'taurhaus-team',
       resumed: true,
-      total_members: 2,
-      resumed_members: ['team-lead', 'frontend-dev'],
-      failed_members: [],
+      totalMembers: 2,
+      resumedMembers: ['team-lead', 'frontend-dev'],
+      failedMembers: [],
       warnings: [],
-      started_team_daemon: false,
-      team_daemon_warning: null,
+      startedTeamDaemon: false,
+      teamDaemonWarning: null,
     })
 
     coordinationResumeMember.mockResolvedValue({
-      team_name: 'taurhaus-team',
-      member_name: 'frontend-dev',
+      teamName: 'taurhaus-team',
+      memberName: 'frontend-dev',
       resumed: true,
-      failed_step: null,
+      failedStep: null,
       message: 'member resumed',
       steps: [],
       warnings: [],
     })
 
     listRoleTemplates.mockResolvedValue([
-      { role_id: 'lead-default', name: 'Lead', kind: 'lead', cli_tool: 'claude', model: 'opus' },
-      { role_id: 'agent-default', name: 'Agent', kind: 'agent', cli_tool: 'codex', model: 'gpt-5.4 high' },
+      { roleId: 'lead-default', name: 'Lead', kind: 'lead', cliTool: 'claude', model: 'opus' },
+      { roleId: 'agent-default', name: 'Agent', kind: 'agent', cliTool: 'codex', model: 'gpt-5.4 high' },
     ])
     listTeamPresets.mockResolvedValue([])
-    getRoleTemplate.mockResolvedValue({ role_id: 'lead-default', instructions: 'Lead the team.' })
-    getTeamPreset.mockResolvedValue({ preset_id: 'preset-a', agent_slots: [] })
+    getRoleTemplate.mockResolvedValue({ roleId: 'lead-default', instructions: 'Lead the team.' })
+    getTeamPreset.mockResolvedValue({ presetId: 'preset-a', agentSlots: [] })
 
     composeTeam.mockResolvedValue({
       roster: [
         {
           name: 'team-lead',
-          role_id: 'lead-default',
-          role_kind: 'lead',
-          cli_tool: 'claude',
+          roleId: 'lead-default',
+          roleKind: 'lead',
+          cliTool: 'claude',
           model: 'opus',
           instructions: '',
           capabilities: [],
-          project_binding: 'lead_project',
-          project_id: '/projects/taurhaus',
+          projectBinding: 'lead_project',
+          projectId: '/projects/taurhaus',
         },
       ],
       warnings: [],
-      validation_errors: [],
+      validationErrors: [],
     })
 
     onCoordinationStepProgress.mockResolvedValue(() => {})

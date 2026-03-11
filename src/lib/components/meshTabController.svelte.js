@@ -14,14 +14,14 @@ import {
   upsertTeamPreset,
   upsertRoleTemplate,
 } from '../ipc.js'
+import {
+  normalizeProjectMeshSnapshot,
+  normalizeResumeTeamReport,
+} from '../ipc/coordinationResponses.js'
 import { clearMeshCache, getMeshCache, setMeshCache } from '../meshCache.svelte.js'
 import {
-  applyNamePattern,
   defaultModelForTool,
   normalizeTool,
-  resolveDefaultNamePattern,
-  resolveRoleModel,
-  resolveRoleTool,
 } from '../meshDefaults.js'
 import { normalizeProjectOption } from '../projectOptions.js'
 import {
@@ -33,10 +33,17 @@ import {
   createAgent,
   createLead,
   inferTeamName,
-  projectNameFromPath,
   normalizeBehavioralContract,
   slugifyRoleId,
 } from './meshTabUtils.js'
+import {
+  buildRuntimeAgentName,
+  createAgentFromRole,
+  createLeadFromRole,
+  emptyBuilderConfig,
+  mergePresetCatalog,
+  normalizeRoleKind,
+} from './meshBuilderUtils.js'
 import { refreshRuntimeTeamConfigWorkflow } from './meshTabGateWorkflow.js'
 import { autoDismissNotice } from './meshTabNotifications.js'
 
@@ -174,16 +181,6 @@ export function createMeshTabController({
     return String(draft.name || '').trim().length > 0 && String(draft.roleId || '').trim().length > 0
   })
 
-  function normalizeTeamRuntimeState(value) {
-    const normalized = String(value ?? '')
-      .trim()
-      .toLowerCase()
-    if (normalized === 'active') return 'active'
-    if (normalized === 'degraded') return 'degraded'
-    if (normalized === 'coldresume' || normalized === 'cold_resume') return 'coldResume'
-    return 'none'
-  }
-
   function nowMs() {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
       return performance.now()
@@ -249,28 +246,6 @@ export function createMeshTabController({
     return members.map((member) => String(member?.name ?? '').trim()).filter(Boolean)
   }
 
-  function normalizeResumeTeamReport(report) {
-    if (!report || typeof report !== 'object') return null
-    return {
-      teamName: report?.teamName ?? report?.team_name ?? '',
-      resumed: Boolean(report?.resumed),
-      totalMembers: Number(report?.totalMembers ?? report?.total_members ?? 0),
-      resumedMembers: Array.isArray(report?.resumedMembers)
-        ? report.resumedMembers
-        : Array.isArray(report?.resumed_members)
-          ? report.resumed_members
-          : [],
-      failedMembers: Array.isArray(report?.failedMembers)
-        ? report.failedMembers
-        : Array.isArray(report?.failed_members)
-          ? report.failed_members
-          : [],
-      warnings: Array.isArray(report?.warnings) ? report.warnings : [],
-      startedTeamDaemon: Boolean(report?.startedTeamDaemon ?? report?.started_team_daemon),
-      teamDaemonWarning: report?.teamDaemonWarning ?? report?.team_daemon_warning ?? null,
-    }
-  }
-
   function buildResumeProgressItems(targetNames, report = null, fallbackError = '') {
     const normalizedReport = normalizeResumeTeamReport(report)
     const names = Array.isArray(targetNames) ? [...targetNames] : []
@@ -279,7 +254,7 @@ export function createMeshTabController({
     const failedMap = new Map(
       failedEntries
         .map((entry) => ({
-          memberName: entry?.memberName ?? entry?.member_name ?? '',
+          memberName: entry?.memberName ?? '',
           message: entry?.message ?? 'Failed',
         }))
         .filter((entry) => entry.memberName)
@@ -322,26 +297,13 @@ export function createMeshTabController({
       : 'No members were resumed.'
     const failedSummary = normalizedReport.failedMembers.length
       ? `Failed: ${normalizedReport.failedMembers
-          .map((entry) => `${entry?.memberName ?? entry?.member_name ?? 'unknown'}${entry?.message ? ` (${entry.message})` : ''}`)
+          .map((entry) => `${entry?.memberName ?? 'unknown'}${entry?.message ? ` (${entry.message})` : ''}`)
           .join(', ')}.`
       : ''
     if (normalizedReport.failedMembers.length > 0) {
       return `Resume completed with failures. ${resumedSummary} ${failedSummary}`.trim()
     }
     return `Resume complete. ${resumedSummary}`.trim()
-  }
-
-  function normalizeProjectMeshSnapshot(snapshot) {
-    return {
-      meshAvailable: snapshot?.meshAvailable ?? snapshot?.mesh_available ?? true,
-      tmuxAvailable: snapshot?.tmuxAvailable ?? snapshot?.tmux_available ?? true,
-      teamName: snapshot?.teamName ?? snapshot?.team_name ?? null,
-      teamRuntimeState: normalizeTeamRuntimeState(
-        snapshot?.teamRuntimeState ?? snapshot?.team_runtime_state ?? 'none'
-      ),
-      teamStatus: snapshot?.teamStatus ?? snapshot?.team_status ?? null,
-      warnings: Array.isArray(snapshot?.warnings) ? snapshot.warnings : [],
-    }
   }
 
   function buildAvailabilityMessage(snapshot) {
@@ -361,17 +323,17 @@ export function createMeshTabController({
       ? report.members.map((member) => ({
           name: member?.name ?? '',
           role: member?.role ?? 'member',
-          cliTool: member?.cliTool ?? member?.cli_tool ?? 'codex',
+          cliTool: member?.cliTool ?? 'codex',
           model: member?.model ?? '',
-          projectId: member?.projectId ?? member?.project_id ?? '',
+          projectId: member?.projectId ?? '',
           description: member?.description ?? null,
-          roleId: member?.roleId ?? member?.role_id ?? null,
-          roleName: member?.roleName ?? member?.role_name ?? null,
-          focusArea: member?.focusArea ?? member?.focus_area ?? null,
-          contextSummary: member?.contextSummary ?? member?.context_summary ?? null,
-          behaviorSummary: member?.behaviorSummary ?? member?.behavior_summary ?? null,
-          sessionStatus: member?.sessionStatus ?? member?.session_status ?? 'offline',
-          paneId: member?.paneId ?? member?.pane_id ?? null,
+          roleId: member?.roleId ?? null,
+          roleName: member?.roleName ?? null,
+          focusArea: member?.focusArea ?? null,
+          contextSummary: member?.contextSummary ?? null,
+          behaviorSummary: member?.behaviorSummary ?? null,
+          sessionStatus: member?.sessionStatus ?? 'offline',
+          paneId: member?.paneId ?? null,
         }))
       : []
 
@@ -383,7 +345,7 @@ export function createMeshTabController({
       warnings: normalized.warnings,
       teamStatus: normalized.teamName
         ? {
-            leadName: report?.leadName ?? report?.lead_name ?? 'team-lead',
+            leadName: report?.leadName ?? 'team-lead',
             members,
           }
         : null,
@@ -404,7 +366,7 @@ export function createMeshTabController({
       teamConfig = buildTeamConfigFromRuntimeStatus(
         {
           teamName: normalized.teamName,
-          leadName: normalized.teamStatus?.leadName ?? normalized.teamStatus?.lead_name ?? 'team-lead',
+          leadName: normalized.teamStatus?.leadName ?? 'team-lead',
           members: Array.isArray(normalized.teamStatus?.members) ? normalized.teamStatus.members : [],
         },
         projectPath
@@ -686,122 +648,20 @@ export function createMeshTabController({
     slideOverContext = null
   }
 
-  function emptyBuilderConfig() {
-    return {
-      description: '',
-      lead: null,
-      agents: [],
-      presetId: '',
-      presetName: '',
-      initializationMode: 'custom',
-      composition: null,
-    }
-  }
-
   function ensureBuilderConfig() {
     if (teamConfig) return teamConfig
     teamConfig = emptyBuilderConfig()
     return teamConfig
   }
 
-  function normalizeRoleKind(role) {
-    return String(role?.kind ?? '').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
-  }
-
-  function normalizeRoleTemplate(role) {
-    if (!role || typeof role !== 'object') return null
-    return {
-      ...role,
-      roleId: String(role.roleId ?? role.role_id ?? '').trim(),
-      cliTool: role.cliTool ?? role.cli_tool ?? role.defaults?.cliTool ?? role.defaults?.cli_tool ?? null,
-      model: role.model ?? role.defaults?.model ?? null,
-      focusArea: role.focusArea ?? role.focus_area ?? '',
-      contextSummary: role.contextSummary ?? role.context_summary ?? '',
-      behaviorSummary: role.behaviorSummary ?? role.behavior_summary ?? '',
-    }
-  }
-
   function resolveBuilderRole(roleId) {
     return roleTemplates.find((entry) => entry.roleId === roleId) ?? null
-  }
-
-  function slugifyMemberName(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'member'
-  }
-
-  function builderProjectName(projectPath) {
-    return projectNameFromPath(projectPath)
-  }
-
-  function nextAgentNameForRole(role, projectPath) {
-    const currentAgents = Array.isArray(teamConfig?.agents) ? teamConfig.agents : []
-    const existingNames = new Set(currentAgents.map((agent) => String(agent.name ?? '').trim()))
-    const defaultPattern = resolveDefaultNamePattern(role) ?? `${role.roleId || slugifyMemberName(role?.name)}-{n}`
-    const projectName = builderProjectName(projectPath)
-    let index = 1
-    while (index < 100) {
-      const candidate = applyNamePattern(defaultPattern, index, projectName)
-      const name = candidate || `${role.roleId || slugifyMemberName(role?.name)}-${index}`
-      if (!existingNames.has(name)) return name
-      index += 1
-    }
-    return `${role.roleId || slugifyMemberName(role?.name)}-${Date.now()}`
-  }
-
-  function leadFromRole(role, projectPath) {
-    const tool = resolveRoleTool(role, 'claude')
-    const model = resolveRoleModel(role, tool)
-    return createLead({
-      id: 'lead',
-      name: 'team-lead',
-      tool,
-      model,
-      status: 'offline',
-      projectId: projectPath,
-      roleId: role?.roleId ?? null,
-      roleName: role?.name ?? null,
-      focusArea: role?.focusArea ?? role?.focus_area ?? null,
-      contextSummary: role?.contextSummary ?? role?.context_summary ?? null,
-      behaviorSummary: role?.behaviorSummary ?? role?.behavior_summary ?? null,
-      instructions: role?.instructions ?? null,
-      behavioralContract: role?.behavioralContract ?? role?.behavioral_contract ?? null,
-      capabilities: Array.isArray(role?.capabilities) ? role.capabilities : null,
-      description: role?.instructions ?? role?.name ?? 'Team lead',
-    }, projectPath)
-  }
-
-  function agentFromRole(role, projectPath) {
-    const tool = resolveRoleTool(role, 'codex')
-    const model = resolveRoleModel(role, tool)
-    const name = nextAgentNameForRole(role, projectPath)
-    return createAgent((teamConfig?.agents ?? []).length, {
-      id: name,
-      name,
-      tool,
-      model,
-      status: 'offline',
-      projectId: projectPath,
-      roleId: role?.roleId ?? null,
-      roleName: role?.name ?? null,
-      focusArea: role?.focusArea ?? role?.focus_area ?? null,
-      contextSummary: role?.contextSummary ?? role?.context_summary ?? null,
-      behaviorSummary: role?.behaviorSummary ?? role?.behavior_summary ?? null,
-      instructions: role?.instructions ?? null,
-      behavioralContract: role?.behavioralContract ?? role?.behavioral_contract ?? null,
-      capabilities: Array.isArray(role?.capabilities) ? role.capabilities : null,
-      description: role?.instructions ?? role?.name ?? null,
-    }, projectPath)
   }
 
   async function handlePresetSelect(preset) {
     invalidateDiscovery()
     const sequence = ++presetSelectionSequence
-    const presetId = preset?.presetId ?? preset?.preset_id ?? ''
+    const presetId = preset?.presetId ?? ''
     let resolvedPreset = preset
     let compositionResult = null
 
@@ -812,10 +672,8 @@ export function createMeshTabController({
         resolvedPreset = { ...preset, ...hydratedPreset }
       }
 
-      const leadRoleId = resolvedPreset?.leadRoleId ?? resolvedPreset?.lead_role_id ?? ''
-      const agentSlots = Array.isArray(resolvedPreset?.agentSlots ?? resolvedPreset?.agent_slots)
-        ? (resolvedPreset?.agentSlots ?? resolvedPreset?.agent_slots)
-        : []
+      const leadRoleId = resolvedPreset?.leadRoleId ?? ''
+      const agentSlots = Array.isArray(resolvedPreset?.agentSlots) ? resolvedPreset.agentSlots : []
 
       if (leadRoleId) {
         compositionResult = await composeTeam({
@@ -872,10 +730,10 @@ export function createMeshTabController({
     if (!role || normalizeRoleKind(role) !== 'lead') return
     const projectPath = getProjectPath()
     const next = ensureBuilderConfig()
-    teamConfig = {
-      ...next,
-      lead: leadFromRole(role, projectPath),
-    }
+      teamConfig = {
+        ...next,
+        lead: createLeadFromRole(role, projectPath),
+      }
     if (!teamName.trim()) teamName = inferTeamName(projectPath)
     mode = 'setup'
     runtimeMessage = ''
@@ -895,10 +753,10 @@ export function createMeshTabController({
     if (!role || normalizeRoleKind(role) === 'lead') return
     const projectPath = getProjectPath()
     const next = ensureBuilderConfig()
-    teamConfig = {
-      ...next,
-      agents: [...(next.agents ?? []), agentFromRole(role, projectPath)],
-    }
+      teamConfig = {
+        ...next,
+        agents: [...(next.agents ?? []), createAgentFromRole(role, projectPath, next.agents ?? [])],
+      }
     if (!teamName.trim()) teamName = inferTeamName(projectPath)
     mode = 'setup'
   }
@@ -1018,9 +876,7 @@ export function createMeshTabController({
   async function handleInitializeSuccess(result) {
     const projectPath = getProjectPath()
     const completedRequest = initProgress
-    const nextTeamName =
-      (result?.teamName ?? result?.team_name ?? completedRequest?.teamName ?? completedRequest?.team_name ?? teamName) ||
-      inferTeamName(projectPath)
+    const nextTeamName = result?.teamName || completedRequest?.teamName || teamName || inferTeamName(projectPath)
     teamName = nextTeamName
     initProgress = null
     runtimeMessage = result?.openedExisting ? 'Opened existing team.' : 'Team initialized successfully.'
@@ -1030,7 +886,7 @@ export function createMeshTabController({
 
     const sequence = ++discoverySequence
     try {
-      await refreshRuntimeTeamConfig(nextTeamName, sequence)
+      await refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
     } catch (error) {
       errorMessage = error?.message || 'Failed to load runtime team status.'
       teamConfig = {
@@ -1072,39 +928,11 @@ export function createMeshTabController({
     void loadRoleTemplates()
   }
 
-  function buildRuntimeAgentName(role, projectId) {
-    const normalizedProjectId = String(projectId || '').trim() || getProjectPath()
-    const projectName = projectNameFromPath(normalizedProjectId)
-    const pattern =
-      resolveDefaultNamePattern(role) ||
-      `${String(role?.roleId || role?.name || 'agent').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}-{n}`
-    const existingNames = new Set(
-      [teamConfig?.lead?.name, ...(teamConfig?.agents ?? []).map((agent) => agent?.name)]
-        .map((value) => String(value ?? '').trim())
-        .filter(Boolean)
-    )
-
-    let index = 1
-    while (index < 100) {
-      const candidate = applyNamePattern(pattern, index, projectName)
-      const fallback = `${slugifyRoleId(String(role?.roleId || role?.name || 'agent'))}-${index}`
-      const nextName = String(candidate || fallback).trim()
-      if (nextName && !existingNames.has(nextName)) {
-        return nextName
-      }
-      index += 1
-    }
-
-    return `${slugifyRoleId(String(role?.roleId || role?.name || 'agent'))}-${Date.now()}`
-  }
-
   async function loadRoleTemplates() {
     loadingRoles = true
     try {
       const loaded = await listRoleTemplates()
-      roleTemplates = Array.isArray(loaded)
-        ? loaded.map((role) => normalizeRoleTemplate(role)).filter(Boolean)
-        : []
+      roleTemplates = Array.isArray(loaded) ? loaded.filter(Boolean) : []
     } catch (error) {
       console.error('Failed to load role templates:', error)
     } finally {
@@ -1112,31 +940,11 @@ export function createMeshTabController({
     }
   }
 
-  function mergePresetCatalog(fetchedPresets = []) {
-    const merged = new Map()
-    for (const preset of quickPresets) {
-      const presetId = String(preset?.presetId ?? '').trim()
-      if (!presetId) continue
-      merged.set(presetId, preset)
-    }
-    for (const preset of fetchedPresets) {
-      const presetId = String(preset?.presetId ?? preset?.preset_id ?? '').trim()
-      if (!presetId) continue
-      const base = merged.get(presetId) ?? {}
-      merged.set(presetId, {
-        ...base,
-        ...preset,
-        presetId,
-      })
-    }
-    return [...merged.values()]
-  }
-
   async function loadTeamPresets() {
     loadingPresets = true
     try {
       const fetchedPresets = await listTeamPresets()
-      availablePresets = mergePresetCatalog(Array.isArray(fetchedPresets) ? fetchedPresets : [])
+      availablePresets = mergePresetCatalog(quickPresets, Array.isArray(fetchedPresets) ? fetchedPresets : [])
     } catch (error) {
       console.error('Failed to load team presets:', error)
       availablePresets = quickPresets
@@ -1165,21 +973,21 @@ export function createMeshTabController({
 
     const role = roleTemplates.find((entry) => entry.roleId === selectedRoleId)
     if (!role) return
-    const tool = resolveRoleTool(role, 'codex')
-    const model = resolveRoleModel(role, tool)
+    const tool = normalizeTool(role.cliTool || 'codex')
+    const model = role.model || defaultModelForTool(tool)
     const instructions = role.instructions || ''
     slideOverContext = {
       ...draft,
       roleId: selectedRoleId,
       roleName: role.name || '',
-      name: buildRuntimeAgentName(role, draft.projectId),
+      name: buildRuntimeAgentName(role, draft.projectId, teamConfig, getProjectPath()),
       tool,
       model,
       description: instructions,
       instructions,
-      focusArea: role.focusArea || role.focus_area || '',
-      contextSummary: role.contextSummary || role.context_summary || '',
-      behaviorSummary: role.behaviorSummary || role.behavior_summary || '',
+      focusArea: role.focusArea || '',
+      contextSummary: role.contextSummary || '',
+      behaviorSummary: role.behaviorSummary || '',
       isLocked: true,
     }
   }
@@ -1226,7 +1034,7 @@ export function createMeshTabController({
       runtimeMessage = `Agent '${report?.memberName ?? String(draft.name || '').trim()}' added.`
       closeSlideOver()
       const sequence = ++discoverySequence
-      await refreshRuntimeTeamConfig(teamName, sequence)
+      await refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
     } catch (error) {
       const latest = addAgentDraft
       if (!latest) return
@@ -1331,7 +1139,7 @@ export function createMeshTabController({
         runtimeMessage = `Removed '${action.memberName}'.`
         selectedNodeId = null
         const sequence = ++discoverySequence
-        await refreshRuntimeTeamConfig(teamName, sequence)
+        await refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
       } catch (error) {
         errorMessage = error?.message || `Failed to remove member '${action.memberName}'.`
       }
@@ -1355,7 +1163,7 @@ export function createMeshTabController({
       runtimeMessage = `Resumed '${currentNode.name}'.`
       selectedNodeId = null
       const sequence = ++discoverySequence
-      await refreshRuntimeTeamConfig(teamName, sequence)
+      await refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
     } catch (error) {
       errorMessage = error?.message || `Failed to resume member '${currentNode.name}'.`
     }
