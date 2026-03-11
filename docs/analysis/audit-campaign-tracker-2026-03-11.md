@@ -141,7 +141,8 @@ After both audit reports are delivered:
 | #998 | architect-1 | completed | Define the X3 close gate and handoff conditions into X4 |
 | #999 | architect-1 | completed | Turn the X4 first slice into a concrete execution checklist |
 | #1000 | architect-1 | in_progress | Define the X1 close gate and the X1 to X3 freeze handoff |
-| #1001 | dev-3 | in_progress | Draft the adapter-driven X3 close-proof matrix |
+| #1001 | dev-3 | completed | Draft the adapter-driven X3 close-proof matrix |
+| #1002 | dev-3 | in_progress | Extend the lane-boundary checker with current-worktree conflict reporting |
 
 ## Stopped backlog items
 
@@ -229,4 +230,5 @@ After both audit reports are delivered:
 - `#998` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x3-close-gate-and-x4-handoff-2026-03-11.md` and committed it as `e99b591`. The X3 gate is now explicit: X3 does not close at `a359d97` alone; it must freeze the transport adapter against the X1/X2 core, include real ingest plus outbound projection on the bounded link-mailbox path, replay guard, reply lineage, explicit-only task-link handling, and the required workflow-side immutable-drift hardening as part of the transport truth boundary. X4 may open only after X3 hands off one stable package covering the frozen transport schema, canonical object-ref and mapping contract, replay-guard behavior, reply-lineage contract, structured task-link rules, and proving tests. The doc also fixes the X4 first slice: one accepted inbound message, shared allowlist check, one deduped relay into the local lead inbox, explicit external provenance metadata, and delivered-versus-deduped telemetry only.
 - `#999` is complete. `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/x4-first-slice-execution-checklist-2026-03-11.md` and committed it as `7c9711c`. The checklist turns the approved X4 first slice into an execution-ready sequence with exact entry gates, allowed files, runtime steps, required X4-A1 through X4-A5 acceptance coverage, verification commands, and stop conditions if the slice drifts into CLI, read/ack bridge, or transport-schema work.
 - `#1000` is active. `architect-1` is now defining the exact X1 close gate and the X1-to-X3 freeze handoff so the communication core can freeze cleanly against X2 and hand a stable contract to the X3 transport lane.
-- `#1001` is active. `dev-3` is now drafting the adapter-driven X3 close-proof matrix so the X3 implementation lane can close against one explicit set of tests, telemetry assertions, and non-goals rather than a loosely interpreted gate.
+- `#1001` is complete. `dev-3` wrote `/home/mstie/projects/mesh/docs/analysis/x3-close-proof-matrix-2026-03-11.md`, converting the approved X3 close gate into one concrete proof bar with scenario IDs `X3-P1..X3-P9`, required evidence and pass conditions, named test inventory, an X3-owned telemetry checklist limited to observed/replay-guard/conflict metrics, explicit fences that keep X4/X5 behavior out of X3 close, and the exact X4 handoff package expected at close.
+- `#1002` is active. `dev-3` is now extending the lane-boundary checker with current-worktree conflict reporting so active X1-X6 lanes can get a more actionable live summary before checkpointing or packaging.
