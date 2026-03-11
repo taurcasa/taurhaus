@@ -313,7 +313,8 @@ After both audit reports are delivered:
 | #1170 | dev-1 | in_progress | Implement the first mesh-native guardrails slice now that the X4 overlap is cleared |
 | #1171 | dev-3 | completed | Implement the immediate phase-two scaffolding reduction slice |
 | #1172 | architect-1 | completed | Execute the post-X3 retained doc collapse |
-| #1173 | architect-1 | in_progress | Assess readiness for the post-X4 proof-surface collapse |
+| #1173 | architect-1 | completed | Assess readiness for the post-X4 proof-surface collapse |
+| #1174 | dev-3 | in_progress | Merge retained-cycle proof helpers into the generic retained-cycle support layer |
 
 ### Phase-two naming freeze
 
@@ -337,7 +338,8 @@ After both audit reports are delivered:
 - `#1170` is now active because X4 (`#990`) completed; Mesh still shows a stale `blockedBy: [990]` field, but queue status and direct instruction are authoritative here.
 - `#1171` completed the safe immediate cleanup slice: the retained-state core doc, implementation guide, and generic retained-cycle replacement targets now exist without deleting active proof surfaces.
 - `#1172` completed cleanly: the eligible retained and verified-archived-close micro-doc families were archived, the retained-state core absorbed the live role of the retained outcome package contract and vocabulary reconciliation, and the live retained/verified doc surface is now down to 26 docs.
-- `#1173` is the next bounded architect lane: verify whether the post-X4 proof-surface collapse can open now, or identify the exact remaining proof surfaces that must stay live.
+- `#1173` came back as a narrow proof-surface `NO`, not an X4 runtime blocker: the merged retained-cycle support layer does not exist yet, the matrix smokes still only assert legacy wrapper existence, the generic retained-cycle recipe still dispatches to legacy wrappers, and the legacy proof surface must remain live until those are replaced.
+- `#1174` is the first safe post-X4 cleanup implementation cut: merge the 14 cycle-specific proof helpers into the generic retained-cycle support layer while keeping the existing wrappers and aliases runnable.
 
 ## Stopped backlog items
 
