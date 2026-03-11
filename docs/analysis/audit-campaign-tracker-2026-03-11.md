@@ -310,7 +310,7 @@ After both audit reports are delivered:
 | #1167 | mesh-architect | completed | Design mesh-native orchestration guardrails for WIP limits, critical-path checks, and scaffold expiry |
 | #1168 | architect-1 | completed | Plan execution of phase-two scaffolding reduction with concrete delete, merge, archive, and keep slices |
 | #1169 | mesh-architect | completed | Plan the first implementation slice for mesh-native guardrails |
-| #1170 | dev-1 | in_progress | Implement the first mesh-native guardrails slice now that the X4 overlap is cleared |
+| #1170 | dev-1 | completed | Implement the first mesh-native guardrails slice now that the X4 overlap is cleared |
 | #1171 | dev-3 | completed | Implement the immediate phase-two scaffolding reduction slice |
 | #1172 | architect-1 | completed | Execute the post-X3 retained doc collapse |
 | #1173 | architect-1 | completed | Assess readiness for the post-X4 proof-surface collapse |
@@ -335,7 +335,7 @@ After both audit reports are delivered:
 - `#1166` now provides the reduction baseline: merge or delete micro handoff/checklist docs, per-cycle smoke wrappers, and per-cycle `just` aliases once the still-active X3/X4 surfaces are stable enough to consolidate safely.
 - `#1167` and `#1168` split the anti-regression work cleanly: Mesh-native guardrails to prevent future fan-out, and a concrete cleanup execution sequence to remove existing excess safely.
 - `#1169` is the implementation bridge from guardrail policy into actual Mesh behavior so the rules do not remain docs-only.
-- `#1170` is now active because X4 (`#990`) completed; Mesh still shows a stale `blockedBy: [990]` field, but queue status and direct instruction are authoritative here.
+- `#1170` completed the first real guardrail implementation slice in Mesh. The stale `blockedBy: [990]` field still exists in Mesh metadata, but the task itself is complete and the guardrail behavior is now landed in the shared worktree.
 - `#1171` completed the safe immediate cleanup slice: the retained-state core doc, implementation guide, and generic retained-cycle replacement targets now exist without deleting active proof surfaces.
 - `#1172` completed cleanly: the eligible retained and verified-archived-close micro-doc families were archived, the retained-state core absorbed the live role of the retained outcome package contract and vocabulary reconciliation, and the live retained/verified doc surface is now down to 26 docs.
 - `#1173` came back as a narrow proof-surface `NO`, not an X4 runtime blocker: the merged retained-cycle support layer does not exist yet, the matrix smokes still only assert legacy wrapper existence, the generic retained-cycle recipe still dispatches to legacy wrappers, and the legacy proof surface must remain live until those are replaced.
