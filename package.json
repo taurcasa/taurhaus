@@ -15,9 +15,12 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "bun run check",
-    "typecheck": "bun run check",
-    "check": "svelte-check"
+    "lint": "bun run lint:structure",
+    "lint:structure": "bun run lint:knip && bun run lint:deps",
+    "lint:knip": "knip",
+    "lint:deps": "dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+    "typecheck": "svelte-check",
+    "check": "bun run typecheck"
   },
   "devDependencies": {
     "@crabnebula/tauri-driver": "^2.0.9",
@@ -33,7 +36,9 @@
     "@wdio/local-runner": "^9.24.0",
     "@wdio/mocha-framework": "^9.24.0",
     "@wdio/spec-reporter": "^9.24.0",
+    "dependency-cruiser": "^17.3.8",
     "jsdom": "^28.0.0",
+    "knip": "^5.86.0",
     "playwright": "^1.58.2",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",

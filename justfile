@@ -39,9 +39,36 @@ check:
     echo "Logging full check output to $log_path"
     ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
     just fmt
-    just lint
-    just typecheck
-    just test
+    run_rust_lane() {
+        just lint-rust
+        just test-rust
+    }
+    run_frontend_lane() {
+        just lint-frontend
+        just typecheck
+        just test-frontend
+    }
+    run_rust_lane &
+    rust_pid=$!
+    run_frontend_lane &
+    frontend_pid=$!
+    pids=("$rust_pid" "$frontend_pid")
+    while [ "${#pids[@]}" -gt 0 ]; do
+        if ! wait -n "${pids[@]}"; then
+            status=$?
+            kill "$rust_pid" "$frontend_pid" 2>/dev/null || true
+            wait "$rust_pid" 2>/dev/null || true
+            wait "$frontend_pid" 2>/dev/null || true
+            exit "$status"
+        fi
+        next_pids=()
+        for pid in "${pids[@]}"; do
+            if kill -0 "$pid" 2>/dev/null; then
+                next_pids+=("$pid")
+            fi
+        done
+        pids=("${next_pids[@]}")
+    done
     echo "Full quality gate passed."
 
 # Backward-compatible alias for the full quality gate.
@@ -61,9 +88,15 @@ check-quick: ensure-tauri-resources
 fmt:
     cd src-tauri && cargo fmt --check
 
-# Lint everything
-lint: ensure-tauri-resources
+# Lint everything and enforce reproducible frontend structure checks.
+lint: lint-rust lint-frontend
+
+# Lint Rust code with clippy.
+lint-rust: ensure-tauri-resources
     cd src-tauri && cargo clippy --all-targets -- -D warnings
+
+# Lint frontend code and enforce structural checks.
+lint-frontend:
     bun run lint
 
 # Typecheck frontend code
@@ -136,7 +169,12 @@ test-rust-unit: ensure-tauri-resources
 
 # Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
-    cd src-tauri && cargo test --tests -- --test-threads=1
+    cd src-tauri && cargo test --test coordination_feature_gate -- --test-threads=1
+    cd src-tauri && cargo test --test coordination_integration -- --test-threads=1
+    cd src-tauri && cargo test --test coordination_module_visibility -- --test-threads=1
+    cd src-tauri && cargo test --test coordination_onboarding_linux_e2e -- --test-threads=1
+    cd src-tauri && cargo test --test module_boundary_assertions -- --test-threads=1
+    cd src-tauri && cargo test --test session_pipeline -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::server::tests:: -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::event_listener::tests:: -- --test-threads=1
     cd src-tauri && cargo test --lib provider::daemon_client::tests:: -- --test-threads=1
