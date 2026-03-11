@@ -295,13 +295,16 @@ After both audit reports are delivered:
 | #1152 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close confirmation helpers |
 | #1153 | architect-1 | completed | Review X3 close delta from current checkpoints |
 | #1158 | dev-1 | completed | Materialize durable X3 close review branch and worktree |
-| #1159 | architect-1 | in_progress | Review X3 close candidate and X4 handoff bundle |
-| #1154 | dev-3 | in_progress | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close confirmation fixtures and smoke wrapper |
-| #1155 | mesh-architect | in_progress | Define the phase-two retained-retained-retained-retained recording-to-retention-verification handoff contract |
+| #1159 | architect-1 | completed | Review X3 close candidate and X4 handoff bundle |
+| #1154 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close confirmation fixtures and smoke wrapper |
+| #1155 | mesh-architect | completed | Define the phase-two retained-retained-retained-retained recording-to-retention-verification handoff contract |
 | #1156 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close recording helpers |
 | #1157 | architect-1 | completed | Define the phase-two retained-retained-retained-retained-verified-archived-close retention verification checklist |
-| #1160 | dev-2 | in_progress | Implement thin phase-two retained-retained-retained-retained-verified-archived-close retention verification helpers |
-| #1161 | architect-1 | pending | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
+| #1160 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close retention verification helpers |
+| #1161 | architect-1 | in_progress | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
+| #1162 | architect-1 | pending | Rerun X3 close signoff after durable path correction |
+| #1163 | dev-1 | completed | Refresh X3 review packet and handoff bundle to durable review path |
+| #1164 | dev-3 | in_progress | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
 
 ## Stopped backlog items
 
