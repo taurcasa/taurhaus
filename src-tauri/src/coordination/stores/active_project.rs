@@ -97,6 +97,28 @@ impl ActiveProjectTeamStore {
         state.project_teams.remove(&normalized);
         save_state(teams_dir, &state)
     }
+
+    pub fn set_active_team(
+        teams_dir: &Path,
+        project_path: &str,
+        team_name: &str,
+    ) -> Result<(), CoordinationError> {
+        let normalized = normalize_project_path(project_path);
+        if normalized.is_empty() {
+            return Ok(());
+        }
+
+        let _lock = super::lock::acquire_team_lock(teams_dir, ACTIVE_PROJECTS_LOCK_NAME)?;
+        let mut state = load_state(teams_dir)?;
+        state.project_teams.insert(
+            normalized,
+            ActiveProjectTeamEntry {
+                team_name: team_name.to_string(),
+                updated_at: Utc::now(),
+            },
+        );
+        save_state(teams_dir, &state)
+    }
 }
 
 fn load_state(teams_dir: &Path) -> Result<ActiveProjectTeamState, CoordinationError> {
@@ -244,6 +266,37 @@ mod tests {
             ActiveProjectTeamStore::load_active_team(tmp.path(), "/projects/api")
                 .expect("load active team"),
             None
+        );
+    }
+
+    #[test]
+    fn set_active_team_persists_single_project_mapping() {
+        let tmp = TempDir::new().expect("tempdir");
+
+        ActiveProjectTeamStore::sync_team(
+            tmp.path(),
+            "towerhouse-product-team",
+            &[
+                "/projects/taurhaus".to_string(),
+                "/projects/docs".to_string(),
+            ],
+        )
+        .expect("seed old team");
+
+        ActiveProjectTeamStore::set_active_team(tmp.path(), "/projects/taurhaus", "taurhaus-team")
+            .expect("set active team");
+
+        assert_eq!(
+            ActiveProjectTeamStore::load_active_team(tmp.path(), "/projects/taurhaus")
+                .expect("load taurhaus")
+                .as_deref(),
+            Some("taurhaus-team")
+        );
+        assert_eq!(
+            ActiveProjectTeamStore::load_active_team(tmp.path(), "/projects/docs")
+                .expect("load docs")
+                .as_deref(),
+            Some("towerhouse-product-team")
         );
     }
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from 'vitest'
+import { cleanup, render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -60,6 +60,11 @@ function deferred() {
     reject = rej
   })
   return { promise, resolve, reject }
+}
+
+async function flushUi() {
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
 function buildLiveTeamStatus(overrides = {}) {
@@ -147,7 +152,7 @@ afterAll(() => {
 
 describe('MeshTab', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     resetMeshCache()
 
     checkMeshInstallStatus.mockResolvedValue({
@@ -270,6 +275,12 @@ describe('MeshTab', () => {
       builtIn: false,
       readOnly: false,
     })
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 
   async function renderRuntime(overrides = {}) {
@@ -999,12 +1010,182 @@ describe('MeshTab', () => {
     }
   })
 
+  it('revalidates stale cached runtime snapshots so a corrected active team replaces the old cached team', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-11T05:00:00Z'))
+    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot({
+      teamName: 'towerhouse-product-team',
+      leadName: 'old-lead',
+    }))
+    vi.setSystemTime(new Date('2026-03-11T05:00:06Z'))
+
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot({
+      teamName: 'taurhaus-team',
+      leadName: 'team-lead',
+    }))
+    coordinationGetLiveTeamStatus.mockResolvedValueOnce(buildLiveTeamStatus({
+      teamName: 'taurhaus-team',
+    }))
+
+    try {
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('towerhouse-product-team')
+      expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS - 1)
+      expect(coordinationGetProjectMeshSnapshot).not.toHaveBeenCalled()
+
+      // Regression: backend active-team repairs were invisible in the running app because MeshTab
+      // trusted stale cached project snapshots indefinitely and never revalidated canonical team
+      // discovery after cache hydration.
+      await vi.advanceTimersByTimeAsync(1)
+
+      await waitFor(() => {
+        expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledWith('/projects/taurhaus')
+        expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('polls runtime status and updates an agent node to offline when the member disconnects', async () => {
     vi.useFakeTimers()
-    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
-    coordinationGetLiveTeamStatus
-      .mockResolvedValueOnce(buildLiveTeamStatus())
-      .mockResolvedValueOnce(buildLiveTeamStatus({
+    vi.setSystemTime(new Date('2026-03-11T00:00:00Z'))
+
+    try {
+      setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+      coordinationGetLiveTeamStatus
+        .mockResolvedValueOnce(buildLiveTeamStatus())
+        .mockResolvedValueOnce(buildLiveTeamStatus({
+          members: [
+            {
+              name: 'team-lead',
+              role: 'lead',
+              cliTool: 'claude',
+              model: 'opus',
+              projectId: 'proj-core',
+              sessionStatus: 'active',
+              paneId: '%1',
+            },
+            {
+              name: 'frontend-dev',
+              role: 'member',
+              cliTool: 'codex',
+              model: 'gpt-5.4 high',
+              roleId: 'codex-architect',
+              roleName: 'Codex Architect',
+              focusArea: 'Architecture decisions and structural review',
+              contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+              behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+              projectId: 'proj-web',
+              description: 'Implements UI surface details for the mesh canvas.',
+              sessionStatus: 'offline',
+              paneId: null,
+            },
+          ],
+        }))
+
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+      await flushUi()
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
+      await flushUi()
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushUi()
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
+
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
+      expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('skips overlapping runtime poll ticks while a previous refresh is still pending', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-11T00:00:00Z'))
+
+    try {
+      setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+      const slowRefresh = deferred()
+      coordinationGetLiveTeamStatus
+        .mockImplementationOnce(() => slowRefresh.promise)
+        .mockResolvedValueOnce(buildLiveTeamStatus({
+          members: [
+            {
+              name: 'team-lead',
+              role: 'lead',
+              cliTool: 'claude',
+              model: 'opus',
+              projectId: 'proj-core',
+              sessionStatus: 'active',
+              paneId: '%1',
+            },
+            {
+              name: 'frontend-dev',
+              role: 'member',
+              cliTool: 'codex',
+              model: 'gpt-5.4 high',
+              roleId: 'codex-architect',
+              roleName: 'Codex Architect',
+              focusArea: 'Architecture decisions and structural review',
+              contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+              behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+              projectId: 'proj-web',
+              description: 'Implements UI surface details for the mesh canvas.',
+              sessionStatus: 'active',
+              paneId: '%2',
+            },
+          ],
+        }))
+
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+      await flushUi()
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
+
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(0)
+
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushUi()
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushUi()
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+
+      slowRefresh.resolve(buildLiveTeamStatus({
         members: [
           {
             name: 'team-lead',
@@ -1033,212 +1214,87 @@ describe('MeshTab', () => {
         ],
       }))
 
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
-    })
-
-    await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS + 2000)
-    await Promise.resolve()
-
-    await waitFor(() => {
+      await flushUi()
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
-    })
 
-    expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
-    vi.useRealTimers()
-  })
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushUi()
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
 
-  it('skips overlapping runtime poll ticks while a previous refresh is still pending', async () => {
-    vi.useFakeTimers()
-    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
-    const slowRefresh = deferred()
-    coordinationGetLiveTeamStatus
-      .mockImplementationOnce(() => slowRefresh.promise)
-      .mockResolvedValueOnce(buildLiveTeamStatus({
-        members: [
-          {
-            name: 'team-lead',
-            role: 'lead',
-            cliTool: 'claude',
-            model: 'opus',
-            projectId: 'proj-core',
-            sessionStatus: 'active',
-            paneId: '%1',
-          },
-          {
-            name: 'frontend-dev',
-            role: 'member',
-            cliTool: 'codex',
-            model: 'gpt-5.4 high',
-            roleId: 'codex-architect',
-            roleName: 'Codex Architect',
-            focusArea: 'Architecture decisions and structural review',
-            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
-            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
-            projectId: 'proj-web',
-            description: 'Implements UI surface details for the mesh canvas.',
-            sessionStatus: 'active',
-            paneId: '%2',
-          },
-        ],
-      }))
-
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
-    })
-
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(0)
-
-    await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(2000)
-    await Promise.resolve()
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(2000)
-    await Promise.resolve()
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
-
-    slowRefresh.resolve(buildLiveTeamStatus({
-      members: [
-        {
-          name: 'team-lead',
-          role: 'lead',
-          cliTool: 'claude',
-          model: 'opus',
-          projectId: 'proj-core',
-          sessionStatus: 'active',
-          paneId: '%1',
-        },
-        {
-          name: 'frontend-dev',
-          role: 'member',
-          cliTool: 'codex',
-          model: 'gpt-5.4 high',
-          roleId: 'codex-architect',
-          roleName: 'Codex Architect',
-          focusArea: 'Architecture decisions and structural review',
-          contextSummary: 'Carries long-lived context around module boundaries and reviews.',
-          behaviorSummary: 'Handles pattern choices and escalates direction changes.',
-          projectId: 'proj-web',
-          description: 'Implements UI surface details for the mesh canvas.',
-          sessionStatus: 'offline',
-          paneId: null,
-        },
-      ],
-    }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
-    })
-
-    await vi.advanceTimersByTimeAsync(2000)
-    await Promise.resolve()
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(2)
-
-    await waitFor(() => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
-    })
-
-    vi.useRealTimers()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('clears the runtime poll in-flight guard after an error so later ticks recover', async () => {
     vi.useFakeTimers()
-    setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+    vi.setSystemTime(new Date('2026-03-11T00:00:00Z'))
+
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    coordinationGetLiveTeamStatus
-      .mockResolvedValueOnce(buildLiveTeamStatus())
-      .mockRejectedValueOnce(new Error('slow backend failed'))
-      .mockResolvedValueOnce(buildLiveTeamStatus({
-        members: [
-          {
-            name: 'team-lead',
-            role: 'lead',
-            cliTool: 'claude',
-            model: 'opus',
-            projectId: 'proj-core',
-            sessionStatus: 'active',
-            paneId: '%1',
-          },
-          {
-            name: 'frontend-dev',
-            role: 'member',
-            cliTool: 'codex',
-            model: 'gpt-5.4 high',
-            roleId: 'codex-architect',
-            roleName: 'Codex Architect',
-            focusArea: 'Architecture decisions and structural review',
-            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
-            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
-            projectId: 'proj-web',
-            description: 'Implements UI surface details for the mesh canvas.',
-            sessionStatus: 'active',
-            paneId: '%2',
-          },
-        ],
-      }))
+    try {
+      setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+      coordinationGetLiveTeamStatus
+        .mockResolvedValueOnce(buildLiveTeamStatus())
+        .mockRejectedValueOnce(new Error('slow backend failed'))
+        .mockResolvedValueOnce(buildLiveTeamStatus({
+          members: [
+            {
+              name: 'team-lead',
+              role: 'lead',
+              cliTool: 'claude',
+              model: 'opus',
+              projectId: 'proj-core',
+              sessionStatus: 'active',
+              paneId: '%1',
+            },
+            {
+              name: 'frontend-dev',
+              role: 'member',
+              cliTool: 'codex',
+              model: 'gpt-5.4 high',
+              roleId: 'codex-architect',
+              roleName: 'Codex Architect',
+              focusArea: 'Architecture decisions and structural review',
+              contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+              behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+              projectId: 'proj-web',
+              description: 'Implements UI surface details for the mesh canvas.',
+              sessionStatus: 'active',
+              paneId: '%2',
+            },
+          ],
+        }))
 
-    render(MeshTab, {
-      props: {
-        dark: false,
-        projectPath: '/projects/taurhaus',
-      },
-    })
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
 
-    await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
-    })
 
-    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
-    await waitFor(() => {
+      await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+      await flushUi()
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Idle')
-    })
 
-    await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
 
-    await vi.advanceTimersByTimeAsync(2000)
-    await Promise.resolve()
-    await waitFor(() => {
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushUi()
       expect(warnSpy).toHaveBeenCalledWith('[meshTab] runtime status refresh failed:', expect.any(Error))
-    })
 
-    await vi.advanceTimersByTimeAsync(2000)
-    await Promise.resolve()
-    expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(3)
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushUi()
+      expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(3)
 
-    await waitFor(() => {
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
-    })
-
-    warnSpy.mockRestore()
-    vi.useRealTimers()
+    } finally {
+      warnSpy.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it('abandons an in-flight runtime refresh when switching away to another top-level tab', async () => {
@@ -2573,9 +2629,9 @@ describe('MeshTab', () => {
   })
 
   it('keeps runtime actions visible for offline agents and disables focus when pane is missing', async () => {
-    coordinationGetLiveTeamStatus.mockResolvedValueOnce({
-      teamName: 'architecture-final',
-      leadName: 'team-lead',
+    const onFocusPane = vi.fn()
+    await renderRuntime({
+      onFocusPane,
       members: [
         {
           name: 'team-lead',
@@ -2598,8 +2654,6 @@ describe('MeshTab', () => {
         },
       ],
     })
-    const onFocusPane = vi.fn()
-    await renderRuntime({ onFocusPane })
 
     await fireEvent.click(screen.getByTestId('mesh-node-agent'))
     await waitFor(() => {

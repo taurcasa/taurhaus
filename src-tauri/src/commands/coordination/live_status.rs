@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
 use crate::commands::coordination_types::{
@@ -15,7 +16,7 @@ use crate::coordination::roster::{
     get_team_roster_with_attachments, get_team_roster_with_runtime_sessions, TeamMemberView,
 };
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
+use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfig, TeamConfigStore};
 #[cfg(not(test))]
 use crate::ProviderState;
 #[cfg(test)]
@@ -229,6 +230,16 @@ struct ProjectPathDiscovery {
     warnings: Vec<String>,
 }
 
+#[derive(Debug)]
+struct ProjectDiscoveryCandidate {
+    team_name: String,
+    runtime_state: TeamRuntimeState,
+    has_team_daemon_pid: bool,
+    latest_activity_ms: i64,
+    runtime_record_count: usize,
+    created_at_ms: i64,
+}
+
 fn discover_team_for_project_path(
     teams_dir: &Path,
     project_path: &str,
@@ -253,13 +264,20 @@ fn discover_team_for_project_path(
         }
     }
 
-    let mut team_name = None;
+    let mut candidates = Vec::new();
     let mut warnings = Vec::new();
     for listed_team in TeamConfigStore::list(teams_dir)? {
         match TeamConfigStore::load(teams_dir, &listed_team) {
             Ok(config) => {
-                if team_name.is_none() && config_references_project(&config, project_path) {
-                    team_name = Some(config.name);
+                if !config_references_project(&config, project_path) {
+                    continue;
+                }
+
+                match build_project_discovery_candidate(teams_dir, &config) {
+                    Ok(candidate) => candidates.push(candidate),
+                    Err(err) => warnings.push(format!(
+                        "skipped team folder '{listed_team}' due to candidate discovery error: {err}"
+                    )),
                 }
             }
             Err(CoordinationError::NotFound(_)) => {}
@@ -280,12 +298,88 @@ fn discover_team_for_project_path(
             }
         }
     }
+
+    let team_name = candidates
+        .into_iter()
+        .max_by(compare_project_discovery_candidates)
+        .map(|candidate| candidate.team_name);
+    if let Some(selected_team_name) = team_name.as_deref() {
+        if let Err(err) =
+            ActiveProjectTeamStore::set_active_team(teams_dir, project_path, selected_team_name)
+        {
+            warnings.push(format!(
+                "failed to persist active team mapping for project '{project_path}': {err}"
+            ));
+        }
+    }
     warnings.sort();
 
     Ok(ProjectPathDiscovery {
         team_name,
         warnings,
     })
+}
+
+fn build_project_discovery_candidate(
+    teams_dir: &Path,
+    config: &TeamConfig,
+) -> Result<ProjectDiscoveryCandidate, CoordinationError> {
+    let roster = get_team_roster_with_attachments(teams_dir, &config.name)?;
+    let latest_activity_ms = roster
+        .iter()
+        .filter_map(TeamMemberView::latest_runtime_activity)
+        .map(|timestamp| timestamp.timestamp_millis())
+        .max()
+        .unwrap_or(i64::MIN);
+    let runtime_record_count = roster
+        .iter()
+        .filter(|member| member.has_runtime_record)
+        .count();
+    let fast_snapshot = map_fast_team_snapshot(roster);
+
+    Ok(ProjectDiscoveryCandidate {
+        team_name: config.name.clone(),
+        runtime_state: classify_team_runtime_state(Some(&fast_snapshot)),
+        has_team_daemon_pid: teams_dir
+            .join(&config.name)
+            .join("daemons")
+            .join("team.pid")
+            .is_file(),
+        latest_activity_ms,
+        runtime_record_count,
+        created_at_ms: config.created_at.timestamp_millis(),
+    })
+}
+
+fn compare_project_discovery_candidates(
+    left: &ProjectDiscoveryCandidate,
+    right: &ProjectDiscoveryCandidate,
+) -> Ordering {
+    (
+        project_runtime_state_rank(left.runtime_state),
+        left.has_team_daemon_pid,
+        left.latest_activity_ms,
+        left.runtime_record_count,
+        left.created_at_ms,
+        &left.team_name,
+    )
+        .cmp(&(
+            project_runtime_state_rank(right.runtime_state),
+            right.has_team_daemon_pid,
+            right.latest_activity_ms,
+            right.runtime_record_count,
+            right.created_at_ms,
+            &right.team_name,
+        ))
+}
+
+fn project_runtime_state_rank(state: TeamRuntimeState) -> u8 {
+    match state {
+        TeamRuntimeState::Active => 3,
+        TeamRuntimeState::Degraded => 2,
+        TeamRuntimeState::ColdResume => 1,
+        TeamRuntimeState::None => 0,
+    }
 }
 
 fn config_references_project(

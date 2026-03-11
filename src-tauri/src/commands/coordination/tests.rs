@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use chrono::{DateTime, Utc};
 use tempfile::{NamedTempFile, TempDir};
 
 use super::*;
@@ -12,7 +13,7 @@ use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{
-    MemberRuntimeStore, OperationalContextSnapshotStore, TeamConfigStore,
+    ActiveProjectTeamStore, MemberRuntimeStore, OperationalContextSnapshotStore, TeamConfigStore,
 };
 
 #[derive(Debug, Default)]
@@ -60,6 +61,12 @@ fn test_db_state() -> (DbState, NamedTempFile) {
     let tmp = NamedTempFile::new().expect("temp db");
     let conn = taurhaus_lib::db::init_db(tmp.path()).expect("init db");
     (DbState(Mutex::new(conn).into()), tmp)
+}
+
+fn test_timestamp(value: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(value)
+        .expect("valid timestamp")
+        .with_timezone(&Utc)
 }
 
 fn sample_preflight_request() -> InitializeTeamRequest {
@@ -1437,6 +1444,94 @@ fn project_mesh_snapshot_prefers_persisted_active_team_when_multiple_teams_match
 
     assert_eq!(snapshot.team_name.as_deref(), Some("taurhaus-team"));
     assert!(snapshot.team_status.is_some());
+}
+
+#[test]
+fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signal() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    let mut old_request = sample_preflight_request();
+    old_request.team_name = "towerhouse-product-team".to_string();
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        old_request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize old team");
+
+    let mut active_request = sample_preflight_request();
+    active_request.team_name = "taurhaus-team".to_string();
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        active_request,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize active team");
+
+    ActiveProjectTeamStore::clear_project(tmp.path(), "proj-web").expect("clear active mapping");
+    assert_eq!(
+        ActiveProjectTeamStore::load_active_team(tmp.path(), "proj-web").expect("load active team"),
+        None
+    );
+
+    let stale_seen_at = test_timestamp("2026-03-01T10:00:00Z");
+    let live_seen_at = test_timestamp("2026-03-11T05:30:00Z");
+    for (index, member_name) in ["team-lead", "frontend-dev", "reviewer"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut stale_runtime =
+            MemberRuntimeStore::load(tmp.path(), "towerhouse-product-team", member_name)
+                .expect("load stale runtime");
+        stale_runtime.health = HealthState::SessionDead;
+        stale_runtime.session_id = None;
+        stale_runtime.daemon_pid = None;
+        stale_runtime.last_seen_at = Some(stale_seen_at.clone());
+        stale_runtime.attached_at = Some(stale_seen_at.clone());
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "towerhouse-product-team",
+            member_name,
+            &stale_runtime,
+        )
+        .expect("save stale runtime");
+
+        let mut live_runtime = MemberRuntimeStore::load(tmp.path(), "taurhaus-team", member_name)
+            .expect("load live runtime");
+        live_runtime.health = HealthState::Healthy;
+        live_runtime.session_id = Some(format!("live-session-{member_name}"));
+        live_runtime.daemon_pid = Some(9_000 + index as u32);
+        live_runtime.last_seen_at = Some(live_seen_at.clone());
+        live_runtime.attached_at = Some(live_seen_at.clone());
+        if live_runtime.pane_id.is_none() {
+            live_runtime.pane_id = Some(format!("%{}", index + 10));
+        }
+        MemberRuntimeStore::save(tmp.path(), "taurhaus-team", member_name, &live_runtime)
+            .expect("save live runtime");
+    }
+
+    // Regression: commit 439d04b preferred persisted active-team mappings but still fell back to
+    // first-match folder order when the mapping file was missing, so a stale older team could win.
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    assert_eq!(snapshot.team_name.as_deref(), Some("taurhaus-team"));
+    assert!(snapshot.team_status.is_some());
+    assert_eq!(
+        ActiveProjectTeamStore::load_active_team(tmp.path(), "proj-web")
+            .expect("load repaired active team")
+            .as_deref(),
+        Some("taurhaus-team")
+    );
 }
 
 #[test]

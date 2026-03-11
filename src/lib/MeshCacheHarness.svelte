@@ -1,7 +1,7 @@
 <script>
-  import { meshSnapshots } from './meshCache.svelte.js'
+  import { getMeshCache } from './meshCache.svelte.js'
 
   let { projectPath = '' } = $props()
 </script>
 
-<div data-testid="mesh-cache-team-name">{meshSnapshots.get(projectPath)?.teamName ?? 'empty'}</div>
+<div data-testid="mesh-cache-team-name">{getMeshCache(projectPath)?.teamName ?? 'empty'}</div>

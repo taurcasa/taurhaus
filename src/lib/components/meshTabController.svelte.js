@@ -18,7 +18,7 @@ import {
   normalizeProjectMeshSnapshot,
   normalizeResumeTeamReport,
 } from '../ipc/coordinationResponses.js'
-import { clearMeshCache, getMeshCache, setMeshCache } from '../meshCache.svelte.js'
+import { clearMeshCache, getMeshCache, getMeshCacheEntry, setMeshCache } from '../meshCache.svelte.js'
 import {
   defaultModelForTool,
   normalizeTool,
@@ -49,6 +49,7 @@ import { autoDismissNotice } from './meshTabNotifications.js'
 
 const RUNTIME_STATUS_POLL_MS = 2000
 const INITIAL_RUNTIME_REFRESH_DELAY_MS = 120
+const PROJECT_SNAPSHOT_CACHE_MAX_AGE_MS = 5000
 
 export function createMeshTabController({
   getProjectPath,
@@ -129,6 +130,7 @@ export function createMeshTabController({
   let runtimeStatusRequest = null
   let runtimeStatusRequestMeta = null
   let queuedRuntimeStatusRequest = null
+  let projectSnapshotRefreshTimer = null
   let teamResumeProgressTimer = null
   let hydrationPerf = null
   let pendingProjectSnapshot = null
@@ -446,6 +448,25 @@ export function createMeshTabController({
     }
   }
 
+  function clearProjectSnapshotRefresh() {
+    if (!projectSnapshotRefreshTimer) return
+    clearTimeout(projectSnapshotRefreshTimer)
+    projectSnapshotRefreshTimer = null
+  }
+
+  function scheduleProjectSnapshotRefresh(sequence) {
+    clearProjectSnapshotRefresh()
+    projectSnapshotRefreshTimer = setTimeout(() => {
+      projectSnapshotRefreshTimer = null
+      if (sequence !== discoverySequence) return
+      if (!getIsVisible() || !getBackgroundWorkEnabled()) return
+      void refreshProjectMeshSnapshot(sequence, { preserveNotices: true }).catch((error) => {
+        if (sequence !== discoverySequence) return
+        console.warn('[meshTab] background project snapshot refresh failed:', error)
+      })
+    }, INITIAL_RUNTIME_REFRESH_DELAY_MS)
+  }
+
   function scheduleRuntimeTeamRefresh(nextTeamName, sequence, snapshot = null) {
     clearRuntimeTeamRefresh()
     runtimeRefreshMeta = {
@@ -608,8 +629,10 @@ export function createMeshTabController({
     errorMessage = ''
     runtimeMessage = ''
     clearRuntimeTeamRefresh({ dropInFlight: true })
+    clearProjectSnapshotRefresh()
 
-    const cachedSnapshot = untrack(() => getMeshCache(projectPath))
+    const cachedEntry = untrack(() => getMeshCacheEntry(projectPath))
+    const cachedSnapshot = cachedEntry?.snapshot ?? null
     if (cachedSnapshot) {
       const normalized = applyProjectSnapshot(cachedSnapshot, projectPath)
       finishHydrationPerf(
@@ -621,7 +644,11 @@ export function createMeshTabController({
           source: 'cache',
         }
       )
-      if (normalized.teamName && normalized.teamStatus) {
+      const cachedAgeMs =
+        typeof cachedEntry?.cachedAtMs === 'number' ? Math.max(0, Date.now() - cachedEntry.cachedAtMs) : Infinity
+      if (cachedAgeMs >= PROJECT_SNAPSHOT_CACHE_MAX_AGE_MS) {
+        scheduleProjectSnapshotRefresh(sequence)
+      } else if (normalized.teamName && normalized.teamStatus) {
         scheduleRuntimeTeamRefresh(normalized.teamName, sequence, cachedSnapshot)
       }
       return
@@ -640,6 +667,7 @@ export function createMeshTabController({
   function invalidateDiscovery() {
     discoverySequence += 1
     clearRuntimeTeamRefresh({ dropInFlight: true })
+    clearProjectSnapshotRefresh()
     hydrationPerf = null
   }
 
@@ -1362,6 +1390,12 @@ export function createMeshTabController({
   })
 
   $effect(() => {
+    return () => {
+      clearProjectSnapshotRefresh()
+    }
+  })
+
+  $effect(() => {
     if (mode !== 'runtime' || !teamName || !getIsVisible() || !getBackgroundWorkEnabled()) return
 
     let disposed = false
@@ -1379,6 +1413,7 @@ export function createMeshTabController({
     const pollRuntimeStatus = async () => {
       if (isPolling) return
       if (isResumingTeam) return
+      if (runtimeStatusRequest) return
       isPolling = true
       try {
         await queueRuntimeTeamRefresh(teamName, discoverySequence)
@@ -1395,6 +1430,7 @@ export function createMeshTabController({
     return () => {
       disposed = true
       clearRuntimeTeamRefresh()
+      clearProjectSnapshotRefresh()
       if (runtimePollTimer) {
         clearTimeout(runtimePollTimer)
         runtimePollTimer = null
