@@ -200,8 +200,9 @@ After both audit reports are delivered:
 | #1057 | - | pending | Define the phase-two completion outcome classification matrix |
 | #1058 | mesh-architect | completed | Define the phase-two completion packet state-transition conformance checklist |
 | #1059 | dev-2 | in_progress | Implement thin phase-two decision_ready gate checker |
-| #1060 | dev-3 | in_progress | Implement thin phase-two validator result output helpers |
+| #1060 | dev-3 | completed | Implement thin phase-two validator result output helpers |
 | #1061 | mesh-architect | in_progress | Define the phase-two completion structural failure taxonomy |
+| #1062 | dev-3 | in_progress | Implement bounded phase-two decision_ready input fixtures and smoke wrapper |
 
 ## Stopped backlog items
 
@@ -348,6 +349,7 @@ After both audit reports are delivered:
 - `#1057` is queued. Once `architect-1` closes `#1054`, this task will freeze the exact mapping from packet review, validator, and decision-record findings into `GO` / `NO-GO` / `RE-SCOPE` so final completion outcomes stay mechanical and do not depend on reviewer improvisation.
 - `#1058` is complete. `mesh-architect` wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-completion-state-transition-checklist-2026-03-11.md`. The checklist turns the frozen packet-state model into the exact conformance review for the finish-line path: canonical state checks, allowed transition checks, role-ownership checks, normalization checks, return-vs-reopen boundary checks, invariants, and stop conditions.
 - `#1059` is active. `dev-2` is now implementing the thin `decision_ready` gate checker so final decision recording starts only from a structurally valid packet state, using the assembled packet plus validator result without judging evidence quality.
-- `#1060` is active. `dev-3` is now implementing the bounded machine-readable validator result output and smoke coverage so downstream gate checks can consume validator outcomes mechanically.
+- `#1060` is complete. `dev-3` extended `/home/mstie/projects/mesh/scripts/phase_two_completion_packet_validator.py` with a stable machine-readable report object containing `packet_path`, `status`, `errors`, `valid`, and `fatal`, updated text output to report status explicitly, extended `/home/mstie/projects/mesh/tests/phase_two_completion_packet_validator_smoke.rs` to assert the JSON result shape for valid and invalid fixtures, added one machine-readable smoke emission step in `justfile`, and wrote `/home/mstie/projects/mesh/docs/analysis/phase-two-validator-result-output-2026-03-11.md`. Reported verification passed with smoke tests, the `just` wrapper, and direct `--json` invocation.
 - `#1061` is active. `mesh-architect` is now freezing the shared structural failure taxonomy across validator, gate-checking, and packet-flow conformance so finish-line tooling surfaces consistent failure reasons without turning into a semantics engine.
+- `#1062` is active. `dev-3` is now adding only the bounded checked-in input fixtures and smoke wrapper around the thin `decision_ready` gate checker so the gate can be rerun deterministically once the checker implementation is present, without implementing checker logic or expanding product semantics.
 - `#1058` is active. `mesh-architect` is now turning the frozen packet-state model into the exact conformance checklist used to verify that assembly, validation, `decision_ready`, and decision recording follow only allowed transitions and role boundaries.
