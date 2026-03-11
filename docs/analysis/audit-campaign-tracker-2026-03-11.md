@@ -217,16 +217,16 @@ After both audit reports are delivered:
 | #1074 | dev-2 | completed | Implement thin phase-two final signoff closure helpers |
 | #1075 | architect-1 | completed | Define the phase-two closed-state verification checklist |
 | #1076 | dev-3 | completed | Implement bounded phase-two final signoff closure fixtures and smoke wrapper |
-| #1077 | dev-2 | in_progress | Implement thin phase-two closed-state archival helpers |
+| #1077 | dev-2 | completed | Implement thin phase-two closed-state archival helpers |
 | #1078 | architect-1 | completed | Define the phase-two closed-state audit retrieval checklist |
 | #1079 | mesh-architect | completed | Define the phase-two closed-state audit retrieval result schema contract |
 | #1080 | architect-1 | completed | Define the phase-two closed-state audit review checklist |
 | #1081 | dev-2 | completed | Implement bounded phase-two closed-state audit retrieval fixtures and smoke wrapper |
-| #1082 | dev-3 | in_progress | Implement thin phase-two closed-state audit retrieval helpers |
+| #1082 | dev-3 | completed | Implement thin phase-two closed-state audit retrieval helpers |
 | #1083 | architect-1 | completed | Define the phase-two closed-state audit discrepancy routing checklist |
 | #1084 | architect-1 | completed | Define the phase-two closed-state audit outcome matrix |
 | #1085 | mesh-architect | completed | Define the phase-two closed-state audit retrieval-to-review handoff contract |
-| #1086 | dev-2 | in_progress | Implement thin phase-two closed-state audit discrepancy routing helpers |
+| #1086 | dev-2 | completed | Implement thin phase-two closed-state audit discrepancy routing helpers |
 | #1087 | architect-1 | completed | Define the phase-two closed-state audit confirmation checklist |
 | #1088 | mesh-architect | completed | Define the phase-two closed-state audit review-to-outcome handoff contract |
 | #1089 | architect-1 | completed | Define the phase-two closed-state audit confirmation-to-close handoff contract |
@@ -248,13 +248,17 @@ After both audit reports are delivered:
 | #1105 | architect-1 | completed | Define the phase-two verified-archived-close retention verification checklist |
 | #1106 | mesh-architect | completed | Define the phase-two verified-archived-close retention verification-to-outcome handoff contract |
 | #1107 | dev-2 | completed | Implement thin phase-two verified-archived-close discrepancy routing helpers |
-| #1108 | dev-3 | in_progress | Implement bounded phase-two verified-archived-close retention verification fixtures and smoke wrapper |
+| #1108 | dev-3 | completed | Implement bounded phase-two verified-archived-close retention verification fixtures and smoke wrapper |
 | #1109 | architect-1 | completed | Define the phase-two verified-archived-close retention outcome matrix |
 | #1110 | architect-1 | completed | Define the phase-two retained-verified-archived-close confirmation checklist |
-| #1111 | dev-2 | in_progress | Implement thin phase-two retained-verified-archived-close confirmation helpers |
+| #1111 | dev-2 | completed | Implement thin phase-two retained-verified-archived-close confirmation helpers |
 | #1112 | mesh-architect | completed | Define the phase-two retained-verified-archived-close confirmation-to-retention-decision handoff contract |
-| #1113 | dev-3 | in_progress | Implement bounded phase-two retained-verified-archived-close confirmation fixtures and smoke wrapper |
-| #1114 | mesh-architect | in_progress | Define the phase-two retained-verified-archived-close retention-decision-to-recording handoff contract |
+| #1113 | dev-3 | completed | Implement bounded phase-two retained-verified-archived-close confirmation fixtures and smoke wrapper |
+| #1114 | mesh-architect | completed | Define the phase-two retained-verified-archived-close retention-decision-to-recording handoff contract |
+| #1115 | architect-1 | in_progress | Define the phase-two retained-verified-archived-close recording checklist |
+| #1116 | mesh-architect | in_progress | Define the phase-two retained-verified-archived-close recording-to-retention-verification handoff contract |
+| #1117 | dev-3 | in_progress | Implement bounded phase-two retained-verified-archived-close retention decision fixtures and smoke wrapper |
+| #1118 | dev-2 | in_progress | Implement thin phase-two retained-verified-archived-close retention decision helpers |
 
 ## Stopped backlog items
 
