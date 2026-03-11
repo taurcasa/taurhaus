@@ -301,10 +301,17 @@ After both audit reports are delivered:
 | #1156 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close recording helpers |
 | #1157 | architect-1 | completed | Define the phase-two retained-retained-retained-retained-verified-archived-close retention verification checklist |
 | #1160 | dev-2 | completed | Implement thin phase-two retained-retained-retained-retained-verified-archived-close retention verification helpers |
-| #1161 | architect-1 | in_progress | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
+| #1161 | architect-1 | pending | Define the phase-two retained-retained-retained-retained-verified-archived-close retention outcome matrix |
 | #1162 | architect-1 | pending | Rerun X3 close signoff after durable path correction |
 | #1163 | dev-1 | completed | Refresh X3 review packet and handoff bundle to durable review path |
 | #1164 | dev-3 | completed | Implement bounded phase-two retained-retained-retained-retained-verified-archived-close recording fixtures and smoke wrapper |
+| #1165 | mesh-architect | in_progress | Normalize phase-two retained-state naming and freeze concise canonical names across tasks, docs, tests, and just recipes |
+
+### Phase-two naming freeze
+
+- Recursive `retained-retained-retained...` naming drift is now frozen behind `#1165`.
+- Do not create new tasks, docs, test files, statuses, or `just` recipes that extend the repeated-retained ladder until the normalization mapping lands.
+- `#1161` is intentionally paused behind the normalization task so downstream work resumes on canonical names only.
 
 ## Stopped backlog items
 
