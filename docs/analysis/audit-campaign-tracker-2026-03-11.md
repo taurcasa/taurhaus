@@ -324,8 +324,10 @@ After both audit reports are delivered:
 | #1181 | dev-1 | completed | Checkpoint live Mesh guardrail code into committed history |
 | #1182 | dev-3 | completed | Checkpoint retained-cycle cleanup code and test helpers |
 | #1183 | dev-2 | completed | Checkpoint retained-cycle command cutover into committed history |
-| #1184 | architect-1 | in_progress | Reduce the live phase-two doc surface after wrapper cleanup |
+| #1184 | architect-1 | completed | Reduce the live phase-two doc surface after wrapper cleanup |
 | #1185 | dev-1 | completed | Checkpoint remaining phase-two verification scripts and fixtures |
+| #1186 | architect-1 | in_progress | Finish the remaining phase-two doc cleanup in Mesh |
+| #1187 | dev-1 | in_progress | Finish the remaining phase-two verification cleanup in Mesh |
 
 ### Phase-two naming freeze
 
@@ -362,7 +364,8 @@ After both audit reports are delivered:
 - `#1182` completed the retained-cycle helper cleanup cleanly in Mesh: the generic confirmation/recording/verification helper files are now committed, the old per-cycle support files are deleted, and only behaviorally distinct checks were kept.
 - `#1183` completed the retained-cycle command checkpoint cleanly in Mesh: the `justfile` now keeps only the generic retained-cycle command and matrix entrypoints, the 9 live retained fixture notes no longer describe deleted wrapper commands, and the command checkpoint note is committed.
 - `#1185` completed the remaining shared verification checkpoint cleanly in Mesh as a bounded two-commit sequence: the live verification scripts, checked-in phase-two fixtures, smoke tests, and the fixture-backed `phase_two_decision_ready_gate_smoke` update are now committed history instead of floating worktree state.
-- `#1184` is now the main remaining finish-up task: reduce the live phase-two doc surface and package the doc moves/archives cleanly.
+- `#1184` completed the main live doc reduction in Mesh: the historical post-X4 readiness, helper-merge, matrix-cutover, recipe-cutover, wrapper-deletion-readiness, retained live-doc collapse, and scaffolding-reduction notes were moved under `docs/analysis/archive/phase-two-retained/`, and the retained-state core plus implementation guide now point at the live docs someone still needs.
+- We are down to the last two cleanup passes: `#1186` to finish the remaining loose phase-two docs in the Mesh tree, and `#1187` to clean the last verification leftovers so the Mesh worktree can end clean.
 
 ## Stopped backlog items
 
