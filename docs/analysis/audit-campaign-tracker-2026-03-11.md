@@ -336,7 +336,7 @@ After both audit reports are delivered:
 | #1193 | dev-1 | completed | Extend Mesh CLI lifecycle end-to-end coverage |
 | #1194 | architect-1 | completed | Review Mesh CLI usability and token efficiency for LLM operators |
 | #1195 | dev-2 | in_progress | Make mesh read --unread return only real inbox messages |
-| #1196 | dev-3 | in_progress | Make Mesh CLI output smaller and more operator-friendly |
+| #1196 | dev-3 | completed | Make Mesh CLI output smaller and more operator-friendly |
 | #1197 | dev-1 | in_progress | Add a smoke check for installed Mesh binary drift |
 
 ### Phase-two naming freeze
@@ -385,7 +385,8 @@ After both audit reports are delivered:
 - `#1192` completed the broader CLI user-journey suite in Mesh. The real CLI is now covered across three main journeys: fresh-team startup through completed delivery, blocked work with lead visibility, and clear failure paths for unauthorized assignment and non-member messaging. The main remaining issues are UX roughness rather than correctness failures: `LEGACY_LANE_METADATA` warnings on low-metadata tasks and chatty lead notifications during short bursts of task-state changes.
 - `#1193` completed the lifecycle coverage extension in Mesh. The real CLI is now covered for member leave, same-name rejoin, and task continuity across leave/rejoin, including the case where an inactive owner is blocked from continuing task commands until they rejoin under the same identity. The remaining issue is wording quality, not correctness: inactive-member failures still surface as `agent not found`.
 - `#1194` completed the operator-usability review in Mesh. The main correctness findings are that the installed mesh binary on this machine is out of sync with current source/docs and that `mesh read --unread` still synthesizes active-work reminders instead of returning only real inbox messages. The main usability findings are that `mesh tasks` default output is too expensive in long-lived teams, the repeated read footer wastes tokens, and `task get` is too JSON-heavy by default.
-- `#1195` through `#1197` are the direct follow-up fixes from that review: remove synthetic read reminders, make the main CLI output paths smaller and more operator-friendly, and add a smoke check for installed-binary drift so the command surface stays trustworthy.
+- `#1196` completed the CLI output cleanup in Mesh: `mesh read` now hides the repeated footer by default and shows it only with `--guide`, `mesh tasks` now defaults to compact human rows with a default cap and `--limit`, and `mesh task get` now defaults to a compact human summary while keeping the full record behind `--verbose` or `--json`.
+- `#1195` and `#1197` are the remaining follow-up fixes from the usability review: remove synthetic read reminders and add a smoke check for installed-binary drift so the command surface stays trustworthy.
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
