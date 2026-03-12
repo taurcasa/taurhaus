@@ -332,7 +332,7 @@ After both audit reports are delivered:
 | #1189 | dev-1 | completed | Run a realistic end-to-end CLI scenario against the new Mesh system |
 | #1190 | dev-1 | completed | Fix the Mesh CLI cold-start bootstrap gap for isolated teams |
 | #1191 | dev-1 | completed | Run cargo check on Mesh and fix any real failures |
-| #1192 | dev-1 | in_progress | Design and run a full Mesh user-journey CLI test suite |
+| #1192 | dev-1 | completed | Design and run a full Mesh user-journey CLI test suite |
 
 ### Phase-two naming freeze
 
@@ -377,6 +377,7 @@ After both audit reports are delivered:
 - `#1189` completed the first real CLI reality check: the isolated end-to-end scenario exposed a genuine cold-start bootstrap gap in the public CLI. `mesh join` reported success but left the fresh team unusable, and both `mesh who --json` and a follow-up `mesh task create` failed with `team not found`.
 - `#1190` completed the CLI bootstrap fix in Mesh: `mesh join` now bootstraps a minimal fresh-team config on first use, the isolated CLI scenario can proceed through create/assign/read/ack/accept/start/progress/review/complete, and the public CLI no longer depends on pre-seeded team files for a cold start.
 - `#1191` completed cleanly: `cargo check` on the now-clean Mesh worktree passed with no compile failures, and no additional code fix was needed.
+- `#1192` completed the broader CLI user-journey suite in Mesh. The real CLI is now covered across three main journeys: fresh-team startup through completed delivery, blocked work with lead visibility, and clear failure paths for unauthorized assignment and non-member messaging. The main remaining issues are UX roughness rather than correctness failures: `LEGACY_LANE_METADATA` warnings on low-metadata tasks and chatty lead notifications during short bursts of task-state changes.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
 ## Stopped backlog items
