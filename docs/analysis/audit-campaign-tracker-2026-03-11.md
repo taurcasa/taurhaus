@@ -16,6 +16,8 @@ This document tracks the current Taurhaus audit campaign, active investigation w
   - `#1229` `completed`: `dev-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-communication-state-after-recovery-2026-03-12.md` and committed it as `f0af692`. The report records two root causes, landed fixes `57d5c2f` and `9547d88`, live verification on `taurhaus-team` and `taurmuse-team`, and one remaining rollout risk around stale/deleted supervising binaries during restart.
   - `#1230` `completed`: `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-task-assignment-wording-drift-2026-03-12.md` and committed it as `32cd6f7`. The report concludes that assignment wording drifted from action-first to contract-first and weakened the execution trigger for agents.
   - `#1231` `completed`: `dev-2` changed the durable assignment formatter to action-first wording in `/home/mstie/projects/mesh` and committed it as `a56c8ca`, with updated coverage and note `/home/mstie/projects/mesh/docs/analysis/mesh-assignment-wording-action-first-2026-03-12.md`.
+  - `#1232` `completed`: `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-assignment-wording-user-facing-drift-check-2026-03-12.md` and committed it as `3981e3b`. The report confirms the new assignment wording already blocks the user-facing acknowledgment-only failure on assignments, but points out softer wording still remained in nudge and resume prompts.
+  - `#1233` `completed`: `dev-2` aligned the remaining nudge and resume prompts to the same action-first wording pattern and committed it as `f127eae`, with note `/home/mstie/projects/mesh/docs/analysis/mesh-nudge-resume-wording-action-first-2026-03-12.md`.
 
 ## Active audit tasks
 
