@@ -327,7 +327,7 @@ After both audit reports are delivered:
 | #1184 | architect-1 | completed | Reduce the live phase-two doc surface after wrapper cleanup |
 | #1185 | dev-1 | completed | Checkpoint remaining phase-two verification scripts and fixtures |
 | #1186 | architect-1 | in_progress | Finish the remaining phase-two doc cleanup in Mesh |
-| #1187 | dev-1 | in_progress | Finish the remaining phase-two verification cleanup in Mesh |
+| #1187 | dev-1 | completed | Finish the remaining phase-two verification cleanup in Mesh |
 
 ### Phase-two naming freeze
 
@@ -365,7 +365,8 @@ After both audit reports are delivered:
 - `#1183` completed the retained-cycle command checkpoint cleanly in Mesh: the `justfile` now keeps only the generic retained-cycle command and matrix entrypoints, the 9 live retained fixture notes no longer describe deleted wrapper commands, and the command checkpoint note is committed.
 - `#1185` completed the remaining shared verification checkpoint cleanly in Mesh as a bounded two-commit sequence: the live verification scripts, checked-in phase-two fixtures, smoke tests, and the fixture-backed `phase_two_decision_ready_gate_smoke` update are now committed history instead of floating worktree state.
 - `#1184` completed the main live doc reduction in Mesh: the historical post-X4 readiness, helper-merge, matrix-cutover, recipe-cutover, wrapper-deletion-readiness, retained live-doc collapse, and scaffolding-reduction notes were moved under `docs/analysis/archive/phase-two-retained/`, and the retained-state core plus implementation guide now point at the live docs someone still needs.
-- We are down to the last two cleanup passes: `#1186` to finish the remaining loose phase-two docs in the Mesh tree, and `#1187` to clean the last verification leftovers so the Mesh worktree can end clean.
+- `#1187` completed the last verification cleanup pass in Mesh: the valid retrieval-fixtures note stayed live, the out-of-scope formatting-only `tests/projections_integration.rs` diff was dropped, and the dead loose retained-cycle fixture tail under `tests/fixtures/phase_two_*` was removed after proving it was no longer referenced.
+- We are down to one remaining finish-up lane: `#1186` to clean up the remaining loose phase-two docs in the Mesh tree so the worktree can end fully clean.
 
 ## Stopped backlog items
 
