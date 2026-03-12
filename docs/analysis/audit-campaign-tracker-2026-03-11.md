@@ -333,6 +333,8 @@ After both audit reports are delivered:
 | #1190 | dev-1 | completed | Fix the Mesh CLI cold-start bootstrap gap for isolated teams |
 | #1191 | dev-1 | completed | Run cargo check on Mesh and fix any real failures |
 | #1192 | dev-1 | completed | Design and run a full Mesh user-journey CLI test suite |
+| #1193 | dev-1 | in_progress | Extend Mesh CLI lifecycle end-to-end coverage |
+| #1194 | architect-1 | in_progress | Review Mesh CLI usability and token efficiency for LLM operators |
 
 ### Phase-two naming freeze
 
@@ -378,6 +380,8 @@ After both audit reports are delivered:
 - `#1190` completed the CLI bootstrap fix in Mesh: `mesh join` now bootstraps a minimal fresh-team config on first use, the isolated CLI scenario can proceed through create/assign/read/ack/accept/start/progress/review/complete, and the public CLI no longer depends on pre-seeded team files for a cold start.
 - `#1191` completed cleanly: `cargo check` on the now-clean Mesh worktree passed with no compile failures, and no additional code fix was needed.
 - `#1192` completed the broader CLI user-journey suite in Mesh. The real CLI is now covered across three main journeys: fresh-team startup through completed delivery, blocked work with lead visibility, and clear failure paths for unauthorized assignment and non-member messaging. The main remaining issues are UX roughness rather than correctness failures: `LEGACY_LANE_METADATA` warnings on low-metadata tasks and chatty lead notifications during short bursts of task-state changes.
+- `#1193` is the next deeper test lane: extend CLI end-to-end coverage for team-member and task lifecycle changes such as removal, re-addition, same-name reuse where supported, and other realistic continuity risks that can quietly break coordination later.
+- `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
 ## Stopped backlog items
