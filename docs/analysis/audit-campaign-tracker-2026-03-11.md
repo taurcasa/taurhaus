@@ -342,7 +342,7 @@ After both audit reports are delivered:
 | #1199 | architect-1 | completed | Define idle monitoring and reminder ownership between Mesh and Taurhaus |
 | #1200 | dev-2 | in_progress | Implement the ownership cut so Taurhaus stops emitting idle reminders for Mesh-managed teams and Mesh becomes the only source of task-aware reminder/escalation messages for those teams |
 | #1201 | architect-1 | in_progress | Define and land one canonical activity export schema between Taurhaus and Mesh for idle monitoring, recovery, and diagnostics |
-| #1202 | dev-3 | in_progress | Add Mesh idle-status projection plus end-to-end tests that prove the ownership split, inbox purity, and reminder delivery boundaries |
+| #1202 | dev-3 | completed | Add Mesh idle-status projection plus end-to-end tests that prove the ownership split, inbox purity, and reminder delivery boundaries |
 
 ### Phase-two naming freeze
 
@@ -397,7 +397,7 @@ After both audit reports are delivered:
 - `#1199` completed the idle-monitoring ownership decision. The agreed split is: Mesh owns task-gated idle reminder policy plus any real nudge/escalation messages, while Taurhaus owns runtime observation, activity export, compaction detection, recovery context, and UI diagnostics. The inbox rule is now explicit: `read --unread` shows only real delivered messages, never synthetic reminders, attention projections, or recovery hints. The main follow-up still open in principle is the actual ownership cut so Taurhaus stops sending idle notices for Mesh-managed teams.
 - `#1200` is now the direct ownership-cut implementation lane: remove Taurhaus-side idle reminder emission for Mesh-managed teams and route those reminders through Mesh-owned message delivery only.
 - `#1201` is the cross-system contract lane: reduce Taurhaus and Mesh activity export down to one canonical schema so idle logic, recovery context, and diagnostics all consume the same meaning.
-- `#1202` is the proof lane: add the Mesh-side idle-status projection and end-to-end tests that prove the ownership split works, including inbox purity and the boundary between observation data and real reminder messages.
+- `#1202` completed the proof lane: Mesh now has a per-member idle-status projection under `state/projections/idle_status/{owner}.json`, exposed through `mesh::projections::idle_status(...)` and `idle_status_at(...)`, with derived level/reason, selected task, runtime and activity context, uncertainty markers, cooldown timestamps, and explicit ownership flags. The end-to-end ownership tests now prove the core boundary we wanted: Taurhaus observation snapshots alone do not create inbox messages or leak through `read --unread`, the Mesh nudge path delivers only to the owner, and the Mesh escalation path delivers only to the lead.
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
