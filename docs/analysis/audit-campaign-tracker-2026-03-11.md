@@ -329,7 +329,8 @@ After both audit reports are delivered:
 | #1186 | architect-1 | completed | Finish the remaining phase-two doc cleanup in Mesh |
 | #1187 | dev-1 | completed | Finish the remaining phase-two verification cleanup in Mesh |
 | #1188 | architect-1 | completed | Finish the last loose Mesh docs and remove Python cache trash |
-| #1189 | dev-1 | in_progress | Run a realistic end-to-end CLI scenario against the new Mesh system |
+| #1189 | dev-1 | completed | Run a realistic end-to-end CLI scenario against the new Mesh system |
+| #1190 | dev-1 | in_progress | Fix the Mesh CLI cold-start bootstrap gap for isolated teams |
 
 ### Phase-two naming freeze
 
@@ -371,7 +372,8 @@ After both audit reports are delivered:
 - `#1186` completed the main remaining doc sweep in Mesh: the live phase-two surface is smaller and the historical notes were sorted into archive, but a final follow-up is still required because the worktree check showed additional loose docs still sitting untracked after that pass.
 - `#1188` completed the final doc hygiene pass in Mesh: the last 31 loose live analysis docs were either committed into the live docs surface or already handled by prior archive moves, `scripts/__pycache__/` was removed, and the Mesh worktree is now clean.
 - The Mesh finish-up sequence is now complete: the product code, verification assets, command path, helper cleanup, and docs cleanup are all committed and the worktree is clean.
-- `#1189` is the next reality check: run a small isolated end-to-end scenario against the real Mesh CLI with one lead and two members before broadening verification further. This is the right next step before a larger `cargo check`, because it proves the system through the interface people actually use.
+- `#1189` completed the first real CLI reality check: the isolated end-to-end scenario exposed a genuine cold-start bootstrap gap in the public CLI. `mesh join` reported success but left the fresh team unusable, and both `mesh who --json` and a follow-up `mesh task create` failed with `team not found`.
+- `#1190` is now the active fix lane: make the public CLI able to bootstrap a fresh isolated team state without manual file seeding, then rerun the same isolated scenario against the fixed interface.
 
 ## Stopped backlog items
 
