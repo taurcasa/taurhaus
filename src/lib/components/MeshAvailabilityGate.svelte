@@ -69,6 +69,12 @@
     return Boolean(status?.needsUpdate ?? status?.needs_update ?? false)
   }
 
+  function meshCompatibilityIssues(status) {
+    if (Array.isArray(status?.compatibilityIssues)) return status.compatibilityIssues
+    if (Array.isArray(status?.compatibility_issues)) return status.compatibility_issues
+    return []
+  }
+
   function meshEnvironmentAvailable(status) {
     return Boolean(status?.environmentAvailable ?? status?.environment_available ?? false)
   }
@@ -84,8 +90,17 @@
     return `Mesh CLI ${installed} is installed, but taurhaus requires ${bundled}. Update Mesh to continue.`
   }
 
+  function meshCompatibilityMessages(status) {
+    const issues = meshCompatibilityIssues(status)
+      .map((issue) => issue?.message || '')
+      .filter(Boolean)
+    if (issues.length > 0) return issues
+    const fallback = meshVersionMismatchError(status)
+    return fallback ? [fallback] : []
+  }
+
   const showMeshInstallActions = $derived(
-    (blockingErrors.some(isMeshMissing) || meshNeedsUpdate(meshStatus)) &&
+    (blockingErrors.some(isMeshMissing) || meshCompatibilityMessages(meshStatus).length > 0) &&
       meshEnvironmentAvailable(meshStatus)
   )
 
@@ -124,9 +139,11 @@
         if (cancelled) return
         meshStatus = status
         const mergedErrors = coerceBlockingErrors(report)
-        const mismatch = meshVersionMismatchError(status)
-        if (mismatch && !mergedErrors.includes(mismatch)) {
-          mergedErrors.push(mismatch)
+        const mismatches = meshCompatibilityMessages(status)
+        for (const mismatch of mismatches) {
+          if (!mergedErrors.includes(mismatch)) {
+            mergedErrors.push(mismatch)
+          }
         }
         blockingErrors = mergedErrors
         agentWarnings = coerceAgentWarnings(report)

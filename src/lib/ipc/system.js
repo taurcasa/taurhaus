@@ -94,11 +94,51 @@ function normalizeDaemonInstallStatus(raw) {
 
 function normalizeMeshInstallStatus(raw) {
   const status = raw && typeof raw === 'object' ? raw : {}
+  const bundledContract =
+    status.bundled_contract && typeof status.bundled_contract === 'object'
+      ? status.bundled_contract
+      : status.bundledContract && typeof status.bundledContract === 'object'
+        ? status.bundledContract
+        : {}
+  const installedContract =
+    status.installed_contract && typeof status.installed_contract === 'object'
+      ? status.installed_contract
+      : status.installedContract && typeof status.installedContract === 'object'
+        ? status.installedContract
+        : null
+  const compatibilityIssues = Array.isArray(status.compatibility_issues)
+    ? status.compatibility_issues
+    : Array.isArray(status.compatibilityIssues)
+      ? status.compatibilityIssues
+      : []
+
   return {
     installed: Boolean(status.installed),
     version: status.version ?? null,
     bundled_version: status.bundled_version ?? status.bundledVersion ?? '',
     needs_update: status.needs_update ?? status.needsUpdate ?? false,
+    bundled_contract: {
+      version: bundledContract.version ?? '',
+      protocol_version: bundledContract.protocol_version ?? bundledContract.protocolVersion ?? 0,
+      schema_version: bundledContract.schema_version ?? bundledContract.schemaVersion ?? 0,
+      git_commit: bundledContract.git_commit ?? bundledContract.gitCommit ?? null,
+    },
+    installed_contract: installedContract
+      ? {
+          version: installedContract.version ?? '',
+          protocol_version:
+            installedContract.protocol_version ?? installedContract.protocolVersion ?? 0,
+          schema_version:
+            installedContract.schema_version ?? installedContract.schemaVersion ?? 0,
+          git_commit: installedContract.git_commit ?? installedContract.gitCommit ?? null,
+        }
+      : null,
+    compatibility_issues: compatibilityIssues.map((issue) => ({
+      code: issue?.code ?? '',
+      message: issue?.message ?? '',
+      expected: issue?.expected ?? null,
+      actual: issue?.actual ?? null,
+    })),
     environment_available:
       status.environment_available ?? status.environmentAvailable ?? true,
     error: status.error ?? null,
@@ -234,6 +274,19 @@ export function checkMeshInstallStatus() {
       version: '0.1.0',
       bundled_version: '0.1.0',
       needs_update: false,
+      bundled_contract: {
+        version: '0.1.0',
+        protocol_version: 1,
+        schema_version: 1,
+        git_commit: 'mock-mesh-commit',
+      },
+      installed_contract: {
+        version: '0.1.0',
+        protocol_version: 1,
+        schema_version: 1,
+        git_commit: 'mock-mesh-commit',
+      },
+      compatibility_issues: [],
       environment_available: true,
       error: null,
     })

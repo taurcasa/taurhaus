@@ -376,6 +376,25 @@ pub struct DaemonInstallStatus {
 }
 
 /// Mesh installation status for coordination setup.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeshCompatibilityContract {
+    pub version: String,
+    pub protocol_version: u32,
+    pub schema_version: u32,
+    pub git_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeshCompatibilityIssue {
+    pub code: String,
+    pub message: String,
+    pub expected: Option<String>,
+    pub actual: Option<String>,
+}
+
+/// Mesh installation status for coordination setup.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MeshInstallStatus {
@@ -387,6 +406,12 @@ pub struct MeshInstallStatus {
     pub bundled_version: String,
     /// True when installed version differs from bundled version.
     pub needs_update: bool,
+    /// Compatibility contract bundled with this taurhaus release.
+    pub bundled_contract: MeshCompatibilityContract,
+    /// Compatibility contract reported by the installed mesh binary, if readable.
+    pub installed_contract: Option<MeshCompatibilityContract>,
+    /// Structured compatibility issues between taurhaus and the installed mesh binary.
+    pub compatibility_issues: Vec<MeshCompatibilityIssue>,
     /// Whether the execution environment is available (native or WSL).
     pub environment_available: bool,
     /// Human-readable error if detection failed.

@@ -19,6 +19,19 @@ describe('MeshAvailabilityGate', () => {
       version: '0.1.0',
       bundled_version: '0.1.0',
       needs_update: false,
+      bundled_contract: {
+        version: '0.1.0',
+        protocol_version: 1,
+        schema_version: 1,
+        git_commit: 'mock-mesh-commit',
+      },
+      installed_contract: {
+        version: '0.1.0',
+        protocol_version: 1,
+        schema_version: 1,
+        git_commit: 'mock-mesh-commit',
+      },
+      compatibility_issues: [],
       environment_available: true,
       error: null,
     })
@@ -129,6 +142,34 @@ describe('MeshAvailabilityGate', () => {
         version: '0.0.9',
         bundled_version: '0.1.0',
         needs_update: true,
+        bundled_contract: {
+          version: '0.1.0',
+          protocol_version: 1,
+          schema_version: 1,
+          git_commit: 'expected-commit',
+        },
+        installed_contract: {
+          version: '0.0.9',
+          protocol_version: 0,
+          schema_version: 1,
+          git_commit: 'actual-commit',
+        },
+        compatibility_issues: [
+          {
+            code: 'protocol_version_mismatch',
+            message:
+              'Installed Mesh CLI protocol version 0 does not match taurhaus required protocol version 1. Install bundled Mesh to continue.',
+            expected: '1',
+            actual: '0',
+          },
+          {
+            code: 'version_mismatch',
+            message:
+              'Installed Mesh CLI version 0.0.9 does not match taurhaus bundled Mesh version 0.1.0. Install bundled Mesh to continue.',
+            expected: '0.1.0',
+            actual: '0.0.9',
+          },
+        ],
         environment_available: true,
         error: null,
       })
@@ -137,6 +178,19 @@ describe('MeshAvailabilityGate', () => {
         version: '0.1.0',
         bundled_version: '0.1.0',
         needs_update: false,
+        bundled_contract: {
+          version: '0.1.0',
+          protocol_version: 1,
+          schema_version: 1,
+          git_commit: 'expected-commit',
+        },
+        installed_contract: {
+          version: '0.1.0',
+          protocol_version: 1,
+          schema_version: 1,
+          git_commit: 'expected-commit',
+        },
+        compatibility_issues: [],
         environment_available: true,
         error: null,
       })
@@ -167,7 +221,8 @@ describe('MeshAvailabilityGate', () => {
       expect(screen.getByTestId('mesh-availability-blocking')).toBeInTheDocument()
     })
     expect(screen.getByTestId('mesh-install-button')).toBeInTheDocument()
-    expect(screen.getByText(/taurhaus requires 0.1.0/i)).toBeInTheDocument()
+    expect(screen.getByText(/protocol version 0 does not match taurhaus required protocol version 1/i)).toBeInTheDocument()
+    expect(screen.getByText(/version 0.0.9 does not match taurhaus bundled mesh version 0.1.0/i)).toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('mesh-install-button'))
 

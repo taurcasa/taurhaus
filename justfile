@@ -24,6 +24,7 @@ ensure-tauri-resources:
     @if [ ! -e src-tauri/resources/taurhaus-daemon ]; then touch src-tauri/resources/taurhaus-daemon; fi
     @if [ ! -e src-tauri/resources/mesh ]; then touch src-tauri/resources/mesh; fi
     @if [ ! -s src-tauri/resources/mesh.version ]; then echo "0.0.0-dev" > src-tauri/resources/mesh.version; fi
+    @if [ ! -s src-tauri/resources/mesh.manifest.json ]; then printf '%s\n' '{"version":"0.0.0-dev","protocol_version":1,"schema_version":1,"git_commit":null,"bundled_at_utc":"unknown"}' > src-tauri/resources/mesh.manifest.json; fi
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
@@ -286,7 +287,7 @@ build-mesh:
     echo "▸ Building mesh from $MESH_PROJECT…"
     cd "$MESH_PROJECT" && cargo build --release --bin mesh
 
-# Verify built mesh binary matches pinned lock manifest (Phase 0: --version string only).
+# Verify built mesh binary matches the pinned JSON compatibility contract.
 mesh-verify-lock: build-mesh
     #!/usr/bin/env bash
     set -euo pipefail
@@ -301,21 +302,43 @@ mesh-verify-lock: build-mesh
         echo "✗ Built mesh binary not found at $MESH_BIN"
         exit 1
     fi
-    LOCK_VERSION=$(grep '"version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/')
-    if [ -z "$LOCK_VERSION" ]; then
-        echo "✗ Could not parse locked version from $LOCK_FILE"
-        exit 1
-    fi
-    BUILT_VERSION="$("$MESH_BIN" --version | awk '{print $2}')"
-    if [ -z "$BUILT_VERSION" ]; then
-        echo "✗ Could not determine mesh version from $MESH_BIN --version"
-        exit 1
-    fi
-    if [ "$BUILT_VERSION" != "$LOCK_VERSION" ]; then
-        echo "✗ Mesh version mismatch: lock=$LOCK_VERSION built=$BUILT_VERSION"
-        exit 1
-    fi
-    echo "✓ Mesh lock verification passed (version $LOCK_VERSION)"
+    MESH_JSON="$("$MESH_BIN" version --json)"
+    LOCK_FILE="$LOCK_FILE" MESH_JSON="$MESH_JSON" python3 - <<'PY'
+    import json
+    import os
+    import sys
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+
+    try:
+        built = json.loads(os.environ["MESH_JSON"])
+    except json.JSONDecodeError as exc:
+        print(f"✗ Could not parse mesh version --json output: {exc}")
+        sys.exit(1)
+
+    issues = []
+    for key in ("version", "protocol_version", "schema_version"):
+        if built.get(key) != lock.get(key):
+            issues.append(f"{key}: lock={lock.get(key)!r} built={built.get(key)!r}")
+
+    expected_commit = lock.get("git_commit")
+    if expected_commit is not None and built.get("git_commit") != expected_commit:
+        issues.append(
+            f"git_commit: lock={expected_commit!r} built={built.get('git_commit')!r}"
+        )
+
+    if issues:
+        print("✗ Mesh compatibility mismatch:")
+        for issue in issues:
+            print(f"  - {issue}")
+        sys.exit(1)
+
+    print(
+        "✓ Mesh lock verification passed "
+        f"(version {lock['version']}, protocol {lock['protocol_version']}, schema {lock['schema_version']})"
+    )
+    PY
 
 # Intentional entry point for bumping mesh lock manifest.
 update-mesh-lock version protocol_version="1" schema_version="1" git_commit="":
@@ -409,7 +432,7 @@ install-mesh: build-mesh
     install -m 755 "$MESH_PATH" "$TMP_BIN"
     mv -f "$TMP_BIN" "$INSTALL_DIR/$MESH_BIN"
     echo "✓ Installed $MESH_BIN to $INSTALL_DIR/"
-    "$INSTALL_DIR/$MESH_BIN" --version 2>/dev/null || "$INSTALL_DIR/$MESH_BIN" --help 2>&1 | head -1
+    "$INSTALL_DIR/$MESH_BIN" version --json
 
 # Copy mesh binary to Tauri resources for bundling, plus lock-derived metadata.
 bundle-mesh: mesh-verify-lock
@@ -426,30 +449,27 @@ bundle-mesh: mesh-verify-lock
         echo "✗ Lock manifest not found at $LOCK_FILE"
         exit 1
     fi
-    LOCK_VERSION=$(grep '"version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/')
-    LOCK_PROTOCOL=$(grep '"protocol_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"protocol_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_SCHEMA=$(grep '"schema_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"schema_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_GIT_COMMIT_RAW=$(grep '"git_commit"' "$LOCK_FILE" | head -1 | sed -E 's/.*"git_commit":[[:space:]]*(.*)/\1/' | sed -E 's/[[:space:]]*$//' | sed -E 's/,$//')
-    if [ -z "$LOCK_VERSION" ] || [ -z "$LOCK_PROTOCOL" ] || [ -z "$LOCK_SCHEMA" ]; then
-        echo "✗ Could not parse required fields from $LOCK_FILE"
-        exit 1
-    fi
-    MESH_VERSION="$("$MESH_BIN" --version | awk '{print $2}')"
-    if [ -z "$MESH_VERSION" ]; then
-        echo "✗ Could not determine mesh version from $MESH_BIN --version"
-        exit 1
-    fi
-    if [ "$MESH_VERSION" != "$LOCK_VERSION" ]; then
-        echo "✗ Mesh version mismatch during bundle: lock=$LOCK_VERSION built=$MESH_VERSION"
-        exit 1
-    fi
-    if [ -z "$LOCK_GIT_COMMIT_RAW" ]; then
-        LOCK_GIT_COMMIT_RAW=null
-    fi
+    mapfile -t LOCK_FIELDS < <(LOCK_FILE="$LOCK_FILE" python3 - <<'PY'
+    import json
+    import os
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+
+    print(lock["version"])
+    print(lock["protocol_version"])
+    print(lock["schema_version"])
+    print("null" if lock.get("git_commit") is None else json.dumps(lock["git_commit"]))
+    PY
+    )
+    LOCK_VERSION="${LOCK_FIELDS[0]}"
+    LOCK_PROTOCOL="${LOCK_FIELDS[1]}"
+    LOCK_SCHEMA="${LOCK_FIELDS[2]}"
+    LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Bundling mesh binary into src-tauri/resources/…"
     mkdir -p src-tauri/resources
     cp "$MESH_BIN" src-tauri/resources/mesh
-    echo "$MESH_VERSION" > src-tauri/resources/mesh.version
+    printf '%s\n' "$LOCK_VERSION" > src-tauri/resources/mesh.version
     cat > src-tauri/resources/mesh.manifest.json <<JSON
     {
       "version": "$LOCK_VERSION",
@@ -459,7 +479,7 @@ bundle-mesh: mesh-verify-lock
       "bundled_at_utc": "$(date -u -Iseconds | sed 's/+00:00/Z/')"
     }
     JSON
-    echo "✓ Mesh binary bundled (version $MESH_VERSION)"
+    echo "✓ Mesh binary bundled (version $LOCK_VERSION)"
 
 # Run the daemon in foreground (for development)
 run-daemon:
@@ -554,17 +574,23 @@ build-macos: sync-macos
         echo "✗ Lock manifest not found at $LOCK_FILE"
         exit 1
     fi
-    LOCK_VERSION=$(grep '"version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/')
-    LOCK_PROTOCOL=$(grep '"protocol_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"protocol_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_SCHEMA=$(grep '"schema_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"schema_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_GIT_COMMIT_RAW=$(grep '"git_commit"' "$LOCK_FILE" | head -1 | sed -E 's/.*"git_commit":[[:space:]]*(.*)/\1/' | sed -E 's/[[:space:]]*$//' | sed -E 's/,$//')
-    if [ -z "$LOCK_VERSION" ] || [ -z "$LOCK_PROTOCOL" ] || [ -z "$LOCK_SCHEMA" ]; then
-        echo "✗ Could not parse required fields from $LOCK_FILE"
-        exit 1
-    fi
-    if [ -z "$LOCK_GIT_COMMIT_RAW" ]; then
-        LOCK_GIT_COMMIT_RAW=null
-    fi
+    mapfile -t LOCK_FIELDS < <(LOCK_FILE="$LOCK_FILE" python3 - <<'PY'
+    import json
+    import os
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+
+    print(lock["version"])
+    print(lock["protocol_version"])
+    print(lock["schema_version"])
+    print("null" if lock.get("git_commit") is None else json.dumps(lock["git_commit"]))
+    PY
+    )
+    LOCK_VERSION="${LOCK_FIELDS[0]}"
+    LOCK_PROTOCOL="${LOCK_FIELDS[1]}"
+    LOCK_SCHEMA="${LOCK_FIELDS[2]}"
+    LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Syncing mesh source to macOS…"
     rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
     echo "✓ Mesh sync complete"
@@ -580,12 +606,34 @@ build-macos: sync-macos
     echo ""
     echo "▸ Building mesh on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo build --release --bin mesh'"
-    REMOTE_MESH_VERSION=$(ssh {{mac_host}} "zsh -ilc '~/projects/mesh/target/release/mesh --version | cut -d \" \" -f2'")
-    if [ "$REMOTE_MESH_VERSION" != "$LOCK_VERSION" ]; then
-        echo "✗ Remote mesh version mismatch: lock=$LOCK_VERSION remote=$REMOTE_MESH_VERSION"
-        exit 1
-    fi
-    echo "✓ Remote mesh version matches lock ($LOCK_VERSION)"
+    REMOTE_MESH_JSON=$(ssh {{mac_host}} "zsh -ilc '~/projects/mesh/target/release/mesh version --json'")
+    LOCK_FILE="$LOCK_FILE" INSTALLED_MESH_JSON="$REMOTE_MESH_JSON" python3 - <<'PY'
+    import json
+    import os
+    import sys
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+    installed = json.loads(os.environ["INSTALLED_MESH_JSON"])
+
+    issues = []
+    for key in ("version", "protocol_version", "schema_version"):
+        if installed.get(key) != lock.get(key):
+            issues.append(f"{key}: lock={lock.get(key)!r} installed={installed.get(key)!r}")
+
+    expected_commit = lock.get("git_commit")
+    if expected_commit is not None and installed.get("git_commit") != expected_commit:
+        issues.append(
+            f"git_commit: lock={expected_commit!r} installed={installed.get('git_commit')!r}"
+        )
+
+    if issues:
+        print("✗ Remote mesh compatibility mismatch:")
+        for issue in issues:
+            print(f"  - {issue}")
+        sys.exit(1)
+    PY
+    echo "✓ Remote mesh compatibility matches lock ($LOCK_VERSION)"
     echo ""
     echo "▸ Installing daemon to ~/.local/bin/ on macOS…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p ~/.local/bin && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon ~/.local/bin/ && codesign --force --sign - ~/.local/bin/taurhaus-daemon'"
@@ -595,7 +643,7 @@ build-macos: sync-macos
     echo ""
     echo "▸ Bundling daemon + mesh into resources…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
-    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
+    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && printf \"%s\\n\" \"$LOCK_VERSION\" > {{mac_dir}}/src-tauri/resources/mesh.version'"
     TMP_MANIFEST=$(mktemp)
     cat > "$TMP_MANIFEST" <<JSON
     {
@@ -642,17 +690,23 @@ build-macos-intel: sync-macos
         echo "✗ Lock manifest not found at $LOCK_FILE"
         exit 1
     fi
-    LOCK_VERSION=$(grep '"version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/')
-    LOCK_PROTOCOL=$(grep '"protocol_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"protocol_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_SCHEMA=$(grep '"schema_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"schema_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_GIT_COMMIT_RAW=$(grep '"git_commit"' "$LOCK_FILE" | head -1 | sed -E 's/.*"git_commit":[[:space:]]*(.*)/\1/' | sed -E 's/[[:space:]]*$//' | sed -E 's/,$//')
-    if [ -z "$LOCK_VERSION" ] || [ -z "$LOCK_PROTOCOL" ] || [ -z "$LOCK_SCHEMA" ]; then
-        echo "✗ Could not parse required fields from $LOCK_FILE"
-        exit 1
-    fi
-    if [ -z "$LOCK_GIT_COMMIT_RAW" ]; then
-        LOCK_GIT_COMMIT_RAW=null
-    fi
+    mapfile -t LOCK_FIELDS < <(LOCK_FILE="$LOCK_FILE" python3 - <<'PY'
+    import json
+    import os
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+
+    print(lock["version"])
+    print(lock["protocol_version"])
+    print(lock["schema_version"])
+    print("null" if lock.get("git_commit") is None else json.dumps(lock["git_commit"]))
+    PY
+    )
+    LOCK_VERSION="${LOCK_FIELDS[0]}"
+    LOCK_PROTOCOL="${LOCK_FIELDS[1]}"
+    LOCK_SCHEMA="${LOCK_FIELDS[2]}"
+    LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Syncing mesh source to macOS…"
     rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
     echo "✓ Mesh sync complete"
@@ -668,16 +722,38 @@ build-macos-intel: sync-macos
     echo ""
     echo "▸ Building mesh for x86_64 on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo build --release --bin mesh --target x86_64-apple-darwin'"
-    REMOTE_MESH_VERSION=$(ssh {{mac_host}} "zsh -ilc '~/projects/mesh/target/x86_64-apple-darwin/release/mesh --version | cut -d \" \" -f2'")
-    if [ "$REMOTE_MESH_VERSION" != "$LOCK_VERSION" ]; then
-        echo "✗ Remote mesh version mismatch: lock=$LOCK_VERSION remote=$REMOTE_MESH_VERSION"
-        exit 1
-    fi
-    echo "✓ Remote mesh version matches lock ($LOCK_VERSION)"
+    REMOTE_MESH_JSON=$(ssh {{mac_host}} "zsh -ilc '~/projects/mesh/target/x86_64-apple-darwin/release/mesh version --json'")
+    LOCK_FILE="$LOCK_FILE" INSTALLED_MESH_JSON="$REMOTE_MESH_JSON" python3 - <<'PY'
+    import json
+    import os
+    import sys
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+    installed = json.loads(os.environ["INSTALLED_MESH_JSON"])
+
+    issues = []
+    for key in ("version", "protocol_version", "schema_version"):
+        if installed.get(key) != lock.get(key):
+            issues.append(f"{key}: lock={lock.get(key)!r} installed={installed.get(key)!r}")
+
+    expected_commit = lock.get("git_commit")
+    if expected_commit is not None and installed.get("git_commit") != expected_commit:
+        issues.append(
+            f"git_commit: lock={expected_commit!r} installed={installed.get('git_commit')!r}"
+        )
+
+    if issues:
+        print("✗ Remote mesh compatibility mismatch:")
+        for issue in issues:
+            print(f"  - {issue}")
+        sys.exit(1)
+    PY
+    echo "✓ Remote mesh compatibility matches lock ($LOCK_VERSION)"
     echo ""
     echo "▸ Bundling daemon + mesh into resources…"
     ssh {{mac_host}} "zsh -ilc 'cp {{mac_dir}}/src-tauri/target/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
-    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/x86_64-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/x86_64-apple-darwin/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
+    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/x86_64-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && printf \"%s\\n\" \"$LOCK_VERSION\" > {{mac_dir}}/src-tauri/resources/mesh.version'"
     TMP_MANIFEST=$(mktemp)
     cat > "$TMP_MANIFEST" <<JSON
     {
@@ -718,17 +794,23 @@ build-macos-universal: sync-macos
         echo "✗ Lock manifest not found at $LOCK_FILE"
         exit 1
     fi
-    LOCK_VERSION=$(grep '"version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/')
-    LOCK_PROTOCOL=$(grep '"protocol_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"protocol_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_SCHEMA=$(grep '"schema_version"' "$LOCK_FILE" | head -1 | sed -E 's/.*"schema_version":[[:space:]]*([0-9]+).*/\1/')
-    LOCK_GIT_COMMIT_RAW=$(grep '"git_commit"' "$LOCK_FILE" | head -1 | sed -E 's/.*"git_commit":[[:space:]]*(.*)/\1/' | sed -E 's/[[:space:]]*$//' | sed -E 's/,$//')
-    if [ -z "$LOCK_VERSION" ] || [ -z "$LOCK_PROTOCOL" ] || [ -z "$LOCK_SCHEMA" ]; then
-        echo "✗ Could not parse required fields from $LOCK_FILE"
-        exit 1
-    fi
-    if [ -z "$LOCK_GIT_COMMIT_RAW" ]; then
-        LOCK_GIT_COMMIT_RAW=null
-    fi
+    mapfile -t LOCK_FIELDS < <(LOCK_FILE="$LOCK_FILE" python3 - <<'PY'
+    import json
+    import os
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+
+    print(lock["version"])
+    print(lock["protocol_version"])
+    print(lock["schema_version"])
+    print("null" if lock.get("git_commit") is None else json.dumps(lock["git_commit"]))
+    PY
+    )
+    LOCK_VERSION="${LOCK_FIELDS[0]}"
+    LOCK_PROTOCOL="${LOCK_FIELDS[1]}"
+    LOCK_SCHEMA="${LOCK_FIELDS[2]}"
+    LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Syncing mesh source to macOS…"
     rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
     echo "✓ Mesh sync complete"
@@ -756,16 +838,38 @@ build-macos-universal: sync-macos
     echo ""
     echo "▸ Creating universal mesh binary with lipo…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p ~/projects/mesh/target/universal-apple-darwin/release && lipo -create ~/projects/mesh/target/aarch64-apple-darwin/release/mesh ~/projects/mesh/target/x86_64-apple-darwin/release/mesh -output ~/projects/mesh/target/universal-apple-darwin/release/mesh && codesign --force --sign - ~/projects/mesh/target/universal-apple-darwin/release/mesh'"
-    REMOTE_MESH_VERSION=$(ssh {{mac_host}} "zsh -ilc '~/projects/mesh/target/universal-apple-darwin/release/mesh --version | cut -d \" \" -f2'")
-    if [ "$REMOTE_MESH_VERSION" != "$LOCK_VERSION" ]; then
-        echo "✗ Remote mesh version mismatch: lock=$LOCK_VERSION remote=$REMOTE_MESH_VERSION"
-        exit 1
-    fi
-    echo "✓ Remote mesh version matches lock ($LOCK_VERSION)"
+    REMOTE_MESH_JSON=$(ssh {{mac_host}} "zsh -ilc '~/projects/mesh/target/universal-apple-darwin/release/mesh version --json'")
+    LOCK_FILE="$LOCK_FILE" INSTALLED_MESH_JSON="$REMOTE_MESH_JSON" python3 - <<'PY'
+    import json
+    import os
+    import sys
+
+    with open(os.environ["LOCK_FILE"], "r", encoding="utf-8") as handle:
+        lock = json.load(handle)
+    installed = json.loads(os.environ["INSTALLED_MESH_JSON"])
+
+    issues = []
+    for key in ("version", "protocol_version", "schema_version"):
+        if installed.get(key) != lock.get(key):
+            issues.append(f"{key}: lock={lock.get(key)!r} installed={installed.get(key)!r}")
+
+    expected_commit = lock.get("git_commit")
+    if expected_commit is not None and installed.get("git_commit") != expected_commit:
+        issues.append(
+            f"git_commit: lock={expected_commit!r} installed={installed.get('git_commit')!r}"
+        )
+
+    if issues:
+        print("✗ Remote mesh compatibility mismatch:")
+        for issue in issues:
+            print(f"  - {issue}")
+        sys.exit(1)
+    PY
+    echo "✓ Remote mesh compatibility matches lock ($LOCK_VERSION)"
     echo ""
     echo "▸ Bundling daemon + mesh into resources…"
     ssh {{mac_host}} "zsh -ilc 'mkdir -p {{mac_dir}}/src-tauri/resources && cp {{mac_dir}}/src-tauri/target/universal-apple-darwin/release/taurhaus-daemon {{mac_dir}}/src-tauri/resources/ && codesign --force --sign - {{mac_dir}}/src-tauri/resources/taurhaus-daemon'"
-    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/universal-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && ~/projects/mesh/target/universal-apple-darwin/release/mesh --version | cut -d \" \" -f2 > {{mac_dir}}/src-tauri/resources/mesh.version'"
+    ssh {{mac_host}} "zsh -ilc 'cp ~/projects/mesh/target/universal-apple-darwin/release/mesh {{mac_dir}}/src-tauri/resources/mesh && chmod 755 {{mac_dir}}/src-tauri/resources/mesh && codesign --force --sign - {{mac_dir}}/src-tauri/resources/mesh && printf \"%s\\n\" \"$LOCK_VERSION\" > {{mac_dir}}/src-tauri/resources/mesh.version'"
     TMP_MANIFEST=$(mktemp)
     cat > "$TMP_MANIFEST" <<JSON
     {

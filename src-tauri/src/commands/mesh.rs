@@ -2,11 +2,15 @@ use std::path::{Path, PathBuf};
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{is_native_daemon, validate_wsl_distro, wsl_command};
-use crate::models::{MeshInstallStatus, OperationResult};
+use crate::models::{
+    MeshCompatibilityContract, MeshCompatibilityIssue, MeshInstallStatus, OperationResult,
+};
+use serde::Deserialize;
 use tauri::Manager;
 
 const MESH_BINARY_NAME: &str = "mesh";
-const MESH_VERSION_RESOURCE: &str = "mesh.version";
+const MESH_MANIFEST_RESOURCE: &str = "mesh.manifest.json";
+const WSL_INSTALL_VERSION_JSON_MARKER: &str = "__TAURHAUS_MESH_VERSION_JSON__=";
 const WSL_INSTALL_MEMBER_DAEMON_MARKER: &str = "__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=";
 const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=";
 
@@ -14,11 +18,11 @@ const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
     let span = IpcCommandSpan::start("check_mesh_install_status");
     let result = {
-        let bundled_version = read_bundled_mesh_version(&app)?;
+        let bundled_contract = read_bundled_mesh_contract(&app)?;
         if is_native_daemon() {
-            check_mesh_install_native(&bundled_version)
+            check_mesh_install_native(&bundled_contract)
         } else {
-            check_mesh_install_wsl(&bundled_version)
+            check_mesh_install_wsl(&bundled_contract)
         }
     };
     span.finish_result(&result);
@@ -29,18 +33,20 @@ pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallSta
 pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let span = IpcCommandSpan::start("install_mesh");
     let result = {
-        let (bundled_binary, bundled_version) = resolve_bundled_mesh_assets(&app)?;
+        let (bundled_binary, bundled_contract) = resolve_bundled_mesh_assets(&app)?;
         if is_native_daemon() {
-            install_mesh_native(&bundled_binary, &bundled_version)
+            install_mesh_native(&bundled_binary, &bundled_contract)
         } else {
-            install_mesh_wsl(&app, &bundled_binary, &bundled_version)
+            install_mesh_wsl(&app, &bundled_binary, &bundled_contract)
         }
     };
     span.finish_result(&result);
     result
 }
 
-fn resolve_bundled_mesh_assets(app: &tauri::AppHandle) -> Result<(PathBuf, String), String> {
+fn resolve_bundled_mesh_assets(
+    app: &tauri::AppHandle,
+) -> Result<(PathBuf, MeshCompatibilityContract), String> {
     let resource_dir = app
         .path()
         .resource_dir()
@@ -52,37 +58,35 @@ fn resolve_bundled_mesh_assets(app: &tauri::AppHandle) -> Result<(PathBuf, Strin
             bundled_binary.display()
         ));
     }
-    let bundled_version = read_mesh_version_resource(&resource_dir.join("resources"))?;
-    Ok((bundled_binary, bundled_version))
+    let bundled_contract = read_mesh_manifest_resource(&resource_dir.join("resources"))?;
+    Ok((bundled_binary, bundled_contract))
 }
 
-fn read_bundled_mesh_version(app: &tauri::AppHandle) -> Result<String, String> {
+fn read_bundled_mesh_contract(app: &tauri::AppHandle) -> Result<MeshCompatibilityContract, String> {
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("Failed to resolve resource directory: {e}"))?;
-    read_mesh_version_resource(&resource_dir.join("resources"))
+    read_mesh_manifest_resource(&resource_dir.join("resources"))
 }
 
-fn read_mesh_version_resource(resources_dir: &Path) -> Result<String, String> {
-    let version_path = resources_dir.join(MESH_VERSION_RESOURCE);
-    if !version_path.exists() {
+fn read_mesh_manifest_resource(resources_dir: &Path) -> Result<MeshCompatibilityContract, String> {
+    let manifest_path = resources_dir.join(MESH_MANIFEST_RESOURCE);
+    if !manifest_path.exists() {
         return Err(format!(
-            "Bundled mesh version file not found at {}",
-            version_path.display()
+            "Bundled mesh manifest file not found at {}",
+            manifest_path.display()
         ));
     }
 
-    let raw = std::fs::read_to_string(&version_path)
-        .map_err(|e| format!("Failed to read bundled mesh version: {e}"))?;
-    let version = raw.trim();
-    if version.is_empty() {
-        return Err(format!(
-            "Bundled mesh version file is empty: {}",
-            version_path.display()
-        ));
-    }
-    Ok(version.to_string())
+    let raw = std::fs::read(&manifest_path)
+        .map_err(|e| format!("Failed to read bundled mesh manifest: {e}"))?;
+    parse_mesh_contract_json(&raw).map_err(|e| {
+        format!(
+            "Bundled mesh manifest is invalid at {}: {e}",
+            manifest_path.display()
+        )
+    })
 }
 
 fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
@@ -107,60 +111,238 @@ fn detect_default_distro() -> Result<Option<String>, String> {
     Ok(parse_distro_from_wsl_output(&output.stdout))
 }
 
-fn parse_mesh_version(raw: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(raw);
-    text.lines().find_map(|line| {
-        let line = line.trim();
-        let version = line.strip_prefix("mesh ")?;
-        version
-            .split_whitespace()
-            .next()
-            .map(std::string::ToString::to_string)
+#[derive(Debug, Deserialize)]
+struct WireMeshCompatibilityContract {
+    version: String,
+    protocol_version: u32,
+    schema_version: u32,
+    #[serde(default)]
+    git_commit: Option<String>,
+}
+
+fn normalize_optional_git_commit(raw: Option<String>) -> Option<String> {
+    raw.map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_mesh_contract_json(raw: &[u8]) -> Result<MeshCompatibilityContract, String> {
+    let parsed: WireMeshCompatibilityContract =
+        serde_json::from_slice(raw).map_err(|e| format!("failed to parse JSON: {e}"))?;
+    let version = parsed.version.trim();
+    if version.is_empty() {
+        return Err(format!("missing required non-empty \"version\" field"));
+    }
+
+    Ok(MeshCompatibilityContract {
+        version: version.to_string(),
+        protocol_version: parsed.protocol_version,
+        schema_version: parsed.schema_version,
+        git_commit: normalize_optional_git_commit(parsed.git_commit),
     })
 }
 
-fn check_mesh_install_native(bundled_version: &str) -> Result<MeshInstallStatus, String> {
+fn format_mesh_command_error(context: &str, output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        format!("{context} failed with status {}", output.status)
+    } else {
+        format!("{context} failed: {stderr}")
+    }
+}
+
+fn read_mesh_contract_from_output(
+    context: &str,
+    output: std::process::Output,
+) -> Result<MeshCompatibilityContract, String> {
+    if !output.status.success() {
+        return Err(format_mesh_command_error(context, &output));
+    }
+    parse_mesh_contract_json(&output.stdout)
+        .map_err(|e| format!("{context} returned invalid JSON: {e}"))
+}
+
+fn read_mesh_contract_native(binary: &Path) -> Result<MeshCompatibilityContract, String> {
+    let output = std::process::Command::new(binary)
+        .args(["version", "--json"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run mesh version --json: {e}"))?;
+    read_mesh_contract_from_output("mesh version --json", output)
+}
+
+fn read_mesh_contract_wsl(distro: &str, binary: &str) -> Result<MeshCompatibilityContract, String> {
+    let output = wsl_command()
+        .args(["-d", distro, "--", binary, "version", "--json"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run mesh version --json in WSL: {e}"))?;
+    read_mesh_contract_from_output("mesh version --json", output)
+}
+
+fn compatibility_issue(
+    code: &str,
+    message: String,
+    expected: Option<String>,
+    actual: Option<String>,
+) -> MeshCompatibilityIssue {
+    MeshCompatibilityIssue {
+        code: code.to_string(),
+        message,
+        expected,
+        actual,
+    }
+}
+
+fn mesh_contract_read_issue(read_error: String) -> MeshCompatibilityIssue {
+    compatibility_issue(
+        "json_contract_unavailable",
+        "Installed Mesh CLI could not be verified with `mesh version --json`. Install bundled Mesh to continue.".to_string(),
+        Some("mesh version --json".to_string()),
+        Some(read_error),
+    )
+}
+
+fn compare_mesh_contracts(
+    bundled: &MeshCompatibilityContract,
+    installed: &MeshCompatibilityContract,
+) -> Vec<MeshCompatibilityIssue> {
+    let mut issues = Vec::new();
+
+    if installed.version != bundled.version {
+        issues.push(compatibility_issue(
+            "version_mismatch",
+            format!(
+                "Installed Mesh CLI version {} does not match taurhaus bundled Mesh version {}. Install bundled Mesh to continue.",
+                installed.version, bundled.version
+            ),
+            Some(bundled.version.clone()),
+            Some(installed.version.clone()),
+        ));
+    }
+
+    if installed.protocol_version != bundled.protocol_version {
+        issues.push(compatibility_issue(
+            "protocol_version_mismatch",
+            format!(
+                "Installed Mesh CLI protocol version {} does not match taurhaus required protocol version {}. Install bundled Mesh to continue.",
+                installed.protocol_version, bundled.protocol_version
+            ),
+            Some(bundled.protocol_version.to_string()),
+            Some(installed.protocol_version.to_string()),
+        ));
+    }
+
+    if installed.schema_version != bundled.schema_version {
+        issues.push(compatibility_issue(
+            "schema_version_mismatch",
+            format!(
+                "Installed Mesh CLI schema version {} does not match taurhaus required schema version {}. Install bundled Mesh to continue.",
+                installed.schema_version, bundled.schema_version
+            ),
+            Some(bundled.schema_version.to_string()),
+            Some(installed.schema_version.to_string()),
+        ));
+    }
+
+    if let Some(expected_commit) = bundled.git_commit.as_ref() {
+        let actual_commit = installed
+            .git_commit
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        if &actual_commit != expected_commit {
+            issues.push(compatibility_issue(
+                "git_commit_mismatch",
+                format!(
+                    "Installed Mesh CLI git commit {} does not match taurhaus pinned Mesh commit {}. Install bundled Mesh to continue.",
+                    actual_commit, expected_commit
+                ),
+                Some(expected_commit.clone()),
+                Some(actual_commit),
+            ));
+        }
+    }
+
+    issues
+}
+
+fn mesh_status_not_installed(
+    bundled_contract: &MeshCompatibilityContract,
+    environment_available: bool,
+    error: Option<String>,
+) -> MeshInstallStatus {
+    MeshInstallStatus {
+        installed: false,
+        version: None,
+        bundled_version: bundled_contract.version.clone(),
+        needs_update: false,
+        bundled_contract: bundled_contract.clone(),
+        installed_contract: None,
+        compatibility_issues: Vec::new(),
+        environment_available,
+        error,
+    }
+}
+
+fn mesh_status_from_contract(
+    bundled_contract: &MeshCompatibilityContract,
+    installed_contract: Option<MeshCompatibilityContract>,
+    compatibility_issues: Vec<MeshCompatibilityIssue>,
+    environment_available: bool,
+    error: Option<String>,
+) -> MeshInstallStatus {
+    MeshInstallStatus {
+        installed: true,
+        version: installed_contract
+            .as_ref()
+            .map(|contract| contract.version.clone()),
+        bundled_version: bundled_contract.version.clone(),
+        needs_update: !compatibility_issues.is_empty(),
+        bundled_contract: bundled_contract.clone(),
+        installed_contract,
+        compatibility_issues,
+        environment_available,
+        error,
+    }
+}
+
+fn check_mesh_install_native(
+    bundled_contract: &MeshCompatibilityContract,
+) -> Result<MeshInstallStatus, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let binary = home.join(".local/bin/mesh");
 
     if !binary.exists() {
-        return Ok(MeshInstallStatus {
-            installed: false,
-            version: None,
-            bundled_version: bundled_version.to_string(),
-            needs_update: false,
-            environment_available: true,
-            error: None,
-        });
+        return Ok(mesh_status_not_installed(bundled_contract, true, None));
     }
 
-    let version_output = std::process::Command::new(&binary)
-        .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
-
-    let version = match version_output {
-        Ok(output) if output.status.success() => parse_mesh_version(&output.stdout),
-        _ => None,
-    };
-
-    let needs_update = match &version {
-        Some(v) => v != bundled_version,
-        None => true,
-    };
-
-    Ok(MeshInstallStatus {
-        installed: true,
-        version,
-        bundled_version: bundled_version.to_string(),
-        needs_update,
-        environment_available: true,
-        error: None,
-    })
+    match read_mesh_contract_native(&binary) {
+        Ok(installed_contract) => {
+            let issues = compare_mesh_contracts(bundled_contract, &installed_contract);
+            Ok(mesh_status_from_contract(
+                bundled_contract,
+                Some(installed_contract),
+                issues,
+                true,
+                None,
+            ))
+        }
+        Err(read_error) => Ok(mesh_status_from_contract(
+            bundled_contract,
+            None,
+            vec![mesh_contract_read_issue(read_error)],
+            true,
+            None,
+        )),
+    }
 }
 
-fn check_mesh_install_wsl(bundled_version: &str) -> Result<MeshInstallStatus, String> {
+fn check_mesh_install_wsl(
+    bundled_contract: &MeshCompatibilityContract,
+) -> Result<MeshInstallStatus, String> {
     let wsl_check = wsl_command()
         .arg("--status")
         .stdin(std::process::Stdio::null())
@@ -170,24 +352,18 @@ fn check_mesh_install_wsl(bundled_version: &str) -> Result<MeshInstallStatus, St
 
     match wsl_check {
         Err(_) => {
-            return Ok(MeshInstallStatus {
-                installed: false,
-                version: None,
-                bundled_version: bundled_version.to_string(),
-                needs_update: false,
-                environment_available: false,
-                error: Some("WSL is not installed".to_string()),
-            });
+            return Ok(mesh_status_not_installed(
+                bundled_contract,
+                false,
+                Some("WSL is not installed".to_string()),
+            ));
         }
         Ok(output) if !output.status.success() => {
-            return Ok(MeshInstallStatus {
-                installed: false,
-                version: None,
-                bundled_version: bundled_version.to_string(),
-                needs_update: false,
-                environment_available: false,
-                error: Some("WSL is not available".to_string()),
-            });
+            return Ok(mesh_status_not_installed(
+                bundled_contract,
+                false,
+                Some("WSL is not available".to_string()),
+            ));
         }
         _ => {}
     }
@@ -195,26 +371,20 @@ fn check_mesh_install_wsl(bundled_version: &str) -> Result<MeshInstallStatus, St
     let distro = match detect_default_distro()? {
         Some(d) => d,
         None => {
-            return Ok(MeshInstallStatus {
-                installed: false,
-                version: None,
-                bundled_version: bundled_version.to_string(),
-                needs_update: false,
-                environment_available: true,
-                error: Some("No WSL distro configured".to_string()),
-            });
+            return Ok(mesh_status_not_installed(
+                bundled_contract,
+                true,
+                Some("No WSL distro configured".to_string()),
+            ));
         }
     };
 
     if let Err(e) = validate_wsl_distro(&distro) {
-        return Ok(MeshInstallStatus {
-            installed: false,
-            version: None,
-            bundled_version: bundled_version.to_string(),
-            needs_update: false,
-            environment_available: true,
-            error: Some(format!("Invalid WSL distro name: {e}")),
-        });
+        return Ok(mesh_status_not_installed(
+            bundled_contract,
+            true,
+            Some(format!("Invalid WSL distro name: {e}")),
+        ));
     }
 
     let exists = wsl_command()
@@ -227,45 +397,33 @@ fn check_mesh_install_wsl(bundled_version: &str) -> Result<MeshInstallStatus, St
         .unwrap_or(false);
 
     if !exists {
-        return Ok(MeshInstallStatus {
-            installed: false,
-            version: None,
-            bundled_version: bundled_version.to_string(),
-            needs_update: false,
-            environment_available: true,
-            error: None,
-        });
+        return Ok(mesh_status_not_installed(bundled_contract, true, None));
     }
 
-    let version_output = wsl_command()
-        .args(["-d", &distro, "--", "$HOME/.local/bin/mesh", "--version"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
-
-    let version = match version_output {
-        Ok(output) if output.status.success() => parse_mesh_version(&output.stdout),
-        _ => None,
-    };
-
-    let needs_update = match &version {
-        Some(v) => v != bundled_version,
-        None => true,
-    };
-
-    Ok(MeshInstallStatus {
-        installed: true,
-        version,
-        bundled_version: bundled_version.to_string(),
-        needs_update,
-        environment_available: true,
-        error: None,
-    })
+    match read_mesh_contract_wsl(&distro, "$HOME/.local/bin/mesh") {
+        Ok(installed_contract) => {
+            let issues = compare_mesh_contracts(bundled_contract, &installed_contract);
+            Ok(mesh_status_from_contract(
+                bundled_contract,
+                Some(installed_contract),
+                issues,
+                true,
+                None,
+            ))
+        }
+        Err(read_error) => Ok(mesh_status_from_contract(
+            bundled_contract,
+            None,
+            vec![mesh_contract_read_issue(read_error)],
+            true,
+            None,
+        )),
+    }
 }
 
 fn install_mesh_native(
     bundled_binary: &Path,
-    bundled_version: &str,
+    bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
@@ -308,25 +466,32 @@ fn install_mesh_native(
     }
 
     let verify = std::process::Command::new(&target_path)
-        .arg("--version")
+        .args(["version", "--json"])
         .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .output();
 
     match verify {
-        Ok(output) if output.status.success() => {
-            let installed_version = parse_mesh_version(&output.stdout)
-                .ok_or("Mesh was installed but version output was invalid")?;
-            if installed_version != bundled_version {
+        Ok(output) => {
+            let installed_contract = read_mesh_contract_from_output("mesh version --json", output)
+                .map_err(|e| format!("Mesh was copied but verification failed: {e}"))?;
+            let issues = compare_mesh_contracts(bundled_contract, &installed_contract);
+            if !issues.is_empty() {
+                let summary = issues
+                    .into_iter()
+                    .map(|issue| issue.message)
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 return Err(format!(
-                    "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
+                    "Mesh was copied but compatibility verification failed: {summary}"
                 ));
             }
             Ok(OperationResult::success(format!(
-                "Mesh installed successfully: mesh {installed_version}"
+                "Mesh installed successfully: mesh {}",
+                installed_contract.version
             )))
         }
-        Ok(_) => Err("Mesh was copied but --version check failed.".to_string()),
         Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
     }
 }
@@ -334,7 +499,7 @@ fn install_mesh_native(
 fn install_mesh_wsl(
     app: &tauri::AppHandle,
     bundled_binary: &Path,
-    bundled_version: &str,
+    bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
     let distro = detect_default_distro()?.ok_or("No WSL distro configured")?;
     validate_wsl_distro(&distro).map_err(|e| format!("Invalid distro: {e}"))?;
@@ -366,11 +531,15 @@ fn install_mesh_wsl(
     }
 
     let result = parse_mesh_wsl_install_output(&output.stdout)?;
-    if result.version != format!("mesh {bundled_version}") {
-        let installed_version =
-            parse_mesh_version(result.version.as_bytes()).unwrap_or_else(|| result.version.clone());
+    let issues = compare_mesh_contracts(bundled_contract, &result.contract);
+    if !issues.is_empty() {
+        let summary = issues
+            .into_iter()
+            .map(|issue| issue.message)
+            .collect::<Vec<_>>()
+            .join(" ");
         return Err(format!(
-            "Installed mesh version {installed_version} does not match bundled version {bundled_version}"
+            "Installed mesh compatibility contract does not match bundled Mesh: {summary}"
         ));
     }
 
@@ -384,8 +553,8 @@ fn install_mesh_wsl(
 
     let message = match self_heal_summary {
         Some(summary) => format!(
-            "Mesh installed successfully: {} (cycled {} team daemon{}, repaired {} team{})",
-            result.version,
+            "Mesh installed successfully: mesh {} (cycled {} team daemon{}, repaired {} team{})",
+            result.contract.version,
             summary.team_daemons_ensured,
             if summary.team_daemons_ensured == 1 {
                 ""
@@ -399,7 +568,10 @@ fn install_mesh_wsl(
                 "s"
             },
         ),
-        None => format!("Mesh installed successfully: {}", result.version),
+        None => format!(
+            "Mesh installed successfully: mesh {}",
+            result.contract.version
+        ),
     };
 
     Ok(OperationResult::success(message))
@@ -431,7 +603,7 @@ fn run_mesh_install_self_heal(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[derive(Debug)]
 struct WslMeshInstallResult {
-    version: String,
+    contract: MeshCompatibilityContract,
     member_daemons_were_running: bool,
     team_daemons_were_running: bool,
 }
@@ -486,7 +658,8 @@ fi
 cp "$source_path" "$temp_path"
 chmod +x "$temp_path"
 mv -f "$temp_path" "$target_path"
-"$target_path" --version
+version_json="$("$target_path" version --json | tr -d '\r\n')"
+printf '%s%s\n' "${WSL_INSTALL_VERSION_JSON_MARKER:-__TAURHAUS_MESH_VERSION_JSON__=}" "$version_json"
 printf '%s%s\n' "${WSL_INSTALL_MEMBER_DAEMON_MARKER:-__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=}" "$member_daemons_were_running"
 printf '%s%s\n' "${WSL_INSTALL_TEAM_DAEMON_MARKER:-__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=}" "$team_daemons_were_running"
 "#
@@ -494,11 +667,15 @@ printf '%s%s\n' "${WSL_INSTALL_TEAM_DAEMON_MARKER:-__TAURHAUS_MESH_TEAM_DAEMONS_
 
 fn parse_mesh_wsl_install_output(stdout: &[u8]) -> Result<WslMeshInstallResult, String> {
     let text = String::from_utf8_lossy(stdout);
-    let mut version = None;
+    let mut version_json = None;
     let mut member_daemons_were_running = false;
     let mut team_daemons_were_running = false;
 
     for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if let Some(raw) = line.strip_prefix(WSL_INSTALL_VERSION_JSON_MARKER) {
+            version_json = Some(raw.to_string());
+            continue;
+        }
         if let Some(raw) = line.strip_prefix(WSL_INSTALL_MEMBER_DAEMON_MARKER) {
             member_daemons_were_running = raw == "1";
             continue;
@@ -507,17 +684,17 @@ fn parse_mesh_wsl_install_output(stdout: &[u8]) -> Result<WslMeshInstallResult, 
             team_daemons_were_running = raw == "1";
             continue;
         }
-        if version.is_none() {
-            version = Some(line.to_string());
-        }
     }
 
-    let version = version.ok_or_else(|| {
-        "WSL install completed but no mesh version was returned for verification".to_string()
+    let version_json = version_json.ok_or_else(|| {
+        "WSL install completed but no mesh compatibility JSON was returned for verification"
+            .to_string()
     })?;
+    let contract = parse_mesh_contract_json(version_json.as_bytes())
+        .map_err(|e| format!("WSL install completed but mesh version JSON was invalid: {e}"))?;
 
     Ok(WslMeshInstallResult {
-        version,
+        contract,
         member_daemons_were_running,
         team_daemons_were_running,
     })
@@ -540,21 +717,24 @@ mod tests {
     }
 
     #[test]
-    fn parse_mesh_version_returns_token_after_prefix() {
-        assert_eq!(
-            parse_mesh_version(b"mesh 0.2.0\n"),
-            Some("0.2.0".to_string())
-        );
-        assert_eq!(
-            parse_mesh_version(b"mesh 0.2.0-dev+abc\n"),
-            Some("0.2.0-dev+abc".to_string())
-        );
+    fn parse_mesh_contract_json_reads_required_fields() {
+        let contract = parse_mesh_contract_json(
+            br#"{"version":"0.2.0","protocol_version":1,"schema_version":2,"git_commit":"abc123"}"#,
+        )
+        .expect("parsed");
+        assert_eq!(contract.version, "0.2.0");
+        assert_eq!(contract.protocol_version, 1);
+        assert_eq!(contract.schema_version, 2);
+        assert_eq!(contract.git_commit.as_deref(), Some("abc123"));
     }
 
     #[test]
-    fn parse_mesh_version_ignores_unrelated_output() {
-        assert_eq!(parse_mesh_version(b"no version here\n"), None);
-        assert_eq!(parse_mesh_version(b""), None);
+    fn parse_mesh_contract_json_rejects_missing_version() {
+        let err = parse_mesh_contract_json(
+            br#"{"version":"  ","protocol_version":1,"schema_version":1}"#,
+        )
+        .expect_err("missing version should fail");
+        assert!(err.contains("version"));
     }
 
     #[test]
@@ -567,21 +747,52 @@ mod tests {
     }
 
     #[test]
-    fn parse_mesh_wsl_install_output_reads_version_and_daemon_markers() {
-        let raw = b"mesh 0.5.3\n__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=1\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n";
+    fn compare_mesh_contracts_reports_all_contract_mismatches() {
+        let bundled = MeshCompatibilityContract {
+            version: "0.5.4".to_string(),
+            protocol_version: 2,
+            schema_version: 3,
+            git_commit: Some("expected-commit".to_string()),
+        };
+        let installed = MeshCompatibilityContract {
+            version: "0.5.3".to_string(),
+            protocol_version: 1,
+            schema_version: 4,
+            git_commit: Some("actual-commit".to_string()),
+        };
+
+        let issues = compare_mesh_contracts(&bundled, &installed);
+        let codes = issues
+            .iter()
+            .map(|issue| issue.code.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            codes,
+            vec![
+                "version_mismatch",
+                "protocol_version_mismatch",
+                "schema_version_mismatch",
+                "git_commit_mismatch"
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_mesh_wsl_install_output_reads_contract_and_daemon_markers() {
+        let raw = b"__TAURHAUS_MESH_VERSION_JSON__={\"version\":\"0.5.3\",\"protocol_version\":1,\"schema_version\":1,\"git_commit\":\"abc123\"}\n__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=1\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n";
         let result = parse_mesh_wsl_install_output(raw).expect("parsed");
-        assert_eq!(result.version, "mesh 0.5.3");
+        assert_eq!(result.contract.version, "0.5.3");
         assert!(result.member_daemons_were_running);
         assert!(!result.team_daemons_were_running);
     }
 
     #[test]
-    fn parse_mesh_wsl_install_output_requires_version_line() {
+    fn parse_mesh_wsl_install_output_requires_version_json_line() {
         let err = parse_mesh_wsl_install_output(
             b"__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=0\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n",
         )
-        .expect_err("missing version should fail");
-        assert!(err.contains("no mesh version"));
+        .expect_err("missing version JSON should fail");
+        assert!(err.contains("no mesh compatibility JSON"));
     }
 
     #[test]
@@ -594,9 +805,10 @@ mod tests {
         assert!(script.contains("[[:space:]]daemon([[:space:]]|$).*--pane"));
         assert!(script.contains("kill -TERM $member_pids || true"));
         assert!(script.contains("kill -TERM $team_pids || true"));
+        assert!(script.contains(WSL_INSTALL_VERSION_JSON_MARKER));
         assert!(script.contains(WSL_INSTALL_MEMBER_DAEMON_MARKER));
         assert!(script.contains(WSL_INSTALL_TEAM_DAEMON_MARKER));
-        assert!(script.contains("\"$target_path\" --version"));
+        assert!(script.contains("\"$target_path\" version --json"));
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -611,8 +823,8 @@ mod tests {
         write_executable(
             &installed_mesh,
             r#"#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo "mesh 0.1.0"
+if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
+  echo '{"version":"0.1.0","protocol_version":1,"schema_version":1,"git_commit":"old"}'
   exit 0
 fi
 exit 0
@@ -621,8 +833,8 @@ exit 0
         write_executable(
             &source_mesh,
             r#"#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo "mesh 9.9.9"
+if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
+  echo '{"version":"9.9.9","protocol_version":1,"schema_version":1,"git_commit":"new"}'
   exit 0
 fi
 exit 0
@@ -662,7 +874,7 @@ exit 0
         );
 
         let parsed = parse_mesh_wsl_install_output(&output.stdout).expect("parse install output");
-        assert_eq!(parsed.version, "mesh 9.9.9");
+        assert_eq!(parsed.contract.version, "9.9.9");
         assert_eq!(
             std::fs::read_to_string(&installed_mesh).expect("installed mesh"),
             std::fs::read_to_string(&source_mesh).expect("source mesh"),
