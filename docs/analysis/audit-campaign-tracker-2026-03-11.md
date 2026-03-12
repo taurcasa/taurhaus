@@ -323,7 +323,7 @@ After both audit reports are delivered:
 | #1180 | dev-3 | completed | Delete legacy retained wrappers and aliases |
 | #1181 | dev-1 | completed | Checkpoint live Mesh guardrail code into committed history |
 | #1182 | dev-3 | completed | Checkpoint retained-cycle cleanup code and test helpers |
-| #1183 | dev-2 | in_progress | Checkpoint retained-cycle command cutover into committed history |
+| #1183 | dev-2 | completed | Checkpoint retained-cycle command cutover into committed history |
 | #1184 | architect-1 | in_progress | Reduce the live phase-two doc surface after wrapper cleanup |
 | #1185 | dev-1 | in_progress | Checkpoint remaining phase-two verification scripts and fixtures |
 
@@ -360,7 +360,8 @@ After both audit reports are delivered:
 - We are not fully finished yet because the live Mesh repo still has a large dirty worktree with real code, tests, scripts, and docs that need to be turned into committed history or reduced safely.
 - `#1181` completed the live guardrail checkpoint cleanly in Mesh as two commits: one product commit for `src/orchestration_guardrails.rs`, the CLI/task/team-daemon wiring, and focused CLI integration coverage, plus one docs-only checkpoint for the live guardrail note.
 - `#1182` completed the retained-cycle helper cleanup cleanly in Mesh: the generic confirmation/recording/verification helper files are now committed, the old per-cycle support files are deleted, and only behaviorally distinct checks were kept.
-- `#1183` through `#1185` are the remaining finish-up tasks for that last stretch: commit the retained-cycle command cutover, reduce the live phase-two doc surface, and checkpoint the remaining shared verification scripts and fixtures.
+- `#1183` completed the retained-cycle command checkpoint cleanly in Mesh: the `justfile` now keeps only the generic retained-cycle command and matrix entrypoints, the 9 live retained fixture notes no longer describe deleted wrapper commands, and the command checkpoint note is committed.
+- `#1184` and `#1185` are the remaining finish-up tasks for that last stretch: reduce the live phase-two doc surface and checkpoint the remaining shared verification scripts and fixtures.
 
 ## Stopped backlog items
 
