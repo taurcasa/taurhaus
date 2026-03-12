@@ -13,7 +13,8 @@ This document tracks the current Taurhaus audit campaign, active investigation w
   - `#1227` `completed`: live delivery recovery/fix lane is no longer active as an emergency task
   - `#1228` `completed`: terminal-visible delivery was verified live through direct communication checks across the active `taurhaus-team`
 - Current communication follow-up:
-  - `#1229` `dev-1` `in_progress`: write the current-state assessment of Mesh communication after recovery, including root cause, fix, verification, and remaining risks
+  - `#1229` `completed`: `dev-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-communication-state-after-recovery-2026-03-12.md` and committed it as `f0af692`. The report records two root causes, landed fixes `57d5c2f` and `9547d88`, live verification on `taurhaus-team` and `taurmuse-team`, and one remaining rollout risk around stale/deleted supervising binaries during restart.
+  - `#1230` `architect-1` `in_progress`: assess assignment wording drift between the old working pattern and the current Mesh-generated/actionable wording
 
 ## Active audit tasks
 
