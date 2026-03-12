@@ -325,7 +325,7 @@ After both audit reports are delivered:
 | #1182 | dev-3 | completed | Checkpoint retained-cycle cleanup code and test helpers |
 | #1183 | dev-2 | completed | Checkpoint retained-cycle command cutover into committed history |
 | #1184 | architect-1 | in_progress | Reduce the live phase-two doc surface after wrapper cleanup |
-| #1185 | dev-1 | in_progress | Checkpoint remaining phase-two verification scripts and fixtures |
+| #1185 | dev-1 | completed | Checkpoint remaining phase-two verification scripts and fixtures |
 
 ### Phase-two naming freeze
 
@@ -361,7 +361,8 @@ After both audit reports are delivered:
 - `#1181` completed the live guardrail checkpoint cleanly in Mesh as two commits: one product commit for `src/orchestration_guardrails.rs`, the CLI/task/team-daemon wiring, and focused CLI integration coverage, plus one docs-only checkpoint for the live guardrail note.
 - `#1182` completed the retained-cycle helper cleanup cleanly in Mesh: the generic confirmation/recording/verification helper files are now committed, the old per-cycle support files are deleted, and only behaviorally distinct checks were kept.
 - `#1183` completed the retained-cycle command checkpoint cleanly in Mesh: the `justfile` now keeps only the generic retained-cycle command and matrix entrypoints, the 9 live retained fixture notes no longer describe deleted wrapper commands, and the command checkpoint note is committed.
-- `#1184` and `#1185` are the remaining finish-up tasks for that last stretch: reduce the live phase-two doc surface and checkpoint the remaining shared verification scripts and fixtures.
+- `#1185` completed the remaining shared verification checkpoint cleanly in Mesh as a bounded two-commit sequence: the live verification scripts, checked-in phase-two fixtures, smoke tests, and the fixture-backed `phase_two_decision_ready_gate_smoke` update are now committed history instead of floating worktree state.
+- `#1184` is now the main remaining finish-up task: reduce the live phase-two doc surface and package the doc moves/archives cleanly.
 
 ## Stopped backlog items
 
