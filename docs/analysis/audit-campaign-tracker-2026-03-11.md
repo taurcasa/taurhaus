@@ -337,7 +337,7 @@ After both audit reports are delivered:
 | #1194 | architect-1 | completed | Review Mesh CLI usability and token efficiency for LLM operators |
 | #1195 | dev-2 | in_progress | Make mesh read --unread return only real inbox messages |
 | #1196 | dev-3 | completed | Make Mesh CLI output smaller and more operator-friendly |
-| #1197 | dev-1 | in_progress | Add a smoke check for installed Mesh binary drift |
+| #1197 | dev-1 | completed | Add a smoke check for installed Mesh binary drift |
 
 ### Phase-two naming freeze
 
@@ -386,7 +386,8 @@ After both audit reports are delivered:
 - `#1193` completed the lifecycle coverage extension in Mesh. The real CLI is now covered for member leave, same-name rejoin, and task continuity across leave/rejoin, including the case where an inactive owner is blocked from continuing task commands until they rejoin under the same identity. The remaining issue is wording quality, not correctness: inactive-member failures still surface as `agent not found`.
 - `#1194` completed the operator-usability review in Mesh. The main correctness findings are that the installed mesh binary on this machine is out of sync with current source/docs and that `mesh read --unread` still synthesizes active-work reminders instead of returning only real inbox messages. The main usability findings are that `mesh tasks` default output is too expensive in long-lived teams, the repeated read footer wastes tokens, and `task get` is too JSON-heavy by default.
 - `#1196` completed the CLI output cleanup in Mesh: `mesh read` now hides the repeated footer by default and shows it only with `--guide`, `mesh tasks` now defaults to compact human rows with a default cap and `--limit`, and `mesh task get` now defaults to a compact human summary while keeping the full record behind `--verbose` or `--json`.
-- `#1195` and `#1197` are the remaining follow-up fixes from the usability review: remove synthetic read reminders and add a smoke check for installed-binary drift so the command surface stays trustworthy.
+- `#1197` completed the installed-binary drift smoke check in Mesh without touching the production binary or PATH state. The new script and `just binary-drift-smoke` compare the explicit installed binary path against `target/debug/mesh`, and on this machine the check correctly fails by flagging git-commit drift plus missing installed commands such as `xteam` and task lifecycle verbs.
+- `#1195` is the remaining follow-up fix from the usability review: remove synthetic `read --unread` reminders so operators only see real inbox messages.
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
