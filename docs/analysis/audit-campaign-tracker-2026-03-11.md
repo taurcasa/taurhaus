@@ -18,6 +18,8 @@ This document tracks the current Taurhaus audit campaign, active investigation w
   - `#1231` `completed`: `dev-2` changed the durable assignment formatter to action-first wording in `/home/mstie/projects/mesh` and committed it as `a56c8ca`, with updated coverage and note `/home/mstie/projects/mesh/docs/analysis/mesh-assignment-wording-action-first-2026-03-12.md`.
   - `#1232` `completed`: `architect-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-assignment-wording-user-facing-drift-check-2026-03-12.md` and committed it as `3981e3b`. The report confirms the new assignment wording already blocks the user-facing acknowledgment-only failure on assignments, but points out softer wording still remained in nudge and resume prompts.
   - `#1233` `completed`: `dev-2` aligned the remaining nudge and resume prompts to the same action-first wording pattern and committed it as `f127eae`, with note `/home/mstie/projects/mesh/docs/analysis/mesh-nudge-resume-wording-action-first-2026-03-12.md`.
+  - `#1236` `completed`: `product-check-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-claude-code-task-sync-gap-2026-03-12.md`. The report found that Claude Code `TaskUpdate` only operates on in-session memory, Mesh-written metadata was being dropped on re-ingest, and no bidirectional live sync exists yet.
+  - `#1237` `completed`: `dev-1` fixed Claude task metadata preservation on re-ingest in `/home/mstie/projects/mesh` and committed it as `738b9c9`, with note `/home/mstie/projects/mesh/docs/analysis/mesh-claude-task-metadata-preservation-2026-03-12.md`.
 
 ## Active audit tasks
 
