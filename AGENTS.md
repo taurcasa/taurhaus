@@ -54,6 +54,51 @@ Use these conventions for day-to-day team messaging. This section is operational
 - No split assignment across multiple micro-messages.
 - No "You have task X assigned" framing; give direct execution instructions.
 
+## Mesh Team Coordination (for Codex/Gemini agents)
+
+When you are part of a Mesh team, use the **explicit lifecycle commands** — not `mesh task update` — for all task work. `task update` is a legacy compatibility command that loses workflow meaning.
+
+### Task lifecycle commands
+
+```bash
+mesh task accept ID --team TEAM --name NAME           # Seen and understood
+mesh task start ID --active-form "Working..." --team TEAM --name NAME  # Work begun
+mesh task progress ID --summary "Update" --team TEAM --name NAME       # Interim update
+mesh task block ID --reason "Why" --team TEAM --name NAME              # Blocked
+mesh task review ID --summary "Ready" --team TEAM --name NAME          # Handoff
+mesh task complete ID --summary "Result" --team TEAM --name NAME       # Done
+```
+
+### Action-first reply behavior
+
+When you receive an assignment message, **start working immediately**. Do NOT:
+- Send an acknowledgment before doing the work
+- Summarize the task back to the sender
+- Reply with "understood" or "working on it"
+
+The assignment message IS your work order. Execute it, then report completion.
+
+### Reading messages
+
+```bash
+mesh read --unread --mark-read --team TEAM --name NAME
+```
+
+`mesh read --unread` only shows real inbox messages. If it returns no messages, check `mesh tasks` or `mesh task get` for assigned work.
+
+### Replying and sending
+
+```bash
+mesh send RECIPIENT "message" --team TEAM --name NAME --summary "brief"
+```
+
+### Environment variables (set once, skip repetitive flags)
+
+```bash
+export MESH_TEAM="my-team"
+export MESH_NAME="my-agent"
+```
+
 ## Logging
 
 Unified structured logging pipeline:
@@ -200,14 +245,15 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
-- **IPC**: Fine-grained commands (currently 80 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
+- **IPC**: Fine-grained commands (currently 89 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
 - **File rendering**: Classification → IPC → cache → render. See [`docs/file-rendering-pipeline.md`](docs/file-rendering-pipeline.md).
 - **File watching**: `notify` + `ignore` crates. Pre-filtered by .gitignore. Git internals debounced 2s.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
-- **Team templates**: Git-backed role/preset storage + composition flow (`TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`) while preserving the existing initialize payload contract.
+- **Team templates**: Git-backed role/preset storage + `MeshTeamBuilder`-driven setup flow (quick presets, role filters, drag-and-drop roster editing) with advanced catalog/history in `TemplateBrowserPanel`, while preserving the existing initialize payload contract.
+- **Windows Mesh behavior**: Background `wsl`/mesh/tmux launches intentionally suppress console windows, and Mesh runtime/project matching relies on normalized Windows, WSL UNC, and Linux path forms rather than raw string equality.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 
 Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/`](docs/architecture/) references.
@@ -228,9 +274,11 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/MeshCanvas.svelte` | Runtime node canvas that consumes `meshLayout.js` output. |
 | `src/lib/components/meshLayout.js` | Pure mesh canvas layout engine for node boxes and explicit connection routes. |
 | `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer fed by explicit control points from `meshLayout.js`. |
-| `src/lib/components/TemplateBrowserPanel.svelte` | Role/preset catalog and composition entry |
+| `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing shell that hosts the primary team-builder surface. |
+| `src/lib/components/MeshTeamBuilder.svelte` | Primary team setup UI with quick presets, role filters, drag-and-drop roster composition, and inline validation. |
+| `src/lib/components/TemplateBrowserPanel.svelte` | Advanced role/preset catalog, import/export, history, and diff entry points. |
 | `src/lib/components/templateBrowserController.svelte.js` | Controller state/actions for template browsing/composition. |
-| `src/lib/components/TeamCustomizerPanel.svelte` | Team composition editor/validator before initialize |
+| `src/lib/components/TeamCustomizerPanel.svelte` | Advanced preset/draft editor used from the template catalog flow. |
 | `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
 | `src/lib/components/templateHistoryController.svelte.js` | Controller state/actions for template history/diff/revert. |
 | `src-tauri/src/startup/` | App bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`). |
@@ -238,7 +286,13 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/services/task_sync.rs` | Task synchronization service for daemon/IPC flows. |
 | `src-tauri/src/daemon_api.rs` | Daemon process API wrapper used by commands/startup flows. |
 | `src-tauri/src/project_provider.rs` | Active project resolution/provider utilities. |
+| `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, team roots, daemon binary, log path, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
+| `src-tauri/src/coordination/claude_hooks.rs` | Claude `SessionStart(source=compact)` bridge, runtime-aware hook installation, and standalone hook logging. |
+| `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
+| `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |
+| `src-tauri/src/session_scanner/compaction_watcher.rs` | Signal-log watcher that feeds compaction processing. |
+| `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
@@ -258,6 +312,8 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Add/fix a Svelte component | `src/lib/components/` (component file plus matching test in same directory) |
 | Fix file watcher behavior | `src-tauri/src/startup/watchers.rs`, `src-tauri/src/fs/watcher.rs`, `src-tauri/src/event_processor.rs` |
 | Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/idle/`, `src-tauri/src/session_scanner/process.rs` |
+| Fix compaction detection / reinjection | `src-tauri/src/session_scanner/compaction_extractor.rs`, `src-tauri/src/session_scanner/compaction_watcher.rs`, `src-tauri/src/coordination/compaction_processor.rs` |
+| Fix path/root resolution | `src-tauri/src/provider/path.rs`, `src-tauri/src/provider/platform_paths.rs` |
 | Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 
 ## Development Workflow (Phase 5)
