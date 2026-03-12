@@ -326,8 +326,9 @@ After both audit reports are delivered:
 | #1183 | dev-2 | completed | Checkpoint retained-cycle command cutover into committed history |
 | #1184 | architect-1 | completed | Reduce the live phase-two doc surface after wrapper cleanup |
 | #1185 | dev-1 | completed | Checkpoint remaining phase-two verification scripts and fixtures |
-| #1186 | architect-1 | in_progress | Finish the remaining phase-two doc cleanup in Mesh |
+| #1186 | architect-1 | completed | Finish the remaining phase-two doc cleanup in Mesh |
 | #1187 | dev-1 | completed | Finish the remaining phase-two verification cleanup in Mesh |
+| #1188 | architect-1 | in_progress | Finish the last loose Mesh docs and remove Python cache trash |
 
 ### Phase-two naming freeze
 
@@ -366,7 +367,8 @@ After both audit reports are delivered:
 - `#1185` completed the remaining shared verification checkpoint cleanly in Mesh as a bounded two-commit sequence: the live verification scripts, checked-in phase-two fixtures, smoke tests, and the fixture-backed `phase_two_decision_ready_gate_smoke` update are now committed history instead of floating worktree state.
 - `#1184` completed the main live doc reduction in Mesh: the historical post-X4 readiness, helper-merge, matrix-cutover, recipe-cutover, wrapper-deletion-readiness, retained live-doc collapse, and scaffolding-reduction notes were moved under `docs/analysis/archive/phase-two-retained/`, and the retained-state core plus implementation guide now point at the live docs someone still needs.
 - `#1187` completed the last verification cleanup pass in Mesh: the valid retrieval-fixtures note stayed live, the out-of-scope formatting-only `tests/projections_integration.rs` diff was dropped, and the dead loose retained-cycle fixture tail under `tests/fixtures/phase_two_*` was removed after proving it was no longer referenced.
-- We are down to one remaining finish-up lane: `#1186` to clean up the remaining loose phase-two docs in the Mesh tree so the worktree can end fully clean.
+- `#1186` completed the main remaining doc sweep in Mesh: the live phase-two surface is smaller and the historical notes were sorted into archive, but a final follow-up is still required because the worktree check showed additional loose docs still sitting untracked after that pass.
+- We are down to one remaining finish-up lane: `#1188` to commit/archive/delete the last loose Mesh docs and remove `scripts/__pycache__/` so the Mesh worktree can end fully clean.
 
 ## Stopped backlog items
 
