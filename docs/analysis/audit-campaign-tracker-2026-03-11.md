@@ -2,6 +2,17 @@
 
 This document tracks the current Taurhaus audit campaign, active investigation work, and the follow-up workflow for confirmed findings.
 
+## Current Mesh Communication State
+
+- Live production Mesh on Linux is `/home/mstie/.local/bin/mesh` at commit `bc57e30c0d17f264b58f4adb3c6576864b8e173d`.
+- The current Mesh CLI does not expose a `broadcast` command. Communication tests must currently use repeated `send` calls.
+- The active `taurhaus-team` daemon processes all started after the live Mesh binary was replaced on `2026-03-12 20:28:50 +0100`, so the current team is running the new production Mesh build.
+- There is still one unrelated old `taurmuse-team` team-daemon process running from a deleted older Mesh binary; this is outside the current `taurhaus-team` communication lane.
+- Communication is not considered healthy until messages are visible in the real target agent terminal. Inbox persistence alone is not an acceptance criterion.
+- Active communication repair work:
+  - `#1227` `mesh-architect` `in_progress`: fix real agent message delivery path, not just inbox persistence
+  - `#1228` `pending` behind `#1227`: verify real terminal-visible delivery across active `taurhaus-team` members after the fix
+
 ## Active audit tasks
 
 | Task | Owner | Status | Framework | Deliverable |
