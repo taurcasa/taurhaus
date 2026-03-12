@@ -366,6 +366,7 @@ After both audit reports are delivered:
 | #1223 | dev-2 | completed | Rebuild and repin the Taurhaus bundled Mesh artifact to the frozen cutover commit |
 | #1224 | dev-3 | completed | Rerun the packaged Taurhaus fresh-team pilot after the bundled Mesh artifact is rebuilt and repinned |
 | #1225 | dev-3 | completed | Rerun the packaged Taurhaus fresh-team pilot on the actually rebundled cutover build |
+| #1226 | architect-1 | in_progress | Write one human-readable Mesh architecture overview with a practical old-vs-new comparison |
 
 ### Phase-two naming freeze
 
@@ -451,6 +452,7 @@ After both audit reports are delivered:
 - `#1224` is the follow-up proof lane and stays queued until `#1223` lands. It reruns the same packaged Taurhaus fresh-team pilot after the rebundle so we can confirm the packaged path now matches the successful wrapper pilot.
 - `#1223` completed the rebundle fix. Taurhaus now bundles Mesh from the frozen cutover commit `af30eaa267a7f4bdc4a08a031b1c8744d393ef12`, and `mesh.lock.json`, `mesh.manifest.json`, the bundled binary, and the installed operator binary were repinned to that exact contract. Taurhaus commit: `4b05c4b`. Report: `docs/analysis/taurhaus-mesh-cutover-rebundle-2026-03-12.md`.
 - `#1225` completed the real packaged-pilot proof after the rebundle. In an isolated runtime, the Taurhaus packaged Mesh path now resolves end to end to the frozen cutover commit `af30eaa267a7f4bdc4a08a031b1c8744d393ef12`, and the packaged fresh-team pilot now matches the successful wrapper pilot for the bounded scenario: fresh-team bootstrap worked, assignment delivery/read/ack worked, peer messaging plus `ack-status` worked, and task `#1` completed with owner `dev-a`. The only remaining noise was two non-blocking `LEGACY_LANE_METADATA` warnings on assign/start. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-packaged-taurhaus-pilot-rerun-after-actual-rebundle-2026-03-12.md`.
+- `#1226` is the current explanation lane. Its purpose is not more implementation; it is to produce one plain-English architecture overview that explains the new Mesh clearly and compares it to the old Mesh in practical terms, so we have one readable source of truth instead of fragmented implementation notes.
 
 ## Stopped backlog items
 
