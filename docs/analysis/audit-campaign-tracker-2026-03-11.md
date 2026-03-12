@@ -328,7 +328,7 @@ After both audit reports are delivered:
 | #1185 | dev-1 | completed | Checkpoint remaining phase-two verification scripts and fixtures |
 | #1186 | architect-1 | completed | Finish the remaining phase-two doc cleanup in Mesh |
 | #1187 | dev-1 | completed | Finish the remaining phase-two verification cleanup in Mesh |
-| #1188 | architect-1 | in_progress | Finish the last loose Mesh docs and remove Python cache trash |
+| #1188 | architect-1 | completed | Finish the last loose Mesh docs and remove Python cache trash |
 
 ### Phase-two naming freeze
 
@@ -368,7 +368,8 @@ After both audit reports are delivered:
 - `#1184` completed the main live doc reduction in Mesh: the historical post-X4 readiness, helper-merge, matrix-cutover, recipe-cutover, wrapper-deletion-readiness, retained live-doc collapse, and scaffolding-reduction notes were moved under `docs/analysis/archive/phase-two-retained/`, and the retained-state core plus implementation guide now point at the live docs someone still needs.
 - `#1187` completed the last verification cleanup pass in Mesh: the valid retrieval-fixtures note stayed live, the out-of-scope formatting-only `tests/projections_integration.rs` diff was dropped, and the dead loose retained-cycle fixture tail under `tests/fixtures/phase_two_*` was removed after proving it was no longer referenced.
 - `#1186` completed the main remaining doc sweep in Mesh: the live phase-two surface is smaller and the historical notes were sorted into archive, but a final follow-up is still required because the worktree check showed additional loose docs still sitting untracked after that pass.
-- We are down to one remaining finish-up lane: `#1188` to commit/archive/delete the last loose Mesh docs and remove `scripts/__pycache__/` so the Mesh worktree can end fully clean.
+- `#1188` completed the final doc hygiene pass in Mesh: the last 31 loose live analysis docs were either committed into the live docs surface or already handled by prior archive moves, `scripts/__pycache__/` was removed, and the Mesh worktree is now clean.
+- The Mesh finish-up sequence is now complete: the product code, verification assets, command path, helper cleanup, and docs cleanup are all committed and the worktree is clean.
 
 ## Stopped backlog items
 
