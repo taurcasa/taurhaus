@@ -355,6 +355,10 @@ After both audit reports are delivered:
 | #1212 | dev-3 | completed | Fix the recovery-bundle selection regression in idle monitor so the selected task and delivered nudge target stay aligned |
 | #1213 | architect-1 | completed | Checkpoint the remaining validated Mesh lifecycle tail and audit reports so the Mesh worktree is clean |
 | #1214 | architect-1 | completed | Assess current Mesh migration readiness, remaining gaps, isolated test setup, and the concrete migration or fresh-start path for existing teams |
+| #1215 | architect-1 | in_progress | Define the first safe pilot setup for new Mesh with fresh teams, including whether to use Taurhaus directly on Linux or a minimal emulated boundary |
+| #1216 | dev-1 | in_progress | Build an isolated Linux pilot environment for new Mesh and Taurhaus using separate roots and test-only data |
+| #1217 | dev-3 | in_progress | Run a fresh-team pilot scenario in a fully isolated test workspace and report what still blocks broader pilot use |
+| #1218 | dev-2 | in_progress | Prepare test-only projects and a reset helper for the isolated Mesh pilot |
 
 ### Phase-two naming freeze
 
@@ -426,6 +430,7 @@ After both audit reports are delivered:
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 - `#1214` completed the migration-readiness assessment. Main result: for the first real cutover we should start fresh teams, not try to in-place migrate already active teams yet. The new Mesh core is pilot-ready in source, but broader use is still blocked by version skew across source, installed binary, and Taurhaus bundle; by a Windows same-host isolation gap in the Taurhaus coordination runtime; and by the fact that existing task snapshots cannot faithfully recover assignment, delivery, read, ack, progress, and recovery semantics. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-migration-readiness-and-cutover-plan-2026-03-12.md`. Mesh commit: `02f564a`.
+- `#1215` through `#1218` are the current pilot-readiness lanes. Together they answer the next practical question: how to run a first fresh-team pilot safely without touching the current Windows production workflow. The split is intentional: one architect lane chooses the right pilot shape and isolation boundary, one developer lane builds the isolated Linux environment, one prepares the test-only projects and reset helper, and one runs the fresh-team pilot scenario once the prerequisites are in place.
 
 ## Stopped backlog items
 
