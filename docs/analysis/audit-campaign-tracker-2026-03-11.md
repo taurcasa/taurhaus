@@ -338,7 +338,8 @@ After both audit reports are delivered:
 | #1195 | dev-2 | completed | Make mesh read --unread return only real inbox messages |
 | #1196 | dev-3 | completed | Make Mesh CLI output smaller and more operator-friendly |
 | #1197 | dev-1 | completed | Add a smoke check for installed Mesh binary drift |
-| #1198 | dev-2 | in_progress | Checkpoint the remaining Mesh CLI usability changes cleanly |
+| #1198 | dev-2 | completed | Checkpoint the remaining Mesh CLI usability changes cleanly |
+| #1199 | architect-1 | in_progress | Define idle monitoring and reminder ownership between Mesh and Taurhaus |
 
 ### Phase-two naming freeze
 
@@ -389,7 +390,8 @@ After both audit reports are delivered:
 - `#1196` completed the CLI output cleanup in Mesh: `mesh read` now hides the repeated footer by default and shows it only with `--guide`, `mesh tasks` now defaults to compact human rows with a default cap and `--limit`, and `mesh task get` now defaults to a compact human summary while keeping the full record behind `--verbose` or `--json`.
 - `#1197` completed the installed-binary drift smoke check in Mesh without touching the production binary or PATH state. The new script and `just binary-drift-smoke` compare the explicit installed binary path against `target/debug/mesh`, and on this machine the check correctly fails by flagging git-commit drift plus missing installed commands such as `xteam` and task lifecycle verbs.
 - `#1195` completed the synthetic-reminder fix in Mesh: `mesh read --unread` now returns only real persisted inbox messages, with regression coverage for repeated empty reads and empty JSON output.
-- `#1198` is the final cleanup lane for this area: the last remaining dirty CLI/test/doc changes need to be either checkpointed cleanly or dropped so the Mesh worktree ends clean again after the usability fixes.
+- `#1198` completed the final CLI usability checkpoint cleanly in Mesh: the compact output changes are now fully committed, unrelated formatting noise was dropped, and the Mesh worktree is clean again after the usability fixes.
+- `#1199` is the next architecture follow-up: define where idle monitoring, stall detection, and reminder/escalation belong between Mesh and Taurhaus so we keep the capability without hiding it inside the wrong interface.
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
