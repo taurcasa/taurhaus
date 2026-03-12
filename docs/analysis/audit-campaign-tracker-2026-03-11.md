@@ -363,8 +363,9 @@ After both audit reports are delivered:
 | #1220 | dev-1 | completed | Freeze the first Mesh cutover commit and rerun the isolated Linux pilot against that exact build |
 | #1221 | dev-2 | completed | Switch Taurhaus Mesh verification, status, and bundling checks to the JSON compatibility contract |
 | #1222 | dev-3 | completed | Rerun the fresh-team pilot through the Taurhaus-managed packaged Mesh path after cutover freeze and JSON alignment land |
-| #1223 | dev-2 | in_progress | Rebuild and repin the Taurhaus bundled Mesh artifact to the frozen cutover commit |
-| #1224 | dev-3 | pending | Rerun the packaged Taurhaus fresh-team pilot after the bundled Mesh artifact is rebuilt and repinned |
+| #1223 | dev-2 | completed | Rebuild and repin the Taurhaus bundled Mesh artifact to the frozen cutover commit |
+| #1224 | dev-3 | completed | Rerun the packaged Taurhaus fresh-team pilot after the bundled Mesh artifact is rebuilt and repinned |
+| #1225 | dev-3 | completed | Rerun the packaged Taurhaus fresh-team pilot on the actually rebundled cutover build |
 
 ### Phase-two naming freeze
 
@@ -448,6 +449,8 @@ After both audit reports are delivered:
 - `#1222` completed as a useful failed proof, not a dead end. The Taurhaus-managed packaged path is internally aligned, but it is aligned to the older bundled Mesh commit `0b346da...`, not the frozen cutover commit `af30eaa...` from `#1220`. Because of that, the packaged pilot still shows the old cold-start failure (`join` only creates inbox files and `who --json` still fails with `team not found`). Report: `/home/mstie/projects/mesh/docs/analysis/mesh-packaged-taurhaus-pilot-rerun-2026-03-12.md`.
 - `#1223` is now the direct fix lane for that blocker: rebuild the Taurhaus bundled Mesh release artifact from the frozen cutover commit and repin `mesh.lock.json` plus `mesh.manifest.json` to that exact build.
 - `#1224` is the follow-up proof lane and stays queued until `#1223` lands. It reruns the same packaged Taurhaus fresh-team pilot after the rebundle so we can confirm the packaged path now matches the successful wrapper pilot.
+- `#1223` completed the rebundle fix. Taurhaus now bundles Mesh from the frozen cutover commit `af30eaa267a7f4bdc4a08a031b1c8744d393ef12`, and `mesh.lock.json`, `mesh.manifest.json`, the bundled binary, and the installed operator binary were repinned to that exact contract. Taurhaus commit: `4b05c4b`. Report: `docs/analysis/taurhaus-mesh-cutover-rebundle-2026-03-12.md`.
+- `#1225` completed the real packaged-pilot proof after the rebundle. In an isolated runtime, the Taurhaus packaged Mesh path now resolves end to end to the frozen cutover commit `af30eaa267a7f4bdc4a08a031b1c8744d393ef12`, and the packaged fresh-team pilot now matches the successful wrapper pilot for the bounded scenario: fresh-team bootstrap worked, assignment delivery/read/ack worked, peer messaging plus `ack-status` worked, and task `#1` completed with owner `dev-a`. The only remaining noise was two non-blocking `LEGACY_LANE_METADATA` warnings on assign/start. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-packaged-taurhaus-pilot-rerun-after-actual-rebundle-2026-03-12.md`.
 
 ## Stopped backlog items
 
