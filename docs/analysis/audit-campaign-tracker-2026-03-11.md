@@ -346,12 +346,12 @@ After both audit reports are delivered:
 | #1203 | security-auditor | completed | Perform a full TowerSec security audit of the new Mesh implementation and deliver a report with confirmed findings, noise filtering, and actionable next steps |
 | #1204 | code-quality-auditor | completed | Perform a full Towercraft code-quality audit of the new Mesh implementation and deliver a report with confirmed findings, noise filtering, and actionable next steps |
 | #1205 | dev-2 | completed | Remove unneeded GitHub Actions CI artifacts from Mesh and clean up stale quality-gate docs so the repo reflects the real local-only workflow |
-| #1206 | dev-2 | in_progress | Fix the high-severity external relay receipt path traversal in Mesh by removing trust in untrusted external_message_id path content |
+| #1206 | dev-2 | completed | Fix the high-severity external relay receipt path traversal in Mesh by removing trust in untrusted external_message_id path content |
 | #1207 | mesh-architect | in_progress | Fix the high-severity unauthenticated actor identity gap across Mesh local CLI and cross-team control paths |
-| #1208 | dev-1 | in_progress | Remove the date-coupled March 11, 2026 assumptions from Mesh attention-persistence acceptance tests so cargo test stays green |
+| #1208 | dev-1 | completed | Remove the date-coupled March 11, 2026 assumptions from Mesh attention-persistence acceptance tests so cargo test stays green |
 | #1209 | architect-1 | in_progress | Reduce Mesh task lifecycle change amplification across src/main.rs, src/workflow.rs, and src/projections.rs |
 | #1210 | dev-3 | in_progress | Make malformed runtime/activity snapshots fail safely and visibly in Mesh idle-monitor and idle-status handling |
-| #1211 | dev-1 | pending | Stop Claude ingest from rebuilding all projections on each accepted observation in Mesh |
+| #1211 | dev-1 | in_progress | Stop Claude ingest from rebuilding all projections on each accepted observation in Mesh |
 
 ### Phase-two naming freeze
 
@@ -411,6 +411,9 @@ After both audit reports are delivered:
 - `#1204` completed the code-quality review of the new Mesh implementation. Confirmed findings were: (1) `cargo test` is red because two attention-persistence acceptance tests are date-coupled to March 11, 2026 and fail on March 12, 2026; (2) task lifecycle logic is spread across `src/main.rs`, `src/workflow.rs`, and `src/projections.rs` with high change amplification; (3) idle-monitor and idle-status projection paths silently absorb malformed runtime/activity snapshots and fall back to nudges after a short defer window; (4) Claude ingest rebuilds all projections once per accepted observation; and (5) the quality-gate architecture note is stale against the live CI and `justfile`. Report: `docs/analysis/mesh-code-quality-audit-towercraft-2026-03-12.md`.
 - `#1205` completed the GitHub Actions cleanup surfaced by the security audit. Mesh no longer carries the unused `.github/workflows/ci.yml`, the stale `just ci` alias is gone, and the contributor-facing quality-gate docs were rewritten so they reflect the real local-only workflow instead of a GitHub Actions operating model. Commit: `40835e8`. Verification included `just --list` plus focused searches confirming the stale `ci.yml` and `just ci` references are gone from the live README, architecture note, and `justfile` surface.
 - `#1206` through `#1211` are the live remediation queue for the remaining six audit findings after the CI cleanup. The current split keeps the two high-severity security issues active in parallel with three code-quality fixes, while the projection-rebuild churn fix is queued behind an already-active implementation lane instead of overloading the same developer with two live tasks.
+- `#1206` completed the first high-severity security remediation. Relay receipt filenames now use a canonical safe storage key instead of raw `externalMessageId` path content. Commit: `fac083a`. The path fix is in `src/paths.rs`, relay regression coverage is in `src/team_daemon/external_relay.rs`, and xteam/support helpers now resolve relay artifact paths through `MeshPaths` so they follow the same safe key.
+- `#1208` completed cleanly as a test-only fix. The attention persistence acceptance tests no longer inherit the real current date; the setup now backdates assignee activity explicitly before the synthetic idle-cycle timestamp so time is fully controlled inside the test. Commit: `6ecf717`. Report: `docs/analysis/mesh-fix-date-coupled-attention-tests-2026-03-12.md`.
+- `#1211` is now released because `dev-1` finished `#1208`. It is the remaining code-quality fix for the audit finding that Claude ingest rebuilds all projections once per accepted observation.
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
 
