@@ -321,10 +321,11 @@ After both audit reports are delivered:
 | #1178 | architect-1 | completed | Assess whether legacy retained wrappers and aliases can now be deleted safely |
 | #1179 | dev-2 | completed | Cut the generic retained-cycle recipe and live notes over to the new matrix proof path |
 | #1180 | dev-3 | completed | Delete legacy retained wrappers and aliases |
-| #1181 | dev-1 | in_progress | Checkpoint live Mesh guardrail code into committed history |
-| #1182 | dev-3 | in_progress | Checkpoint retained-cycle cleanup code and test helpers |
+| #1181 | dev-1 | completed | Checkpoint live Mesh guardrail code into committed history |
+| #1182 | dev-3 | completed | Checkpoint retained-cycle cleanup code and test helpers |
 | #1183 | dev-2 | in_progress | Checkpoint retained-cycle command cutover into committed history |
 | #1184 | architect-1 | in_progress | Reduce the live phase-two doc surface after wrapper cleanup |
+| #1185 | dev-1 | in_progress | Checkpoint remaining phase-two verification scripts and fixtures |
 
 ### Phase-two naming freeze
 
@@ -357,7 +358,9 @@ After both audit reports are delivered:
 - `#1179` completed the recipe and note cutover: the generic retained-cycle command now runs the matrix proof path directly, and the 9 live retained fixture notes now point at that real path instead of the legacy wrapper layer.
 - `#1180` completed the wrapper and alias deletion cleanly: the 9 legacy retained wrapper smoke tests and the 9 matching legacy `just` aliases are gone, the live retained operator path is now just `phase-two-retention-cycle-smoke <cycle> <stage>` plus the generic matrix smoke entrypoint, and the remaining live notes were updated so they no longer point at deleted names.
 - We are not fully finished yet because the live Mesh repo still has a large dirty worktree with real code, tests, scripts, and docs that need to be turned into committed history or reduced safely.
-- `#1181` through `#1184` are the concrete finish-up tasks for that last stretch: commit the guardrail code, commit the retained-cycle helper cleanup, commit the retained-cycle command cutover, and reduce the live phase-two doc surface.
+- `#1181` completed the live guardrail checkpoint cleanly in Mesh as two commits: one product commit for `src/orchestration_guardrails.rs`, the CLI/task/team-daemon wiring, and focused CLI integration coverage, plus one docs-only checkpoint for the live guardrail note.
+- `#1182` completed the retained-cycle helper cleanup cleanly in Mesh: the generic confirmation/recording/verification helper files are now committed, the old per-cycle support files are deleted, and only behaviorally distinct checks were kept.
+- `#1183` through `#1185` are the remaining finish-up tasks for that last stretch: commit the retained-cycle command cutover, reduce the live phase-two doc surface, and checkpoint the remaining shared verification scripts and fixtures.
 
 ## Stopped backlog items
 
