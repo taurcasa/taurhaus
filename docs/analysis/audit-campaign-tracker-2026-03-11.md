@@ -354,7 +354,7 @@ After both audit reports are delivered:
 | #1211 | dev-1 | completed | Stop Claude ingest from rebuilding all projections on each accepted observation in Mesh |
 | #1212 | dev-3 | completed | Fix the recovery-bundle selection regression in idle monitor so the selected task and delivered nudge target stay aligned |
 | #1213 | architect-1 | completed | Checkpoint the remaining validated Mesh lifecycle tail and audit reports so the Mesh worktree is clean |
-| #1214 | architect-1 | in_progress | Assess current Mesh migration readiness, remaining gaps, isolated test setup, and the concrete migration or fresh-start path for existing teams |
+| #1214 | architect-1 | completed | Assess current Mesh migration readiness, remaining gaps, isolated test setup, and the concrete migration or fresh-start path for existing teams |
 
 ### Phase-two naming freeze
 
@@ -425,7 +425,7 @@ After both audit reports are delivered:
 - `#1211` is now released because `dev-1` finished `#1208`. It is the remaining code-quality fix for the audit finding that Claude ingest rebuilds all projections once per accepted observation.
 - `#1194` runs in parallel as the operator-experience review: assess whether the current Mesh CLI is clear, efficient, and not unnecessarily verbose from an LLM/operator perspective, and identify the smallest worthwhile usability improvements.
 - `#1192` is the next broader validation lane: define and run a real user-journey CLI test suite that covers the main ways an AI team would use Mesh, not just the first successful happy-path scenario.
-- `#1214` is the current migration-readiness lane. It exists to answer the next practical rollout question in plain terms: what is already ready in the new Mesh, what gaps still remain before broader use, how Taurhaus can test it in isolation without touching the current Windows production workflow, and whether existing teams should be migrated, started fresh, or left on the old system for now.
+- `#1214` completed the migration-readiness assessment. Main result: for the first real cutover we should start fresh teams, not try to in-place migrate already active teams yet. The new Mesh core is pilot-ready in source, but broader use is still blocked by version skew across source, installed binary, and Taurhaus bundle; by a Windows same-host isolation gap in the Taurhaus coordination runtime; and by the fact that existing task snapshots cannot faithfully recover assignment, delivery, read, ack, progress, and recovery semantics. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-migration-readiness-and-cutover-plan-2026-03-12.md`. Mesh commit: `02f564a`.
 
 ## Stopped backlog items
 
