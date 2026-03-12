@@ -52,6 +52,7 @@ builds/
 # Bundled binaries (built artifacts, copied before platform builds)
 src-tauri/resources/*
 !src-tauri/resources/templates/
+!src-tauri/resources/mesh.manifest.json
 !src-tauri/resources/mesh.version
 !src-tauri/resources/mesh.lock.json
 
