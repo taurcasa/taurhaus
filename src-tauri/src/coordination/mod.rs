@@ -1,6 +1,7 @@
 //! Coordination subsystem scaffolding.
 
 pub mod activity_export;
+pub mod activity_schema;
 pub mod audit;
 pub mod backend;
 pub mod claude_hooks;

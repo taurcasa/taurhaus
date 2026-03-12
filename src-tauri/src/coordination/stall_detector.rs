@@ -3,8 +3,7 @@
 //! Provides per-member in-memory state, configurable thresholds, polling,
 //! and stage transitions.
 
-use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -324,15 +323,6 @@ struct TransitionDecision {
     runtime_snapshot: Option<SignalSnapshot>,
     pending_nudge_id: Option<String>,
     last_nudge_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct MemberActivitySnapshot {
-    version: u8,
-    observed_at: String,
-    stall_recent_activity: bool,
-    stall_no_output: bool,
-    stall_no_active_process: bool,
 }
 
 type SessionScannerFn = dyn Fn(DateTime<Utc>) -> Vec<SessionSignal> + Send + Sync;
@@ -970,15 +960,6 @@ impl StallDetectorService {
         let snapshots = self.collect_signals_at(now);
         let snapshots_by_member = build_signal_snapshot_index(&snapshots);
         self.ingest_signal_snapshots(&snapshots);
-        if let Ok(states) = self.member_states.lock() {
-            write_activity_snapshots_for_members(
-                &self.teams_dir,
-                &self.config,
-                &states,
-                &snapshots_by_member,
-                now,
-            );
-        }
         self.finalize_recovery_windows(now);
         let Ok(mut states) = self.member_states.lock() else {
             return Vec::new();
@@ -1010,15 +991,6 @@ impl StallDetectorService {
         let snapshots = self.collect_signals_at(now);
         let snapshots_by_member = build_signal_snapshot_index(&snapshots);
         self.ingest_signal_snapshots(&snapshots);
-        if let Ok(states) = self.member_states.lock() {
-            write_activity_snapshots_for_members(
-                &self.teams_dir,
-                &self.config,
-                &states,
-                &snapshots_by_member,
-                now,
-            );
-        }
         self.finalize_recovery_windows(now);
         let Ok(mut states) = self.member_states.lock() else {
             return Vec::new();
@@ -1053,7 +1025,6 @@ impl StallDetectorService {
         let runtime = Arc::clone(&self.runtime);
         let session_scanner = Arc::clone(&self.session_scanner);
         let mesh_signal_reader = Arc::clone(&self.mesh_signal_reader);
-        let teams_dir = self.teams_dir.clone();
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
 
         let join_handle = thread::spawn(move || loop {
@@ -1087,15 +1058,6 @@ impl StallDetectorService {
                         );
                     }
                     let snapshots_by_member = build_signal_snapshot_index(&snapshots);
-                    if let Ok(states) = member_states.lock() {
-                        write_activity_snapshots_for_members(
-                            &teams_dir,
-                            &config,
-                            &states,
-                            &snapshots_by_member,
-                            now,
-                        );
-                    }
                     finalize_recovery_windows_for_history(&config, &trigger_history, now);
                     if let Ok(mut states) = member_states.lock() {
                         let decisions =
@@ -1235,6 +1197,19 @@ impl StallDetectorService {
         decisions: &[TransitionDecision],
     ) {
         for decision in decisions {
+            if team_uses_mesh_owned_idle_delivery(
+                &orchestrator.teams_dir,
+                &decision.transition.team_name,
+            ) {
+                tracing::info!(
+                    team_name = %decision.transition.team_name,
+                    member_name = %decision.transition.member_name,
+                    stage = %decision.trigger_stage.as_str(),
+                    "stall detector delegated idle reminder delivery to mesh"
+                );
+                continue;
+            }
+
             let result = match decision.trigger_stage {
                 StallTriggerStage::StageA => {
                     let response_window_secs = self
@@ -1288,6 +1263,10 @@ impl StallDetectorService {
             }
         }
     }
+}
+
+fn team_uses_mesh_owned_idle_delivery(teams_dir: &Path, team_name: &str) -> bool {
+    TeamConfigStore::load(teams_dir, team_name).is_ok()
 }
 
 fn collect_signals_for_members(
@@ -1491,203 +1470,6 @@ fn default_coordination_teams_dir() -> PathBuf {
         fallback
     };
     base.join(".claude").join("teams")
-}
-
-fn write_activity_snapshots_for_members(
-    teams_dir: &Path,
-    config: &StallDetectorConfig,
-    member_states: &HashMap<MemberKey, MemberStallState>,
-    snapshots_by_member: &HashMap<MemberKey, SignalSnapshot>,
-    now: DateTime<Utc>,
-) {
-    if member_states.is_empty() {
-        return;
-    }
-
-    let mut tracked_by_team: HashMap<String, HashSet<String>> = HashMap::new();
-    for key in member_states.keys() {
-        if key.team_name.trim().is_empty() || key.member_name.trim().is_empty() {
-            continue;
-        }
-        tracked_by_team
-            .entry(key.team_name.clone())
-            .or_default()
-            .insert(key.member_name.clone());
-    }
-    if tracked_by_team.is_empty() {
-        return;
-    }
-
-    for (team_name, tracked_members) in tracked_by_team {
-        let expected_members = TeamConfigStore::load(teams_dir, &team_name)
-            .map(|config| {
-                config
-                    .members
-                    .into_iter()
-                    .map(|member| member.name)
-                    .filter(|name| !name.trim().is_empty())
-                    .collect::<HashSet<String>>()
-            })
-            .ok()
-            .filter(|members| !members.is_empty())
-            .unwrap_or(tracked_members);
-
-        for member_name in &expected_members {
-            let key = MemberKey {
-                team_name: team_name.clone(),
-                member_name: member_name.clone(),
-            };
-            let state = member_states.get(&key);
-            let runtime = snapshots_by_member.get(&key);
-            let snapshot = build_member_activity_snapshot(config, state, runtime, now);
-            write_member_activity_snapshot(teams_dir, &team_name, member_name, &snapshot);
-        }
-
-        cleanup_stale_activity_snapshots(teams_dir, &team_name, &expected_members);
-    }
-}
-
-fn build_member_activity_snapshot(
-    config: &StallDetectorConfig,
-    state: Option<&MemberStallState>,
-    runtime: Option<&SignalSnapshot>,
-    now: DateTime<Utc>,
-) -> MemberActivitySnapshot {
-    let recent_window_secs = config.poll_interval_secs.saturating_mul(2) as i64;
-    let stall_recent_activity = state
-        .and_then(|state| state.last_any_signal_at)
-        .is_some_and(|last_any_signal_at| {
-            let elapsed = now.signed_duration_since(last_any_signal_at).num_seconds();
-            elapsed >= 0 && elapsed <= recent_window_secs
-        });
-
-    let stall_no_output = runtime
-        .is_some_and(|snapshot| !matches!(snapshot.session_state, Some(SessionState::Active)));
-
-    let stall_no_active_process = runtime.is_some_and(|snapshot| {
-        if snapshot.pane_exists == Some(false) || snapshot.pane_is_dead == Some(true) {
-            return true;
-        }
-        if snapshot.pane_exists != Some(true) {
-            return false;
-        }
-        if snapshot.pane_is_shell == Some(true) {
-            return true;
-        }
-        snapshot
-            .pane_current_command
-            .as_ref()
-            .map(|cmd| cmd.trim().is_empty())
-            .unwrap_or(true)
-    });
-
-    MemberActivitySnapshot {
-        version: 1,
-        observed_at: runtime
-            .map(|snapshot| snapshot.observed_at)
-            .unwrap_or(now)
-            .to_rfc3339(),
-        stall_recent_activity,
-        stall_no_output,
-        stall_no_active_process,
-    }
-}
-
-fn write_member_activity_snapshot(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-    snapshot: &MemberActivitySnapshot,
-) {
-    let dir = activity_snapshot_dir(teams_dir, team_name);
-    if let Err(err) = fs::create_dir_all(&dir) {
-        tracing::warn!(
-            team_name = %team_name,
-            member_name = %member_name,
-            error = %err,
-            "failed to create activity snapshot directory"
-        );
-        return;
-    }
-
-    let target_path = activity_snapshot_path(teams_dir, team_name, member_name);
-    let tmp_path = activity_snapshot_tmp_path(teams_dir, team_name, member_name);
-    let Ok(raw) = serde_json::to_vec_pretty(snapshot) else {
-        tracing::warn!(
-            team_name = %team_name,
-            member_name = %member_name,
-            "failed to serialize activity snapshot"
-        );
-        return;
-    };
-
-    if let Err(err) = fs::write(&tmp_path, raw) {
-        tracing::warn!(
-            team_name = %team_name,
-            member_name = %member_name,
-            error = %err,
-            "failed to write temporary activity snapshot file"
-        );
-        return;
-    }
-
-    if let Err(rename_err) = fs::rename(&tmp_path, &target_path) {
-        #[cfg(target_os = "windows")]
-        {
-            if target_path.exists() && fs::remove_file(&target_path).is_ok() {
-                if fs::rename(&tmp_path, &target_path).is_ok() {
-                    return;
-                }
-            }
-        }
-        let _ = fs::remove_file(&tmp_path);
-        tracing::warn!(
-            team_name = %team_name,
-            member_name = %member_name,
-            error = %rename_err,
-            "failed to atomically replace activity snapshot file"
-        );
-    }
-}
-
-fn cleanup_stale_activity_snapshots(
-    teams_dir: &Path,
-    team_name: &str,
-    expected_members: &HashSet<String>,
-) {
-    let dir = activity_snapshot_dir(teams_dir, team_name);
-    let Ok(entries) = fs::read_dir(&dir) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("tmp") {
-            let _ = fs::remove_file(path);
-            continue;
-        }
-        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-            continue;
-        }
-        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
-            continue;
-        };
-        if !expected_members.contains(stem) {
-            let _ = fs::remove_file(path);
-        }
-    }
-}
-
-fn activity_snapshot_dir(teams_dir: &Path, team_name: &str) -> PathBuf {
-    teams_dir.join(team_name).join("state").join("activity")
-}
-
-fn activity_snapshot_path(teams_dir: &Path, team_name: &str, member_name: &str) -> PathBuf {
-    activity_snapshot_dir(teams_dir, team_name).join(format!("{member_name}.json"))
-}
-
-fn activity_snapshot_tmp_path(teams_dir: &Path, team_name: &str, member_name: &str) -> PathBuf {
-    activity_snapshot_dir(teams_dir, team_name).join(format!("{member_name}.json.tmp"))
 }
 
 fn format_optional_ts(value: Option<DateTime<Utc>>) -> String {
@@ -2289,8 +2071,6 @@ impl Drop for StallDetectorService {
 mod tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
-    use std::fs;
-    use std::path::Path;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
@@ -2323,14 +2103,6 @@ mod tests {
             project_path: PathBuf::from("/tmp/project"),
             cli_tool: CliTool::Codex,
         }
-    }
-
-    fn activity_snapshot_path(teams_dir: &Path, team_name: &str, member_name: &str) -> PathBuf {
-        teams_dir
-            .join(team_name)
-            .join("state")
-            .join("activity")
-            .join(format!("{member_name}.json"))
     }
 
     fn test_orchestrator_with_team(
@@ -2996,7 +2768,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_a_delivery_uses_operator_notice_path() {
+    fn stage_a_delivery_is_delegated_to_mesh_for_mesh_managed_team() {
         let service = StallDetectorService::new(StallDetectorConfig::default());
         let (mut orchestrator, backend, _tmp, _lead_name, member_name) =
             test_orchestrator_with_team("team-a");
@@ -3013,19 +2785,15 @@ mod tests {
         assert_eq!(transitions[0].to, StallStage::SoftNudged);
 
         let delivered = backend.delivered_requests();
-        assert_eq!(delivered.len(), 1);
-        let DeliveryRequest::OperatorNotice(payload) = &delivered[0] else {
-            panic!("expected operator notice");
-        };
-        assert_eq!(payload.team_name, "team-a");
-        assert_eq!(payload.member_name, member_name);
-        assert!(payload
-            .message
-            .contains("Are you still working on Task #N?"));
+        assert!(
+            delivered.is_empty(),
+            "mesh-managed teams should delegate stage-a idle reminder delivery to mesh"
+        );
+        assert_eq!(member_name, "agent-a");
     }
 
     #[test]
-    fn stage_b_delivery_alerts_team_lead_with_evidence() {
+    fn stage_b_delivery_is_delegated_to_mesh_for_mesh_managed_team() {
         let service = StallDetectorService::new(StallDetectorConfig::default());
         let (mut orchestrator, backend, _tmp, lead_name, member_name) =
             test_orchestrator_with_team("team-a");
@@ -3052,13 +2820,12 @@ mod tests {
         assert_eq!(second[0].to, StallStage::Escalated);
 
         let delivered = backend.delivered_requests();
-        assert_eq!(delivered.len(), 2);
-        let DeliveryRequest::OperatorNotice(payload) = &delivered[1] else {
-            panic!("expected operator notice");
-        };
-        assert_eq!(payload.member_name, lead_name);
-        assert!(payload.message.contains("Stage B stall escalation"));
-        assert!(payload.message.contains("nudge_id="));
+        assert!(
+            delivered.is_empty(),
+            "mesh-managed teams should delegate stage-b idle escalation delivery to mesh"
+        );
+        assert_eq!(lead_name, "team-lead");
+        assert_eq!(member_name, "agent-a");
     }
 
     #[test]
@@ -3207,137 +2974,5 @@ mod tests {
 
         let transitions = service.poll_once_at(now);
         assert!(transitions.is_empty());
-    }
-
-    #[test]
-    fn poll_once_writes_activity_snapshot_file_with_v1_schema() {
-        let runtime = Arc::new(RecordingCoordinationRuntime::default());
-        runtime.set_pane_exists("%55", true);
-        runtime.set_pane_dead("%55", false);
-        runtime.set_pane_shell("%55", false);
-        runtime.set_pane_current_command("%55", Some("cargo test"));
-
-        let (_orchestrator, _backend, teams_tmp, _lead_name, member_name) =
-            test_orchestrator_with_team("team-a");
-        let service = StallDetectorService::new_with_dependencies_and_teams_dir(
-            StallDetectorConfig::default(),
-            runtime,
-            Arc::new(|_| Vec::new()),
-            Arc::new(|_| HashMap::new()),
-            teams_tmp.path().to_path_buf(),
-        );
-        let now = ts("2026-03-05T15:00:00Z");
-        service.upsert_member("team-a", &member_name, now);
-        service.upsert_member_signal_context(
-            "team-a",
-            &member_name,
-            MemberSignalContext {
-                pane_id: Some("%55".to_string()),
-                ..MemberSignalContext::default()
-            },
-        );
-
-        let _ = service.poll_once_at(now);
-
-        let snapshot_path = activity_snapshot_path(teams_tmp.path(), "team-a", &member_name);
-        let raw = fs::read_to_string(&snapshot_path).expect("snapshot should be written");
-        let parsed: Value = serde_json::from_str(&raw).expect("valid snapshot json");
-        assert_eq!(parsed.get("version").and_then(Value::as_u64), Some(1));
-        assert!(parsed.get("observed_at").and_then(Value::as_str).is_some());
-        assert!(parsed
-            .get("stall_recent_activity")
-            .and_then(Value::as_bool)
-            .is_some());
-        assert!(parsed
-            .get("stall_no_output")
-            .and_then(Value::as_bool)
-            .is_some());
-        assert!(parsed
-            .get("stall_no_active_process")
-            .and_then(Value::as_bool)
-            .is_some());
-    }
-
-    #[test]
-    fn poll_once_writes_activity_snapshot_atomically_with_tmp_rename() {
-        let (_orchestrator, _backend, teams_tmp, _lead_name, member_name) =
-            test_orchestrator_with_team("team-a");
-        let service = StallDetectorService::new_with_dependencies_and_teams_dir(
-            StallDetectorConfig::default(),
-            Arc::new(RecordingCoordinationRuntime::default()),
-            Arc::new(|_| Vec::new()),
-            Arc::new(|_| HashMap::new()),
-            teams_tmp.path().to_path_buf(),
-        );
-        let now = ts("2026-03-05T15:10:00Z");
-        service.upsert_member("team-a", &member_name, now);
-
-        let _ = service.poll_once_at(now);
-
-        let snapshot_dir = teams_tmp
-            .path()
-            .join("team-a")
-            .join("state")
-            .join("activity");
-        let snapshot_path = activity_snapshot_path(teams_tmp.path(), "team-a", &member_name);
-        assert!(snapshot_path.exists(), "final snapshot file must exist");
-        let tmp_path = snapshot_dir.join(format!("{member_name}.json.tmp"));
-        assert!(!tmp_path.exists(), "tmp file must be renamed away");
-    }
-
-    #[test]
-    fn poll_once_snapshot_observed_at_matches_poll_time() {
-        let (_orchestrator, _backend, teams_tmp, _lead_name, member_name) =
-            test_orchestrator_with_team("team-a");
-        let service = StallDetectorService::new_with_dependencies_and_teams_dir(
-            StallDetectorConfig::default(),
-            Arc::new(RecordingCoordinationRuntime::default()),
-            Arc::new(|_| Vec::new()),
-            Arc::new(|_| HashMap::new()),
-            teams_tmp.path().to_path_buf(),
-        );
-        let now = ts("2026-03-05T15:20:00Z");
-        service.upsert_member("team-a", &member_name, now);
-
-        let _ = service.poll_once_at(now);
-
-        let snapshot_path = activity_snapshot_path(teams_tmp.path(), "team-a", &member_name);
-        let parsed: Value = serde_json::from_str(
-            &fs::read_to_string(snapshot_path).expect("snapshot should be readable"),
-        )
-        .expect("snapshot json should parse");
-        assert_eq!(
-            parsed.get("observed_at").and_then(Value::as_str),
-            Some("2026-03-05T15:20:00+00:00")
-        );
-    }
-
-    #[test]
-    fn poll_once_cleans_up_stale_snapshot_when_member_removed() {
-        let (mut orchestrator, _backend, teams_tmp, _lead_name, member_name) =
-            test_orchestrator_with_team("team-a");
-        let service = StallDetectorService::new_with_dependencies_and_teams_dir(
-            StallDetectorConfig::default(),
-            Arc::new(RecordingCoordinationRuntime::default()),
-            Arc::new(|_| Vec::new()),
-            Arc::new(|_| HashMap::new()),
-            teams_tmp.path().to_path_buf(),
-        );
-        let now = ts("2026-03-05T15:30:00Z");
-        service.upsert_member("team-a", &member_name, now);
-        let _ = service.poll_once_at(now);
-
-        let snapshot_path = activity_snapshot_path(teams_tmp.path(), "team-a", &member_name);
-        assert!(snapshot_path.exists(), "snapshot must exist before removal");
-
-        orchestrator
-            .remove_member("team-a", &member_name, None)
-            .expect("remove team member");
-
-        let _ = service.poll_once_at(now + ChronoDuration::seconds(30));
-        assert!(
-            !snapshot_path.exists(),
-            "removed member snapshot should be cleaned up"
-        );
     }
 }

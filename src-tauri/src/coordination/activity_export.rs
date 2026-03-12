@@ -3,8 +3,10 @@ use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
 
+use crate::coordination::activity_schema::{
+    MemberActivitySnapshot, SnapshotActivityConfidence, ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+};
 use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::TeamConfigStore;
@@ -21,30 +23,6 @@ struct SessionMembershipMetadata {
     group_label: String,
     member_name: String,
     pane_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct MemberActivitySnapshot {
-    version: u32,
-    observed_at: String,
-    stall_recent_activity: bool,
-    stall_no_output: bool,
-    stall_no_active_process: bool,
-    active_non_shell_process: bool,
-    recent_io: bool,
-    pane_alive: bool,
-    last_output_age_secs: Option<u64>,
-    activity_confidence: SnapshotActivityConfidence,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum SnapshotActivityConfidence {
-    Active,
-    LikelyWorking,
-    Uncertain,
-    Idle,
-    Dead,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -400,7 +378,7 @@ fn build_member_activity_snapshot(
         classify_activity_confidence(session, pane_probe, last_output_age_secs);
 
     MemberActivitySnapshot {
-        version: 1,
+        version: ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
         observed_at: observed_at.to_rfc3339(),
         stall_recent_activity: has_active_session,
         stall_no_output: !has_active_session,

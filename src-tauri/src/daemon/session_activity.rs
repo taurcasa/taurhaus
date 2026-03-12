@@ -18,6 +18,7 @@ use crate::session_scanner::{DisplaySession, RuntimeSession};
 const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_millis(500);
 const IDLE_SCAN_INTERVAL: Duration = Duration::from_millis(1500);
 const IDLE_STABLE_CYCLES_THRESHOLD: u32 = 30;
+const ACTIVITY_EXPORT_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Upper bound for long-poll wait time.
 const MAX_WAIT: Duration = Duration::from_secs(30);
@@ -88,6 +89,16 @@ fn activity_changed(prev: &[DisplaySession], next: &[DisplaySession]) -> bool {
     prev_sig.sort_by_key(|s| s.pid);
     next_sig.sort_by_key(|s| s.pid);
     prev_sig != next_sig
+}
+
+fn should_export_activity_snapshots(
+    changed: bool,
+    last_export_at: Option<Instant>,
+    now: Instant,
+) -> bool {
+    changed
+        || last_export_at
+            .is_none_or(|last| now.duration_since(last) >= ACTIVITY_EXPORT_REFRESH_INTERVAL)
 }
 
 #[derive(Debug, Default)]
@@ -220,8 +231,10 @@ impl SessionActivityHub {
         thread::spawn(move || {
             let mut next_tick = Instant::now();
             let mut cadence = ScannerCadence::default();
+            let mut last_activity_export_at: Option<Instant> = None;
 
             loop {
+                let loop_started_at = Instant::now();
                 let (mut display_sessions, mut runtime_sessions) =
                     crate::session_scanner::scan_sessions_for_authoritative_snapshot();
                 let teams_dir = default_activity_export_teams_dir();
@@ -238,12 +251,17 @@ impl SessionActivityHub {
                     !state.initialized
                         || activity_changed(&state.display_sessions, &display_sessions)
                 };
-                if changed {
+                if should_export_activity_snapshots(
+                    changed,
+                    last_activity_export_at,
+                    loop_started_at,
+                ) {
                     let export_stats = export_activity_snapshots_for_sessions(
                         &teams_dir,
                         &display_sessions,
                         Utc::now(),
                     );
+                    last_activity_export_at = Some(loop_started_at);
                     if export_stats.write_failures > 0 {
                         tracing::warn!(
                             teams_exported = export_stats.teams_exported,
@@ -344,5 +362,25 @@ mod tests {
         }
         assert_eq!(cadence.next_interval(false, &idle), IDLE_SCAN_INTERVAL);
         assert_eq!(cadence.next_interval(true, &idle), ACTIVE_SCAN_INTERVAL);
+    }
+
+    #[test]
+    fn activity_snapshot_export_runs_on_first_loop_even_without_change() {
+        let now = Instant::now();
+        assert!(should_export_activity_snapshots(false, None, now));
+    }
+
+    #[test]
+    fn activity_snapshot_export_is_refreshed_after_interval_even_without_change() {
+        let now = Instant::now();
+        let last = now - ACTIVITY_EXPORT_REFRESH_INTERVAL - Duration::from_secs(1);
+        assert!(should_export_activity_snapshots(false, Some(last), now));
+    }
+
+    #[test]
+    fn activity_snapshot_export_skips_early_refresh_without_change() {
+        let now = Instant::now();
+        let last = now - ACTIVITY_EXPORT_REFRESH_INTERVAL + Duration::from_secs(1);
+        assert!(!should_export_activity_snapshots(false, Some(last), now));
     }
 }
