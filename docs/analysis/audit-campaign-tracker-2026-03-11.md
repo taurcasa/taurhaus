@@ -9,9 +9,11 @@ This document tracks the current Taurhaus audit campaign, active investigation w
 - The active `taurhaus-team` daemon processes all started after the live Mesh binary was replaced on `2026-03-12 20:28:50 +0100`, so the current team is running the new production Mesh build.
 - There is still one unrelated old `taurmuse-team` team-daemon process running from a deleted older Mesh binary; this is outside the current `taurhaus-team` communication lane.
 - Communication is not considered healthy until messages are visible in the real target agent terminal. Inbox persistence alone is not an acceptance criterion.
-- Active communication repair work:
-  - `#1227` `mesh-architect` `in_progress`: fix real agent message delivery path, not just inbox persistence
-  - `#1228` `pending` behind `#1227`: verify real terminal-visible delivery across active `taurhaus-team` members after the fix
+- Completed communication recovery work:
+  - `#1227` `completed`: live delivery recovery/fix lane is no longer active as an emergency task
+  - `#1228` `completed`: terminal-visible delivery was verified live through direct communication checks across the active `taurhaus-team`
+- Current communication follow-up:
+  - `#1229` `dev-1` `in_progress`: write the current-state assessment of Mesh communication after recovery, including root cause, fix, verification, and remaining risks
 
 ## Active audit tasks
 
