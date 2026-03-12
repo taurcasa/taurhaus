@@ -360,6 +360,9 @@ After both audit reports are delivered:
 | #1217 | dev-3 | completed | Run a fresh-team pilot scenario in a fully isolated test workspace and report what still blocks broader pilot use |
 | #1218 | dev-2 | completed | Prepare test-only projects and a reset helper for the isolated Mesh pilot |
 | #1219 | architect-1 | completed | Define how to close the remaining Taurhaus and Mesh packaging/version-alignment gap before broader rollout |
+| #1220 | dev-1 | in_progress | Freeze the first Mesh cutover commit and rerun the isolated Linux pilot against that exact build |
+| #1221 | dev-2 | in_progress | Switch Taurhaus Mesh verification, status, and bundling checks to the JSON compatibility contract |
+| #1222 | dev-3 | pending | Rerun the fresh-team pilot through the Taurhaus-managed packaged Mesh path after cutover freeze and JSON alignment land |
 
 ### Phase-two naming freeze
 
@@ -437,6 +440,7 @@ After both audit reports are delivered:
 - `#1216` completed the isolated Linux pilot environment lane. Mesh now has wrapper scripts to start the pilot environment, reset it, run the repo-local Mesh binary, and launch Taurhaus dev mode without touching the installed production Mesh binary or any live data. The pilot root is under `/tmp/mesh-taurhaus-linux-pilot`, all mutable state is redirected there, and the seeded projects are test-only. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-isolated-linux-pilot-environment-2026-03-12.md`. Mesh commit: `b5521ae`.
 - `#1217` completed the first isolated fresh-team pilot. In a disposable temp root using the repo-local `target/debug/mesh` binary, a fresh team came up cleanly with lead plus two members; task creation, assignment, read, ack, accept, start, progress, peer messaging, review, and complete all worked end to end; and all produced files stayed inside the temp root. No production teams or Taurhaus roots were touched. The remaining broader-pilot gap is no longer the Mesh CLI itself but Taurhaus packaging and version alignment around that pilot path. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-fresh-team-pilot-run-2026-03-12.md`.
 - `#1219` completed the rollout-gap plan. Main result: use one authoritative Mesh path per stage instead of mixing source, debug builds, release builds, installed binaries, and Taurhaus-bundled binaries. For the first real pilot, the authority should stay the repo-local Mesh binary at one frozen cutover commit, executed only through the isolated Linux pilot wrappers. For broader rollout, the authority should switch to the Taurhaus-bundled Mesh binary built from one frozen commit and verified through `mesh version --json` instead of loose semver string checks. The report also identifies the main skew sources still present today, especially Windows runtime path resolution and the fact that Taurhaus still verifies Mesh mostly by version string. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-taurhaus-packaging-alignment-plan-2026-03-12.md`. Mesh commit: `02f564a`.
+- `#1220` through `#1222` are the current rollout-alignment lanes. The order is intentional. First we freeze one exact Mesh cutover commit and rerun the isolated Linux pilot against that exact build. In parallel, Taurhaus switches its Mesh status/install/build checks from loose version-string parsing to the full JSON compatibility contract. Only after those two are complete do we rerun the same fresh-team scenario through the Taurhaus-managed packaged Mesh path.
 
 ## Stopped backlog items
 
