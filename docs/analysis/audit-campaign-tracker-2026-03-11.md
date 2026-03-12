@@ -362,7 +362,9 @@ After both audit reports are delivered:
 | #1219 | architect-1 | completed | Define how to close the remaining Taurhaus and Mesh packaging/version-alignment gap before broader rollout |
 | #1220 | dev-1 | completed | Freeze the first Mesh cutover commit and rerun the isolated Linux pilot against that exact build |
 | #1221 | dev-2 | completed | Switch Taurhaus Mesh verification, status, and bundling checks to the JSON compatibility contract |
-| #1222 | dev-3 | in_progress | Rerun the fresh-team pilot through the Taurhaus-managed packaged Mesh path after cutover freeze and JSON alignment land |
+| #1222 | dev-3 | completed | Rerun the fresh-team pilot through the Taurhaus-managed packaged Mesh path after cutover freeze and JSON alignment land |
+| #1223 | dev-2 | in_progress | Rebuild and repin the Taurhaus bundled Mesh artifact to the frozen cutover commit |
+| #1224 | dev-3 | pending | Rerun the packaged Taurhaus fresh-team pilot after the bundled Mesh artifact is rebuilt and repinned |
 
 ### Phase-two naming freeze
 
@@ -443,7 +445,9 @@ After both audit reports are delivered:
 - `#1220` through `#1222` are the current rollout-alignment lanes. The order is intentional. First we freeze one exact Mesh cutover commit and rerun the isolated Linux pilot against that exact build. In parallel, Taurhaus switches its Mesh status/install/build checks from loose version-string parsing to the full JSON compatibility contract. Only after those two are complete do we rerun the same fresh-team scenario through the Taurhaus-managed packaged Mesh path.
 - `#1220` completed the cutover-freeze proof. The frozen cutover candidate is Mesh commit `af30eaa267a7f4bdc4a08a031b1c8744d393ef12`, `target/debug/mesh` was rebuilt from that exact clean HEAD, and the isolated Linux pilot was rerun successfully against that frozen build. The key result is clean identity discipline: the rebuilt binary, the pilot wrapper before the run, and the pilot wrapper after the run all reported the same `git_commit` `af30eaa267a7f4bdc4a08a031b1c8744d393ef12`. Report: `/home/mstie/projects/mesh/docs/analysis/mesh-cutover-freeze-and-linux-pilot-rerun-2026-03-12.md`. Docs commit: `af01378`.
 - `#1221` completed the Taurhaus JSON compatibility cutover. Taurhaus runtime Mesh status/install verification now consumes `mesh version --json` and compares `version`, `protocol_version`, `schema_version`, and optional `git_commit` against the bundled manifest contract. `MeshInstallStatus` now carries structured bundled/installed contracts and explicit compatibility issues, the Mesh availability UI surfaces those blocker reasons directly, and the relevant `justfile` paths now verify/report against the same JSON contract instead of loose version-string parsing. Taurhaus commit: `a53c1aa`. Report: `docs/analysis/taurhaus-mesh-json-compatibility-cutover-2026-03-12.md`.
-- `#1222` is now the live packaged-pilot proof lane. `dev-3` already prepared the packaged-pilot checklist at `/home/mstie/projects/mesh/docs/analysis/mesh-packaged-taurhaus-pilot-rerun-2026-03-12.md`, and the lane has now been released because both prerequisites are complete: `#1220` froze the cutover commit and `#1221` landed the Taurhaus JSON compatibility cutover.
+- `#1222` completed as a useful failed proof, not a dead end. The Taurhaus-managed packaged path is internally aligned, but it is aligned to the older bundled Mesh commit `0b346da...`, not the frozen cutover commit `af30eaa...` from `#1220`. Because of that, the packaged pilot still shows the old cold-start failure (`join` only creates inbox files and `who --json` still fails with `team not found`). Report: `/home/mstie/projects/mesh/docs/analysis/mesh-packaged-taurhaus-pilot-rerun-2026-03-12.md`.
+- `#1223` is now the direct fix lane for that blocker: rebuild the Taurhaus bundled Mesh release artifact from the frozen cutover commit and repin `mesh.lock.json` plus `mesh.manifest.json` to that exact build.
+- `#1224` is the follow-up proof lane and stays queued until `#1223` lands. It reruns the same packaged Taurhaus fresh-team pilot after the rebundle so we can confirm the packaged path now matches the successful wrapper pilot.
 
 ## Stopped backlog items
 
