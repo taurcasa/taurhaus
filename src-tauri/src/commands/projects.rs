@@ -6,6 +6,7 @@ use serde::Deserialize;
 use tauri::{Emitter, State};
 
 use crate::commands::lifecycle::IpcCommandSpan;
+use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::db::{queries, settings_queries};
 use crate::errors::{sanitize_error, SanitizeErr};
 use crate::models::{ProjectDetail, ProjectSummary};
@@ -144,6 +145,27 @@ fn create_project_impl(
     parent_dir: &str,
     thresholds: &crate::models::ActivityThresholds,
 ) -> Result<ProjectDetail, crate::errors::AppError> {
+    create_project_impl_with_initializer(
+        conn,
+        name,
+        parent_dir,
+        std::path::Path::new(parent_dir),
+        thresholds,
+        initialize_project_repo,
+    )
+}
+
+fn create_project_impl_with_initializer<F>(
+    conn: &Connection,
+    name: &str,
+    parent_dir: &str,
+    parent_path: &std::path::Path,
+    thresholds: &crate::models::ActivityThresholds,
+    initializer: F,
+) -> Result<ProjectDetail, crate::errors::AppError>
+where
+    F: FnOnce(&std::path::Path, &str) -> Result<(), crate::errors::AppError>,
+{
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
         return Err(crate::errors::AppError::InvalidPath(
@@ -161,7 +183,6 @@ fn create_project_impl(
         )));
     }
 
-    let parent_path = std::path::Path::new(parent_dir);
     if !parent_path.is_dir() {
         return Err(crate::errors::AppError::InvalidPath(format!(
             "Parent directory does not exist or is not a directory: {parent_dir}"
@@ -169,18 +190,15 @@ fn create_project_impl(
     }
 
     let target_dir = parent_path.join(trimmed_name);
+    let target_raw_path = join_project_creation_path(parent_dir, trimmed_name);
     if target_dir.exists() {
         return Err(crate::errors::AppError::AlreadyExists(format!(
-            "Target directory already exists: {}",
-            target_dir.to_string_lossy()
+            "Target directory already exists: {target_raw_path}",
         )));
     }
 
     std::fs::create_dir_all(&target_dir)?;
-
-    let mut init_options = git2::RepositoryInitOptions::new();
-    init_options.initial_head("main");
-    git2::Repository::init_opts(&target_dir, &init_options)?;
+    initializer(&target_dir, &target_raw_path)?;
 
     project::register_project(
         conn,
@@ -188,6 +206,92 @@ fn create_project_impl(
         Some(trimmed_name),
         thresholds,
     )
+}
+
+fn join_project_creation_path(parent_dir: &str, name: &str) -> String {
+    let trimmed_parent = parent_dir.trim_end_matches(['/', '\\']);
+    if trimmed_parent.is_empty() || trimmed_parent == "/" {
+        return format!("/{name}");
+    }
+    if trimmed_parent.contains('\\') {
+        format!(r"{trimmed_parent}\{name}")
+    } else {
+        format!("{trimmed_parent}/{name}")
+    }
+}
+
+fn initialize_project_repo(
+    target_dir: &std::path::Path,
+    raw_target_path: &str,
+) -> Result<(), crate::errors::AppError> {
+    initialize_project_repo_with_runner(target_dir, raw_target_path, initialize_project_repo_in_wsl)
+}
+
+fn initialize_project_repo_with_runner<F>(
+    target_dir: &std::path::Path,
+    raw_target_path: &str,
+    wsl_runner: F,
+) -> Result<(), crate::errors::AppError>
+where
+    F: FnOnce(&str, &str) -> Result<(), crate::errors::AppError>,
+{
+    if crate::provider::path::requires_daemon_git_trust(raw_target_path) {
+        let distro =
+            crate::provider::path::wsl_distro_from_path(raw_target_path).ok_or_else(|| {
+                crate::errors::AppError::InvalidPath(format!(
+                    "Invalid WSL project path: {raw_target_path}"
+                ))
+            })?;
+        validate_wsl_distro(&distro).map_err(crate::errors::AppError::InvalidPath)?;
+        let linux_path =
+            crate::provider::path::wsl_unc_to_linux(raw_target_path).ok_or_else(|| {
+                crate::errors::AppError::InvalidPath(format!(
+                    "Invalid WSL project path: {raw_target_path}"
+                ))
+            })?;
+        return wsl_runner(&distro, &linux_path);
+    }
+
+    let mut init_options = git2::RepositoryInitOptions::new();
+    init_options.initial_head("main");
+    git2::Repository::init_opts(target_dir, &init_options)?;
+    Ok(())
+}
+
+fn initialize_project_repo_in_wsl(
+    distro: &str,
+    linux_target_path: &str,
+) -> Result<(), crate::errors::AppError> {
+    let output = wsl_command()
+        .args([
+            "-d",
+            distro,
+            "--",
+            "sh",
+            "-lc",
+            r#"mkdir -p "$1" && git -C "$1" init -b main"#,
+            "taurhaus-create-project",
+            linux_target_path,
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let detail = if stderr.is_empty() {
+        format!("status {}", output.status)
+    } else {
+        stderr
+    };
+
+    Err(crate::errors::AppError::Git(git2::Error::from_str(
+        &format!("Failed to initialize git repository in WSL: {detail}"),
+    )))
 }
 
 #[tauri::command]
@@ -945,5 +1049,78 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(err, crate::errors::AppError::AlreadyExists(_)));
+    }
+
+    #[test]
+    fn initialize_project_repo_uses_wsl_runner_for_wsl_unc_targets() {
+        use std::cell::RefCell;
+
+        let target_dir = TempDir::new().unwrap();
+        let recorded = RefCell::new(None::<(String, String)>);
+
+        initialize_project_repo_with_runner(
+            target_dir.path(),
+            r"\\wsl.localhost\Ubuntu\home\user\projects\new-project",
+            |distro, linux_path| {
+                recorded.replace(Some((distro.to_string(), linux_path.to_string())));
+                std::fs::create_dir_all(target_dir.path().join(".git")).unwrap();
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            recorded.into_inner(),
+            Some((
+                "Ubuntu".to_string(),
+                "/home/user/projects/new-project".to_string()
+            ))
+        );
+        assert!(target_dir.path().join(".git").is_dir());
+    }
+
+    #[test]
+    fn create_project_wsl_one_step_flow_registers_after_wsl_git_init() {
+        use std::cell::RefCell;
+
+        let (db_state, _tmp) = test_db_state();
+        let parent = TempDir::new().unwrap();
+        let conn = db_state.0.lock().unwrap();
+        let thresholds = ActivityThresholds::default();
+        let recorded = RefCell::new(None::<(String, String)>);
+
+        let detail = create_project_impl_with_initializer(
+            &conn,
+            "new-project",
+            r"\\wsl.localhost\Ubuntu\home\user\projects",
+            parent.path(),
+            &thresholds,
+            |target_dir, raw_target_path| {
+                initialize_project_repo_with_runner(
+                    target_dir,
+                    raw_target_path,
+                    |distro, linux_path| {
+                        recorded.replace(Some((distro.to_string(), linux_path.to_string())));
+                        std::fs::create_dir_all(target_dir.join(".git")).unwrap();
+                        Ok(())
+                    },
+                )
+            },
+        )
+        .unwrap();
+
+        let created_path = parent.path().join("new-project");
+        assert_eq!(detail.path, created_path.to_string_lossy());
+        assert_eq!(
+            recorded.into_inner(),
+            Some((
+                "Ubuntu".to_string(),
+                "/home/user/projects/new-project".to_string()
+            ))
+        );
+        let is_registered =
+            crate::db::queries::project_exists_at_path(&conn, created_path.to_str().unwrap())
+                .unwrap();
+        assert!(is_registered);
     }
 }
