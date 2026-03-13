@@ -1,6 +1,6 @@
 import { SvelteMap } from 'svelte/reactivity'
 
-export const meshSnapshots = new SvelteMap()
+const meshSnapshots = new SvelteMap()
 
 function nowMs() {
   return Date.now()

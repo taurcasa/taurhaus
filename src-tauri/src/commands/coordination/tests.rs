@@ -1494,8 +1494,8 @@ fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signa
         stale_runtime.health = HealthState::SessionDead;
         stale_runtime.session_id = None;
         stale_runtime.daemon_pid = None;
-        stale_runtime.last_seen_at = Some(stale_seen_at.clone());
-        stale_runtime.attached_at = Some(stale_seen_at.clone());
+        stale_runtime.last_seen_at = Some(stale_seen_at);
+        stale_runtime.attached_at = Some(stale_seen_at);
         MemberRuntimeStore::save(
             tmp.path(),
             "towerhouse-product-team",
@@ -1509,8 +1509,8 @@ fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signa
         live_runtime.health = HealthState::Healthy;
         live_runtime.session_id = Some(format!("live-session-{member_name}"));
         live_runtime.daemon_pid = Some(9_000 + index as u32);
-        live_runtime.last_seen_at = Some(live_seen_at.clone());
-        live_runtime.attached_at = Some(live_seen_at.clone());
+        live_runtime.last_seen_at = Some(live_seen_at);
+        live_runtime.attached_at = Some(live_seen_at);
         if live_runtime.pane_id.is_none() {
             live_runtime.pane_id = Some(format!("%{}", index + 10));
         }

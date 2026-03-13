@@ -130,7 +130,7 @@ fn parse_mesh_contract_json(raw: &[u8]) -> Result<MeshCompatibilityContract, Str
         serde_json::from_slice(raw).map_err(|e| format!("failed to parse JSON: {e}"))?;
     let version = parsed.version.trim();
     if version.is_empty() {
-        return Err(format!("missing required non-empty \"version\" field"));
+        return Err("missing required non-empty \"version\" field".to_string());
     }
 
     Ok(MeshCompatibilityContract {
