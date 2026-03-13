@@ -468,6 +468,48 @@ fn initialize_error_case_returns_structured_failed_step_report() {
 }
 
 #[test]
+fn initialize_failure_after_team_creation_does_not_get_rewritten_to_config_missing() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = FakeBackend::default();
+    fake.set_deliver_error(CoordinationError::Backend(
+        "simulated onboarding delivery failure".to_string(),
+    ));
+    let state = CoordinationState::with_components_and_runtime(
+        tmp.path().to_path_buf(),
+        BackendSelector::m0(),
+        Arc::new({
+            let fake = fake.clone();
+            move |_kind| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+        }),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+    );
+    let (db, _db_file) = test_db_state();
+
+    // Regression: when initialize failed after create_team, the command layer
+    // still ran post-initialize config sync and overwrote the real failed step
+    // with a raw "team config not found" error after cleanup deleted the team.
+    let report = coordination_initialize_team_internal(
+        &state,
+        Some(&db),
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should return structured failure report");
+
+    assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+    assert!(report.retryable);
+    assert!(
+        report
+            .message
+            .contains("simulated onboarding delivery failure"),
+        "expected original onboarding failure, got: {}",
+        report.message
+    );
+}
+
+#[test]
 fn add_agent_ipc_returns_add_agent_report_shape() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());

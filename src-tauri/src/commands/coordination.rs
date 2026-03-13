@@ -344,7 +344,8 @@ fn coordination_initialize_team_internal(
         .succeeded_steps
         .iter()
         .any(|step| step == "create_team");
-    if team_was_created {
+    let initialize_succeeded = report.failed_step.is_none();
+    if team_was_created && initialize_succeeded {
         if let Some(db) = db {
             sync_team_snapshots_after_change(state, db, &report.team_name)
                 .map_err(map_coordination_error)?;
