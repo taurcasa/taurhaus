@@ -445,7 +445,7 @@ where
     let target_path = target_dir.join("mesh");
     let temp_path = target_dir.join(".mesh.new");
 
-    std::fs::create_dir_all(&target_dir)
+    std::fs::create_dir_all(target_dir)
         .map_err(|e| format!("Failed to create ~/.local/bin: {e}"))?;
     std::fs::copy(bundled_binary, &temp_path).map_err(|e| format!("Failed to copy mesh: {e}"))?;
 
