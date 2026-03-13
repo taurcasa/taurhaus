@@ -50,6 +50,13 @@ pub(crate) fn daemon_runtime_session_snapshot(
         }
         Ok(None) => Ok(crate::session_snapshot_cache::load()),
         Err(error) => {
+            if taurhaus_lib::daemon_api::is_busy_transport_error(&error) {
+                tracing::debug!(
+                    error = %error,
+                    "Daemon runtime session snapshot skipped because the shared daemon connection is busy"
+                );
+                return Ok(crate::session_snapshot_cache::load());
+            }
             tracing::warn!(
                 error = %error,
                 "Failed to reach daemon for runtime session snapshot; attempting inline reconnect"

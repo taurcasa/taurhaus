@@ -61,6 +61,12 @@ pub fn is_timeout_transport_error(message: &str) -> bool {
     message.to_ascii_lowercase().contains("timed out")
 }
 
+pub fn is_busy_transport_error(message: &str) -> bool {
+    message
+        .to_ascii_lowercase()
+        .contains("busy with another request")
+}
+
 pub fn emit_daemon_connection_event(
     level: &str,
     event: &str,

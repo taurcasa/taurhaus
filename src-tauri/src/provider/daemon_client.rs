@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
@@ -154,7 +154,46 @@ impl DaemonProvider {
     /// Unlike the trait methods, this returns the raw DaemonResponse so callers
     /// can inspect version/uptime without deserializing a specific type.
     pub fn send_status_request(&self, request: &DaemonRequest) -> Result<DaemonResponse, AppError> {
-        self.send_request(request, PING_TIMEOUT)
+        let rpc_span = DaemonRpcSpan::start(request, 0);
+        let result = match self.conn.try_lock() {
+            Ok(mut conn_guard) => {
+                self.send_request_with_guard(&mut conn_guard, request, PING_TIMEOUT)
+            }
+            Err(TryLockError::WouldBlock) => Err(AppError::DaemonTransport(
+                "Daemon connection busy with another request".to_string(),
+            )),
+            Err(TryLockError::Poisoned(_)) => Err(AppError::DaemonTransport(
+                "Daemon connection lock poisoned".to_string(),
+            )),
+        };
+        match &result {
+            Ok(response) => {
+                if let Some(error) = response.error.as_ref() {
+                    rpc_span.failed(&error.code, &error.message);
+                } else {
+                    rpc_span.response("ok");
+                }
+            }
+            Err(AppError::DaemonTransport(message)) if is_timeout_transport_error(message) => {
+                rpc_span.timeout();
+            }
+            Err(AppError::DaemonProtocol(message)) => {
+                rpc_span.failed("DAEMON_PROTOCOL_ERROR", message);
+            }
+            Err(AppError::DaemonTransport(message)) => {
+                rpc_span.failed("DAEMON_TRANSPORT_ERROR", message);
+            }
+            Err(_) => {
+                rpc_span.failed("DAEMON_RPC_ERROR", "daemon rpc call failed");
+            }
+        }
+        if let Err(AppError::DaemonTransport(message)) = &result {
+            if !crate::daemon_api::is_busy_transport_error(message) {
+                tracing::warn!("Daemon I/O error, marking disconnected");
+                self.mark_disconnected(message);
+            }
+        }
+        result
     }
 
     /// Reconnect to the daemon at the stored address.
@@ -328,6 +367,15 @@ impl DaemonProvider {
             AppError::DaemonTransport("Daemon connection lock poisoned".to_string())
         })?;
 
+        self.send_request_with_guard(&mut conn_guard, request, timeout)
+    }
+
+    fn send_request_with_guard(
+        &self,
+        conn_guard: &mut Option<Connection>,
+        request: &DaemonRequest,
+        timeout: Duration,
+    ) -> Result<DaemonResponse, AppError> {
         let conn = conn_guard
             .as_mut()
             .ok_or_else(|| AppError::DaemonTransport("Daemon not connected".to_string()))?;
@@ -940,6 +988,28 @@ mod tests {
         assert!(provider.ping().is_ok());
 
         daemon2.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn status_request_fails_fast_when_connection_is_busy() {
+        let daemon = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
+
+        let _busy_guard = provider.conn.try_lock().expect("lock connection");
+        let request = DaemonRequest::ping("busy");
+        let err = provider
+            .send_status_request(&request)
+            .expect_err("busy status request should fail fast");
+
+        assert!(err
+            .to_string()
+            .contains("Daemon connection busy with another request"));
+        assert!(
+            provider.is_connected(),
+            "busy fast-fail should not disconnect provider"
+        );
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]

@@ -152,10 +152,17 @@ fn daemon_runtime_session_snapshot(
             Ok(None)
         }
         Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "Failed to reach daemon for coordination runtime session snapshot"
-            );
+            if taurhaus_lib::daemon_api::is_busy_transport_error(&error.to_string()) {
+                tracing::debug!(
+                    error = %error,
+                    "Skipped coordination runtime session snapshot because the shared daemon connection is busy"
+                );
+            } else {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to reach daemon for coordination runtime session snapshot"
+                );
+            }
             Ok(None)
         }
     }
