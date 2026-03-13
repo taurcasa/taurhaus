@@ -592,8 +592,11 @@ build-macos: sync-macos
     LOCK_SCHEMA="${LOCK_FIELDS[2]}"
     LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Syncing mesh source to macOS…"
-    rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
+    rsync -az --delete --exclude='target' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
     echo "✓ Mesh sync complete"
+    echo ""
+    echo "▸ Cleaning remote mesh target to refresh build metadata…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo clean'"
     echo ""
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun install --frozen-lockfile'"
@@ -708,8 +711,11 @@ build-macos-intel: sync-macos
     LOCK_SCHEMA="${LOCK_FIELDS[2]}"
     LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Syncing mesh source to macOS…"
-    rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
+    rsync -az --delete --exclude='target' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
     echo "✓ Mesh sync complete"
+    echo ""
+    echo "▸ Cleaning remote mesh target to refresh build metadata…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo clean'"
     echo ""
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun install --frozen-lockfile'"
@@ -812,8 +818,11 @@ build-macos-universal: sync-macos
     LOCK_SCHEMA="${LOCK_FIELDS[2]}"
     LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Syncing mesh source to macOS…"
-    rsync -az --delete --exclude='target' --exclude='.git' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
+    rsync -az --delete --exclude='target' "$MESH_PROJECT"/ {{mac_host}}:~/projects/mesh/
     echo "✓ Mesh sync complete"
+    echo ""
+    echo "▸ Cleaning remote mesh target to refresh build metadata…"
+    ssh {{mac_host}} "zsh -ilc 'cd ~/projects/mesh && cargo clean'"
     echo ""
     echo "▸ Installing frontend dependencies on macOS…"
     ssh {{mac_host}} "zsh -ilc 'cd {{mac_dir}} && bun install --frozen-lockfile'"
