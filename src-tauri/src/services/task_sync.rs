@@ -413,7 +413,9 @@ mod tests {
 
     use crate::coordination::domain::{Member, MemberRole};
     use crate::coordination::stores::{
-        OperationalContextSnapshotStore, TeamConfig, TeamConfigStore,
+        OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+        OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
+        OperationalWorkingSetSnapshot, TeamConfig, TeamConfigStore,
     };
     use crate::session_scanner::cli_tool::CliTool;
 
@@ -542,6 +544,132 @@ mod tests {
 
         assert_eq!(snapshot.task.id, "675");
         assert_eq!(snapshot.task.subject, "Wire snapshot updates");
+        assert_eq!(snapshot.task.status, "in_progress");
+    }
+
+    #[test]
+    fn persist_task_scan_skips_operational_snapshot_rewrite_when_task_context_is_unchanged() {
+        let teams = TempDir::new().expect("teams dir");
+        let db = NamedTempFile::new().expect("db file");
+        let conn = crate::db::init_db(db.path()).expect("init db");
+        let generation_state = TaskScanGenerationState::default();
+
+        TeamConfigStore::save(
+            teams.path(),
+            "architecture-final",
+            &TeamConfig {
+                schema_version: 1,
+                name: "architecture-final".to_string(),
+                description: None,
+                created_at: Utc::now(),
+                members: vec![Member {
+                    name: "frontend-dev".to_string(),
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
+                    runtime_compact_summary: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    capabilities: None,
+                    project_path: "proj-web".into(),
+                    cli_tool: CliTool::Codex,
+                }],
+            },
+        )
+        .expect("save team");
+
+        let seeded_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T13:00:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+        OperationalContextSnapshotStore::save(
+            teams.path(),
+            &OperationalContextSnapshot {
+                version: 1,
+                team_name: "architecture-final".to_string(),
+                member_name: "frontend-dev".to_string(),
+                updated_at: seeded_at,
+                task: OperationalTaskSnapshot {
+                    id: "675".to_string(),
+                    subject: "Wire snapshot updates".to_string(),
+                    status: "in_progress".to_string(),
+                },
+                assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+                ownership: OperationalOwnershipSnapshot::default(),
+                working_set: OperationalWorkingSetSnapshot {
+                    project_path: "proj-web".to_string(),
+                    focal_files: Vec::new(),
+                },
+            },
+        )
+        .expect("seed snapshot");
+
+        let scan_result = crate::task_scanner::TaskResult {
+            tasks: vec![crate::task_scanner::UnifiedTask {
+                id: "675".to_string(),
+                source_key: "session-1".to_string(),
+                subject: "Wire snapshot updates".to_string(),
+                description: None,
+                active_form: None,
+                status: crate::task_scanner::TaskStatus::InProgress,
+                source: CliTool::Claude,
+                blocks: vec![],
+                blocked_by: vec![],
+                owner: Some("frontend-dev".to_string()),
+                session_id: None,
+                state_changed_at: None,
+                updated_at: None,
+                archived_at: None,
+                last_status: None,
+                archived_reason: None,
+            }],
+            errors: vec![],
+            source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
+                source: "claude".to_string(),
+                outcome: crate::task_scanner::ScanOutcome::Data(vec![
+                    crate::task_scanner::UnifiedTask {
+                        id: "675".to_string(),
+                        source_key: "session-1".to_string(),
+                        subject: "Wire snapshot updates".to_string(),
+                        description: None,
+                        active_form: None,
+                        status: crate::task_scanner::TaskStatus::InProgress,
+                        source: CliTool::Claude,
+                        blocks: vec![],
+                        blocked_by: vec![],
+                        owner: Some("frontend-dev".to_string()),
+                        session_id: None,
+                        state_changed_at: None,
+                        updated_at: None,
+                        archived_at: None,
+                        last_status: None,
+                        archived_reason: None,
+                    },
+                ]),
+            }],
+        };
+
+        persist_task_scan_with_generation_and_operational_dir(
+            &conn,
+            "proj-web",
+            &scan_result,
+            &generation_state,
+            1,
+            teams.path(),
+        );
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert_eq!(snapshot.updated_at, seeded_at);
+        assert_eq!(snapshot.task.id, "675");
         assert_eq!(snapshot.task.status, "in_progress");
     }
 

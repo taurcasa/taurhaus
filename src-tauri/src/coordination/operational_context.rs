@@ -40,42 +40,17 @@ pub fn sync_member_snapshot(
             ))
         })?;
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
-    let task = latest_owned_task(
-        conn,
-        &member.project_path.display().to_string(),
+    let project_path = member.project_path.display().to_string();
+    let tasks = load_project_tasks(conn, &project_path)?;
+    let snapshot = build_member_snapshot(
+        existing.as_ref(),
+        team_name,
         member_name,
-    )?;
+        &project_path,
+        latest_owned_task_from_tasks(&tasks, member_name),
+    );
 
-    let snapshot = OperationalContextSnapshot {
-        version: existing.as_ref().map_or(1, |snapshot| snapshot.version),
-        team_name: team_name.to_string(),
-        member_name: member_name.to_string(),
-        updated_at: Utc::now(),
-        task,
-        assignment_footer: existing
-            .as_ref()
-            .map(|snapshot| snapshot.assignment_footer.clone())
-            .unwrap_or_default(),
-        ownership: existing
-            .as_ref()
-            .map(|snapshot| snapshot.ownership.clone())
-            .unwrap_or_default(),
-        working_set: existing
-            .as_ref()
-            .map(|snapshot| {
-                let mut working_set = snapshot.working_set.clone();
-                if working_set.project_path.trim().is_empty() {
-                    working_set.project_path = member.project_path.display().to_string();
-                }
-                working_set
-            })
-            .unwrap_or_else(|| OperationalWorkingSetSnapshot {
-                project_path: member.project_path.display().to_string(),
-                focal_files: Vec::new(),
-            }),
-    };
-
-    OperationalContextSnapshotStore::save(teams_dir, &snapshot)
+    save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)
 }
 
 pub fn sync_project_task_snapshots(
@@ -83,6 +58,7 @@ pub fn sync_project_task_snapshots(
     conn: &Connection,
     project_path: &str,
 ) -> Result<(), CoordinationError> {
+    let tasks = load_project_tasks(conn, project_path)?;
     for team_name in TeamConfigStore::list(teams_dir)? {
         let config = match TeamConfigStore::load(teams_dir, &team_name) {
             Ok(config) => config,
@@ -101,7 +77,16 @@ pub fn sync_project_task_snapshots(
             .iter()
             .filter(|member| member.project_path == Path::new(project_path))
         {
-            sync_member_snapshot(teams_dir, conn, &team_name, &member.name)?;
+            let existing =
+                OperationalContextSnapshotStore::load(teams_dir, &team_name, &member.name)?;
+            let snapshot = build_member_snapshot(
+                existing.as_ref(),
+                &team_name,
+                &member.name,
+                project_path,
+                latest_owned_task_from_tasks(&tasks, &member.name),
+            );
+            save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)?;
         }
     }
     Ok(())
@@ -186,19 +171,23 @@ pub fn apply_delivery_context(
             }),
     };
 
-    OperationalContextSnapshotStore::save(teams_dir, &snapshot)
+    save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)
 }
 
-fn latest_owned_task(
+fn load_project_tasks(
     conn: &Connection,
     project_path: &str,
-    member_name: &str,
-) -> Result<OperationalTaskSnapshot, CoordinationError> {
-    let tasks = taurhaus_lib::db::task_queries::get_tasks_for_project(conn, project_path)
-        .map_err(|err| CoordinationError::StoreError(err.to_string()))?;
+) -> Result<Vec<taurhaus_lib::db::task_queries::PersistedTask>, CoordinationError> {
+    taurhaus_lib::db::task_queries::get_tasks_for_project(conn, project_path)
+        .map_err(|err| CoordinationError::StoreError(err.to_string()))
+}
 
+fn latest_owned_task_from_tasks(
+    tasks: &[taurhaus_lib::db::task_queries::PersistedTask],
+    member_name: &str,
+) -> OperationalTaskSnapshot {
     let task = tasks
-        .into_iter()
+        .iter()
         .filter(|task| task.owner.as_deref() == Some(member_name))
         .filter(|task| is_resumable_task_status(&task.status))
         .max_by(|left, right| {
@@ -208,13 +197,62 @@ fn latest_owned_task(
                 .then_with(|| left.state_changed_at.cmp(&right.state_changed_at))
         });
 
-    Ok(task
-        .map(|task| OperationalTaskSnapshot {
-            id: task.source_task_id,
-            subject: task.subject,
-            status: task.status,
-        })
-        .unwrap_or_default())
+    task.map(|task| OperationalTaskSnapshot {
+        id: task.source_task_id.clone(),
+        subject: task.subject.clone(),
+        status: task.status.clone(),
+    })
+    .unwrap_or_default()
+}
+
+fn build_member_snapshot(
+    existing: Option<&OperationalContextSnapshot>,
+    team_name: &str,
+    member_name: &str,
+    project_path: &str,
+    task: OperationalTaskSnapshot,
+) -> OperationalContextSnapshot {
+    OperationalContextSnapshot {
+        version: existing.map_or(1, |snapshot| snapshot.version),
+        team_name: team_name.to_string(),
+        member_name: member_name.to_string(),
+        updated_at: Utc::now(),
+        task,
+        assignment_footer: existing
+            .map(|snapshot| snapshot.assignment_footer.clone())
+            .unwrap_or_default(),
+        ownership: existing
+            .map(|snapshot| snapshot.ownership.clone())
+            .unwrap_or_default(),
+        working_set: existing
+            .map(|snapshot| {
+                let mut working_set = snapshot.working_set.clone();
+                if working_set.project_path.trim().is_empty() {
+                    working_set.project_path = project_path.to_string();
+                }
+                working_set
+            })
+            .unwrap_or_else(|| OperationalWorkingSetSnapshot {
+                project_path: project_path.to_string(),
+                focal_files: Vec::new(),
+            }),
+    }
+}
+
+fn save_snapshot_if_changed(
+    teams_dir: &Path,
+    existing: Option<&OperationalContextSnapshot>,
+    snapshot: OperationalContextSnapshot,
+) -> Result<(), CoordinationError> {
+    if let Some(existing_snapshot) = existing {
+        let mut candidate = snapshot.clone();
+        candidate.updated_at = existing_snapshot.updated_at;
+        if &candidate == existing_snapshot {
+            return Ok(());
+        }
+    }
+
+    OperationalContextSnapshotStore::save(teams_dir, &snapshot)
 }
 
 fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
@@ -365,6 +403,78 @@ mod tests {
         assert!(snapshot.task.subject.is_empty());
         assert!(snapshot.task.status.is_empty());
         assert_eq!(snapshot.working_set.project_path, "proj-web");
+    }
+
+    #[test]
+    fn sync_member_snapshot_preserves_timestamp_when_task_context_is_unchanged() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &taurhaus_lib::db::task_queries::PersistedTask {
+                project_path: "proj-web".to_string(),
+                source: "claude".to_string(),
+                source_key: "session-1".to_string(),
+                source_task_id: "42".to_string(),
+                subject: "Fix regression".to_string(),
+                description: None,
+                active_form: None,
+                status: "in_progress".to_string(),
+                blocks: vec![],
+                blocked_by: vec![],
+                owner: Some("frontend-dev".to_string()),
+                session_id: None,
+                first_seen_at: "2026-03-08T12:00:00Z".to_string(),
+                state_changed_at: Some("2026-03-08T12:00:00Z".to_string()),
+                updated_at: "2026-03-08T12:00:00Z".to_string(),
+                archived_at: None,
+                last_status: Some("in_progress".to_string()),
+                archived_reason: None,
+            },
+        )
+        .expect("upsert task");
+
+        let seeded_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T13:00:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+        OperationalContextSnapshotStore::save(
+            teams.path(),
+            &OperationalContextSnapshot {
+                version: 1,
+                team_name: "architecture-final".to_string(),
+                member_name: "frontend-dev".to_string(),
+                updated_at: seeded_at,
+                task: OperationalTaskSnapshot {
+                    id: "42".to_string(),
+                    subject: "Fix regression".to_string(),
+                    status: "in_progress".to_string(),
+                },
+                assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+                ownership: OperationalOwnershipSnapshot::default(),
+                working_set: OperationalWorkingSetSnapshot {
+                    project_path: "proj-web".to_string(),
+                    focal_files: Vec::new(),
+                },
+            },
+        )
+        .expect("seed snapshot");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert_eq!(snapshot.updated_at, seeded_at);
+        assert_eq!(snapshot.task.id, "42");
+        assert_eq!(snapshot.task.status, "in_progress");
     }
 
     #[test]
