@@ -104,6 +104,7 @@ export const MOCK_SETTINGS = {
   terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
   daemon: { port: 17233, path: '~/.local/bin/taurhaus-daemon', auto_start: true },
   dark_mode: false,
+  project_dialog_last_path: '',
 }
 
 export const MOCK_CLAUDE_SESSIONS = [

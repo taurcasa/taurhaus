@@ -592,6 +592,7 @@ describe('ipc module', () => {
         thresholds: { activeDays: 5, recentDays: 14, staleDays: 60 },
         ignorePatterns: ['node_modules'],
         darkMode: true,
+        projectDialogLastPath: '/projects/remembered',
         codeTheme: { light: 'solarized-light', dark: 'one-dark-pro' },
         daemon: { port: 17233, path: '/tmp/daemon', autoStart: false },
         terminal: {
@@ -612,6 +613,7 @@ describe('ipc module', () => {
       expect(result.thresholds).toEqual({ active_days: 5, recent_days: 14, stale_days: 60 })
       expect(result.ignore_patterns).toEqual(['node_modules'])
       expect(result.dark_mode).toBe(true)
+      expect(result.project_dialog_last_path).toBe('/projects/remembered')
       expect(result.code_theme).toEqual({ light: 'solarized-light', dark: 'one-dark-pro' })
       expect(result.daemon.auto_start).toBe(false)
       expect(result.terminal.custom_command).toBe('')
@@ -627,6 +629,7 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('scan_directories')
       expect(result).toHaveProperty('thresholds')
       expect(result.thresholds).toHaveProperty('active_days')
+      expect(result).toHaveProperty('project_dialog_last_path')
     })
   })
 

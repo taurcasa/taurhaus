@@ -12,6 +12,7 @@
     canCreate = false,
     onCreateNameInput = () => {},
     onCreateParentInput = () => {},
+    onCreateParentBlur = () => {},
     onCreateEnter = () => {},
     onCreateParentSelect = () => {},
     onCreateProject = () => {},
@@ -41,6 +42,7 @@
     class="w-full px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
     oninput={(event) => onCreateParentInput(event.currentTarget.value)}
     onkeydown={(event) => event.key === 'Enter' && onCreateEnter()}
+    onblur={onCreateParentBlur}
     data-testid="create-parent-input"
   />
 
@@ -48,6 +50,7 @@
     <DirectoryBrowser
       {dark}
       selectedPath={createParentDir}
+      initialPath={createParentDir || '~'}
       onSelect={onCreateParentSelect}
       maxHeight="180px"
     />

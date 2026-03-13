@@ -12,6 +12,8 @@ vi.mock('./ipc.js', () => ({
   listProjects: vi.fn(),
   removeProject: vi.fn(),
   validateProjectPath: vi.fn(),
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
 }))
 
 vi.mock('./DirectoryBrowser.svelte', () => ({
@@ -51,6 +53,8 @@ const {
   listProjects,
   removeProject,
   validateProjectPath,
+  getSettings,
+  updateSettings,
 } = await import('./ipc.js')
 import AddProjectModal from './AddProjectModal.svelte'
 
@@ -71,6 +75,17 @@ describe('AddProjectModal', () => {
     registerProjectsBatch.mockResolvedValue([{ success: true }])
     createProject.mockResolvedValue({ id: 'p-new', name: 'new-project', path: '/projects/new-project' })
     removeProject.mockResolvedValue(undefined)
+    getSettings.mockResolvedValue({
+      scan_directories: ['~/projects'],
+      thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
+      ignore_patterns: [],
+      daemon: { port: 17233, path: '', auto_start: true },
+      code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
+      terminal: { emulator: 'default', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+      dark_mode: false,
+      project_dialog_last_path: '',
+    })
+    updateSettings.mockImplementation(async (settings) => settings)
     validateProjectPath.mockResolvedValue({
       exists: true,
       isGitRepo: true,
@@ -275,8 +290,53 @@ describe('AddProjectModal', () => {
 
     await waitFor(() => {
       expect(registerProjectsBatch).toHaveBeenCalledWith(['/manual/selected'])
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+        project_dialog_last_path: '/manual/selected',
+      }))
       expect(onProjectsChanged).toHaveBeenCalled()
       expect(screen.getByTestId('add-success')).toHaveTextContent('1 project added')
+    })
+  })
+
+  it('restores remembered project path into manual and create workflows', async () => {
+    getSettings.mockResolvedValueOnce({
+      scan_directories: ['~/projects'],
+      thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
+      ignore_patterns: [],
+      daemon: { port: 17233, path: '', auto_start: true },
+      code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
+      terminal: { emulator: 'default', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+      dark_mode: false,
+      project_dialog_last_path: '/remembered/path',
+    })
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+    await waitFor(() => {
+      expect(screen.getByTestId('manual-path-input')).toHaveValue('/remembered/path')
+    })
+
+    await fireEvent.click(screen.getByTestId('mode-create'))
+    expect(screen.getByTestId('create-parent-input')).toHaveValue('/remembered/path')
+  })
+
+  it('persists selected create parent path', async () => {
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.click(screen.getByTestId('mode-create'))
+    await fireEvent.click(screen.getByTestId('mock-directory-select'))
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+        project_dialog_last_path: '/manual/selected',
+      }))
+      expect(screen.getByTestId('create-parent-input')).toHaveValue('/manual/selected')
     })
   })
 

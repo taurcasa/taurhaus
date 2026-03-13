@@ -315,6 +315,9 @@ pub struct Settings {
     #[serde(default)]
     #[serde(alias = "dark_mode")]
     pub dark_mode: bool,
+    #[serde(default)]
+    #[serde(alias = "project_dialog_last_path")]
+    pub project_dialog_last_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -559,6 +562,7 @@ mod tests {
         let value = serde_json::to_value(settings).expect("serialize settings");
         assert!(value.get("scanDirectories").is_some());
         assert!(value.get("darkMode").is_some());
+        assert!(value.get("projectDialogLastPath").is_some());
         assert!(value.get("scan_directories").is_none());
     }
 

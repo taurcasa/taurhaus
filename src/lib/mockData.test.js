@@ -65,6 +65,7 @@ describe('mockData', () => {
     expect(MOCK_SETTINGS).toHaveProperty('scan_directories')
     expect(MOCK_SETTINGS).toHaveProperty('thresholds')
     expect(MOCK_SETTINGS).toHaveProperty('code_theme')
+    expect(MOCK_SETTINGS).toHaveProperty('project_dialog_last_path')
   })
 
   it('exports MOCK_CLAUDE_SESSIONS as a non-empty array with expected shape', () => {

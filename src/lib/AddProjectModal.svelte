@@ -6,6 +6,8 @@
     removeProject,
     validateProjectPath,
     createProject,
+    getSettings,
+    updateSettings,
   } from './ipc.js'
   import CreateWorkflow from './CreateWorkflow.svelte'
   import ManualWorkflow from './ManualWorkflow.svelte'
@@ -59,14 +61,17 @@
     MANUAL: 'manual',
     CREATE: 'create',
   }
+  const DEFAULT_CREATE_PARENT_DIR = '~/projects'
   let addMode = $state(WORKFLOW_STATES.SCAN)
   let manualPath = $state('')
   let manualError = $state(null)
   let addSuccess = $state(null) // "3 projects added" message
   let createProjectName = $state('')
-  let createParentDir = $state('~/projects')
+  let createParentDir = $state(DEFAULT_CREATE_PARENT_DIR)
   let createError = $state(null)
   let creating = $state(false)
+  let settingsCache = $state(null)
+  let rememberedProjectDialogPath = $state('')
 
   // Validation state
   let validation = $state(null)   // { exists, isGitRepo, isRegistered } or null
@@ -115,6 +120,7 @@
   // Load registered projects on mount
   $effect(() => {
     loadRegistered()
+    loadProjectDialogPathMemory()
   })
 
   $effect(() => {
@@ -184,6 +190,41 @@
       registered = []
     } finally {
       loadingRegistered = false
+    }
+  }
+
+  async function loadProjectDialogPathMemory() {
+    try {
+      const settings = await getSettings()
+      settingsCache = settings
+      const remembered = settings?.project_dialog_last_path?.trim() ?? ''
+      if (!remembered) return
+      rememberedProjectDialogPath = remembered
+      if (!manualPath.trim()) {
+        manualPath = remembered
+      }
+      if (!createParentDir.trim() || createParentDir === DEFAULT_CREATE_PARENT_DIR) {
+        createParentDir = remembered
+      }
+    } catch (error) {
+      console.error('[projects] failed to load dialog path memory:', error)
+    }
+  }
+
+  async function persistProjectDialogPathMemory(rawPath) {
+    const path = rawPath.trim()
+    if (!path || path === rememberedProjectDialogPath) return
+
+    try {
+      const settings = settingsCache ?? await getSettings()
+      const next = await updateSettings({
+        ...settings,
+        project_dialog_last_path: path,
+      })
+      settingsCache = next
+      rememberedProjectDialogPath = next.project_dialog_last_path ?? path
+    } catch (error) {
+      console.error('[projects] failed to persist dialog path memory:', error)
     }
   }
 
@@ -293,6 +334,7 @@
       const results = await registerProjectsBatch([path])
       const result = results[0]
       if (result?.success) {
+        await persistProjectDialogPathMemory(path)
         addSuccess = '1 project added'
         manualPath = ''
         addMode = WORKFLOW_STATES.SCAN
@@ -357,6 +399,7 @@
       }
 
       const created = await createProject(name, parent)
+      await persistProjectDialogPathMemory(parent)
       await loadRegistered()
       onProjectsChanged()
       onProjectCreated(created)
@@ -576,13 +619,18 @@
               onManualPathInput={(value) => {
                 manualPath = value
               }}
-              onManualPathBlur={() => validatePath(manualPath)}
+              onManualPathBlur={() => {
+                manualPath = manualPath.trim()
+                validatePath(manualPath)
+                persistProjectDialogPathMemory(manualPath)
+              }}
               onManualEnter={handleManualAdd}
               onManualAdd={handleManualAdd}
               onBackToScan={() => transitionWorkflow(WORKFLOW_STATES.SCAN)}
               onManualDirectorySelect={(path) => {
                 manualPath = path
                 validatePath(path)
+                persistProjectDialogPathMemory(path)
               }}
             />
           {:else if addMode === WORKFLOW_STATES.CREATE}
@@ -601,9 +649,14 @@
               onCreateParentInput={(value) => {
                 createParentDir = value
               }}
+              onCreateParentBlur={() => {
+                createParentDir = createParentDir.trim()
+                persistProjectDialogPathMemory(createParentDir)
+              }}
               onCreateEnter={handleCreateProject}
               onCreateParentSelect={(path) => {
                 createParentDir = path
+                persistProjectDialogPathMemory(path)
               }}
               onCreateProject={handleCreateProject}
               onBackToScan={() => transitionWorkflow(WORKFLOW_STATES.SCAN)}

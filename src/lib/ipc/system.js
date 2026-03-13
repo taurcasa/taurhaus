@@ -44,6 +44,8 @@ function normalizeSettings(raw) {
     },
     ignore_patterns: settings.ignore_patterns ?? settings.ignorePatterns ?? [],
     dark_mode: settings.dark_mode ?? settings.darkMode ?? false,
+    project_dialog_last_path:
+      settings.project_dialog_last_path ?? settings.projectDialogLastPath ?? '',
     code_theme: {
       light: codeTheme.light ?? 'github-light',
       dark: codeTheme.dark ?? 'github-dark-dimmed',

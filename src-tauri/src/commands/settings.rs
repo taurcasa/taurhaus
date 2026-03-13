@@ -111,10 +111,12 @@ mod tests {
         updated.scan_directories.push("/tmp/project-a".to_string());
         updated.ignore_patterns.push("node_modules".to_string());
         updated.daemon.port = 19001;
+        updated.project_dialog_last_path = "/projects/taurhaus".to_string();
 
         let saved = update_settings_impl(&db, updated.clone()).expect("update settings");
         assert_eq!(saved.dark_mode, updated.dark_mode);
         assert_eq!(saved.daemon.port, 19001);
+        assert_eq!(saved.project_dialog_last_path, "/projects/taurhaus");
         assert!(saved
             .scan_directories
             .contains(&"/tmp/project-a".to_string()));

@@ -52,7 +52,13 @@
   {/if}
 
   <div class="mt-3">
-    <DirectoryBrowser {dark} selectedPath={manualPath} onSelect={onManualDirectorySelect} maxHeight="180px" />
+    <DirectoryBrowser
+      {dark}
+      selectedPath={manualPath}
+      initialPath={manualPath || '~'}
+      onSelect={onManualDirectorySelect}
+      maxHeight="180px"
+    />
   </div>
 
   <div class="flex items-center justify-between mt-3">

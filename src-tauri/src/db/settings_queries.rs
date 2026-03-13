@@ -50,6 +50,7 @@ const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 const KEY_CLI_COMMANDS: &str = "terminal.cli_commands";
 const KEY_DARK_MODE: &str = "dark_mode";
+const KEY_PROJECT_DIALOG_LAST_PATH: &str = "project_dialog.last_path";
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -119,6 +120,9 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.dark_mode);
 
+    let project_dialog_last_path = get_setting(conn, KEY_PROJECT_DIALOG_LAST_PATH)?
+        .unwrap_or(defaults.project_dialog_last_path);
+
     Ok(Settings {
         scan_directories,
         thresholds: ActivityThresholds {
@@ -143,6 +147,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             cli_commands,
         },
         dark_mode,
+        project_dialog_last_path,
     })
 }
 
@@ -200,6 +205,11 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
     set_setting(conn, KEY_CLI_COMMANDS, &cli_commands_json)?;
 
     set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
+    set_setting(
+        conn,
+        KEY_PROJECT_DIALOG_LAST_PATH,
+        &settings.project_dialog_last_path,
+    )?;
 
     Ok(())
 }
@@ -276,6 +286,7 @@ mod tests {
         );
         assert!(settings.scan_directories.is_empty());
         assert!(settings.ignore_patterns.is_empty());
+        assert!(settings.project_dialog_last_path.is_empty());
     }
 
     #[test]
@@ -301,6 +312,7 @@ mod tests {
             },
             terminal: TerminalSettings::default(),
             dark_mode: true,
+            project_dialog_last_path: "/projects/taurhaus".to_string(),
         };
 
         save_settings(&conn, &settings).unwrap();
@@ -317,6 +329,7 @@ mod tests {
         assert_eq!(loaded.code_theme.light, "one-light");
         assert_eq!(loaded.code_theme.dark, "dracula");
         assert!(loaded.dark_mode);
+        assert_eq!(loaded.project_dialog_last_path, "/projects/taurhaus");
     }
 
     #[test]
@@ -349,6 +362,7 @@ mod tests {
             code_theme: CodeThemeSettings::default(),
             terminal: TerminalSettings::default(),
             dark_mode: false,
+            project_dialog_last_path: "/old/path".to_string(),
         };
         save_settings(&conn, &settings1).unwrap();
 
@@ -364,6 +378,7 @@ mod tests {
             daemon: DaemonSettings::default(),
             terminal: TerminalSettings::default(),
             dark_mode: true,
+            project_dialog_last_path: "/new/path".to_string(),
         };
         save_settings(&conn, &settings2).unwrap();
 
@@ -371,6 +386,7 @@ mod tests {
         assert_eq!(loaded.scan_directories, vec!["~/new".to_string()]);
         assert_eq!(loaded.thresholds.active_days, 3);
         assert_eq!(loaded.ignore_patterns, vec!["target".to_string()]);
+        assert_eq!(loaded.project_dialog_last_path, "/new/path".to_string());
     }
 
     #[test]
