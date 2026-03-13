@@ -35,7 +35,7 @@ pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let result = {
         let (bundled_binary, bundled_contract) = resolve_bundled_mesh_assets(&app)?;
         if is_native_daemon() {
-            install_mesh_native(&bundled_binary, &bundled_contract)
+            install_mesh_native(&app, &bundled_binary, &bundled_contract)
         } else {
             install_mesh_wsl(&app, &bundled_binary, &bundled_contract)
         }
@@ -422,11 +422,26 @@ fn check_mesh_install_wsl(
 }
 
 fn install_mesh_native(
+    app: &tauri::AppHandle,
     bundled_binary: &Path,
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
+    install_mesh_native_at(&target_dir, bundled_binary, bundled_contract, || {
+        run_mesh_install_self_heal(app).map(Some)
+    })
+}
+
+fn install_mesh_native_at<F>(
+    target_dir: &Path,
+    bundled_binary: &Path,
+    bundled_contract: &MeshCompatibilityContract,
+    run_self_heal: F,
+) -> Result<OperationResult, String>
+where
+    F: FnOnce() -> Result<Option<MeshInstallSelfHealSummary>, String>,
+{
     let target_path = target_dir.join("mesh");
     let temp_path = target_dir.join(".mesh.new");
 
@@ -487,10 +502,10 @@ fn install_mesh_native(
                     "Mesh was copied but compatibility verification failed: {summary}"
                 ));
             }
-            Ok(OperationResult::success(format!(
-                "Mesh installed successfully: mesh {}",
-                installed_contract.version
-            )))
+            let self_heal_summary = run_self_heal()?;
+            Ok(OperationResult::success(
+                format_mesh_install_success_message(&installed_contract.version, self_heal_summary),
+            ))
         }
         Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
     }
@@ -551,10 +566,26 @@ fn install_mesh_wsl(
         None
     };
 
-    let message = match self_heal_summary {
-        Some(summary) => format!(
+    let message = format_mesh_install_success_message(&result.contract.version, self_heal_summary);
+
+    Ok(OperationResult::success(message))
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct MeshInstallSelfHealSummary {
+    teams_reconciled: usize,
+    team_daemons_ensured: usize,
+}
+
+fn format_mesh_install_success_message(
+    version: &str,
+    self_heal_summary: Option<MeshInstallSelfHealSummary>,
+) -> String {
+    match self_heal_summary {
+        Some(summary) => {
+            format!(
             "Mesh installed successfully: mesh {} (cycled {} team daemon{}, repaired {} team{})",
-            result.contract.version,
+            version,
             summary.team_daemons_ensured,
             if summary.team_daemons_ensured == 1 {
                 ""
@@ -562,25 +593,17 @@ fn install_mesh_wsl(
                 "s"
             },
             summary.teams_reconciled,
-            if summary.teams_reconciled == 1 {
-                ""
-            } else {
-                "s"
-            },
-        ),
-        None => format!(
-            "Mesh installed successfully: mesh {}",
-            result.contract.version
-        ),
-    };
-
-    Ok(OperationResult::success(message))
+            if summary.teams_reconciled == 1 { "" } else { "s" },
+        )
+        }
+        None => format!("Mesh installed successfully: mesh {version}"),
+    }
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
 fn run_mesh_install_self_heal(
     app: &tauri::AppHandle,
-) -> Result<crate::coordination::state::BackgroundSelfHealPassResult, String> {
+) -> Result<MeshInstallSelfHealSummary, String> {
     let state = app.state::<crate::coordination::state::CoordinationState>();
     let summary = state
         .run_background_self_heal_pass()
@@ -592,13 +615,18 @@ fn run_mesh_install_self_heal(
             if summary.team_errors == 1 { "" } else { "s" }
         ));
     }
-    Ok(summary)
+    Ok(MeshInstallSelfHealSummary {
+        teams_reconciled: summary.teams_reconciled,
+        team_daemons_ensured: summary.team_daemons_ensured,
+    })
 }
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
-fn run_mesh_install_self_heal(app: &tauri::AppHandle) -> Result<(), String> {
+fn run_mesh_install_self_heal(
+    app: &tauri::AppHandle,
+) -> Result<MeshInstallSelfHealSummary, String> {
     let _ = app;
-    Ok(())
+    Ok(MeshInstallSelfHealSummary::default())
 }
 
 #[derive(Debug)]
@@ -885,5 +913,63 @@ exit 0
         let _ = member.wait();
         let _ = team.kill();
         let _ = team.wait();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn install_mesh_native_triggers_self_heal_after_successful_install() {
+        use std::cell::Cell;
+
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(
+            &source_mesh,
+            r#"#!/bin/sh
+if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
+  echo '{"version":"9.9.9","protocol_version":1,"schema_version":1,"git_commit":"new"}'
+  exit 0
+fi
+exit 0
+"#,
+        );
+
+        let bundled_contract = MeshCompatibilityContract {
+            version: "9.9.9".to_string(),
+            protocol_version: 1,
+            schema_version: 1,
+            git_commit: Some("new".to_string()),
+        };
+        let self_heal_called = Cell::new(false);
+        let result = install_mesh_native_at(
+            &temp_home.path().join(".local").join("bin"),
+            &source_mesh,
+            &bundled_contract,
+            || {
+                self_heal_called.set(true);
+                Ok(Some(MeshInstallSelfHealSummary {
+                    teams_reconciled: 2,
+                    team_daemons_ensured: 1,
+                }))
+            },
+        )
+        .expect("install should succeed");
+
+        assert!(
+            self_heal_called.get(),
+            "native install should trigger self-heal"
+        );
+        assert_eq!(
+            result.message,
+            "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
+        );
+        assert!(
+            temp_home
+                .path()
+                .join(".local")
+                .join("bin")
+                .join("mesh")
+                .exists(),
+            "native install should replace the target mesh binary"
+        );
     }
 }
