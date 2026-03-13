@@ -247,7 +247,7 @@ fn default_backend_factory(
 ) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> {
     let backend: Arc<dyn CoordinationBackend> = match kind {
         BackendKind::MeshBridged => Arc::new(MeshBridgedBackend::default()),
-        BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend),
+        BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend::new(default_teams_dir())),
     };
     Ok(backend)
 }

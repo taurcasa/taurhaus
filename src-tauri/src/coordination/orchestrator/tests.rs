@@ -6,10 +6,12 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::coordination::backend::fake::FakeBackend;
-use crate::coordination::domain::MemberRole;
+use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::requests::{
-    AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
-    OperatorNoticeDelivery, ResumeContextMode, ResumeTeamRequest, StepStatus,
+    AddAgentRequest, AgentSetupConfig, DeliveryMethod, DeliveryRequest, DeliveryResult,
+    InitializeTeamRequest, LaunchRequest, LaunchResult, LeadMode, OperatorNoticeDelivery,
+    ProbeEvidence, ProbeRequest, ProbeResult, ResumeContextMode, ResumeTeamRequest, StepStatus,
+    TeardownRequest, TeardownResult,
 };
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
@@ -64,6 +66,42 @@ fn new_orchestrator_with_recording_runtime(
         runtime.clone(),
     );
     (orchestrator, runtime)
+}
+
+#[derive(Debug)]
+struct UndeliveredBackend;
+
+impl CoordinationBackend for UndeliveredBackend {
+    fn kind(&self) -> BackendKind {
+        BackendKind::ClaudeNative
+    }
+
+    fn capabilities(&self) -> crate::coordination::backend::BackendCapabilities {
+        crate::coordination::backend::BackendCapabilities::claude_native()
+    }
+
+    fn launch(&self, _req: LaunchRequest) -> Result<LaunchResult, CoordinationError> {
+        unreachable!("launch is not used in this test")
+    }
+
+    fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
+        Ok(DeliveryResult {
+            delivered: false,
+            method: DeliveryMethod::NativeMessageApi,
+        })
+    }
+
+    fn probe(&self, _req: ProbeRequest) -> Result<ProbeResult, CoordinationError> {
+        Ok(ProbeResult {
+            alive: false,
+            health: HealthState::SessionDead,
+            evidence: ProbeEvidence::None,
+        })
+    }
+
+    fn teardown(&self, _req: TeardownRequest) -> Result<TeardownResult, CoordinationError> {
+        Ok(TeardownResult { success: false })
+    }
 }
 
 #[derive(Debug)]
@@ -3019,6 +3057,59 @@ fn deliver_backend_failure_emits_failed_event() {
         CoordinationError::Backend(msg) => assert!(msg.contains("simulated")),
         other => panic!("expected backend error, got {other:?}"),
     }
+
+    let event_types: Vec<&str> = orchestrator
+        .drain_audit_log()
+        .into_iter()
+        .map(|event| event.event_type())
+        .collect();
+    assert_eq!(
+        event_types,
+        vec![
+            "team_created",
+            "member_added",
+            "delivery_attempted",
+            "delivery_failed"
+        ]
+    );
+}
+
+#[test]
+fn deliver_false_result_is_treated_as_failure() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(UndeliveredBackend);
+    let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
+    let team_name = "taurhaus-team";
+    let member_name = "design-taurhaus";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Claude))
+        .expect("add should succeed");
+
+    // Regression: the orchestrator used to record success and update runtime
+    // state even when the backend explicitly reported `delivered: false`.
+    let err = orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            message: "ACTION REQUIRED: Review the packet.".to_string(),
+            sender_name: Some("team-lead".to_string()),
+            operational_context: None,
+        }))
+        .expect_err("undelivered result should fail");
+    match err {
+        CoordinationError::Backend(message) => {
+            assert!(message.contains("backend reported undelivered"))
+        }
+        other => panic!("expected backend error, got {other:?}"),
+    }
+
+    let after = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+        .expect("runtime should still exist");
+    assert!(after.last_seen_at.is_none());
 
     let event_types: Vec<&str> = orchestrator
         .drain_audit_log()

@@ -1390,6 +1390,21 @@ impl CoordinationOrchestrator {
 
         match self.backend.deliver(request) {
             Ok(result) => {
+                if !result.delivered {
+                    let error = CoordinationError::Backend(format!(
+                        "backend reported undelivered {delivery_type} for '{member_name_owned}' in team '{team_name_owned}'"
+                    ));
+                    self.audit_log
+                        .push(AuditEvent::DeliveryFailed(DeliveryFailedEvent {
+                            team_name: team_name_owned,
+                            member_name: member_name_owned,
+                            delivery_type,
+                            error: error.to_string(),
+                            failed_at: Utc::now(),
+                        }));
+                    return Err(error);
+                }
+
                 self.audit_log
                     .push(AuditEvent::DeliverySucceeded(DeliverySucceededEvent {
                         team_name: team_name_owned.clone(),
