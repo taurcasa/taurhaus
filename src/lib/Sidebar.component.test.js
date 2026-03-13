@@ -214,6 +214,43 @@ describe('Sidebar component branches', () => {
     })
   })
 
+  it('renders non-default branches on a second line and hides default branches', async () => {
+    const projects = [
+      {
+        id: 'proj-main',
+        name: 'Mainline Project',
+        path: '/projects/mainline',
+        activityState: 'active',
+        branch: 'main',
+        isDirty: false,
+      },
+      {
+        id: 'proj-feature',
+        name: 'Feature Project',
+        path: '/projects/feature',
+        activityState: 'active',
+        branch: 'feature/clear-overhaul',
+        isDirty: false,
+      },
+    ]
+
+    render(Sidebar, { props: { projects } })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    const featureRow = document.querySelector('[data-project-id="proj-feature"]')
+    const mainRow = document.querySelector('[data-project-id="proj-main"]')
+    expect(featureRow).toBeTruthy()
+    expect(mainRow).toBeTruthy()
+
+    expect(within(featureRow).getByTestId('sidebar-branch-line')).toHaveTextContent('feature/clear-overhaul')
+    expect(within(mainRow).queryByTestId('sidebar-branch-line')).not.toBeInTheDocument()
+    expect(featureRow.className).toContain('h-[50px]')
+    expect(mainRow.className).toContain('h-[36px]')
+  })
+
   it('renders daemon status variants and hides not_configured', async () => {
     const { rerender } = render(Sidebar, {
       props: {

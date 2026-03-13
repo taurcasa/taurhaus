@@ -49,6 +49,23 @@
       onSessionJump(event, target, project)
     }
   }
+
+  function normalizedBranch(branch) {
+    return typeof branch === 'string' ? branch.trim() : ''
+  }
+
+  function isDefaultBranch(branch) {
+    const value = normalizedBranch(branch).toLowerCase()
+    return value === 'main' || value === 'master' || value === 'develop'
+  }
+
+  function branchLine(project) {
+    const branch = normalizedBranch(project?.branch)
+    if (!branch || isDefaultBranch(branch)) {
+      return null
+    }
+    return branch
+  }
 </script>
 
 {#if sidebarLoading}
@@ -98,107 +115,118 @@
       {@const foregroundActive = foregroundProjectId && project.id === foregroundProjectId}
       {@const projectSessions = getSessionsForProject(project.path)}
       {@const indicators = toolIndicators(projectSessions)}
+      {@const secondaryBranch = branchLine(project)}
       <button
         data-testid="project-item"
         data-project-id={project.id}
-        class="w-full flex items-center gap-2 px-3 h-[36px] rounded-md text-left transition-all duration-75 cursor-pointer
+        class="w-full px-3 rounded-md text-left transition-all duration-75 cursor-pointer
+          {secondaryBranch ? 'h-[50px] py-1.5' : 'h-[36px]'}
           {selected ? 'bg-white/[0.08]' : ctxMenuProjectId === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`} relative overflow-hidden"
         onclick={() => onProjectClick(project)}
         oncontextmenu={(e) => onProjectContextMenu(e, project, projectSessions)}
         onmouseenter={(e) => onProjectMouseEnter(project, projectSessions, e.currentTarget)}
         onmouseleave={onProjectMouseLeave}
       >
-        {#if selected}
-          <span
-            data-testid="sidebar-selection-indicator"
-            class="w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"
-          ></span>
-        {/if}
-        <span class="text-[14px] truncate flex-1 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
-        {#if indicators.length > 0}
-          <span class="flex items-center gap-1 shrink-0">
-            {#each indicators as ind}
-              {#if ind.kind === 'team'}
-                <span
-                  class={ind.layout === 'stack'
-                    ? 'sidebar-session-team sidebar-session-team-stack shrink-0'
-                    : 'sidebar-session-team sidebar-session-team-rail shrink-0'}
-                  data-activity={ind.tone}
-                  aria-label={ind.ariaLabel}
-                  data-testid="sidebar-team-indicator"
-                  role="button"
-                  tabindex="0"
-                  onclick={(event) => handleGroupedSessionJump(event, ind, project)}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      handleGroupedSessionJump(event, ind, project)
-                    }
-                  }}
-                >
-                  {#if ind.layout === 'stack'}
-                    <span class="sidebar-session-team-stack-logos" aria-hidden="true">
-                      {#each ind.tools as tool (tool.tool)}
-                        <span
-                          class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {tool.colorClass} {tool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                        >
-                          <svg class="w-[12px] h-[12px]" viewBox={tool.icon.viewBox} fill="currentColor">
-                            <path d={tool.icon.path}></path>
-                          </svg>
-                        </span>
-                      {/each}
-                    </span>
-                    <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
-                  {:else}
-                    {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
+        <span class="flex w-full min-w-0 items-start gap-2">
+          {#if selected}
+            <span
+              data-testid="sidebar-selection-indicator"
+              class="mt-2 w-[3px] h-3.5 bg-brand-400 rounded-full shrink-0 -ml-1 mr-0.5"
+            ></span>
+          {/if}
+          <span class="min-w-0 flex-1">
+            <span class="flex min-w-0 items-center gap-2">
+              <span class="text-[14px] truncate flex-1 min-w-0 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
+              {#if indicators.length > 0}
+                <span class="flex items-center gap-1 shrink-0">
+                  {#each indicators as ind}
+                    {#if ind.kind === 'team'}
                       <span
-                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {memberTool.colorClass} {memberTool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                        aria-hidden="true"
+                        class={ind.layout === 'stack'
+                          ? 'sidebar-session-team sidebar-session-team-stack shrink-0'
+                          : 'sidebar-session-team sidebar-session-team-rail shrink-0'}
+                        data-activity={ind.tone}
+                        aria-label={ind.ariaLabel}
+                        data-testid="sidebar-team-indicator"
+                        role="button"
+                        tabindex="0"
+                        onclick={(event) => handleGroupedSessionJump(event, ind, project)}
+                        onkeydown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            handleGroupedSessionJump(event, ind, project)
+                          }
+                        }}
                       >
-                        <svg class="w-[12px] h-[12px]" viewBox={memberTool.icon.viewBox} fill="currentColor">
-                          <path d={memberTool.icon.path}></path>
+                        {#if ind.layout === 'stack'}
+                          <span class="sidebar-session-team-stack-logos" aria-hidden="true">
+                            {#each ind.tools as tool (tool.tool)}
+                              <span
+                                class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {tool.colorClass} {tool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                              >
+                                <svg class="w-[12px] h-[12px]" viewBox={tool.icon.viewBox} fill="currentColor">
+                                  <path d={tool.icon.path}></path>
+                                </svg>
+                              </span>
+                            {/each}
+                          </span>
+                          <span class="sidebar-session-team-count" aria-hidden="true">{ind.count}</span>
+                        {:else}
+                          {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
+                            <span
+                              class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {memberTool.colorClass} {memberTool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                              aria-hidden="true"
+                            >
+                              <svg class="w-[12px] h-[12px]" viewBox={memberTool.icon.viewBox} fill="currentColor">
+                                <path d={memberTool.icon.path}></path>
+                              </svg>
+                            </span>
+                          {/each}
+                        {/if}
+                      </span>
+                    {:else if ind.interactive}
+                      <span
+                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                        role="button"
+                        tabindex="0"
+                        aria-label={ind.ariaLabel}
+                        onclick={(e) => onSessionJump(e, ind.session, project)}
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onSessionJump(e, ind.session, project)
+                          }
+                        }}
+                      >
+                        <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                          <path d={ind.icon.path}></path>
                         </svg>
                       </span>
-                    {/each}
-                  {/if}
-                </span>
-              {:else if ind.interactive}
-                <span
-                  class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                  role="button"
-                  tabindex="0"
-                  aria-label={ind.ariaLabel}
-                  onclick={(e) => onSessionJump(e, ind.session, project)}
-                  onkeydown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      onSessionJump(e, ind.session, project)
-                    }
-                  }}
-                >
-                  <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={ind.icon.path}></path>
-                  </svg>
-                </span>
-              {:else}
-                <span
-                  class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
-                  aria-label={ind.ariaLabel}
-                >
-                  <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={ind.icon.path}></path>
-                  </svg>
+                    {:else}
+                      <span
+                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                        aria-label={ind.ariaLabel}
+                      >
+                        <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
+                          <path d={ind.icon.path}></path>
+                        </svg>
+                      </span>
+                    {/if}
+                  {/each}
                 </span>
               {/if}
-            {/each}
+              {#if project.isDirty}
+                <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
+              {/if}
+            </span>
+            {#if secondaryBranch}
+              <span
+                data-testid="sidebar-branch-line"
+                class="mt-0.5 block min-w-0 truncate pl-0.5 text-[10px] font-mono {selected ? 'text-white/35' : 'text-white/20'}"
+              >⑂ {secondaryBranch}</span>
+            {/if}
           </span>
-        {/if}
-        {#if project.branch}
-          <span class="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded {selected ? 'text-white/50 bg-white/10' : 'text-white/30 bg-white/[0.07]'}">{project.branch}</span>
-        {/if}
-        {#if project.isDirty}
-          <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
-        {/if}
+        </span>
         {#if foregroundActive}
           <span
             data-testid="sidebar-foreground-indicator"
