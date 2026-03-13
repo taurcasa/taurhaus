@@ -99,6 +99,16 @@ export MESH_TEAM="my-team"
 export MESH_NAME="my-agent"
 ```
 
+### Lead vs agent command surface
+
+| Role | Commands |
+|------|----------|
+| **Lead** | `task create`, `task assign`, `nudge`, `xteam send/relay`, `--as-lead` repair mutations |
+| **Agent** | `accept`, `start`, `progress`, `block`, `review`, `complete` |
+| **Both** | `send`, `read`, `tasks`, `task get`, `who`, `heartbeat`, `status` |
+
+Leads can also use `--override-lane-limit` on `task assign` / `task start` and `--admin-reason` on `task assign` / `block` / `review` / `complete` for audit-trailed repair mutations.
+
 ## Logging
 
 Unified structured logging pipeline:

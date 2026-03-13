@@ -21,6 +21,58 @@ This document tracks the current Taurhaus audit campaign, active investigation w
   - `#1236` `completed`: `product-check-1` wrote `/home/mstie/projects/mesh/docs/analysis/mesh-claude-code-task-sync-gap-2026-03-12.md`. The report found that Claude Code `TaskUpdate` only operates on in-session memory, Mesh-written metadata was being dropped on re-ingest, and no bidirectional live sync exists yet.
   - `#1237` `completed`: `dev-1` fixed Claude task metadata preservation on re-ingest in `/home/mstie/projects/mesh` and committed it as `738b9c9`, with note `/home/mstie/projects/mesh/docs/analysis/mesh-claude-task-metadata-preservation-2026-03-12.md`.
 
+## Current Mesh Admin-Control Request
+
+- Source request: `/home/mstie/projects/taurhealth/docs/requests/mesh-team-lead-task-admin-request.md`
+- Goal: allow `team-lead` to repair task state for other owners explicitly and audibly, without weakening normal owner-only behavior for non-leads.
+- Current execution split:
+  - `#1245` `architect-1` `in_progress`: define the exact team-lead admin task-control contract, CLI shape, permission boundary, audit fields, and reopen/reset scope in `/home/mstie/projects/mesh/docs/analysis/mesh-team-lead-task-admin-controls-2026-03-13.md`
+  - `#1246` `dev-1` `in_progress`: implement the new team-lead admin task controls in Mesh, including tests and implementation note in `/home/mstie/projects/mesh/docs/analysis/mesh-team-lead-task-admin-controls-implementation-2026-03-13.md`
+  - `#1247` `product-check-1` `pending`: update the operator-facing guidance after the feature lands in `/home/mstie/projects/mesh/docs/analysis/mesh-team-lead-task-admin-operator-guide-2026-03-13.md`
+- Intended sequencing:
+  - `#1245` freezes the behavior contract
+  - `#1246` carries the real implementation end-to-end
+  - `#1247` updates operator guidance after the command surface is real
+
+## Current Mesh Machine-Safe Task-Creation Request
+
+- Source request: `/home/mstie/projects/taurhealth/docs/requests/mesh-machine-safe-task-create-request.md`
+- Goal: make `mesh task create` safe for concurrent AI orchestration by returning enough information to bind the created task ID to the intended task definition reliably.
+- Current execution split:
+  - `#1249` `in_progress`: epic umbrella for the rollout, deliverable `/home/mstie/projects/mesh/docs/analysis/mesh-machine-safe-task-create-rollout-2026-03-13.md`
+  - `#1251` `dev-2` `in_progress`: implement machine-safe task creation output in Mesh CLI, with structured output and tighter default human output in `/home/mstie/projects/mesh/docs/analysis/mesh-machine-safe-task-create-implementation-2026-03-13.md`
+  - `#1252` `dev-3` `in_progress`: run `just check` after the new team-lead admin feature and resolve failures at root cause, deliverable `/home/mstie/projects/mesh/docs/analysis/mesh-team-lead-admin-just-check-2026-03-13.md`
+  - `#1250` `product-check-1` `pending`: update operator docs after the feature lands in `/home/mstie/projects/mesh/docs/analysis/mesh-machine-safe-task-create-operator-guide-2026-03-13.md`
+- Intended sequencing:
+  - `#1251` lands the CLI/output change
+  - `#1252` proves the current Mesh line stays green after the latest feature work
+  - `#1250` updates operator guidance once the new task-create behavior is real
+
+## Current Mesh Windows Rollout
+
+- Goal: roll the newly landed Mesh changes through the real Taurhaus Windows packaging path cleanly.
+- Active task:
+  - `#1255` `dev-2` `in_progress`: bump Mesh version in `/home/mstie/projects/mesh`, commit it, repin Taurhaus to the exact new Mesh version/commit, update all Mesh version resources in Taurhaus, run the full Taurhaus gate, then run `just build-windows` and `just install-windows`, with final report in `/home/mstie/projects/taurhaus/docs/analysis/mesh-windows-rollout-2026-03-13.md`
+- Required completion bar:
+  - Mesh version bump is committed
+  - Taurhaus pin/resource update is committed
+  - `just check` passes
+  - `just build-windows` passes
+  - `just install-windows` passes
+  - final report names the exact Mesh version/commit bundled into the installed Windows Taurhaus build
+
+## Current Taurhaus Startup Freeze Investigation
+
+- Goal: root-cause and fix the current Windows production startup freeze after the recent Mesh/Taurhaus rollout.
+- Active task:
+  - `#1258` `dev-1` `in_progress`: investigate the unresponsive post-startup Taurhaus state using the newest screenshot `/home/mstie/projects/taurhaus/Screenshot 2026-03-13 134513.png`, the production Windows log path (`C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl` unless overridden), and the live resource monitor output `/tmp/taurhaus-resource-monitor-v2.csv`, then fix the root cause and verify stable startup in `/home/mstie/projects/taurhaus/docs/analysis/taurhaus-startup-freeze-investigation-2026-03-13.md`
+
+## Current Mesh Live-Daemon Alignment Review
+
+- Goal: verify whether all currently running Mesh member and team daemons across teams are actually on the newest installed Mesh build, and determine whether any manual restart/refresh action is still needed.
+- Active task:
+  - `#1260` `architect-1` `in_progress`: inspect the installed live Mesh binary identity, enumerate all running Mesh daemons across teams, compare each against the installed binary, and write `/home/mstie/projects/taurhaus/docs/analysis/mesh-live-daemon-version-alignment-2026-03-13.md`
+
 ## Active audit tasks
 
 | Task | Owner | Status | Framework | Deliverable |
