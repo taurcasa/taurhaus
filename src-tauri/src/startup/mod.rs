@@ -1,7 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value};
 use tauri::Manager;
@@ -19,6 +19,7 @@ pub(crate) mod watchers;
 
 const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+const STARTUP_DAEMON_FAST_PATH_TIMEOUT: Duration = Duration::from_millis(350);
 
 #[derive(Clone)]
 pub(crate) struct SetupContext {
@@ -51,7 +52,6 @@ struct StartupOrchestrationReport {
 
 #[cfg(test)]
 struct StartupOrchestrationHooks<
-    LaunchPinnedMeshInstall,
     SpawnBootstrap,
     StartRuntimeMonitors,
     InitializeWatchers,
@@ -59,7 +59,6 @@ struct StartupOrchestrationHooks<
     InitializeSearch,
     SpawnBackgroundTasks,
 > {
-    launch_pinned_mesh_install: LaunchPinnedMeshInstall,
     spawn_background_bootstrap: SpawnBootstrap,
     start_runtime_monitors: StartRuntimeMonitors,
     initialize_watchers: InitializeWatchers,
@@ -399,82 +398,6 @@ fn emit_startup_search_initialized(index_path: PathBuf, doc_count: u64, duration
     );
 }
 
-fn ensure_pinned_mesh_install(app: &tauri::AppHandle) {
-    let started_at = Instant::now();
-    match crate::commands::mesh::ensure_bundled_mesh_installed(app) {
-        Ok(Some(result)) => {
-            tracing::info!(
-                duration_ms = started_at.elapsed().as_millis() as u64,
-                message = %result.message,
-                "startup pinned mesh install completed"
-            );
-        }
-        Ok(None) => {
-            tracing::debug!("startup mesh install skipped; installed mesh already satisfies pin");
-        }
-        Err(error) => {
-            tracing::warn!(
-                duration_ms = started_at.elapsed().as_millis() as u64,
-                error = %error,
-                "startup pinned mesh install failed"
-            );
-        }
-    }
-}
-
-fn ensure_bundled_daemon_install(app: &tauri::AppHandle) {
-    let started_at = Instant::now();
-    match crate::commands::daemon::ensure_bundled_daemon_installed(app) {
-        Ok(Some(result)) => {
-            tracing::info!(
-                duration_ms = started_at.elapsed().as_millis() as u64,
-                message = %result.message,
-                "startup bundled daemon install completed"
-            );
-        }
-        Ok(None) => {
-            tracing::debug!(
-                "startup daemon install skipped; installed daemon already satisfies bundled version"
-            );
-        }
-        Err(error) => {
-            tracing::warn!(
-                duration_ms = started_at.elapsed().as_millis() as u64,
-                error = %error,
-                "startup bundled daemon install failed"
-            );
-        }
-    }
-}
-
-fn spawn_startup_background_task<Task>(thread_name: &'static str, task: Task)
-where
-    Task: FnOnce() + Send + 'static,
-{
-    if let Err(error) = std::thread::Builder::new()
-        .name(thread_name.to_string())
-        .spawn(task)
-    {
-        tracing::warn!(
-            thread_name,
-            error = %error,
-            "startup background task spawn failed"
-        );
-    }
-}
-
-fn schedule_bundled_daemon_install(app: tauri::AppHandle) {
-    spawn_startup_background_task("startup-daemon-install", move || {
-        ensure_bundled_daemon_install(&app);
-    });
-}
-
-fn schedule_pinned_mesh_install(app: tauri::AppHandle) {
-    spawn_startup_background_task("startup-mesh-install", move || {
-        ensure_pinned_mesh_install(&app);
-    });
-}
-
 pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("taurhaus starting");
 
@@ -495,7 +418,6 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
         &setup_paths,
         database_started_at.elapsed().as_millis() as u64,
     );
-    schedule_bundled_daemon_install(app.handle().clone());
     emit_startup_daemon_phase_started();
     let daemon_phase_started_at = Instant::now();
     let daemon_phase = determine_daemon_phase(&conn, &setup_paths.log_path);
@@ -585,8 +507,40 @@ fn connect_daemon_provider(
         &addr,
         port,
         provider::daemon_client::DaemonProvider::connect,
-        crate::daemon::launcher::validate_startup_daemon_binary,
+        validate_startup_daemon_fast_path,
     )
+}
+
+fn validate_startup_daemon_fast_path(
+    provider: &provider::daemon_client::DaemonProvider,
+    wsl_distro: Option<&str>,
+    port: u16,
+    log_path: &std::path::Path,
+) -> Result<crate::daemon::launcher::StartupDaemonValidation, std::io::Error> {
+    let validation = crate::daemon::launcher::validate_startup_daemon_binary(
+        provider, wsl_distro, port, log_path,
+    )?;
+    let ping = provider
+        .ping_info_with_timeout(STARTUP_DAEMON_FAST_PATH_TIMEOUT)
+        .map_err(|error| std::io::Error::other(format!("startup daemon ping failed: {error}")))?;
+
+    if ping.protocol_version != crate::daemon::protocol::PROTOCOL_VERSION {
+        return Err(std::io::Error::other(format!(
+            "startup daemon protocol mismatch: running={}, expected={}",
+            ping.protocol_version,
+            crate::daemon::protocol::PROTOCOL_VERSION
+        )));
+    }
+
+    if ping.version.trim() != env!("CARGO_PKG_VERSION") {
+        return Err(std::io::Error::other(format!(
+            "startup daemon version mismatch: running={}, expected={}",
+            ping.version.trim(),
+            env!("CARGO_PKG_VERSION")
+        )));
+    }
+
+    Ok(validation)
 }
 
 fn connect_daemon_provider_with<Connect, Validate>(
@@ -700,7 +654,6 @@ fn run_startup_orchestration(
     app: &mut tauri::App,
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    schedule_pinned_mesh_install(app.handle().clone());
     daemon::spawn_background_bootstrap(app.handle().clone(), context);
     daemon::start_runtime_monitors(app.handle().clone(), context);
     #[cfg(feature = "mesh-bridged-backend")]
@@ -768,7 +721,6 @@ fn run_startup_orchestration(
 
 #[cfg(test)]
 fn run_startup_orchestration_with<
-    LaunchPinnedMeshInstall,
     SpawnBootstrap,
     StartRuntimeMonitors,
     InitializeWatchers,
@@ -778,7 +730,6 @@ fn run_startup_orchestration_with<
 >(
     context: &SetupContext,
     hooks: StartupOrchestrationHooks<
-        LaunchPinnedMeshInstall,
         SpawnBootstrap,
         StartRuntimeMonitors,
         InitializeWatchers,
@@ -788,7 +739,6 @@ fn run_startup_orchestration_with<
     >,
 ) -> Result<StartupOrchestrationReport, StartupOrchestrationError>
 where
-    LaunchPinnedMeshInstall: FnOnce(),
     SpawnBootstrap: FnOnce(),
     StartRuntimeMonitors: FnOnce(),
     InitializeWatchers: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
@@ -797,7 +747,6 @@ where
     SpawnBackgroundTasks: FnOnce(),
 {
     let StartupOrchestrationHooks {
-        launch_pinned_mesh_install,
         spawn_background_bootstrap,
         start_runtime_monitors,
         initialize_watchers,
@@ -806,7 +755,6 @@ where
         spawn_background_tasks,
     } = hooks;
 
-    launch_pinned_mesh_install();
     spawn_background_bootstrap();
     start_runtime_monitors();
 
@@ -1171,7 +1119,6 @@ mod tests {
         let report = run_startup_orchestration_with(
             &context,
             StartupOrchestrationHooks {
-                launch_pinned_mesh_install: || calls.borrow_mut().push("mesh"),
                 spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
                 start_runtime_monitors: || calls.borrow_mut().push("monitors"),
                 initialize_watchers: || {
@@ -1194,7 +1141,6 @@ mod tests {
         assert_eq!(
             calls.into_inner(),
             vec![
-                "mesh",
                 "bootstrap",
                 "monitors",
                 "watchers",
@@ -1223,7 +1169,6 @@ mod tests {
         let error = run_startup_orchestration_with(
             &context,
             StartupOrchestrationHooks {
-                launch_pinned_mesh_install: || calls.borrow_mut().push("mesh"),
                 spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
                 start_runtime_monitors: || calls.borrow_mut().push("monitors"),
                 initialize_watchers: || {
@@ -1246,7 +1191,7 @@ mod tests {
         assert!(matches!(error, StartupOrchestrationError::Watchers { .. }));
         assert_eq!(
             calls.into_inner(),
-            vec!["mesh", "bootstrap", "monitors", "watchers"]
+            vec!["bootstrap", "monitors", "watchers"]
         );
     }
 
@@ -1266,7 +1211,6 @@ mod tests {
         let error = run_startup_orchestration_with(
             &context,
             StartupOrchestrationHooks {
-                launch_pinned_mesh_install: || calls.borrow_mut().push("mesh"),
                 spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
                 start_runtime_monitors: || calls.borrow_mut().push("monitors"),
                 initialize_watchers: || {
@@ -1289,38 +1233,7 @@ mod tests {
         assert!(matches!(error, StartupOrchestrationError::Search { .. }));
         assert_eq!(
             calls.into_inner(),
-            vec![
-                "mesh",
-                "bootstrap",
-                "monitors",
-                "watchers",
-                "compaction",
-                "search"
-            ]
+            vec!["bootstrap", "monitors", "watchers", "compaction", "search"]
         );
-    }
-
-    #[test]
-    fn spawn_startup_background_task_returns_without_waiting_for_work_completion() {
-        let (started_tx, started_rx) = std::sync::mpsc::channel();
-        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
-        let started_at = std::time::Instant::now();
-
-        spawn_startup_background_task("startup-test-worker", move || {
-            started_tx.send(()).expect("worker started");
-            std::thread::sleep(Duration::from_millis(150));
-            finished_tx.send(()).expect("worker finished");
-        });
-
-        started_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("worker should start quickly");
-        assert!(
-            started_at.elapsed() < Duration::from_millis(100),
-            "scheduling startup work should return promptly"
-        );
-        finished_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("worker should finish eventually");
     }
 }

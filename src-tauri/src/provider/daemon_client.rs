@@ -1,5 +1,5 @@
 use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, TryLockError};
@@ -24,6 +24,9 @@ const FILE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Timeout for health check pings.
 const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Timeout for establishing a fresh daemon TCP connection on localhost.
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(350);
 
 /// Minimum interval between inline reconnection attempts.
 const RECONNECT_COOLDOWN: Duration = Duration::from_secs(5);
@@ -59,15 +62,44 @@ impl DaemonProvider {
     }
 
     fn connect_stream(addr: &str) -> Result<TcpStream, AppError> {
-        let stream = TcpStream::connect(addr).map_err(|e| {
-            AppError::DaemonTransport(format!("Failed to connect to daemon at {addr}: {e}"))
+        let resolved_addr = addr.to_socket_addrs().map_err(|error| {
+            AppError::DaemonTransport(format!("Failed to resolve daemon address {addr}: {error}"))
         })?;
-        stream.set_nodelay(true).map_err(|e| {
-            AppError::DaemonTransport(format!(
-                "Failed to configure daemon TCP_NODELAY at {addr}: {e}"
-            ))
-        })?;
-        Ok(stream)
+        let mut last_error = None;
+        let mut attempted = false;
+        for socket_addr in resolved_addr {
+            attempted = true;
+            match TcpStream::connect_timeout(&socket_addr, CONNECT_TIMEOUT) {
+                Ok(stream) => {
+                    stream.set_nodelay(true).map_err(|error| {
+                        AppError::DaemonTransport(format!(
+                            "Failed to configure daemon TCP_NODELAY at {addr}: {error}"
+                        ))
+                    })?;
+                    return Ok(stream);
+                }
+                Err(error) => {
+                    last_error = Some(error);
+                }
+            }
+        }
+
+        let error = last_error.unwrap_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::AddrNotAvailable,
+                format!("no socket addresses resolved for {addr}"),
+            )
+        });
+        if !attempted {
+            return Err(AppError::DaemonTransport(format!(
+                "Failed to connect to daemon at {addr}: {error}"
+            )));
+        }
+
+        Err(AppError::DaemonTransport(format!(
+            "Failed to connect to daemon at {addr} within {} ms: {error}",
+            CONNECT_TIMEOUT.as_millis()
+        )))
     }
 
     /// Create a new DaemonProvider connected to the given address.
@@ -84,7 +116,7 @@ impl DaemonProvider {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(true),
             last_reconnect_attempt: Mutex::new(None),
-            auth_token: Mutex::new(Self::read_auth_token()),
+            auth_token: Mutex::new(None),
         };
         emit_daemon_connection_event(
             "info",
@@ -107,7 +139,7 @@ impl DaemonProvider {
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),
-            auth_token: Mutex::new(Self::read_auth_token()),
+            auth_token: Mutex::new(None),
         }
     }
 
@@ -139,30 +171,31 @@ impl DaemonProvider {
 
     /// Send a ping to the daemon and return Ok if it responds.
     pub fn ping(&self) -> Result<(), AppError> {
-        let id = self.next_id();
-        let request = DaemonRequest::ping(&id);
-        let response = self.send_request(&request, PING_TIMEOUT)?;
-        if response.is_ok() {
-            Ok(())
-        } else {
-            Err(AppError::DaemonProtocol("Daemon ping failed".to_string()))
-        }
+        self.ping_info_with_timeout(PING_TIMEOUT).map(|_| ())
     }
 
     /// Ping the daemon and return its protocol version (0 if old daemon).
     pub fn ping_protocol_version(&self) -> Result<u32, AppError> {
+        self.ping_info_with_timeout(PING_TIMEOUT)
+            .map(|info| info.protocol_version)
+    }
+
+    pub fn ping_info_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<protocol::PingResult, AppError> {
         let id = self.next_id();
         let request = DaemonRequest::ping(&id);
-        let response = self.send_request(&request, PING_TIMEOUT)?;
+        let response = self.send_request(&request, timeout)?;
         if !response.is_ok() {
             return Err(AppError::DaemonProtocol("Daemon ping failed".to_string()));
         }
-        let version = response
+        response
             .result
-            .and_then(|v| serde_json::from_value::<protocol::PingResult>(v).ok())
-            .map(|p| p.protocol_version)
-            .unwrap_or(0);
-        Ok(version)
+            .and_then(|value| serde_json::from_value::<protocol::PingResult>(value).ok())
+            .ok_or_else(|| {
+                AppError::DaemonProtocol("Daemon ping payload decode failed".to_string())
+            })
     }
 
     /// Send a request for status/admin purposes (e.g., ping from IPC commands).
@@ -243,10 +276,11 @@ impl DaemonProvider {
             }
         }
 
-        // Re-read auth token — daemon may have restarted with a new one.
+        // Clear cached auth token — the daemon may have restarted with a new one,
+        // and the next request should reload it lazily.
         match self.auth_token.lock() {
             Ok(mut guard) => {
-                *guard = Self::read_auth_token();
+                *guard = None;
             }
             Err(e) => {
                 tracing::warn!(error = %e, "daemon reconnect: auth_token mutex poisoned");
@@ -408,11 +442,7 @@ impl DaemonProvider {
 
         // Attach auth token to the request
         let mut authed_request = request.clone();
-        authed_request.auth = self
-            .auth_token
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        authed_request.auth = self.load_auth_token_if_missing();
 
         let json = serde_json::to_string(&authed_request)
             .map_err(|e| AppError::DaemonProtocol(format!("Failed to serialize request: {e}")))?;
@@ -444,6 +474,14 @@ impl DaemonProvider {
         })?;
 
         Ok(response)
+    }
+
+    fn load_auth_token_if_missing(&self) -> Option<String> {
+        let mut guard = self.auth_token.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = Self::read_auth_token();
+        }
+        guard.clone()
     }
 
     /// Send a request and extract the result, converting daemon errors to AppError.
@@ -1047,6 +1085,37 @@ mod tests {
         );
 
         daemon.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn connect_leaves_auth_token_unloaded_until_first_request() {
+        let daemon = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
+
+        assert!(
+            provider
+                .auth_token
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none(),
+            "startup fast path should not eagerly read daemon auth state"
+        );
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn disconnected_provider_starts_without_auth_token_lookup() {
+        let provider = DaemonProvider::new_disconnected("127.0.0.1:1");
+
+        assert!(
+            provider
+                .auth_token
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none(),
+            "startup fallback provider should defer auth token lookup"
+        );
     }
 
     #[test]

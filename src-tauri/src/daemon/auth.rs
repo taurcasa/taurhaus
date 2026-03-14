@@ -7,8 +7,13 @@
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 
 use rand::Rng;
+
+#[cfg(target_os = "windows")]
+const WSL_AUTH_TOKEN_TIMEOUT: Duration = Duration::from_millis(350);
 
 /// Resolve the platform-specific path for the daemon auth token.
 ///
@@ -78,7 +83,8 @@ pub fn read_auth_token() -> Option<String> {
 /// Uses `wsl_command()` from launcher to suppress console window flash.
 #[cfg(target_os = "windows")]
 fn read_token_via_wsl() -> Option<String> {
-    let output = crate::daemon::launcher::wsl_command()
+    let mut command = crate::daemon::launcher::wsl_command();
+    command
         .args([
             "-e",
             "sh",
@@ -86,9 +92,13 @@ fn read_token_via_wsl() -> Option<String> {
             "cat \"$HOME/.local/share/taurhaus/daemon.token\" 2>/dev/null",
         ])
         .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
+        .stderr(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        WSL_AUTH_TOKEN_TIMEOUT,
+        "wsl read daemon auth token",
+    )
+    .ok()?;
 
     if !output.status.success() {
         return None;

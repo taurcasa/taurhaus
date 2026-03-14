@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use serde_json::{Map, Value};
 use tauri::Manager;
 
 use crate::commands::projects::DbState;
@@ -59,8 +60,11 @@ pub(crate) fn initialize(
     std::thread::spawn(move || {
         reconcile_activity_watches(&startup_reconcile_handle, "startup");
     });
-    ensure_task_directory_watch(app, context.daemon_connected_at_startup);
-    ensure_tmux_focus_watch(app, &context.data_dir);
+    spawn_auxiliary_watch_bootstrap(
+        app.handle().clone(),
+        context.data_dir.clone(),
+        context.daemon_connected_at_startup,
+    );
 
     let periodic_handle = app.handle().clone();
     std::thread::spawn(move || loop {
@@ -69,6 +73,45 @@ pub(crate) fn initialize(
     });
 
     Ok(())
+}
+
+fn spawn_auxiliary_watch_bootstrap(
+    app: tauri::AppHandle,
+    data_dir: std::path::PathBuf,
+    has_daemon: bool,
+) {
+    spawn_auxiliary_watch_bootstrap_task(move || {
+        let started_at = std::time::Instant::now();
+        emit_watch_bootstrap_event(
+            "info",
+            "startup.watchers.bootstrap.started",
+            "Startup auxiliary watcher bootstrap started",
+            Map::new(),
+        );
+        ensure_task_directory_watch(&app, has_daemon);
+        ensure_tmux_focus_watch(&app, &data_dir);
+
+        let mut fields = Map::new();
+        fields.insert(
+            "duration_ms".to_string(),
+            Value::Number(serde_json::Number::from(
+                started_at.elapsed().as_millis() as u64
+            )),
+        );
+        emit_watch_bootstrap_event(
+            "info",
+            "startup.watchers.bootstrap.completed",
+            "Startup auxiliary watcher bootstrap completed",
+            fields,
+        );
+    });
+}
+
+fn spawn_auxiliary_watch_bootstrap_task<F>(task: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    std::thread::spawn(task);
 }
 
 pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
@@ -243,7 +286,11 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
-fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
+fn ensure_task_directory_watch<T, R>(app: &T, has_daemon: bool)
+where
+    R: tauri::Runtime,
+    T: Manager<R>,
+{
     let watcher_state = app.state::<WatcherState>();
     let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
         tracing::warn!(
@@ -279,7 +326,11 @@ fn ensure_task_directory_watch(app: &tauri::App, has_daemon: bool) {
     }
 }
 
-fn ensure_tmux_focus_watch(app: &tauri::App, data_dir: &std::path::Path) {
+fn ensure_tmux_focus_watch<T, R>(app: &T, data_dir: &std::path::Path)
+where
+    R: tauri::Runtime,
+    T: Manager<R>,
+{
     let watcher_state = app.state::<WatcherState>();
     let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
         tracing::warn!(
@@ -319,10 +370,29 @@ fn ensure_tmux_focus_watch(app: &tauri::App, data_dir: &std::path::Path) {
     }
 }
 
+fn emit_watch_bootstrap_event(
+    level: &str,
+    event: &str,
+    message: &'static str,
+    fields: Map<String, Value>,
+) {
+    crate::commands::logging::emit_global(
+        level,
+        "backend",
+        event,
+        Some(message.to_string()),
+        fields,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::should_watch_claude_tasks_locally;
     use super::should_watch_locally;
+    use super::spawn_auxiliary_watch_bootstrap_task;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn local_watch_skips_wsl_paths_when_daemon_is_connected() {
@@ -368,5 +438,32 @@ mod tests {
     #[test]
     fn claude_tasks_local_watch_skips_non_native_daemon_when_no_windows_fallback() {
         assert!(!should_watch_claude_tasks_locally(true, false, false));
+    }
+
+    #[test]
+    fn auxiliary_watch_bootstrap_spawns_asynchronously() {
+        // Regression: startup used to perform auxiliary watch registration inline,
+        // which could delay setup completion and leave the splash window waiting.
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_in_thread = completed.clone();
+
+        spawn_auxiliary_watch_bootstrap_task(move || {
+            std::thread::sleep(Duration::from_millis(40));
+            completed_in_thread.store(true, Ordering::Release);
+        });
+
+        assert!(
+            !completed.load(Ordering::Acquire),
+            "auxiliary watch bootstrap should not complete inline on the caller thread"
+        );
+
+        for _ in 0..10 {
+            if completed.load(Ordering::Acquire) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        panic!("auxiliary watch bootstrap task never completed");
     }
 }
