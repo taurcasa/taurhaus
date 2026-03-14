@@ -32,10 +32,10 @@ use self::activity_tracking::{
 use self::launching::decode_daemon_launch_result;
 use self::launching::launch_cli_session_impl;
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
-pub(crate) use self::session_listing::daemon_runtime_session_snapshot;
 #[cfg(test)]
 use self::session_listing::decode_daemon_session_list;
 use self::session_listing::list_cli_sessions_impl;
+use crate::commands::runtime_snapshot::daemon_runtime_session_snapshot;
 
 static SESSION_ACTIVITY_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
 
@@ -175,7 +175,7 @@ pub(crate) fn get_foreground_project_impl(
     db: &DbState,
     provider: &ProviderState,
 ) -> Result<Option<String>, String> {
-    if let Some(snapshot) = daemon_runtime_session_snapshot(provider)? {
+    if let Some(snapshot) = daemon_runtime_session_snapshot(provider)?.snapshot {
         if let Some(mut project_path) = snapshot.foreground_project_path {
             if !crate::daemon::launcher::is_native_daemon() && project_path.starts_with('/') {
                 if let Some(ref distro) = provider.wsl_distro {

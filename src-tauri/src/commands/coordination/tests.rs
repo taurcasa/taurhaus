@@ -2119,6 +2119,8 @@ fn live_team_status_round_trip() {
     let value = LiveTeamStatus {
         team_name: "architecture-final".to_string(),
         lead_name: "team-lead".to_string(),
+        runtime_snapshot_freshness:
+            crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::Fresh,
         members: vec![
             LiveAgentStatus {
                 name: "team-lead".to_string(),
@@ -2217,6 +2219,10 @@ fn live_status_test_helper_invokes_live_status_impl() {
             .expect("live status should succeed");
     assert_eq!(status.team_name, "architecture-final");
     assert_eq!(status.lead_name, "team-lead");
+    assert_eq!(
+        status.runtime_snapshot_freshness,
+        crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::AttachmentsOnly
+    );
     assert!(!status.members.is_empty());
     let frontend_dev = status
         .members
@@ -2249,6 +2255,10 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
             .expect("live status should succeed");
 
     assert_eq!(status.team_name, "architecture-final");
+    assert_eq!(
+        status.runtime_snapshot_freshness,
+        crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::AttachmentsOnly
+    );
     let delta = &runtime.calls()[call_count_before_live_status..];
     assert!(
         !delta.is_empty(),

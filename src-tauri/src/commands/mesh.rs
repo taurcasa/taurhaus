@@ -878,6 +878,22 @@ mod tests {
         assert!(script.contains("\"$target_path\" version --json"));
     }
 
+    #[test]
+    fn tauri_bundle_resources_include_mesh_manifest() {
+        let raw = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"))
+            .expect("read tauri config");
+        let json: serde_json::Value = serde_json::from_str(&raw).expect("parse tauri config");
+        let resources = json["bundle"]["resources"]
+            .as_object()
+            .expect("bundle.resources object");
+        assert_eq!(
+            resources
+                .get("resources/mesh.manifest.json")
+                .and_then(serde_json::Value::as_str),
+            Some("resources/mesh.manifest.json")
+        );
+    }
+
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn install_mesh_wsl_script_executes_atomic_swap_with_live_daemon_like_processes() {

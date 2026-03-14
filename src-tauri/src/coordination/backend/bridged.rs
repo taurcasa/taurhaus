@@ -15,7 +15,9 @@ use crate::coordination::requests::{
     ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
 };
 #[cfg(feature = "mesh-bridged-backend")]
-use crate::coordination::runtime::apply_background_command_settings;
+use crate::coordination::runtime::{
+    apply_background_command_settings, mesh_command_invocation_for_member,
+};
 use crate::session_scanner::cli_tool::CliTool;
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
@@ -119,7 +121,23 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
 /// on PATH discovery — matches the daemon execution pattern.
 #[cfg(feature = "mesh-bridged-backend")]
 fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
-    mesh_cli::mesh_command_invocation(args)
+    let team_name = command_flag_value(args, "--team");
+    let member_name = command_flag_value(args, "--name");
+    match (team_name, member_name) {
+        (Some(team_name), Some(member_name)) => {
+            mesh_command_invocation_for_member(args, team_name, member_name)
+        }
+        _ => mesh_cli::mesh_command_invocation(args),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn command_flag_value<'a>(args: &'a [&'a str], flag: &str) -> Option<&'a str> {
+    args.windows(2).find_map(|window| {
+        (window[0] == flag)
+            .then_some(window[1])
+            .filter(|value| !value.trim().is_empty())
+    })
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

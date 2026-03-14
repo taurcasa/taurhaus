@@ -34,12 +34,29 @@ pub fn mesh_binary_path() -> Option<String> {
 }
 
 pub fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
+    mesh_command_invocation_with_env(args, &[])
+}
+
+pub fn mesh_command_invocation_with_env(
+    args: &[&str],
+    env: &[(String, String)],
+) -> CommandInvocation {
     let mesh_path = mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
-    let args = args
+    let mesh_args = args
         .iter()
         .map(|arg| (*arg).to_string())
         .collect::<Vec<_>>();
-    command_invocation(&mesh_path, &args)
+    if env.is_empty() {
+        return command_invocation(&mesh_path, &mesh_args);
+    }
+
+    let mut invocation_args = env
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>();
+    invocation_args.push(mesh_path);
+    invocation_args.extend(mesh_args);
+    command_invocation("env", &invocation_args)
 }
 
 pub fn wsl_command_for_coordination() -> Command {

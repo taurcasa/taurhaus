@@ -11,6 +11,7 @@ pub mod logging;
 pub mod mesh;
 pub mod projects;
 pub mod relationships;
+pub(crate) mod runtime_snapshot;
 pub mod search;
 pub mod sessions;
 pub mod settings;

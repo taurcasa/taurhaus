@@ -208,7 +208,16 @@ pub struct LiveAgentStatus {
 pub struct LiveTeamStatus {
     pub team_name: String,
     pub lead_name: String,
+    pub runtime_snapshot_freshness: LiveRuntimeSnapshotFreshness,
     pub members: Vec<LiveAgentStatus>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveRuntimeSnapshotFreshness {
+    Fresh,
+    Cached,
+    AttachmentsOnly,
 }
 
 /// Fast snapshot row returned without tmux/daemon reconciliation.

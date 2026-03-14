@@ -22,6 +22,30 @@ mod commands {
     pub use crate::commands_coordination as coordination;
     pub use crate::commands_coordination_types as coordination_types;
 
+    pub mod runtime_snapshot {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum RuntimeSnapshotFreshness {
+            Fresh,
+            Cached,
+            Unavailable,
+        }
+
+        #[derive(Debug, Clone, PartialEq)]
+        pub struct RuntimeSnapshotOutcome {
+            pub snapshot: Option<taurhaus_lib::daemon_api::protocol::RuntimeSessionSnapshotResult>,
+            pub freshness: RuntimeSnapshotFreshness,
+        }
+
+        pub fn daemon_runtime_session_snapshot(
+            _provider: &taurhaus_lib::ProviderState,
+        ) -> Result<RuntimeSnapshotOutcome, String> {
+            Ok(RuntimeSnapshotOutcome {
+                snapshot: None,
+                freshness: RuntimeSnapshotFreshness::Unavailable,
+            })
+        }
+    }
+
     pub mod projects {
         use std::sync::{Arc, Mutex};
 

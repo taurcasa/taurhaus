@@ -967,14 +967,19 @@ fn emit_current_session_snapshot(
 ) -> Option<SessionSnapshotEmission> {
     let provider_state = app.state::<ProviderState>();
     let snapshot =
-        crate::commands::command_center::daemon_runtime_session_snapshot(&provider_state)
+        crate::commands::runtime_snapshot::daemon_runtime_session_snapshot(&provider_state)
             .unwrap_or_else(|error| {
                 tracing::debug!(
                     error = %error,
                     "session updates bridge failed to fetch current snapshot after reconnect"
                 );
-                None
-            })?;
+                crate::commands::runtime_snapshot::RuntimeSnapshotOutcome {
+                    snapshot: None,
+                    freshness:
+                        crate::commands::runtime_snapshot::RuntimeSnapshotFreshness::Unavailable,
+                }
+            })
+            .snapshot?;
 
     let mut sessions = snapshot.display_sessions;
     let session_count = sessions.len();

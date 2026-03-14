@@ -2,8 +2,11 @@ use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
 use crate::commands::coordination_types::{
-    AgentRole, FastAgentSnapshot, FastTeamSnapshot, LiveAgentStatus, LiveTeamStatus,
-    ProjectMeshSnapshotResponse, SessionStatus, TeamRuntimeState,
+    AgentRole, FastAgentSnapshot, FastTeamSnapshot, LiveAgentStatus, LiveRuntimeSnapshotFreshness,
+    LiveTeamStatus, ProjectMeshSnapshotResponse, SessionStatus, TeamRuntimeState,
+};
+use crate::commands::runtime_snapshot::{
+    daemon_runtime_session_snapshot, RuntimeSnapshotFreshness,
 };
 use crate::coordination::backend::bridged::{
     availability_check, AvailabilityReport as BackendAvailabilityReport,
@@ -22,18 +25,14 @@ use crate::ProviderState;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
-#[cfg(not(test))]
-use crate::daemon_api::protocol as daemon_protocol;
-#[cfg(test)]
-use taurhaus_lib::daemon_api::protocol as daemon_protocol;
-
 pub(super) fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
     provider: Option<&ProviderState>,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
     if let Some(provider) = provider {
-        if let Some(snapshot) = daemon_runtime_session_snapshot(provider)? {
+        let snapshot_outcome = daemon_runtime_session_snapshot(provider)?;
+        if let Some(snapshot) = snapshot_outcome.snapshot {
             let roster = get_team_roster_with_runtime_sessions(
                 state.teams_dir(),
                 &team_name,
@@ -50,6 +49,13 @@ pub(super) fn coordination_get_live_team_status_impl(
             return Ok(LiveTeamStatus {
                 team_name,
                 lead_name,
+                runtime_snapshot_freshness: match snapshot_outcome.freshness {
+                    RuntimeSnapshotFreshness::Fresh => LiveRuntimeSnapshotFreshness::Fresh,
+                    RuntimeSnapshotFreshness::Cached => LiveRuntimeSnapshotFreshness::Cached,
+                    RuntimeSnapshotFreshness::Unavailable => {
+                        LiveRuntimeSnapshotFreshness::AttachmentsOnly
+                    }
+                },
                 members,
             });
         }
@@ -72,6 +78,7 @@ pub(super) fn coordination_get_live_team_status_impl(
     Ok(LiveTeamStatus {
         team_name,
         lead_name,
+        runtime_snapshot_freshness: LiveRuntimeSnapshotFreshness::AttachmentsOnly,
         members,
     })
 }
@@ -119,52 +126,6 @@ pub(super) fn derive_cross_project_status(
     CrossProjectStatus {
         is_cross_project,
         project_label,
-    }
-}
-
-fn daemon_runtime_session_snapshot(
-    provider: &ProviderState,
-) -> Result<Option<daemon_protocol::RuntimeSessionSnapshotResult>, String> {
-    let Some(ref daemon) = provider.daemon else {
-        return Ok(None);
-    };
-    if !daemon.is_connected() {
-        return Ok(None);
-    }
-
-    let request = daemon_protocol::DaemonRequest::new(
-        "coordination-runtime-session-snapshot",
-        daemon_protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
-        serde_json::Value::Null,
-    );
-    match daemon.send_status_request(&request) {
-        Ok(response) if response.is_ok() => {
-            let payload = response.result.unwrap_or(serde_json::Value::Null);
-            serde_json::from_value(payload)
-                .map(Some)
-                .map_err(|error| format!("Runtime session snapshot decode error: {error}"))
-        }
-        Ok(response) => {
-            tracing::warn!(
-                error = ?response.error,
-                "Daemon returned error for coordination runtime session snapshot"
-            );
-            Ok(None)
-        }
-        Err(error) => {
-            if taurhaus_lib::daemon_api::is_busy_transport_error(&error.to_string()) {
-                tracing::debug!(
-                    error = %error,
-                    "Skipped coordination runtime session snapshot because the shared daemon connection is busy"
-                );
-            } else {
-                tracing::warn!(
-                    error = %error,
-                    "Failed to reach daemon for coordination runtime session snapshot"
-                );
-            }
-            Ok(None)
-        }
     }
 }
 

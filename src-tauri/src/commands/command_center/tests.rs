@@ -1,6 +1,9 @@
 use super::*;
-use crate::commands::command_center::session_listing::decode_daemon_runtime_session_snapshot;
 use crate::commands::logging::LogFileState;
+use crate::commands::runtime_snapshot::{
+    daemon_runtime_session_snapshot, decode_daemon_runtime_session_snapshot,
+    RuntimeSnapshotFreshness,
+};
 use crate::commands::terminal_settings::load_terminal_settings;
 use crate::coordination::activity_export::enrich_sessions_with_team_membership;
 use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
@@ -398,9 +401,9 @@ fn daemon_runtime_session_snapshot_uses_snapshot_method_and_returns_payload() {
         ),
         wsl_distro: None,
     };
-    let snapshot = daemon_runtime_session_snapshot(&provider)
-        .expect("snapshot call")
-        .expect("connected daemon snapshot");
+    let outcome = daemon_runtime_session_snapshot(&provider).expect("snapshot call");
+    assert_eq!(outcome.freshness, RuntimeSnapshotFreshness::Fresh);
+    let snapshot = outcome.snapshot.expect("connected daemon snapshot");
 
     assert_eq!(snapshot.version, 3);
     assert_eq!(

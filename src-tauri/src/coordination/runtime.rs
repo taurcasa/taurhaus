@@ -12,6 +12,8 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
+use serde::Deserialize;
+
 use crate::coordination::domain::Member;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
@@ -28,6 +30,7 @@ const TMUX_SPLIT_MAX_PANES: usize = 4;
 const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
 #[cfg(not(target_os = "windows"))]
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+pub(crate) const MESH_CONTROL_TOKEN_ENV: &str = "MESH_CONTROL_TOKEN";
 
 pub(crate) fn apply_background_command_settings(cmd: &mut Command) -> &mut Command {
     #[cfg(target_os = "windows")]
@@ -339,8 +342,8 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             args.push("--claude-dir".to_string());
             args.push(claude_dir);
         }
-        let mesh_path = mesh_cli::mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
-        let invocation = mesh_cli::command_invocation(&mesh_path, &args);
+        let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let invocation = mesh_command_invocation_for_member(&args_refs, team_name, member_name);
         let daemon_pid_path = resolve_mesh_daemon_pid_path(team_name, member_name);
         if daemon_pid_path.is_none() {
             tracing::warn!(
@@ -392,8 +395,8 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             args.push("--claude-dir".to_string());
             args.push(claude_dir);
         }
-        let mesh_path = mesh_cli::mesh_binary_path().unwrap_or_else(|| "mesh".to_string());
-        let invocation = mesh_cli::command_invocation(&mesh_path, &args);
+        let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let invocation = mesh_command_invocation_for_member(&args_refs, team_name, operator_name);
         let mut child = spawn_system_command(&invocation)?;
 
         let Some(pid_path) = daemon_pid_path.as_deref() else {
@@ -1111,6 +1114,23 @@ fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
     mesh_cli::mesh_command_invocation(args)
 }
 
+pub(crate) fn mesh_command_invocation_for_member(
+    args: &[&str],
+    team_name: &str,
+    member_name: &str,
+) -> CommandInvocation {
+    mesh_cli::mesh_command_invocation_with_env(
+        args,
+        &mesh_member_control_env(team_name, member_name),
+    )
+}
+
+pub(crate) fn mesh_member_control_env(team_name: &str, member_name: &str) -> Vec<(String, String)> {
+    resolve_mesh_control_token(team_name, member_name)
+        .map(|token| vec![(MESH_CONTROL_TOKEN_ENV.to_string(), token)])
+        .unwrap_or_default()
+}
+
 fn spawn_mesh_daemon_command_and_resolve_pid(
     invocation: &CommandInvocation,
     daemon_pid_path: Option<&Path>,
@@ -1359,6 +1379,34 @@ fn resolve_team_daemon_pid_path(team_name: &str) -> Option<PathBuf> {
             .join("daemons")
             .join("team.pid")
     })
+}
+
+fn resolve_mesh_control_credential_path(team_name: &str, member_name: &str) -> Option<PathBuf> {
+    resolve_host_claude_dir().map(|claude_dir| {
+        claude_dir
+            .join("teams")
+            .join(team_name)
+            .join("state")
+            .join("control_auth")
+            .join(format!("{member_name}.json"))
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MeshControlCredential {
+    name: String,
+    token: String,
+}
+
+pub(crate) fn resolve_mesh_control_token(team_name: &str, member_name: &str) -> Option<String> {
+    let path = resolve_mesh_control_credential_path(team_name, member_name)?;
+    let raw = fs::read_to_string(path).ok()?;
+    let credential: MeshControlCredential = serde_json::from_str(&raw).ok()?;
+    if credential.name != member_name || credential.token.trim().is_empty() {
+        return None;
+    }
+    Some(credential.token)
 }
 
 fn resolve_host_claude_dir() -> Option<PathBuf> {
