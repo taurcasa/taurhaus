@@ -961,7 +961,7 @@ fn emit_current_session_snapshot(
     since_version: &mut u64,
 ) -> Option<SessionSnapshotEmission> {
     let provider_state = app.state::<ProviderState>();
-    let Some(snapshot) =
+    let snapshot =
         crate::commands::command_center::daemon_runtime_session_snapshot(&provider_state)
             .unwrap_or_else(|error| {
                 tracing::debug!(
@@ -969,10 +969,7 @@ fn emit_current_session_snapshot(
                     "session updates bridge failed to fetch current snapshot after reconnect"
                 );
                 None
-            })
-    else {
-        return None;
-    };
+            })?;
 
     let mut sessions = snapshot.display_sessions;
     let session_count = sessions.len();
