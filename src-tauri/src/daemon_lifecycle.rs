@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
+use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -787,6 +788,51 @@ fn handle_daemon_recovered(app: &AppHandle) {
     );
 }
 
+#[derive(Debug, Default)]
+struct SessionBridgeRecoveryTracker {
+    disconnected_at: Option<Instant>,
+}
+
+impl SessionBridgeRecoveryTracker {
+    fn note_disconnect(&mut self, now: Instant) {
+        self.disconnected_at.get_or_insert(now);
+    }
+
+    fn take_duration_ms(&mut self, now: Instant) -> Option<u64> {
+        let disconnected_at = self.disconnected_at.take()?;
+        Some(now.saturating_duration_since(disconnected_at).as_millis() as u64)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SessionSnapshotEmission {
+    version: u64,
+    session_count: usize,
+}
+
+fn emit_session_bridge_recovery_measurement(duration_ms: u64, emission: SessionSnapshotEmission) {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "duration_ms".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(duration_ms)),
+    );
+    fields.insert(
+        "snapshot_version".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(emission.version)),
+    );
+    fields.insert(
+        "session_count".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(emission.session_count as u64)),
+    );
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "daemon.session_updates_bridge.recovered",
+        Some("Session UI snapshot restored after daemon disconnect".to_string()),
+        fields,
+    );
+}
+
 /// Bridge daemon-owned session updates into frontend Tauri events.
 ///
 /// Uses a dedicated daemon connection and long-poll update requests so the UI
@@ -800,6 +846,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
     std::thread::spawn(move || {
         let mut since_version: u64 = 0;
         let mut observed_connected = false;
+        let mut recovery_tracker = SessionBridgeRecoveryTracker::default();
         tracing::info!("session updates bridge thread started");
 
         loop {
@@ -815,6 +862,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                 if observed_connected {
                     tracing::info!("session updates bridge: daemon disconnected");
                     observed_connected = false;
+                    recovery_tracker.note_disconnect(Instant::now());
                 }
                 std::thread::sleep(RETRY_DELAY);
                 continue;
@@ -835,7 +883,11 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                     }
                 };
 
-            emit_current_session_snapshot(&app, &mut since_version);
+            if let Some(emission) = emit_current_session_snapshot(&app, &mut since_version) {
+                if let Some(duration_ms) = recovery_tracker.take_duration_ms(Instant::now()) {
+                    emit_session_bridge_recovery_measurement(duration_ms, emission);
+                }
+            }
 
             loop {
                 let still_connected = {
@@ -904,7 +956,10 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
     });
 }
 
-fn emit_current_session_snapshot(app: &AppHandle, since_version: &mut u64) {
+fn emit_current_session_snapshot(
+    app: &AppHandle,
+    since_version: &mut u64,
+) -> Option<SessionSnapshotEmission> {
     let provider_state = app.state::<ProviderState>();
     let Some(snapshot) =
         crate::commands::command_center::daemon_runtime_session_snapshot(&provider_state)
@@ -916,7 +971,7 @@ fn emit_current_session_snapshot(app: &AppHandle, since_version: &mut u64) {
                 None
             })
     else {
-        return;
+        return None;
     };
 
     let mut sessions = snapshot.display_sessions;
@@ -947,6 +1002,10 @@ fn emit_current_session_snapshot(app: &AppHandle, since_version: &mut u64) {
         session_count = session_count,
         "session updates bridge emitted current snapshot after connect"
     );
+    Some(SessionSnapshotEmission {
+        version: snapshot.version,
+        session_count,
+    })
 }
 
 #[cfg(test)]
@@ -1204,6 +1263,38 @@ mod tests {
         assert_eq!(result, DaemonRecoveryResult::Failed);
         assert_eq!(reconnect_calls, 2);
         assert_eq!(restart_calls, 1);
+    }
+
+    #[test]
+    fn session_bridge_recovery_tracker_measures_disconnect_until_snapshot_restore() {
+        let mut tracker = SessionBridgeRecoveryTracker::default();
+        let disconnected_at = Instant::now();
+
+        tracker.note_disconnect(disconnected_at);
+
+        let duration_ms = tracker
+            .take_duration_ms(disconnected_at + std::time::Duration::from_millis(1750))
+            .expect("disconnect duration");
+
+        assert_eq!(duration_ms, 1750);
+        assert!(tracker
+            .take_duration_ms(disconnected_at + std::time::Duration::from_millis(2000))
+            .is_none());
+    }
+
+    #[test]
+    fn session_bridge_recovery_tracker_keeps_first_disconnect_until_recovered() {
+        let mut tracker = SessionBridgeRecoveryTracker::default();
+        let disconnected_at = Instant::now();
+
+        tracker.note_disconnect(disconnected_at);
+        tracker.note_disconnect(disconnected_at + std::time::Duration::from_secs(4));
+
+        let duration_ms = tracker
+            .take_duration_ms(disconnected_at + std::time::Duration::from_secs(5))
+            .expect("disconnect duration");
+
+        assert_eq!(duration_ms, 5000);
     }
 
     #[test]
