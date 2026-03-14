@@ -19,6 +19,8 @@ const LOG_WRITE_WARN_THROTTLE_MS: u64 = 5_000;
 
 static LAST_LOG_WRITE_WARN_MS: AtomicU64 = AtomicU64::new(0);
 static GLOBAL_LOG_EMITTER: OnceLock<RwLock<LogEmitter>> = OnceLock::new();
+#[cfg(test)]
+static TEST_RECORD_TAP: OnceLock<RwLock<Option<std::sync::mpsc::Sender<Value>>>> = OnceLock::new();
 
 #[derive(Clone)]
 struct LogEmitter {
@@ -129,6 +131,11 @@ impl LogEmitter {
             fields.remove(reserved);
         }
 
+        #[cfg(test)]
+        let tap_message = message.clone();
+        #[cfg(test)]
+        let tap_fields = fields.clone();
+
         let record = LogRecord {
             ts: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
             level: normalize_level(level).to_string(),
@@ -143,6 +150,36 @@ impl LogEmitter {
             if should_emit_write_warning(now_millis()) {
                 tracing::warn!(error = %error, "failed to enqueue structured log event");
             }
+        }
+        #[cfg(test)]
+        emit_test_tap(level, component, event, tap_message, tap_fields);
+    }
+}
+
+#[cfg(test)]
+fn emit_test_tap(
+    level: &str,
+    component: &str,
+    event: &str,
+    message: Option<String>,
+    mut fields: Map<String, Value>,
+) {
+    let Some(slot) = TEST_RECORD_TAP.get() else {
+        return;
+    };
+    for reserved in ["ts", "level", "component", "event", "run_id", "message"] {
+        fields.remove(reserved);
+    }
+    let payload = serde_json::json!({
+        "level": normalize_level(level),
+        "component": component,
+        "event": event,
+        "message": message,
+        "fields": fields,
+    });
+    if let Ok(guard) = slot.read() {
+        if let Some(sender) = guard.as_ref() {
+            let _ = sender.send(payload);
         }
     }
 }
@@ -269,6 +306,26 @@ pub fn emit_global(
         }
     } else if should_emit_write_warning(now_millis()) {
         tracing::warn!("structured log emitter not installed; dropping event");
+    }
+}
+
+#[cfg(test)]
+pub fn install_test_tap(sender: std::sync::mpsc::Sender<Value>) {
+    if let Some(slot) = TEST_RECORD_TAP.get() {
+        if let Ok(mut guard) = slot.write() {
+            *guard = Some(sender);
+        }
+        return;
+    }
+    let _ = TEST_RECORD_TAP.set(RwLock::new(Some(sender)));
+}
+
+#[cfg(test)]
+pub fn clear_test_tap() {
+    if let Some(slot) = TEST_RECORD_TAP.get() {
+        if let Ok(mut guard) = slot.write() {
+            *guard = None;
+        }
     }
 }
 

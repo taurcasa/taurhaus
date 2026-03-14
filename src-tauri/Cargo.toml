@@ -39,7 +39,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 rusqlite = { version = "0.32", features = ["bundled"] }
 
-git2 = { version = "0.19", features = ["vendored-openssl"] }
+git2 = { version = "0.20.4", features = ["vendored-openssl"] }
 ignore = "0.4"
 
 serde_norway = "0.9.42"

@@ -447,7 +447,6 @@ mod tests {
     use serde_json::Value;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
-    use std::path::Path;
     use std::sync::LazyLock;
 
     static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -530,26 +529,6 @@ mod tests {
         serde_json::from_str(&line).unwrap()
     }
 
-    fn wait_for_log_match<F>(path: &Path, predicate: F) -> Option<Value>
-    where
-        F: Fn(&Value) -> bool,
-    {
-        for _ in 0..100 {
-            if let Ok(contents) = std::fs::read_to_string(path) {
-                for line in contents.lines() {
-                    let Ok(value) = serde_json::from_str::<Value>(line) else {
-                        continue;
-                    };
-                    if predicate(&value) {
-                        return Some(value);
-                    }
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        None
-    }
-
     #[test]
     fn configure_accepted_stream_enables_tcp_nodelay() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -623,6 +602,8 @@ mod tests {
         let log_state =
             crate::commands::logging::LogFileState::new(log_path.clone()).expect("log state");
         crate::commands::logging::install_global_sink(&log_state);
+        let (telemetry_tx, telemetry_rx) = std::sync::mpsc::channel();
+        crate::commands::logging::install_test_tap(telemetry_tx);
 
         let project_dir = tempfile::TempDir::new().expect("project tempdir");
         let watched = project_dir.path().join("watched");
@@ -650,31 +631,49 @@ mod tests {
         );
         assert!(response.is_ok(), "watch response: {response:?}");
 
-        let telemetry = wait_for_log_match(&log_path, |value| {
-            value.get("event") == Some(&Value::String("inotify.telemetry".to_string()))
-                && value.get("reason") == Some(&Value::String("state_changed".to_string()))
-                && value
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut telemetry = None;
+        while std::time::Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let Ok(record) =
+                telemetry_rx.recv_timeout(remaining.min(std::time::Duration::from_millis(250)))
+            else {
+                continue;
+            };
+            let fields = record
+                .get("fields")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            if record.get("event") == Some(&Value::String("inotify.telemetry".to_string()))
+                && fields.get("reason") == Some(&Value::String("state_changed".to_string()))
+                && fields
                     .get("logical_watch_subscriptions")
                     .and_then(Value::as_u64)
                     .unwrap_or(0)
                     > 0
-                && value
+                && fields
                     .get("physical_watch_registrations")
                     .and_then(Value::as_u64)
                     .unwrap_or(0)
                     > 0
-        });
+            {
+                telemetry = Some((record, fields));
+                break;
+            }
+        }
 
         server.shutdown.store(true, Ordering::Relaxed);
+        crate::commands::logging::clear_test_tap();
 
-        let telemetry = telemetry.unwrap_or_else(|| {
+        let (telemetry, fields) = telemetry.unwrap_or_else(|| {
             panic!(
                 "timed out waiting for state_changed inotify telemetry in {}",
                 log_path.display()
             )
         });
         assert_eq!(telemetry["component"], "daemon");
-        assert_eq!(telemetry["reason"], "state_changed");
+        assert_eq!(fields["reason"], "state_changed");
     }
 
     #[test]

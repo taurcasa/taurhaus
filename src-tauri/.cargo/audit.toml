@@ -6,9 +6,6 @@ ignore = [
     # lru 0.12.5 unsound IterMut — tantivy transitive dep, we don't use iter_mut()
     "RUSTSEC-2026-0002",
 
-    # git2 0.19.0 unsound Buf deref — read-only usage, low risk
-    "RUSTSEC-2026-0008",
-
     # glib unsound — Tauri transitive (GTK3/wry), not used directly
     "RUSTSEC-2024-0429",
 
