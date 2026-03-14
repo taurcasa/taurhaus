@@ -1,28 +1,61 @@
+function nowMs(now) {
+  if (typeof now === 'function') {
+    return now()
+  }
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now()
+  }
+  return Date.now()
+}
+
 export function setupSessionPollingLifecycle({
   isTauri,
   sessionBridgeLive,
   startPolling,
   stopPolling,
   doc = document,
+  logger = console,
+  now,
 }) {
-  if (isTauri && sessionBridgeLive) {
-    return () => {}
+  const bridgeLive = isTauri && sessionBridgeLive
+  let hiddenAt = null
+
+  if (!bridgeLive) {
+    startPolling()
   }
 
-  startPolling()
-
   function onVisibilityChange() {
+    const changedAt = nowMs(now)
     if (doc.hidden) {
-      stopPolling()
+      hiddenAt = changedAt
+      logger.info('[shell.visibility] document hidden', {
+        event: 'shell.visibility.hidden',
+        session_bridge_live: bridgeLive,
+        recovery_mode: bridgeLive ? 'bridge_live_no_polling_change' : 'pause_fallback_polling',
+      })
+      if (!bridgeLive) {
+        stopPolling()
+      }
     } else {
-      startPolling()
+      logger.info('[shell.visibility] document visible', {
+        event: 'shell.visibility.visible',
+        session_bridge_live: bridgeLive,
+        hidden_duration_ms: hiddenAt === null ? null : Number((changedAt - hiddenAt).toFixed(1)),
+        recovery_mode: bridgeLive ? 'bridge_live_no_polling_change' : 'resume_fallback_polling',
+      })
+      hiddenAt = null
+      if (!bridgeLive) {
+        startPolling()
+      }
     }
   }
 
   doc.addEventListener('visibilitychange', onVisibilityChange)
 
   return () => {
-    stopPolling()
+    if (!bridgeLive) {
+      stopPolling()
+    }
     doc.removeEventListener('visibilitychange', onVisibilityChange)
   }
 }

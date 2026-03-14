@@ -21,18 +21,25 @@ describe('setupSessionPollingLifecycle', () => {
   it('skips polling when Tauri bridge is already live', () => {
     const startPolling = vi.fn()
     const stopPolling = vi.fn()
+    const doc = {
+      hidden: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }
 
     const cleanup = setupSessionPollingLifecycle({
       isTauri: true,
       sessionBridgeLive: true,
       startPolling,
       stopPolling,
-      doc: document,
+      doc,
     })
 
     expect(startPolling).not.toHaveBeenCalled()
     cleanup()
     expect(stopPolling).not.toHaveBeenCalled()
+    expect(doc.addEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+    expect(doc.removeEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
   })
 
   it('starts polling and toggles it on document visibility changes', () => {
@@ -72,6 +79,48 @@ describe('setupSessionPollingLifecycle', () => {
     cleanup()
     expect(stopPolling).toHaveBeenCalledTimes(2)
     expect(doc.removeEventListener).toHaveBeenCalled()
+  })
+
+  it('logs hidden and visible recovery timing for visibility changes', () => {
+    const listeners = new Map()
+    const doc = {
+      hidden: false,
+      addEventListener: vi.fn((name, handler) => {
+        listeners.set(name, handler)
+      }),
+      removeEventListener: vi.fn(),
+    }
+    const logger = {
+      info: vi.fn(),
+    }
+    let currentTime = 100
+
+    const cleanup = setupSessionPollingLifecycle({
+      isTauri: false,
+      sessionBridgeLive: false,
+      startPolling: vi.fn(),
+      stopPolling: vi.fn(),
+      doc,
+      logger,
+      now: () => currentTime,
+    })
+
+    doc.hidden = true
+    listeners.get('visibilitychange')()
+    currentTime = 460
+    doc.hidden = false
+    listeners.get('visibilitychange')()
+
+    const hiddenEvent = logger.info.mock.calls[0][1]
+    const visibleEvent = logger.info.mock.calls[1][1]
+
+    expect(hiddenEvent.event).toBe('shell.visibility.hidden')
+    expect(hiddenEvent.recovery_mode).toBe('pause_fallback_polling')
+    expect(visibleEvent.event).toBe('shell.visibility.visible')
+    expect(visibleEvent.hidden_duration_ms).toBe(360)
+    expect(visibleEvent.recovery_mode).toBe('resume_fallback_polling')
+
+    cleanup()
   })
 })
 
