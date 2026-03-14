@@ -3,6 +3,10 @@
   import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, markSessionPresenceStale, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
+  import {
+    applyShellDaemonStatusSnapshot,
+    consumeInitialShellDaemonStatus,
+  } from './lib/daemonStatus.js'
   import { normalizeProjectPath } from './lib/pathUtils.js'
   import TaskBoard from './lib/TaskBoard.svelte'
   import GitTab from './lib/GitTab.svelte'
@@ -50,6 +54,16 @@
   $effect(() => {
     document.documentElement.classList.toggle('dark', dark)
   })
+  $effect(() => {
+    return () => {
+      if (daemonStatusDismissTimer !== null) {
+        clearTimeout(daemonStatusDismissTimer)
+      }
+      if (daemonStatusRefreshTimer !== null) {
+        clearTimeout(daemonStatusRefreshTimer)
+      }
+    }
+  })
   let searchOpen = $state(false)
   let settingsOpen = $state(false)
   let showAddProject = $state(false)
@@ -60,6 +74,7 @@
   let daemonStatus = $state(null)
   let daemonStatusDismissTimer = $state(null)
   let consumedInitialDaemonStatus = false
+  let daemonStatusRefreshTimer = null
 
   // Daemon update banner state
   let daemonUpdateAvailable = $state(null)  // { version, bundled_version } or null
@@ -318,35 +333,74 @@
   }
 
   async function loadDaemonStatus({ allowInitial = true } = {}) {
+    return loadDaemonStatusWithRefresh({
+      allowInitial,
+      confirmBusy: true,
+      includeUpdateCheck: true,
+    })
+  }
+
+  function clearDaemonStatusRefreshTimer() {
+    if (daemonStatusRefreshTimer !== null) {
+      clearTimeout(daemonStatusRefreshTimer)
+      daemonStatusRefreshTimer = null
+    }
+  }
+
+  function scheduleDaemonStatusRefresh({ delayMs, confirmBusy }) {
+    clearDaemonStatusRefreshTimer()
+    daemonStatusRefreshTimer = setTimeout(() => {
+      daemonStatusRefreshTimer = null
+      void loadDaemonStatusWithRefresh({
+        allowInitial: false,
+        confirmBusy,
+        includeUpdateCheck: false,
+      })
+    }, delayMs)
+  }
+
+  async function loadDaemonStatusWithRefresh({ allowInitial = true, confirmBusy = true, includeUpdateCheck = true } = {}) {
     if (allowInitial && !consumedInitialDaemonStatus && initialDaemonStatus !== undefined) {
       consumedInitialDaemonStatus = true
-      if (
-        initialDaemonStatus === 'connected' ||
-        initialDaemonStatus === 'not_configured'
-      ) {
-        daemonStatus = null
+      const initial = consumeInitialShellDaemonStatus(initialDaemonStatus)
+      daemonStatus = initial.daemonStatus
+      if (initial.needsRefresh) {
+        scheduleDaemonStatusRefresh({
+          delayMs: initialDaemonStatus === 'busy' ? 450 : 1200,
+          confirmBusy: initial.confirmBusyOnRefresh,
+        })
       } else {
-        daemonStatus = initialDaemonStatus
+        clearDaemonStatusRefreshTimer()
       }
 
-      checkDaemonUpdate()
+      if (includeUpdateCheck) {
+        checkDaemonUpdate()
+      }
       return
     }
 
     try {
       const status = await getDaemonStatus()
-      daemonStatus =
-        status.status === 'connected' || status.status === 'not_configured'
-          ? null
-          : status.status
+      const next = applyShellDaemonStatusSnapshot(daemonStatus, status.status, { confirmBusy })
+      daemonStatus = next.daemonStatus
+      if (next.needsRefresh) {
+        scheduleDaemonStatusRefresh({
+          delayMs: next.daemonStatus === 'busy' ? 1500 : 750,
+          confirmBusy: next.confirmBusyOnRefresh,
+        })
+      } else {
+        clearDaemonStatusRefreshTimer()
+      }
     } catch (error) {
       console.warn('[daemon] status check failed; preserving current status', {
         error_message: errorMessage(error),
       })
     }
 
-    // Non-blocking: check if daemon binary needs updating
-    checkDaemonUpdate()
+    if (includeUpdateCheck) {
+      // Non-blocking: check if daemon binary needs updating
+      checkDaemonUpdate()
+    }
   }
 
   async function checkDaemonUpdate() {
@@ -530,6 +584,7 @@
       },
       onDaemonStatus: ({ status }) => {
         daemonStatus = status
+        clearDaemonStatusRefreshTimer()
         if (status !== 'connected') {
           sessionBridgeLive = false
           markSessionPresenceStale()
