@@ -84,6 +84,7 @@ pub fn wsl_command() -> std::process::Command {
 
 /// Max time to wait for daemon to become reachable after spawning.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+const STARTUP_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Interval between TCP connection attempts while waiting for daemon startup.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -320,11 +321,15 @@ fn daemon_binary_path(distro: &str) -> Result<String, std::io::Error> {
 
 /// Resolve the WSL user's home directory by running `echo $HOME` inside WSL.
 fn resolve_wsl_home(distro: &str) -> Result<String, std::io::Error> {
-    let output = wsl_command()
+    let mut command = wsl_command();
+    command
         .args(["-d", distro, "--", "sh", "-c", "echo $HOME"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()?;
+        .stdin(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        STARTUP_COMMAND_TIMEOUT,
+        "wsl echo $HOME",
+    )?;
 
     if !output.status.success() {
         return Err(std::io::Error::other(
@@ -412,12 +417,15 @@ fn try_start_daemon_wsl(
         log_path,
         &format!("Checking daemon binary exists at {binary_path}"),
     );
-    let check = wsl_command()
+    let mut check = wsl_command();
+    check
         .args(["-d", distro, "--", "test", "-x", binary_path])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let check = crate::process_utils::run_command_with_timeout(
+        &mut check,
+        STARTUP_COMMAND_TIMEOUT,
+        "wsl test -x taurhaus-daemon",
+    );
 
     match check {
         Ok(output) if !output.status.success() => {
@@ -601,12 +609,15 @@ fn ensure_tmux_session_native(session_name: &str, log_path: &Path) {
         &format!("Ensuring tmux session '{session_name}' exists (native)"),
     );
 
-    let check = std::process::Command::new("tmux")
+    let mut check = std::process::Command::new("tmux");
+    check
         .args(["has-session", "-t", session_name])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let check = crate::process_utils::run_command_with_timeout(
+        &mut check,
+        STARTUP_COMMAND_TIMEOUT,
+        "tmux has-session",
+    );
 
     if let Ok(output) = &check {
         if output.status.success() {
@@ -618,12 +629,15 @@ fn ensure_tmux_session_native(session_name: &str, log_path: &Path) {
         }
     }
 
-    let result = std::process::Command::new("tmux")
+    let mut result = std::process::Command::new("tmux");
+    result
         .args(["new-session", "-d", "-s", session_name])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let result = crate::process_utils::run_command_with_timeout(
+        &mut result,
+        STARTUP_COMMAND_TIMEOUT,
+        "tmux new-session",
+    );
 
     match result {
         Ok(output) if output.status.success() => {
@@ -652,7 +666,8 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
         &format!("Ensuring tmux session '{session_name}' exists"),
     );
 
-    let check = wsl_command()
+    let mut check = wsl_command();
+    check
         .args([
             "-d",
             distro,
@@ -662,10 +677,12 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
             "-t",
             session_name,
         ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let check = crate::process_utils::run_command_with_timeout(
+        &mut check,
+        STARTUP_COMMAND_TIMEOUT,
+        "wsl tmux has-session",
+    );
 
     if let Ok(output) = &check {
         if output.status.success() {
@@ -677,7 +694,8 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
         }
     }
 
-    let result = wsl_command()
+    let mut result = wsl_command();
+    result
         .args([
             "-d",
             distro,
@@ -688,10 +706,12 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
             "-s",
             session_name,
         ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let result = crate::process_utils::run_command_with_timeout(
+        &mut result,
+        STARTUP_COMMAND_TIMEOUT,
+        "wsl tmux new-session",
+    );
 
     match result {
         Ok(output) if output.status.success() => {

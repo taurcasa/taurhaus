@@ -12,6 +12,7 @@ pub mod errors;
 mod event_processor;
 mod inotify_diagnostics;
 pub mod models;
+mod process_utils;
 mod sentinels;
 pub mod services;
 mod session_snapshot_cache;

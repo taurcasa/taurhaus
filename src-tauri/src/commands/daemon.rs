@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use tauri::{Emitter, Manager, State};
 
 use crate::commands::lifecycle::IpcCommandSpan;
@@ -9,6 +11,8 @@ use crate::ProviderState;
 
 const BUNDLED_VERSION: &str = env!("CARGO_PKG_VERSION");
 const WSL_INSTALL_RESTART_MARKER: &str = "__TAURHAUS_DAEMON_WAS_RUNNING__=";
+const INSTALL_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
+const INSTALL_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 
 /// Get the current platform identifier.
 ///
@@ -126,12 +130,12 @@ pub fn start_daemon(
 /// Runs `wsl -l -q` and returns the first line (the default distro).
 /// Returns None if WSL is not available or no distro is configured.
 fn detect_default_distro() -> Result<Option<String>, String> {
-    let output = wsl_command()
-        .args(["--list", "--quiet"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("Failed to run wsl.exe: {e}"))?;
+    let output = crate::process_utils::run_command_with_timeout(
+        wsl_command().args(["--list", "--quiet"]),
+        INSTALL_STATUS_TIMEOUT,
+        "wsl --list --quiet",
+    )
+    .map_err(|e| format!("Failed to run wsl.exe: {e}"))?;
 
     if !output.status.success() {
         return Ok(None);
@@ -196,11 +200,15 @@ fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
         });
     }
 
-    let version_output = std::process::Command::new(&binary)
+    let mut version_output = std::process::Command::new(&binary);
+    version_output
         .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let version_output = crate::process_utils::run_command_with_timeout(
+        &mut version_output,
+        INSTALL_STATUS_TIMEOUT,
+        "taurhaus-daemon --version",
+    );
 
     let version = match version_output {
         Ok(output) if output.status.success() => {
@@ -230,12 +238,13 @@ fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
 /// WSL daemon check (Windows): probe WSL, detect distro, check binary inside WSL.
 fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
     // Step 1: Check WSL availability
-    let wsl_check = wsl_command()
-        .arg("--status")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let mut wsl_check = wsl_command();
+    wsl_check.arg("--status").stdin(std::process::Stdio::null());
+    let wsl_check = crate::process_utils::run_command_with_timeout(
+        &mut wsl_check,
+        INSTALL_STATUS_TIMEOUT,
+        "wsl --status",
+    );
 
     match wsl_check {
         Err(_) => {
@@ -288,7 +297,8 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
     }
 
     // Step 3: Check if binary exists
-    let exists = wsl_command()
+    let mut exists = wsl_command();
+    exists
         .args([
             "-d",
             &distro,
@@ -297,12 +307,14 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
             "-f",
             "$HOME/.local/bin/taurhaus-daemon",
         ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+        .stdin(std::process::Stdio::null());
+    let exists = crate::process_utils::run_command_with_timeout(
+        &mut exists,
+        INSTALL_STATUS_TIMEOUT,
+        "wsl test -f ~/.local/bin/taurhaus-daemon",
+    )
+    .map(|o| o.status.success())
+    .unwrap_or(false);
 
     if !exists {
         return Ok(DaemonInstallStatus {
@@ -316,7 +328,8 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
     }
 
     // Step 4: Get installed version
-    let version_output = wsl_command()
+    let mut version_output = wsl_command();
+    version_output
         .args([
             "-d",
             &distro,
@@ -324,9 +337,12 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
             "$HOME/.local/bin/taurhaus-daemon",
             "--version",
         ])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let version_output = crate::process_utils::run_command_with_timeout(
+        &mut version_output,
+        INSTALL_STATUS_TIMEOUT,
+        "wsl ~/.local/bin/taurhaus-daemon --version",
+    );
 
     let version = match version_output {
         Ok(output) if output.status.success() => {
@@ -433,11 +449,13 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationRe
     }
 
     // Verify installation
-    let verify = std::process::Command::new(&target_path)
-        .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let mut verify = std::process::Command::new(&target_path);
+    verify.arg("--version").stdin(std::process::Stdio::null());
+    let verify = crate::process_utils::run_command_with_timeout(
+        &mut verify,
+        INSTALL_STATUS_TIMEOUT,
+        "taurhaus-daemon --version",
+    );
 
     match verify {
         Ok(output) if output.status.success() => {
@@ -465,7 +483,8 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<OperationResul
     let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
         .unwrap_or_else(|| bundled_binary_str.to_string());
 
-    let output = wsl_command()
+    let mut command = wsl_command();
+    command
         .args([
             "-d",
             &distro,
@@ -476,11 +495,13 @@ fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<OperationResul
             "taurhaus-install",
             &wsl_source_path,
         ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to install daemon in WSL: {e}"))?;
+        .stdin(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        INSTALL_ACTION_TIMEOUT,
+        "wsl daemon install script",
+    )
+    .map_err(|e| format!("Failed to install daemon in WSL: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

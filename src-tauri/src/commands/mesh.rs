@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{is_native_daemon, validate_wsl_distro, wsl_command};
@@ -13,6 +14,8 @@ const MESH_MANIFEST_RESOURCE: &str = "mesh.manifest.json";
 const WSL_INSTALL_VERSION_JSON_MARKER: &str = "__TAURHAUS_MESH_VERSION_JSON__=";
 const WSL_INSTALL_MEMBER_DAEMON_MARKER: &str = "__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=";
 const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=";
+const INSTALL_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
+const INSTALL_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 
 #[tauri::command]
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
@@ -117,12 +120,12 @@ fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
 }
 
 fn detect_default_distro() -> Result<Option<String>, String> {
-    let output = wsl_command()
-        .args(["--list", "--quiet"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("Failed to run wsl.exe: {e}"))?;
+    let output = crate::process_utils::run_command_with_timeout(
+        wsl_command().args(["--list", "--quiet"]),
+        INSTALL_STATUS_TIMEOUT,
+        "wsl --list --quiet",
+    )
+    .map_err(|e| format!("Failed to run wsl.exe: {e}"))?;
 
     if !output.status.success() {
         return Ok(None);
@@ -182,24 +185,30 @@ fn read_mesh_contract_from_output(
 }
 
 fn read_mesh_contract_native(binary: &Path) -> Result<MeshCompatibilityContract, String> {
-    let output = std::process::Command::new(binary)
+    let mut command = std::process::Command::new(binary);
+    command
         .args(["version", "--json"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run mesh version --json: {e}"))?;
+        .stdin(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        INSTALL_STATUS_TIMEOUT,
+        "mesh version --json",
+    )
+    .map_err(|e| format!("Failed to run mesh version --json: {e}"))?;
     read_mesh_contract_from_output("mesh version --json", output)
 }
 
 fn read_mesh_contract_wsl(distro: &str, binary: &str) -> Result<MeshCompatibilityContract, String> {
-    let output = wsl_command()
+    let mut command = wsl_command();
+    command
         .args(["-d", distro, "--", binary, "version", "--json"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run mesh version --json in WSL: {e}"))?;
+        .stdin(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        INSTALL_STATUS_TIMEOUT,
+        "wsl mesh version --json",
+    )
+    .map_err(|e| format!("Failed to run mesh version --json in WSL: {e}"))?;
     read_mesh_contract_from_output("mesh version --json", output)
 }
 
@@ -363,12 +372,13 @@ fn check_mesh_install_native(
 fn check_mesh_install_wsl(
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<MeshInstallStatus, String> {
-    let wsl_check = wsl_command()
-        .arg("--status")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let mut wsl_check = wsl_command();
+    wsl_check.arg("--status").stdin(std::process::Stdio::null());
+    let wsl_check = crate::process_utils::run_command_with_timeout(
+        &mut wsl_check,
+        INSTALL_STATUS_TIMEOUT,
+        "wsl --status",
+    );
 
     match wsl_check {
         Err(_) => {
@@ -407,14 +417,17 @@ fn check_mesh_install_wsl(
         ));
     }
 
-    let exists = wsl_command()
+    let mut exists = wsl_command();
+    exists
         .args(["-d", &distro, "--", "test", "-f", "$HOME/.local/bin/mesh"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map(|out| out.status.success())
-        .unwrap_or(false);
+        .stdin(std::process::Stdio::null());
+    let exists = crate::process_utils::run_command_with_timeout(
+        &mut exists,
+        INSTALL_STATUS_TIMEOUT,
+        "wsl test -f ~/.local/bin/mesh",
+    )
+    .map(|out| out.status.success())
+    .unwrap_or(false);
 
     if !exists {
         return Ok(mesh_status_not_installed(bundled_contract, true, None));
@@ -500,12 +513,15 @@ where
         }
     }
 
-    let verify = std::process::Command::new(&target_path)
+    let mut verify = std::process::Command::new(&target_path);
+    verify
         .args(["version", "--json"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output();
+        .stdin(std::process::Stdio::null());
+    let verify = crate::process_utils::run_command_with_timeout(
+        &mut verify,
+        INSTALL_STATUS_TIMEOUT,
+        "mesh version --json",
+    );
 
     match verify {
         Ok(output) => {
@@ -543,7 +559,8 @@ fn install_mesh_wsl(
     let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
         .unwrap_or_else(|| bundled_binary_str.to_string());
 
-    let output = wsl_command()
+    let mut command = wsl_command();
+    command
         .args([
             "-d",
             &distro,
@@ -554,11 +571,13 @@ fn install_mesh_wsl(
             "taurhaus-install",
             &wsl_source_path,
         ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to install mesh in WSL: {e}"))?;
+        .stdin(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        INSTALL_ACTION_TIMEOUT,
+        "wsl mesh install script",
+    )
+    .map_err(|e| format!("Failed to install mesh in WSL: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

@@ -50,6 +50,25 @@ struct StartupOrchestrationReport {
 }
 
 #[cfg(test)]
+struct StartupOrchestrationHooks<
+    LaunchPinnedMeshInstall,
+    SpawnBootstrap,
+    StartRuntimeMonitors,
+    InitializeWatchers,
+    InitializeCompaction,
+    InitializeSearch,
+    SpawnBackgroundTasks,
+> {
+    launch_pinned_mesh_install: LaunchPinnedMeshInstall,
+    spawn_background_bootstrap: SpawnBootstrap,
+    start_runtime_monitors: StartRuntimeMonitors,
+    initialize_watchers: InitializeWatchers,
+    initialize_compaction: InitializeCompaction,
+    initialize_search: InitializeSearch,
+    spawn_background_tasks: SpawnBackgroundTasks,
+}
+
+#[cfg(test)]
 #[derive(Debug, thiserror::Error)]
 enum StartupOrchestrationError {
     #[error("watchers init failed: {source}")]
@@ -428,6 +447,34 @@ fn ensure_bundled_daemon_install(app: &tauri::AppHandle) {
     }
 }
 
+fn spawn_startup_background_task<Task>(thread_name: &'static str, task: Task)
+where
+    Task: FnOnce() + Send + 'static,
+{
+    if let Err(error) = std::thread::Builder::new()
+        .name(thread_name.to_string())
+        .spawn(task)
+    {
+        tracing::warn!(
+            thread_name,
+            error = %error,
+            "startup background task spawn failed"
+        );
+    }
+}
+
+fn schedule_bundled_daemon_install(app: tauri::AppHandle) {
+    spawn_startup_background_task("startup-daemon-install", move || {
+        ensure_bundled_daemon_install(&app);
+    });
+}
+
+fn schedule_pinned_mesh_install(app: tauri::AppHandle) {
+    spawn_startup_background_task("startup-mesh-install", move || {
+        ensure_pinned_mesh_install(&app);
+    });
+}
+
 pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("taurhaus starting");
 
@@ -448,7 +495,7 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
         &setup_paths,
         database_started_at.elapsed().as_millis() as u64,
     );
-    ensure_bundled_daemon_install(&app.handle().clone());
+    schedule_bundled_daemon_install(app.handle().clone());
     emit_startup_daemon_phase_started();
     let daemon_phase_started_at = Instant::now();
     let daemon_phase = determine_daemon_phase(&conn, &setup_paths.log_path);
@@ -653,7 +700,7 @@ fn run_startup_orchestration(
     app: &mut tauri::App,
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    ensure_pinned_mesh_install(&app.handle().clone());
+    schedule_pinned_mesh_install(app.handle().clone());
     daemon::spawn_background_bootstrap(app.handle().clone(), context);
     daemon::start_runtime_monitors(app.handle().clone(), context);
     #[cfg(feature = "mesh-bridged-backend")]
@@ -721,7 +768,7 @@ fn run_startup_orchestration(
 
 #[cfg(test)]
 fn run_startup_orchestration_with<
-    EnsurePinnedMeshInstall,
+    LaunchPinnedMeshInstall,
     SpawnBootstrap,
     StartRuntimeMonitors,
     InitializeWatchers,
@@ -730,16 +777,18 @@ fn run_startup_orchestration_with<
     SpawnBackgroundTasks,
 >(
     context: &SetupContext,
-    ensure_pinned_mesh_install: EnsurePinnedMeshInstall,
-    spawn_background_bootstrap: SpawnBootstrap,
-    start_runtime_monitors: StartRuntimeMonitors,
-    initialize_watchers: InitializeWatchers,
-    initialize_compaction: InitializeCompaction,
-    initialize_search: InitializeSearch,
-    spawn_background_tasks: SpawnBackgroundTasks,
+    hooks: StartupOrchestrationHooks<
+        LaunchPinnedMeshInstall,
+        SpawnBootstrap,
+        StartRuntimeMonitors,
+        InitializeWatchers,
+        InitializeCompaction,
+        InitializeSearch,
+        SpawnBackgroundTasks,
+    >,
 ) -> Result<StartupOrchestrationReport, StartupOrchestrationError>
 where
-    EnsurePinnedMeshInstall: FnOnce() -> Result<(), String>,
+    LaunchPinnedMeshInstall: FnOnce(),
     SpawnBootstrap: FnOnce(),
     StartRuntimeMonitors: FnOnce(),
     InitializeWatchers: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
@@ -747,9 +796,17 @@ where
     InitializeSearch: FnOnce() -> Result<u64, Box<dyn std::error::Error>>,
     SpawnBackgroundTasks: FnOnce(),
 {
-    if let Err(error) = ensure_pinned_mesh_install() {
-        tracing::warn!(error = %error, "startup pinned mesh install failed");
-    }
+    let StartupOrchestrationHooks {
+        launch_pinned_mesh_install,
+        spawn_background_bootstrap,
+        start_runtime_monitors,
+        initialize_watchers,
+        initialize_compaction,
+        initialize_search,
+        spawn_background_tasks,
+    } = hooks;
+
+    launch_pinned_mesh_install();
     spawn_background_bootstrap();
     start_runtime_monitors();
 
@@ -1113,25 +1170,24 @@ mod tests {
 
         let report = run_startup_orchestration_with(
             &context,
-            || {
-                calls.borrow_mut().push("mesh");
-                Ok(())
+            StartupOrchestrationHooks {
+                launch_pinned_mesh_install: || calls.borrow_mut().push("mesh"),
+                spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
+                start_runtime_monitors: || calls.borrow_mut().push("monitors"),
+                initialize_watchers: || {
+                    calls.borrow_mut().push("watchers");
+                    Ok(())
+                },
+                initialize_compaction: || {
+                    calls.borrow_mut().push("compaction");
+                    Ok(())
+                },
+                initialize_search: || {
+                    calls.borrow_mut().push("search");
+                    Ok(7)
+                },
+                spawn_background_tasks: || calls.borrow_mut().push("tasks"),
             },
-            || calls.borrow_mut().push("bootstrap"),
-            || calls.borrow_mut().push("monitors"),
-            || {
-                calls.borrow_mut().push("watchers");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("compaction");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("search");
-                Ok(7)
-            },
-            || calls.borrow_mut().push("tasks"),
         )
         .expect("orchestration succeeds");
 
@@ -1166,25 +1222,24 @@ mod tests {
 
         let error = run_startup_orchestration_with(
             &context,
-            || {
-                calls.borrow_mut().push("mesh");
-                Ok(())
+            StartupOrchestrationHooks {
+                launch_pinned_mesh_install: || calls.borrow_mut().push("mesh"),
+                spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
+                start_runtime_monitors: || calls.borrow_mut().push("monitors"),
+                initialize_watchers: || {
+                    calls.borrow_mut().push("watchers");
+                    Err(io::Error::other("watchers boom").into())
+                },
+                initialize_compaction: || {
+                    calls.borrow_mut().push("compaction");
+                    Ok(())
+                },
+                initialize_search: || {
+                    calls.borrow_mut().push("search");
+                    Ok(7)
+                },
+                spawn_background_tasks: || calls.borrow_mut().push("tasks"),
             },
-            || calls.borrow_mut().push("bootstrap"),
-            || calls.borrow_mut().push("monitors"),
-            || {
-                calls.borrow_mut().push("watchers");
-                Err(io::Error::other("watchers boom").into())
-            },
-            || {
-                calls.borrow_mut().push("compaction");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("search");
-                Ok(7)
-            },
-            || calls.borrow_mut().push("tasks"),
         )
         .expect_err("watcher init should fail");
 
@@ -1210,25 +1265,24 @@ mod tests {
 
         let error = run_startup_orchestration_with(
             &context,
-            || {
-                calls.borrow_mut().push("mesh");
-                Ok(())
+            StartupOrchestrationHooks {
+                launch_pinned_mesh_install: || calls.borrow_mut().push("mesh"),
+                spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
+                start_runtime_monitors: || calls.borrow_mut().push("monitors"),
+                initialize_watchers: || {
+                    calls.borrow_mut().push("watchers");
+                    Ok(())
+                },
+                initialize_compaction: || {
+                    calls.borrow_mut().push("compaction");
+                    Ok(())
+                },
+                initialize_search: || {
+                    calls.borrow_mut().push("search");
+                    Err(io::Error::other("search boom").into())
+                },
+                spawn_background_tasks: || calls.borrow_mut().push("tasks"),
             },
-            || calls.borrow_mut().push("bootstrap"),
-            || calls.borrow_mut().push("monitors"),
-            || {
-                calls.borrow_mut().push("watchers");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("compaction");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("search");
-                Err(io::Error::other("search boom").into())
-            },
-            || calls.borrow_mut().push("tasks"),
         )
         .expect_err("search init should fail");
 
@@ -1247,55 +1301,26 @@ mod tests {
     }
 
     #[test]
-    fn run_startup_orchestration_with_continues_when_mesh_install_fails() {
-        let calls = RefCell::new(Vec::new());
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let context = SetupContext {
-            data_dir: temp_dir.path().to_path_buf(),
-            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
-            db_path: temp_dir.path().join("taurhaus.db"),
-            wsl_distro: Some("native".to_string()),
-            daemon_addr: Some("127.0.0.1:17233".to_string()),
-            daemon_connected_at_startup: true,
-        };
+    fn spawn_startup_background_task_returns_without_waiting_for_work_completion() {
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let started_at = std::time::Instant::now();
 
-        let report = run_startup_orchestration_with(
-            &context,
-            || {
-                calls.borrow_mut().push("mesh");
-                Err("mesh install boom".to_string())
-            },
-            || calls.borrow_mut().push("bootstrap"),
-            || calls.borrow_mut().push("monitors"),
-            || {
-                calls.borrow_mut().push("watchers");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("compaction");
-                Ok(())
-            },
-            || {
-                calls.borrow_mut().push("search");
-                Ok(3)
-            },
-            || calls.borrow_mut().push("tasks"),
-        )
-        .expect("mesh install failure should not abort startup");
+        spawn_startup_background_task("startup-test-worker", move || {
+            started_tx.send(()).expect("worker started");
+            std::thread::sleep(Duration::from_millis(150));
+            finished_tx.send(()).expect("worker finished");
+        });
 
-        assert_eq!(
-            calls.into_inner(),
-            vec![
-                "mesh",
-                "bootstrap",
-                "monitors",
-                "watchers",
-                "compaction",
-                "search",
-                "tasks"
-            ]
+        started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker should start quickly");
+        assert!(
+            started_at.elapsed() < Duration::from_millis(100),
+            "scheduling startup work should return promptly"
         );
-        assert!(report.daemon_watch_bootstrap);
-        assert_eq!(report.search_doc_count, 3);
+        finished_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker should finish eventually");
     }
 }
