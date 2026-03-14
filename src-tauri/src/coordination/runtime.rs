@@ -26,6 +26,7 @@ const DAEMON_START_ATTEMPTS: usize = 30;
 const DAEMON_START_INTERVAL: Duration = Duration::from_millis(100);
 const TMUX_SPLIT_MAX_PANES: usize = 4;
 const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
+#[cfg(not(target_os = "windows"))]
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
 pub(crate) fn apply_background_command_settings(cmd: &mut Command) -> &mut Command {

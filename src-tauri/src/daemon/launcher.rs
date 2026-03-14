@@ -260,6 +260,7 @@ pub fn validate_startup_daemon_binary(
     }
 }
 
+#[cfg(target_os = "linux")]
 fn startup_daemon_binary_is_stale(running_exe: &Path, expected_path: &Path) -> bool {
     let running_exe_display = running_exe.to_string_lossy();
     if running_exe_display.ends_with(" (deleted)") {
@@ -510,49 +511,41 @@ pub(crate) fn reconnect_existing_provider_until_reachable(
     }
 }
 
+#[cfg(target_os = "linux")]
 fn terminate_pid_gracefully(pid: u32, log_path: &Path) -> Result<(), std::io::Error> {
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = (pid, log_path);
-        return Ok(());
+    blog(log_path, &format!("Stopping stale daemon pid {pid}"));
+    let term_status = std::process::Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    if !term_status.success() && crate::platform::process_exists(pid) {
+        return Err(std::io::Error::other(format!(
+            "Failed to send SIGTERM to stale daemon pid {pid}"
+        )));
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        blog(log_path, &format!("Stopping stale daemon pid {pid}"));
-        let term_status = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()?;
-        if !term_status.success() && crate::platform::process_exists(pid) {
-            return Err(std::io::Error::other(format!(
-                "Failed to send SIGTERM to stale daemon pid {pid}"
-            )));
+    for _ in 0..20 {
+        if !crate::platform::process_exists(pid) {
+            return Ok(());
         }
-
-        for _ in 0..20 {
-            if !crate::platform::process_exists(pid) {
-                return Ok(());
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-
-        let kill_status = std::process::Command::new("kill")
-            .args(["-KILL", &pid.to_string()])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()?;
-        if !kill_status.success() && crate::platform::process_exists(pid) {
-            return Err(std::io::Error::other(format!(
-                "Failed to send SIGKILL to stale daemon pid {pid}"
-            )));
-        }
-
-        Ok(())
+        std::thread::sleep(Duration::from_millis(100));
     }
+
+    let kill_status = std::process::Command::new("kill")
+        .args(["-KILL", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    if !kill_status.success() && crate::platform::process_exists(pid) {
+        return Err(std::io::Error::other(format!(
+            "Failed to send SIGKILL to stale daemon pid {pid}"
+        )));
+    }
+
+    Ok(())
 }
 
 fn daemon_data_dir_env_value(log_path: &Path) -> Option<String> {
@@ -986,6 +979,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn startup_daemon_binary_is_stale_for_deleted_inode_and_mismatched_binary() {
         // Regression: startup previously trusted any responding daemon on the
