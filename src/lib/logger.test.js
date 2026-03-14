@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const invokeMock = vi.fn()
+
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
+  invoke: invokeMock,
 }))
 
 const realConsole = {
@@ -24,11 +26,20 @@ function payloadForCall(invoke, index) {
   return invoke.mock.calls[index][1].payload
 }
 
+async function flushLoggerBridge() {
+  await vi.dynamicImportSettled()
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve()
+  }
+}
+
 async function setupLogger() {
   vi.resetModules()
   vi.clearAllMocks()
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-03-05T00:00:00.000Z'))
+  window.__TAURI_INTERNALS__ = {}
+  globalThis.__TAURI_INTERNALS__ = window.__TAURI_INTERNALS__
 
   const sink = {
     log: vi.fn(),
@@ -44,8 +55,9 @@ async function setupLogger() {
   console.debug = sink.debug
 
   const tauriCore = await import('@tauri-apps/api/core')
-  tauriCore.invoke.mockResolvedValue(undefined)
+  invokeMock.mockResolvedValue(undefined)
   await import('./logger.js')
+  await flushLoggerBridge()
 
   tauriCore.invoke.mockClear()
   sink.log.mockClear()
@@ -62,6 +74,8 @@ async function setupLogger() {
 describe('logger bridge', () => {
   afterEach(() => {
     vi.useRealTimers()
+    delete window.__TAURI_INTERNALS__
+    delete globalThis.__TAURI_INTERNALS__
     restoreConsole()
   })
 
@@ -72,6 +86,7 @@ describe('logger bridge', () => {
     for (let i = 0; i < 30; i++) {
       console.log(`rate ${i}`)
     }
+    await flushLoggerBridge()
 
     expect(invoke).toHaveBeenCalledTimes(25)
     expect(payloadForCall(invoke, 24)).toMatchObject({
@@ -84,6 +99,7 @@ describe('logger bridge', () => {
 
     vi.setSystemTime(new Date('2026-03-05T00:00:02.002Z'))
     console.log('rate after reset')
+    await flushLoggerBridge()
 
     expect(invoke).toHaveBeenCalledTimes(26)
     expect(payloadForCall(invoke, 25)).toMatchObject({
@@ -96,6 +112,7 @@ describe('logger bridge', () => {
     const { invoke } = await setupLogger()
 
     console.info('info channel works', { source: 'test' })
+    await flushLoggerBridge()
 
     expect(invoke).toHaveBeenCalledTimes(1)
     expect(payloadForCall(invoke, 0)).toMatchObject({
@@ -112,6 +129,7 @@ describe('logger bridge', () => {
     console.debug('[file] open: /tmp/file.txt')
     console.log('[code] highlighted block')
     console.debug('debug stays forwarded')
+    await flushLoggerBridge()
 
     expect(invoke).toHaveBeenCalledTimes(1)
     expect(payloadForCall(invoke, 0)).toMatchObject({
@@ -130,9 +148,7 @@ describe('logger bridge', () => {
     invoke.mockRejectedValue(error)
 
     expect(() => console.log('trigger ipc failure')).not.toThrow()
-    for (let i = 0; i < 5; i++) {
-      await Promise.resolve()
-    }
+    await flushLoggerBridge()
 
     expect(sink.warn).toHaveBeenCalledWith(
       '[logger] failed to forward frontend log to backend:',
@@ -152,6 +168,7 @@ describe('logger bridge', () => {
     window.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     console.log('first in click')
     console.debug('second in click')
+    await flushLoggerBridge()
 
     const firstInteractionId = payloadForCall(invoke, 0).interaction_id
     const secondInteractionId = payloadForCall(invoke, 1).interaction_id
@@ -160,10 +177,12 @@ describe('logger bridge', () => {
 
     vi.setSystemTime(new Date('2026-03-05T00:00:05.000Z'))
     console.log('outside interaction window')
+    await flushLoggerBridge()
     expect(payloadForCall(invoke, 2).interaction_id).toBeUndefined()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     console.log('new interaction')
+    await flushLoggerBridge()
     expect(payloadForCall(invoke, 3).interaction_id).toBeTypeOf('string')
     expect(payloadForCall(invoke, 3).interaction_id).not.toBe(firstInteractionId)
   })
@@ -175,10 +194,12 @@ describe('logger bridge', () => {
     for (let i = 0; i < 30; i++) {
       console.log(`drop ${i}`)
     }
+    await flushLoggerBridge()
     expect(invoke).toHaveBeenCalledTimes(25)
 
     vi.setSystemTime(new Date('2026-03-05T00:00:06.500Z'))
     console.log('flush dropped metrics')
+    await flushLoggerBridge()
 
     const payloads = invoke.mock.calls.map(call => call[1].payload)
     const droppedEvent = payloads.find(payload => payload.event === 'frontend.logs.dropped')
@@ -201,6 +222,7 @@ describe('logger bridge', () => {
     expect(() =>
       console.log('serialize edge', circular, largeObject, 42n, Symbol('t'))
     ).not.toThrow()
+    await flushLoggerBridge()
 
     expect(invoke).toHaveBeenCalledTimes(1)
     const payload = payloadForCall(invoke, 0)

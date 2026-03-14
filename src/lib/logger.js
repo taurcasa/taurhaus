@@ -5,7 +5,6 @@
  * Import this module once at app startup (main.js) for it to take effect.
  * Original console methods still work as before.
  */
-import { invoke } from '@tauri-apps/api/core'
 
 const _log = console.log.bind(console)
 const _info = console.info.bind(console)
@@ -30,6 +29,7 @@ let lastDropReportAt = Date.now()
 let interactionSequence = 0
 let activeInteractionId = null
 let activeInteractionAt = 0
+let invokeModulePromise = null
 
 function serialize(...args) {
   return args
@@ -137,10 +137,33 @@ function installInteractionTracking() {
   }
 }
 
+function isTauriRuntime() {
+  if (typeof window === 'undefined') return false
+  return '__TAURI_INTERNALS__' in window || '__TAURI_INTERNALS__' in globalThis
+}
+
+async function resolveInvoke() {
+  if (!isTauriRuntime()) return null
+  if (!invokeModulePromise) {
+    invokeModulePromise = import('@tauri-apps/api/core')
+      .then((mod) => mod.invoke)
+      .catch((error) => {
+        invokeModulePromise = null
+        throw error
+      })
+  }
+  return invokeModulePromise
+}
+
 function sendPayload(payload) {
-  invoke('frontend_log', { payload }).catch((error) => {
-    _warn('[logger] failed to forward frontend log to backend:', error)
-  })
+  void resolveInvoke()
+    .then((invoke) => {
+      if (!invoke) return
+      return invoke('frontend_log', { payload })
+    })
+    .catch((error) => {
+      _warn('[logger] failed to forward frontend log to backend:', error)
+    })
 }
 
 function noteDrop(reason) {
