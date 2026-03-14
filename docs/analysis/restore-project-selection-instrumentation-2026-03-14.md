@@ -218,13 +218,7 @@ order:
    - check `provider_route`
    - check whether it was `blocking` or `deferred`
 4. `project.selection.batch.completed`
-   - see whether the whole batch was slow or only one section
+   - confirm whether the delay was a single slow section or a whole-batch stall
 5. `shell.project_selection.applied` or `shell.project_selection.discarded`
-   - confirm whether the UI actually applied that selection or abandoned it
-
-## Validation
-
-Passed:
-
-- `bunx vitest run src/lib/projectSelection.test.js src/lib/shell/events.test.js`
-- `bun run typecheck`
+   - determine whether the user saw the selection complete, or whether it was
+     superseded before completion

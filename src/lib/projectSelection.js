@@ -4,7 +4,6 @@ const PROJECT_SECTION_TIMEOUT_MS = 5000
 const PROJECT_SELECTION_DEBOUNCE_MS = 25
 let scheduledSelectionBatch = null
 const inflightSelectionRequests = new Map()
-
 function resolveScheduledSelectionBatchWith(request) {
   if (!scheduledSelectionBatch) {
     return request
@@ -26,7 +25,6 @@ function resolveScheduledSelectionBatchWith(request) {
 
   return request
 }
-
 const PROJECT_SELECTION_SECTIONS = [
   {
     key: 'detail',
@@ -158,7 +156,7 @@ export async function withFallback(
     logger = console,
     projectId = null,
     sectionKey = section,
-    providerRoute = 'unknown',
+    providerRoute = 'provider_route_unknown',
     batchKind = 'blocking',
   } = instrumentation
   const startedAt = nowMs()
@@ -348,6 +346,7 @@ export function loadProjectSelectionData(projectId, ipc, options = {}) {
     scheduledSelectionBatch = {
       projectId,
       ipc,
+      options,
       waiters,
       timerId: setTimeout(async () => {
         const batch = scheduledSelectionBatch

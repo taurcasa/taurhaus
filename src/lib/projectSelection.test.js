@@ -219,7 +219,6 @@ describe('projectSelection timeouts', () => {
 
   it('marks deferred provider sections as local fallback when daemon is unavailable', async () => {
     vi.useFakeTimers()
-
     const logger = {
       info: vi.fn(),
       warn: vi.fn(),
@@ -241,7 +240,6 @@ describe('projectSelection timeouts', () => {
     })
 
     await prefetch
-
     const readmeEvent = logger.info.mock.calls
       .map((call) => call[1])
       .find((payload) => payload?.event === 'project.selection.section.completed' && payload.section_key === 'readme')
