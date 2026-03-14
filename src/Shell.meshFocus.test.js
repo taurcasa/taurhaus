@@ -104,6 +104,7 @@ vi.mock('./lib/projectSelection.js', () => ({
     }
   }),
   loadProjectSelectionData: vi.fn(),
+  loadDeferredProjectSelectionData: vi.fn(),
   prefetchProjectSelectionData: vi.fn(() => Promise.resolve(null)),
 }))
 
@@ -206,7 +207,7 @@ vi.mock('./lib/components/MeshTab.svelte', () => ({
 const ipc = await import('./lib/ipc.js')
 const eventApi = await import('@tauri-apps/api/event')
 const {
-  loadProjectSelectionData,
+  loadDeferredProjectSelectionData,
   prefetchProjectSelectionData,
 } = await import('./lib/projectSelection.js')
 const { loadThemePreferences } = await import('./lib/shell/themePreferences.js')
@@ -274,7 +275,7 @@ describe('Shell mesh focus integration', () => {
       darkMode: false,
     })
 
-    loadProjectSelectionData.mockResolvedValue({
+    loadDeferredProjectSelectionData.mockResolvedValue({
       detail: { ok: true, section: 'Project details', value: { id: 'proj-1', path: '/projects/taurhaus', name: 'taurhaus' } },
       commits: { ok: true, section: 'Recent commits', value: [] },
       latest: { ok: true, section: 'Latest session', value: null },
@@ -288,14 +289,11 @@ describe('Shell mesh focus integration', () => {
   })
 
   it('loads the initial project once on startup without a delayed duplicate selection batch', async () => {
-    vi.useFakeTimers()
-
     render(Shell)
 
-    await vi.runAllTimersAsync()
     await waitFor(() => {
-      expect(loadProjectSelectionData).toHaveBeenCalledTimes(1)
-      expect(loadProjectSelectionData).toHaveBeenCalledWith('proj-1', expect.any(Object))
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(1)
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledWith('proj-1', expect.any(Object), expect.any(Object))
     })
   })
 
@@ -350,7 +348,7 @@ describe('Shell mesh focus integration', () => {
     render(Shell)
 
     await waitFor(() => {
-      expect(loadProjectSelectionData).toHaveBeenCalledTimes(1)
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(1)
       expect(latestSidebarProps.actions?.onProjectHover).toEqual(expect.any(Function))
     })
 
@@ -363,7 +361,11 @@ describe('Shell mesh focus integration', () => {
       isDirty: false,
     })
 
-    expect(prefetchProjectSelectionData).toHaveBeenCalledWith('proj-2', expect.any(Object))
+    expect(prefetchProjectSelectionData).toHaveBeenCalledWith(
+      'proj-2',
+      expect.any(Object),
+      expect.any(Object)
+    )
     const projectContext = setProjectContext.mock.calls.at(-1)?.[0]
     expect(projectContext.selectedProject?.id).toBe('proj-1')
   })
@@ -423,8 +425,110 @@ describe('Shell mesh focus integration', () => {
     })
   })
 
+  it('retries a deferred project load after daemon reconnects during a project switch', async () => {
+    ipc.isTauri.mockReturnValue(true)
+    ipc.getDaemonStatus.mockResolvedValue({ status: 'disconnected' })
+
+    const handlers = new Map()
+    eventApi.listen.mockImplementation((eventName, handler) => {
+      handlers.set(eventName, handler)
+      return Promise.resolve(() => {})
+    })
+
+    let proj2Attempts = 0
+    loadDeferredProjectSelectionData.mockImplementation(async (projectId) => {
+      if (projectId === 'proj-2') {
+        proj2Attempts += 1
+        if (proj2Attempts === 1) {
+          return {
+            detail: {
+              ok: true,
+              section: 'Project details',
+              value: { id: 'proj-2', path: '/projects/mesh', name: 'mesh' },
+            },
+            commits: {
+              ok: false,
+              section: 'Recent commits',
+              value: [],
+              message: 'Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon',
+              retryableOnDaemonReconnect: true,
+            },
+            latest: { ok: true, section: 'Latest session', value: null },
+            sessionList: { ok: true, section: 'Session history', value: [] },
+            readme: { ok: true, section: 'README', value: null },
+            rels: { ok: true, section: 'Relationships', value: [] },
+          }
+        }
+        return {
+          detail: {
+            ok: true,
+            section: 'Project details',
+            value: { id: 'proj-2', path: '/projects/mesh', name: 'mesh' },
+          },
+          commits: { ok: true, section: 'Recent commits', value: [] },
+          latest: { ok: true, section: 'Latest session', value: null },
+          sessionList: { ok: true, section: 'Session history', value: [] },
+          readme: { ok: true, section: 'README', value: null },
+          rels: { ok: true, section: 'Relationships', value: [] },
+        }
+      }
+
+      return {
+        detail: {
+          ok: true,
+          section: 'Project details',
+          value: { id: 'proj-1', path: '/projects/taurhaus', name: 'taurhaus' },
+        },
+        commits: { ok: true, section: 'Recent commits', value: [] },
+        latest: { ok: true, section: 'Latest session', value: null },
+        sessionList: { ok: true, section: 'Session history', value: [] },
+        readme: { ok: true, section: 'README', value: null },
+        rels: { ok: true, section: 'Relationships', value: [] },
+      }
+    })
+
+    render(Shell)
+
+    await waitFor(() => {
+      expect(handlers.has('daemon-status')).toBe(true)
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('daemon-connecting-banner')).toBeInTheDocument()
+    })
+
+    const projectContext = setProjectContext.mock.calls.at(-1)?.[0]
+    await projectContext.selectProject({
+      id: 'proj-2',
+      name: 'mesh',
+      path: '/projects/mesh',
+      activityState: 'active',
+      branch: 'main',
+      isDirty: false,
+    })
+
+    await waitFor(() => {
+      expect(projectContext.selectedProject?.id).toBe('proj-2')
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(2)
+    })
+
+    expect(screen.queryByTestId('project-load-degraded-banner')).not.toBeInTheDocument()
+
+    await handlers.get('daemon-status')({ payload: { status: 'connected' } })
+
+    await waitFor(() => {
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(3)
+      expect(loadDeferredProjectSelectionData).toHaveBeenLastCalledWith(
+        'proj-2',
+        expect.any(Object),
+        expect.any(Object)
+      )
+      expect(screen.queryByTestId('daemon-connecting-banner')).not.toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('project-load-degraded-banner')).not.toBeInTheDocument()
+  })
+
   it('remounts the mesh tab with the next project when switching projects', async () => {
-    loadProjectSelectionData.mockImplementation(async (projectId) => ({
+    loadDeferredProjectSelectionData.mockImplementation(async (projectId) => ({
       detail: {
         ok: true,
         section: 'Project details',

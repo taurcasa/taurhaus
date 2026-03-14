@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   classifyProjectLoadResults,
   createProjectSelectionRequests,
+  loadDeferredProjectSelectionData,
   loadProjectSelectionData,
   prefetchProjectSelectionData,
   resetProjectSelectionStateForTests,
@@ -168,6 +169,88 @@ describe('projectSelection timeouts', () => {
     expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
   })
 
+  it('emits section timing with provider route and blocking flags', async () => {
+    vi.useFakeTimers()
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+    }
+    const ipc = {
+      getProject: vi.fn((projectId) => Promise.resolve({ id: projectId })),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const selection = loadProjectSelectionData('p-wsl', ipc, {
+      logger,
+      projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\user\\repo',
+      daemonStatus: 'connected',
+      batchKind: 'blocking',
+    })
+
+    await vi.advanceTimersByTimeAsync(26)
+    await selection
+
+    const sectionEvents = logger.info.mock.calls
+      .map((call) => call[1])
+      .filter((payload) => payload?.event === 'project.selection.section.completed')
+
+    expect(sectionEvents).toHaveLength(6)
+    const commitsEvent = sectionEvents.find((payload) => payload.section_key === 'commits')
+    const detailEvent = sectionEvents.find((payload) => payload.section_key === 'detail')
+
+    expect(commitsEvent.provider_route).toBe('daemon_provider')
+    expect(commitsEvent.blocking).toBe(true)
+    expect(commitsEvent.deferred).toBe(false)
+    expect(detailEvent.provider_route).toBe('db')
+
+    const batchCompleted = logger.info.mock.calls
+      .map((call) => call[1])
+      .find((payload) => payload?.event === 'project.selection.batch.completed')
+
+    expect(batchCompleted.project_id).toBe('p-wsl')
+    expect(batchCompleted.failed_section_count).toBe(0)
+    expect(batchCompleted.blocking).toBe(true)
+  })
+
+  it('marks deferred provider sections as local fallback when daemon is unavailable', async () => {
+    vi.useFakeTimers()
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+    }
+    const ipc = {
+      getProject: vi.fn((projectId) => Promise.resolve({ id: projectId })),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const prefetch = prefetchProjectSelectionData('p-wsl', ipc, {
+      logger,
+      projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\user\\repo',
+      daemonStatus: 'disconnected',
+      batchKind: 'deferred',
+    })
+
+    await prefetch
+
+    const readmeEvent = logger.info.mock.calls
+      .map((call) => call[1])
+      .find((payload) => payload?.event === 'project.selection.section.completed' && payload.section_key === 'readme')
+
+    expect(readmeEvent.provider_route).toBe('local_provider_fallback')
+    expect(readmeEvent.deferred).toBe(true)
+    expect(readmeEvent.blocking).toBe(false)
+  })
+
   it('still starts separate IPC batches for non-rapid project switches', async () => {
     vi.useFakeTimers()
 
@@ -262,6 +345,88 @@ describe('projectSelection timeouts', () => {
     const [prefetchResult, selectedResult] = await Promise.all([prefetched, selected])
 
     expect(prefetchResult).toBe(selectedResult)
+    expect(ipc.getProject).toHaveBeenCalledTimes(1)
+    expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
+    expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)
+    expect(ipc.listSessions).toHaveBeenCalledTimes(1)
+    expect(ipc.getReadme).toHaveBeenCalledTimes(1)
+    expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels a superseded debounced batch when the next selection reuses a prefetched project', async () => {
+    vi.useFakeTimers()
+
+    function createDeferred() {
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const p2Detail = createDeferred()
+    const ipc = {
+      getProject: vi.fn((projectId) => (
+        projectId === 'p2'
+          ? p2Detail.promise
+          : Promise.resolve({ id: projectId })
+      )),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const superseded = loadProjectSelectionData('p1', ipc)
+    const prefetched = prefetchProjectSelectionData('p2', ipc)
+    const selected = loadProjectSelectionData('p2', ipc)
+
+    p2Detail.resolve({ id: 'p2' })
+    const [supersededResult, prefetchedResult, selectedResult] = await Promise.all([
+      superseded,
+      prefetched,
+      selected,
+    ])
+    await vi.advanceTimersByTimeAsync(26)
+
+    expect(supersededResult).toBe(prefetchedResult)
+    expect(selectedResult).toBe(prefetchedResult)
+    expect(ipc.getProject).toHaveBeenCalledTimes(1)
+    expect(ipc.getProject).toHaveBeenCalledWith('p2')
+    expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
+    expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)
+    expect(ipc.listSessions).toHaveBeenCalledTimes(1)
+    expect(ipc.getReadme).toHaveBeenCalledTimes(1)
+    expect(ipc.getRelationships).toHaveBeenCalledTimes(1)
+  })
+
+  it('loadDeferredProjectSelectionData reuses the prefetched deferred batch', async () => {
+    function createDeferred() {
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const detail = createDeferred()
+    const ipc = {
+      getProject: vi.fn(() => detail.promise),
+      getRecentCommits: vi.fn(() => Promise.resolve([])),
+      getLatestSession: vi.fn(() => Promise.resolve(null)),
+      listSessions: vi.fn(() => Promise.resolve([])),
+      getReadme: vi.fn(() => Promise.resolve(null)),
+      getRelationships: vi.fn(() => Promise.resolve([])),
+    }
+
+    const prefetched = prefetchProjectSelectionData('p4', ipc)
+    const deferredLoaded = loadDeferredProjectSelectionData('p4', ipc)
+
+    detail.resolve({ id: 'p4' })
+    const [prefetchResult, deferredResult] = await Promise.all([prefetched, deferredLoaded])
+
+    expect(prefetchResult).toBe(deferredResult)
     expect(ipc.getProject).toHaveBeenCalledTimes(1)
     expect(ipc.getRecentCommits).toHaveBeenCalledTimes(1)
     expect(ipc.getLatestSession).toHaveBeenCalledTimes(1)

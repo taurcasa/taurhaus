@@ -25,7 +25,7 @@
   import { createAsyncGuard } from './lib/asyncGuard.js'
   import {
     applyNavEntryState,
-    buildProjectSelectionState,
+    buildCriticalProjectSelectionState,
     classifyMarkdownNavigateAction,
     createProjectPosition,
     normalizeMarkdownTarget,
@@ -40,7 +40,7 @@
   import { setSessionContext } from './lib/context/SessionContext.js'
   import {
     classifyProjectLoadResults,
-    loadProjectSelectionData,
+    loadDeferredProjectSelectionData,
     prefetchProjectSelectionData,
   } from './lib/projectSelection.js'
 
@@ -228,6 +228,20 @@
       return error
     }
     return String(error)
+  }
+
+  function nowMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now()
+    }
+    return Date.now()
+  }
+
+  function logProjectSelectionLifecycle(event, payload = {}) {
+    console.info('[shell.project-selection] lifecycle', {
+      event,
+      ...payload,
+    })
   }
 
   function handleProjectRemoved(id) {
@@ -575,6 +589,7 @@
       }),
       stopPolling: () => stopSessionPolling({ flushActivity: false }),
       doc: document,
+      logger: console,
     })
   })
 
@@ -721,11 +736,17 @@
       listSessions,
       getReadme,
       getRelationships,
+    }, {
+      logger: console,
+      projectPath: project.path ?? null,
+      daemonStatus,
+      batchKind: 'deferred',
     })
   }
 
   async function selectProject(project) {
     const projectId = project.id
+    const startedAt = nowMs()
 
     // Save position in the current project before switching away
     saveProjectPosition()
@@ -735,38 +756,8 @@
 
     projectLoadIssues = []
     pendingProjectLoadRetry = false
-    detailLoading = true
-    const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
-      getProject,
-      getRecentCommits,
-      getLatestSession,
-      listSessions,
-      getReadme,
-      getRelationships,
-    })
-    if (!selectLoadGuard.isCurrent(generation)) return
-
-    const classifiedLoadIssues = classifyProjectLoadResults(
-      [detail, commits, latest, sessionList, readme, rels],
-      { deferRetryableIssues: daemonRecoveryPending() }
-    )
-    pendingProjectLoadRetry = classifiedLoadIssues.pendingRetry
-    projectLoadIssues = classifiedLoadIssues.visibleIssues
-    if (projectLoadIssues.length > 0) {
-      console.warn(
-        `[shell] project ${projectId} loaded with degraded data`,
-        classifiedLoadIssues.issues
-      )
-    }
-
-    const nextState = buildProjectSelectionState({
+    const nextState = buildCriticalProjectSelectionState({
       project,
-      detail: detail.value,
-      commits: commits.value,
-      latest: latest.value,
-      sessionList: sessionList.value,
-      readme: readme.value,
-      relationships: rels.value,
       savedPosition,
     })
 
@@ -788,6 +779,75 @@
     relationships = nextState.relationships
     relationshipsLoading = nextState.relationshipsLoading
     filesNavTarget = nextState.filesNavTarget
+    logProjectSelectionLifecycle('shell.project_selection.started', {
+      project_id: projectId,
+      project_path: project.path ?? null,
+      daemon_status: daemonStatus ?? null,
+      session_bridge_live: sessionBridgeLive,
+      visibility_state: document.hidden ? 'hidden' : 'visible',
+      selection_generation: generation,
+      blocking: false,
+      deferred: true,
+    })
+    const { detail, commits, latest, sessionList, readme, rels } = await loadDeferredProjectSelectionData(projectId, {
+      getProject,
+      getRecentCommits,
+      getLatestSession,
+      listSessions,
+      getReadme,
+      getRelationships,
+    }, {
+      logger: console,
+      projectPath: project.path ?? null,
+      daemonStatus,
+      batchKind: 'deferred',
+    })
+    if (!selectLoadGuard.isCurrent(generation)) {
+      logProjectSelectionLifecycle('shell.project_selection.discarded', {
+        project_id: projectId,
+        elapsed_ms: Number((nowMs() - startedAt).toFixed(1)),
+        daemon_status: daemonStatus ?? null,
+        selection_generation: generation,
+        reason: 'stale_generation',
+        blocking: false,
+        deferred: true,
+      })
+      return
+    }
+
+    const classifiedLoadIssues = classifyProjectLoadResults(
+      [detail, commits, latest, sessionList, readme, rels],
+      { deferRetryableIssues: daemonRecoveryPending() }
+    )
+    pendingProjectLoadRetry = classifiedLoadIssues.pendingRetry
+    projectLoadIssues = classifiedLoadIssues.visibleIssues
+    if (projectLoadIssues.length > 0) {
+      console.warn(
+        `[shell] project ${projectId} loaded with degraded data`,
+        classifiedLoadIssues.issues
+      )
+    }
+
+    selectedProject = detail.value ? { ...selectedProject, ...detail.value } : selectedProject
+    detailLoading = false
+    recentCommits = commits.value || []
+    commitsLoading = false
+    latestSession = latest.value
+    sessionHistory = sessionList.value || []
+    sessionLoading = false
+    readmeContent = readme.value
+    relationships = rels.value || []
+    relationshipsLoading = false
+    logProjectSelectionLifecycle('shell.project_selection.applied', {
+      project_id: projectId,
+      elapsed_ms: Number((nowMs() - startedAt).toFixed(1)),
+      daemon_status: daemonStatus ?? null,
+      issue_count: projectLoadIssues.length,
+      pending_retry: pendingProjectLoadRetry,
+      selection_generation: generation,
+      blocking: false,
+      deferred: true,
+    })
   }
 
   async function loadSessions(projectId) {

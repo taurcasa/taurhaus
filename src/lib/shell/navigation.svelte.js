@@ -54,21 +54,12 @@ export function buildProjectSelectionState({
   relationships,
   savedPosition,
 }) {
-  const restoredTab = savedPosition?.tab || 'overview'
+  const baseState = buildCriticalProjectSelectionState({ project, savedPosition })
 
   return {
+    ...baseState,
     selectedProject: detail ? { ...project, ...detail } : project,
     detailLoading: false,
-    showAllCommits: false,
-    activeTab: restoredTab,
-    visitedTabs: savedPosition?.visitedTabs ? new Set(savedPosition.visitedTabs) : new Set([restoredTab]),
-    navEntry: { tab: restoredTab, file: savedPosition?.file },
-    gitNavTarget: savedPosition?.gitPosition?.selectedHash
-      ? { type: 'commit', hash: savedPosition.gitPosition.selectedHash }
-      : savedPosition?.gitPosition?.rangeFilter
-        ? { type: 'range', ...savedPosition.gitPosition.rangeFilter }
-        : null,
-    taskNavTarget: savedPosition?.taskPosition ?? null,
     recentCommits: commits || [],
     commitsLoading: false,
     latestSession: latest,
@@ -77,6 +68,36 @@ export function buildProjectSelectionState({
     readmeContent: readme,
     relationships: relationships || [],
     relationshipsLoading: false,
+  }
+}
+
+export function buildCriticalProjectSelectionState({
+  project,
+  savedPosition,
+}) {
+  const restoredTab = savedPosition?.tab || 'overview'
+
+  return {
+    selectedProject: project,
+    detailLoading: true,
+    showAllCommits: false,
+    activeTab: restoredTab,
+    visitedTabs: savedPosition?.visitedTabs ? new Set(savedPosition.visitedTabs) : new Set([restoredTab]),
+    navEntry: { tab: restoredTab, file: savedPosition?.file },
+    gitNavTarget: savedPosition?.gitPosition?.selectedHash
+      ? { type: 'commit', hash: savedPosition.gitPosition.selectedHash }
+      : savedPosition?.gitPosition?.rangeFilter
+      ? { type: 'range', ...savedPosition.gitPosition.rangeFilter }
+        : null,
+    taskNavTarget: savedPosition?.taskPosition ?? null,
+    recentCommits: [],
+    commitsLoading: true,
+    latestSession: null,
+    sessionHistory: [],
+    sessionLoading: true,
+    readmeContent: null,
+    relationships: [],
+    relationshipsLoading: true,
     filesNavTarget: savedPosition?.file ? { file: savedPosition.file } : null,
   }
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createAsyncGuard } from './asyncGuard.js'
 import { loadProjectSelectionData, withFallback } from './projectSelection.js'
+import { buildCriticalProjectSelectionState } from './shell/navigation.svelte.js'
 
 // Mock IPC module
 vi.mock('./ipc.js', () => ({
@@ -727,6 +728,95 @@ describe('selectProject flow', () => {
       { section: 'Recent commits', message: 'Git error' },
       { section: 'README', message: 'File error' },
     ])
+  })
+
+  it('applies restored tab state before deferred project sections catch up', async () => {
+    function createDeferred() {
+      let resolve
+      const promise = new Promise((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    const savedPosition = {
+      tab: 'git',
+      visitedTabs: new Set(['overview', 'git']),
+      gitPosition: { selectedHash: 'abc123', rangeFilter: null },
+      taskPosition: null,
+      file: null,
+    }
+    const deferred = createDeferred()
+    let selectedProject = { id: 'old-project', name: 'Old Project' }
+    let activeTab = 'overview'
+    let recentCommits = [{ hash: 'stale-old' }]
+    let commitsLoading = false
+    let sessionHistory = [{ id: 'stale-session' }]
+    let sessionLoading = false
+    let readmeContent = { path: 'README.md' }
+    let relationships = [{ id: 'rel-1' }]
+    let relationshipsLoading = false
+    let gitNavTarget = null
+
+    async function applySelection(project) {
+      const nextState = buildCriticalProjectSelectionState({
+        project,
+        savedPosition,
+      })
+
+      selectedProject = nextState.selectedProject
+      activeTab = nextState.activeTab
+      recentCommits = nextState.recentCommits
+      commitsLoading = nextState.commitsLoading
+      sessionHistory = nextState.sessionHistory
+      sessionLoading = nextState.sessionLoading
+      readmeContent = nextState.readmeContent
+      relationships = nextState.relationships
+      relationshipsLoading = nextState.relationshipsLoading
+      gitNavTarget = nextState.gitNavTarget
+
+      const deferredData = await deferred.promise
+      selectedProject = { ...selectedProject, ...deferredData.detail.value }
+      recentCommits = deferredData.commits.value
+      commitsLoading = false
+      sessionHistory = deferredData.sessionList.value
+      sessionLoading = false
+      readmeContent = deferredData.readme.value
+      relationships = deferredData.rels.value
+      relationshipsLoading = false
+    }
+
+    const selection = applySelection({ id: 'new-project', name: 'New Project', path: '/new-project' })
+
+    expect(selectedProject.id).toBe('new-project')
+    expect(activeTab).toBe('git')
+    expect(gitNavTarget).toEqual({ type: 'commit', hash: 'abc123' })
+    expect(recentCommits).toEqual([])
+    expect(commitsLoading).toBe(true)
+    expect(sessionHistory).toEqual([])
+    expect(sessionLoading).toBe(true)
+    expect(readmeContent).toBeNull()
+    expect(relationships).toEqual([])
+    expect(relationshipsLoading).toBe(true)
+
+    deferred.resolve({
+      detail: { value: { favorite: true } },
+      commits: { value: [{ hash: 'fresh-1' }] },
+      latest: { value: null },
+      sessionList: { value: [{ id: 'fresh-session' }] },
+      readme: { value: { path: 'README.md' } },
+      rels: { value: [{ id: 'rel-2' }] },
+    })
+    await selection
+
+    expect(selectedProject.favorite).toBe(true)
+    expect(recentCommits).toEqual([{ hash: 'fresh-1' }])
+    expect(commitsLoading).toBe(false)
+    expect(sessionHistory).toEqual([{ id: 'fresh-session' }])
+    expect(sessionLoading).toBe(false)
+    expect(readmeContent).toEqual({ path: 'README.md' })
+    expect(relationships).toEqual([{ id: 'rel-2' }])
+    expect(relationshipsLoading).toBe(false)
   })
 })
 
