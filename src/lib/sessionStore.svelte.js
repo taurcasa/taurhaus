@@ -44,6 +44,24 @@ let activePollIntervalMs = POLL_INTERVAL_MS
 let trackers = new Map()
 let projectIdByPath = new Map()
 
+function stampSessionFreshness(session, now, isStale) {
+  session._presenceStatus = isStale ? 'stale' : 'live'
+  session._presenceStale = isStale
+  session._presenceUpdatedAt = now
+}
+
+function mapWithFreshness(source, now, isStale) {
+  const next = new Map()
+  for (const [key, entries] of source) {
+    next.set(key, entries.map((entry) => {
+      const session = { ...entry }
+      stampSessionFreshness(session, now, isStale)
+      return session
+    }))
+  }
+  return next
+}
+
 function normalizeSessionShape(raw) {
   const session = raw && typeof raw === 'object' ? raw : {}
   const normalized = { ...session }
@@ -206,6 +224,7 @@ function applySessions(result) {
       ? Math.round((tracker.activeTicks / tracker.totalTicks) * 100)
       : 0
     session._lastTransition = tracker.lastTransitionTime
+    stampSessionFreshness(session, now, false)
 
     const key = normalizeProjectPath(session.project_path)
     const list = next.get(key) || []
@@ -222,6 +241,11 @@ function applySessions(result) {
   }
 
   sessions = next
+}
+
+export function markSessionPresenceStale() {
+  if (sessions.size === 0) return
+  sessions = mapWithFreshness(sessions, Date.now(), true)
 }
 
 /**

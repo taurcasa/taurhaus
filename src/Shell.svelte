@@ -1,6 +1,6 @@
 <script>
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
-  import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
+  import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, markSessionPresenceStale, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
   import { normalizeProjectPath } from './lib/pathUtils.js'
@@ -56,7 +56,7 @@
   let showWizard = $state(false)
   let wizardChecked = $state(false)
   let startupViewportSyncAttempted = false
-  // Daemon status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
+  // Daemon status: 'connected' | 'busy' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
   let daemonStatusDismissTimer = $state(null)
   let consumedInitialDaemonStatus = false
@@ -320,7 +320,10 @@
   async function loadDaemonStatus({ allowInitial = true } = {}) {
     if (allowInitial && !consumedInitialDaemonStatus && initialDaemonStatus !== undefined) {
       consumedInitialDaemonStatus = true
-      if (initialDaemonStatus === 'connected' || initialDaemonStatus === 'not_configured') {
+      if (
+        initialDaemonStatus === 'connected' ||
+        initialDaemonStatus === 'not_configured'
+      ) {
         daemonStatus = null
       } else {
         daemonStatus = initialDaemonStatus
@@ -529,6 +532,7 @@
         daemonStatus = status
         if (status !== 'connected') {
           sessionBridgeLive = false
+          markSessionPresenceStale()
         }
         clearTimeout(daemonStatusDismissTimer)
         if (status === 'connected') {
@@ -1157,7 +1161,7 @@
     <main class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
 
       <!-- Non-blocking daemon reconnect notice -->
-      {#if (daemonStatus === 'reconnecting' || daemonStatus === 'disconnected') && !settingsOpen}
+      {#if (daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected') && !settingsOpen}
         <div
           class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-brand-500/10 border-b border-brand-500/20' : 'bg-brand-50 border-b border-brand-200'}"
           data-testid="daemon-connecting-banner"
@@ -1166,7 +1170,9 @@
             <path fill-rule="evenodd" d="M10 18a8 8 0 1 0-5.657-2.343l1.414-1.414A6 6 0 1 1 10 16v2Zm1-11V4H9v5h5V7h-3Z" clip-rule="evenodd" />
           </svg>
           <span class="flex-1 text-[12px] {t.textSecondary}">
-            Connecting to daemon. The shell is available; session updates may be delayed.
+            {daemonStatus === 'busy'
+              ? 'Daemon is busy with another request. The shell is available; status and session updates may be delayed.'
+              : 'Connecting to daemon. The shell is available; session updates may be delayed.'}
           </span>
         </div>
       {/if}

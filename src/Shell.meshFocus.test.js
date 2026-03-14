@@ -79,6 +79,7 @@ vi.mock('./lib/sessionStore.svelte.js', () => ({
   getSessions: vi.fn(() => mockSessionMap),
   applyDaemonSessionUpdate: vi.fn(),
   hydrateFromBackend: vi.fn(),
+  markSessionPresenceStale: vi.fn(),
   startPolling: vi.fn(),
   stopPolling: vi.fn(),
 }))

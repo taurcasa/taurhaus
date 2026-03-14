@@ -21,6 +21,10 @@ export function hasLiveSession(session) {
   return session?.state === 'active' || session?.state === 'idle'
 }
 
+export function isStalePresence(session) {
+  return session?._presenceStale === true || session?._presenceStatus === 'stale'
+}
+
 /** Return true when the tool is actively working (not waiting for input). */
 export function isActiveSession(session) {
   return session?.state === 'active'
@@ -28,13 +32,15 @@ export function isActiveSession(session) {
 
 /** Row-level tint class when any live session exists. */
 export function rowTintClass(session) {
-  return hasLiveSession(session) ? 'bg-white/[0.03]' : ''
+  if (!hasLiveSession(session)) return ''
+  return isStalePresence(session) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
 }
 
 /** Row-level tint class when any session in the array is live. */
 export function rowTintForSessions(sessions) {
   if (!sessions || sessions.length === 0) return ''
-  return sessions.some(s => hasLiveSession(s)) ? 'bg-white/[0.03]' : ''
+  if (!sessions.some(s => hasLiveSession(s))) return ''
+  return sessions.some(isStalePresence) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
 }
 
 function groupMetadata(session) {
@@ -53,11 +59,21 @@ function compareGroupedMembers(left, right) {
 }
 
 function sessionColorClass(session) {
+  if (isStalePresence(session)) {
+    return 'text-info-300'
+  }
   const isActive = session?.state === 'active'
   const isUnattributed = !isActive && session?.project_unattributed_active === true
   return isActive
     ? 'text-success-300'
     : (isUnattributed ? 'text-info-300' : 'text-warning-300')
+}
+
+function sessionToneClass(session) {
+  if (isStalePresence(session)) {
+    return 'session-pill-stale'
+  }
+  return session?.state === 'active' ? 'session-pill-active' : 'session-pill-idle'
 }
 
 function teamToolVisual(session, variant = 'default') {
@@ -69,6 +85,7 @@ function teamToolVisual(session, variant = 'default') {
     iconVariant: variant,
     isActive: session?.state === 'active',
     colorClass: sessionColorClass(session),
+    toneClass: sessionToneClass(session),
   }
 }
 
@@ -82,6 +99,7 @@ function stackedTeamTools(members, variant = 'default') {
       ...toolEntry,
       isActive: representative?.state === 'active',
       colorClass: sessionColorClass(representative),
+      toneClass: sessionToneClass(representative),
     }
   })
 }
@@ -116,8 +134,9 @@ export function uniqueTools(sessions, variant = 'default') {
 function buildTeamIndicator(group) {
   const members = [...group.members].sort(compareGroupedMembers)
   const isActive = members.some(member => member.state === 'active')
+  const isStale = members.some(isStalePresence)
   const count = members.length
-  const activityLabel = isActive ? 'active' : 'idle'
+  const activityLabel = isStale ? 'retained stale' : (isActive ? 'active' : 'idle')
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
   const tools = stackedTeamTools(members, 'default').slice(0, 3)
 
@@ -132,8 +151,8 @@ function buildTeamIndicator(group) {
     memberTools: members.map(member => teamToolVisual(member, 'default')),
     isActive,
     interactive: false,
-    tone: isActive ? 'active' : 'idle',
-    colorClass: isActive ? 'text-success-300' : 'text-warning-300',
+    tone: isStale ? 'stale' : (isActive ? 'active' : 'idle'),
+    colorClass: isStale ? 'text-info-300' : (isActive ? 'text-success-300' : 'text-warning-300'),
     ariaLabel: `${group.groupLabel}: ${count} team sessions ${activityLabel}`,
   }
 }
@@ -175,6 +194,17 @@ export function groupedSessionIndicators(sessions) {
  * - idle is intentionally more explicit because it requires user action.
  */
 export function sessionBadge(session) {
+  if (isStalePresence(session) && hasLiveSession(session)) {
+    return {
+      visible: true,
+      label: 'STALE',
+      toolLabel: toolName(session),
+      badgeClass: 'session-pill-stale rounded-[4px] bg-info-300/14 text-info-300 border border-info-300/45',
+      ariaLabel: `${toolName(session)} session presence retained stale during daemon gap`,
+      interactive: Boolean(session.tmux_session && session.tmux_window && session.tmux_pane),
+    }
+  }
+
   if (session?.state === 'idle') {
     return {
       visible: true,
@@ -245,6 +275,7 @@ function singleSessionIndicator(session) {
   const isActive = session.state === 'active'
   const isUnattributed = !isActive && session.project_unattributed_active === true
   const interactive = Boolean(session.tmux_session && session.tmux_window && session.tmux_pane)
+  const isStale = isStalePresence(session)
   const statusLabel = isActive
     ? 'running'
     : (isUnattributed ? 'project active (unattributed)' : 'idle')
@@ -261,6 +292,7 @@ function singleSessionIndicator(session) {
     isUnattributed,
     interactive,
     colorClass: sessionColorClass(session),
-    ariaLabel: `${name}: ${statusLabel}`,
+    toneClass: sessionToneClass(session),
+    ariaLabel: `${name}: ${isStale ? 'retained stale ' : ''}${statusLabel}`,
   }
 }

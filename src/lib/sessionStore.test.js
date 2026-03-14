@@ -555,6 +555,64 @@ describe('sessionStore', () => {
     expect(session.tmux_pane).toBe('%10')
   })
 
+  it('marks retained daemon sessions stale across a daemon gap without clearing them', () => {
+    store.applyDaemonSessionUpdate({
+      version: 1,
+      sessions: [
+        {
+          pid: 1900,
+          project_path: '/proj-stale-gap',
+          state: 'active',
+          tty: '/dev/pts/12',
+          args: 'claude',
+          cli_tool: 'claude',
+        },
+      ],
+    })
+
+    store.markSessionPresenceStale()
+
+    const session = store.getSessionForProject('/proj-stale-gap')
+    expect(session).toBeTruthy()
+    expect(session._presenceStale).toBe(true)
+    expect(session._presenceStatus).toBe('stale')
+  })
+
+  it('clears stale retained presence when a fresh snapshot arrives', () => {
+    store.applyDaemonSessionUpdate({
+      version: 1,
+      sessions: [
+        {
+          pid: 1950,
+          project_path: '/proj-stale-gap',
+          state: 'idle',
+          tty: '/dev/pts/13',
+          args: 'codex',
+          cli_tool: 'codex',
+        },
+      ],
+    })
+    store.markSessionPresenceStale()
+
+    store.applyDaemonSessionUpdate({
+      version: 2,
+      sessions: [
+        {
+          pid: 1950,
+          project_path: '/proj-stale-gap',
+          state: 'idle',
+          tty: '/dev/pts/13',
+          args: 'codex',
+          cli_tool: 'codex',
+        },
+      ],
+    })
+
+    const session = store.getSessionForProject('/proj-stale-gap')
+    expect(session._presenceStale).toBe(false)
+    expect(session._presenceStatus).toBe('live')
+  })
+
   it('applies polling updates even without daemon bridge events', async () => {
     // Regression: indicators could stay stale when bridge events were absent;
     // polling fallback must still hydrate and refresh sessions.

@@ -315,12 +315,23 @@ body {
     0 0 0 1px rgba(251, 191, 36, 0.15);
 }
 
+.session-pill-stale {
+  box-shadow:
+    inset 0 0 0 1px rgba(96, 165, 250, 0.16),
+    0 0 0 1px rgba(96, 165, 250, 0.12);
+  opacity: 0.9;
+}
+
 .sidebar-session-team[data-activity='active'] {
   color: var(--sidebar-team-icon-active);
 }
 
 .sidebar-session-team[data-activity='idle'] {
   color: var(--sidebar-team-icon-idle);
+}
+
+.sidebar-session-team[data-activity='stale'] {
+  color: var(--color-info-300);
 }
 
 .sidebar-session-team-rail {
@@ -369,6 +380,10 @@ body {
   border-color: var(--sidebar-team-count-idle-border);
 }
 
+.sidebar-session-team-stack[data-activity='stale'] .sidebar-session-team-count {
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
 @keyframes session-pill-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
@@ -378,6 +393,10 @@ body {
   .session-pill-active {
     animation: none;
     filter: brightness(1.1);
+  }
+
+  .session-pill-stale {
+    filter: brightness(1.04);
   }
 
   .mesh-connection {

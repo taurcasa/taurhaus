@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { groupedSessionIndicators, hasLiveSession, isActiveSession, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
+import { groupedSessionIndicators, hasLiveSession, isActiveSession, isStalePresence, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
 import { getToolIcon } from './toolLogos.js'
 
 function session(overrides = {}) {
@@ -28,9 +28,16 @@ describe('sessionIndicator', () => {
     expect(isActiveSession(undefined)).toBe(false)
   })
 
+  it('detects stale retained session presence', () => {
+    expect(isStalePresence({ _presenceStale: true })).toBe(true)
+    expect(isStalePresence({ _presenceStatus: 'stale' })).toBe(true)
+    expect(isStalePresence({ state: 'active' })).toBe(false)
+  })
+
   it('applies row tint only when session exists', () => {
     expect(rowTintClass({ state: 'active' })).toBe('bg-white/[0.03]')
     expect(rowTintClass({ state: 'idle' })).toBe('bg-white/[0.03]')
+    expect(rowTintClass({ state: 'active', _presenceStale: true })).toBe('bg-white/[0.015]')
     expect(rowTintClass(null)).toBe('')
   })
 
@@ -57,6 +64,23 @@ describe('sessionIndicator', () => {
     expect(badge.label).toBe('RUN')
     expect(badge.toolLabel).toBe('Claude')
     expect(badge.badgeClass).toContain('session-pill-active')
+  })
+
+  it('returns stale badge when presence is retained during a daemon gap', () => {
+    const badge = sessionBadge({
+      state: 'active',
+      cli_tool: 'claude',
+      _presenceStale: true,
+      tmux_session: 'main',
+      tmux_window: '2',
+      tmux_pane: '%7',
+    })
+
+    expect(badge.visible).toBe(true)
+    expect(badge.label).toBe('STALE')
+    expect(badge.badgeClass).toContain('session-pill-stale')
+    expect(badge.ariaLabel).toContain('retained stale')
+    expect(badge.interactive).toBe(true)
   })
 
   it('returns hidden badge with no session', () => {
@@ -91,6 +115,7 @@ describe('sessionIndicator', () => {
   it('rowTintForSessions returns tint when any session is live', () => {
     expect(rowTintForSessions([{ state: 'active' }])).toBe('bg-white/[0.03]')
     expect(rowTintForSessions([{ state: 'idle' }])).toBe('bg-white/[0.03]')
+    expect(rowTintForSessions([{ state: 'idle', _presenceStale: true }])).toBe('bg-white/[0.015]')
     expect(rowTintForSessions([])).toBe('')
     expect(rowTintForSessions(null)).toBe('')
   })
@@ -173,6 +198,16 @@ describe('sessionIndicator', () => {
     expect(indicators[0].ariaLabel).toContain('unattributed')
   })
 
+  it('toolIndicators marks retained stale presence distinctly from live activity', () => {
+    const indicators = toolIndicators([
+      session({ state: 'active', cli_tool: 'codex', _presenceStale: true }),
+    ])
+
+    expect(indicators[0].colorClass).toBe('text-info-300')
+    expect(indicators[0].toneClass).toBe('session-pill-stale')
+    expect(indicators[0].ariaLabel).toContain('retained stale')
+  })
+
   it('groupedSessionIndicators collapses matching team sessions into one active token', () => {
     const indicators = groupedSessionIndicators([
       session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
@@ -195,6 +230,19 @@ describe('sessionIndicator', () => {
     expect(indicators[0].memberTools.map(tool => tool.iconVariant)).toEqual(['default', 'default'])
     expect(indicators[0].memberTools.map(tool => tool.colorClass)).toEqual(['text-success-300', 'text-warning-300'])
     expect(indicators[0].memberTools[0].icon).toEqual(getToolIcon('claude', 'default'))
+  })
+
+  it('groupedSessionIndicators marks grouped stale presence as stale', () => {
+    const indicators = groupedSessionIndicators([
+      session({ _presenceStale: true, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ _presenceStale: true, state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
+    ])
+
+    expect(indicators).toHaveLength(1)
+    expect(indicators[0].tone).toBe('stale')
+    expect(indicators[0].colorClass).toBe('text-info-300')
+    expect(indicators[0].memberTools.map(tool => tool.toneClass)).toEqual(['session-pill-stale', 'session-pill-stale'])
+    expect(indicators[0].ariaLabel).toContain('retained stale')
   })
 
   it('toolIndicators shows a connector rail for a 2-member team even when only two sessions are present', () => {

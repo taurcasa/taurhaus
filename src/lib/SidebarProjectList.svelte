@@ -162,7 +162,7 @@
                           <span class="sidebar-session-team-stack-logos" aria-hidden="true">
                             {#each ind.tools as tool (tool.tool)}
                               <span
-                                class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {tool.colorClass} {tool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                                class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {tool.colorClass} {tool.toneClass ?? (tool.isActive ? 'session-pill-active' : 'session-pill-idle')}"
                               >
                                 <svg class="w-[12px] h-[12px]" viewBox={tool.icon.viewBox} fill="currentColor">
                                   <path d={tool.icon.path}></path>
@@ -174,7 +174,7 @@
                         {:else}
                           {#each ind.memberTools as memberTool, index (`${ind.groupId}:${memberTool.tool}:${index}`)}
                             <span
-                              class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {memberTool.colorClass} {memberTool.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                              class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {memberTool.colorClass} {memberTool.toneClass ?? (memberTool.isActive ? 'session-pill-active' : 'session-pill-idle')}"
                               aria-hidden="true"
                             >
                               <svg class="w-[12px] h-[12px]" viewBox={memberTool.icon.viewBox} fill="currentColor">
@@ -186,7 +186,7 @@
                       </span>
                     {:else if ind.interactive}
                       <span
-                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center cursor-pointer {ind.colorClass} {ind.toneClass ?? (ind.isActive ? 'session-pill-active' : 'session-pill-idle')}"
                         role="button"
                         tabindex="0"
                         aria-label={ind.ariaLabel}
@@ -204,7 +204,7 @@
                       </span>
                     {:else}
                       <span
-                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.isActive ? 'session-pill-active' : 'session-pill-idle'}"
+                        class="w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center {ind.colorClass} {ind.toneClass ?? (ind.isActive ? 'session-pill-active' : 'session-pill-idle')}"
                         aria-label={ind.ariaLabel}
                       >
                         <svg class="w-[12px] h-[12px]" viewBox={ind.icon.viewBox} fill="currentColor" aria-hidden="true">
