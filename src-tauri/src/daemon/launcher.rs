@@ -266,6 +266,19 @@ fn startup_daemon_binary_is_stale(running_exe: &Path, expected_path: &Path) -> b
         return true;
     }
 
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        if let (Ok(running_meta), Ok(expected_meta)) = (
+            std::fs::metadata(running_exe),
+            std::fs::metadata(expected_path),
+        ) {
+            return running_meta.dev() != expected_meta.dev()
+                || running_meta.ino() != expected_meta.ino();
+        }
+    }
+
     running_exe
         .canonicalize()
         .unwrap_or_else(|_| running_exe.to_path_buf())
@@ -997,6 +1010,27 @@ mod tests {
                 &expected
             ),
             "deleted-inode binary should be rejected"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn startup_daemon_binary_is_stale_for_replaced_binary_with_same_visible_path() {
+        use std::os::fd::AsRawFd;
+
+        let tempdir = tempfile::tempdir().unwrap();
+        let expected = tempdir.path().join("taurhaus-daemon");
+        let replacement = tempdir.path().join("taurhaus-daemon.new");
+        std::fs::write(&expected, "old").unwrap();
+        let old_handle = std::fs::File::open(&expected).unwrap();
+
+        std::fs::write(&replacement, "new").unwrap();
+        std::fs::rename(&replacement, &expected).unwrap();
+
+        let running_via_fd = PathBuf::from(format!("/proc/self/fd/{}", old_handle.as_raw_fd()));
+        assert!(
+            startup_daemon_binary_is_stale(&running_via_fd, &expected),
+            "replaced binary should be rejected even when the visible install path is reused"
         );
     }
 
