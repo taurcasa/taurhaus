@@ -156,13 +156,28 @@ fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
 #[tauri::command]
 pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
     let span = IpcCommandSpan::start("check_daemon_install_status");
-    let result = if crate::daemon::launcher::is_native_daemon() {
+    let result = read_daemon_install_status();
+    span.finish_result(&result);
+    result
+}
+
+pub(crate) fn ensure_bundled_daemon_installed(
+    app: &tauri::AppHandle,
+) -> Result<Option<OperationResult>, String> {
+    let status = read_daemon_install_status()?;
+    if !daemon_install_required(&status) {
+        return Ok(None);
+    }
+
+    install_bundled_daemon(app).map(Some)
+}
+
+fn read_daemon_install_status() -> Result<DaemonInstallStatus, String> {
+    if crate::daemon::launcher::is_native_daemon() {
         check_daemon_install_native()
     } else {
         check_daemon_install_wsl()
-    };
-    span.finish_result(&result);
-    result
+    }
 }
 
 /// Native daemon check (macOS/Linux): just stat the binary and run --version.
@@ -345,36 +360,30 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
 #[tauri::command]
 pub fn install_daemon(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let span = IpcCommandSpan::start("install_daemon");
-    // Resolve bundled binary path from Tauri resources
-    let resource_dir = match app
+    let result = install_bundled_daemon(&app);
+    span.finish_result(&result);
+    result
+}
+
+fn install_bundled_daemon(app: &tauri::AppHandle) -> Result<OperationResult, String> {
+    let resource_dir = app
         .path()
         .resource_dir()
-        .map_err(|e| format!("Failed to resolve resource directory: {e}"))
-    {
-        Ok(path) => path,
-        Err(error) => {
-            span.fail_msg(&error);
-            return Err(error);
-        }
-    };
+        .map_err(|e| format!("Failed to resolve resource directory: {e}"))?;
     let bundled_binary = resource_dir.join("resources").join("taurhaus-daemon");
 
     if !bundled_binary.exists() {
-        let error = format!(
+        return Err(format!(
             "Bundled daemon binary not found at {}",
             bundled_binary.display()
-        );
-        span.fail_msg(&error);
-        return Err(error);
+        ));
     }
 
-    let result = if crate::daemon::launcher::is_native_daemon() {
+    if crate::daemon::launcher::is_native_daemon() {
         install_daemon_native(&bundled_binary)
     } else {
         install_daemon_wsl(&bundled_binary)
-    };
-    span.finish_result(&result);
-    result
+    }
 }
 
 /// Install daemon natively (macOS/Linux): copy binary + chmod + verify.
@@ -587,6 +596,10 @@ fn semver_less_than(a: &str, b: &str) -> bool {
     }
 }
 
+fn daemon_install_required(status: &DaemonInstallStatus) -> bool {
+    status.wsl_available && (!status.installed || status.needs_update)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,6 +727,48 @@ mod tests {
         assert!(script.contains("kill -KILL"));
         assert!(script.contains("mv -f \"$temp_path\" \"$target_path\""));
         assert!(script.contains("\"$target_path\" --version"));
+    }
+
+    #[test]
+    fn daemon_install_required_when_binary_missing() {
+        let status = DaemonInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: "0.5.10".to_string(),
+            needs_update: false,
+            wsl_available: true,
+            error: None,
+        };
+
+        assert!(daemon_install_required(&status));
+    }
+
+    #[test]
+    fn daemon_install_required_when_binary_is_outdated() {
+        let status = DaemonInstallStatus {
+            installed: true,
+            version: Some("0.5.9".to_string()),
+            bundled_version: "0.5.10".to_string(),
+            needs_update: true,
+            wsl_available: true,
+            error: None,
+        };
+
+        assert!(daemon_install_required(&status));
+    }
+
+    #[test]
+    fn daemon_install_required_skips_when_environment_unavailable() {
+        let status = DaemonInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: "0.5.10".to_string(),
+            needs_update: false,
+            wsl_available: false,
+            error: Some("WSL is not available".to_string()),
+        };
+
+        assert!(!daemon_install_required(&status));
     }
 
     #[test]

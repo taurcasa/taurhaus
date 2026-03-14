@@ -17,14 +17,7 @@ const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_
 #[tauri::command]
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
     let span = IpcCommandSpan::start("check_mesh_install_status");
-    let result = {
-        let bundled_contract = read_bundled_mesh_contract(&app)?;
-        if is_native_daemon() {
-            check_mesh_install_native(&bundled_contract)
-        } else {
-            check_mesh_install_wsl(&bundled_contract)
-        }
-    };
+    let result = read_mesh_install_status(&app);
     span.finish_result(&result);
     result
 }
@@ -32,16 +25,43 @@ pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallSta
 #[tauri::command]
 pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let span = IpcCommandSpan::start("install_mesh");
-    let result = {
-        let (bundled_binary, bundled_contract) = resolve_bundled_mesh_assets(&app)?;
-        if is_native_daemon() {
-            install_mesh_native(&app, &bundled_binary, &bundled_contract)
-        } else {
-            install_mesh_wsl(&app, &bundled_binary, &bundled_contract)
-        }
-    };
+    let result = install_bundled_mesh(&app);
     span.finish_result(&result);
     result
+}
+
+pub(crate) fn ensure_bundled_mesh_installed(
+    app: &tauri::AppHandle,
+) -> Result<Option<OperationResult>, String> {
+    let status = read_mesh_install_status(app)?;
+    let install_required = mesh_install_required(&status);
+    if !install_required {
+        return Ok(None);
+    }
+
+    install_bundled_mesh(app).map(Some)
+}
+
+fn mesh_install_required(status: &MeshInstallStatus) -> bool {
+    status.environment_available && (!status.installed || !status.compatibility_issues.is_empty())
+}
+
+fn read_mesh_install_status(app: &tauri::AppHandle) -> Result<MeshInstallStatus, String> {
+    let bundled_contract = read_bundled_mesh_contract(app)?;
+    if is_native_daemon() {
+        check_mesh_install_native(&bundled_contract)
+    } else {
+        check_mesh_install_wsl(&bundled_contract)
+    }
+}
+
+fn install_bundled_mesh(app: &tauri::AppHandle) -> Result<OperationResult, String> {
+    let (bundled_binary, bundled_contract) = resolve_bundled_mesh_assets(app)?;
+    if is_native_daemon() {
+        install_mesh_native(app, &bundled_binary, &bundled_contract)
+    } else {
+        install_mesh_wsl(app, &bundled_binary, &bundled_contract)
+    }
 }
 
 fn resolve_bundled_mesh_assets(
@@ -971,5 +991,81 @@ exit 0
                 .exists(),
             "native install should replace the target mesh binary"
         );
+    }
+
+    #[test]
+    fn mesh_install_required_when_binary_missing() {
+        let status = MeshInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: "0.2.13".to_string(),
+            needs_update: false,
+            bundled_contract: MeshCompatibilityContract {
+                version: "0.2.13".to_string(),
+                protocol_version: 1,
+                schema_version: 1,
+                git_commit: Some("abc".to_string()),
+            },
+            installed_contract: None,
+            compatibility_issues: Vec::new(),
+            environment_available: true,
+            error: None,
+        };
+
+        assert!(mesh_install_required(&status));
+    }
+
+    #[test]
+    fn mesh_install_required_when_contract_drifts() {
+        let status = MeshInstallStatus {
+            installed: true,
+            version: Some("0.2.12".to_string()),
+            bundled_version: "0.2.13".to_string(),
+            needs_update: true,
+            bundled_contract: MeshCompatibilityContract {
+                version: "0.2.13".to_string(),
+                protocol_version: 1,
+                schema_version: 1,
+                git_commit: Some("abc".to_string()),
+            },
+            installed_contract: Some(MeshCompatibilityContract {
+                version: "0.2.12".to_string(),
+                protocol_version: 1,
+                schema_version: 1,
+                git_commit: Some("def".to_string()),
+            }),
+            compatibility_issues: vec![MeshCompatibilityIssue {
+                code: "version_mismatch".to_string(),
+                message: "mismatch".to_string(),
+                expected: Some("0.2.13".to_string()),
+                actual: Some("0.2.12".to_string()),
+            }],
+            environment_available: true,
+            error: None,
+        };
+
+        assert!(mesh_install_required(&status));
+    }
+
+    #[test]
+    fn mesh_install_required_skips_when_environment_unavailable() {
+        let status = MeshInstallStatus {
+            installed: false,
+            version: None,
+            bundled_version: "0.2.13".to_string(),
+            needs_update: false,
+            bundled_contract: MeshCompatibilityContract {
+                version: "0.2.13".to_string(),
+                protocol_version: 1,
+                schema_version: 1,
+                git_commit: Some("abc".to_string()),
+            },
+            installed_contract: None,
+            compatibility_issues: Vec::new(),
+            environment_available: false,
+            error: Some("WSL is not available".to_string()),
+        };
+
+        assert!(!mesh_install_required(&status));
     }
 }

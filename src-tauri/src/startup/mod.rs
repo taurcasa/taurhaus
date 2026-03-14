@@ -380,6 +380,54 @@ fn emit_startup_search_initialized(index_path: PathBuf, doc_count: u64, duration
     );
 }
 
+fn ensure_pinned_mesh_install(app: &tauri::AppHandle) {
+    let started_at = Instant::now();
+    match crate::commands::mesh::ensure_bundled_mesh_installed(app) {
+        Ok(Some(result)) => {
+            tracing::info!(
+                duration_ms = started_at.elapsed().as_millis() as u64,
+                message = %result.message,
+                "startup pinned mesh install completed"
+            );
+        }
+        Ok(None) => {
+            tracing::debug!("startup mesh install skipped; installed mesh already satisfies pin");
+        }
+        Err(error) => {
+            tracing::warn!(
+                duration_ms = started_at.elapsed().as_millis() as u64,
+                error = %error,
+                "startup pinned mesh install failed"
+            );
+        }
+    }
+}
+
+fn ensure_bundled_daemon_install(app: &tauri::AppHandle) {
+    let started_at = Instant::now();
+    match crate::commands::daemon::ensure_bundled_daemon_installed(app) {
+        Ok(Some(result)) => {
+            tracing::info!(
+                duration_ms = started_at.elapsed().as_millis() as u64,
+                message = %result.message,
+                "startup bundled daemon install completed"
+            );
+        }
+        Ok(None) => {
+            tracing::debug!(
+                "startup daemon install skipped; installed daemon already satisfies bundled version"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                duration_ms = started_at.elapsed().as_millis() as u64,
+                error = %error,
+                "startup bundled daemon install failed"
+            );
+        }
+    }
+}
+
 pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("taurhaus starting");
 
@@ -400,6 +448,7 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
         &setup_paths,
         database_started_at.elapsed().as_millis() as u64,
     );
+    ensure_bundled_daemon_install(&app.handle().clone());
     emit_startup_daemon_phase_started();
     let daemon_phase_started_at = Instant::now();
     let daemon_phase = determine_daemon_phase(&conn, &setup_paths.log_path);
@@ -604,6 +653,7 @@ fn run_startup_orchestration(
     app: &mut tauri::App,
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    ensure_pinned_mesh_install(&app.handle().clone());
     daemon::spawn_background_bootstrap(app.handle().clone(), context);
     daemon::start_runtime_monitors(app.handle().clone(), context);
     #[cfg(feature = "mesh-bridged-backend")]
@@ -671,6 +721,7 @@ fn run_startup_orchestration(
 
 #[cfg(test)]
 fn run_startup_orchestration_with<
+    EnsurePinnedMeshInstall,
     SpawnBootstrap,
     StartRuntimeMonitors,
     InitializeWatchers,
@@ -679,6 +730,7 @@ fn run_startup_orchestration_with<
     SpawnBackgroundTasks,
 >(
     context: &SetupContext,
+    ensure_pinned_mesh_install: EnsurePinnedMeshInstall,
     spawn_background_bootstrap: SpawnBootstrap,
     start_runtime_monitors: StartRuntimeMonitors,
     initialize_watchers: InitializeWatchers,
@@ -687,6 +739,7 @@ fn run_startup_orchestration_with<
     spawn_background_tasks: SpawnBackgroundTasks,
 ) -> Result<StartupOrchestrationReport, StartupOrchestrationError>
 where
+    EnsurePinnedMeshInstall: FnOnce() -> Result<(), String>,
     SpawnBootstrap: FnOnce(),
     StartRuntimeMonitors: FnOnce(),
     InitializeWatchers: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
@@ -694,6 +747,9 @@ where
     InitializeSearch: FnOnce() -> Result<u64, Box<dyn std::error::Error>>,
     SpawnBackgroundTasks: FnOnce(),
 {
+    if let Err(error) = ensure_pinned_mesh_install() {
+        tracing::warn!(error = %error, "startup pinned mesh install failed");
+    }
     spawn_background_bootstrap();
     start_runtime_monitors();
 
@@ -1057,6 +1113,10 @@ mod tests {
 
         let report = run_startup_orchestration_with(
             &context,
+            || {
+                calls.borrow_mut().push("mesh");
+                Ok(())
+            },
             || calls.borrow_mut().push("bootstrap"),
             || calls.borrow_mut().push("monitors"),
             || {
@@ -1078,6 +1138,7 @@ mod tests {
         assert_eq!(
             calls.into_inner(),
             vec![
+                "mesh",
                 "bootstrap",
                 "monitors",
                 "watchers",
@@ -1105,6 +1166,10 @@ mod tests {
 
         let error = run_startup_orchestration_with(
             &context,
+            || {
+                calls.borrow_mut().push("mesh");
+                Ok(())
+            },
             || calls.borrow_mut().push("bootstrap"),
             || calls.borrow_mut().push("monitors"),
             || {
@@ -1126,7 +1191,7 @@ mod tests {
         assert!(matches!(error, StartupOrchestrationError::Watchers { .. }));
         assert_eq!(
             calls.into_inner(),
-            vec!["bootstrap", "monitors", "watchers"]
+            vec!["mesh", "bootstrap", "monitors", "watchers"]
         );
     }
 
@@ -1145,6 +1210,10 @@ mod tests {
 
         let error = run_startup_orchestration_with(
             &context,
+            || {
+                calls.borrow_mut().push("mesh");
+                Ok(())
+            },
             || calls.borrow_mut().push("bootstrap"),
             || calls.borrow_mut().push("monitors"),
             || {
@@ -1166,7 +1235,67 @@ mod tests {
         assert!(matches!(error, StartupOrchestrationError::Search { .. }));
         assert_eq!(
             calls.into_inner(),
-            vec!["bootstrap", "monitors", "watchers", "compaction", "search"]
+            vec![
+                "mesh",
+                "bootstrap",
+                "monitors",
+                "watchers",
+                "compaction",
+                "search"
+            ]
         );
+    }
+
+    #[test]
+    fn run_startup_orchestration_with_continues_when_mesh_install_fails() {
+        let calls = RefCell::new(Vec::new());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let context = SetupContext {
+            data_dir: temp_dir.path().to_path_buf(),
+            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
+            db_path: temp_dir.path().join("taurhaus.db"),
+            wsl_distro: Some("native".to_string()),
+            daemon_addr: Some("127.0.0.1:17233".to_string()),
+            daemon_connected_at_startup: true,
+        };
+
+        let report = run_startup_orchestration_with(
+            &context,
+            || {
+                calls.borrow_mut().push("mesh");
+                Err("mesh install boom".to_string())
+            },
+            || calls.borrow_mut().push("bootstrap"),
+            || calls.borrow_mut().push("monitors"),
+            || {
+                calls.borrow_mut().push("watchers");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("compaction");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("search");
+                Ok(3)
+            },
+            || calls.borrow_mut().push("tasks"),
+        )
+        .expect("mesh install failure should not abort startup");
+
+        assert_eq!(
+            calls.into_inner(),
+            vec![
+                "mesh",
+                "bootstrap",
+                "monitors",
+                "watchers",
+                "compaction",
+                "search",
+                "tasks"
+            ]
+        );
+        assert!(report.daemon_watch_bootstrap);
+        assert_eq!(report.search_doc_count, 3);
     }
 }
