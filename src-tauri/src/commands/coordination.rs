@@ -2,22 +2,26 @@
 
 #[cfg(test)]
 use std::path::Path;
+#[cfg(test)]
 use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[path = "coordination/live_status.rs"]
 mod live_status;
+#[path = "coordination/mapping.rs"]
+mod mapping;
+#[path = "coordination/progress.rs"]
+mod progress;
 #[path = "coordination/request_normalization.rs"]
 mod request_normalization;
+#[path = "coordination/state_sync.rs"]
+mod state_sync;
 
 pub use crate::commands::coordination_types::*;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
-use crate::coordination::backend::bridged::{
-    availability_check, preflight_check, AvailabilityReport as BackendAvailabilityReport,
-    PreflightAgent, PreflightReport as BackendPreflightReport,
-};
+use crate::coordination::backend::bridged::{availability_check, preflight_check};
 #[cfg(test)]
 use crate::coordination::backend::bridged::{
     availability_check_with_lookup, preflight_check_with_lookup, BinaryLookup,
@@ -28,22 +32,23 @@ use crate::coordination::claude_hooks::{
 use crate::coordination::delivery::DeliveryRenderer;
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::operational_context::{sync_member_snapshot, sync_team_snapshots};
-use crate::coordination::requests::{
-    self as contracts, DeliveryRequest, DeliveryResult, OperatorNoticeDelivery,
-};
+use crate::coordination::requests::{DeliveryRequest, DeliveryResult, OperatorNoticeDelivery};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
+use crate::coordination::stores::ActiveProjectTeamStore;
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 #[cfg(not(test))]
 use crate::ProviderState;
 use live_status::coordination_get_live_team_status_impl;
+use mapping::*;
+use progress::*;
 use request_normalization::{
     hydrate_add_agent_request_role_metadata, hydrate_initialize_request_role_metadata,
     normalize_add_agent_request_path, normalize_initialize_request_paths,
 };
+use state_sync::*;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
@@ -445,18 +450,6 @@ fn coordination_resume_team_internal(
     Ok(report)
 }
 
-fn emit_progress_events(
-    events: Vec<StepProgressEvent>,
-    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
-) {
-    let Some(emit) = emit.as_mut() else {
-        return;
-    };
-    for event in events {
-        emit(&event);
-    }
-}
-
 fn coordination_reonboard_impl(
     db: Option<&DbState>,
     state: &CoordinationState,
@@ -522,42 +515,6 @@ fn coordination_reonboard_impl(
             .map_err(map_coordination_error)?;
     }
     Ok(result)
-}
-
-fn sync_team_snapshots_after_change(
-    state: &CoordinationState,
-    db: &DbState,
-    team_name: &str,
-) -> Result<(), CoordinationError> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| CoordinationError::StoreError("db mutex poisoned".to_string()))?;
-    sync_team_snapshots(state.teams_dir(), &conn, team_name)
-}
-
-fn sync_member_snapshot_after_change(
-    state: &CoordinationState,
-    db: &DbState,
-    team_name: &str,
-    member_name: &str,
-) -> Result<(), CoordinationError> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| CoordinationError::StoreError("db mutex poisoned".to_string()))?;
-    sync_member_snapshot(state.teams_dir(), &conn, team_name, member_name)
-}
-
-fn sync_active_team_projects_after_change(
-    state: &CoordinationState,
-    team_name: &str,
-) -> Result<(), CoordinationError> {
-    let config = TeamConfigStore::load(state.teams_dir(), team_name)?;
-    let project_paths = config
-        .members
-        .iter()
-        .map(|member| member.project_path.display().to_string())
-        .collect::<Vec<_>>();
-    ActiveProjectTeamStore::sync_team(state.teams_dir(), team_name, &project_paths)
 }
 
 fn maybe_ensure_claude_compact_hook_for_team<T>(
@@ -804,326 +761,6 @@ fn derive_cross_project_status(
     member_project_path: &Path,
 ) -> live_status::CrossProjectStatus {
     live_status::derive_cross_project_status(lead_project_path, member_project_path)
-}
-
-fn validate_and_collect_preflight_agents(
-    request: InitializeTeamRequest,
-) -> Result<Vec<PreflightAgent>, String> {
-    request_normalization::validate_and_collect_preflight_agents(request)
-}
-
-fn validate_non_empty(field: &str, value: &str) -> Result<(), String> {
-    if value.trim().is_empty() {
-        return Err(format!("{field} must not be empty"));
-    }
-    Ok(())
-}
-
-fn validate_initialize_request_fields(request: &InitializeTeamRequest) -> Result<(), String> {
-    validate_non_empty("team_name", &request.team_name)?;
-    validate_non_empty("lead.name", &request.lead.name)?;
-    validate_non_empty("lead.project_id", &request.lead.project_id)?;
-    validate_non_empty("lead.cli_tool", &request.lead.cli_tool)?;
-    for (idx, agent) in request.agents.iter().enumerate() {
-        validate_non_empty(&format!("agents[{idx}].name"), &agent.name)?;
-        validate_non_empty(&format!("agents[{idx}].project_id"), &agent.project_id)?;
-        validate_non_empty(&format!("agents[{idx}].cli_tool"), &agent.cli_tool)?;
-    }
-    Ok(())
-}
-
-fn map_lead_mode_to_contract(mode: LeadMode) -> contracts::LeadMode {
-    match mode {
-        LeadMode::AttachExisting => contracts::LeadMode::AttachExisting,
-        LeadMode::LaunchNew => contracts::LeadMode::LaunchNew,
-    }
-}
-
-fn map_step_status_from_contract(status: contracts::StepStatus) -> StepStatus {
-    match status {
-        contracts::StepStatus::Pending => StepStatus::Pending,
-        contracts::StepStatus::Running => StepStatus::Running,
-        contracts::StepStatus::Succeeded => StepStatus::Succeeded,
-        contracts::StepStatus::Failed => StepStatus::Failed,
-    }
-}
-
-fn map_resume_context_mode_to_contract(mode: ResumeContextMode) -> contracts::ResumeContextMode {
-    match mode {
-        ResumeContextMode::Continue => contracts::ResumeContextMode::Continue,
-        ResumeContextMode::Fresh => contracts::ResumeContextMode::Fresh,
-    }
-}
-
-fn map_agent_setup_to_contract(agent: &AgentSetupConfig) -> contracts::AgentSetupConfig {
-    contracts::AgentSetupConfig {
-        name: agent.name.clone(),
-        cli_tool: agent.cli_tool.clone(),
-        model: agent.model.clone(),
-        project_id: agent.project_id.clone(),
-        description: agent.description.clone(),
-        role_id: agent.role_id.clone(),
-        role_name: agent.role_name.clone(),
-        focus_area: agent.focus_area.clone(),
-        context_summary: agent.context_summary.clone(),
-        behavior_summary: agent.behavior_summary.clone(),
-        runtime_compact_summary: agent.runtime_compact_summary.clone(),
-        instructions: agent.instructions.clone(),
-        behavioral_contract: agent.behavioral_contract.clone(),
-        capabilities: agent.capabilities.clone(),
-    }
-}
-
-fn map_step_progress_from_contract(progress: contracts::StepProgress) -> StepProgress {
-    StepProgress {
-        step: progress.step,
-        status: map_step_status_from_contract(progress.status),
-        message: progress.message,
-    }
-}
-
-fn map_initialize_request_to_contract(
-    request: &InitializeTeamRequest,
-) -> contracts::InitializeTeamRequest {
-    contracts::InitializeTeamRequest {
-        team_name: request.team_name.clone(),
-        team_description: request.team_description.clone(),
-        lead_mode: map_lead_mode_to_contract(request.lead_mode),
-        lead: map_agent_setup_to_contract(&request.lead),
-        agents: request
-            .agents
-            .iter()
-            .map(map_agent_setup_to_contract)
-            .collect(),
-    }
-}
-
-fn map_add_agent_request_to_contract(request: &AddAgentRequest) -> contracts::AddAgentRequest {
-    contracts::AddAgentRequest {
-        team_name: request.team_name.clone(),
-        agent: map_agent_setup_to_contract(&request.agent),
-    }
-}
-
-fn map_resume_member_request_to_contract(
-    request: &ResumeMemberRequest,
-) -> contracts::ResumeMemberRequest {
-    contracts::ResumeMemberRequest {
-        team_name: request.team_name.clone(),
-        member_name: request.member_name.clone(),
-        context_mode: map_resume_context_mode_to_contract(request.context_mode),
-    }
-}
-
-fn map_resume_team_request_to_contract(
-    request: &ResumeTeamRequest,
-) -> contracts::ResumeTeamRequest {
-    contracts::ResumeTeamRequest {
-        team_name: request.team_name.clone(),
-        context_mode: map_resume_context_mode_to_contract(request.context_mode),
-    }
-}
-
-fn map_initialize_report_from_contract(report: contracts::InitializeReport) -> InitializeReport {
-    InitializeReport {
-        team_name: report.team_name,
-        succeeded_steps: report.succeeded_steps,
-        failed_step: report.failed_step,
-        retryable: report.retryable,
-        message: report.message,
-        steps: report
-            .steps
-            .into_iter()
-            .map(map_step_progress_from_contract)
-            .collect(),
-    }
-}
-
-fn map_add_agent_report_from_contract(report: contracts::AddAgentReport) -> AddAgentReport {
-    AddAgentReport {
-        team_name: report.team_name,
-        member_name: report.member_name,
-        succeeded_steps: report.succeeded_steps,
-        failed_step: report.failed_step,
-        retryable: report.retryable,
-        message: report.message,
-        steps: report
-            .steps
-            .into_iter()
-            .map(map_step_progress_from_contract)
-            .collect(),
-    }
-}
-
-fn map_resume_agent_report_from_contract(
-    report: contracts::ResumeAgentReport,
-) -> ResumeAgentReport {
-    ResumeAgentReport {
-        team_name: report.team_name,
-        member_name: report.member_name,
-        resumed: report.resumed,
-        succeeded_steps: report.succeeded_steps,
-        failed_step: report.failed_step,
-        retryable: report.retryable,
-        message: report.message,
-        steps: report
-            .steps
-            .into_iter()
-            .map(map_step_progress_from_contract)
-            .collect(),
-        warnings: report.warnings,
-        pane_id: report.pane_id,
-        reused_pane: report.reused_pane,
-    }
-}
-
-fn map_resume_team_report_from_contract(report: contracts::ResumeTeamReport) -> ResumeTeamReport {
-    ResumeTeamReport {
-        team_name: report.team_name,
-        resumed: report.resumed,
-        total_members: report.total_members,
-        resumed_members: report.resumed_members,
-        failed_members: report
-            .failed_members
-            .into_iter()
-            .map(|failure| ResumeTeamMemberFailure {
-                member_name: failure.member_name,
-                message: failure.message,
-                retryable: failure.retryable,
-            })
-            .collect(),
-        warnings: report.warnings,
-        started_team_daemon: report.started_team_daemon,
-        team_daemon_warning: report.team_daemon_warning,
-    }
-}
-
-fn cli_tool_from_backend_kind(backend_kind: &str) -> Result<CliTool, CoordinationError> {
-    CliTool::from_alias(backend_kind).map_err(|_| {
-        CoordinationError::Validation(format!(
-            "unsupported backend_kind '{}'",
-            backend_kind.trim()
-        ))
-    })
-}
-
-fn resolve_legacy_member_project_path(
-    existing_members: &[Member],
-    project_path_override: Option<&str>,
-) -> Result<PathBuf, CoordinationError> {
-    if let Some(project_path) = project_path_override {
-        let project_path = project_path.trim();
-        if project_path.is_empty() {
-            return Err(CoordinationError::Validation(
-                "project_path must not be empty".to_string(),
-            ));
-        }
-        return Ok(PathBuf::from(project_path));
-    }
-
-    existing_members
-        .iter()
-        .find(|member| member.role == MemberRole::Lead)
-        .or_else(|| existing_members.first())
-        .map(|member| member.project_path.clone())
-        .ok_or_else(|| {
-            CoordinationError::Validation(
-                "project_path must be provided for legacy add-member when team has no members"
-                    .to_string(),
-            )
-        })
-}
-
-fn map_coordination_error(err: CoordinationError) -> String {
-    err.to_string()
-}
-
-fn initialize_progress_events(report: &InitializeReport) -> Vec<StepProgressEvent> {
-    let mut events = Vec::new();
-    for progress in &report.steps {
-        events.push(StepProgressEvent {
-            team_name: report.team_name.clone(),
-            operation: "initialize_team".to_string(),
-            progress: StepProgress {
-                step: progress.step.clone(),
-                status: StepStatus::Running,
-                message: None,
-            },
-        });
-        events.push(StepProgressEvent {
-            team_name: report.team_name.clone(),
-            operation: "initialize_team".to_string(),
-            progress: progress.clone(),
-        });
-    }
-    events
-}
-
-fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
-    let mut events = Vec::new();
-    for progress in &report.steps {
-        events.push(StepProgressEvent {
-            team_name: report.team_name.clone(),
-            operation: "add_agent".to_string(),
-            progress: StepProgress {
-                step: progress.step.clone(),
-                status: StepStatus::Running,
-                message: None,
-            },
-        });
-        events.push(StepProgressEvent {
-            team_name: report.team_name.clone(),
-            operation: "add_agent".to_string(),
-            progress: progress.clone(),
-        });
-    }
-    events
-}
-
-fn resume_member_progress_events(report: &ResumeAgentReport) -> Vec<StepProgressEvent> {
-    let mut events = Vec::new();
-    for progress in &report.steps {
-        events.push(StepProgressEvent {
-            team_name: report.team_name.clone(),
-            operation: "resume_member".to_string(),
-            progress: StepProgress {
-                step: progress.step.clone(),
-                status: StepStatus::Running,
-                message: None,
-            },
-        });
-        events.push(StepProgressEvent {
-            team_name: report.team_name.clone(),
-            operation: "resume_member".to_string(),
-            progress: progress.clone(),
-        });
-    }
-    events
-}
-
-fn map_preflight_report(report: BackendPreflightReport) -> PreflightReport {
-    PreflightReport {
-        can_initialize: report.can_initialize(),
-        blocking_errors: report.blocking_errors,
-        agent_warnings: report
-            .agent_warnings
-            .into_iter()
-            .map(|warning| AgentPreflightWarning {
-                agent_name: warning.agent_name,
-                cli_tool: warning.cli_tool,
-                message: warning.message,
-            })
-            .collect(),
-    }
-}
-
-fn map_feature_availability_report(report: BackendAvailabilityReport) -> FeatureAvailabilityReport {
-    FeatureAvailabilityReport {
-        can_initialize: report.can_initialize(),
-        mesh_available: report.mesh_available,
-        tmux_available: report.tmux_available,
-        blocking_errors: report.blocking_errors,
-    }
 }
 
 #[cfg(test)]
