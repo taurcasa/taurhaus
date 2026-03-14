@@ -260,6 +260,9 @@ describe('Sidebar component branches', () => {
     })
     expect(screen.getByTestId('daemon-status')).toHaveTextContent('Connected')
 
+    await rerender({ projects: makeProjects(1), daemonStatus: 'busy' })
+    expect(screen.getByTestId('daemon-status')).toHaveTextContent('Daemon busy')
+
     await rerender({ projects: makeProjects(1), daemonStatus: 'reconnecting' })
     expect(screen.getByTestId('daemon-status')).toHaveTextContent('Reconnecting')
 

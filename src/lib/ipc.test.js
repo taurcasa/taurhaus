@@ -984,6 +984,23 @@ describe('ipc module', () => {
       })
       delete window.__TAURI_INTERNALS__
     })
+
+    it('preserves busy daemon status from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        status: 'busy',
+        protocolVersion: 4,
+        expectedProtocolVersion: 4,
+        port: 17233,
+      })
+
+      const result = await ipc.getDaemonStatus()
+
+      expect(result.status).toBe('busy')
+      expect(result.protocol_version).toBe(4)
+      expect(result.expected_protocol_version).toBe(4)
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   describe('getPlatform()', () => {

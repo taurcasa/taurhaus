@@ -987,6 +987,16 @@ describe('Daemon status filtering', () => {
     expect(daemonStatus).toBe('reconnecting')
   })
 
+  it('surfaces busy status distinctly from disconnected', async () => {
+    ipc.getDaemonStatus.mockResolvedValue({ status: 'busy' })
+
+    let daemonStatus = null
+    const status = await ipc.getDaemonStatus()
+    daemonStatus = nextDaemonStatus(daemonStatus, status.status)
+
+    expect(daemonStatus).toBe('busy')
+  })
+
   it('clears stale offline status after a later connected probe', async () => {
     ipc.getDaemonStatus.mockResolvedValue({ status: 'connected' })
 

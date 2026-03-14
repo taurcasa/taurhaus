@@ -44,6 +44,7 @@ pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonSta
 fn daemon_status_snapshot(provider: &ProviderState) -> DaemonStatus {
     let status = match provider.daemon.as_ref() {
         None => "not_configured",
+        Some(daemon) if daemon.is_connected() && daemon.is_busy() => "busy",
         Some(daemon) if daemon.is_connected() => "connected",
         Some(_) => "disconnected",
     };
@@ -745,6 +746,40 @@ mod tests {
         );
 
         drop(provider);
+        accept_thread.join().expect("accept thread joined");
+    }
+
+    #[test]
+    fn daemon_status_snapshot_reports_busy_without_treating_it_as_disconnect() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("local addr");
+        let accept_thread = std::thread::spawn(move || {
+            let _stream = listener.accept().expect("accept client");
+            std::thread::sleep(Duration::from_secs(2));
+        });
+
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::connect(&addr.to_string())
+                    .expect("connect daemon provider"),
+            ),
+            wsl_distro: Some("Ubuntu".to_string()),
+        };
+
+        std::thread::scope(|scope| {
+            let daemon = provider.daemon.as_ref().expect("daemon provider");
+            let _busy_thread = scope.spawn(|| {
+                let request = crate::daemon_api::protocol::DaemonRequest::ping("busy-status");
+                let _ = daemon.send_status_request(&request);
+            });
+            std::thread::sleep(Duration::from_millis(100));
+
+            let status = daemon_status_snapshot(&provider);
+            assert_eq!(status.status, "busy");
+            assert_eq!(status.wsl_distro.as_deref(), Some("Ubuntu"));
+        });
+
         accept_thread.join().expect("accept thread joined");
     }
 }

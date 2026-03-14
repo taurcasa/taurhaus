@@ -116,6 +116,22 @@ impl DaemonProvider {
         self.connected.load(Ordering::Relaxed)
     }
 
+    /// Whether the shared daemon connection is currently occupied by another request.
+    ///
+    /// This is a local provider-state probe only. A busy connection is still a
+    /// healthy connected transport and should not be conflated with disconnect.
+    pub fn is_busy(&self) -> bool {
+        if !self.is_connected() {
+            return false;
+        }
+
+        match self.conn.try_lock() {
+            Ok(_) => false,
+            Err(TryLockError::WouldBlock) => true,
+            Err(TryLockError::Poisoned(_)) => false,
+        }
+    }
+
     /// The address this provider connects to.
     pub fn addr(&self) -> &str {
         &self.addr
@@ -1007,6 +1023,27 @@ mod tests {
         assert!(
             provider.is_connected(),
             "busy fast-fail should not disconnect provider"
+        );
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn busy_probe_reports_busy_without_marking_disconnected() {
+        let daemon = start_daemon();
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
+
+        let busy_guard = provider.conn.try_lock().expect("lock connection");
+        assert!(provider.is_busy(), "busy lock should be observable as busy");
+        assert!(
+            provider.is_connected(),
+            "busy lock should not imply disconnect"
+        );
+        drop(busy_guard);
+
+        assert!(
+            !provider.is_busy(),
+            "busy probe should clear after lock release"
         );
 
         daemon.shutdown.store(true, Ordering::Relaxed);

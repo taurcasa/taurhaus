@@ -346,7 +346,7 @@ impl Default for DaemonSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DaemonStatus {
-    /// "connected", "disconnected", "not_configured", "reconnecting"
+    /// "connected", "busy", "disconnected", "not_configured", "reconnecting"
     /// Status string values intentionally remain snake_case for IPC compatibility
     /// with existing frontend event/status handling.
     pub status: String,

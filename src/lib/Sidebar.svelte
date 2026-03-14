@@ -502,6 +502,9 @@
         {#if daemonStatus === 'connected'}
           <span class="w-1.5 h-1.5 rounded-full bg-success-400"></span>
           <span class="text-success-400/80">Connected</span>
+        {:else if daemonStatus === 'busy'}
+          <span class="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse"></span>
+          <span class="text-brand-400/80">Daemon busy</span>
         {:else if daemonStatus === 'reconnecting'}
           <span class="w-1.5 h-1.5 rounded-full bg-warning-400 animate-pulse"></span>
           <span class="text-warning-400/80">Reconnecting</span>
