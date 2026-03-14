@@ -17,6 +17,25 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
     // conn (MutexGuard) drops here — lock released before any git work
 }
 
+fn fail_fast_if_foreground_daemon_lane_is_busy(
+    providers: &ProviderState,
+    project_path: &str,
+    operation: &str,
+) -> Result<(), String> {
+    if crate::provider::path::is_wsl_path(project_path)
+        && providers
+            .daemon
+            .as_ref()
+            .is_some_and(|daemon| daemon.is_connected() && daemon.is_busy())
+    {
+        return Err(sanitize_error(&format!(
+            "Daemon transport error: foreground {operation} skipped because the shared daemon connection is busy"
+        )));
+    }
+
+    Ok(())
+}
+
 fn get_remote_fetch_url(repo: &git2::Repository) -> Option<String> {
     if let Ok(origin) = repo.find_remote("origin") {
         if let Some(url) = origin.url() {
@@ -116,6 +135,7 @@ pub fn get_recent_commits(
     let span = IpcCommandSpan::start("get_recent_commits");
     let result = {
         let path = resolve_project_path(&db, &project_id)?;
+        fail_fast_if_foreground_daemon_lane_is_busy(&providers, &path, "recent commits load")?;
         let provider = providers.resolve(&path);
         provider
             .recent_commits(&path, limit.unwrap_or(10).min(500))
@@ -182,7 +202,11 @@ pub fn get_remote_url(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::daemon_client::DaemonProvider;
+    use crate::provider::local::LocalProvider;
+    use crate::ProviderState;
     use pretty_assertions::assert_eq;
+    use std::net::TcpListener;
     use tempfile::TempDir;
 
     fn init_repo() -> (TempDir, git2::Repository) {
@@ -258,5 +282,39 @@ mod tests {
         let error = reject_wsl_unc_remote_url_lookup(r"\\wsl.localhost\Ubuntu\home\user\repo")
             .expect_err("WSL UNC remote URL lookup should require daemon-backed git access");
         assert!(error.contains("daemon-backed git access"));
+    }
+
+    #[test]
+    fn recent_commits_foreground_read_fails_fast_when_daemon_lane_is_busy() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("local addr");
+        let accept_thread = std::thread::spawn(move || {
+            let _stream = listener.accept().expect("accept client");
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        });
+        let providers = ProviderState {
+            local: LocalProvider,
+            daemon: Some(DaemonProvider::connect(&addr.to_string()).unwrap()),
+            wsl_distro: Some("Ubuntu".to_string()),
+        };
+
+        std::thread::scope(|scope| {
+            let provider = providers.daemon.as_ref().expect("daemon provider");
+            let _busy_thread = scope.spawn(|| {
+                let request = crate::daemon_api::protocol::DaemonRequest::ping("busy-git");
+                let _ = provider.send_status_request(&request);
+            });
+            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            let err = fail_fast_if_foreground_daemon_lane_is_busy(
+                &providers,
+                r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus",
+                "recent commits load",
+            )
+            .expect_err("busy WSL foreground load should fail fast");
+            assert!(err.to_lowercase().contains("daemon transport error"));
+            assert!(err.to_lowercase().contains("busy"));
+        });
+        accept_thread.join().expect("accept thread joined");
     }
 }

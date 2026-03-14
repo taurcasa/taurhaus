@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -14,38 +13,6 @@ use crate::models::{ProjectDetail, ProjectSummary};
 use crate::platform::apply_background_command_settings;
 use crate::services::project;
 use crate::{ProviderState, SearchState};
-
-static PROJECT_SELECTION_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
-
-fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
-    if PROJECT_SELECTION_RECONCILE_QUEUED
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return;
-    }
-
-    #[cfg(test)]
-    {
-        crate::startup::watchers::reconcile_activity_watches(&app, reason);
-        PROJECT_SELECTION_RECONCILE_QUEUED.store(false, Ordering::Release);
-    }
-
-    #[cfg(not(test))]
-    {
-        std::thread::spawn(move || {
-            struct ResetQueuedFlag;
-            impl Drop for ResetQueuedFlag {
-                fn drop(&mut self) {
-                    PROJECT_SELECTION_RECONCILE_QUEUED.store(false, Ordering::Release);
-                }
-            }
-
-            let _reset_queued_flag = ResetQueuedFlag;
-            crate::startup::watchers::reconcile_activity_watches(&app, reason);
-        });
-    }
-}
 
 /// Expand `~` or `~/` at the start of a path to the user's home directory.
 fn expand_tilde(path: &str) -> String {
@@ -91,26 +58,23 @@ pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, Stri
 }
 
 #[tauri::command]
-pub fn get_project(
-    app: tauri::AppHandle,
-    db: State<'_, DbState>,
-    project_id: String,
-) -> Result<ProjectDetail, String> {
+pub fn get_project(db: State<'_, DbState>, project_id: String) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("get_project");
     let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
-        // Project selection is explicit user activity; promote on read.
-        project::touch_activity(&conn, &project_id).sanitize_err()?;
-        let detail =
-            project::get_project(&conn, &project_id, &settings.thresholds).sanitize_err()?;
-        drop(conn);
-
-        enqueue_activity_watch_reconcile(app.clone(), "project_selected");
-        Ok(detail)
+        get_project_detail_for_selection(&conn, &project_id, &settings.thresholds)
     };
     span.finish_result(&result);
     result
+}
+
+fn get_project_detail_for_selection(
+    conn: &Connection,
+    project_id: &str,
+    thresholds: &crate::models::ActivityThresholds,
+) -> Result<ProjectDetail, String> {
+    project::get_project(conn, project_id, thresholds).sanitize_err()
 }
 
 #[tauri::command]
@@ -810,6 +774,56 @@ mod tests {
         let list = project::list_projects(&conn, &thresholds).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "test");
+    }
+
+    #[test]
+    fn selection_detail_read_does_not_promote_activity_or_queue_maintenance() {
+        let (db_state, _tmp) = test_db_state();
+        let dir = temp_project_dir();
+        let path = dir.path().to_str().unwrap().to_string();
+
+        let project_id = {
+            let conn = db_state.0.lock().unwrap();
+            let thresholds = ActivityThresholds::default();
+            project::register_project(&conn, &path, Some("test"), &thresholds)
+                .unwrap()
+                .id
+        };
+
+        {
+            let conn = db_state.0.lock().unwrap();
+            conn.execute(
+                "UPDATE projects SET last_activity_at = ?1 WHERE id = ?2",
+                rusqlite::params!["2026-01-01T00:00:00Z", project_id],
+            )
+            .unwrap();
+        }
+
+        let before = {
+            let conn = db_state.0.lock().unwrap();
+            crate::db::queries::get_project(&conn, &project_id)
+                .unwrap()
+                .unwrap()
+                .last_activity_at
+        };
+
+        {
+            let conn = db_state.0.lock().unwrap();
+            let thresholds = ActivityThresholds::default();
+            let detail = get_project_detail_for_selection(&conn, &project_id, &thresholds)
+                .expect("selection detail read");
+            assert_eq!(detail.id, project_id);
+        }
+
+        let after = {
+            let conn = db_state.0.lock().unwrap();
+            crate::db::queries::get_project(&conn, &project_id)
+                .unwrap()
+                .unwrap()
+                .last_activity_at
+        };
+
+        assert_eq!(before, after);
     }
 
     // AC1: is_first_run returns true when DB has no projects
