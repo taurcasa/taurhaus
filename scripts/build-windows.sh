@@ -36,9 +36,9 @@ PS_SCRIPT="$(wslpath -w "$PROJECT_ROOT/scripts/build-windows.ps1")"
 WIN_PROJECT_DIR="$(wslpath -w "$WINDOWS_BUILD_DIR")"
 
 if [ "$USE_SCCACHE" = "1" ]; then
-    run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR" -EnableSccache
+    run_step "windows_build" sh -c 'exec powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1" -ProjectDir "$2" -EnableSccache < /dev/null' sh "$PS_SCRIPT" "$WIN_PROJECT_DIR"
 else
-    run_step "windows_build" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -ProjectDir "$WIN_PROJECT_DIR"
+    run_step "windows_build" sh -c 'exec powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1" -ProjectDir "$2" < /dev/null' sh "$PS_SCRIPT" "$WIN_PROJECT_DIR"
 fi
 
 echo

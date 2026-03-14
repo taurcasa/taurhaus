@@ -536,7 +536,7 @@ install-windows:
         echo "  Run: just build-windows"
         exit 1
     fi
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -InstallerPath "$WIN_INSTALLER" -BuiltExePath "$WIN_BUILT_EXE"
+    sh -c 'exec powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1" -InstallerPath "$2" -BuiltExePath "$3" < /dev/null' sh "$PS_SCRIPT" "$WIN_INSTALLER" "$WIN_BUILT_EXE"
 
 # ── macOS Build (via SSH to remote Mac mini) ─────────────────────────────────
 
