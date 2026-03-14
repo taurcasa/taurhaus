@@ -6,6 +6,18 @@ export function normalizeShellDaemonStatus(status) {
   return status
 }
 
+export function isShellDaemonRecoveryPending(status, { initialized = true } = {}) {
+  if (!initialized) {
+    return true
+  }
+
+  return status === 'busy' || status === 'disconnected' || status === 'reconnecting'
+}
+
+export function canCheckDaemonUpdate(status, { initialized = true } = {}) {
+  return !isShellDaemonRecoveryPending(status, { initialized })
+}
+
 export function consumeInitialShellDaemonStatus(initialStatus) {
   if (initialStatus === 'busy') {
     return {

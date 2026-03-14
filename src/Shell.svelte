@@ -5,7 +5,9 @@
   import { anyPathMatches } from './lib/fileChange.js'
   import {
     applyShellDaemonStatusSnapshot,
+    canCheckDaemonUpdate,
     consumeInitialShellDaemonStatus,
+    isShellDaemonRecoveryPending,
   } from './lib/daemonStatus.js'
   import { normalizeProjectPath } from './lib/pathUtils.js'
   import TaskBoard from './lib/TaskBoard.svelte'
@@ -36,7 +38,11 @@
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
-  import { loadProjectSelectionData, prefetchProjectSelectionData } from './lib/projectSelection.js'
+  import {
+    classifyProjectLoadResults,
+    loadProjectSelectionData,
+    prefetchProjectSelectionData,
+  } from './lib/projectSelection.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
   import { themeTokens } from './lib/themeTokens.js'
@@ -72,6 +78,7 @@
   let startupViewportSyncAttempted = false
   // Daemon status: 'connected' | 'busy' | 'disconnected' | 'reconnecting' | 'failed' | 'not_configured' | null
   let daemonStatus = $state(null)
+  let daemonStatusInitialized = $state(false)
   let daemonStatusDismissTimer = $state(null)
   let consumedInitialDaemonStatus = false
   let daemonStatusRefreshTimer = null
@@ -134,6 +141,7 @@
   let relationships = $state([])
   let relationshipsLoading = $state(false)
   let projectLoadIssues = $state([]) // [{ section, message }]
+  let pendingProjectLoadRetry = $state(false)
 
   // Cross-tab navigation state for Git tab
   let gitNavTarget = $state(null) // { type: 'commit', hash } | { type: 'range', after, before } | null
@@ -347,6 +355,19 @@
     }
   }
 
+  function daemonRecoveryPending() {
+    return isShellDaemonRecoveryPending(daemonStatus, { initialized: daemonStatusInitialized })
+  }
+
+  function maybeRetryPendingProjectLoad() {
+    if (!pendingProjectLoadRetry || !selectedProject || daemonRecoveryPending()) {
+      return
+    }
+
+    pendingProjectLoadRetry = false
+    void retryProjectLoad()
+  }
+
   function scheduleDaemonStatusRefresh({ delayMs, confirmBusy }) {
     clearDaemonStatusRefreshTimer()
     daemonStatusRefreshTimer = setTimeout(() => {
@@ -364,6 +385,7 @@
       consumedInitialDaemonStatus = true
       const initial = consumeInitialShellDaemonStatus(initialDaemonStatus)
       daemonStatus = initial.daemonStatus
+      daemonStatusInitialized = true
       if (initial.needsRefresh) {
         scheduleDaemonStatusRefresh({
           delayMs: initialDaemonStatus === 'busy' ? 450 : 1200,
@@ -372,6 +394,8 @@
       } else {
         clearDaemonStatusRefreshTimer()
       }
+
+      maybeRetryPendingProjectLoad()
 
       if (includeUpdateCheck) {
         checkDaemonUpdate()
@@ -383,6 +407,7 @@
       const status = await getDaemonStatus()
       const next = applyShellDaemonStatusSnapshot(daemonStatus, status.status, { confirmBusy })
       daemonStatus = next.daemonStatus
+      daemonStatusInitialized = true
       if (next.needsRefresh) {
         scheduleDaemonStatusRefresh({
           delayMs: next.daemonStatus === 'busy' ? 1500 : 750,
@@ -391,6 +416,8 @@
       } else {
         clearDaemonStatusRefreshTimer()
       }
+
+      maybeRetryPendingProjectLoad()
     } catch (error) {
       console.warn('[daemon] status check failed; preserving current status', {
         error_message: errorMessage(error),
@@ -404,16 +431,24 @@
   }
 
   async function checkDaemonUpdate() {
+    if (!canCheckDaemonUpdate(daemonStatus, { initialized: daemonStatusInitialized })) {
+      daemonUpdateAvailable = null
+      return
+    }
+
     try {
       const status = await checkDaemonInstallStatus()
       const installed = Boolean(status?.installed)
       const needsUpdate = Boolean(status?.needsUpdate ?? status?.needs_update)
-      const bundledVersion = status?.bundledVersion ?? status?.bundled_version ?? null
-      if (installed && needsUpdate) {
+      const bundledVersion = String(status?.bundledVersion ?? status?.bundled_version ?? '').trim()
+      const installedVersion = String(status?.version ?? '').trim()
+      if (installed && needsUpdate && installedVersion && bundledVersion) {
         daemonUpdateAvailable = {
-          version: status.version,
+          version: installedVersion,
           bundled_version: bundledVersion,
         }
+      } else {
+        daemonUpdateAvailable = null
       }
     } catch (error) {
       console.warn('[daemon] install-status check failed; skipping update banner', {
@@ -584,13 +619,16 @@
       },
       onDaemonStatus: ({ status }) => {
         daemonStatus = status
+        daemonStatusInitialized = true
         clearDaemonStatusRefreshTimer()
         if (status !== 'connected') {
           sessionBridgeLive = false
           markSessionPresenceStale()
         }
+        maybeRetryPendingProjectLoad()
         clearTimeout(daemonStatusDismissTimer)
         if (status === 'connected') {
+          void checkDaemonUpdate()
           daemonStatusDismissTimer = setTimeout(() => { daemonStatus = null }, 3000)
         }
       },
@@ -696,6 +734,7 @@
     const generation = selectLoadGuard.next()
 
     projectLoadIssues = []
+    pendingProjectLoadRetry = false
     detailLoading = true
     const { detail, commits, latest, sessionList, readme, rels } = await loadProjectSelectionData(projectId, {
       getProject,
@@ -707,12 +746,17 @@
     })
     if (!selectLoadGuard.isCurrent(generation)) return
 
-    const loadIssues = [detail, commits, latest, sessionList, readme, rels]
-      .filter((result) => !result.ok)
-      .map((result) => ({ section: result.section, message: result.message }))
-    projectLoadIssues = loadIssues
-    if (loadIssues.length > 0) {
-      console.warn(`[shell] project ${projectId} loaded with degraded data`, loadIssues)
+    const classifiedLoadIssues = classifyProjectLoadResults(
+      [detail, commits, latest, sessionList, readme, rels],
+      { deferRetryableIssues: daemonRecoveryPending() }
+    )
+    pendingProjectLoadRetry = classifiedLoadIssues.pendingRetry
+    projectLoadIssues = classifiedLoadIssues.visibleIssues
+    if (projectLoadIssues.length > 0) {
+      console.warn(
+        `[shell] project ${projectId} loaded with degraded data`,
+        classifiedLoadIssues.issues
+      )
     }
 
     const nextState = buildProjectSelectionState({

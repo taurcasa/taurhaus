@@ -8,6 +8,10 @@ pub fn read_auth_token() -> Option<String> {
     crate::daemon::auth::read_auth_token()
 }
 
+pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
+    crate::daemon::auth::read_auth_token_for_distro(wsl_distro)
+}
+
 fn json_number_u64(value: u64) -> Value {
     Value::Number(serde_json::Number::from(value))
 }

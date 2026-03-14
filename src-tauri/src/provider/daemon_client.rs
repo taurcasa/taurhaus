@@ -45,6 +45,7 @@ struct Connection {
 pub struct DaemonProvider {
     conn: Mutex<Option<Connection>>,
     addr: String,
+    wsl_distro: Option<String>,
     next_id: AtomicU64,
     connected: AtomicBool,
     /// Timestamp of the last inline reconnection attempt (for rate limiting).
@@ -57,8 +58,8 @@ pub struct DaemonProvider {
 impl DaemonProvider {
     /// Read the daemon's auth token from the well-known file path.
     /// Falls back to reading via WSL on Windows.
-    fn read_auth_token() -> Option<String> {
-        crate::daemon_api::read_auth_token()
+    fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
+        crate::daemon_api::read_auth_token_for_distro(wsl_distro)
     }
 
     fn connect_stream(addr: &str) -> Result<TcpStream, AppError> {
@@ -104,6 +105,10 @@ impl DaemonProvider {
 
     /// Create a new DaemonProvider connected to the given address.
     pub fn connect(addr: &str) -> Result<Self, AppError> {
+        Self::connect_with_distro(addr, None)
+    }
+
+    pub fn connect_with_distro(addr: &str, wsl_distro: Option<&str>) -> Result<Self, AppError> {
         let connect_started_at = Instant::now();
         let stream = Self::connect_stream(addr)?;
         let reader = BufReader::new(stream.try_clone().map_err(|error| {
@@ -113,6 +118,7 @@ impl DaemonProvider {
         let provider = Self {
             conn: Mutex::new(Some(Connection { stream, reader })),
             addr: addr.to_string(),
+            wsl_distro: wsl_distro.map(ToOwned::to_owned),
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(true),
             last_reconnect_attempt: Mutex::new(None),
@@ -133,9 +139,14 @@ impl DaemonProvider {
     /// Useful when the daemon isn't available at startup — the health check
     /// can call `reconnect()` later when the daemon becomes reachable.
     pub fn new_disconnected(addr: &str) -> Self {
+        Self::new_disconnected_with_distro(addr, None)
+    }
+
+    pub fn new_disconnected_with_distro(addr: &str, wsl_distro: Option<&str>) -> Self {
         Self {
             conn: Mutex::new(None),
             addr: addr.to_string(),
+            wsl_distro: wsl_distro.map(ToOwned::to_owned),
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),
@@ -440,9 +451,44 @@ impl DaemonProvider {
             ))
         })?;
 
-        // Attach auth token to the request
+        let auth = self.load_auth_token_if_missing();
+        let response = self.send_request_once(stream, reader, request, timeout, auth.clone())?;
+        if !is_auth_failed_response(&response) {
+            return Ok(response);
+        }
+
+        self.clear_auth_token_cache();
+        let refreshed_auth = self.load_auth_token_if_missing();
+        if refreshed_auth == auth {
+            return Ok(response);
+        }
+
+        self.send_request_once(stream, reader, request, timeout, refreshed_auth)
+    }
+
+    fn load_auth_token_if_missing(&self) -> Option<String> {
+        let mut guard = self.auth_token.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = Self::read_auth_token_for_distro(self.wsl_distro.as_deref());
+        }
+        guard.clone()
+    }
+
+    fn clear_auth_token_cache(&self) {
+        let mut guard = self.auth_token.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = None;
+    }
+
+    fn send_request_once(
+        &self,
+        stream: &mut TcpStream,
+        reader: &mut BufReader<TcpStream>,
+        request: &DaemonRequest,
+        timeout: Duration,
+        auth: Option<String>,
+    ) -> Result<DaemonResponse, AppError> {
         let mut authed_request = request.clone();
-        authed_request.auth = self.load_auth_token_if_missing();
+        authed_request.auth = auth;
 
         let json = serde_json::to_string(&authed_request)
             .map_err(|e| AppError::DaemonProtocol(format!("Failed to serialize request: {e}")))?;
@@ -469,19 +515,8 @@ impl DaemonProvider {
                 _ => AppError::DaemonTransport(format!("Failed to read daemon response: {error}")),
             })?;
 
-        let response: DaemonResponse = serde_json::from_str(&line).map_err(|e| {
-            AppError::DaemonProtocol(format!("Failed to parse daemon response: {e}"))
-        })?;
-
-        Ok(response)
-    }
-
-    fn load_auth_token_if_missing(&self) -> Option<String> {
-        let mut guard = self.auth_token.lock().unwrap_or_else(|e| e.into_inner());
-        if guard.is_none() {
-            *guard = Self::read_auth_token();
-        }
-        guard.clone()
+        serde_json::from_str(&line)
+            .map_err(|e| AppError::DaemonProtocol(format!("Failed to parse daemon response: {e}")))
     }
 
     /// Send a request and extract the result, converting daemon errors to AppError.
@@ -511,6 +546,13 @@ impl DaemonProvider {
             AppError::DaemonProtocol(format!("Failed to deserialize daemon result: {e}"))
         })
     }
+}
+
+fn is_auth_failed_response(response: &DaemonResponse) -> bool {
+    response
+        .error
+        .as_ref()
+        .is_some_and(|error| error.code == "AUTH_FAILED")
 }
 
 impl ProjectProvider for DaemonProvider {
@@ -1126,6 +1168,7 @@ mod tests {
         let provider = DaemonProvider {
             conn: Mutex::new(None),
             addr: "127.0.0.1:1".to_string(),
+            wsl_distro: None,
             next_id: AtomicU64::new(1),
             connected: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(None),

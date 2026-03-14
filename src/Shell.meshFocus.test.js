@@ -85,6 +85,24 @@ vi.mock('./lib/sessionStore.svelte.js', () => ({
 }))
 
 vi.mock('./lib/projectSelection.js', () => ({
+  classifyProjectLoadResults: vi.fn((results, { deferRetryableIssues = false } = {}) => {
+    const issues = results
+      .filter((result) => !result.ok)
+      .map((result) => ({
+        section: result.section,
+        message: result.message,
+        retryableOnDaemonReconnect: Boolean(result.retryableOnDaemonReconnect),
+      }))
+
+    return {
+      issues,
+      pendingRetry:
+        deferRetryableIssues && issues.some((issue) => issue.retryableOnDaemonReconnect),
+      visibleIssues: deferRetryableIssues
+        ? issues.filter((issue) => !issue.retryableOnDaemonReconnect)
+        : issues,
+    }
+  }),
   loadProjectSelectionData: vi.fn(),
   prefetchProjectSelectionData: vi.fn(() => Promise.resolve(null)),
 }))

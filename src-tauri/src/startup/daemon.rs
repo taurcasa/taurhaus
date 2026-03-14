@@ -9,6 +9,7 @@ const STARTUP_DAEMON_RUNTIME_TIMEOUT: std::time::Duration = std::time::Duration:
 
 pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext) {
     let boot_distro = context.wsl_distro.clone();
+    let boot_data_dir = context.data_dir.clone();
     let boot_log_path = context.log_path.clone();
     let boot_connected = context.daemon_connected_at_startup;
     let daemon_addr = context.daemon_addr.clone();
@@ -52,6 +53,13 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
                 let port = crate::daemon::server::DEFAULT_PORT;
                 let provider_state = app.state::<ProviderState>();
                 let Some(ref daemon) = provider_state.daemon else {
+                    crate::startup::watchers::refresh_auxiliary_watches(
+                        &app,
+                        &boot_data_dir,
+                        false,
+                        true,
+                        "daemon_provider_missing_local_fallback",
+                    );
                     emit_startup_event(
                         "warn",
                         "startup.daemon_bootstrap.failed",
@@ -83,6 +91,13 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
 
                 if let Err(error) = crate::commands::daemon::ensure_bundled_daemon_installed(&app) {
                     tracing::warn!(error = %error, "Failed to ensure bundled daemon install during startup");
+                    crate::startup::watchers::refresh_auxiliary_watches(
+                        &app,
+                        &boot_data_dir,
+                        false,
+                        true,
+                        "daemon_install_failed_local_fallback",
+                    );
                     emit_startup_event(
                         "warn",
                         "startup.daemon_bootstrap.failed",
@@ -117,6 +132,13 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
 
                 if connected {
                     tracing::info!("Background bootstrap: daemon connected");
+                    crate::startup::watchers::refresh_auxiliary_watches(
+                        &app,
+                        &boot_data_dir,
+                        true,
+                        false,
+                        "daemon_connected",
+                    );
                     daemon_lifecycle::respawn_daemon_watches(&app);
                     emit_frontend_event(
                         &app,
@@ -144,6 +166,13 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
                         },
                     );
                 } else {
+                    crate::startup::watchers::refresh_auxiliary_watches(
+                        &app,
+                        &boot_data_dir,
+                        false,
+                        true,
+                        "daemon_failed_local_fallback",
+                    );
                     emit_startup_event(
                         "warn",
                         "startup.daemon_bootstrap.failed",

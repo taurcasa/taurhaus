@@ -144,6 +144,15 @@ fn detect_default_distro() -> Result<Option<String>, String> {
     Ok(parse_distro_from_wsl_output(&output.stdout))
 }
 
+fn resolve_wsl_runtime_distro(
+    configured_distro: Option<&str>,
+    detected_default: Option<String>,
+) -> Option<String> {
+    configured_distro
+        .map(ToOwned::to_owned)
+        .or(detected_default)
+}
+
 fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(raw);
     text.lines()
@@ -158,9 +167,11 @@ fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
 ///
 /// Used by FirstRunWizard and startup update detection.
 #[tauri::command]
-pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
+pub fn check_daemon_install_status(
+    provider: State<'_, ProviderState>,
+) -> Result<DaemonInstallStatus, String> {
     let span = IpcCommandSpan::start("check_daemon_install_status");
-    let result = read_daemon_install_status();
+    let result = read_daemon_install_status(provider.wsl_distro.as_deref());
     span.finish_result(&result);
     result
 }
@@ -168,19 +179,20 @@ pub fn check_daemon_install_status() -> Result<DaemonInstallStatus, String> {
 pub(crate) fn ensure_bundled_daemon_installed(
     app: &tauri::AppHandle,
 ) -> Result<Option<OperationResult>, String> {
-    let status = read_daemon_install_status()?;
+    let provider = app.state::<ProviderState>();
+    let status = read_daemon_install_status(provider.wsl_distro.as_deref())?;
     if !daemon_install_required(&status) {
         return Ok(None);
     }
 
-    install_bundled_daemon(app).map(Some)
+    install_bundled_daemon(app, provider.wsl_distro.as_deref()).map(Some)
 }
 
-fn read_daemon_install_status() -> Result<DaemonInstallStatus, String> {
+fn read_daemon_install_status(wsl_distro: Option<&str>) -> Result<DaemonInstallStatus, String> {
     if crate::daemon::launcher::is_native_daemon() {
         check_daemon_install_native()
     } else {
-        check_daemon_install_wsl()
+        check_daemon_install_wsl(wsl_distro)
     }
 }
 
@@ -236,7 +248,9 @@ fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
 }
 
 /// WSL daemon check (Windows): probe WSL, detect distro, check binary inside WSL.
-fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
+fn check_daemon_install_wsl(
+    configured_distro: Option<&str>,
+) -> Result<DaemonInstallStatus, String> {
     // Step 1: Check WSL availability
     let mut wsl_check = wsl_command();
     wsl_check.arg("--status").stdin(std::process::Stdio::null());
@@ -271,8 +285,8 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
     }
 
     // Step 2: Detect default distro
-    let distro = match detect_default_distro()? {
-        Some(d) => d,
+    let distro = match resolve_wsl_runtime_distro(configured_distro, detect_default_distro()?) {
+        Some(distro) => distro,
         None => {
             return Ok(DaemonInstallStatus {
                 installed: false,
@@ -376,12 +390,16 @@ fn check_daemon_install_wsl() -> Result<DaemonInstallStatus, String> {
 #[tauri::command]
 pub fn install_daemon(app: tauri::AppHandle) -> Result<OperationResult, String> {
     let span = IpcCommandSpan::start("install_daemon");
-    let result = install_bundled_daemon(&app);
+    let provider = app.state::<ProviderState>();
+    let result = install_bundled_daemon(&app, provider.wsl_distro.as_deref());
     span.finish_result(&result);
     result
 }
 
-fn install_bundled_daemon(app: &tauri::AppHandle) -> Result<OperationResult, String> {
+fn install_bundled_daemon(
+    app: &tauri::AppHandle,
+    wsl_distro: Option<&str>,
+) -> Result<OperationResult, String> {
     let resource_dir = app
         .path()
         .resource_dir()
@@ -398,7 +416,7 @@ fn install_bundled_daemon(app: &tauri::AppHandle) -> Result<OperationResult, Str
     if crate::daemon::launcher::is_native_daemon() {
         install_daemon_native(&bundled_binary)
     } else {
-        install_daemon_wsl(&bundled_binary)
+        install_daemon_wsl(&bundled_binary, wsl_distro)
     }
 }
 
@@ -474,8 +492,12 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationRe
 }
 
 /// Install daemon via WSL (Windows): copy into WSL distro + chmod + verify.
-fn install_daemon_wsl(bundled_binary: &std::path::Path) -> Result<OperationResult, String> {
-    let distro = detect_default_distro()?.ok_or("No WSL distro configured")?;
+fn install_daemon_wsl(
+    bundled_binary: &std::path::Path,
+    configured_distro: Option<&str>,
+) -> Result<OperationResult, String> {
+    let distro = resolve_wsl_runtime_distro(configured_distro, detect_default_distro()?)
+        .ok_or("No WSL distro configured")?;
     validate_wsl_distro(&distro).map_err(|e| format!("Invalid distro: {e}"))?;
 
     // Translate Windows/WSL paths to Linux where possible; keep native paths.
@@ -724,6 +746,18 @@ mod tests {
             parse_distro_from_wsl_output(raw),
             Some("Ubuntu-22.04".to_string())
         );
+    }
+
+    #[test]
+    fn resolve_wsl_runtime_distro_prefers_configured_provider_distro() {
+        let resolved = resolve_wsl_runtime_distro(Some("Ubuntu"), Some("Debian".to_string()));
+        assert_eq!(resolved.as_deref(), Some("Ubuntu"));
+    }
+
+    #[test]
+    fn resolve_wsl_runtime_distro_falls_back_to_detected_default() {
+        let resolved = resolve_wsl_runtime_distro(None, Some("Ubuntu".to_string()));
+        assert_eq!(resolved.as_deref(), Some("Ubuntu"));
     }
 
     #[test]

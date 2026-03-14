@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  classifyProjectLoadResults,
   createProjectSelectionRequests,
   loadProjectSelectionData,
   prefetchProjectSelectionData,
@@ -27,6 +28,80 @@ describe('projectSelection timeouts', () => {
     expect(result.section).toBe('Session history')
     expect(result.value).toEqual([])
     expect(result.message.toLowerCase()).toContain('session history')
+  })
+
+  it('marks transient daemon reconnect failures as retryable', async () => {
+    const result = await withFallback(
+      'Recent commits',
+      Promise.reject(new Error('Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon')),
+      []
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.retryableOnDaemonReconnect).toBe(true)
+  })
+
+  it('does not mark unrelated project-load failures as retryable', async () => {
+    const result = await withFallback(
+      'README',
+      Promise.reject(new Error('README parsing failed')),
+      null
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.retryableOnDaemonReconnect).toBe(false)
+  })
+
+  it('defers retryable daemon-related issues while startup recovery is still pending', () => {
+    const classified = classifyProjectLoadResults(
+      [
+        {
+          ok: false,
+          section: 'Recent commits',
+          message: 'Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon',
+          retryableOnDaemonReconnect: true,
+        },
+        {
+          ok: false,
+          section: 'README',
+          message: 'README parsing failed',
+          retryableOnDaemonReconnect: false,
+        },
+      ],
+      { deferRetryableIssues: true }
+    )
+
+    expect(classified.pendingRetry).toBe(true)
+    expect(classified.visibleIssues).toEqual([
+      {
+        section: 'README',
+        message: 'README parsing failed',
+        retryableOnDaemonReconnect: false,
+      },
+    ])
+  })
+
+  it('surfaces retryable issues once daemon recovery is no longer pending', () => {
+    const classified = classifyProjectLoadResults(
+      [
+        {
+          ok: false,
+          section: 'Recent commits',
+          message: 'Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon',
+          retryableOnDaemonReconnect: true,
+        },
+      ],
+      { deferRetryableIssues: false }
+    )
+
+    expect(classified.pendingRetry).toBe(false)
+    expect(classified.visibleIssues).toEqual([
+      {
+        section: 'Recent commits',
+        message: 'Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon',
+        retryableOnDaemonReconnect: true,
+      },
+    ])
   })
 
   it('createProjectSelectionRequests resolves all sections with fallbacks when IPC hangs', async () => {

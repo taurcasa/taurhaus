@@ -29,6 +29,15 @@ function projectLoadErrorMessage(err) {
   return formatUserFacingError(err, "Couldn't load project data")
 }
 
+function isTransientDaemonProjectLoadError(message) {
+  const normalized = String(message ?? '').toLowerCase()
+  return (
+    normalized.includes('without a connected daemon') ||
+    normalized.includes('daemon transport error') ||
+    normalized.includes('daemon protocol error: daemon error [auth_failed]')
+  )
+}
+
 /**
  * Resolve a project-load section and fall back to a safe value on error.
  */
@@ -47,6 +56,7 @@ export async function withFallback(
       section,
       timeout_ms: timeoutMs,
       error_message: message,
+      retryable_on_daemon_reconnect: isTransientDaemonProjectLoadError(message),
     })
 
     return {
@@ -54,7 +64,27 @@ export async function withFallback(
       section,
       value: fallback,
       message,
+      retryableOnDaemonReconnect: isTransientDaemonProjectLoadError(message),
     }
+  }
+}
+
+export function classifyProjectLoadResults(results, { deferRetryableIssues = false } = {}) {
+  const issues = results
+    .filter((result) => !result.ok)
+    .map((result) => ({
+      section: result.section,
+      message: result.message,
+      retryableOnDaemonReconnect: Boolean(result.retryableOnDaemonReconnect),
+    }))
+
+  return {
+    issues,
+    pendingRetry:
+      deferRetryableIssues && issues.some((issue) => issue.retryableOnDaemonReconnect),
+    visibleIssues: deferRetryableIssues
+      ? issues.filter((issue) => !issue.retryableOnDaemonReconnect)
+      : issues,
   }
 }
 

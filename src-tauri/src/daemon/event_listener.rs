@@ -36,6 +36,7 @@ pub struct DaemonEventListener {
     /// Mapping from watched Linux path → project_id.
     path_to_project: HashMap<String, String>,
     next_id: u64,
+    wsl_distro: Option<String>,
     /// Auth token read from the daemon's token file.
     auth_token: Option<String>,
 }
@@ -43,6 +44,14 @@ pub struct DaemonEventListener {
 impl DaemonEventListener {
     /// Connect to the daemon for event listening.
     pub fn connect(addr: &str, event_tx: mpsc::Sender<WatchEvent>) -> Result<Self, AppError> {
+        Self::connect_with_distro(addr, event_tx, None)
+    }
+
+    pub fn connect_with_distro(
+        addr: &str,
+        event_tx: mpsc::Sender<WatchEvent>,
+        wsl_distro: Option<&str>,
+    ) -> Result<Self, AppError> {
         let stream = TcpStream::connect(addr).map_err(|e| {
             AppError::Io(std::io::Error::new(
                 e.kind(),
@@ -58,7 +67,7 @@ impl DaemonEventListener {
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
 
         // Read auth token (falls back to WSL on Windows)
-        let auth_token = crate::daemon::auth::read_auth_token();
+        let auth_token = crate::daemon::auth::read_auth_token_for_distro(wsl_distro);
 
         Ok(Self {
             stream,
@@ -66,6 +75,7 @@ impl DaemonEventListener {
             event_tx,
             path_to_project: HashMap::new(),
             next_id: 1,
+            wsl_distro: wsl_distro.map(ToOwned::to_owned),
             auth_token,
         })
     }
@@ -84,7 +94,7 @@ impl DaemonEventListener {
                 path: linux_path.to_string(),
             },
         )
-        .with_auth(self.auth_token.clone());
+        .with_auth(self.load_auth_token_if_missing());
 
         let json = serde_json::to_string(&request)
             .map_err(|e| AppError::InvalidPath(format!("Serialize watch request failed: {e}")))?;
@@ -175,7 +185,7 @@ impl DaemonEventListener {
                 path: linux_path.to_string(),
             },
         )
-        .with_auth(self.auth_token.clone());
+        .with_auth(self.load_auth_token_if_missing());
 
         let json = serde_json::to_string(&request)
             .map_err(|e| AppError::InvalidPath(format!("Serialize unwatch request failed: {e}")))?;
@@ -352,6 +362,14 @@ impl DaemonEventListener {
                 );
             }
         }
+    }
+
+    fn load_auth_token_if_missing(&mut self) -> Option<String> {
+        if self.auth_token.is_none() {
+            self.auth_token =
+                crate::daemon::auth::read_auth_token_for_distro(self.wsl_distro.as_deref());
+        }
+        self.auth_token.clone()
     }
 }
 

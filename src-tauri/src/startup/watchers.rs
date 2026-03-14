@@ -40,8 +40,11 @@ fn should_watch_claude_tasks_locally(
     has_daemon: bool,
     native_daemon: bool,
     prefer_local_when_daemon_connected: bool,
+    allow_disconnected_windows_fallback: bool,
 ) -> bool {
-    !has_daemon || native_daemon || prefer_local_when_daemon_connected
+    native_daemon
+        || prefer_local_when_daemon_connected
+        || (!has_daemon && allow_disconnected_windows_fallback)
 }
 
 pub(crate) fn initialize(
@@ -64,6 +67,7 @@ pub(crate) fn initialize(
         app.handle().clone(),
         context.data_dir.clone(),
         context.daemon_connected_at_startup,
+        context.wsl_distro.is_none() || crate::daemon::launcher::is_native_daemon(),
     );
 
     let periodic_handle = app.handle().clone();
@@ -79,32 +83,54 @@ fn spawn_auxiliary_watch_bootstrap(
     app: tauri::AppHandle,
     data_dir: std::path::PathBuf,
     has_daemon: bool,
+    allow_disconnected_windows_fallback: bool,
 ) {
     spawn_auxiliary_watch_bootstrap_task(move || {
-        let started_at = std::time::Instant::now();
-        emit_watch_bootstrap_event(
-            "info",
-            "startup.watchers.bootstrap.started",
-            "Startup auxiliary watcher bootstrap started",
-            Map::new(),
-        );
-        ensure_task_directory_watch(&app, has_daemon);
-        ensure_tmux_focus_watch(&app, &data_dir);
-
-        let mut fields = Map::new();
-        fields.insert(
-            "duration_ms".to_string(),
-            Value::Number(serde_json::Number::from(
-                started_at.elapsed().as_millis() as u64
-            )),
-        );
-        emit_watch_bootstrap_event(
-            "info",
-            "startup.watchers.bootstrap.completed",
-            "Startup auxiliary watcher bootstrap completed",
-            fields,
+        refresh_auxiliary_watches(
+            &app,
+            &data_dir,
+            has_daemon,
+            allow_disconnected_windows_fallback,
+            "startup",
         );
     });
+}
+
+pub(crate) fn refresh_auxiliary_watches(
+    app: &tauri::AppHandle,
+    data_dir: &std::path::Path,
+    has_daemon: bool,
+    allow_disconnected_windows_fallback: bool,
+    reason: &'static str,
+) {
+    let started_at = std::time::Instant::now();
+    emit_watch_bootstrap_event(
+        "info",
+        "startup.watchers.bootstrap.started",
+        "Startup auxiliary watcher bootstrap started",
+        {
+            let mut fields = Map::new();
+            fields.insert("reason".to_string(), Value::String(reason.to_string()));
+            fields
+        },
+    );
+    ensure_task_directory_watch(app, has_daemon, allow_disconnected_windows_fallback);
+    ensure_tmux_focus_watch(app, data_dir);
+
+    let mut fields = Map::new();
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::Number(serde_json::Number::from(
+            started_at.elapsed().as_millis() as u64
+        )),
+    );
+    emit_watch_bootstrap_event(
+        "info",
+        "startup.watchers.bootstrap.completed",
+        "Startup auxiliary watcher bootstrap completed",
+        fields,
+    );
 }
 
 fn spawn_auxiliary_watch_bootstrap_task<F>(task: F)
@@ -286,8 +312,11 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
-fn ensure_task_directory_watch<T, R>(app: &T, has_daemon: bool)
-where
+fn ensure_task_directory_watch<T, R>(
+    app: &T,
+    has_daemon: bool,
+    allow_disconnected_windows_fallback: bool,
+) where
     R: tauri::Runtime,
     T: Manager<R>,
 {
@@ -306,6 +335,7 @@ where
                 has_daemon,
                 crate::daemon::launcher::is_native_daemon(),
                 prefer_local_when_daemon_connected,
+                allow_disconnected_windows_fallback,
             )
         {
             if let Err(error) =
@@ -322,6 +352,8 @@ where
                     "Watching Claude tasks directory (local)"
                 );
             }
+        } else {
+            watcher_guard.unwatch_project(CLAUDE_TASKS_PROJECT_ID);
         }
     }
 }
@@ -432,12 +464,26 @@ mod tests {
 
     #[test]
     fn claude_tasks_local_watch_prefers_windows_accessible_path_even_with_daemon() {
-        assert!(should_watch_claude_tasks_locally(true, false, true));
+        assert!(should_watch_claude_tasks_locally(true, false, true, false));
     }
 
     #[test]
     fn claude_tasks_local_watch_skips_non_native_daemon_when_no_windows_fallback() {
-        assert!(!should_watch_claude_tasks_locally(true, false, false));
+        assert!(!should_watch_claude_tasks_locally(
+            true, false, false, false
+        ));
+    }
+
+    #[test]
+    fn claude_tasks_local_watch_skips_startup_windows_fallback_while_daemon_recovers() {
+        assert!(!should_watch_claude_tasks_locally(
+            false, false, false, false
+        ));
+    }
+
+    #[test]
+    fn claude_tasks_local_watch_allows_explicit_windows_fallback_after_daemon_failure() {
+        assert!(should_watch_claude_tasks_locally(false, false, false, true));
     }
 
     #[test]

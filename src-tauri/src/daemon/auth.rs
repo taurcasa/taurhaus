@@ -59,6 +59,17 @@ pub fn read_token(path: &std::path::Path) -> io::Result<String> {
 /// daemon wrote. On Windows with a WSL daemon, the native path doesn't exist —
 /// fall back to reading via `wsl.exe` from the Linux filesystem.
 pub fn read_auth_token() -> Option<String> {
+    read_auth_token_for_distro(None)
+}
+
+/// Read the daemon auth token for a specific runtime context.
+///
+/// On Windows, `wsl_distro` ensures we probe the same distro the daemon was
+/// started in rather than whichever distro is currently the default.
+pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
+    #[cfg(not(target_os = "windows"))]
+    let _ = wsl_distro;
+
     // Try native path first (works when daemon runs on same OS)
     if let Some(path) = token_path() {
         if let Ok(token) = read_token(&path) {
@@ -69,7 +80,7 @@ pub fn read_auth_token() -> Option<String> {
     // Fallback: read from WSL filesystem (Windows app + WSL daemon)
     #[cfg(target_os = "windows")]
     {
-        if let Some(token) = read_token_via_wsl() {
+        if let Some(token) = read_token_via_wsl(wsl_distro) {
             return Some(token);
         }
     }
@@ -82,8 +93,12 @@ pub fn read_auth_token() -> Option<String> {
 /// Runs: `wsl.exe -e sh -c 'cat "$HOME/.local/share/taurhaus/daemon.token"'`
 /// Uses `wsl_command()` from launcher to suppress console window flash.
 #[cfg(target_os = "windows")]
-fn read_token_via_wsl() -> Option<String> {
+fn read_token_via_wsl(wsl_distro: Option<&str>) -> Option<String> {
     let mut command = crate::daemon::launcher::wsl_command();
+    if let Some(distro) = wsl_distro {
+        crate::daemon::launcher::validate_wsl_distro(distro).ok()?;
+        command.arg("-d").arg(distro);
+    }
     command
         .args([
             "-e",

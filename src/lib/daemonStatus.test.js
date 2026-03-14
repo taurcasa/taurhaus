@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyShellDaemonStatusSnapshot,
+  canCheckDaemonUpdate,
   consumeInitialShellDaemonStatus,
+  isShellDaemonRecoveryPending,
   normalizeShellDaemonStatus,
 } from './daemonStatus.js'
 
@@ -59,5 +61,18 @@ describe('daemonStatus', () => {
       needsRefresh: false,
       confirmBusyOnRefresh: true,
     })
+  })
+
+  it('treats startup daemon state as recovering until the first status snapshot arrives', () => {
+    // Regression: Shell auto-selected the first project before daemon status
+    // hydration finished, so retryable daemon load failures were surfaced as
+    // final startup warnings instead of being retried after reconnect.
+    expect(isShellDaemonRecoveryPending(null, { initialized: false })).toBe(true)
+    expect(canCheckDaemonUpdate(null, { initialized: false })).toBe(false)
+  })
+
+  it('allows update checks once daemon status has settled healthy', () => {
+    expect(isShellDaemonRecoveryPending(null, { initialized: true })).toBe(false)
+    expect(canCheckDaemonUpdate(null, { initialized: true })).toBe(true)
   })
 })

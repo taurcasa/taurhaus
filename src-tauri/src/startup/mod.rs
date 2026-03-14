@@ -501,12 +501,18 @@ fn connect_daemon_provider(
 ) -> (Option<provider::daemon_client::DaemonProvider>, bool) {
     let port = crate::daemon::server::DEFAULT_PORT;
     let addr = format!("127.0.0.1:{port}");
+    let connect_distro = wsl_distro.clone();
     connect_daemon_provider_with(
         wsl_distro.as_deref(),
         log_path,
         &addr,
         port,
-        provider::daemon_client::DaemonProvider::connect,
+        move |addr| {
+            provider::daemon_client::DaemonProvider::connect_with_distro(
+                addr,
+                connect_distro.as_deref(),
+            )
+        },
         validate_startup_daemon_fast_path,
     )
 }
@@ -602,9 +608,11 @@ where
                 connect_started_at.elapsed().as_millis() as u64,
             );
             (
-                Some(provider::daemon_client::DaemonProvider::new_disconnected(
-                    addr,
-                )),
+                Some(
+                    provider::daemon_client::DaemonProvider::new_disconnected_with_distro(
+                        addr, wsl_distro,
+                    ),
+                ),
                 false,
             )
         }

@@ -102,6 +102,7 @@ static DAEMON_WATCH_RUNTIME: LazyLock<Mutex<DaemonWatchRuntime>> =
 enum DaemonWatchCommand {
     ApplyPlan {
         daemon_addr: String,
+        wsl_distro: Option<String>,
         event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
         desired_plan: DaemonWatchPlan,
         reason: String,
@@ -265,6 +266,7 @@ fn handle_daemon_watch_command(
         }
         DaemonWatchCommand::ApplyPlan {
             daemon_addr,
+            wsl_distro,
             event_tx,
             desired_plan,
             reason,
@@ -279,9 +281,10 @@ fn handle_daemon_watch_command(
             let reconnect_needed =
                 listener.is_none() || current_addr.as_deref() != Some(daemon_addr.as_str());
             if reconnect_needed {
-                *listener = match daemon::event_listener::DaemonEventListener::connect(
+                *listener = match daemon::event_listener::DaemonEventListener::connect_with_distro(
                     &daemon_addr,
                     event_tx,
+                    wsl_distro.as_deref(),
                 ) {
                     Ok(listener) => Some(listener),
                     Err(error) => {
@@ -426,6 +429,7 @@ fn stop_daemon_watch_runtime(reason: &str) {
 
 fn apply_daemon_watch_plan(
     daemon_addr: String,
+    wsl_distro: Option<String>,
     event_tx: std::sync::mpsc::Sender<fs::watcher::WatchEvent>,
     desired_plan: DaemonWatchPlan,
     reason: &str,
@@ -433,6 +437,7 @@ fn apply_daemon_watch_plan(
     let command_tx = ensure_daemon_watch_owner();
     let _ = command_tx.send(DaemonWatchCommand::ApplyPlan {
         daemon_addr,
+        wsl_distro,
         event_tx,
         desired_plan,
         reason: reason.to_string(),
@@ -445,7 +450,7 @@ pub(crate) fn reconcile_daemon_activity_watches(
     thresholds: &models::ActivityThresholds,
     reason: &str,
 ) {
-    let daemon_addr = {
+    let (daemon_addr, wsl_distro) = {
         let provider_state = app.state::<ProviderState>();
         let Some(ref daemon) = provider_state.daemon else {
             stop_daemon_watch_runtime(reason);
@@ -455,7 +460,7 @@ pub(crate) fn reconcile_daemon_activity_watches(
             stop_daemon_watch_runtime(reason);
             return;
         }
-        daemon.addr().to_string()
+        (daemon.addr().to_string(), provider_state.wsl_distro.clone())
     };
 
     let event_tx = {
@@ -475,7 +480,7 @@ pub(crate) fn reconcile_daemon_activity_watches(
     };
 
     let desired_plan = build_daemon_watch_plan(projects, thresholds);
-    apply_daemon_watch_plan(daemon_addr, event_tx, desired_plan, reason);
+    apply_daemon_watch_plan(daemon_addr, wsl_distro, event_tx, desired_plan, reason);
 }
 
 /// Re-register all daemon watches after a reconnection.
