@@ -11,6 +11,7 @@ use tauri::Manager;
 
 const MESH_BINARY_NAME: &str = "mesh";
 const MESH_MANIFEST_RESOURCE: &str = "mesh.manifest.json";
+const WSL_MESH_BINARY_PATH: &str = "$HOME/.local/bin/mesh";
 const WSL_INSTALL_VERSION_JSON_MARKER: &str = "__TAURHAUS_MESH_VERSION_JSON__=";
 const WSL_INSTALL_MEMBER_DAEMON_MARKER: &str = "__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=";
 const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=";
@@ -199,9 +200,10 @@ fn read_mesh_contract_native(binary: &Path) -> Result<MeshCompatibilityContract,
 }
 
 fn read_mesh_contract_wsl(distro: &str, binary: &str) -> Result<MeshCompatibilityContract, String> {
+    let version_script = format!("\"{binary}\" version --json");
     let mut command = wsl_command();
     command
-        .args(["-d", distro, "--", binary, "version", "--json"])
+        .args(["-d", distro, "--", "sh", "-lc", &version_script])
         .stdin(std::process::Stdio::null());
     let output = crate::process_utils::run_command_with_timeout(
         &mut command,
@@ -419,7 +421,14 @@ fn check_mesh_install_wsl(
 
     let mut exists = wsl_command();
     exists
-        .args(["-d", &distro, "--", "test", "-f", "$HOME/.local/bin/mesh"])
+        .args([
+            "-d",
+            &distro,
+            "--",
+            "sh",
+            "-lc",
+            "test -f \"$HOME/.local/bin/mesh\"",
+        ])
         .stdin(std::process::Stdio::null());
     let exists = crate::process_utils::run_command_with_timeout(
         &mut exists,
@@ -433,7 +442,7 @@ fn check_mesh_install_wsl(
         return Ok(mesh_status_not_installed(bundled_contract, true, None));
     }
 
-    match read_mesh_contract_wsl(&distro, "$HOME/.local/bin/mesh") {
+    match read_mesh_contract_wsl(&distro, WSL_MESH_BINARY_PATH) {
         Ok(installed_contract) => {
             let issues = compare_mesh_contracts(bundled_contract, &installed_contract);
             Ok(mesh_status_from_contract(
@@ -876,6 +885,12 @@ mod tests {
         assert!(script.contains(WSL_INSTALL_MEMBER_DAEMON_MARKER));
         assert!(script.contains(WSL_INSTALL_TEAM_DAEMON_MARKER));
         assert!(script.contains("\"$target_path\" version --json"));
+    }
+
+    #[test]
+    fn wsl_mesh_binary_path_is_shell_quoted_for_home_expansion() {
+        let command_line = format!("\"{WSL_MESH_BINARY_PATH}\" version --json");
+        assert_eq!(command_line, "\"$HOME/.local/bin/mesh\" version --json");
     }
 
     #[test]

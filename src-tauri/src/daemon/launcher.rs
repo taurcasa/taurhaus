@@ -85,6 +85,7 @@ pub fn wsl_command() -> std::process::Command {
 /// Max time to wait for daemon to become reachable after spawning.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const STARTUP_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
+const STOP_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Interval between TCP connection attempts while waiting for daemon startup.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -197,7 +198,7 @@ pub enum StartupDaemonValidation {
 
 /// Try to restart the daemon process (called by health check on disconnect).
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
-    try_restart_daemon_with(distro, port, try_start_daemon)
+    try_restart_daemon_with(distro, port, stop_existing_daemon, try_start_daemon)
 }
 
 pub fn validate_startup_daemon_binary(
@@ -289,16 +290,109 @@ fn startup_daemon_binary_is_stale(running_exe: &Path, expected_path: &Path) -> b
             .unwrap_or_else(|_| expected_path.to_path_buf())
 }
 
-fn try_restart_daemon_with<F>(distro: &str, port: u16, starter: F) -> Result<(), std::io::Error>
+fn try_restart_daemon_with<Stop, Start>(
+    distro: &str,
+    port: u16,
+    stopper: Stop,
+    starter: Start,
+) -> Result<(), std::io::Error>
 where
-    F: FnOnce(&str, u16, &Path) -> Result<(), std::io::Error>,
+    Stop: FnOnce(&str, u16, &Path) -> Result<(), std::io::Error>,
+    Start: FnOnce(&str, u16, &Path) -> Result<(), std::io::Error>,
 {
     if !is_native_daemon() {
         validate_wsl_distro(distro).map_err(std::io::Error::other)?;
     }
     tracing::info!(port, distro, "Attempting daemon restart");
     let log_path = health_check_log_path();
+    stopper(distro, port, &log_path)?;
     starter(distro, port, &log_path)
+}
+
+fn stop_existing_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std::io::Error> {
+    if is_native_daemon() {
+        stop_existing_daemon_native(port, log_path)
+    } else {
+        stop_existing_daemon_wsl(distro, port, log_path)
+    }
+}
+
+fn stop_existing_daemon_native(port: u16, log_path: &Path) -> Result<(), std::io::Error> {
+    #[cfg(target_os = "linux")]
+    {
+        let Some(pid) = crate::platform::listening_process_on_port(port) else {
+            return Ok(());
+        };
+        blog(
+            log_path,
+            &format!("Stopping existing daemon pid {pid} on port {port} before restart"),
+        );
+        return terminate_pid_gracefully(pid, log_path);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (port, log_path);
+        Ok(())
+    }
+}
+
+fn stop_existing_daemon_wsl(
+    distro: &str,
+    port: u16,
+    log_path: &Path,
+) -> Result<(), std::io::Error> {
+    blog(
+        log_path,
+        &format!("Stopping existing WSL daemon on port {port} before restart"),
+    );
+
+    let script = format!(
+        concat!(
+            "pid=\"$(ss -ltnp 'sport = :{port}' 2>/dev/null | ",
+            "awk -F'pid=' 'NR > 1 && NF > 1 {{ split($2, parts, \",\"); print parts[1]; exit }}')\"; ",
+            "if [ -z \"$pid\" ]; then ",
+            "  pid=\"$(pgrep -f 'taurhaus-daemon.*--port {port}' | head -n1)\"; ",
+            "fi; ",
+            "if [ -z \"$pid\" ]; then exit 0; fi; ",
+            "kill -TERM \"$pid\" 2>/dev/null || true; ",
+            "i=0; ",
+            "while [ \"$i\" -lt 20 ]; do ",
+            "  kill -0 \"$pid\" 2>/dev/null || exit 0; ",
+            "  sleep 0.1; ",
+            "  i=$((i + 1)); ",
+            "done; ",
+            "kill -KILL \"$pid\" 2>/dev/null || true; ",
+            "i=0; ",
+            "while [ \"$i\" -lt 20 ]; do ",
+            "  kill -0 \"$pid\" 2>/dev/null || exit 0; ",
+            "  sleep 0.1; ",
+            "  i=$((i + 1)); ",
+            "done; ",
+            "exit 1"
+        ),
+        port = port
+    );
+
+    let mut command = wsl_command();
+    command
+        .args(["-d", distro, "--", "sh", "-lc", &script])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        STOP_COMMAND_TIMEOUT,
+        "wsl stop existing taurhaus-daemon",
+    )?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(std::io::Error::other(format!(
+        "Failed to stop existing WSL daemon on port {port}"
+    )))
 }
 
 /// Resolve the daemon binary path.
@@ -758,6 +852,7 @@ mod tests {
     use super::*;
     use crate::daemon::server::DEFAULT_PORT;
     use crate::provider::local::LocalProvider;
+    use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
@@ -766,6 +861,10 @@ mod tests {
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
+    }
+
+    struct ExternalListener {
+        child: Child,
     }
 
     impl Drop for TestDaemon {
@@ -777,11 +876,29 @@ mod tests {
         }
     }
 
+    impl Drop for ExternalListener {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
     fn reserve_free_port() -> u16 {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
         port
+    }
+
+    fn wait_for_listener(port: u16, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
     }
 
     fn spawn_test_daemon(port: u16, startup_delay: Duration) -> TestDaemon {
@@ -805,6 +922,30 @@ mod tests {
             _heavy_guard: heavy_guard,
             handle: Some(handle),
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn spawn_external_listener(port: u16) -> ExternalListener {
+        let script = r#"
+import socket, sys, time
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1])))
+s.listen(16)
+time.sleep(3600)
+"#;
+        let child = Command::new("python3")
+            .args(["-c", script, &port.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn external listener");
+        assert!(
+            wait_for_listener(port, Duration::from_secs(2)),
+            "external listener on port {port} should accept connections"
+        );
+        ExternalListener { child }
     }
 
     fn test_log_path() -> PathBuf {
@@ -982,12 +1123,17 @@ mod tests {
         // the distro string against WSL name rules.
         if is_native_daemon() {
             let mut starter_called = false;
-            let result = try_restart_daemon_with("native", 0, |distro, port, _log_path| {
-                starter_called = true;
-                assert_eq!(distro, "native");
-                assert_eq!(port, 0);
-                Err(std::io::Error::other("simulated starter error"))
-            });
+            let result = try_restart_daemon_with(
+                "native",
+                0,
+                |_distro, _port, _log_path| Ok(()),
+                |distro, port, _log_path| {
+                    starter_called = true;
+                    assert_eq!(distro, "native");
+                    assert_eq!(port, 0);
+                    Err(std::io::Error::other("simulated starter error"))
+                },
+            );
 
             assert!(starter_called, "starter should be called on native");
             assert!(result.is_err(), "mocked starter error should propagate");
@@ -997,6 +1143,48 @@ mod tests {
                 "Should not fail on distro validation, got: {err}"
             );
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn restart_stops_stale_listener_before_starting_replacement() {
+        if !is_native_daemon() {
+            return;
+        }
+
+        let port = reserve_free_port();
+        let mut stale_listener = spawn_external_listener(port);
+        let mut starter_called = false;
+
+        let result = try_restart_daemon_with(
+            "native",
+            port,
+            |distro, restart_port, log_path| stop_existing_daemon(distro, restart_port, log_path),
+            |_distro, restart_port, _log_path| {
+                starter_called = true;
+                let socket = std::net::TcpListener::bind(("127.0.0.1", restart_port))?;
+                drop(socket);
+                Ok(())
+            },
+        );
+
+        assert!(
+            result.is_ok(),
+            "restart should clear the stale listener and free the port"
+        );
+        assert!(
+            starter_called,
+            "starter should run after stale listener eviction"
+        );
+
+        let exit_status = stale_listener
+            .child
+            .wait()
+            .expect("stale listener process should exit after termination");
+        assert!(
+            !exit_status.success(),
+            "stale listener should be terminated during restart"
+        );
     }
 
     #[cfg(target_os = "linux")]

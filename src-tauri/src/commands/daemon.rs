@@ -317,9 +317,9 @@ fn check_daemon_install_wsl(
             "-d",
             &distro,
             "--",
-            "test",
-            "-f",
-            "$HOME/.local/bin/taurhaus-daemon",
+            "sh",
+            "-lc",
+            "test -f \"$HOME/.local/bin/taurhaus-daemon\"",
         ])
         .stdin(std::process::Stdio::null());
     let exists = crate::process_utils::run_command_with_timeout(
@@ -348,8 +348,9 @@ fn check_daemon_install_wsl(
             "-d",
             &distro,
             "--",
-            "$HOME/.local/bin/taurhaus-daemon",
-            "--version",
+            "sh",
+            "-lc",
+            "\"$HOME/.local/bin/taurhaus-daemon\" --version",
         ])
         .stdin(std::process::Stdio::null());
     let version_output = crate::process_utils::run_command_with_timeout(
