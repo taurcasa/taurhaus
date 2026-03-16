@@ -10,6 +10,27 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Stop-TaurhausProcesses {
+    $processes = Get-Process -Name "taurhaus" -ErrorAction SilentlyContinue
+    if (-not $processes) {
+        return
+    }
+
+    Write-Host "Stopping running taurhaus.exe instances before silent install..."
+    $processes | Stop-Process -Force -ErrorAction SilentlyContinue
+
+    for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        $remaining = Get-Process -Name "taurhaus" -ErrorAction SilentlyContinue
+        if (-not $remaining) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    $remainingIds = (Get-Process -Name "taurhaus" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) -join ", "
+    throw "Failed to stop running taurhaus.exe instances before silent install. remaining_pids=$remainingIds"
+}
+
 function Get-BunPath {
     $bunBinDir = Join-Path $env:USERPROFILE ".bun\bin"
     $bunFallback = Join-Path $bunBinDir "bun.exe"
@@ -30,6 +51,8 @@ if (-not (Test-Path -LiteralPath $InstallerPath)) {
 if (-not (Test-Path -LiteralPath $BuiltExePath)) {
     throw "Built exe not found: $BuiltExePath"
 }
+
+Stop-TaurhausProcesses
 
 Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait
 
