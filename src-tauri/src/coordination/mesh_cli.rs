@@ -77,7 +77,7 @@ pub fn resolve_wsl_home_for_coordination() -> Option<String> {
     }
 
     let output = wsl_command_for_coordination()
-        .args(["--", "sh", "-c", "echo $HOME"])
+        .args(["-e", "sh", "-c", "echo $HOME"])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()
@@ -115,7 +115,7 @@ pub fn resolve_wsl_binary_path(binary_name: &str) -> Option<String> {
 
     let cmd = format!("command -v {binary_name}");
     let output = wsl_command_for_coordination()
-        .args(["--", "sh", "-c", &cmd])
+        .args(["-e", "sh", "-c", &cmd])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()

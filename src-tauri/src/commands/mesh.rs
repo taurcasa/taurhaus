@@ -203,7 +203,11 @@ fn read_mesh_contract_wsl(distro: &str, binary: &str) -> Result<MeshCompatibilit
     let version_script = format!("\"{binary}\" version --json");
     let mut command = wsl_command();
     command
-        .args(["-d", distro, "--", "sh", "-lc", &version_script])
+        .args(crate::daemon::launcher::wsl_shell_args(
+            distro,
+            "-lc",
+            &version_script,
+        ))
         .stdin(std::process::Stdio::null());
     let output = crate::process_utils::run_command_with_timeout(
         &mut command,
@@ -421,14 +425,11 @@ fn check_mesh_install_wsl(
 
     let mut exists = wsl_command();
     exists
-        .args([
-            "-d",
+        .args(crate::daemon::launcher::wsl_shell_args(
             &distro,
-            "--",
-            "sh",
             "-lc",
             "test -f \"$HOME/.local/bin/mesh\"",
-        ])
+        ))
         .stdin(std::process::Stdio::null());
     let exists = crate::process_utils::run_command_with_timeout(
         &mut exists,
@@ -570,16 +571,13 @@ fn install_mesh_wsl(
 
     let mut command = wsl_command();
     command
-        .args([
-            "-d",
+        .args(crate::daemon::launcher::wsl_shell_args(
             &distro,
-            "--",
-            "sh",
             "-lc",
             install_mesh_wsl_script(),
-            "taurhaus-install",
-            &wsl_source_path,
-        ])
+        ))
+        .arg("taurhaus-install")
+        .arg(&wsl_source_path)
         .stdin(std::process::Stdio::null());
     let output = crate::process_utils::run_command_with_timeout(
         &mut command,

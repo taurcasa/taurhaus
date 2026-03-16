@@ -82,6 +82,17 @@ pub fn wsl_command() -> std::process::Command {
     cmd
 }
 
+pub fn wsl_shell_args(distro: &str, shell_flag: &str, script: &str) -> Vec<String> {
+    vec![
+        "-d".to_string(),
+        distro.to_string(),
+        "-e".to_string(),
+        "sh".to_string(),
+        shell_flag.to_string(),
+        script.to_string(),
+    ]
+}
+
 /// Max time to wait for daemon to become reachable after spawning.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const STARTUP_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
@@ -376,7 +387,7 @@ fn stop_existing_daemon_wsl(
 
     let mut command = wsl_command();
     command
-        .args(["-d", distro, "--", "sh", "-lc", &script])
+        .args(wsl_shell_args(distro, "-lc", &script))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -417,7 +428,7 @@ fn daemon_binary_path(distro: &str) -> Result<String, std::io::Error> {
 fn resolve_wsl_home(distro: &str) -> Result<String, std::io::Error> {
     let mut command = wsl_command();
     command
-        .args(["-d", distro, "--", "sh", "-c", "echo $HOME"])
+        .args(wsl_shell_args(distro, "-c", "echo $HOME"))
         .stdin(std::process::Stdio::null());
     let output = crate::process_utils::run_command_with_timeout(
         &mut command,
@@ -856,6 +867,21 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+
+    #[test]
+    fn wsl_shell_args_use_exec_mode() {
+        assert_eq!(
+            wsl_shell_args("Ubuntu", "-lc", "echo hi"),
+            vec![
+                "-d".to_string(),
+                "Ubuntu".to_string(),
+                "-e".to_string(),
+                "sh".to_string(),
+                "-lc".to_string(),
+                "echo hi".to_string(),
+            ]
+        );
+    }
 
     struct TestDaemon {
         shutdown: Arc<AtomicBool>,

@@ -294,8 +294,53 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
         if let Some(ref distro) = boot_distro {
             crate::daemon::launcher::ensure_tmux_session(distro, &boot_log_path);
         }
-        if let Err(error) = crate::commands::mesh::ensure_bundled_mesh_installed(&app) {
-            tracing::warn!(error = %error, "Failed to ensure bundled mesh install during startup");
+
+        emit_startup_event(
+            "info",
+            "startup.mesh_install.started",
+            "Startup mesh install check started",
+            Map::new(),
+        );
+        match crate::commands::mesh::ensure_bundled_mesh_installed(&app) {
+            Ok(Some(result)) => {
+                let mut fields = Map::new();
+                fields.insert("status".to_string(), Value::String("installed".to_string()));
+                fields.insert("message".to_string(), Value::String(result.message.clone()));
+                emit_startup_event(
+                    "info",
+                    "startup.mesh_install.completed",
+                    "Startup mesh install check completed",
+                    fields,
+                );
+            }
+            Ok(None) => {
+                let mut fields = Map::new();
+                fields.insert(
+                    "status".to_string(),
+                    Value::String("already_current".to_string()),
+                );
+                emit_startup_event(
+                    "info",
+                    "startup.mesh_install.completed",
+                    "Startup mesh install check completed",
+                    fields,
+                );
+            }
+            Err(error) => {
+                tracing::warn!(error = %error, "Failed to ensure bundled mesh install during startup");
+                let mut fields = Map::new();
+                fields.insert(
+                    "error.code".to_string(),
+                    Value::String("STARTUP_MESH_INSTALL_FAILED".to_string()),
+                );
+                fields.insert("error.message".to_string(), Value::String(error));
+                emit_startup_event(
+                    "warn",
+                    "startup.mesh_install.failed",
+                    "Startup mesh install check failed",
+                    fields,
+                );
+            }
         }
     });
 }

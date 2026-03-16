@@ -313,14 +313,11 @@ fn check_daemon_install_wsl(
     // Step 3: Check if binary exists
     let mut exists = wsl_command();
     exists
-        .args([
-            "-d",
+        .args(crate::daemon::launcher::wsl_shell_args(
             &distro,
-            "--",
-            "sh",
             "-lc",
             "test -f \"$HOME/.local/bin/taurhaus-daemon\"",
-        ])
+        ))
         .stdin(std::process::Stdio::null());
     let exists = crate::process_utils::run_command_with_timeout(
         &mut exists,
@@ -344,14 +341,11 @@ fn check_daemon_install_wsl(
     // Step 4: Get installed version
     let mut version_output = wsl_command();
     version_output
-        .args([
-            "-d",
+        .args(crate::daemon::launcher::wsl_shell_args(
             &distro,
-            "--",
-            "sh",
             "-lc",
             "\"$HOME/.local/bin/taurhaus-daemon\" --version",
-        ])
+        ))
         .stdin(std::process::Stdio::null());
     let version_output = crate::process_utils::run_command_with_timeout(
         &mut version_output,
@@ -508,16 +502,13 @@ fn install_daemon_wsl(
 
     let mut command = wsl_command();
     command
-        .args([
-            "-d",
+        .args(crate::daemon::launcher::wsl_shell_args(
             &distro,
-            "--",
-            "sh",
             "-lc",
             install_daemon_wsl_script(),
-            "taurhaus-install",
-            &wsl_source_path,
-        ])
+        ))
+        .arg("taurhaus-install")
+        .arg(&wsl_source_path)
         .stdin(std::process::Stdio::null());
     let output = crate::process_utils::run_command_with_timeout(
         &mut command,

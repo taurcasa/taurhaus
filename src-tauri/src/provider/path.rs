@@ -11,9 +11,12 @@
 //!
 //! The daemon expects native Linux paths, so we translate at the boundary.
 
+use std::borrow::Cow;
+
 /// Check whether a path is a WSL UNC path.
 pub fn is_wsl_path(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
+    let normalized = normalize_windows_path_prefix(path);
+    let lower = normalized.to_ascii_lowercase();
     lower.starts_with(r"\\wsl$\") || lower.starts_with(r"\\wsl.localhost\")
 }
 
@@ -33,7 +36,8 @@ pub fn requires_daemon_git_trust(path: &str) -> bool {
 /// Returns `None` if the path isn't a valid WSL UNC path or has no content
 /// after the distro name.
 pub fn wsl_unc_to_linux(unc_path: &str) -> Option<String> {
-    let stripped = strip_wsl_prefix(unc_path)?;
+    let normalized = normalize_windows_path_prefix(unc_path);
+    let stripped = strip_wsl_prefix(normalized.as_ref())?;
     // Skip the distro name (first path segment), rest is the Linux path
     let sep_pos = stripped.find('\\')?;
     let after_distro = &stripped[sep_pos..];
@@ -49,7 +53,8 @@ pub fn wsl_unc_to_linux(unc_path: &str) -> Option<String> {
 /// `\\wsl$\Ubuntu\home\user` → `Some("Ubuntu")`
 /// `\\wsl.localhost\Debian\...` → `Some("Debian")`
 pub fn wsl_distro_from_path(unc_path: &str) -> Option<String> {
-    let stripped = strip_wsl_prefix(unc_path)?;
+    let normalized = normalize_windows_path_prefix(unc_path);
+    let stripped = strip_wsl_prefix(normalized.as_ref())?;
     let distro = stripped.split('\\').next()?;
     if distro.is_empty() {
         return None;
@@ -73,7 +78,8 @@ pub fn linux_to_wsl_unc(linux_path: &str, distro: &str) -> String {
 
 /// Check if a path is a Windows drive path (e.g., `D:\foo` or `C:\Users`).
 pub fn is_windows_drive_path(path: &str) -> bool {
-    let bytes = path.as_bytes();
+    let normalized = normalize_windows_path_prefix(path);
+    let bytes = normalized.as_bytes();
     bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
@@ -87,11 +93,12 @@ pub fn is_windows_drive_path(path: &str) -> bool {
 ///
 /// Returns `None` if the path isn't a Windows drive path.
 pub fn windows_drive_to_linux(path: &str) -> Option<String> {
-    if !is_windows_drive_path(path) {
+    let normalized = normalize_windows_path_prefix(path);
+    if !is_windows_drive_path(normalized.as_ref()) {
         return None;
     }
-    let drive = (path.as_bytes()[0]).to_ascii_lowercase() as char;
-    let rest = &path[2..]; // includes leading \ or /
+    let drive = (normalized.as_bytes()[0]).to_ascii_lowercase() as char;
+    let rest = &normalized[2..]; // includes leading \ or /
     let linux_rest = rest.replace('\\', "/");
     Some(format!("/mnt/{drive}{linux_rest}"))
 }
@@ -183,6 +190,17 @@ fn strip_wsl_prefix(path: &str) -> Option<&str> {
     } else {
         None
     }
+}
+
+fn normalize_windows_path_prefix(path: &str) -> Cow<'_, str> {
+    let lower = path.to_ascii_lowercase();
+    if lower.starts_with(r"\\?\unc\") {
+        return Cow::Owned(format!(r"\\{}", &path[8..]));
+    }
+    if lower.starts_with(r"\\?\") {
+        return Cow::Borrowed(&path[4..]);
+    }
+    Cow::Borrowed(path)
 }
 
 #[cfg(test)]
@@ -412,6 +430,22 @@ mod tests {
         assert_eq!(windows_drive_to_linux(r"\\wsl$\Ubuntu\home"), None);
     }
 
+    #[test]
+    fn converts_verbatim_drive_path_to_linux() {
+        assert_eq!(
+            windows_drive_to_linux(r"\\?\C:\Users\me\code"),
+            Some("/mnt/c/Users/me/code".to_string())
+        );
+    }
+
+    #[test]
+    fn converts_verbatim_unc_wsl_path_to_linux() {
+        assert_eq!(
+            wsl_unc_to_linux(r"\\?\UNC\wsl.localhost\Ubuntu\home\user"),
+            Some("/home/user".to_string())
+        );
+    }
+
     // -- linux_mount_to_windows --
 
     #[test]
@@ -464,6 +498,10 @@ mod tests {
         assert_eq!(
             to_linux(r"D:\projects\foo"),
             Some("/mnt/d/projects/foo".to_string())
+        );
+        assert_eq!(
+            to_linux(r"\\?\C:\Users\me\code"),
+            Some("/mnt/c/Users/me/code".to_string())
         );
         assert_eq!(to_linux("/already/linux"), None);
     }
