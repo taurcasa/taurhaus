@@ -589,7 +589,12 @@ pub(crate) fn respawn_daemon_watches(app: &AppHandle) {
 /// On disconnect: attempts restart and reconnection (max 3 attempts per session).
 /// Emits `daemon-status` events to the frontend for UI indicators.
 /// Works for both initially-connected and initially-disconnected providers.
-pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
+pub(crate) fn daemon_health_check(
+    app: AppHandle,
+    connected_at_startup: bool,
+    bootstrap_complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
 
     const CHECK_INTERVAL: Duration = Duration::from_secs(30);
@@ -700,6 +705,14 @@ pub(crate) fn daemon_health_check(app: AppHandle, connected_at_startup: bool) {
                         .is_ok()
                 },
                 || {
+                    // Don't restart the daemon while bootstrap is still running —
+                    // two threads doing stop/start concurrently race and kill each
+                    // other's daemon, exhausting restart attempts before either
+                    // succeeds.
+                    if !bootstrap_complete.load(Ordering::Acquire) {
+                        tracing::debug!("Skipping daemon restart — bootstrap still in progress");
+                        return false;
+                    }
                     let Some(distro) = distro else {
                         return false;
                     };
@@ -1269,6 +1282,36 @@ mod tests {
 
         assert_eq!(result, DaemonRecoveryResult::Failed);
         assert_eq!(reconnect_calls, 2);
+        assert_eq!(restart_calls, 1);
+    }
+
+    // Regression: health check and bootstrap both called try_restart_daemon
+    // concurrently — each thread's stop killed the other's freshly-spawned
+    // daemon, exhausting restart attempts before either succeeded.
+    // Fix: the restart closure checks `bootstrap_complete` and returns false
+    // (no restart, no attempt counted) while bootstrap is still in progress.
+    #[test]
+    fn recover_daemon_connection_skips_restart_when_gate_returns_false() {
+        let mut reconnect_calls = 0;
+        let mut restart_calls = 0;
+
+        let result = recover_daemon_connection(
+            || {
+                reconnect_calls += 1;
+                false
+            },
+            || {
+                // Simulates the bootstrap_complete gate returning false
+                restart_calls += 1;
+                false
+            },
+        );
+
+        assert_eq!(result, DaemonRecoveryResult::Failed);
+        assert_eq!(
+            reconnect_calls, 1,
+            "should not retry reconnect after skipped restart"
+        );
         assert_eq!(restart_calls, 1);
     }
 

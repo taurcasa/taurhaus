@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{daemon_lifecycle, ProviderState};
@@ -7,7 +10,11 @@ use super::SetupContext;
 
 const STARTUP_DAEMON_RUNTIME_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
-pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext) {
+pub(crate) fn spawn_background_bootstrap(
+    app: AppHandle,
+    context: &SetupContext,
+    bootstrap_complete: Arc<AtomicBool>,
+) {
     let boot_distro = context.wsl_distro.clone();
     let boot_data_dir = context.data_dir.clone();
     let boot_log_path = context.log_path.clone();
@@ -204,6 +211,9 @@ pub(crate) fn spawn_background_bootstrap(app: AppHandle, context: &SetupContext)
             }
         }
 
+        // Signal that bootstrap is done so the health check can take over.
+        bootstrap_complete.store(true, Ordering::Release);
+
         let provider_state = app.state::<ProviderState>();
         if let Some(ref daemon) = provider_state.daemon {
             if daemon.is_connected() {
@@ -388,12 +398,20 @@ fn ensure_expected_daemon_runtime(
     Ok(())
 }
 
-pub(crate) fn start_runtime_monitors(app: AppHandle, context: &SetupContext) {
+pub(crate) fn start_runtime_monitors(
+    app: AppHandle,
+    context: &SetupContext,
+    bootstrap_complete: Arc<AtomicBool>,
+) {
     if context.wsl_distro.is_some() {
         let health_handle = app.clone();
         let connected_at_startup = context.daemon_connected_at_startup;
         std::thread::spawn(move || {
-            daemon_lifecycle::daemon_health_check(health_handle, connected_at_startup);
+            daemon_lifecycle::daemon_health_check(
+                health_handle,
+                connected_at_startup,
+                bootstrap_complete,
+            );
         });
 
         daemon_lifecycle::start_session_updates_bridge(app);

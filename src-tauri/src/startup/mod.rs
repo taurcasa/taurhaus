@@ -662,8 +662,9 @@ fn run_startup_orchestration(
     app: &mut tauri::App,
     context: &SetupContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    daemon::spawn_background_bootstrap(app.handle().clone(), context);
-    daemon::start_runtime_monitors(app.handle().clone(), context);
+    let bootstrap_complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    daemon::spawn_background_bootstrap(app.handle().clone(), context, bootstrap_complete.clone());
+    daemon::start_runtime_monitors(app.handle().clone(), context, bootstrap_complete);
     #[cfg(feature = "mesh-bridged-backend")]
     spawn_coordination_self_heal_monitor(app.handle().clone());
     let watchers_started_at = Instant::now();
