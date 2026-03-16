@@ -144,11 +144,15 @@ fn command_flag_value<'a>(args: &'a [&'a str], flag: &str) -> Option<&'a str> {
 fn run_system_command(invocation: &CommandInvocation) -> std::io::Result<std::process::Output> {
     if invocation.program == "wsl" {
         let mut cmd = mesh_cli::wsl_command_for_coordination();
-        cmd.args(&invocation.args).output()
+        cmd.args(&invocation.args)
+            .stdin(std::process::Stdio::null())
+            .output()
     } else {
         let mut cmd = Command::new(&invocation.program);
         apply_background_command_settings(&mut cmd);
-        cmd.args(&invocation.args).output()
+        cmd.args(&invocation.args)
+            .stdin(std::process::Stdio::null())
+            .output()
     }
 }
 

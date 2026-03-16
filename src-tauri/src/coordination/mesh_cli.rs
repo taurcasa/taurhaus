@@ -68,6 +68,9 @@ pub fn wsl_command_for_coordination() -> Command {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    // GUI apps have no stdin; inheriting a broken handle causes wsl.exe
+    // to fail or conhost.exe to spin CPU on Windows.
+    cmd.stdin(std::process::Stdio::null());
     cmd
 }
 

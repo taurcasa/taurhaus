@@ -128,6 +128,7 @@ pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
     apply_background_command_settings(&mut command);
     let mut child = command
         .args(args)
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
