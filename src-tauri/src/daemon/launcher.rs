@@ -358,32 +358,7 @@ fn stop_existing_daemon_wsl(
         &format!("Stopping existing WSL daemon on port {port} before restart"),
     );
 
-    let script = format!(
-        concat!(
-            "pid=\"$(ss -ltnp 'sport = :{port}' 2>/dev/null | ",
-            "awk -F'pid=' 'NR > 1 && NF > 1 {{ split($2, parts, \",\"); print parts[1]; exit }}')\"; ",
-            "if [ -z \"$pid\" ]; then ",
-            "  pid=\"$(pgrep -f 'taurhaus-daemon.*--port {port}' | head -n1)\"; ",
-            "fi; ",
-            "if [ -z \"$pid\" ]; then exit 0; fi; ",
-            "kill -TERM \"$pid\" 2>/dev/null || true; ",
-            "i=0; ",
-            "while [ \"$i\" -lt 20 ]; do ",
-            "  kill -0 \"$pid\" 2>/dev/null || exit 0; ",
-            "  sleep 0.1; ",
-            "  i=$((i + 1)); ",
-            "done; ",
-            "kill -KILL \"$pid\" 2>/dev/null || true; ",
-            "i=0; ",
-            "while [ \"$i\" -lt 20 ]; do ",
-            "  kill -0 \"$pid\" 2>/dev/null || exit 0; ",
-            "  sleep 0.1; ",
-            "  i=$((i + 1)); ",
-            "done; ",
-            "exit 1"
-        ),
-        port = port
-    );
+    let script = stop_existing_daemon_wsl_script(port);
 
     let mut command = wsl_command();
     command
@@ -404,6 +379,35 @@ fn stop_existing_daemon_wsl(
     Err(std::io::Error::other(format!(
         "Failed to stop existing WSL daemon on port {port}"
     )))
+}
+
+fn stop_existing_daemon_wsl_script(port: u16) -> String {
+    format!(
+        concat!(
+            "pid=\"$(ss -ltnp 'sport = :{port}' 2>/dev/null | ",
+            "awk -F'pid=' 'NR > 1 && NF > 1 {{ split($2, parts, \",\"); print parts[1]; exit }}')\"; ",
+            "if [ -z \"$pid\" ]; then ",
+            "  pid=\"$(pgrep -f '[t]aurhaus-daemon.*--port {port}' | head -n1)\"; ",
+            "fi; ",
+            "if [ -z \"$pid\" ]; then exit 0; fi; ",
+            "kill -TERM \"$pid\" 2>/dev/null || true; ",
+            "i=0; ",
+            "while [ \"$i\" -lt 20 ]; do ",
+            "  kill -0 \"$pid\" 2>/dev/null || exit 0; ",
+            "  sleep 0.1; ",
+            "  i=$((i + 1)); ",
+            "done; ",
+            "kill -KILL \"$pid\" 2>/dev/null || true; ",
+            "i=0; ",
+            "while [ \"$i\" -lt 20 ]; do ",
+            "  kill -0 \"$pid\" 2>/dev/null || exit 0; ",
+            "  sleep 0.1; ",
+            "  i=$((i + 1)); ",
+            "done; ",
+            "exit 1"
+        ),
+        port = port
+    )
 }
 
 /// Resolve the daemon binary path.
@@ -881,6 +885,13 @@ mod tests {
                 "echo hi".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn stop_existing_daemon_wsl_script_avoids_matching_launcher_shell() {
+        let script = stop_existing_daemon_wsl_script(17233);
+        assert!(script.contains("pgrep -f '[t]aurhaus-daemon.*--port 17233'"));
+        assert!(!script.contains("pgrep -f 'taurhaus-daemon.*--port 17233'"));
     }
 
     struct TestDaemon {
