@@ -982,6 +982,15 @@ mod tests {
     }
 
     #[test]
+    fn validate_forward_slash_wsl_git_repo_uses_filesystem_marker_instead_of_libgit2_open() {
+        let dir = temp_project_dir();
+        assert!(detect_git_repo_for_validation(
+            "//wsl$/Ubuntu/home/user/repo",
+            dir.path()
+        ));
+    }
+
+    #[test]
     fn validate_wsl_non_git_dir_rejects_missing_git_marker() {
         let dir = TempDir::new().unwrap();
         assert!(!detect_git_repo_for_validation(

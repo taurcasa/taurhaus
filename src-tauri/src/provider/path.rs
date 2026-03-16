@@ -194,13 +194,24 @@ fn strip_wsl_prefix(path: &str) -> Option<&str> {
 
 fn normalize_windows_path_prefix(path: &str) -> Cow<'_, str> {
     let lower = path.to_ascii_lowercase();
-    if lower.starts_with(r"\\?\unc\") {
-        return Cow::Owned(format!(r"\\{}", &path[8..]));
+    let without_verbatim = if lower.starts_with(r"\\?\unc\") {
+        Cow::Owned(format!(r"\\{}", &path[8..]))
+    } else if lower.starts_with(r"\\?\") {
+        Cow::Borrowed(&path[4..])
+    } else {
+        Cow::Borrowed(path)
+    };
+
+    let lower = without_verbatim.to_ascii_lowercase();
+    if lower.starts_with("//wsl$/")
+        || lower.starts_with("//wsl.localhost/")
+        || lower.starts_with(r"\\wsl$/")
+        || lower.starts_with(r"\\wsl.localhost/")
+    {
+        return Cow::Owned(without_verbatim.replace('/', r"\"));
     }
-    if lower.starts_with(r"\\?\") {
-        return Cow::Borrowed(&path[4..]);
-    }
-    Cow::Borrowed(path)
+
+    without_verbatim
 }
 
 #[cfg(test)]
@@ -246,6 +257,12 @@ mod tests {
     }
 
     #[test]
+    fn detects_wsl_path_with_forward_slash_unc_prefix() {
+        assert!(is_wsl_path("//wsl$/Ubuntu/home/user/projects"));
+        assert!(is_wsl_path("//wsl.localhost/Ubuntu/home/user/projects"));
+    }
+
+    #[test]
     fn rejects_windows_local_path() {
         assert!(!is_wsl_path(r"C:\Users\me\projects"));
         assert!(!is_wsl_path(r"D:\code"));
@@ -285,6 +302,14 @@ mod tests {
         assert_eq!(
             wsl_unc_to_linux(r"\\wsl.localhost\Ubuntu\home\user"),
             Some("/home/user".to_string())
+        );
+    }
+
+    #[test]
+    fn converts_forward_slash_wsl_unc_to_linux() {
+        assert_eq!(
+            wsl_unc_to_linux("//wsl$/Ubuntu/home/user/projects/foo"),
+            Some("/home/user/projects/foo".to_string())
         );
     }
 
@@ -524,6 +549,14 @@ mod tests {
     fn normalize_project_path_converts_wsl_unc_to_linux() {
         assert_eq!(
             normalize_project_path(r"\\wsl.localhost\Ubuntu\home\user\proj\"),
+            "/home/user/proj".to_string()
+        );
+    }
+
+    #[test]
+    fn normalize_project_path_converts_forward_slash_wsl_unc_to_linux() {
+        assert_eq!(
+            normalize_project_path("//wsl$/Ubuntu/home/user/proj/"),
             "/home/user/proj".to_string()
         );
     }
