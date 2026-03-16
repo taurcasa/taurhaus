@@ -66,8 +66,9 @@ pub trait ProjectProvider: Send + Sync {
 /// Resolve the correct provider for a given project path.
 ///
 /// WSL paths (`\\wsl$\...`, `\\wsl.localhost\...`) route through the daemon
-/// if it's connected. Everything else (and WSL paths when daemon is down) use
-/// the local provider.
+/// when connected. When the daemon is down, the local provider handles the
+/// request — but LocalProvider rejects all operations on WSL paths outright
+/// (no slow drvfs fallback).
 pub fn provider_for<'a>(
     project_path: &str,
     local: &'a dyn ProjectProvider,
@@ -77,10 +78,7 @@ pub fn provider_for<'a>(
         if let Some(d) = daemon {
             return d;
         }
-        tracing::warn!(
-            path = project_path,
-            "WSL path but no daemon — falling back to local I/O (slow)"
-        );
+        // LocalProvider will reject this with a clear error — no silent fallback.
     }
     local
 }

@@ -15,12 +15,17 @@ const MAX_ASSET_SIZE: u64 = 5 * 1024 * 1024;
 
 /// Provider that performs all operations via direct local filesystem access.
 ///
-/// Used for Windows-local projects and as the fallback for WSL projects when
-/// the daemon is unavailable.
+/// Used for Windows-local projects. WSL UNC projects are rejected outright —
+/// those MUST go through the daemon. There is no slow 9P/drvfs fallback.
 pub struct LocalProvider;
 
-fn reject_local_wsl_git(project_path: &str, operation: &str) -> Result<(), AppError> {
-    if crate::provider::path::requires_daemon_git_trust(project_path) {
+/// Reject ANY local-provider operation on a WSL UNC path.
+///
+/// WSL UNC paths (`\\wsl$\...`, `\\wsl.localhost\...`) must never be accessed
+/// from the Windows side via std::fs / git2 / ignore — that goes through the
+/// slow drvfs bridge and can hang the app. The daemon exists for these paths.
+fn reject_local_wsl(project_path: &str, operation: &str) -> Result<(), AppError> {
+    if crate::provider::path::is_wsl_path(project_path) {
         return Err(AppError::DaemonTransport(format!(
             "{operation} is unavailable for WSL UNC repositories without a connected daemon"
         )));
@@ -31,12 +36,12 @@ fn reject_local_wsl_git(project_path: &str, operation: &str) -> Result<(), AppEr
 
 impl ProjectProvider for LocalProvider {
     fn git_status(&self, project_path: &str) -> Result<GitStatus, AppError> {
-        reject_local_wsl_git(project_path, "git status")?;
+        reject_local_wsl(project_path, "git status")?;
         status::get_status(Path::new(project_path))
     }
 
     fn recent_commits(&self, project_path: &str, limit: usize) -> Result<Vec<Commit>, AppError> {
-        reject_local_wsl_git(project_path, "recent commits")?;
+        reject_local_wsl(project_path, "recent commits")?;
         commits::get_recent_commits(Path::new(project_path), limit)
     }
 
@@ -46,12 +51,12 @@ impl ProjectProvider for LocalProvider {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Commit>, AppError> {
-        reject_local_wsl_git(project_path, "commit history")?;
+        reject_local_wsl(project_path, "commit history")?;
         commits::get_all_commits(Path::new(project_path), limit, offset)
     }
 
     fn latest_commit_time(&self, project_path: &str) -> Result<Option<DateTime<Utc>>, AppError> {
-        reject_local_wsl_git(project_path, "latest commit lookup")?;
+        reject_local_wsl(project_path, "latest commit lookup")?;
         Ok(commits::get_latest_commit_time(Path::new(project_path)))
     }
 
@@ -62,7 +67,7 @@ impl ProjectProvider for LocalProvider {
         before: &str,
         commit_limit: Option<usize>,
     ) -> Result<GitRangeResult, AppError> {
-        reject_local_wsl_git(project_path, "commit range lookup")?;
+        reject_local_wsl(project_path, "commit range lookup")?;
         let path = Path::new(project_path);
         let after_dt = chrono::DateTime::parse_from_rfc3339(after)
             .map_err(|e| AppError::InvalidPath(format!("Bad 'after' timestamp: {e}")))?
@@ -74,7 +79,7 @@ impl ProjectProvider for LocalProvider {
     }
 
     fn commit_files(&self, project_path: &str, hash: &str) -> Result<Vec<CommitFile>, AppError> {
-        reject_local_wsl_git(project_path, "commit file lookup")?;
+        reject_local_wsl(project_path, "commit file lookup")?;
         commits::get_commit_files(Path::new(project_path), hash)
     }
 
@@ -84,23 +89,27 @@ impl ProjectProvider for LocalProvider {
         hash: &str,
         file_path: &str,
     ) -> Result<Vec<DiffHunk>, AppError> {
-        reject_local_wsl_git(project_path, "commit diff lookup")?;
+        reject_local_wsl(project_path, "commit diff lookup")?;
         commits::get_commit_diff(Path::new(project_path), hash, file_path)
     }
 
     fn file_tree(&self, project_path: &str) -> Result<Vec<FileTreeNode>, AppError> {
+        reject_local_wsl(project_path, "file tree")?;
         tree::build_file_tree(Path::new(project_path))
     }
 
     fn read_file(&self, project_path: &str, relative_path: &str) -> Result<FileContent, AppError> {
+        reject_local_wsl(project_path, "file read")?;
         reader::read_file(Path::new(project_path), relative_path)
     }
 
     fn read_readme(&self, project_path: &str) -> Result<Option<FileContent>, AppError> {
+        reject_local_wsl(project_path, "README read")?;
         readme::find_readme(Path::new(project_path))
     }
 
     fn read_asset(&self, project_path: &str, relative_path: &str) -> Result<Vec<u8>, AppError> {
+        reject_local_wsl(project_path, "asset read")?;
         let root = Path::new(project_path);
         let full_path = root.join(relative_path);
 
@@ -128,6 +137,7 @@ impl ProjectProvider for LocalProvider {
     }
 
     fn scan_session_files(&self, project_path: &str) -> Result<Vec<PathBuf>, AppError> {
+        reject_local_wsl(project_path, "session file scan")?;
         let handoffs_dir = Path::new(project_path).join(".claude").join("handoffs");
         if !handoffs_dir.is_dir() {
             return Ok(vec![]);
@@ -197,6 +207,30 @@ mod tests {
             AppError::DaemonTransport(message) => {
                 assert!(message.contains("connected daemon"));
             }
+            other => panic!("expected daemon transport error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_file_tree_rejects_wsl_unc_paths_without_daemon() {
+        let provider = LocalProvider;
+        let error = provider
+            .file_tree(r"\\wsl$\Ubuntu\home\user\repo")
+            .expect_err("WSL file tree should require the daemon");
+        match error {
+            AppError::DaemonTransport(msg) => assert!(msg.contains("connected daemon")),
+            other => panic!("expected daemon transport error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_scan_session_files_rejects_wsl_unc_paths_without_daemon() {
+        let provider = LocalProvider;
+        let error = provider
+            .scan_session_files(r"\\wsl.localhost\Ubuntu\home\user\repo")
+            .expect_err("WSL session scan should require the daemon");
+        match error {
+            AppError::DaemonTransport(msg) => assert!(msg.contains("connected daemon")),
             other => panic!("expected daemon transport error, got {other:?}"),
         }
     }
