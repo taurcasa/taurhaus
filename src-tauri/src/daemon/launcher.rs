@@ -338,7 +338,7 @@ fn stop_existing_daemon_native(port: u16, log_path: &Path) -> Result<(), std::io
             log_path,
             &format!("Stopping existing daemon pid {pid} on port {port} before restart"),
         );
-        return terminate_pid_gracefully(pid, log_path);
+        terminate_pid_gracefully(pid, log_path)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -1196,7 +1196,7 @@ time.sleep(3600)
         let result = try_restart_daemon_with(
             "native",
             port,
-            |distro, restart_port, log_path| stop_existing_daemon(distro, restart_port, log_path),
+            stop_existing_daemon,
             |_distro, restart_port, _log_path| {
                 starter_called = true;
                 let socket = std::net::TcpListener::bind(("127.0.0.1", restart_port))?;
