@@ -109,9 +109,10 @@ pub(crate) fn startup_reseed_activity(app: &AppHandle) {
 
 /// On startup, build the search index if it's empty.
 ///
-/// Only holds locks briefly: checks doc count with search lock, then acquires
-/// both locks for the rebuild if needed. The rebuild is a one-time operation
-/// (subsequent startups skip it), so the longer hold is acceptable.
+/// IMPORTANT: The DB lock is only held for brief per-project reads.  Filesystem
+/// I/O (project existence checks, file walking, git log) runs WITHOUT the DB
+/// lock so IPC commands are never starved — especially critical on Windows where
+/// WSL UNC path operations can take seconds per project.
 pub(crate) fn startup_search_index(app: &AppHandle) {
     // Check if index is already populated — brief lock
     {
@@ -135,8 +136,26 @@ pub(crate) fn startup_search_index(app: &AppHandle) {
         // search lock dropped here
     }
 
-    // Index is empty — need to rebuild. This holds both locks but only happens
-    // on first run (or after index wipe), so the brief block is acceptable.
+    // Snapshot project list from DB — brief lock, no filesystem I/O.
+    let projects = {
+        let db_state = app.state::<DbState>();
+        let conn = match db_state.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to lock DB for startup index project list: {e}");
+                return;
+            }
+        };
+        match db::queries::list_projects(&conn) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to list projects for search index rebuild");
+                return;
+            }
+        }
+        // DB lock released here
+    };
+
     let search_state = app.state::<SearchState>();
     let mut index = match search_state.0.lock() {
         Ok(i) => i,
@@ -146,23 +165,77 @@ pub(crate) fn startup_search_index(app: &AppHandle) {
         }
     };
 
+    if let Err(e) = index.clear() {
+        tracing::warn!(error = %e, "Failed to clear search index for rebuild");
+        return;
+    }
+
+    let mut total = 0;
+    for project in projects {
+        let project_root = std::path::Path::new(&project.path);
+
+        // WSL UNC paths (\\wsl$\...) must NOT be accessed from the Windows
+        // side — that goes through the slow drvfs bridge and can hang.  The
+        // daemon exists to handle these natively inside WSL.  Only index
+        // sessions (from local DB) here; files and commits will be indexed
+        // incrementally once the daemon is connected.
+        let is_wsl = provider::path::is_wsl_path(&project.path);
+
+        let (files, commits) = if is_wsl {
+            (0, 0)
+        } else {
+            if !project_root.exists() {
+                continue;
+            }
+            let f = search::indexer::index_project_files(&mut index, &project.id, project_root)
+                .unwrap_or(0);
+            let c =
+                search::indexer::index_project_commits(&mut index, &project.id, project_root, 100)
+                    .unwrap_or(0);
+            (f, c)
+        };
+
+        // Session indexing — from local DB, fast on all platforms.
+        let sessions = session_index_for_project(app, &mut index, &project);
+
+        if let Err(e) = index.commit() {
+            tracing::warn!(project = project.name, error = %e, "search rebuild: commit failed");
+        }
+
+        total += files + sessions + commits;
+        tracing::info!(
+            project = project.name,
+            files,
+            sessions,
+            commits,
+            is_wsl,
+            "indexed project"
+        );
+    }
+
+    tracing::info!(total, "Built initial search index");
+}
+
+fn session_index_for_project(
+    app: &AppHandle,
+    index: &mut search::indexer::SearchIndex,
+    project: &crate::models::Project,
+) -> usize {
     let db_state = app.state::<DbState>();
     let conn = match db_state.0.lock() {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!("Failed to lock DB for startup index build: {e}");
-            return;
+            tracing::warn!(
+                project = project.name,
+                error = %e,
+                "search rebuild: db lock poisoned, skipping session index"
+            );
+            return 0;
         }
     };
-
-    match search::indexer::rebuild_all(&mut index, &conn) {
-        Ok(total) => {
-            tracing::info!(total, "Built initial search index");
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to build initial search index");
-        }
-    }
+    search::indexer::index_project_sessions(index, &project.id, &conn)
+        .map(|s| s.indexed)
+        .unwrap_or(0)
 }
 
 /// On startup, scan all registered projects for unimported session handoffs.
