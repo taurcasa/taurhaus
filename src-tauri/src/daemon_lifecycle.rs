@@ -600,6 +600,9 @@ pub(crate) fn daemon_health_check(
     const CHECK_INTERVAL: Duration = Duration::from_secs(30);
     /// Shorter interval when daemon hasn't connected yet (first-time connect).
     const FAST_CHECK_INTERVAL: Duration = Duration::from_secs(2);
+    /// Long interval after exhausting restart attempts — still watching for
+    /// the daemon to come back, but not burning CPU.
+    const DORMANT_CHECK_INTERVAL: Duration = Duration::from_secs(15);
     const MAX_RESTART_ATTEMPTS: u32 = 3;
 
     let mut consecutive_failures: u32 = 0;
@@ -628,13 +631,17 @@ pub(crate) fn daemon_health_check(
                 .as_ref()
                 .is_some_and(|daemon| daemon.is_connected())
         };
-        let interval = daemon_health_check_interval(
-            connected,
-            ever_connected,
-            recovering,
-            CHECK_INTERVAL,
-            FAST_CHECK_INTERVAL,
-        );
+        let interval = if restart_attempts >= MAX_RESTART_ATTEMPTS {
+            DORMANT_CHECK_INTERVAL
+        } else {
+            daemon_health_check_interval(
+                connected,
+                ever_connected,
+                recovering,
+                CHECK_INTERVAL,
+                FAST_CHECK_INTERVAL,
+            )
+        };
         std::thread::sleep(interval);
 
         let provider_state = app.state::<ProviderState>();
@@ -676,16 +683,23 @@ pub(crate) fn daemon_health_check(
             }
         } else {
             // Daemon is disconnected — try to reconnect
-            if restart_attempts >= MAX_RESTART_ATTEMPTS {
+            let dormant = restart_attempts >= MAX_RESTART_ATTEMPTS;
+
+            if dormant && !recovering {
+                // Exhausted active restart attempts — enter dormant recovery.
+                // We keep the thread alive with a long poll so that if the
+                // daemon comes back (manual start, WSL recovery, etc.) we
+                // pick it up automatically instead of requiring an app restart.
                 tracing::warn!(
-                    "Max daemon restart attempts reached ({MAX_RESTART_ATTEMPTS}), giving up"
+                    "Max daemon restart attempts reached ({MAX_RESTART_ATTEMPTS}), \
+                     entering dormant recovery (reconnect-only, no restarts)"
                 );
                 emit_frontend_event(
                     &app,
                     "daemon-status",
                     serde_json::json!({ "status": "failed" }),
                 );
-                return;
+                recovering = true;
             }
 
             if !recovering {
@@ -713,6 +727,10 @@ pub(crate) fn daemon_health_check(
                         tracing::debug!("Skipping daemon restart — bootstrap still in progress");
                         return false;
                     }
+                    // In dormant mode: reconnect-only, no restart attempts.
+                    if dormant {
+                        return false;
+                    }
                     let Some(distro) = distro else {
                         return false;
                     };
@@ -725,17 +743,9 @@ pub(crate) fn daemon_health_check(
                     daemon::launcher::try_restart_daemon(distro, port).is_ok()
                 },
             ) {
-                DaemonRecoveryResult::Reconnected => {
-                    tracing::info!("Reconnected to existing daemon");
-                    consecutive_failures = 0;
-                    restart_attempts = 0;
-                    ever_connected = true;
-                    handle_daemon_recovered(&app);
-                    recovering = false;
-                    continue;
-                }
-                DaemonRecoveryResult::RestartedAndReconnected => {
-                    tracing::info!("Reconnected after daemon restart");
+                DaemonRecoveryResult::Reconnected
+                | DaemonRecoveryResult::RestartedAndReconnected => {
+                    tracing::info!("Daemon connection recovered");
                     consecutive_failures = 0;
                     restart_attempts = 0;
                     ever_connected = true;
@@ -744,7 +754,12 @@ pub(crate) fn daemon_health_check(
                     continue;
                 }
                 DaemonRecoveryResult::Failed => {
-                    tracing::warn!(attempt = restart_attempts, "Daemon recovery attempt failed");
+                    if !dormant {
+                        tracing::warn!(
+                            attempt = restart_attempts,
+                            "Daemon recovery attempt failed"
+                        );
+                    }
                 }
             }
         }
