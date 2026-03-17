@@ -80,11 +80,11 @@ impl BehavioralContract {
     }
 }
 
-const RUNTIME_COMPACT_SUMMARY_MIN_WORDS: usize = 90;
-const RUNTIME_COMPACT_SUMMARY_MAX_WORDS: usize = 160;
-const RUNTIME_COMPACT_ROLE_PURPOSE_MAX_WORDS: usize = 24;
-const RUNTIME_COMPACT_MAX_BULLETS: usize = 4;
-const RUNTIME_COMPACT_MAX_ITEM_WORDS: usize = 18;
+const RUNTIME_COMPACT_SUMMARY_MIN_WORDS: usize = 20;
+const RUNTIME_COMPACT_SUMMARY_MAX_WORDS: usize = 2048;
+const RUNTIME_COMPACT_ROLE_PURPOSE_MAX_WORDS: usize = 128;
+const RUNTIME_COMPACT_MAX_BULLETS: usize = 64;
+const RUNTIME_COMPACT_MAX_ITEM_WORDS: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
