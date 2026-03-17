@@ -32,6 +32,7 @@ pub struct OperationalReinjectionRole {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub instructions: Option<String>,
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
 }
 
@@ -97,6 +98,7 @@ impl CompactionReinjectionService {
                 focus_area: normalize_optional(member.focus_area.as_deref()),
                 context_summary: normalize_optional(member.context_summary.as_deref()),
                 behavior_summary: normalize_optional(member.behavior_summary.as_deref()),
+                instructions: normalize_optional(member.instructions.as_deref()),
                 runtime_compact_summary: member.runtime_compact_summary.clone(),
             },
             task: OperationalReinjectionTask {
@@ -180,6 +182,12 @@ impl CompactionReinjectionService {
         }
         if let Some(behavior_summary) = card.role.behavior_summary.as_deref() {
             lines.push(format!("Behavior: {behavior_summary}"));
+        }
+        if let Some(instructions) = card.role.instructions.as_deref() {
+            lines.push(String::new());
+            lines.push("Full role instructions:".to_string());
+            lines.push(instructions.to_string());
+            lines.push(String::new());
         }
         if let Some(summary) = card.role.runtime_compact_summary.as_ref() {
             lines.push(format!("Role purpose: {}", summary.role_purpose));
@@ -451,6 +459,7 @@ mod tests {
                         "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
                             .to_string()
                     ),
+                    instructions: Some("Review architecture edges".to_string()),
                     runtime_compact_summary: sample_member().runtime_compact_summary,
                 },
                 task: OperationalReinjectionTask {
@@ -555,6 +564,7 @@ mod tests {
     "focus_area": "Cross-layer diagnosis",
     "context_summary": "Keeps architecture context warm.",
     "behavior_summary": "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.",
+    "instructions": "Review architecture edges",
     "runtime_compact_summary": {
       "rolePurpose": "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction.",
       "keepDoing": [
@@ -629,6 +639,8 @@ mod tests {
         assert!(rendered.contains(
             "Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
         ));
+        assert!(rendered.contains("Full role instructions:"));
+        assert!(rendered.contains("Review architecture edges"));
         assert!(rendered.contains(
             "Role purpose: Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
         ));
