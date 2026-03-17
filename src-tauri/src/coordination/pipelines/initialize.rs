@@ -493,34 +493,36 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
-        for agent in &request.agents {
-            let cli_tool = parse_cli_tool(&agent.cli_tool)?;
+        // Deliver to lead + all agents — the lead is a CLI agent too.
+        let all_members = std::iter::once(&request.lead).chain(request.agents.iter());
+        for member in all_members {
+            let cli_tool = parse_cli_tool(&member.cli_tool)?;
             let onboarding = if cli_tool == CliTool::Claude {
-                if !agent_has_role_context(agent) {
+                if !agent_has_role_context(member) {
                     continue;
                 }
                 DeliveryRenderer::render_claude_role_context(
                     &request.team_name,
-                    &agent.name,
+                    &member.name,
                     &request.lead.name,
-                    agent.role_id.as_deref(),
-                    agent_instructions(agent),
-                    agent.behavioral_contract.as_ref(),
-                    agent.capabilities.as_deref(),
+                    member.role_id.as_deref(),
+                    agent_instructions(member),
+                    member.behavioral_contract.as_ref(),
+                    member.capabilities.as_deref(),
                 )
             } else {
                 DeliveryRenderer::render_onboarding(
                     &request.team_name,
-                    &agent.name,
+                    &member.name,
                     &request.lead.name,
-                    agent.role_id.as_deref(),
-                    agent_instructions(agent),
-                    agent.behavioral_contract.as_ref(),
-                    agent.capabilities.as_deref(),
+                    member.role_id.as_deref(),
+                    agent_instructions(member),
+                    member.behavioral_contract.as_ref(),
+                    member.capabilities.as_deref(),
                 )
             };
             self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: agent.name.clone(),
+                member_name: member.name.clone(),
                 team_name: request.team_name.clone(),
                 message: onboarding,
                 sender_name: Some(request.lead.name.clone()),

@@ -282,10 +282,18 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     let delivered = backend.delivered_requests();
     assert_eq!(
         delivered.len(),
-        1,
-        "claude template agent should receive role context"
+        2,
+        "lead + claude template agent should both receive onboarding"
     );
+    // First delivery is to the lead (codex)
     match &delivered[0] {
+        DeliveryRequest::OperatorNotice(payload) => {
+            assert_eq!(payload.member_name, "team-lead");
+        }
+        other => panic!("unexpected delivery payload for lead: {other:?}"),
+    }
+    // Second delivery is the claude agent with role context
+    match &delivered[1] {
         DeliveryRequest::OperatorNotice(payload) => {
             assert_eq!(payload.member_name, "researcher");
             assert!(payload.message.contains("[taurhaus] role_context"));
@@ -295,7 +303,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
             assert!(payload.message.contains("- research"));
             assert!(!payload.message.contains("mesh read --unread"));
         }
-        other => panic!("unexpected delivery payload: {other:?}"),
+        other => panic!("unexpected delivery payload for agent: {other:?}"),
     }
 }
 
@@ -327,10 +335,18 @@ fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
         )
         .expect("initialize report");
     assert_eq!(report.failed_step, None);
-    assert!(
-        backend.delivered_requests().is_empty(),
-        "claude agent without template context should keep legacy skip behavior"
+    let delivered = backend.delivered_requests();
+    assert_eq!(
+        delivered.len(),
+        1,
+        "lead should receive onboarding even when claude agent has no role context"
     );
+    match &delivered[0] {
+        DeliveryRequest::OperatorNotice(payload) => {
+            assert_eq!(payload.member_name, "team-lead");
+        }
+        other => panic!("unexpected delivery payload: {other:?}"),
+    }
 }
 
 #[test]
@@ -569,7 +585,7 @@ fn load_resume_member_state_preserves_role_template_context() {
 }
 
 #[test]
-fn resume_pipeline_claude_lead_skips_mesh_daemon_and_onboarding() {
+fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -634,11 +650,11 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_and_onboarding() {
         .iter()
         .find(|step| step.step == "send_onboarding")
         .expect("onboarding step");
-    assert!(onboarding_step
-        .message
-        .as_deref()
-        .unwrap_or_default()
-        .contains("not required"));
+    assert_eq!(
+        onboarding_step.status,
+        StepStatus::Succeeded,
+        "claude lead should receive onboarding"
+    );
 
     let calls = runtime.calls();
     let launch = calls
@@ -658,8 +674,8 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_and_onboarding() {
         .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
     assert_eq!(
         backend.call_counts().1,
-        0,
-        "onboarding should be skipped for lead"
+        1,
+        "lead should receive onboarding delivery"
     );
 }
 

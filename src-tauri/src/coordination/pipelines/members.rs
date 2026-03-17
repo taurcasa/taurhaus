@@ -330,7 +330,6 @@ impl CoordinationOrchestrator {
         );
 
         let is_claude = member.cli_tool == CliTool::Claude;
-        let is_lead = member.role == MemberRole::Lead;
         if is_claude {
             mark_step_succeeded(
                 "join_mesh",
@@ -391,14 +390,7 @@ impl CoordinationOrchestrator {
             );
         }
 
-        if is_claude && is_lead {
-            mark_step_succeeded(
-                "send_onboarding",
-                "not required for claude lead",
-                &mut succeeded_steps,
-                &mut steps,
-            );
-        } else if let Err(err) = self.resume_send_onboarding(request, &member, &lead_name) {
+        if let Err(err) = self.resume_send_onboarding(request, &member, &lead_name) {
             self.cleanup_resume_failure(request, &runtime_state);
             return Ok(failed_resume_report(
                 &request.team_name,
