@@ -88,6 +88,11 @@ pub struct CoordinationOrchestrator {
     pub(crate) teams_dir: PathBuf,
     pub(crate) audit_log: Vec<AuditEvent>,
     pub(crate) backend: Arc<dyn CoordinationBackend>,
+    /// Optional per-tool backend for Claude agents (inbox file delivery).
+    /// When set, `deliver_message()` routes Claude members through this backend
+    /// instead of the default `backend` (which may be MeshBridged).
+    /// Left as `None` in tests so FakeBackend captures all deliveries.
+    pub(crate) claude_backend: Option<Arc<dyn CoordinationBackend>>,
     pub(crate) runtime: Arc<dyn CoordinationRuntime>,
 }
 
@@ -115,6 +120,7 @@ impl CoordinationOrchestrator {
             teams_dir,
             audit_log: Vec::new(),
             backend,
+            claude_backend: None,
             runtime,
         }
     }
@@ -1361,7 +1367,6 @@ impl CoordinationOrchestrator {
         let (team_name, member_name) = delivery_meta(&request);
         let operational_context = delivery_operational_context(&request).cloned();
         let delivery_type = delivery_type_name(&request).to_string();
-        let attempted_method = default_method_for_backend(self.backend.kind());
         let team_name_owned = team_name.to_string();
         let member_name_owned = member_name.to_string();
 
@@ -1379,6 +1384,27 @@ impl CoordinationOrchestrator {
             )));
         }
 
+        // Per-member backend routing: when a dedicated claude_backend is set,
+        // route Claude agents through it (inbox file delivery) instead of the
+        // default backend (typically MeshBridged). When claude_backend is None
+        // (tests), all deliveries go through the default backend.
+        let effective_backend = match &self.claude_backend {
+            Some(claude_be) => {
+                let member_cli_tool = config
+                    .members
+                    .iter()
+                    .find(|m| m.name == member_name)
+                    .map(|m| m.cli_tool);
+                if member_cli_tool == Some(CliTool::Claude) {
+                    claude_be.clone()
+                } else {
+                    self.backend.clone()
+                }
+            }
+            None => self.backend.clone(),
+        };
+        let attempted_method = default_method_for_backend(effective_backend.kind());
+
         self.audit_log
             .push(AuditEvent::DeliveryAttempted(DeliveryAttemptedEvent {
                 team_name: team_name_owned.clone(),
@@ -1388,7 +1414,7 @@ impl CoordinationOrchestrator {
                 attempted_at: Utc::now(),
             }));
 
-        match self.backend.deliver(request) {
+        match effective_backend.deliver(request) {
             Ok(result) => {
                 if !result.delivered {
                     let error = CoordinationError::Backend(format!(

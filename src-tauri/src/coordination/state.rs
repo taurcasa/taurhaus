@@ -180,6 +180,12 @@ impl CoordinationState {
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
             CoordinationOrchestrator::new_with_runtime(self.teams_dir.clone(), backend, runtime);
+        // Set dedicated Claude backend for per-member routing: Claude agents get
+        // inbox file delivery instead of mesh send, fixing auth failures on
+        // Claude-only teams.
+        orchestrator.claude_backend = Some(Arc::new(ClaudeNativeBackend::new(
+            self.teams_dir.clone(),
+        )));
         if let Err(err) = orchestrator.reconcile_runtime_state_on_startup() {
             tracing::warn!(
                 error = %err,
@@ -210,11 +216,15 @@ impl CoordinationState {
         let kind = self.backend_selector.select(CliTool::Codex);
         let backend = (self.backend_factory)(kind)?;
         let runtime = (self.runtime_factory)();
-        Ok(CoordinationOrchestrator::new_with_runtime(
+        let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
             self.teams_dir.clone(),
             backend,
             runtime,
-        ))
+        );
+        orchestrator.claude_backend = Some(Arc::new(ClaudeNativeBackend::new(
+            self.teams_dir.clone(),
+        )));
+        Ok(orchestrator)
     }
 }
 
