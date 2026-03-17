@@ -42,8 +42,15 @@ struct Connection {
     reader: BufReader<TcpStream>,
 }
 
+/// Number of pooled TCP connections to the daemon.
+///
+/// Eliminates "connection busy" contention during startup bursts where
+/// multiple IPC commands fire in parallel. Slot 0 is connected eagerly;
+/// slots 1..N connect lazily on first use.
+const POOL_SIZE: usize = 3;
+
 pub struct DaemonProvider {
-    conn: Mutex<Option<Connection>>,
+    pool: Vec<Mutex<Option<Connection>>>,
     addr: String,
     wsl_distro: Option<String>,
     next_id: AtomicU64,
@@ -115,8 +122,14 @@ impl DaemonProvider {
             AppError::DaemonTransport(format!("Failed to clone daemon stream at {addr}: {error}"))
         })?);
 
+        let mut pool = Vec::with_capacity(POOL_SIZE);
+        pool.push(Mutex::new(Some(Connection { stream, reader })));
+        for _ in 1..POOL_SIZE {
+            pool.push(Mutex::new(None));
+        }
+
         let provider = Self {
-            conn: Mutex::new(Some(Connection { stream, reader })),
+            pool,
             addr: addr.to_string(),
             wsl_distro: wsl_distro.map(ToOwned::to_owned),
             next_id: AtomicU64::new(1),
@@ -143,8 +156,12 @@ impl DaemonProvider {
     }
 
     pub fn new_disconnected_with_distro(addr: &str, wsl_distro: Option<&str>) -> Self {
+        let mut pool = Vec::with_capacity(POOL_SIZE);
+        for _ in 0..POOL_SIZE {
+            pool.push(Mutex::new(None));
+        }
         Self {
-            conn: Mutex::new(None),
+            pool,
             addr: addr.to_string(),
             wsl_distro: wsl_distro.map(ToOwned::to_owned),
             next_id: AtomicU64::new(1),
@@ -159,20 +176,23 @@ impl DaemonProvider {
         self.connected.load(Ordering::Relaxed)
     }
 
-    /// Whether the shared daemon connection is currently occupied by another request.
+    /// Whether all pooled daemon connections are currently occupied.
     ///
-    /// This is a local provider-state probe only. A busy connection is still a
-    /// healthy connected transport and should not be conflated with disconnect.
+    /// This is a local provider-state probe only. Busy connections are still
+    /// healthy connected transports and should not be conflated with disconnect.
     pub fn is_busy(&self) -> bool {
         if !self.is_connected() {
             return false;
         }
 
-        match self.conn.try_lock() {
-            Ok(_) => false,
-            Err(TryLockError::WouldBlock) => true,
-            Err(TryLockError::Poisoned(_)) => false,
+        for slot in &self.pool {
+            match slot.try_lock() {
+                Ok(_) => return false,
+                Err(TryLockError::WouldBlock) => continue,
+                Err(TryLockError::Poisoned(_)) => return false,
+            }
         }
+        true
     }
 
     /// The address this provider connects to.
@@ -213,19 +233,12 @@ impl DaemonProvider {
     ///
     /// Unlike the trait methods, this returns the raw DaemonResponse so callers
     /// can inspect version/uptime without deserializing a specific type.
+    ///
+    /// Tries each pool slot without blocking. If all slots are busy, blocks on
+    /// slot 0 as a last resort (bounded by the request timeout).
     pub fn send_status_request(&self, request: &DaemonRequest) -> Result<DaemonResponse, AppError> {
         let rpc_span = DaemonRpcSpan::start(request, 0);
-        let result = match self.conn.try_lock() {
-            Ok(mut conn_guard) => {
-                self.send_request_with_guard(&mut conn_guard, request, PING_TIMEOUT)
-            }
-            Err(TryLockError::WouldBlock) => Err(AppError::DaemonTransport(
-                "Daemon connection busy with another request".to_string(),
-            )),
-            Err(TryLockError::Poisoned(_)) => Err(AppError::DaemonTransport(
-                "Daemon connection lock poisoned".to_string(),
-            )),
-        };
+        let result = self.send_with_pool(request, PING_TIMEOUT);
         match &result {
             Ok(response) => {
                 if let Some(error) = response.error.as_ref() {
@@ -256,6 +269,54 @@ impl DaemonProvider {
         result
     }
 
+    /// Lazily establish a TCP connection in an empty pool slot.
+    fn lazy_connect(&self, slot: &mut Option<Connection>) -> Result<(), AppError> {
+        if slot.is_some() {
+            return Ok(());
+        }
+        let stream = Self::connect_stream(&self.addr)?;
+        let reader =
+            BufReader::new(stream.try_clone().map_err(|e| {
+                AppError::DaemonTransport(format!("Failed to clone pool stream: {e}"))
+            })?);
+        *slot = Some(Connection { stream, reader });
+        Ok(())
+    }
+
+    /// Try each pool slot without blocking, lazily connecting empty slots.
+    /// If all slots are busy, block on slot 0 as a last resort.
+    fn send_with_pool(
+        &self,
+        request: &DaemonRequest,
+        timeout: Duration,
+    ) -> Result<DaemonResponse, AppError> {
+        // Try each slot without blocking
+        for slot in &self.pool {
+            match slot.try_lock() {
+                Ok(mut guard) => {
+                    if guard.is_none() && self.is_connected() {
+                        if let Err(e) = self.lazy_connect(&mut guard) {
+                            tracing::debug!(error = %e, "Lazy pool slot connection failed, trying next");
+                            continue;
+                        }
+                    }
+                    return self.send_request_with_guard(&mut guard, request, timeout);
+                }
+                Err(TryLockError::WouldBlock) => continue,
+                Err(TryLockError::Poisoned(_)) => continue,
+            }
+        }
+
+        // All slots busy — block on slot 0
+        let mut guard = self.pool[0]
+            .lock()
+            .map_err(|_| AppError::DaemonTransport("Pool slot 0 lock poisoned".to_string()))?;
+        if guard.is_none() && self.is_connected() {
+            self.lazy_connect(&mut guard)?;
+        }
+        self.send_request_with_guard(&mut guard, request, timeout)
+    }
+
     /// Reconnect to the daemon at the stored address.
     ///
     /// Replaces the TCP stream and reader. On success, marks the provider
@@ -277,13 +338,19 @@ impl DaemonProvider {
             ))
         })?);
 
-        match self.conn.lock() {
+        // Reconnect slot 0 (primary); clear secondary slots for lazy reconnect.
+        match self.pool[0].lock() {
             Ok(mut guard) => {
                 *guard = Some(Connection { stream, reader });
                 self.connected.store(true, Ordering::Relaxed);
             }
             Err(e) => {
-                tracing::warn!(error = %e, "daemon reconnect: conn mutex poisoned, connection not stored");
+                tracing::warn!(error = %e, "daemon reconnect: pool slot 0 mutex poisoned, connection not stored");
+            }
+        }
+        for slot in &self.pool[1..] {
+            if let Ok(mut guard) = slot.lock() {
+                *guard = None;
             }
         }
 
@@ -349,11 +416,13 @@ impl DaemonProvider {
         }
     }
 
-    /// Mark the provider as disconnected (clears the TCP connection).
+    /// Mark the provider as disconnected (clears all pooled connections).
     fn mark_disconnected(&self, reason: &str) {
         self.connected.store(false, Ordering::Relaxed);
-        let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        *guard = None;
+        for slot in &self.pool {
+            let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = None;
+        }
         emit_daemon_connection_event(
             "warn",
             "daemon.connection.lost",
@@ -424,11 +493,7 @@ impl DaemonProvider {
         request: &DaemonRequest,
         timeout: Duration,
     ) -> Result<DaemonResponse, AppError> {
-        let mut conn_guard = self.conn.lock().map_err(|_| {
-            AppError::DaemonTransport("Daemon connection lock poisoned".to_string())
-        })?;
-
-        self.send_request_with_guard(&mut conn_guard, request, timeout)
+        self.send_with_pool(request, timeout)
     }
 
     fn send_request_with_guard(
@@ -1043,7 +1108,7 @@ mod tests {
         let port = daemon.port;
         let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         {
-            let conn = provider.conn.lock().unwrap();
+            let conn = provider.pool[0].lock().unwrap();
             let stream = conn
                 .as_ref()
                 .expect("connection")
@@ -1072,7 +1137,7 @@ mod tests {
         assert!(provider.reconnect().is_ok());
         assert!(provider.is_connected());
         {
-            let conn = provider.conn.lock().unwrap();
+            let conn = provider.pool[0].lock().unwrap();
             let stream = conn
                 .as_ref()
                 .expect("connection")
@@ -1087,43 +1152,54 @@ mod tests {
     }
 
     #[test]
-    fn status_request_fails_fast_when_connection_is_busy() {
+    fn status_request_succeeds_via_pool_when_one_slot_busy() {
         let daemon = start_daemon();
         let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
 
-        let _busy_guard = provider.conn.try_lock().expect("lock connection");
-        let request = DaemonRequest::ping("busy");
-        let err = provider
-            .send_status_request(&request)
-            .expect_err("busy status request should fail fast");
-
-        assert!(err
-            .to_string()
-            .contains("Daemon connection busy with another request"));
+        // Hold slot 0 — request should succeed via a lazy-connected secondary slot
+        let _busy_guard = provider.pool[0].try_lock().expect("lock slot 0");
+        let request = DaemonRequest::ping("pool");
+        let result = provider.send_status_request(&request);
+        assert!(
+            result.is_ok(),
+            "request should succeed via another pool slot"
+        );
         assert!(
             provider.is_connected(),
-            "busy fast-fail should not disconnect provider"
+            "pool fallback should not disconnect provider"
         );
 
         daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
-    fn busy_probe_reports_busy_without_marking_disconnected() {
+    fn busy_probe_reports_busy_only_when_all_slots_held() {
         let daemon = start_daemon();
         let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
 
-        let busy_guard = provider.conn.try_lock().expect("lock connection");
-        assert!(provider.is_busy(), "busy lock should be observable as busy");
-        assert!(
-            provider.is_connected(),
-            "busy lock should not imply disconnect"
-        );
-        drop(busy_guard);
-
+        // Holding one slot: not busy (other slots available)
+        let guard0 = provider.pool[0].try_lock().expect("lock slot 0");
         assert!(
             !provider.is_busy(),
-            "busy probe should clear after lock release"
+            "single slot held should not report busy with pool"
+        );
+        assert!(
+            provider.is_connected(),
+            "held slot should not imply disconnect"
+        );
+
+        // Hold all slots: now busy
+        let guard1 = provider.pool[1].try_lock().expect("lock slot 1");
+        let guard2 = provider.pool[2].try_lock().expect("lock slot 2");
+        assert!(provider.is_busy(), "all slots held should report busy");
+
+        // Release all — no longer busy
+        drop(guard0);
+        drop(guard1);
+        drop(guard2);
+        assert!(
+            !provider.is_busy(),
+            "busy probe should clear after all slots released"
         );
 
         daemon.shutdown.store(true, Ordering::Relaxed);
@@ -1165,15 +1241,7 @@ mod tests {
         // No daemon running — every try_reconnect will fail, but we can verify
         // rate limiting: the second call within the cooldown should return false
         // immediately without attempting a connection.
-        let provider = DaemonProvider {
-            conn: Mutex::new(None),
-            addr: "127.0.0.1:1".to_string(),
-            wsl_distro: None,
-            next_id: AtomicU64::new(1),
-            connected: AtomicBool::new(false),
-            last_reconnect_attempt: Mutex::new(None),
-            auth_token: Mutex::new(None),
-        };
+        let provider = DaemonProvider::new_disconnected("127.0.0.1:1");
 
         // First attempt: should try (and fail, but that's fine)
         let result1 = provider.try_reconnect();
