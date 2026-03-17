@@ -916,7 +916,9 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                     }
                 };
 
-            if let Some(emission) = emit_current_session_snapshot(&app, &mut since_version) {
+            if let Some(emission) =
+                emit_current_session_snapshot(&app, &daemon_addr, &mut since_version)
+            {
                 if let Some(duration_ms) = recovery_tracker.take_duration_ms(Instant::now()) {
                     emit_session_bridge_recovery_measurement(duration_ms, emission);
                 }
@@ -989,29 +991,112 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
     });
 }
 
+/// Fetch the current runtime session snapshot via a short-lived direct connection.
+///
+/// Bypasses the shared `DaemonProvider` to avoid contention during the startup
+/// burst. The TCP connection is dropped when this function returns.
+fn fetch_snapshot_direct(
+    addr: &str,
+) -> Result<daemon::protocol::RuntimeSessionSnapshotResult, String> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+
+    let stream = TcpStream::connect(addr)
+        .map_err(|e| format!("Bridge snapshot connect to {addr} failed: {e}"))?;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .map_err(|e| format!("Bridge snapshot set timeout failed: {e}"))?;
+    stream
+        .set_nodelay(true)
+        .map_err(|e| format!("Bridge snapshot set nodelay failed: {e}"))?;
+
+    let auth_token = crate::daemon::auth::read_auth_token();
+    let request = daemon::protocol::DaemonRequest::new(
+        "bridge-snapshot",
+        daemon::protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
+        serde_json::Value::Null,
+    )
+    .with_auth(auth_token);
+
+    let json = serde_json::to_string(&request)
+        .map_err(|e| format!("Serialize bridge snapshot request failed: {e}"))?;
+    let mut writer = stream
+        .try_clone()
+        .map_err(|e| format!("Clone bridge snapshot stream failed: {e}"))?;
+    writer
+        .write_all(json.as_bytes())
+        .map_err(|e| format!("Write bridge snapshot request failed: {e}"))?;
+    writer
+        .write_all(b"\n")
+        .map_err(|e| format!("Write bridge snapshot newline failed: {e}"))?;
+    writer
+        .flush()
+        .map_err(|e| format!("Flush bridge snapshot request failed: {e}"))?;
+
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .map_err(|e| format!("Read bridge snapshot response failed: {e}"))?;
+    if line.trim().is_empty() {
+        return Err("Daemon returned empty bridge snapshot response".to_string());
+    }
+
+    let response: daemon::protocol::DaemonResponse = serde_json::from_str(&line)
+        .map_err(|e| format!("Parse bridge snapshot response failed: {e}"))?;
+
+    if let Some(err) = response.error {
+        return Err(format!(
+            "Daemon bridge snapshot error [{}]: {}",
+            err.code, err.message
+        ));
+    }
+
+    crate::commands::runtime_snapshot::decode_daemon_runtime_session_snapshot(response.result)
+}
+
 fn emit_current_session_snapshot(
     app: &AppHandle,
+    addr: &str,
     since_version: &mut u64,
 ) -> Option<SessionSnapshotEmission> {
-    let provider_state = app.state::<ProviderState>();
-    let snapshot =
-        crate::commands::runtime_snapshot::daemon_runtime_session_snapshot(&provider_state)
-            .unwrap_or_else(|error| {
+    use std::time::Duration;
+
+    const MAX_SEED_RETRIES: u32 = 3;
+    const SEED_RETRY_DELAY: Duration = Duration::from_millis(500);
+
+    let mut snapshot = None;
+    for attempt in 1..=MAX_SEED_RETRIES {
+        match fetch_snapshot_direct(addr) {
+            Ok(s) => {
+                snapshot = Some(s);
+                break;
+            }
+            Err(error) => {
                 tracing::debug!(
+                    attempt,
+                    max_retries = MAX_SEED_RETRIES,
                     error = %error,
-                    "session updates bridge failed to fetch current snapshot after reconnect"
+                    "session bridge initial snapshot fetch failed"
                 );
-                crate::commands::runtime_snapshot::RuntimeSnapshotOutcome {
-                    snapshot: None,
-                    freshness:
-                        crate::commands::runtime_snapshot::RuntimeSnapshotFreshness::Unavailable,
+                if attempt < MAX_SEED_RETRIES {
+                    std::thread::sleep(SEED_RETRY_DELAY);
                 }
-            })
-            .snapshot?;
+            }
+        }
+    }
+
+    let snapshot = snapshot?;
+
+    // Cache for the polling path (list_cli_sessions)
+    crate::session_snapshot_cache::store(&snapshot);
 
     let mut sessions = snapshot.display_sessions;
     let session_count = sessions.len();
-    let distro = provider_state.wsl_distro.clone();
+    let distro = {
+        let provider_state = app.state::<ProviderState>();
+        provider_state.wsl_distro.clone()
+    };
     normalize_sessions_for_frontend(
         &mut sessions,
         distro.as_deref(),
