@@ -2291,3 +2291,98 @@ fn step_progress_event_round_trip() {
         serde_json::from_str(&json).expect("deserialize step progress event");
     assert_eq!(decoded, value);
 }
+
+// Regression: add-agent pipeline failure with db present must not mask the
+// real error. Before the fix, cleanup_add_agent_failure removed the member,
+// then sync_member_snapshot_after_change tried to look up the now-deleted
+// member and threw "member not found in team", hiding the actual pipeline
+// failure. Commit 077d57d.
+#[test]
+fn add_agent_pipeline_failure_does_not_mask_error_with_member_not_found() {
+    let tmp = TempDir::new().expect("tempdir");
+    let fake = FakeBackend::default();
+    fake.set_deliver_error(CoordinationError::Backend(
+        "simulated onboarding delivery failure".to_string(),
+    ));
+    let state = CoordinationState::with_components_and_runtime(
+        tmp.path().to_path_buf(),
+        BackendSelector::m0(),
+        Arc::new({
+            let fake = fake.clone();
+            move |_kind| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+        }),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+    );
+    coordination_create_team_impl(&state, "arch".to_string()).expect("create team");
+    let (db, _db_file) = test_db_state();
+
+    let report = coordination_add_agent_internal(
+        &state,
+        Some(&db),
+        sample_add_agent_request("arch", "dev2"),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("add-agent should return structured failure report, not Err");
+
+    assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
+    assert!(
+        report
+            .message
+            .contains("simulated onboarding delivery failure"),
+        "expected original pipeline error, got: {}",
+        report.message
+    );
+}
+
+// Regression: add-agent onboarding for Claude agents must route through
+// deliver_message (per-member backend selection) rather than the default
+// backend directly. Before the fix, Claude agents got routed through
+// MeshBridgedBackend instead of ClaudeNativeBackend, causing delivery
+// failures. Commit 0a0ec11.
+#[test]
+fn add_agent_onboarding_routes_through_deliver_message_audit_trail() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_create_team_impl(&state, "arch".to_string()).expect("create");
+
+    let mut claude_agent = sample_add_agent_request("arch", "claude-dev");
+    claude_agent.agent.cli_tool = "claude".to_string();
+    claude_agent.agent.focus_area = Some("backend".to_string());
+    claude_agent.agent.context_summary = Some("Rust backend developer".to_string());
+
+    let report = coordination_add_agent_internal(
+        &state,
+        None,
+        claude_agent,
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("add-agent should return report");
+
+    assert!(
+        report.failed_step.is_none(),
+        "add-agent failed at step {:?}: {}",
+        report.failed_step,
+        report.message
+    );
+    assert!(report
+        .succeeded_steps
+        .contains(&"send_onboarding".to_string()));
+
+    // deliver_message emits audit events; verify the onboarding delivery
+    // went through the audited path (not self.backend.deliver directly)
+    let audit = state
+        .with_orchestrator(|orchestrator| {
+            Ok::<_, CoordinationError>(orchestrator.drain_audit_log())
+        })
+        .expect("drain audit");
+    let event_types: Vec<&str> = audit.iter().map(|event| event.event_type()).collect();
+    assert!(
+        event_types.contains(&"delivery_attempted"),
+        "expected delivery_attempted audit event for Claude onboarding, got: {:?}",
+        event_types
+    );
+}
