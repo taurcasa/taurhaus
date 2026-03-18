@@ -586,6 +586,7 @@
       sessionBridgeLive,
       startPolling: () => startSessionPolling({
         intervalMs: isTauri() ? DEFAULT_TAURI_POLL_INTERVAL_MS : undefined,
+        onSessionsReceived: () => { sessionBridgeLive = true },
       }),
       stopPolling: () => stopSessionPolling({ flushActivity: false }),
       doc: document,

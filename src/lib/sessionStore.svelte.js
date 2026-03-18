@@ -158,11 +158,17 @@ function flushTrackedActivity(trackersToFlush) {
   return flushes
 }
 
+/** Callback invoked when polling receives a non-empty session snapshot. */
+let onSessionsReceived = null
+
 /** Perform a single poll and update the sessions map. */
 async function poll() {
   try {
     const result = await listClaudeSessions()
     applySessions(result)
+    if (onSessionsReceived && Array.isArray(result) && result.length > 0) {
+      onSessionsReceived(result)
+    }
   } catch (err) {
     // On error, keep previous state (graceful degradation)
     console.warn('[sessionStore] poll failed:', err)
@@ -265,6 +271,7 @@ async function pollLoop() {
 export function startPolling(options = {}) {
   if (running) return
   activePollIntervalMs = options.intervalMs ?? POLL_INTERVAL_MS
+  onSessionsReceived = options.onSessionsReceived ?? null
   running = true
   pollLoop()
 }
@@ -273,6 +280,7 @@ export function startPolling(options = {}) {
 export function stopPolling(options = {}) {
   const flushActivity = options.flushActivity ?? true
   running = false
+  onSessionsReceived = null
   if (timerId !== null) {
     clearTimeout(timerId)
     timerId = null
