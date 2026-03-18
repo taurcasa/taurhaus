@@ -124,6 +124,20 @@ pub(crate) fn export_activity_snapshots_for_sessions(
     sessions: &[DisplaySession],
     observed_at: DateTime<Utc>,
 ) -> ActivitySnapshotExportStats {
+    export_activity_snapshots_for_sessions_with_runtime(
+        teams_dir,
+        sessions,
+        observed_at,
+        &SystemCoordinationRuntime,
+    )
+}
+
+fn export_activity_snapshots_for_sessions_with_runtime(
+    teams_dir: &Path,
+    sessions: &[DisplaySession],
+    observed_at: DateTime<Utc>,
+    runtime: &dyn CoordinationRuntime,
+) -> ActivitySnapshotExportStats {
     let team_names = match TeamConfigStore::list(teams_dir) {
         Ok(team_names) => team_names,
         Err(error) => {
@@ -144,7 +158,6 @@ pub(crate) fn export_activity_snapshots_for_sessions(
     enrich_sessions_with_team_membership(teams_dir, &mut enriched);
     let sessions_by_member = best_sessions_by_member(&enriched);
     let mut stats = ActivitySnapshotExportStats::default();
-    let runtime = SystemCoordinationRuntime;
 
     for team_name in team_names {
         let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
@@ -175,7 +188,7 @@ pub(crate) fn export_activity_snapshots_for_sessions(
         for member in &roster {
             let member_name = &member.member_name;
             let pane_probe = probe_member_pane_state(
-                &runtime,
+                runtime,
                 member.pane_id.as_deref(),
                 &team_name,
                 member_name,
@@ -631,6 +644,7 @@ mod tests {
 
     use super::*;
     use crate::coordination::domain::{HealthState, Member, MemberRole};
+    use crate::coordination::runtime::RecordingCoordinationRuntime;
     use crate::coordination::stores::config::TeamConfig;
     use crate::coordination::stores::runtime::MemberRuntimeRecord;
     use crate::coordination::stores::MemberRuntimeStore;
@@ -728,10 +742,13 @@ mod tests {
         .expect("config saved");
         save_runtime(tmp.path(), team_name, member_name, "%12");
 
-        let stats = export_activity_snapshots_for_sessions(
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%12", false);
+        let stats = export_activity_snapshots_for_sessions_with_runtime(
             tmp.path(),
             &[sample_session(project_path, "%12", SessionState::Active)],
             ts("2026-03-07T13:32:00+00:00"),
+            &runtime,
         );
 
         assert_eq!(stats.teams_exported, 1);
@@ -784,10 +801,13 @@ mod tests {
         .expect("config saved");
         save_runtime(tmp.path(), team_name, member_name, "%12");
 
-        let stats = export_activity_snapshots_for_sessions(
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%12", false);
+        let stats = export_activity_snapshots_for_sessions_with_runtime(
             tmp.path(),
             &[],
             ts("2026-03-07T13:33:00+00:00"),
+            &runtime,
         );
 
         assert_eq!(stats.teams_exported, 1);

@@ -295,7 +295,7 @@ impl CoordinationOrchestrator {
     }
 
     pub(super) fn send_onboarding_for_agent(
-        &self,
+        &mut self,
         request: &AddAgentRequest,
     ) -> Result<(), CoordinationError> {
         let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
@@ -331,14 +331,13 @@ impl CoordinationOrchestrator {
                 request.agent.capabilities.as_deref(),
             )
         };
-        self.backend
-            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: request.agent.name.clone(),
-                team_name: request.team_name.clone(),
-                message: onboarding,
-                sender_name: Some(lead_name),
-                operational_context: None,
-            }))?;
+        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: request.agent.name.clone(),
+            team_name: request.team_name.clone(),
+            message: onboarding,
+            sender_name: Some(lead_name),
+            operational_context: None,
+        }))?;
         Ok(())
     }
 
