@@ -5,17 +5,13 @@ use chrono::Utc;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
-    AddAgentReport, AgentSetupConfig, InitializeReport, ResumeAgentReport, ResumeContextMode,
-    StepProgress, StepStatus,
+    AddAgentReport, AgentSetupConfig, InitializeReport, ResumeAgentReport, StepProgress, StepStatus,
 };
 use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
-use crate::daemon::protocol::LaunchMode as DaemonLaunchMode;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::control::{
-    build_team_launch_command, resolve_configured_tool_command, validate_command_override,
-};
+use crate::session_scanner::control::{build_team_launch_command, validate_command_override};
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct PendingRuntimeState {
@@ -182,43 +178,18 @@ pub(super) fn build_cli_launch_command(
     ))
 }
 
+/// Build the CLI launch command for a resumed member session.
+///
+/// Always starts a fresh session — never uses `--continue` or `resume --last`.
+/// Multiple agents share the same project, so checkpoint-based resume would
+/// pick up another agent's checkpoint and cause confusion.
 pub(super) fn build_resume_cli_launch_command(
     agent: &AgentSetupConfig,
     team_name: &str,
     role: MemberRole,
-    context_mode: ResumeContextMode,
     cli_commands: &CliCommandSettings,
 ) -> Result<String, CoordinationError> {
-    let cli_tool = parse_cli_tool(&agent.cli_tool)?;
-    let command = match context_mode {
-        ResumeContextMode::Fresh => build_team_launch_command(cli_commands, cli_tool, &agent.model),
-        ResumeContextMode::Continue => {
-            let mode = if cli_tool == CliTool::Claude {
-                DaemonLaunchMode::Continue
-            } else {
-                DaemonLaunchMode::Resume
-            };
-            resolve_configured_tool_command(cli_commands, cli_tool, mode)
-        }
-    };
-    if command.trim().is_empty() {
-        return Err(CoordinationError::Validation(format!(
-            "configured resume command is empty for '{}'",
-            agent.cli_tool
-        )));
-    }
-    validate_command_override(&command).map_err(CoordinationError::Validation)?;
-
-    if cli_tool != CliTool::Claude {
-        return Ok(command);
-    }
-
-    Ok(with_claude_team_context(
-        command,
-        team_name,
-        &agent.name,
-        role,
-    ))
+    build_cli_launch_command(agent, team_name, role, cli_commands)
 }
 
 pub(super) fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, CoordinationError> {

@@ -160,7 +160,6 @@ fn sample_resume_request(team_name: &str, member_name: &str) -> ResumeMemberRequ
     ResumeMemberRequest {
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
-        context_mode: ResumeContextMode::Continue,
     }
 }
 
@@ -689,7 +688,6 @@ fn resume_member_validates_empty_fields() {
         ResumeMemberRequest {
             team_name: "".to_string(),
             member_name: "agent".to_string(),
-            context_mode: ResumeContextMode::Continue,
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -704,7 +702,6 @@ fn resume_member_validates_empty_fields() {
         ResumeMemberRequest {
             team_name: "arch".to_string(),
             member_name: " ".to_string(),
-            context_mode: ResumeContextMode::Fresh,
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -749,7 +746,6 @@ fn resume_member_ipc_returns_report_shape() {
         ResumeMemberRequest {
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
-            context_mode: ResumeContextMode::Continue,
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -773,7 +769,6 @@ fn resume_team_validates_empty_team_name() {
         &state,
         ResumeTeamRequest {
             team_name: "".to_string(),
-            context_mode: ResumeContextMode::Continue,
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -819,7 +814,6 @@ fn resume_team_ipc_returns_report_shape() {
         &state,
         ResumeTeamRequest {
             team_name: "architecture-final".to_string(),
-            context_mode: ResumeContextMode::Continue,
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
@@ -2060,7 +2054,6 @@ fn resume_member_request_and_report_round_trip() {
 fn resume_team_request_and_report_round_trip() {
     let request = ResumeTeamRequest {
         team_name: "architecture-final".to_string(),
-        context_mode: ResumeContextMode::Fresh,
     };
     let req_json = serde_json::to_string(&request).expect("serialize resume-team request");
     let req_decoded: ResumeTeamRequest =

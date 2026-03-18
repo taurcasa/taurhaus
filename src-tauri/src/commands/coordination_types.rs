@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::coordination::requests::{
-    AgentRole, LeadMode, ResumeContextMode, SessionStatus, StepProgress, StepStatus,
+    AgentRole, LeadMode, SessionStatus, StepProgress, StepStatus,
 };
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
@@ -97,7 +97,6 @@ pub struct AddAgentRequest {
 pub struct ResumeMemberRequest {
     pub team_name: String,
     pub member_name: String,
-    pub context_mode: ResumeContextMode,
 }
 
 /// IPC request for resuming all persisted members in a team.
@@ -105,7 +104,6 @@ pub struct ResumeMemberRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ResumeTeamRequest {
     pub team_name: String,
-    pub context_mode: ResumeContextMode,
 }
 
 /// IPC response for hot-add operation.

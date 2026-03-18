@@ -488,7 +488,7 @@ describe('MeshTab', () => {
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
 
-    expect(coordinationResumeTeam).toHaveBeenCalledWith('architecture-final', 'continue')
+    expect(coordinationResumeTeam).toHaveBeenCalledWith('architecture-final')
 
     resumeRequest.resolve({
       teamName: 'architecture-final',
@@ -2743,7 +2743,7 @@ describe('MeshTab', () => {
     await fireEvent.click(screen.getByTestId('mesh-node-detail-resume'))
 
     await waitFor(() => {
-      expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev', 'continue')
+      expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
       expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
     })
   })

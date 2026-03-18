@@ -2047,15 +2047,15 @@ describe('ipc module', () => {
 
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({ ok: true })
-      await ipc.coordinationResumeMember('arch', 'bob', 'fresh')
+      await ipc.coordinationResumeMember('arch', 'bob')
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_resume_member', {
-        request: { teamName: 'arch', memberName: 'bob', contextMode: 'fresh' },
+        request: { teamName: 'arch', memberName: 'bob' },
       })
       delete window.__TAURI_INTERNALS__
     })
 
     it('coordinationResumeTeam calls invoke with request and returns deterministic mock shape', async () => {
-      const mockModeResult = await ipc.coordinationResumeTeam('arch', 'continue')
+      const mockModeResult = await ipc.coordinationResumeTeam('arch')
       expect(mockModeResult).toEqual({
         teamName: 'arch',
         resumed: true,
@@ -2069,9 +2069,9 @@ describe('ipc module', () => {
 
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({ ok: true })
-      await ipc.coordinationResumeTeam('arch', 'fresh')
+      await ipc.coordinationResumeTeam('arch')
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_resume_team', {
-        request: { teamName: 'arch', contextMode: 'fresh' },
+        request: { teamName: 'arch' },
       })
       delete window.__TAURI_INTERNALS__
     })

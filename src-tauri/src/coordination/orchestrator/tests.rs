@@ -10,8 +10,8 @@ use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryMethod, DeliveryRequest, DeliveryResult,
     InitializeTeamRequest, LaunchRequest, LaunchResult, LeadMode, OperatorNoticeDelivery,
-    ProbeEvidence, ProbeRequest, ProbeResult, ResumeContextMode, ResumeTeamRequest, StepStatus,
-    TeardownRequest, TeardownResult,
+    ProbeEvidence, ProbeRequest, ProbeResult, ResumeTeamRequest, StepStatus, TeardownRequest,
+    TeardownResult,
 };
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
@@ -898,7 +898,6 @@ fn resume_team_lead_first_then_same_project_then_cross_project() {
         .resume_team_with_cli_commands_and_layout(
             &ResumeTeamRequest {
                 team_name: "architecture-final".to_string(),
-                context_mode: ResumeContextMode::Continue,
             },
             &CliCommandSettings::default(),
             "new_window",
@@ -969,7 +968,6 @@ fn resume_team_reports_partial_success_when_middle_member_fails() {
         .resume_team_with_cli_commands_and_layout(
             &ResumeTeamRequest {
                 team_name: "architecture-final".to_string(),
-                context_mode: ResumeContextMode::Continue,
             },
             &CliCommandSettings::default(),
             "new_window",
@@ -1004,7 +1002,6 @@ fn resume_team_does_not_roll_back_earlier_successes_when_later_member_fails() {
         .resume_team_with_cli_commands_and_layout(
             &ResumeTeamRequest {
                 team_name: "architecture-final".to_string(),
-                context_mode: ResumeContextMode::Continue,
             },
             &CliCommandSettings::default(),
             "new_window",
@@ -1042,7 +1039,6 @@ fn resume_team_reports_full_failure_when_all_members_fail() {
         .resume_team_with_cli_commands_and_layout(
             &ResumeTeamRequest {
                 team_name: "architecture-final".to_string(),
-                context_mode: ResumeContextMode::Continue,
             },
             &CliCommandSettings::default(),
             "new_window",

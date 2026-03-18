@@ -8,8 +8,7 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, AgentSetupConfig, ResumeAgentReport, ResumeContextMode,
-    ResumeMemberRequest,
+    AddAgentReport, AddAgentRequest, AgentSetupConfig, ResumeAgentReport, ResumeMemberRequest,
 };
 use crate::coordination::runtime::{resolve_or_create_pane_for_member, PaneResolution};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
@@ -187,12 +186,10 @@ impl CoordinationOrchestrator {
         &mut self,
         team_name: &str,
         member_name: &str,
-        context_mode: ResumeContextMode,
     ) -> Result<ResumeAgentReport, CoordinationError> {
         let request = ResumeMemberRequest {
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),
-            context_mode,
         };
         self.resume_member_with_cli_commands_and_layout(
             &request,
@@ -590,13 +587,8 @@ impl CoordinationOrchestrator {
             behavioral_contract: member.behavioral_contract.clone(),
             capabilities: member.capabilities.clone(),
         };
-        let launch_cmd = build_resume_cli_launch_command(
-            &agent,
-            &request.team_name,
-            member.role,
-            request.context_mode,
-            cli_commands,
-        )?;
+        let launch_cmd =
+            build_resume_cli_launch_command(&agent, &request.team_name, member.role, cli_commands)?;
         self.runtime
             .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())?;
 

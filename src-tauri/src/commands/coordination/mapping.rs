@@ -55,15 +55,6 @@ pub(super) fn map_step_status_from_contract(status: contracts::StepStatus) -> St
     }
 }
 
-pub(super) fn map_resume_context_mode_to_contract(
-    mode: ResumeContextMode,
-) -> contracts::ResumeContextMode {
-    match mode {
-        ResumeContextMode::Continue => contracts::ResumeContextMode::Continue,
-        ResumeContextMode::Fresh => contracts::ResumeContextMode::Fresh,
-    }
-}
-
 pub(super) fn map_agent_setup_to_contract(agent: &AgentSetupConfig) -> contracts::AgentSetupConfig {
     contracts::AgentSetupConfig {
         name: agent.name.clone(),
@@ -122,7 +113,6 @@ pub(super) fn map_resume_member_request_to_contract(
     contracts::ResumeMemberRequest {
         team_name: request.team_name.clone(),
         member_name: request.member_name.clone(),
-        context_mode: map_resume_context_mode_to_contract(request.context_mode),
     }
 }
 
@@ -131,7 +121,6 @@ pub(super) fn map_resume_team_request_to_contract(
 ) -> contracts::ResumeTeamRequest {
     contracts::ResumeTeamRequest {
         team_name: request.team_name.clone(),
-        context_mode: map_resume_context_mode_to_contract(request.context_mode),
     }
 }
 

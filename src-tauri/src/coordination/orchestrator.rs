@@ -427,7 +427,6 @@ impl CoordinationOrchestrator {
             let member_request = ResumeMemberRequest {
                 team_name: request.team_name.clone(),
                 member_name: member.name.clone(),
-                context_mode: request.context_mode,
             };
             let report = self.resume_member_with_cli_commands_and_layout(
                 &member_request,

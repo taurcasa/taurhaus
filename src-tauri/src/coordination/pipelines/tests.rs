@@ -11,7 +11,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
-    ResumeContextMode, ResumeMemberRequest, StepStatus,
+    ResumeMemberRequest, StepStatus,
 };
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
@@ -146,66 +146,35 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
     assert!(command.contains("--agent-type orchestrator"));
 }
 
+// Resume always starts a fresh session — never uses --continue or resume --last.
+// Multiple agents share the same project, so checkpoint-based resume would
+// pick up another agent's checkpoint.
 #[test]
-fn build_resume_cli_launch_command_continue_uses_resume_for_codex() {
+fn build_resume_cli_launch_command_always_uses_fresh_session() {
     let cmds = crate::models::CliCommandSettings::default();
-    let agent = AgentSetupConfig {
-        name: "builder".to_string(),
-        cli_tool: "codex".to_string(),
-        model: "gpt-5.3".to_string(),
-        project_id: "/tmp/project".to_string(),
-        description: None,
-        role_id: None,
-        role_name: None,
-        focus_area: None,
-        context_summary: None,
-        behavior_summary: None,
-        runtime_compact_summary: None,
-        instructions: None,
-        behavioral_contract: None,
-        capabilities: None,
-    };
+    let codex_agent = setup_config("builder", "codex", "gpt-5.3", "/tmp/project");
 
     let command = build_resume_cli_launch_command(
-        &agent,
+        &codex_agent,
         "architecture-final",
         MemberRole::Agent,
-        ResumeContextMode::Continue,
         &cmds,
     )
     .expect("command");
-    assert_eq!(command, "codex resume --last --yolo");
-}
+    assert_eq!(command, "codex --yolo -m 'gpt-5.3'");
+    assert!(!command.contains("resume"));
+    assert!(!command.contains("--last"));
 
-#[test]
-fn build_resume_cli_launch_command_continue_uses_claude_continue_with_team_context() {
-    let cmds = crate::models::CliCommandSettings::default();
-    let agent = AgentSetupConfig {
-        name: "team-lead".to_string(),
-        cli_tool: "claude".to_string(),
-        model: "opus".to_string(),
-        project_id: "/tmp/project".to_string(),
-        description: None,
-        role_id: None,
-        role_name: None,
-        focus_area: None,
-        context_summary: None,
-        behavior_summary: None,
-        runtime_compact_summary: None,
-        instructions: None,
-        behavioral_contract: None,
-        capabilities: None,
-    };
+    let claude_agent = setup_config("team-lead", "claude", "opus", "/tmp/project");
 
     let command = build_resume_cli_launch_command(
-        &agent,
+        &claude_agent,
         "architecture-final",
         MemberRole::Lead,
-        ResumeContextMode::Continue,
         &cmds,
     )
     .expect("command");
-    assert!(command.contains("--continue"));
+    assert!(!command.contains("--continue"));
     assert!(command.contains("--agent-type orchestrator"));
     assert!(command.contains("--team-name architecture-final"));
 }
@@ -553,7 +522,6 @@ fn load_resume_member_state_preserves_role_template_context() {
     let request = ResumeMemberRequest {
         team_name: "architecture-final".to_string(),
         member_name: "builder".to_string(),
-        context_mode: ResumeContextMode::Continue,
     };
 
     let (loaded_member, _runtime_record, lead_name) = orchestrator
@@ -614,11 +582,7 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
         .expect("save runtime");
 
     let report = orchestrator
-        .resume_member(
-            "architecture-final",
-            "team-lead",
-            ResumeContextMode::Continue,
-        )
+        .resume_member("architecture-final", "team-lead")
         .expect("resume report");
 
     assert!(report.resumed);
@@ -725,11 +689,7 @@ fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
     .expect("save runtime");
 
     let report = orchestrator
-        .resume_member(
-            "architecture-final",
-            "researcher",
-            ResumeContextMode::Continue,
-        )
+        .resume_member("architecture-final", "researcher")
         .expect("resume report");
 
     assert!(report.resumed);
@@ -810,11 +770,7 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
     .expect("save runtime");
 
     let report = orchestrator
-        .resume_member(
-            "architecture-final",
-            "researcher",
-            ResumeContextMode::Continue,
-        )
+        .resume_member("architecture-final", "researcher")
         .expect("resume report");
 
     assert!(report.resumed);
@@ -874,7 +830,7 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
         .expect("save runtime");
 
     let report = orchestrator
-        .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+        .resume_member("architecture-final", "builder")
         .expect("resume report");
     assert!(report.resumed);
     assert!(report.reused_pane);
@@ -954,11 +910,7 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
         .expect("save runtime");
 
     let report = orchestrator
-        .resume_member(
-            "architecture-final",
-            "team-lead",
-            ResumeContextMode::Continue,
-        )
+        .resume_member("architecture-final", "team-lead")
         .expect("resume report");
     assert!(report.resumed);
     assert!(report.reused_pane);
@@ -1046,7 +998,7 @@ fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
     runtime.set_pane_ownership("%77", false);
 
     let report = orchestrator
-        .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+        .resume_member("architecture-final", "builder")
         .expect("resume report");
     assert!(report.resumed);
     assert!(!report.reused_pane);
@@ -1107,7 +1059,7 @@ fn resume_failure_cleans_created_resources_and_keeps_member_config() {
         .expect("save runtime");
 
     let report = orchestrator
-        .resume_member("architecture-final", "builder", ResumeContextMode::Continue)
+        .resume_member("architecture-final", "builder")
         .expect("resume report");
     assert!(!report.resumed);
     assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));

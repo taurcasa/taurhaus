@@ -315,27 +315,17 @@ pub struct AddAgentResult {
     pub steps: Vec<StepProgress>,
 }
 
-/// Context mode for resume operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResumeContextMode {
-    Continue,
-    Fresh,
-}
-
 /// Request contract for resuming a team member session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeMemberRequest {
     pub team_name: String,
     pub member_name: String,
-    pub context_mode: ResumeContextMode,
 }
 
 /// Request contract for resuming all members in a team.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeTeamRequest {
     pub team_name: String,
-    pub context_mode: ResumeContextMode,
 }
 
 /// Result contract for resuming an agent in a running team.
@@ -541,7 +531,6 @@ mod tests {
     fn resume_team_request_and_report_round_trip() {
         let req = ResumeTeamRequest {
             team_name: "architecture-final".to_string(),
-            context_mode: ResumeContextMode::Fresh,
         };
 
         let req_json = serde_json::to_string(&req).expect("serialize resume-team request");

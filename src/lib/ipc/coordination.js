@@ -53,8 +53,8 @@ export function coordinationAddAgent(request) {
   ).then((report) => normalizeMemberActionReport(report))
 }
 
-export function coordinationResumeMember(teamName, memberName, contextMode = 'continue') {
-  return invokeOrMock('coordination_resume_member', { request: { teamName, memberName, contextMode } }, () => ({
+export function coordinationResumeMember(teamName, memberName) {
+  return invokeOrMock('coordination_resume_member', { request: { teamName, memberName } }, () => ({
     teamName,
     memberName,
     resumed: true,
@@ -72,8 +72,8 @@ export function coordinationResumeMember(teamName, memberName, contextMode = 'co
   })).then((report) => normalizeMemberActionReport(report))
 }
 
-export function coordinationResumeTeam(teamName, contextMode = 'continue') {
-  return invokeOrMock('coordination_resume_team', { request: { teamName, contextMode } }, () => ({
+export function coordinationResumeTeam(teamName) {
+  return invokeOrMock('coordination_resume_team', { request: { teamName } }, () => ({
     teamName,
     resumed: true,
     totalMembers: 2,

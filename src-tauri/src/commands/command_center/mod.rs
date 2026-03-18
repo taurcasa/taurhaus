@@ -11,7 +11,7 @@ use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
-use crate::coordination::requests::{ResumeContextMode, ResumeMemberRequest};
+use crate::coordination::requests::ResumeMemberRequest;
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::TeamConfigStore;
 use crate::daemon::protocol::{self, LaunchMode};
@@ -358,7 +358,6 @@ fn delegate_launch_to_coordination_resume(
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),
         member_name: target.member_name.clone(),
-        context_mode: ResumeContextMode::Continue,
     };
 
     let report = coordination_state

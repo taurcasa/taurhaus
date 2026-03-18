@@ -1174,7 +1174,7 @@ export function createMeshTabController({
     }
   }
 
-  async function resumeSelected(contextMode = 'continue') {
+  async function resumeSelected() {
     if (isResumingTeam) return
     const currentNode = selectedNode
     if (!currentNode || currentNode.role !== 'agent') return
@@ -1182,7 +1182,6 @@ export function createMeshTabController({
       const report = await coordinationResumeMember(
         teamName,
         currentNode.name,
-        contextMode === 'fresh' ? 'fresh' : 'continue'
       )
       if (!report?.resumed) {
         errorMessage = report?.message || `Failed to resume member '${currentNode.name}'.`
@@ -1243,7 +1242,7 @@ export function createMeshTabController({
     if (teamName) confirmContext = { kind: 'disband' }
   }
 
-  async function resumeTeam(contextMode = 'continue') {
+  async function resumeTeam() {
     if (!teamName || !canResumeTeam || isResumingTeam) return
 
     const targetNames = buildResumeTargetNames(teamConfig)
@@ -1255,10 +1254,7 @@ export function createMeshTabController({
     runtimeMessage = ''
 
     try {
-      const report = await coordinationResumeTeam(
-        teamName,
-        contextMode === 'fresh' ? 'fresh' : 'continue'
-      )
+      const report = await coordinationResumeTeam(teamName)
       teamResumeProgress = {
         inFlight: false,
         items: buildResumeProgressItems(targetNames, report),
