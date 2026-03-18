@@ -3157,6 +3157,8 @@ fn full_lifecycle() {
             "team_created",
             "member_added",
             "member_added",
+            "delivery_attempted",
+            "delivery_succeeded",
             "member_removed",
             "team_disbanded"
         ]

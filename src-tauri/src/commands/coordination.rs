@@ -386,12 +386,17 @@ fn coordination_add_agent_internal(
         })
         .map(map_add_agent_report_from_contract)
         .map_err(map_coordination_error)?;
-    if let Some(db) = db {
-        sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
+    // Only sync snapshots on success — cleanup_add_agent_failure may have
+    // removed the member, so syncing after failure throws "not found" and
+    // masks the actual pipeline error.
+    if report.failed_step.is_none() {
+        if let Some(db) = db {
+            sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
+                .map_err(map_coordination_error)?;
+        }
+        sync_active_team_projects_after_change(state, &report.team_name)
             .map_err(map_coordination_error)?;
     }
-    sync_active_team_projects_after_change(state, &report.team_name)
-        .map_err(map_coordination_error)?;
     emit_progress_events(add_agent_progress_events(&report), emit);
     Ok(report)
 }
