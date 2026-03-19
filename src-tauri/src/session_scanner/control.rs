@@ -8,12 +8,25 @@ use crate::models::CliCommandSettings;
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::{self, CliTool};
 
+fn wsl_exec_args(program: &str) -> [String; 2] {
+    ["-e".to_string(), program.to_string()]
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_exec_command(program: &str) -> Command {
+    let mut cmd = crate::daemon::launcher::wsl_command();
+    // Use `-e` for direct exec semantics. `wsl -- <command>` can route the
+    // remainder through shell-style parsing, which breaks tmux format strings
+    // like `#{pane_id}` on Windows before tmux ever receives them.
+    cmd.stdin(std::process::Stdio::null());
+    cmd.args(wsl_exec_args(program));
+    cmd
+}
+
 fn tmux_command() -> Command {
     #[cfg(target_os = "windows")]
     let mut cmd = {
-        let mut cmd = crate::daemon::launcher::wsl_command();
-        cmd.args(["--", "tmux"]);
-        cmd
+        wsl_exec_command("tmux")
     };
 
     #[cfg(not(target_os = "windows"))]
@@ -26,8 +39,8 @@ fn tmux_command() -> Command {
 fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
-        let output = crate::daemon::launcher::wsl_command()
-            .args(["--", "test", "-d", project_path])
+        let output = wsl_exec_command("test")
+            .args(["-d", project_path])
             .output()
             .map_err(|e| format!("Failed to validate WSL project path: {e}"))?;
 
@@ -901,6 +914,12 @@ mod tests {
     #[test]
     fn project_path_exists_for_tmux_rejects_missing_directory() {
         assert!(!project_path_exists_for_tmux("/nonexistent/path/12345").unwrap());
+    }
+
+    #[test]
+    fn wsl_exec_args_use_direct_exec_semantics() {
+        assert_eq!(wsl_exec_args("tmux"), ["-e".to_string(), "tmux".to_string()]);
+        assert_eq!(wsl_exec_args("test"), ["-e".to_string(), "test".to_string()]);
     }
 
     #[test]
