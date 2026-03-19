@@ -1,14 +1,10 @@
 import { SvelteMap } from 'svelte/reactivity'
+import { normalizeProjectPath } from './pathUtils.js'
 
 const meshSnapshots = new SvelteMap()
 
 function nowMs() {
   return Date.now()
-}
-
-function normalizeProjectPath(projectPath) {
-  const value = String(projectPath ?? '').trim()
-  return value.length > 0 ? value : ''
 }
 
 export function getMeshCacheEntry(projectPath) {

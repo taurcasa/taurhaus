@@ -231,7 +231,7 @@ export function createMeshTabController({
     if (roster.length === 0) return 'active'
     const liveMembers = roster.filter((member) => {
       const status = String(member?.sessionStatus ?? member?.status ?? '').trim().toLowerCase()
-      return status !== 'offline'
+      return status === 'active' || status === 'idle'
     }).length
     if (liveMembers === 0) return 'coldResume'
     if (liveMembers === roster.length) return 'active'
@@ -518,44 +518,48 @@ export function createMeshTabController({
         teamConfig = value
       },
     })
-    if (nextConfig && snapshot) {
+    if (nextConfig) {
+      const liveStatusMembers = [
+        nextConfig.lead
+          ? {
+              name: nextConfig.lead.name,
+              role: 'lead',
+              cliTool: nextConfig.lead.tool,
+              model: nextConfig.lead.model,
+              projectId: nextConfig.lead.projectId,
+              description: nextConfig.lead.description,
+              roleId: nextConfig.lead.roleId,
+              roleName: nextConfig.lead.roleName,
+              focusArea: nextConfig.lead.focusArea,
+              contextSummary: nextConfig.lead.contextSummary,
+              behaviorSummary: nextConfig.lead.behaviorSummary,
+              sessionStatus: nextConfig.lead.status,
+              paneId: nextConfig.lead.paneId,
+            }
+          : null,
+        ...(nextConfig.agents ?? []).map((member) => ({
+          name: member.name,
+          role: 'member',
+          cliTool: member.tool,
+          model: member.model,
+          projectId: member.projectId,
+          description: member.description,
+          roleId: member.roleId,
+          roleName: member.roleName,
+          focusArea: member.focusArea,
+          contextSummary: member.contextSummary,
+          behaviorSummary: member.behaviorSummary,
+          sessionStatus: member.status,
+          paneId: member.paneId,
+        })),
+      ].filter(Boolean)
+
+      teamRuntimeState = classifyTeamRuntimeStateFromMembers(nextTeamName, liveStatusMembers)
+      if (!snapshot) return
       setMeshCache(getProjectPath(), buildCachedSnapshotFromLiveStatus(snapshot, {
         teamName: nextTeamName,
         leadName: nextConfig.lead?.name ?? 'team-lead',
-        members: [
-          nextConfig.lead
-            ? {
-                name: nextConfig.lead.name,
-                role: 'lead',
-                cliTool: nextConfig.lead.tool,
-                model: nextConfig.lead.model,
-                projectId: nextConfig.lead.projectId,
-                description: nextConfig.lead.description,
-                roleId: nextConfig.lead.roleId,
-                roleName: nextConfig.lead.roleName,
-                focusArea: nextConfig.lead.focusArea,
-                contextSummary: nextConfig.lead.contextSummary,
-                behaviorSummary: nextConfig.lead.behaviorSummary,
-                sessionStatus: nextConfig.lead.status,
-                paneId: nextConfig.lead.paneId,
-              }
-            : null,
-          ...(nextConfig.agents ?? []).map((member) => ({
-            name: member.name,
-            role: 'member',
-            cliTool: member.tool,
-            model: member.model,
-            projectId: member.projectId,
-            description: member.description,
-            roleId: member.roleId,
-            roleName: member.roleName,
-            focusArea: member.focusArea,
-            contextSummary: member.contextSummary,
-            behaviorSummary: member.behaviorSummary,
-            sessionStatus: member.status,
-            paneId: member.paneId,
-          })),
-        ].filter(Boolean),
+        members: liveStatusMembers,
         }))
     }
   }
@@ -654,11 +658,15 @@ export function createMeshTabController({
       return
     }
 
+    mode = 'gate'
     void hydrateProjectMesh(projectPath, sequence)
   }
 
   function ensureGateReady() {
-    ensureHydrated(getProjectPath(), {
+    const projectPath = getProjectPath()
+    if (!projectPath) return
+    if (pendingProjectSnapshot?.projectPath === projectPath) return
+    ensureHydrated(projectPath, {
       isVisible: getIsVisible(),
       backgroundWorkEnabled: getBackgroundWorkEnabled(),
     })

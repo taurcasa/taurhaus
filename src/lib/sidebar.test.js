@@ -178,14 +178,27 @@ describe('Context menu session actions', () => {
    */
   function sessionMenuItems(session, confirmStop = false) {
     const items = []
+    const hasNavigableTmuxTarget = Boolean(
+      session?.tmux_session && session?.tmux_window && session?.tmux_pane
+    )
+    const isLiveSession = session?.state === 'active' || session?.state === 'idle'
 
-    if (session?.state === 'active' || session?.state === 'idle') {
-      // Has session — show navigate first, launch disabled, destructive group
+    if (hasNavigableTmuxTarget) {
       items.push({ label: 'Open in Terminal', action: 'openInTerminal' })
       items.push({ separator: true })
-      items.push({ label: 'Continue Session', disabled: true })
-      items.push({ label: 'New Session', disabled: true })
-      items.push({ label: 'Resume (pick)...', disabled: true })
+    }
+
+    items.push({ label: 'Continue Claude', action: 'continue-claude' })
+    items.push({ separator: true })
+    items.push({ label: 'New Claude Session', action: 'fresh-claude' })
+    items.push({ label: 'New Codex Session', action: 'fresh-codex' })
+    items.push({ label: 'New Gemini Session', action: 'fresh-gemini' })
+    items.push({ separator: true })
+    items.push({ label: 'Resume Claude', action: 'resume-claude' })
+    items.push({ label: 'Resume Codex', action: 'resume-codex' })
+    items.push({ label: 'Resume Gemini', action: 'resume-gemini' })
+
+    if (isLiveSession) {
       items.push({ separator: true })
       items.push({ label: 'Restart Session', action: 'restart' })
       items.push({
@@ -194,89 +207,75 @@ describe('Context menu session actions', () => {
         danger: true,
         keepOpen: !confirmStop,
       })
-    } else {
-      // No session — all launch items enabled
-      items.push({ label: 'Continue Session', action: 'continue' })
-      items.push({ label: 'New Session', action: 'fresh' })
-      items.push({ label: 'Resume (pick)...', action: 'resume' })
     }
 
     return items
   }
 
-  // AC1: No session → menu shows launch items all enabled
-  it('shows all launch items enabled when no session', () => {
-    const items = sessionMenuItems(null)
-    expect(items).toHaveLength(3)
-    expect(items[0].label).toBe('Continue Session')
-    expect(items[1].label).toBe('New Session')
-    expect(items[2].label).toBe('Resume (pick)...')
-    expect(items.every(i => !i.disabled)).toBe(true)
+  it('shows only distinct launch actions when no session exists', () => {
+    const actionable = sessionMenuItems(null).filter(i => !i.separator)
+    expect(actionable.map((item) => item.label)).toEqual([
+      'Continue Claude',
+      'New Claude Session',
+      'New Codex Session',
+      'New Gemini Session',
+      'Resume Claude',
+      'Resume Codex',
+      'Resume Gemini',
+    ])
   })
 
-  // AC2: Active session → "Open in Terminal" first, launch items disabled
-  it('shows Open in Terminal first and disables launch items for active session', () => {
-    const items = sessionMenuItems({ state: 'active' })
-    const actionable = items.filter(i => !i.separator)
+  it('hides Open in Terminal when a live session has no tmux target', () => {
+    const actionable = sessionMenuItems({ state: 'active', cli_tool: 'codex' }).filter(i => !i.separator)
+    expect(actionable.map((item) => item.label)).not.toContain('Open in Terminal')
+  })
 
+  it('shows Open in Terminal first when a live session has tmux coordinates', () => {
+    const actionable = sessionMenuItems({
+      state: 'active',
+      tmux_session: 'team',
+      tmux_window: '2',
+      tmux_pane: '%9',
+    }).filter(i => !i.separator)
     expect(actionable[0].label).toBe('Open in Terminal')
-    expect(actionable[0].disabled).toBeFalsy()
-
-    // Launch items disabled
-    expect(actionable[1].label).toBe('Continue Session')
-    expect(actionable[1].disabled).toBe(true)
-    expect(actionable[2].label).toBe('New Session')
-    expect(actionable[2].disabled).toBe(true)
-    expect(actionable[3].label).toBe('Resume (pick)...')
-    expect(actionable[3].disabled).toBe(true)
   })
 
-  // AC3: Active session → destructive group with Restart and Stop
   it('includes Restart and Stop in destructive group for active session', () => {
-    const items = sessionMenuItems({ state: 'active' })
-    const actionable = items.filter(i => !i.separator)
-
-    expect(actionable[4].label).toBe('Restart Session')
-    expect(actionable[5].label).toBe('Stop Session')
-    expect(actionable[5].danger).toBe(true)
+    const actionable = sessionMenuItems({ state: 'active' }).filter(i => !i.separator)
+    expect(actionable.at(-2)?.label).toBe('Restart Session')
+    expect(actionable.at(-1)?.label).toBe('Stop Session')
+    expect(actionable.at(-1)?.danger).toBe(true)
   })
 
-  // AC8: Stop uses two-click confirmation
   it('Stop Session uses two-click confirmation pattern', () => {
-    // First state — not confirmed
     const items1 = sessionMenuItems({ state: 'active' }, false)
     const stop1 = items1.filter(i => !i.separator).find(i => i.label === 'Stop Session')
     expect(stop1.keepOpen).toBe(true)
     expect(stop1.danger).toBe(true)
 
-    // Second state — confirmed
     const items2 = sessionMenuItems({ state: 'active' }, true)
     const stop2 = items2.filter(i => !i.separator).find(i => i.label === 'Confirm stop?')
     expect(stop2.keepOpen).toBe(false)
     expect(stop2.danger).toBe(true)
   })
 
-  // AC9: Disabled items are not actionable
-  it('disabled launch items have no action when session active', () => {
-    const items = sessionMenuItems({ state: 'active' })
-    const disabled = items.filter(i => i.disabled)
-    expect(disabled).toHaveLength(3)
-    disabled.forEach(item => {
-      expect(item.action).toBeUndefined()
-    })
+  it('collapses duplicate Codex and Gemini continue labels from the menu', () => {
+    const labels = sessionMenuItems(null).filter(i => !i.separator).map((item) => item.label)
+    expect(labels).not.toContain('Continue Codex')
+    expect(labels).not.toContain('Continue Gemini')
   })
 
-  // AC10: Menu structure stable — separator positions don't shift
   it('has stable separator positions between states', () => {
     const noSession = sessionMenuItems(null)
-    const withSession = sessionMenuItems({ state: 'active' })
+    const withSession = sessionMenuItems({
+      state: 'active',
+      tmux_session: 'team',
+      tmux_window: '2',
+      tmux_pane: '%9',
+    })
 
-    // No session: 3 items, no separators
-    expect(noSession.filter(i => i.separator)).toHaveLength(0)
-
-    // With session: 2 separators (after Open in Terminal, before destructive group)
-    const seps = withSession.filter(i => i.separator)
-    expect(seps).toHaveLength(2)
+    expect(noSession.filter(i => i.separator)).toHaveLength(2)
+    expect(withSession.filter(i => i.separator)).toHaveLength(4)
   })
 
   // Idle session gets same treatment as active
@@ -289,9 +288,11 @@ describe('Context menu session actions', () => {
   // AC5-7: Launch actions use correct modes
   it('launch actions map to correct modes', () => {
     const items = sessionMenuItems(null)
-    expect(items[0].action).toBe('continue')
-    expect(items[1].action).toBe('fresh')
-    expect(items[2].action).toBe('resume')
+    const actionable = items.filter(i => !i.separator)
+    expect(actionable[0].action).toBe('continue-claude')
+    expect(actionable[1].action).toBe('fresh-claude')
+    expect(actionable[2].action).toBe('fresh-codex')
+    expect(actionable[6].action).toBe('resume-gemini')
   })
 })
 

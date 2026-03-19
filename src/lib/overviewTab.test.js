@@ -381,6 +381,12 @@ describe('OverviewTab', () => {
     expect(screen.getByText(dateStr)).toBeTruthy()
   })
 
+  it('does not render dead project info action buttons', () => {
+    render(OverviewTab, { props: defaultProps() })
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
+  })
+
   // --- Layout ordering ---
 
   it('quick actions render in header area', () => {

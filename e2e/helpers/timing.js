@@ -59,8 +59,8 @@ export const TIMEOUT_LONG = 4_000
 /** Extra-heavy operation — full index rebuild, large file tree. */
 export const TIMEOUT_XLONG = 7_000
 
-/** First-launch only — wizard, initial indexing. */
-export const TIMEOUT_BOOT = 15_000
+/** First-launch only — wizard, initial indexing, and slow splash-to-shell transitions. */
+export const TIMEOUT_BOOT = 45_000
 
 // ── Presets ────────────────────────────────────────────────────────────────
 // Common { timeout, interval } combos to spread into waitUntil options.

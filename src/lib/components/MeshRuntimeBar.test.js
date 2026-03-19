@@ -64,4 +64,37 @@ describe('MeshRuntimeBar', () => {
     await fireEvent.click(screen.getByTestId('mesh-runtime-disband'))
     expect(onDisband).toHaveBeenCalledTimes(1)
   })
+
+  it('uses stopped copy and resume-first actions for non-active teams', () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'stopped' },
+        agents: [{ id: 'a1', status: 'terminated' }],
+        teamRuntimeState: 'coldResume',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent(
+      '2 members • 0 active • 2 stopped'
+    )
+    expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('All members stopped')
+    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Team')
+    expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
+  })
+
+  it('uses stopped wording for degraded teams', () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'active' },
+        agents: [{ id: 'a1', status: 'stopped' }],
+        teamRuntimeState: 'degraded',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('1 member stopped')
+    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Stopped (1)')
+    expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
+  })
 })

@@ -54,6 +54,21 @@ describe('meshCache', () => {
     })
   })
 
+  it('treats equivalent normalized paths as the same cache key', () => {
+    const snapshot = {
+      teamName: 'alpha-team',
+      mode: 'runtime',
+    }
+
+    setMeshCache('\\\\wsl.localhost\\Ubuntu\\home\\user\\alpha\\', snapshot)
+
+    expect(getMeshCache('/home/user/alpha')).toEqual(snapshot)
+
+    clearMeshCache('/home/user/alpha')
+
+    expect(getMeshCache('\\\\wsl$\\Ubuntu\\home\\user\\alpha')).toBeNull()
+  })
+
   it('is reactive when components read a cached snapshot', async () => {
     render(MeshCacheHarness, {
       props: {

@@ -403,7 +403,7 @@
           data-testid="mesh-node-detail-stop"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-          Stop
+          Remove
         </button>
         <button
           class="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors disabled:opacity-45 disabled:cursor-not-allowed {secondaryActionTone}"

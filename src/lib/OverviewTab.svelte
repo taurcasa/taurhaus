@@ -382,10 +382,6 @@
           </div>
         {/if}
       </div>
-      <div class="mt-3 flex gap-3">
-        <button class="text-[11px] {t.textTertiary}">Edit</button>
-        <button class="text-[11px] {dangerColor}">Remove</button>
-      </div>
     </section>
 
   </div>

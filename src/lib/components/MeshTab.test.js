@@ -346,8 +346,9 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('mesh-runtime-banner')).not.toBeInTheDocument()
       expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent('2 members • 0 active • 2 stopped')
-      expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('Team ready to resume')
+      expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('All members stopped')
       expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Team')
+      expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
     })
   })
 
@@ -360,7 +361,7 @@ describe('MeshTab', () => {
     expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
   })
 
-  it('shows Resume Offline count for degraded teams', async () => {
+  it('shows Resume Stopped count for degraded teams', async () => {
     coordinationGetLiveTeamStatus.mockResolvedValueOnce(
       buildLiveTeamStatus({
         members: [
@@ -432,8 +433,8 @@ describe('MeshTab', () => {
 
     expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent('2 members • 1 active • 1 stopped')
     expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('1 member stopped')
-    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Offline (1)')
-    expect(screen.getByTestId('mesh-runtime-add-agent')).toHaveTextContent('Add Agent')
+    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Stopped (1)')
+    expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
   })
 
   it('resume team CTA calls coordinationResumeTeam', async () => {
@@ -704,7 +705,7 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-runtime-primary-action')).toBeDisabled()
-      expect(screen.getByTestId('mesh-runtime-add-agent')).toBeDisabled()
+      expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
       expect(screen.getByTestId('mesh-runtime-more-toggle')).toBeDisabled()
       expect(screen.getByTestId('mesh-runtime-disband')).toBeDisabled()
       expect(screen.getByTestId('mesh-node-detail-resume')).toBeDisabled()
@@ -912,6 +913,75 @@ describe('MeshTab', () => {
     expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledWith('/projects/taurhaus')
   })
 
+  it('keeps the gate visible during uncached discovery so cold resume can replace setup on first load', async () => {
+    const snapshotLoad = deferred()
+    const liveRefresh = deferred()
+    coordinationGetProjectMeshSnapshot.mockReturnValueOnce(snapshotLoad.promise)
+    coordinationGetLiveTeamStatus.mockReturnValueOnce(liveRefresh.promise)
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-mode-gate')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-mode-empty')).not.toBeInTheDocument()
+
+    snapshotLoad.resolve(buildRuntimeSnapshot({
+      teamRuntimeState: 'coldResume',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: '/projects/taurhaus',
+          sessionStatus: 'offline',
+          paneId: '%1',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          projectId: '/projects/taurhaus',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      expect(screen.queryByTestId('mesh-mode-gate')).not.toBeInTheDocument()
+    })
+
+    liveRefresh.resolve(buildLiveTeamStatus({
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: '/projects/taurhaus',
+          sessionStatus: 'offline',
+          paneId: '%1',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          projectId: '/projects/taurhaus',
+          sessionStatus: 'offline',
+          paneId: '%2',
+        },
+      ],
+    }))
+  })
+
   it('dedupes project snapshot IPC while activation visibility churn happens during a pending load', async () => {
     const snapshotLoad = deferred()
     coordinationGetProjectMeshSnapshot.mockReturnValueOnce(snapshotLoad.promise)
@@ -1116,6 +1186,60 @@ describe('MeshTab', () => {
 
       expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Offline')
       expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('treats non-live runtime statuses as stopped when live refresh reconciles the runtime bar', async () => {
+    vi.useFakeTimers()
+
+    try {
+      setMeshCache('/projects/taurhaus', buildRuntimeSnapshot())
+      coordinationGetLiveTeamStatus.mockResolvedValueOnce(buildLiveTeamStatus({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            projectId: 'proj-core',
+            sessionStatus: 'stopped',
+            paneId: null,
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            projectId: 'proj-web',
+            sessionStatus: 'terminated',
+            paneId: null,
+          },
+        ],
+      }))
+
+      render(MeshTab, {
+        props: {
+          dark: false,
+          projectPath: '/projects/taurhaus',
+        },
+      })
+
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Add Agent')
+
+      await vi.advanceTimersByTimeAsync(INITIAL_RUNTIME_REFRESH_DELAY_MS)
+      await flushUi()
+      await flushUi()
+
+      await waitFor(() => {
+        expect(coordinationGetLiveTeamStatus).toHaveBeenCalledTimes(1)
+        expect(screen.getByTestId('mesh-runtime-summary-line')).toHaveTextContent('2 members • 0 active • 2 stopped')
+        expect(screen.getByTestId('mesh-runtime-state-copy')).toHaveTextContent('All members stopped')
+        expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Team')
+        expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
+      })
     } finally {
       vi.useRealTimers()
     }

@@ -148,10 +148,11 @@ describe('MeshNodeDetail', () => {
     expect(screen.queryByTestId('mesh-node-detail-remove')).not.toBeInTheDocument()
   })
 
-  it('shows Resume, Stop, and Focus buttons in runtime mode', () => {
+  it('shows Resume, Remove, and Focus buttons in runtime mode', () => {
     renderDetail({ mode: 'runtime' })
     expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-stop')).toHaveTextContent('Remove')
     expect(screen.getByTestId('mesh-node-detail-focus')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
   })

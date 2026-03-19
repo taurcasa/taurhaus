@@ -72,7 +72,7 @@
   })
 
   const stateCopy = $derived.by(() => {
-    if (isColdResume) return 'Team ready to resume'
+    if (isColdResume) return totalMembers === 1 ? 'Member stopped' : 'All members stopped'
     if (isDegraded) {
       return statusCounts.offline === 1 ? '1 member stopped' : `${statusCounts.offline} members stopped`
     }
@@ -80,7 +80,7 @@
   })
 
   const primaryLabel = $derived.by(() => {
-    if (!isActive) return isColdResume ? 'Resume Team' : `Resume Offline (${statusCounts.offline})`
+    if (!isActive) return isColdResume ? 'Resume Team' : `Resume Stopped (${statusCounts.offline})`
     return 'Add Agent'
   })
 
@@ -95,11 +95,6 @@
       return
     }
     onResumeTeam('continue')
-  }
-
-  function handleAddAgent() {
-    if (actionsDisabled) return
-    onAddAgent()
   }
 
   function handleDisband() {
@@ -140,18 +135,6 @@
           {primaryLabel}
         {/if}
       </button>
-
-      {#if !isActive}
-        <button
-          class="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 {secondaryTone}"
-          type="button"
-          onclick={handleAddAgent}
-          disabled={actionsDisabled}
-          data-testid="mesh-runtime-add-agent"
-        >
-          Add Agent
-        </button>
-      {/if}
 
       <div class="relative">
         <button

@@ -1,6 +1,5 @@
 <script>
   import { themeTokens } from '../themeTokens.js'
-  import MeshAvailabilityGate from './MeshAvailabilityGate.svelte'
   import MeshCanvas from './MeshCanvas.svelte'
   import MeshInitProgress from './MeshInitProgress.svelte'
   import MeshTeamBuilder from './MeshTeamBuilder.svelte'
@@ -37,23 +36,13 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
-
-  function triggerGateReady(node) {
-    void node
-    onGateReady()
-    return {}
-  }
 </script>
 
 {#if mode === 'gate'}
   <div class="max-w-2xl mx-auto px-6 pt-4 pb-6 space-y-4" data-testid="mesh-mode-gate">
-    <MeshAvailabilityGate {dark} {projectPath}>
-      {#snippet children(_agentWarnings)}
-        <p class="text-xs {t.textMuted}" data-testid="mesh-gate-ready" use:triggerGateReady>
-          Checking project team state...
-        </p>
-      {/snippet}
-    </MeshAvailabilityGate>
+    <p class="text-xs {t.textMuted}" data-testid="mesh-gate-ready">
+      Checking project team state...
+    </p>
   </div>
 {:else if mode === 'empty'}
   <div class="px-4 pt-2 pb-4 space-y-3">
