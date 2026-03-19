@@ -156,6 +156,12 @@
     box-shadow: var(--mesh-node-shadow-hover);
   }
 
+  .mesh-node:focus-visible {
+    outline: none;
+    border-color: var(--mesh-node-selected-border-dark);
+    box-shadow: var(--mesh-node-selected-ring), var(--mesh-node-shadow-hover);
+  }
+
   .mesh-node.is-lead {
     border-width: 1.5px;
     border-color: var(--mesh-node-lead-border-dark);
@@ -163,6 +169,10 @@
 
   .mesh-node.is-lead:hover {
     border-color: var(--mesh-node-lead-border-dark-hover);
+  }
+
+  .mesh-node.is-lead:focus-visible {
+    border-color: var(--mesh-node-lead-selected-border-dark);
   }
 
   .mesh-node.is-selected {
@@ -192,12 +202,21 @@
     box-shadow: var(--mesh-node-shadow-light-hover);
   }
 
+  .mesh-node.is-light:focus-visible {
+    border-color: var(--mesh-node-selected-border-light);
+    box-shadow: var(--mesh-node-selected-ring), var(--mesh-node-shadow-light-hover);
+  }
+
   .mesh-node.is-light.is-lead {
     border-color: var(--mesh-node-lead-border-light);
   }
 
   .mesh-node.is-light.is-lead:hover {
     border-color: var(--mesh-node-lead-border-light-hover);
+  }
+
+  .mesh-node.is-light.is-lead:focus-visible {
+    border-color: var(--mesh-node-lead-selected-border-light);
   }
 
   .mesh-node.is-light.is-selected {

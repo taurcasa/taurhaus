@@ -164,18 +164,18 @@
         title={searchShortcutTitle}
         aria-label="Open search"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
         </svg>
       </button>
       <button
         data-testid="theme-light"
-        class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
+        class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors {focusRing} {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
         onclick={() => onSetDarkMode(false)}
       >Light</button>
       <button
         data-testid="theme-dark"
-        class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors {dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
+        class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors {focusRing} {dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
         onclick={() => onSetDarkMode(true)}
       >Dark</button>
 
@@ -186,7 +186,7 @@
           title="Minimize"
           aria-label="Minimize window"
         >
-          <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+          <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true"><rect width="10" height="1" fill="currentColor"/></svg>
         </button>
         <button
           class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors {focusRing}"
@@ -194,7 +194,7 @@
           title="Maximize"
           aria-label="Maximize window"
         >
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor"/></svg>
+          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true"><rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor"/></svg>
         </button>
         <button
           class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-red-500/80 transition-colors {focusRing}"
@@ -202,7 +202,7 @@
           title="Close"
           aria-label="Close window"
         >
-          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
         </button>
       </div>
     </div>

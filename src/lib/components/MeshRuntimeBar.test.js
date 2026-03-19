@@ -65,6 +65,34 @@ describe('MeshRuntimeBar', () => {
     expect(onDisband).toHaveBeenCalledTimes(1)
   })
 
+  it('supports keyboard and outside-close behavior for the More menu', async () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'active' },
+        agents,
+        teamRuntimeState: 'active',
+      },
+    })
+
+    const toggle = screen.getByTestId('mesh-runtime-more-toggle')
+    toggle.focus()
+
+    await fireEvent.keyDown(toggle, { key: 'ArrowDown' })
+
+    const disbandItem = screen.getByRole('menuitem', { name: 'Disband Team...' })
+    expect(disbandItem).toHaveFocus()
+
+    await fireEvent.keyDown(disbandItem, { key: 'Escape' })
+    expect(screen.queryByTestId('mesh-runtime-more-menu')).not.toBeInTheDocument()
+    expect(toggle).toHaveFocus()
+
+    await fireEvent.click(toggle)
+    expect(screen.getByRole('menuitem', { name: 'Stop All Members' })).toBeDisabled()
+    await fireEvent.mouseDown(document.body)
+    expect(screen.queryByTestId('mesh-runtime-more-menu')).not.toBeInTheDocument()
+  })
+
   it('uses stopped copy and resume-first actions for non-active teams', () => {
     render(MeshRuntimeBar, {
       props: {

@@ -12,6 +12,10 @@
   } = $props()
 
   let overflowOpen = $state(false)
+  let overflowToggleEl = $state(null)
+  let overflowMenuEl = $state(null)
+  let stopAllItemEl = $state(null)
+  let disbandItemEl = $state(null)
 
   const panelTone = $derived(dark ? 'bg-zinc-900/80 backdrop-blur-sm' : 'bg-white/80 backdrop-blur-sm')
   const borderTone = $derived(dark ? 'border border-white/8' : 'border border-brand-200/60')
@@ -40,6 +44,11 @@
     dark ? 'text-danger-300 hover:bg-danger-500/12' : 'text-danger-600 hover:bg-danger-500/10'
   )
   const hintTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const focusRing = $derived(
+    dark
+      ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950'
+      : 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white'
+  )
 
   const members = $derived.by(() => [lead, ...(Array.isArray(agents) ? agents : [])].filter(Boolean))
 
@@ -88,6 +97,92 @@
     overflowOpen = false
   }
 
+  function getOverflowEnabledItems() {
+    return [stopAllItemEl, disbandItemEl].filter((item) => item && !item.disabled)
+  }
+
+  function focusOverflowItem(target = 'first') {
+    queueMicrotask(() => {
+      const items = getOverflowEnabledItems()
+      if (items.length === 0) return
+      const nextItem = target === 'last' ? items.at(-1) : items[0]
+      nextItem?.focus()
+    })
+  }
+
+  function openOverflow({ focus = 'none' } = {}) {
+    if (actionsDisabled) return
+    overflowOpen = true
+    if (focus !== 'none') {
+      focusOverflowItem(focus)
+    }
+  }
+
+  function closeOverflowAndRestoreFocus() {
+    closeOverflow()
+    queueMicrotask(() => {
+      overflowToggleEl?.focus()
+    })
+  }
+
+  function moveOverflowFocus(direction) {
+    const items = getOverflowEnabledItems()
+    if (items.length === 0) return
+    const activeIndex = items.findIndex((item) => item === document.activeElement)
+    const startIndex = activeIndex >= 0 ? activeIndex : 0
+    const nextIndex = (startIndex + direction + items.length) % items.length
+    items[nextIndex]?.focus()
+  }
+
+  function handleOverflowToggleKeydown(event) {
+    if (actionsDisabled) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      openOverflow({ focus: 'first' })
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      openOverflow({ focus: 'last' })
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      if (overflowOpen) {
+        closeOverflow()
+        return
+      }
+      openOverflow({ focus: 'first' })
+    }
+  }
+
+  function handleOverflowMenuKeydown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeOverflowAndRestoreFocus()
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveOverflowFocus(1)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveOverflowFocus(-1)
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusOverflowItem('first')
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusOverflowItem('last')
+    }
+  }
+
   function handlePrimaryAction() {
     if (actionsDisabled) return
     if (isActive) {
@@ -102,6 +197,19 @@
     closeOverflow()
     onDisband()
   }
+
+  $effect(() => {
+    if (!overflowOpen) return
+
+    function handlePointerDown(event) {
+      const target = event.target
+      if (overflowMenuEl?.contains(target) || overflowToggleEl?.contains(target)) return
+      closeOverflow()
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    return () => window.removeEventListener('mousedown', handlePointerDown)
+  })
 </script>
 
 <header
@@ -123,7 +231,7 @@
 
     <div class="flex shrink-0 items-center gap-2">
       <button
-        class="inline-flex min-w-[8.5rem] items-center justify-center rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 {primaryTone}"
+        class="inline-flex min-w-[8.5rem] items-center justify-center rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 {primaryTone} {focusRing}"
         type="button"
         onclick={handlePrimaryAction}
         disabled={actionsDisabled}
@@ -138,12 +246,17 @@
 
       <div class="relative">
         <button
-          class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 {secondaryTone}"
+          bind:this={overflowToggleEl}
+          class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 {secondaryTone} {focusRing}"
           type="button"
           onclick={() => {
-            if (actionsDisabled) return
-            overflowOpen = !overflowOpen
+            if (overflowOpen) {
+              closeOverflow()
+              return
+            }
+            openOverflow()
           }}
+          onkeydown={handleOverflowToggleKeydown}
           aria-expanded={overflowOpen}
           aria-haspopup="menu"
           disabled={actionsDisabled}
@@ -155,25 +268,35 @@
 
         {#if overflowOpen}
           <div
+            bind:this={overflowMenuEl}
             class="absolute right-0 top-[calc(100%+0.4rem)] z-20 flex min-w-48 flex-col gap-1 rounded-xl p-1.5 {menuTone}"
             role="menu"
+            aria-label="More actions"
+            tabindex="-1"
+            onkeydown={handleOverflowMenuKeydown}
             data-testid="mesh-runtime-more-menu"
           >
             <button
-              class="rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 {menuItemTone}"
+              bind:this={stopAllItemEl}
+              class="rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 {menuItemTone} {focusRing}"
               type="button"
+              role="menuitem"
               disabled={true}
               title="Stop-all lifecycle action is planned for a later phase."
+              onkeydown={handleOverflowMenuKeydown}
               data-testid="mesh-runtime-stop-all"
             >
               Stop All Members
             </button>
 
             <button
-              class="rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors {dangerTone}"
+              bind:this={disbandItemEl}
+              class="rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors {dangerTone} {focusRing}"
               type="button"
+              role="menuitem"
               onclick={handleDisband}
               disabled={actionsDisabled}
+              onkeydown={handleOverflowMenuKeydown}
               data-testid="mesh-runtime-disband"
             >
               Disband Team...

@@ -32,8 +32,14 @@
       ? 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.1]'
       : 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200'
   )
+  const focusRing = $derived(
+    dark
+      ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900'
+      : 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30 focus-visible:ring-offset-1 focus-visible:ring-offset-white'
+  )
 
   let dialogElement = $state(null)
+  let cancelButtonElement = $state(null)
 
   function openDialogElement(dialog) {
     if (typeof dialog.showModal === 'function') {
@@ -98,6 +104,11 @@
       if (!dialog.open) {
         openDialogElement(dialog)
       }
+      queueMicrotask(() => {
+        if (open) {
+          cancelButtonElement?.focus()
+        }
+      })
       return
     }
     if (dialog.open) {
@@ -120,7 +131,8 @@
 
     <div class="mt-4 flex items-center justify-end gap-2">
       <button
-        class="rounded-md px-3 py-1.5 text-xs transition-colors {neutralGhost}"
+        bind:this={cancelButtonElement}
+        class="rounded-md px-3 py-1.5 text-xs transition-colors {neutralGhost} {focusRing}"
         onclick={dismiss}
         data-testid="confirm-dialog-cancel"
       >
@@ -128,7 +140,7 @@
       </button>
       {#if secondaryLabel}
         <button
-          class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {secondaryTone}"
+          class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {secondaryTone} {focusRing}"
           onclick={handleSecondary}
           data-testid="confirm-dialog-secondary"
         >
@@ -136,7 +148,7 @@
         </button>
       {/if}
       <button
-        class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {confirmTone}"
+        class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {confirmTone} {focusRing}"
         onclick={handleConfirm}
         data-testid="confirm-dialog-confirm"
       >

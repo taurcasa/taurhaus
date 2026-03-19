@@ -72,6 +72,7 @@ describe('MeshNode', () => {
     expect(source).toContain('var(--mesh-node-bg-dark)')
     expect(source).toContain('var(--mesh-node-text-dark)')
     expect(source).toContain('var(--mesh-node-status-shadow-light)')
+    expect(source).toContain('.mesh-node:focus-visible')
     expect(source).not.toMatch(/#[0-9A-Fa-f]{3,8}/)
     expect(source).not.toMatch(/\brgba?\(/)
   })

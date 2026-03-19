@@ -222,4 +222,26 @@ describe('ContextMenu', () => {
     expect(third).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('supports type-ahead navigation by item label', async () => {
+    const onClose = vi.fn()
+    const remove = vi.fn()
+
+    render(ContextMenu, {
+      props: {
+        onClose,
+        items: [
+          { label: 'Copy path', action: vi.fn() },
+          { label: 'Remove', action: remove },
+          { label: 'Rename', action: vi.fn(), disabled: true },
+        ],
+      },
+    })
+
+    await fireEvent.keyDown(window, { key: 'r' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

@@ -18,6 +18,8 @@
 
   let menuEl = $state(null)
   let focusIndex = $state(-1)
+  let typeaheadBuffer = ''
+  let typeaheadTimer = null
 
   // Only actionable (non-separator) items for keyboard nav
   const actionableItems = $derived(items.filter(i => !i.separator))
@@ -119,10 +121,45 @@
           }
         }
       }
+
+      if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey && /\S/.test(e.key)) {
+        const query = `${typeaheadBuffer}${e.key.toLowerCase()}`
+        const findIndex = (value) => actionableItems.findIndex((item) => (
+          !item.disabled && String(item.label || '').trim().toLowerCase().startsWith(value)
+        ))
+
+        let nextIndex = findIndex(query)
+        typeaheadBuffer = query
+
+        if (nextIndex < 0) {
+          nextIndex = findIndex(e.key.toLowerCase())
+          typeaheadBuffer = e.key.toLowerCase()
+        }
+
+        if (typeaheadTimer) {
+          clearTimeout(typeaheadTimer)
+        }
+        typeaheadTimer = setTimeout(() => {
+          typeaheadBuffer = ''
+          typeaheadTimer = null
+        }, 350)
+
+        if (nextIndex >= 0) {
+          e.preventDefault()
+          focusIndex = nextIndex
+        }
+      }
     }
 
     window.addEventListener('keydown', handleKeydown)
-    return () => window.removeEventListener('keydown', handleKeydown)
+    return () => {
+      window.removeEventListener('keydown', handleKeydown)
+      if (typeaheadTimer) {
+        clearTimeout(typeaheadTimer)
+        typeaheadTimer = null
+      }
+      typeaheadBuffer = ''
+    }
   })
 
   function handleItemClick(item) {

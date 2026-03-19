@@ -75,4 +75,16 @@ describe('ConfirmDialog', () => {
     await fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
+
+  it('moves initial focus to the first action button when opened', async () => {
+    render(ConfirmDialog, {
+      props: {
+        open: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog-cancel')).toHaveFocus()
+    })
+  })
 })

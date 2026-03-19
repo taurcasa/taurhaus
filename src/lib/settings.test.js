@@ -305,11 +305,22 @@ describe('Settings component', () => {
       const active = screen.getByTestId('threshold-active')
       const recent = screen.getByTestId('threshold-recent')
       const stale = screen.getByTestId('threshold-stale')
-      expect(active.className).toContain('focus:ring-1')
-      expect(active.className).toContain('focus:ring-brand-500')
-      expect(recent.className).toContain('focus:ring-1')
-      expect(stale.className).toContain('focus:ring-brand-500')
+      expect(active.className).toContain('focus-visible:ring-1')
+      expect(active.className).toContain('focus-visible:ring-brand-500')
+      expect(recent.className).toContain('focus-visible:ring-1')
+      expect(stale.className).toContain('focus-visible:ring-brand-500')
     })
+  })
+
+  it('adds accessible labels to scan and ignore textareas while editing', async () => {
+    render(Settings, { props: defaultProps() })
+
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit' })
+    await fireEvent.click(editButtons[0])
+    await fireEvent.click(editButtons[1])
+
+    expect(screen.getByLabelText('Scan directories')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ignore patterns')).toBeInTheDocument()
   })
 
   it('threshold blur calls updateSettings', async () => {

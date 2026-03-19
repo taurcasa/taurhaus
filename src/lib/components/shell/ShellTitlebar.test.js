@@ -51,4 +51,19 @@ describe('ShellTitlebar', () => {
     expect(screen.getByRole('button', { name: 'Maximize window' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close window' })).toBeInTheDocument()
   })
+
+  it('marks decorative titlebar svg icons as hidden from assistive tech', () => {
+    const { container } = render(ShellTitlebar, {
+      props: {
+        dark: true,
+        activeTab: 'overview',
+      },
+    })
+
+    for (const button of screen.getAllByRole('button')) {
+      const icon = button.querySelector('svg')
+      if (!icon) continue
+      expect(icon).toHaveAttribute('aria-hidden', 'true')
+    }
+  })
 })

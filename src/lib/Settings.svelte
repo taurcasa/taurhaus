@@ -21,6 +21,12 @@
   const cardBg        = $derived(dark ? 'bg-zinc-900' : 'bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-900')
   const addonBg       = $derived(dark ? 'bg-zinc-700/50 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
+  const buttonFocusRing = $derived(
+    dark
+      ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900'
+      : 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white'
+  )
+  const fieldFocusRing = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500'
 
   // Settings state
   let settings = $state(null)
@@ -267,7 +273,7 @@
     <!-- Header -->
     <div class="mb-6">
       <button
-        class="text-[13px] {t.linkColor} transition-colors mb-3 flex items-center gap-1"
+        class="text-[13px] {t.linkColor} transition-colors mb-3 flex items-center gap-1 {buttonFocusRing}"
         onclick={onClose}
         data-testid="settings-back"
       >
@@ -309,7 +315,7 @@
               <span class="text-[13px] {t.textSecondary}">Scan directories</span>
               {#if !editingScanDirs}
                 <button
-                  class="text-[12px] {t.linkColor} transition-colors"
+                  class="text-[12px] {t.linkColor} transition-colors {buttonFocusRing}"
                   onclick={startEditScanDirs}
                 >Edit</button>
               {/if}
@@ -324,17 +330,18 @@
             </div>
             {#if editingScanDirs}
               <textarea
-                class="w-full h-24 px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none font-mono"
+                class="w-full h-24 px-3 py-2 text-[13px] rounded-md border {inputBg} {fieldFocusRing} resize-none font-mono"
                 bind:value={scanDirsText}
                 placeholder="One directory per line"
+                aria-label="Scan directories"
               ></textarea>
               <div class="flex gap-2 mt-2">
                 <button
-                  class="px-3 py-1 text-[12px] rounded-md bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+                  class="px-3 py-1 text-[12px] rounded-md bg-brand-600 text-white hover:bg-brand-700 transition-colors {buttonFocusRing}"
                   onclick={saveScanDirs}
                 >Save</button>
                 <button
-                  class="px-3 py-1 text-[12px] rounded-md {textTertiary} hover:text-zinc-600 transition-colors"
+                  class="px-3 py-1 text-[12px] rounded-md {textTertiary} hover:text-zinc-600 transition-colors {buttonFocusRing}"
                   onclick={() => editingScanDirs = false}
                 >Cancel</button>
               </div>
@@ -357,7 +364,7 @@
               <span class="text-[13px] {t.textSecondary}">Ignore patterns</span>
               {#if !editingIgnore}
                 <button
-                  class="text-[12px] {t.linkColor} transition-colors"
+                  class="text-[12px] {t.linkColor} transition-colors {buttonFocusRing}"
                   onclick={startEditIgnore}
                 >Edit</button>
               {/if}
@@ -372,17 +379,18 @@
             </div>
             {#if editingIgnore}
               <textarea
-                class="w-full h-24 px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none font-mono"
+                class="w-full h-24 px-3 py-2 text-[13px] rounded-md border {inputBg} {fieldFocusRing} resize-none font-mono"
                 bind:value={ignoreText}
                 placeholder="One pattern per line"
+                aria-label="Ignore patterns"
               ></textarea>
               <div class="flex gap-2 mt-2">
                 <button
-                  class="px-3 py-1 text-[12px] rounded-md bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+                  class="px-3 py-1 text-[12px] rounded-md bg-brand-600 text-white hover:bg-brand-700 transition-colors {buttonFocusRing}"
                   onclick={saveIgnore}
                 >Save</button>
                 <button
-                  class="px-3 py-1 text-[12px] rounded-md {textTertiary} hover:text-zinc-600 transition-colors"
+                  class="px-3 py-1 text-[12px] rounded-md {textTertiary} hover:text-zinc-600 transition-colors {buttonFocusRing}"
                   onclick={() => editingIgnore = false}
                 >Cancel</button>
               </div>
@@ -413,7 +421,7 @@
                     min="1"
                     value={settings.thresholds.active_days}
                     onblur={(e) => handleThresholdBlur('active_days', e.target.value)}
-                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none focus:ring-1 focus:ring-brand-500 text-center border-none"
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} {fieldFocusRing} text-center border-none"
                     data-testid="threshold-active"
                   />
                   <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
@@ -429,7 +437,7 @@
                     min="1"
                     value={settings.thresholds.recent_days}
                     onblur={(e) => handleThresholdBlur('recent_days', e.target.value)}
-                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none focus:ring-1 focus:ring-brand-500 text-center border-none"
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} {fieldFocusRing} text-center border-none"
                     data-testid="threshold-recent"
                   />
                   <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
@@ -445,7 +453,7 @@
                     min="1"
                     value={settings.thresholds.stale_days}
                     onblur={(e) => handleThresholdBlur('stale_days', e.target.value)}
-                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none focus:ring-1 focus:ring-brand-500 text-center border-none"
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} {fieldFocusRing} text-center border-none"
                     data-testid="threshold-stale"
                   />
                   <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
@@ -469,7 +477,7 @@
               <label for="code-theme-light" class="text-[13px] {t.textBody} w-20">Light</label>
               <select
                 id="code-theme-light"
-                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} {fieldFocusRing}"
                 value={codeThemeLight}
                 onchange={(e) => handleCodeThemeChange('light', e.target.value)}
                 data-testid="code-theme-light"
@@ -483,7 +491,7 @@
               <label for="code-theme-dark" class="text-[13px] {t.textBody} w-20">Dark</label>
               <select
                 id="code-theme-dark"
-                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} {fieldFocusRing}"
                 value={codeThemeDark}
                 onchange={(e) => handleCodeThemeChange('dark', e.target.value)}
                 data-testid="code-theme-dark"
@@ -505,7 +513,7 @@
               <label for="terminal-emulator" class="text-[13px] {t.textSecondary} w-24">Emulator</label>
               <select
                 id="terminal-emulator"
-                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} {fieldFocusRing}"
                 value={getSelectedTerminalEmulator()}
                 onchange={(e) => {
                   const defaultEmulator = getTerminalDefaultEmulator()
@@ -534,7 +542,7 @@
               <label for="tmux-layout" class="text-[13px] {t.textSecondary} w-24">Pane layout</label>
               <select
                 id="tmux-layout"
-                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
+                class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} {fieldFocusRing}"
                 value={settings.terminal?.tmux_layout || 'new_window'}
                 onchange={(e) => {
                   const defaultEmulator = getTerminalDefaultEmulator()
@@ -559,7 +567,7 @@
                 <input
                   id="terminal-custom-cmd"
                   type="text"
-                  class="w-full px-3 py-1.5 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                  class="w-full px-3 py-1.5 text-[13px] rounded-md border {inputBg} {fieldFocusRing} font-mono"
                   value={settings.terminal?.custom_command || ''}
                   placeholder={getTerminalPlatform() === 'macos'
                     ? "e.g. /usr/local/bin/alacritty -e tmux attach -t {'{tmux_session}'}"
@@ -594,7 +602,7 @@
               <div class="flex items-center justify-between mb-2">
                 <h3 class="text-[12px] font-medium {t.textBody}">{label}</h3>
                 <button
-                  class="text-[11px] {t.linkColor} transition-colors"
+                  class="text-[11px] {t.linkColor} transition-colors {buttonFocusRing}"
                   onclick={() => resetToolDefaults(tool)}
                   data-testid="cli-reset-{tool}"
                 >Reset</button>
@@ -605,7 +613,7 @@
                   <input
                     id="cli-{tool}-continue"
                     type="text"
-                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} {fieldFocusRing} font-mono"
                     value={getCliCmd(tool, 'continue_cmd')}
                     placeholder={getTerminalCliDefaults()[tool].continue_cmd}
                     onblur={(e) => setCliCmd(tool, 'continue_cmd', e.target.value)}
@@ -617,7 +625,7 @@
                   <input
                     id="cli-{tool}-fresh"
                     type="text"
-                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} {fieldFocusRing} font-mono"
                     value={getCliCmd(tool, 'fresh')}
                     placeholder={getTerminalCliDefaults()[tool].fresh}
                     onblur={(e) => setCliCmd(tool, 'fresh', e.target.value)}
@@ -629,7 +637,7 @@
                   <input
                     id="cli-{tool}-resume"
                     type="text"
-                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                    class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} {fieldFocusRing} font-mono"
                     value={getCliCmd(tool, 'resume')}
                     placeholder={getTerminalCliDefaults()[tool].resume}
                     onblur={(e) => setCliCmd(tool, 'resume', e.target.value)}
@@ -659,7 +667,7 @@
           {/if}
 
           <button
-            class="px-3 py-1.5 text-[13px] rounded-md border {t.keyline} {t.textSecondary} transition-colors disabled:opacity-50 {dark ? 'hover:bg-zinc-800 hover:border-zinc-700' : 'hover:bg-zinc-100 hover:border-zinc-300'}"
+            class="px-3 py-1.5 text-[13px] rounded-md border {t.keyline} {t.textSecondary} transition-colors disabled:opacity-50 {dark ? 'hover:bg-zinc-800 hover:border-zinc-700' : 'hover:bg-zinc-100 hover:border-zinc-300'} {buttonFocusRing}"
             onclick={handleRebuildIndex}
             disabled={rebuilding}
             data-testid="rebuild-index-btn"
@@ -668,7 +676,7 @@
           </button>
           {#if rebuildError}
             <p class="mt-2 text-[12px] text-danger-500" data-testid="rebuild-error">{rebuildError}
-              <button class="ml-1 underline" onclick={handleRebuildIndex}>Retry</button>
+              <button class="ml-1 underline {buttonFocusRing}" onclick={handleRebuildIndex}>Retry</button>
             </p>
           {/if}
         </section>
