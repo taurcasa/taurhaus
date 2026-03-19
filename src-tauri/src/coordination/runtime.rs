@@ -19,6 +19,10 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
 use crate::coordination::stores::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::tmux_layout::{
+    derive_window_name, parse_window_records, resolve_layout_allocation, TmuxLayoutAllocation,
+    TmuxLayoutPolicy, DEFAULT_SPLIT_MAX_PANES, LIST_WINDOWS_FORMAT,
+};
 
 const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
 const TMUX_POST_ENTER_DELAY: Duration = Duration::from_secs(1);
@@ -28,7 +32,6 @@ const SESSION_DETECT_ATTEMPTS: usize = 6;
 const SESSION_DETECT_INTERVAL: Duration = Duration::from_millis(200);
 const DAEMON_START_ATTEMPTS: usize = 30;
 const DAEMON_START_INTERVAL: Duration = Duration::from_millis(100);
-const TMUX_SPLIT_MAX_PANES: usize = 4;
 const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
 #[cfg(not(target_os = "windows"))]
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
@@ -2108,25 +2111,21 @@ fn create_tmux_pane_with_layout(
 ) -> Result<String, CoordinationError> {
     ensure_taurhaus_tmux_session()?;
 
-    let window_name = std::path::Path::new(project_id)
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| "agent".to_string());
+    let window_name = derive_window_name(project_id, "agent");
+    let policy = TmuxLayoutPolicy::from_setting(tmux_layout, DEFAULT_SPLIT_MAX_PANES);
+    let windows = match policy {
+        TmuxLayoutPolicy::NewWindow => Vec::new(),
+        _ => list_tmux_windows(TAURHAUS_TMUX_SESSION_NAME)?,
+    };
 
-    if tmux_layout == "split" {
-        if let Some(target) =
-            find_tmux_window_with_space(TAURHAUS_TMUX_SESSION_NAME, TMUX_SPLIT_MAX_PANES)?
-        {
-            return create_tmux_split_pane(project_id, &target);
+    match resolve_layout_allocation(&policy, TAURHAUS_TMUX_SESSION_NAME, &window_name, &windows) {
+        TmuxLayoutAllocation::NewWindow { window_name } => {
+            create_tmux_new_window_pane(project_id, &window_name)
         }
-    } else if tmux_layout == "per_project" {
-        if let Some(target) = find_tmux_project_window(TAURHAUS_TMUX_SESSION_NAME, &window_name)? {
-            return create_tmux_split_pane(project_id, &target);
+        TmuxLayoutAllocation::SplitExisting { target_pane, .. } => {
+            create_tmux_split_pane(project_id, &target_pane)
         }
     }
-
-    create_tmux_new_window_pane(project_id, &window_name)
 }
 
 fn create_tmux_new_window_pane(
@@ -2179,64 +2178,18 @@ fn parse_tmux_created_pane_id(raw: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn find_tmux_window_with_space(
+fn list_tmux_windows(
     tmux_session: &str,
-    max_panes: usize,
-) -> Result<Option<String>, CoordinationError> {
+) -> Result<Vec<crate::tmux_layout::TmuxWindowRecord>, CoordinationError> {
     let out = run_tmux(&[
         "list-windows".to_string(),
         "-t".to_string(),
         tmux_session.to_string(),
         "-F".to_string(),
-        "#{window_index}\t#{window_panes}".to_string(),
+        LIST_WINDOWS_FORMAT.to_string(),
     ])?;
 
-    for line in out.lines() {
-        let mut parts = line.split('\t');
-        let window_index = match parts.next() {
-            Some(idx) if !idx.trim().is_empty() => idx.trim(),
-            _ => continue,
-        };
-        let pane_count = parts
-            .next()
-            .and_then(|count| count.trim().parse::<usize>().ok())
-            .unwrap_or(usize::MAX);
-        if pane_count < max_panes {
-            return Ok(Some(format!("{tmux_session}:{window_index}.0")));
-        }
-    }
-
-    Ok(None)
-}
-
-fn find_tmux_project_window(
-    tmux_session: &str,
-    window_name: &str,
-) -> Result<Option<String>, CoordinationError> {
-    let out = run_tmux(&[
-        "list-windows".to_string(),
-        "-t".to_string(),
-        tmux_session.to_string(),
-        "-F".to_string(),
-        "#{window_index}\t#{window_name}".to_string(),
-    ])?;
-
-    for line in out.lines() {
-        let mut parts = line.split('\t');
-        let window_index = match parts.next() {
-            Some(idx) if !idx.trim().is_empty() => idx.trim(),
-            _ => continue,
-        };
-        let name = match parts.next() {
-            Some(name) => name.trim(),
-            None => continue,
-        };
-        if name == window_name {
-            return Ok(Some(format!("{tmux_session}:{window_index}.0")));
-        }
-    }
-
-    Ok(None)
+    Ok(parse_window_records(&out))
 }
 
 fn tmux_target_for_pane(pane_id: &str) -> String {

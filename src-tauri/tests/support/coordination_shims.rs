@@ -30,6 +30,10 @@ pub mod provider {
     }
 }
 
+pub mod tmux_layout {
+    pub use taurhaus_lib::tmux_layout::*;
+}
+
 pub mod session_scanner {
     pub use taurhaus_lib::session_scanner::{
         scan_sessions_for_display, scan_sessions_for_runtime, ActivityAttribution,

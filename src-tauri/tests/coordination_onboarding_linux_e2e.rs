@@ -14,7 +14,7 @@ use tempfile::TempDir;
 #[path = "support/coordination_shims.rs"]
 mod coordination_shims;
 pub use coordination_shims::provider;
-pub use coordination_shims::{daemon, errors, models, session_scanner, templates};
+pub use coordination_shims::{daemon, errors, models, session_scanner, templates, tmux_layout};
 
 #[path = "../src/coordination/mod.rs"]
 mod coordination;

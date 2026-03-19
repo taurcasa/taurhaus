@@ -44,6 +44,7 @@ pub mod session_scanner;
 pub mod task_scanner;
 
 pub mod terminal;
+pub mod tmux_layout;
 
 pub mod platform;
 

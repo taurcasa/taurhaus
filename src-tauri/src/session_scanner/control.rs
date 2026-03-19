@@ -7,6 +7,10 @@ use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::{self, CliTool};
+use crate::tmux_layout::{
+    derive_window_name, parse_window_records, resolve_layout_allocation, TmuxLayoutAllocation,
+    TmuxLayoutPolicy, DEFAULT_SPLIT_MAX_PANES, LIST_WINDOWS_FORMAT,
+};
 
 #[cfg(any(target_os = "windows", test))]
 fn wsl_exec_args(program: &str) -> [String; 2] {
@@ -114,58 +118,22 @@ pub fn launch_command_in_tmux_with_layout(
     }
 
     let tmux_session = ensure_taurhaus_session()?;
-    let window_name = Path::new(project_path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "claude".to_string());
-
+    let window_name = derive_window_name(project_path, "claude");
+    let policy = TmuxLayoutPolicy::from_setting(layout, DEFAULT_SPLIT_MAX_PANES);
     let shell_cmd = build_tmux_shell_command(project_path, command);
+    let windows = match policy {
+        TmuxLayoutPolicy::NewWindow => Vec::new(),
+        _ => list_tmux_windows(&tmux_session).unwrap_or_default(),
+    };
 
-    match layout {
-        "split" => {
-            // Try to split an existing window (max 4 panes per window)
-            if let Some(target_pane) = find_window_with_space(&tmux_session, 4) {
-                let pane_id = split_pane(&target_pane, &shell_cmd)?;
-                crate::session_scanner::notify_tmux_changed();
-                return Ok((tmux_session, window_name, pane_id));
-            }
-            // No window with space — fall through to new window
+    let pane_id = match resolve_layout_allocation(&policy, &tmux_session, &window_name, &windows) {
+        TmuxLayoutAllocation::NewWindow { .. } => {
+            create_new_window_pane(&tmux_session, &window_name, &shell_cmd)?
         }
-        "per_project" => {
-            // Try to find an existing window named after this project
-            if let Some(target_pane) = find_project_window(&tmux_session, &window_name) {
-                let pane_id = split_pane(&target_pane, &shell_cmd)?;
-                crate::session_scanner::notify_tmux_changed();
-                return Ok((tmux_session, window_name, pane_id));
-            }
-            // No matching window — fall through to new window
+        TmuxLayoutAllocation::SplitExisting { target_pane, .. } => {
+            split_pane(&target_pane, &shell_cmd)?
         }
-        _ => {} // "new_window" or unknown — always create new window
-    }
-
-    // Default: create new tmux window
-    let target = format!("{tmux_session}:");
-    let output = tmux_command()
-        .args([
-            "new-window",
-            "-n",
-            &window_name,
-            "-t",
-            &target,
-            "-P",
-            "-F",
-            "#{pane_id}",
-            &shell_cmd,
-        ])
-        .output()
-        .map_err(|e| format!("Failed to create tmux window: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux new-window failed: {stderr}"));
-    }
-
-    let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    };
     crate::session_scanner::notify_tmux_changed();
 
     Ok((tmux_session, window_name, pane_id))
@@ -191,69 +159,57 @@ pub fn split_command_in_tmux_target_pane(
     Ok(pane_id)
 }
 
-/// Find a window in the session that has fewer than `max_panes` panes.
-/// Returns the first pane ID in that window (as split target).
-fn find_window_with_space(tmux_session: &str, max_panes: usize) -> Option<String> {
+fn list_tmux_windows(
+    tmux_session: &str,
+) -> Result<Vec<crate::tmux_layout::TmuxWindowRecord>, String> {
     let output = tmux_command()
         .args([
             "list-windows",
             "-t",
             tmux_session,
             "-F",
-            "#{window_index} #{window_panes}",
+            LIST_WINDOWS_FORMAT,
         ])
         .output()
-        .ok()?;
+        .map_err(|e| format!("Failed to inspect tmux windows: {e}"))?;
 
     if !output.status.success() {
-        return None;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux list-windows failed: {stderr}"));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            if let Ok(pane_count) = parts[1].parse::<usize>() {
-                if pane_count < max_panes {
-                    // Return first pane in this window
-                    let window_idx = parts[0];
-                    let target = format!("{tmux_session}:{window_idx}.0");
-                    return Some(target);
-                }
-            }
-        }
-    }
-    None
+    Ok(parse_window_records(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
-/// Find a window named after the project in the session.
-/// Returns the first pane ID in that window (as split target).
-fn find_project_window(tmux_session: &str, window_name: &str) -> Option<String> {
+fn create_new_window_pane(
+    tmux_session: &str,
+    window_name: &str,
+    shell_cmd: &str,
+) -> Result<String, String> {
+    let target = format!("{tmux_session}:");
     let output = tmux_command()
         .args([
-            "list-windows",
+            "new-window",
+            "-n",
+            window_name,
             "-t",
-            tmux_session,
+            &target,
+            "-P",
             "-F",
-            "#{window_index} #{window_name}",
+            "#{pane_id}",
+            shell_cmd,
         ])
         .output()
-        .ok()?;
+        .map_err(|e| format!("Failed to create tmux window: {e}"))?;
 
     if !output.status.success() {
-        return None;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux new-window failed: {stderr}"));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.splitn(2, ' ').collect();
-        if parts.len() >= 2 && parts[1] == window_name {
-            let window_idx = parts[0];
-            let target = format!("{tmux_session}:{window_idx}.0");
-            return Some(target);
-        }
-    }
-    None
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 /// Split an existing pane horizontally and run a command in the new pane.
