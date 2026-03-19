@@ -8,6 +8,7 @@
     coordinationInitializeTeam,
     onCoordinationStepProgress,
   } from '../ipc.js'
+  import { describeMeshInitFailure } from '../errorCopy.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import { themeTokens } from '../themeTokens.js'
 
@@ -69,6 +70,10 @@
   let elapsedTimer = null
   const succeededSteps = $derived.by(() => steps.filter((entry) => entry.status === 'succeeded'))
   const failedEntry = $derived.by(() => steps.find((entry) => entry.status === 'failed') ?? null)
+  const failureDetailsMessage = $derived.by(() => describeMeshInitFailure(
+    failedEntry?.message || errorMessage,
+    { failedStep: failedEntry?.step || failedStep }
+  ))
   const existingTeamName = $derived.by(() => {
     const name = activeTeamName || lastRequest?.teamName || ''
     if (!name || failedStep !== 'create_team') return ''
@@ -126,7 +131,8 @@
     if (failedStep) {
       failed = true
       succeeded = false
-      errorMessage = report?.message || 'Initialization failed.'
+      const failedStepMessage = report?.steps?.find((entry) => entry.step === failedStep)?.message
+      errorMessage = describeMeshInitFailure(report?.message || failedStepMessage, { failedStep })
     } else {
       failed = false
       succeeded = true
@@ -158,7 +164,7 @@
       failed = true
       succeeded = false
       failedStep = failedStep || 'initialize_team'
-      errorMessage = err?.message || `${err || 'Initialization failed.'}`
+      errorMessage = describeMeshInitFailure(err, { failedStep })
       setStep(failedStep, 'failed', errorMessage)
     } finally {
       running = false
@@ -219,7 +225,7 @@
     } catch (err) {
       failed = true
       succeeded = false
-      errorMessage = err?.message || 'Failed to disband existing team.'
+      errorMessage = describeMeshInitFailure(err, { failedStep: 'create_team' })
       setStep('create_team', 'failed', errorMessage)
     } finally {
       disbandingExistingTeam = false
@@ -314,16 +320,16 @@
         <p class="mt-1">{errorMessage}</p>
       {/if}
       <details class="mt-2 text-[11px]" data-testid="mesh-init-failure-details">
-        <summary class="cursor-pointer font-medium">What went wrong?</summary>
+        <summary class="cursor-pointer font-medium">What you can try</summary>
         <div class="mt-1 space-y-1">
-          {#if failedEntry?.message}
-            <p>{failedEntry.message}</p>
+          {#if failureDetailsMessage}
+            <p>{failureDetailsMessage}</p>
           {/if}
-          {#if errorMessage}
-            <p>{errorMessage}</p>
+          {#if failedEntry}
+            <p>Check the "{prettyStep(failedEntry.step)}" step and try again.</p>
           {/if}
-          {#if !failedEntry?.message && !errorMessage}
-            <p>No additional failure details were provided by the backend.</p>
+          {#if !failureDetailsMessage && !failedEntry}
+            <p>Try again once the required tools and project paths are ready.</p>
           {/if}
         </div>
       </details>

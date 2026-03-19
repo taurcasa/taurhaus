@@ -78,7 +78,7 @@ describe('MeshAvailabilityGate', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-availability-blocking')).toBeInTheDocument()
     })
-    expect(screen.getByText('Mesh CLI not found. Install it to enable multi-agent collaboration.')).toBeInTheDocument()
+    expect(screen.getByText('Install Mesh to set up a team in this project.')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-availability-mesh-help')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-install-button')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-gate-child')).not.toBeInTheDocument()
@@ -101,7 +101,7 @@ describe('MeshAvailabilityGate', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-availability-blocking')).toBeInTheDocument()
     })
-    expect(screen.getByText('tmux is required for multi-agent sessions.')).toBeInTheDocument()
+    expect(screen.getByText('Install tmux to launch and manage team sessions.')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-availability-mesh-help')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mesh-install-button')).not.toBeInTheDocument()
   })
@@ -221,8 +221,7 @@ describe('MeshAvailabilityGate', () => {
       expect(screen.getByTestId('mesh-availability-blocking')).toBeInTheDocument()
     })
     expect(screen.getByTestId('mesh-install-button')).toBeInTheDocument()
-    expect(screen.getByText(/protocol version 0 does not match taurhaus required protocol version 1/i)).toBeInTheDocument()
-    expect(screen.getByText(/version 0.0.9 does not match taurhaus bundled mesh version 0.1.0/i)).toBeInTheDocument()
+    expect(screen.getAllByText('The installed Mesh version does not match taurhaus. Install the bundled Mesh version to continue.').length).toBeGreaterThan(0)
 
     await fireEvent.click(screen.getByTestId('mesh-install-button'))
 

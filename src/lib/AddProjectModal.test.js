@@ -200,12 +200,49 @@ describe('AddProjectModal', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('scan-error')).toBeInTheDocument()
-      expect(screen.getByText('scan failed')).toBeInTheDocument()
+      expect(screen.getByText('Could not scan that folder. Try again, choose another folder, or enter a path manually.')).toBeInTheDocument()
     })
 
     await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
     expect(screen.getByTestId('manual-path-input')).toBeInTheDocument()
     expect(screen.getByTestId('mock-directory-browser')).toBeInTheDocument()
+  })
+
+  it('shows partial batch registration failures with an expandable failed-path list', async () => {
+    scanDirectory.mockResolvedValueOnce([
+      { name: 'two', path: '/projects/two', has_git: true },
+      { name: 'three', path: '/projects/three', has_git: true },
+    ])
+    registerProjectsBatch.mockResolvedValueOnce([
+      { path: '/projects/two', success: true },
+      { path: '/projects/three', success: false, error: 'already tracked elsewhere' },
+    ])
+    listProjects
+      .mockResolvedValueOnce([{ id: 'p1', name: 'Project One', path: '/projects/one', activityState: 'active' }])
+      .mockResolvedValueOnce([
+        { id: 'p1', name: 'Project One', path: '/projects/one', activityState: 'active' },
+        { id: 'p2', name: 'Project Two', path: '/projects/two', activityState: 'recent' },
+      ])
+
+    render(AddProjectModal, { props: { dark: false } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('register-button')).toHaveTextContent('Register 2')
+    })
+
+    await fireEvent.click(screen.getByTestId('register-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('add-success')).toHaveTextContent('1 project added')
+      expect(screen.getByTestId('add-failure-summary')).toHaveTextContent('1 project could not be added.')
+      expect(screen.getByTestId('register-button')).toHaveTextContent('Register 1')
+    })
+
+    await fireEvent.click(screen.getByText('Show failed paths'))
+
+    expect(screen.getByTestId('add-failure-details')).toHaveTextContent('/projects/three')
+    expect(screen.getByTestId('add-failure-details')).toHaveTextContent('already tracked elsewhere')
   })
 
   it('shows all-registered state when scan returns only registered projects', async () => {

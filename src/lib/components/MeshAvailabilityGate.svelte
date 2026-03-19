@@ -1,5 +1,6 @@
 <script>
   import { checkMeshInstallStatus, coordinationPreflightCheck, installMesh } from '../ipc.js'
+  import { describeMeshAvailabilityIssue } from '../errorCopy.js'
   import { defaultModelForTool } from '../meshDefaults.js'
   import { themeTokens } from '../themeTokens.js'
 
@@ -16,6 +17,8 @@
   let installingMesh = $state(false)
   let installMessage = $state('')
   let installError = $state('')
+  let meshMissing = $state(false)
+  let meshInstallRequired = $state(false)
 
   function minimalPreflightRequest(path) {
     const projectId = String(path || '').trim() || 'mesh-preflight-project'
@@ -99,10 +102,7 @@
     return fallback ? [fallback] : []
   }
 
-  const showMeshInstallActions = $derived(
-    (blockingErrors.some(isMeshMissing) || meshCompatibilityMessages(meshStatus).length > 0) &&
-      meshEnvironmentAvailable(meshStatus)
-  )
+  const showMeshInstallActions = $derived(meshInstallRequired && meshEnvironmentAvailable(meshStatus))
 
   async function installBundledMesh() {
     installingMesh = true
@@ -129,6 +129,8 @@
     blockingErrors = []
     agentWarnings = []
     errorMessage = ''
+    meshMissing = false
+    meshInstallRequired = false
     void currentRefreshToken
 
     Promise.all([
@@ -138,11 +140,15 @@
       .then(([status, report]) => {
         if (cancelled) return
         meshStatus = status
-        const mergedErrors = coerceBlockingErrors(report)
+        const rawBlockingErrors = coerceBlockingErrors(report)
+        const mergedErrors = rawBlockingErrors.map((message) => describeMeshAvailabilityIssue(message))
         const mismatches = meshCompatibilityMessages(status)
+        meshMissing = rawBlockingErrors.some(isMeshMissing)
+        meshInstallRequired = meshMissing || mismatches.length > 0
         for (const mismatch of mismatches) {
-          if (!mergedErrors.includes(mismatch)) {
-            mergedErrors.push(mismatch)
+          const userMessage = describeMeshAvailabilityIssue(mismatch)
+          if (!mergedErrors.includes(userMessage)) {
+            mergedErrors.push(userMessage)
           }
         }
         blockingErrors = mergedErrors
@@ -150,7 +156,7 @@
       })
       .catch((err) => {
         if (cancelled) return
-        errorMessage = err?.message || 'Failed to check Mesh availability.'
+        errorMessage = 'Could not check Mesh setup right now. Try again in a moment.'
       })
       .finally(() => {
         if (!cancelled) {
@@ -188,7 +194,7 @@
       {/each}
     </ul>
 
-    {#if blockingErrors.some(isMeshMissing)}
+    {#if meshMissing}
       <p class="text-xs {t.textMuted}" data-testid="mesh-availability-mesh-help">
         Install Mesh CLI, then restart taurhaus. Verify with <code>mesh --help</code>.
       </p>

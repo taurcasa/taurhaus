@@ -169,6 +169,9 @@ describe('MeshInitProgress', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-init-failure')).toBeInTheDocument()
     })
+    expect(screen.getByTestId('mesh-init-failure')).toHaveTextContent(
+      'A team with this name already exists. Open it or replace it to continue.'
+    )
     expect(screen.getByTestId('mesh-init-retry-button')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-init-failure-details')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-init-open-existing-button')).toBeInTheDocument()
