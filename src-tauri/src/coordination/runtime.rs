@@ -1443,8 +1443,19 @@ fn process_matches_mesh_daemon(
     team_name: &str,
     member_name: &str,
 ) -> Result<bool, CoordinationError> {
-    if !process_uses_current_mesh_binary(pid)? {
-        return Ok(false);
+    // Binary identity check is best-effort: on Windows the WSL stat can fail
+    // transiently (empty stderr, exit code 1). Treat stat failures as "unknown"
+    // rather than aborting the entire daemon startup retry loop.
+    match process_uses_current_mesh_binary(pid) {
+        Ok(false) => return Ok(false),
+        Ok(true) => {}
+        Err(err) => {
+            tracing::debug!(
+                pid,
+                error = %err,
+                "mesh daemon binary identity check failed, assuming current"
+            );
+        }
     }
     let Some(args) = read_process_cmdline_args(pid)? else {
         return Ok(false);
@@ -1462,8 +1473,16 @@ fn process_matches_mesh_daemon_member(
     team_name: &str,
     member_name: &str,
 ) -> Result<bool, CoordinationError> {
-    if !process_uses_current_mesh_binary(pid)? {
-        return Ok(false);
+    match process_uses_current_mesh_binary(pid) {
+        Ok(false) => return Ok(false),
+        Ok(true) => {}
+        Err(err) => {
+            tracing::debug!(
+                pid,
+                error = %err,
+                "mesh daemon binary identity check failed, assuming current"
+            );
+        }
     }
     let Some(args) = read_process_cmdline_args(pid)? else {
         return Ok(false);
