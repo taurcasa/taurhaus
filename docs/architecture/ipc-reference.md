@@ -162,7 +162,7 @@ These commands are feature-gated behind `mesh-bridged-backend` (enabled by defau
 | `coordination_get_team_status` | `teamName: string` | `Result<TeamStatus, String>` | `coordination.rs` | Returns persisted team configuration and health summary. |
 | `coordination_initialize_team` | `request: InitializeTeamRequest` | `Result<InitializeReport, String>` | `coordination.rs` | Executes full team bootstrap (tmux, sessions, mesh onboarding). |
 | `coordination_add_agent` | `request: AddAgentRequest` | `Result<AddAgentReport, String>` | `coordination.rs` | Hot-adds one agent to an existing coordinated team. |
-| `coordination_resume_member` | `request: ResumeMemberRequest` | `Result<ResumeAgentReport, String>` | `coordination.rs` | Resumes an offline member in either continue or fresh mode. |
+| `coordination_resume_member` | `request: ResumeMemberRequest` | `Result<ResumeAgentReport, String>` | `coordination.rs` | Resumes an offline member by restoring pane/runtime identity and launching a fresh tool session. |
 | `coordination_resume_team` | `request: ResumeTeamRequest` | `Result<ResumeTeamReport, String>` | `coordination.rs` | Resumes the lead first, then same-project and cross-project members, with partial-success reporting. |
 | `coordination_reonboard` | `request: ReonboardRequest` | `Result<DeliveryResult, String>` | `coordination.rs` | Re-sends onboarding guidance to one member. |
 | `coordination_get_live_team_status` | `teamName: string` | `Result<LiveTeamStatus, String>` | `coordination.rs` | Returns runtime/live roster state (session status + pane IDs). |

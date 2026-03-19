@@ -49,6 +49,11 @@ struct Connection {
 /// slots 1..N connect lazily on first use.
 const POOL_SIZE: usize = 3;
 
+#[cfg(test)]
+pub(crate) fn status_pool_size_for_tests() -> usize {
+    POOL_SIZE
+}
+
 pub struct DaemonProvider {
     pool: Vec<Mutex<Option<Connection>>>,
     addr: String,

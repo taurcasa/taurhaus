@@ -209,6 +209,21 @@ mod tests {
     use std::net::TcpListener;
     use tempfile::TempDir;
 
+    fn start_blocking_listener(connection_count: usize) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("local addr");
+        let accept_thread = std::thread::spawn(move || {
+            let mut streams = Vec::with_capacity(connection_count);
+            for _ in 0..connection_count {
+                let (stream, _) = listener.accept().expect("accept client");
+                streams.push(stream);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            drop(streams);
+        });
+        (addr.to_string(), accept_thread)
+    }
+
     fn init_repo() -> (TempDir, git2::Repository) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
@@ -286,25 +301,28 @@ mod tests {
 
     #[test]
     fn recent_commits_foreground_read_fails_fast_when_daemon_lane_is_busy() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
-        let addr = listener.local_addr().expect("local addr");
-        let accept_thread = std::thread::spawn(move || {
-            let _stream = listener.accept().expect("accept client");
-            std::thread::sleep(std::time::Duration::from_secs(2));
-        });
+        let pool_size = crate::provider::daemon_client::status_pool_size_for_tests();
+        let (addr, accept_thread) = start_blocking_listener(pool_size);
         let providers = ProviderState {
             local: LocalProvider,
-            daemon: Some(DaemonProvider::connect(&addr.to_string()).unwrap()),
+            daemon: Some(DaemonProvider::connect(&addr).unwrap()),
             wsl_distro: Some("Ubuntu".to_string()),
         };
 
         std::thread::scope(|scope| {
             let provider = providers.daemon.as_ref().expect("daemon provider");
-            let _busy_thread = scope.spawn(|| {
-                let request = crate::daemon_api::protocol::DaemonRequest::ping("busy-git");
-                let _ = provider.send_status_request(&request);
-            });
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            for idx in 0..pool_size {
+                scope.spawn(move || {
+                    let request =
+                        crate::daemon_api::protocol::DaemonRequest::ping(format!("busy-git-{idx}"));
+                    let _ = provider.send_status_request(&request);
+                });
+            }
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            assert!(
+                provider.is_busy(),
+                "all daemon status pool slots should be occupied"
+            );
 
             let err = fail_fast_if_foreground_daemon_lane_is_busy(
                 &providers,

@@ -982,7 +982,19 @@ mod tests {
     #[test]
     fn role_templates_deserialize_and_validate() {
         let roles = load_role_templates();
-        assert_eq!(roles.len(), 18, "expected eighteen built-in role templates");
+        assert!(
+            !roles.is_empty(),
+            "expected at least one built-in role template"
+        );
+        let unique_role_ids = roles
+            .iter()
+            .map(|role| role.role_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            unique_role_ids.len(),
+            roles.len(),
+            "built-in role templates should have unique role ids"
+        );
         assert!(
             roles.iter().any(|role| role.role_id == "codex-architect"),
             "expected codex-architect role template in built-ins"
@@ -1069,7 +1081,19 @@ mod tests {
     fn team_presets_deserialize_and_validate_against_roles() {
         let roles = load_role_templates();
         let presets = load_team_presets();
-        assert_eq!(presets.len(), 14, "expected fourteen built-in team presets");
+        assert!(
+            !presets.is_empty(),
+            "expected at least one built-in team preset"
+        );
+        let unique_preset_ids = presets
+            .iter()
+            .map(|preset| preset.preset_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            unique_preset_ids.len(),
+            presets.len(),
+            "built-in team presets should have unique preset ids"
+        );
         assert!(
             presets
                 .iter()

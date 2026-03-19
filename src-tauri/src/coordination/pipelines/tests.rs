@@ -161,7 +161,7 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
         &cmds,
     )
     .expect("command");
-    assert_eq!(command, "codex --yolo -m 'gpt-5.3'");
+    assert_eq!(command, "codex --yolo -m 'gpt-5.3-codex'");
     assert!(!command.contains("resume"));
     assert!(!command.contains("--last"));
 
@@ -773,7 +773,7 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
             _ => None,
         })
         .expect("launch command");
-    assert!(launch.contains("--continue"));
+    assert!(!launch.contains("--continue"));
     assert!(launch.contains("--agent-type orchestrator"));
     assert!(!calls
         .iter()
@@ -933,7 +933,7 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
 }
 
 #[test]
-fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime() {
+fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_runtime() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -988,7 +988,7 @@ fn resume_pipeline_non_claude_continue_uses_resume_command_and_updates_runtime()
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex resume --last --yolo");
+    assert_eq!(launch, "codex --yolo");
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
@@ -1068,7 +1068,7 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex resume --last --yolo");
+    assert_eq!(launch, "codex --yolo");
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")));

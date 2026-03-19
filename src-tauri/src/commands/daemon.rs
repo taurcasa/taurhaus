@@ -646,6 +646,21 @@ mod tests {
         crate::provider::path::to_linux(&path_str).unwrap_or_else(|| path_str.to_string())
     }
 
+    fn start_blocking_listener(connection_count: usize) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("local addr");
+        let accept_thread = std::thread::spawn(move || {
+            let mut streams = Vec::with_capacity(connection_count);
+            for _ in 0..connection_count {
+                let (stream, _) = listener.accept().expect("accept client");
+                streams.push(stream);
+            }
+            std::thread::sleep(Duration::from_secs(2));
+            drop(streams);
+        });
+        (addr.to_string(), accept_thread)
+    }
+
     #[test]
     fn semver_comparison() {
         assert!(semver_less_than("0.3.1", "0.3.2"));
@@ -853,17 +868,13 @@ mod tests {
 
     #[test]
     fn daemon_status_snapshot_reports_busy_without_treating_it_as_disconnect() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
-        let addr = listener.local_addr().expect("local addr");
-        let accept_thread = std::thread::spawn(move || {
-            let _stream = listener.accept().expect("accept client");
-            std::thread::sleep(Duration::from_secs(2));
-        });
+        let pool_size = crate::provider::daemon_client::status_pool_size_for_tests();
+        let (addr, accept_thread) = start_blocking_listener(pool_size);
 
         let provider = ProviderState {
             local: crate::provider::local::LocalProvider,
             daemon: Some(
-                crate::provider::daemon_client::DaemonProvider::connect(&addr.to_string())
+                crate::provider::daemon_client::DaemonProvider::connect(&addr)
                     .expect("connect daemon provider"),
             ),
             wsl_distro: Some("Ubuntu".to_string()),
@@ -871,11 +882,19 @@ mod tests {
 
         std::thread::scope(|scope| {
             let daemon = provider.daemon.as_ref().expect("daemon provider");
-            let _busy_thread = scope.spawn(|| {
-                let request = crate::daemon_api::protocol::DaemonRequest::ping("busy-status");
-                let _ = daemon.send_status_request(&request);
-            });
-            std::thread::sleep(Duration::from_millis(100));
+            for idx in 0..pool_size {
+                scope.spawn(move || {
+                    let request = crate::daemon_api::protocol::DaemonRequest::ping(format!(
+                        "busy-status-{idx}"
+                    ));
+                    let _ = daemon.send_status_request(&request);
+                });
+            }
+            std::thread::sleep(Duration::from_millis(150));
+            assert!(
+                daemon.is_busy(),
+                "all daemon status pool slots should be occupied"
+            );
 
             let status = daemon_status_snapshot(&provider);
             assert_eq!(status.status, "busy");
