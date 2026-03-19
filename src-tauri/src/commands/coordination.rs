@@ -105,7 +105,15 @@ pub async fn coordination_initialize_team(
             "failed to join initialize team task: {err}"
         )))
     });
-    let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
+    // Only install compact hook when the pipeline succeeded — cleanup may have
+    // deleted the team config, so loading it after failure throws "not found"
+    // and masks the actual pipeline error.
+    let result = match &result {
+        Ok(report) if report.failed_step.is_none() => {
+            maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result)
+        }
+        _ => result,
+    };
     span.finish_result(&result);
     result
 }
@@ -135,7 +143,12 @@ pub fn coordination_add_agent(
         )
         .ipc()
     };
-    let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
+    let result = match &result {
+        Ok(report) if report.failed_step.is_none() => {
+            maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result)
+        }
+        _ => result,
+    };
     span.finish_result(&result);
     result
 }
